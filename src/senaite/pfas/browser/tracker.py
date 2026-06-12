@@ -30,7 +30,8 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from ..tracking_store import get_ar_uid_by_tracking
 from .sample_status import (
-    STAGES, _build_stage_steps, _compute_stage, _get_method_name,
+    STAGE_PUBLISHED, STAGES, _build_stage_steps, _compute_stage,
+    _get_method_name, _workflow_state,
 )
 from .stage_estimates import format_estimate, get_stage_estimates
 
@@ -273,20 +274,54 @@ def _portal(context):
     return context.portal_url.getPortalObject()
 
 
-def _get_worksheet_for_ar(ar):
-    """Return first Worksheet containing an analysis from *ar*, or None."""
+def _get_analyses_for_ar(portal, ar_uid):
+    """Return analysis objects for the given AR UID via unrestricted catalog query.
+
+    Uses senaite_catalog_analysis.unrestrictedSearchResults to bypass the
+    allowedRolesAndUsers security filter that blocks anonymous/public callers.
+    """
     try:
-        for brain in ar.getAnalyses():
-            try:
-                obj = brain if not hasattr(brain, 'getObject') else brain.getObject()
-                ws = obj.getWorksheet()
-                if ws is not None:
-                    return ws
-            except Exception:
-                pass
-    except Exception:
-        pass
+        ana_cat = getToolByName(portal, 'senaite_catalog_analysis', None)
+        if ana_cat is not None:
+            brains = ana_cat.unrestrictedSearchResults(getAncestorsUIDs=ar_uid)
+            return [b.getObject() for b in brains]
+    except Exception as exc:
+        logger.debug('_get_analyses_for_ar error: %s', exc)
+    return []
+
+
+def _get_worksheet_for_ar(portal, ar_uid):
+    """Return first Worksheet for the given AR UID, or None.
+
+    Uses unrestricted catalog queries so this works for anonymous callers
+    under the elevated security context.
+    """
+    for analysis in _get_analyses_for_ar(portal, ar_uid):
+        try:
+            ws_uid = analysis.getWorksheetUID()
+            if ws_uid:
+                uid_cat = getToolByName(portal, 'uid_catalog')
+                try:
+                    ws_brains = uid_cat.unrestrictedSearchResults(UID=ws_uid)
+                except AttributeError:
+                    ws_brains = uid_cat(UID=ws_uid)
+                if ws_brains:
+                    return ws_brains[0].getObject()
+        except Exception:
+            pass
     return None
+
+
+def _get_method_name_for_ar(portal, ar_uid):
+    """Return method title for the AR without going through ws.getAnalyses()."""
+    for analysis in _get_analyses_for_ar(portal, ar_uid):
+        try:
+            method = analysis.getMethod()
+            if method:
+                return method.Title() or method.getId()
+        except Exception:
+            pass
+    return u''
 
 
 def _build_public_status(portal, ar_uid):
@@ -295,8 +330,8 @@ def _build_public_status(portal, ar_uid):
     Must be called under elevated security context.
     Returns None if the AR cannot be found.
     """
-    pc = getToolByName(portal, 'portal_catalog')
-    brains = pc.unrestrictedSearchResults(UID=ar_uid)
+    uid_cat = getToolByName(portal, 'uid_catalog')
+    brains = uid_cat(UID=ar_uid)
     if not brains:
         return None
 
@@ -304,10 +339,18 @@ def _build_public_status(portal, ar_uid):
     stage = 1
     method_name = u''
 
-    ws = _get_worksheet_for_ar(ar)
-    if ws is not None:
-        stage, _responsible = _compute_stage(ws)
-        method_name = _get_method_name(ws) or u''
+    # Stage 5: AR published — check before looking for a worksheet so we
+    # never have to call ws.getAnalyses() which is security-filtered for the
+    # anonymous tracker user.
+    ar_state = _workflow_state(ar)
+    if ar_state == 'published':
+        stage = STAGE_PUBLISHED
+        method_name = _get_method_name_for_ar(portal, ar_uid) or u''
+    else:
+        ws = _get_worksheet_for_ar(portal, ar_uid)
+        if ws is not None:
+            stage, _responsible = _compute_stage(ws)
+            method_name = _get_method_name(ws) or u''
 
     stage_label = dict(STAGES).get(stage, u'')
     steps = _build_stage_steps(stage)
