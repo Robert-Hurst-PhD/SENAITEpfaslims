@@ -1,0 +1,40 @@
+FROM senaite/senaite:v2.6.0
+
+# Pre-download the full buildout extends chain so buildout never needs DNS at
+# container startup (Docker's embedded DNS isn't ready when buildout initialises).
+#
+# Chain:  custom.cfg → buildout.cfg → buildout-base.cfg
+#           → plone-versions.cfg  (was dist.plone.org/release/5.2.15/versions.cfg)
+#             → zope-versions.cfg (was zopefoundation.github.io/Zope/releases/4.8.10/versions.cfg)
+#               → versions-prod.cfg (relative ref inside zope-versions.cfg, same base URL)
+
+RUN python -c "\
+import urllib2; \
+base = 'https://zopefoundation.github.io/Zope/releases/4.8.10'; \
+lims = '/home/senaite/senaitelims'; \
+files = [ \
+  ('https://dist.plone.org/release/5.2.15/versions.cfg',  lims+'/plone-versions.cfg'), \
+  (base+'/versions.cfg',      lims+'/zope-versions.cfg'), \
+  (base+'/versions-prod.cfg', lims+'/versions-prod.cfg'), \
+]; \
+[open(dst,'wb').write(urllib2.urlopen(url).read()) for url,dst in files]; \
+" && chown senaite:senaite \
+  /home/senaite/senaitelims/plone-versions.cfg \
+  /home/senaite/senaitelims/zope-versions.cfg \
+  /home/senaite/senaitelims/versions-prod.cfg
+
+# Fix hardcoded shared-blob = off in docker-initialize.py.
+# In our ZEO setup both server and client share the same /data volume so
+# shared-blob must be on, otherwise the client tries to use 'zeocache' layout
+# on a directory already initialised with 'bushy' layout by the ZEO server.
+RUN sed -i "s/shared-blob = off/shared-blob = on/" /docker-initialize.py
+
+# Patch buildout-base.cfg: remote plone URL → local copy
+RUN sed -i \
+  's|https://dist.plone.org/release/5.2.15/versions.cfg|/home/senaite/senaitelims/plone-versions.cfg|' \
+  /home/senaite/senaitelims/buildout-base.cfg
+
+# Patch plone-versions.cfg: remote Zope URL → local copy
+RUN sed -i \
+  's|https://zopefoundation.github.io/Zope/releases/4.8.10/versions.cfg|/home/senaite/senaitelims/zope-versions.cfg|' \
+  /home/senaite/senaitelims/plone-versions.cfg

@@ -1,0 +1,277 @@
+"""
+Pipeline Orchestrator — the master conductor that replaces clicking macro
+buttons in Excel.
+
+End-to-end flow:
+
+  watcher detects new MS export CSV
+      │
+      ▼
+  run_pipeline(csv_path)
+      1. importer.load_instrument_csv()           ← DATA table
+      2. validate all injection names             ← ValidateInjectionNames
+      3. build Batch object
+      4. RunQueue.auto_evaluate()                 ← all 6 QC sheets at once
+      5. build Summary results with qualifiers    ← Summary Sheet
+      6. attach extraction log (if found)
+      7. generate report PDF                      ← RunFullPDFPipeline
+      8. push everything to SENAITE               ← REST API
+      9. notify reviewer queue (pending checks)
+"""
+
+from __future__ import annotations
+import logging
+import time
+from datetime import datetime
+from pathlib import Path
+
+from .importer import (
+    load_instrument_csv, validate_injection_name, classify_injection,
+    group_by_injection,
+)
+from .models import Batch, SummaryResult
+from .run_queue import RunQueue
+from .injection_builder import REVIEW_CHECKS
+from .barcode import ExtractionLog
+from .report import generate_batch_report
+from .constants import (
+    ANALYTES, NON_ISO_ANALYTES,
+    QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC,
+    reload_criteria,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Summary builder  (BuildSummary VBA macro → Sheet 5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_summary(batch: Batch) -> list[SummaryResult]:
+    """
+    Build the Summary Sheet:
+      - one row per analyte × environmental sample
+      - qualifiers: N.D. / < LOD / BLoQ / N.C. / SUR  matching real output
+        like '8.39 (BLoQ)', '0.0537 (BLoQ; N.C.)', '10.6 (BLoQ; SUR)'
+    """
+    summary: list[SummaryResult] = []
+
+    # Identify MB injection(s) for <LOD rule (blank ≥ sample → < LOD)
+    mb_rows = [r for r in batch.injections
+               if classify_injection(r.injection_name) == "MB"]
+    mb_conc = {r.compound_name: (r.measured_conc or r.calculated_conc)
+               for r in mb_rows}
+
+    # Surrogate-flagged injections (from IS results)
+    sur_injections = {
+        (res.is_compound, res.injection_name)
+        for res in batch.is_results if res.flag
+    }
+
+    sample_rows = [r for r in batch.injections
+                   if classify_injection(r.injection_name) == "Sample"]
+
+    by_sample: dict[str, dict[str, object]] = {}
+    for r in sample_rows:
+        by_sample.setdefault(r.injection_name, {})[r.compound_name] = r
+
+    for sample_name, compounds in by_sample.items():
+        for analyte in ANALYTES:
+            row = compounds.get(analyte)
+            flags: list[str] = []
+            qualifier = ""
+            result = None
+
+            if row is None or (row.measured_conc is None
+                               and row.calculated_conc is None):
+                qualifier = QUALIFIER_ND
+            else:
+                conc = row.measured_conc or row.calculated_conc
+                blank = mb_conc.get(analyte)
+
+                # < LOD rule: method blank ≥ sample
+                if blank is not None and conc is not None and blank >= conc:
+                    qualifier = QUALIFIER_LOD
+                else:
+                    result = conc
+                    # BLoQ: below reporting limit
+                    if (row.reporting_limit is not None and conc is not None
+                            and conc < row.reporting_limit):
+                        qualifier = QUALIFIER_BLOQ
+                    # N.C. for non-isotopically linked analytes
+                    if analyte in NON_ISO_ANALYTES:
+                        flags.append(QUALIFIER_NC)
+                    # SUR if any linked IS was flagged on this injection
+                    linked_is = row.linked_is
+                    if linked_is and (linked_is, sample_name) in sur_injections:
+                        flags.append("SUR")
+
+            summary.append(SummaryResult(
+                analyte=analyte,
+                sample_injection=sample_name,
+                result_ppt=result if qualifier != QUALIFIER_LOD else None,
+                qualifier=qualifier,
+                flags=flags,
+            ))
+
+    batch.summary = summary
+    return summary
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_pipeline(
+    csv_path: str | Path,
+    batch_id: str | None = None,
+    analyst: str = "",
+    matrix: str = "",
+    extraction_log_path: str | Path | None = None,
+    output_dir: str | Path = ".",
+    senaite: "SenaiteConnector | None" = None,
+    client_uid: str = "",
+) -> tuple[Batch, RunQueue, Path]:
+    """
+    Full pipeline on one instrument export.
+    Returns (batch, run_queue, report_pdf_path).
+    """
+    # Reload QC criteria from the exported method profiles JSON so manager
+    # changes in the SENAITE UI are picked up without a worker restart.
+    reload_criteria()
+
+    csv_path = Path(csv_path)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Import
+    rows = load_instrument_csv(csv_path)
+    logger.info("Loaded %d rows / %d injections from %s",
+                len(rows), len(group_by_injection(rows)), csv_path.name)
+
+    # 2. Validate injection names (ValidateInjectionNames)
+    bad = []
+    for inj_name in {r.injection_name for r in rows}:
+        v = validate_injection_name(inj_name)
+        if not v["valid"]:
+            bad.append(inj_name)
+    if bad:
+        logger.warning("Invalid injection names: %s", bad)
+
+    # 3. Batch
+    batch = Batch(
+        batch_id=batch_id or csv_path.stem,
+        analyst=analyst,
+        date=datetime.now(),
+        matrix=matrix,
+        instrument_file=csv_path.name,
+        injections=rows,
+    )
+
+    # 4. Review plan (derived from the injections actually present)
+    review_plan = [
+        {
+            "injection_name": name,
+            "qc_type": classify_injection(name),
+            "checks": REVIEW_CHECKS.get(classify_injection(name),
+                                        REVIEW_CHECKS["Sample"]),
+        }
+        for name in sorted({r.injection_name for r in rows})
+    ]
+
+    queue = RunQueue(batch, review_plan)
+    queue.auto_evaluate()
+    logger.info("QC engine raised %d flags; %d checks pending review",
+                len(batch.qc_flags), len(queue.pending()))
+
+    # 5. Summary
+    build_summary(batch)
+
+    # 6. Extraction log
+    ext_log = None
+    if extraction_log_path and Path(extraction_log_path).exists():
+        import json
+        data = json.loads(Path(extraction_log_path).read_text())
+        ext_log = ExtractionLog(data["batch_id"], data["analyst"],
+                                data["matrix"])
+        ext_log.steps = data.get("steps", [])
+        ext_log.reagent_scans = data.get("reagent_scans", [])
+        ext_log.signoffs = data.get("signoffs", [])
+        batch.extraction_log = data
+        batch.reagents = data.get("reagent_scans", [])
+
+    # 7. Report PDF
+    report_path = output_dir / f"{batch.batch_id}_report.pdf"
+    generate_batch_report(batch, ext_log, report_path)
+    logger.info("Report written: %s", report_path)
+
+    # Save the queue for remote review
+    queue.save(output_dir / f"{batch.batch_id}_queue.json")
+
+    # 8. Push to SENAITE
+    if senaite:
+        try:
+            buid = senaite.create_batch(batch, client_uid)
+            senaite.push_qc_flags(buid, batch.qc_flags)
+            senaite.attach_file(buid, report_path, "Batch Report")
+            if extraction_log_path:
+                senaite.attach_file(buid, extraction_log_path,
+                                    "Extraction Log")
+            for s in batch.summary:
+                v = validate_injection_name(s.sample_injection)
+                if v.get("starlims_id"):
+                    sample = senaite.find_sample_by_starlims(v["starlims_id"])
+                    if sample:
+                        senaite.push_result(sample["uid"], s.analyte, s)
+            logger.info("Pushed batch %s to SENAITE (%s)", batch.batch_id, buid)
+        except Exception as e:                       # noqa: BLE001
+            logger.error("SENAITE push failed: %s", e)
+
+    return batch, queue, report_path
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Directory watcher  (replaces manual CSV copying)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def start_watcher(
+    watch_dir: str | Path,
+    output_dir: str | Path,
+    senaite: "SenaiteConnector | None" = None,
+    poll_seconds: int = 30,
+    extraction_log_dir: str | Path | None = None,
+):
+    """
+    Poll the instrument output directory.  When a new CSV lands:
+      1. wait until the file size is stable (export finished)
+      2. run the full pipeline
+      3. results reviewable from anywhere via the saved queue + SENAITE
+    """
+    watch_dir = Path(watch_dir)
+    seen: set[str] = {p.name for p in watch_dir.glob("*.csv")}
+    logger.info("Watching %s (every %ds)", watch_dir, poll_seconds)
+
+    while True:
+        time.sleep(poll_seconds)
+        for p in watch_dir.glob("*.csv"):
+            if p.name in seen:
+                continue
+            # wait for export to finish (stable size)
+            size = -1
+            while size != p.stat().st_size:
+                size = p.stat().st_size
+                time.sleep(5)
+            seen.add(p.name)
+            logger.info("New instrument file: %s", p.name)
+
+            ext_log = None
+            if extraction_log_dir:
+                candidate = Path(extraction_log_dir) / f"{p.stem}_extraction.json"
+                if candidate.exists():
+                    ext_log = candidate
+
+            try:
+                run_pipeline(p, output_dir=output_dir, senaite=senaite,
+                             extraction_log_path=ext_log)
+            except Exception as e:                   # noqa: BLE001
+                logger.exception("Pipeline failed for %s: %s", p.name, e)

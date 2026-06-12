@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<object name="Reagent" meta_type="Dexterity FTI">
+  <property name="title">Reagent</property>
+  <property name="description">A barcode-scanned reagent or standard lot</property>
+  <property name="icon_expr">string:${portal_url}/senaite_theme/icon/reagent</property>
+  <property name="factory">Reagent</property>
+  <property name="add_view_expr">string:${folder_url}/++add++Reagent</property>
+  <property name="schema">senaite.pfas.content.reagent.IReagent</property>
+  <property name="klass">senaite.pfas.content.reagent.Reagent</property>
+  <property name="behaviors">
+    <element value="plone.dublincore"/>
+    <element value="plone.namefromtitle"/>
+  </property>
+  <property name="global_allow">True</property>
+  <property name="filter_content_types">True</property>
+</object>

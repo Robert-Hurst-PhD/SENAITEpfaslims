@@ -1,0 +1,82 @@
+<configure xmlns="http://namespaces.zope.org/zope"
+           xmlns:browser="http://namespaces.zope.org/browser"
+           i18n_domain="senaite.pfas">
+  <!-- PFAS QC Control Chart — Levey-Jennings + Westgard multi-rules -->
+  <browser:page
+      name="pfas-control-chart"
+      for="*"
+      class=".controlchart.PFASControlChartView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS QC Rules Editor — Manager only -->
+  <browser:page
+      name="pfas-qc-rules"
+      for="*"
+      class=".qcrules.PFASQCRulesView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Calibration Review — secondary sign-off for calibration curves -->
+  <browser:page
+      name="pfas-calibrations"
+      for="*"
+      class=".calibrations.PFASCalibrationsView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Reference Definition Setup — creates/updates SENAITE ReferenceDefinitions -->
+  <browser:page
+      name="pfas-setup-references"
+      for="*"
+      class=".setuprefs.PFASSetupRefsView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Method Profile list — Manager/LabManager only -->
+  <browser:page
+      name="pfas-method-profiles"
+      for="*"
+      class=".method_profiles.PFASMethodProfilesView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Method Profile editor — Manager/LabManager only -->
+  <browser:page
+      name="pfas-method-profile-edit"
+      for="*"
+      class=".method_profiles.PFASMethodProfileEditView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Analyst Batch Status — five-stage tracker driven from WS workflow -->
+  <browser:page
+      name="pfas-sample-status"
+      for="*"
+      class=".sample_status.PFASSampleStatusView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Client Tracker — public no-login sample status page -->
+  <browser:page
+      name="pfas-track"
+      for="*"
+      class=".tracker.PFASClientTrackerView"
+      permission="zope2.Public"
+      />
+
+  <!-- PFAS Sample Receipt — internal printable receipt with QR code -->
+  <browser:page
+      name="pfas-receipt"
+      for="*"
+      class=".receipt.PFASReceiptView"
+      permission="zope2.View"
+      />
+
+  <!-- Assign tracking number when a sample is received -->
+  <subscriber
+      for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".tracking.on_after_transition"
+      />
+
+</configure>

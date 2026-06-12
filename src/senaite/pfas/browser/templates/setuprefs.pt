@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PFAS Reference Definition Setup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           font-size: 13px; background: #f5f5f5; color: #212121; }
+
+    .page-header { background: #1a237e; color: #fff; padding: 12px 24px;
+                   display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .page-header h1 { font-size: 17px; font-weight: 600; }
+    .header-meta { font-size: 11px; color: #9fa8da; }
+
+    .page-body { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+    .banner { border-radius: 4px; padding: 10px 16px; margin-bottom: 16px;
+              font-weight: 600; }
+    .banner-success { background: #e8f5e9; border: 1px solid #a5d6a7; color: #1b5e20; }
+    .banner-warn    { background: #fff3e0; border: 1px solid #ffcc80; color: #e65100; }
+
+    /* ── Info card ─────────────────────────────────────────────────────── */
+    .info-card { background: #fff; border-radius: 6px;
+                 box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 16px 20px;
+                 margin-bottom: 18px; }
+    .info-card h2 { font-size: 14px; font-weight: 700; margin-bottom: 10px;
+                    color: #1a237e; }
+    .info-card p  { font-size: 12px; color: #546e7a; line-height: 1.6; margin-bottom: 6px; }
+
+    /* ── Preview table ─────────────────────────────────────────────────── */
+    .ref-table { width: 100%; border-collapse: collapse; font-size: 12px;
+                 background: #fff; border-radius: 6px;
+                 box-shadow: 0 1px 3px rgba(0,0,0,.1); overflow: hidden; }
+    .ref-table th { background: #283593; color: #fff; padding: 8px 12px;
+                    text-align: left; font-size: 11px; text-transform: uppercase;
+                    letter-spacing: .05em; font-weight: 700; }
+    .ref-table td { padding: 8px 12px; border-bottom: 1px solid #e8eaf6; }
+    .ref-table tr:last-child td { border-bottom: none; }
+    .ref-table tr:hover td { background: #f3f4fd; }
+
+    .badge { font-size: 10px; padding: 2px 7px; border-radius: 10px;
+             font-weight: 700; text-transform: uppercase; }
+    .badge-blank    { background: #e3f2fd; color: #0d47a1; }
+    .badge-control  { background: #f3e5f5; color: #6a1b9a; }
+    .badge-recovery { background: #e8f5e9; color: #1b5e20; }
+    .badge-cal      { background: #fff3e0; color: #e65100; }
+    .badge-rpd      { background: #fce4ec; color: #880e4f; }
+
+    /* ── Existing list ─────────────────────────────────────────────────── */
+    .existing-list { background: #fff; border-radius: 6px;
+                     box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 14px 18px;
+                     margin-bottom: 18px; }
+    .existing-list h2 { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+    .existing-list ul { list-style: none; margin: 0; }
+    .existing-list li { font-size: 12px; color: #2e7d32; padding: 2px 0; }
+    .existing-list li::before { content: "✓  "; }
+
+    /* ── Action bar ────────────────────────────────────────────────────── */
+    .action-bar { background: #fff; border-radius: 6px;
+                  box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 16px 18px;
+                  margin-top: 20px; display: flex; gap: 12px; align-items: center; }
+    .btn-run { background: #1a237e; color: #fff; border: none; border-radius: 4px;
+               padding: 12px 32px; cursor: pointer; font-size: 14px; font-weight: 700; }
+    .btn-run:hover { background: #283593; }
+    .btn-run:disabled { background: #9e9e9e; cursor: not-allowed; }
+    .action-note { font-size: 11px; color: #78909c; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>PFAS Reference Definition Setup</h1>
+  <span class="header-meta">
+    Manager only &bull; Creates/updates one ReferenceDefinition per QC type &bull;
+    Rules from <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
+  </span>
+</div>
+
+<div class="page-body">
+
+  <!-- Success banner -->
+  <div class="banner banner-success" tal:condition="view/save_message">
+    Reference definitions updated:
+    <strong tal:content="python:view.save_message().replace('_', ' ')">—</strong>
+  </div>
+
+  <!-- Warning: no manager role -->
+  <div class="banner banner-warn" tal:condition="not:view/is_manager">
+    You do not have the Manager or LabManager role. The setup button is disabled.
+  </div>
+
+  <!-- Info card -->
+  <div class="info-card">
+    <h2>What this does</h2>
+    <p>
+      Creates one <strong>ReferenceDefinition</strong> in SENAITE for each PFAS QC type
+      (MB, LRB, MxB, CAL, ICV, CCV, LCS, LFSM, LFSMD, Dup).  Each definition is
+      populated with per-analyte expected values, acceptance ranges, and error
+      tolerances derived from the current QC rules.
+    </p>
+    <p>
+      This operation is <strong>idempotent</strong> — running it again after changing
+      a rule simply updates the existing definitions without creating duplicates.
+    </p>
+    <p>
+      <strong>Prerequisite:</strong> the PFAS GenericSetup profile must have been
+      installed first to create the AnalysisService objects.
+      This view reports how many services it found.
+    </p>
+    <p>
+      Analyte services found: <strong tal:content="view/analyte_count">0</strong>
+    </p>
+  </div>
+
+  <!-- Existing reference definitions -->
+  <div class="existing-list">
+    <h2>Existing PFAS Reference Definitions</h2>
+    <tal:ex tal:define="existing view/existing_ref_defs">
+      <ul tal:condition="existing">
+        <tal:it tal:repeat="t existing">
+          <li tal:content="t">PFAS CCV</li>
+        </tal:it>
+      </ul>
+      <p tal:condition="not:existing" style="font-size:12px;color:#9e9e9e">
+        None found yet — run the setup below to create them.
+      </p>
+    </tal:ex>
+  </div>
+
+  <!-- Preview table -->
+  <table class="ref-table">
+    <thead>
+      <tr>
+        <th>QC Type</th>
+        <th>Reference Definition Title</th>
+        <th>Type</th>
+        <th>Acceptance Criteria</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tal:rows tal:repeat="row view/qc_type_specs">
+        <tr>
+          <td><strong tal:content="row/code">CCV</strong></td>
+          <td tal:content="row/title">PFAS CCV</td>
+          <td>
+            <span class="badge badge-blank"
+                  tal:condition="row/is_blank">Blank</span>
+            <span tal:condition="not:row/is_blank">
+              <span class="badge badge-recovery"
+                    tal:condition="python:row['strategy'] in ('recovery','recovery_dup')">Recovery</span>
+              <span class="badge badge-cal"
+                    tal:condition="python:row['strategy'] in ('cal_dev','cal_dev_tight')">Cal Check</span>
+              <span class="badge badge-rpd"
+                    tal:condition="python:row['strategy'] == 'rpd'">RPD</span>
+            </span>
+          </td>
+          <td tal:content="row/spec">—</td>
+        </tr>
+      </tal:rows>
+    </tbody>
+  </table>
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <form method="POST" action=""
+          tal:attributes="action string:${context/absolute_url}/@@pfas-setup-references"
+          onsubmit="return confirm('Create/update all PFAS Reference Definitions now?')">
+      <button type="submit" class="btn-run"
+              tal:attributes="disabled python:not view.is_manager()">
+        Create / Update Reference Definitions
+      </button>
+    </form>
+    <span class="action-note">
+      Safe to run repeatedly. Analyte values are refreshed from the current QC
+      rules each time. To change acceptance criteria, edit them in
+      <a href="../@@pfas-qc-rules">PFAS QC Rule Configuration</a>
+      first, then run this setup again.
+    </span>
+  </div>
+
+</div>
+</body>
+</html>

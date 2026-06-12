@@ -1,0 +1,8 @@
+Title,Code,TargetTemp,Notes
+Sample Fridge A,FRIDGE-A,6 deg C,Aqueous samples awaiting extraction (537.1 <=6 deg C)
+Sample Freezer B,FREEZER-B,-20 deg C,Food/tissue samples; long-term sample hold
+Extract Freezer C,FREEZER-C,-20 deg C,Final extracts awaiting injection
+Standards Freezer D,FREEZER-D,-20 deg C,Neat standards & stock solutions
+Standards Fridge E,FRIDGE-E,6 deg C,Working calibration & CCV solutions (per FDA s6)
+Reagent Cabinet F,CAB-F,ambient,"Solvents, salts, SPE cartridges"
+Archive Freezer G,FREEZER-G,-20 deg C,Post-analysis retention per method holding times

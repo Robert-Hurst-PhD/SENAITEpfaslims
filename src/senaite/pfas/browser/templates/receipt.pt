@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sample Receipt</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #fff; color: #212121; font-size: 13px;
+    }
+
+    .receipt {
+      max-width: 380px; margin: 0 auto; padding: 28px 28px 20px;
+      border: 2px solid #1a237e; border-radius: 8px;
+    }
+
+    @media print {
+      html, body { height: auto; }
+      .receipt { border: 2px solid #000; }
+      .no-print { display: none !important; }
+    }
+
+    /* ── Header ───────────────────────────────────────────────────────────── */
+    .receipt-header {
+      text-align: center; border-bottom: 2px dashed #1a237e; padding-bottom: 16px;
+      margin-bottom: 18px;
+    }
+    .receipt-header .lab-name {
+      font-size: 16px; font-weight: 800; color: #1a237e; letter-spacing: .04em;
+    }
+    .receipt-header .receipt-title {
+      font-size: 12px; color: #546e7a; margin-top: 2px;
+    }
+
+    /* ── Tracking number ──────────────────────────────────────────────────── */
+    .tracking-section { text-align: center; margin-bottom: 20px; }
+    .tracking-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+      color: #546e7a; margin-bottom: 6px;
+    }
+    .tracking-number {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 28px; font-weight: 900; color: #1a237e;
+      letter-spacing: .08em; word-spacing: -.02em;
+    }
+
+    /* ── QR code ──────────────────────────────────────────────────────────── */
+    .qr-section {
+      display: flex; flex-direction: column; align-items: center;
+      margin-bottom: 18px;
+    }
+    .qr-section svg {
+      width: 140px; height: 140px;
+    }
+    .qr-label {
+      font-size: 10px; color: #546e7a; margin-top: 8px; text-align: center;
+    }
+    .qr-url {
+      font-family: monospace; font-size: 9px; color: #1565c0;
+      margin-top: 4px; word-break: break-all; text-align: center;
+    }
+
+    /* ── No QR fallback ───────────────────────────────────────────────────── */
+    .qr-placeholder {
+      width: 140px; height: 140px; border: 2px dashed #9e9e9e;
+      display: flex; align-items: center; justify-content: center;
+      color: #9e9e9e; font-size: 11px; text-align: center; border-radius: 4px;
+    }
+
+    /* ── Instructions ─────────────────────────────────────────────────────── */
+    .instructions {
+      background: #e8eaf6; border-radius: 6px; padding: 10px 14px;
+      font-size: 11px; color: #283593; margin-bottom: 18px; line-height: 1.6;
+    }
+    .instructions strong { display: block; margin-bottom: 2px; }
+
+    /* ── Footer ───────────────────────────────────────────────────────────── */
+    .receipt-footer {
+      text-align: center; border-top: 1px dashed #9e9e9e;
+      padding-top: 14px; font-size: 10px; color: #9e9e9e; line-height: 1.6;
+    }
+
+    /* ── Print button (no-print) ──────────────────────────────────────────── */
+    .print-btn {
+      display: block; margin: 20px auto; padding: 10px 28px;
+      background: #1a237e; color: #fff; border: none; border-radius: 6px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .print-btn:hover { background: #283593; }
+  </style>
+</head>
+<body>
+
+<div class="receipt">
+
+  <!-- Header -->
+  <div class="receipt-header">
+    <div class="lab-name">PFAS Analytical Laboratory</div>
+    <div class="receipt-title">Sample Receipt</div>
+  </div>
+
+  <!-- Tracking number -->
+  <div class="tracking-section">
+    <div class="tracking-label">Your tracking number</div>
+    <div class="tracking-number"
+         tal:condition="view/tracking_number"
+         tal:content="view/tracking_number">PF-260611-A3K9</div>
+    <div class="tracking-number" tal:condition="not:view/tracking_number"
+         style="font-size:16px;color:#9e9e9e;">No tracking number provided</div>
+  </div>
+
+  <!-- QR code -->
+  <div class="qr-section" tal:condition="view/tracking_number">
+    <tal:qr tal:condition="view/qr_svg">
+      <div tal:content="structure view/qr_svg"><!-- QR code SVG --></div>
+    </tal:qr>
+    <div class="qr-placeholder" tal:condition="not:view/qr_svg">
+      QR code unavailable
+    </div>
+    <div class="qr-label">Scan to track your sample</div>
+    <div class="qr-url" tal:content="view/tracker_url">http://...</div>
+  </div>
+
+  <!-- Instructions -->
+  <div class="instructions" tal:condition="view/tracking_number">
+    <strong>How to track your sample:</strong>
+    Scan the QR code above or visit the URL on any device — no account
+    required.  You will see live progress through five stages:
+    Received &rarr; Extraction &rarr; On Instrument &rarr; QC Review &rarr;
+    Report Published.
+  </div>
+
+  <!-- Footer -->
+  <div class="receipt-footer">
+    Keep this receipt for your records.<br/>
+    For questions contact the laboratory.
+  </div>
+
+</div><!-- /.receipt -->
+
+<button class="print-btn no-print" onclick="window.print()">Print Receipt</button>
+
+</body>
+</html>

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title tal:content="string:Edit ${view/display_name}">Edit Method Profile</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           font-size: 14px; background: #f5f5f5; color: #212121; }
+
+    .page-header { background: #1a237e; color: #fff; padding: 14px 24px;
+                   display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .page-header h1 { font-size: 18px; font-weight: 600; flex: 1; }
+    .page-header a  { color: #c5cae9; font-size: 12px; text-decoration: none; white-space: nowrap; }
+    .page-header a:hover { text-decoration: underline; }
+    .method-badge { font-family: monospace; font-size: 13px; background: rgba(255,255,255,.15);
+                    padding: 3px 8px; border-radius: 4px; }
+
+    .page-body { max-width: 900px; margin: 0 auto; padding: 20px; }
+
+    .alert { padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-weight: 600; }
+    .alert-success { background: #e8f5e9; border: 1px solid #a5d6a7; color: #1b5e20; }
+    .alert-error   { background: #ffebee; border: 1px solid #ef9a9a; color: #b71c1c; }
+
+    /* Collapsible sections */
+    details { background: #fff; border-radius: 6px; margin-bottom: 14px;
+              box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    details[open] { box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+    summary { padding: 11px 16px; cursor: pointer; font-size: 14px; font-weight: 600;
+              background: #eceff1; border-radius: 6px; color: #37474f;
+              list-style: none; display: flex; align-items: center; gap: 8px; }
+    details[open] summary { border-radius: 6px 6px 0 0; border-bottom: 1px solid #ddd; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "▶"; font-size: 10px; transition: transform .15s; }
+    details[open] summary::before { transform: rotate(90deg); }
+
+    .section-body { padding: 16px; }
+
+    /* Field grid */
+    .field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                  gap: 14px; }
+    .field-row { display: flex; flex-direction: column; }
+    .field-row label { font-size: 11px; color: #616161; margin-bottom: 4px;
+                       font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .field-row input[type=number],
+    .field-row input[type=text]  { padding: 7px 9px; border: 1px solid #bdbdbd;
+                                    border-radius: 4px; font-size: 13px; background: #fafafa;
+                                    width: 100%; }
+    .field-row input:focus { outline: none; border-color: #1565c0;
+                              box-shadow: 0 0 0 2px rgba(21,101,192,.2); }
+    .field-row .hint { font-size: 10px; color: #9e9e9e; margin-top: 3px; }
+    .field-row-wide { grid-column: 1 / -1; }
+
+    /* Checkboxes */
+    .check-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+    .check-row label { font-size: 13px; color: #37474f; font-weight: normal;
+                       text-transform: none; letter-spacing: normal; }
+    .check-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+
+    /* Textareas for JSON */
+    .json-area { width: 100%; min-height: 160px; font-family: "Fira Code", monospace;
+                 font-size: 12px; padding: 8px; border: 1px solid #bdbdbd;
+                 border-radius: 4px; background: #fafafa; resize: vertical; }
+    .json-area:focus { outline: none; border-color: #1565c0;
+                       box-shadow: 0 0 0 2px rgba(21,101,192,.2); }
+    .json-hint { font-size: 11px; color: #9e9e9e; margin-top: 4px; font-family: monospace; }
+
+    /* Save bar */
+    .save-bar { position: sticky; bottom: 0; background: #fff; border-top: 2px solid #1a237e;
+                padding: 12px 20px; display: flex; gap: 12px; align-items: center;
+                box-shadow: 0 -2px 8px rgba(0,0,0,.08); }
+    .btn-save  { background: #1a237e; color: #fff; border: none; border-radius: 4px;
+                 padding: 10px 28px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .btn-save:hover { background: #283593; }
+    .btn-cancel { color: #616161; text-decoration: none; font-size: 14px; padding: 10px 0; }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Edit Method Profile</h1>
+  <span class="method-badge" tal:content="view/method_id">FDA_32PFAS</span>
+  <a href="@@pfas-method-profiles">← All Methods</a>
+</div>
+
+<div class="page-body">
+
+  <!-- Saved confirmation -->
+  <div class="alert alert-success" tal:condition="view/saved">
+    Profile saved and exported to <code>/data/qc/method_profiles.json</code>.
+    The pipeline worker will use the new values on the next batch run.
+  </div>
+
+  <!-- Error message -->
+  <div class="alert alert-error" tal:condition="view/error">
+    <span tal:content="view/error">Error message</span>
+  </div>
+
+  <form method="POST" tal:attributes="action string:@@pfas-method-profile-edit">
+    <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+
+    <!-- ── Display info ──────────────────────────────────────────────────── -->
+    <details open="open">
+      <summary>Method Information</summary>
+      <div class="section-body">
+        <div class="field-grid">
+          <div class="field-row field-row-wide">
+            <label for="display_name">Display Name</label>
+            <input type="text" id="display_name" name="display_name"
+                   tal:attributes="value view/display_name" />
+          </div>
+          <div class="field-row field-row-wide">
+            <label for="description">Description</label>
+            <input type="text" id="description" name="description"
+                   tal:attributes="value view/description" />
+          </div>
+          <div class="field-row">
+            <label for="surrogate_is">Surrogate IS (all surrogates quantified against)</label>
+            <input type="text" id="surrogate_is" name="surrogate_is"
+                   tal:attributes="value view/surrogate_is" />
+            <span class="hint">e.g. M4PFOA — the IS used to quantify all surrogate recoveries</span>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── Calibration ───────────────────────────────────────────────────── -->
+    <details open="open">
+      <summary>Calibration</summary>
+      <div class="section-body">
+        <div class="field-grid">
+          <div class="field-row">
+            <label for="cal_r2_min">R² Minimum</label>
+            <input type="number" id="cal_r2_min" name="cal_r2_min"
+                   step="0.001" min="0.900" max="1.000"
+                   tal:attributes="value python:view.cal().get('r2_min', 0.990)" />
+            <span class="hint">e.g. 0.990 (FDA) or 0.995 (generic)</span>
+          </div>
+          <div class="field-row">
+            <label for="cal_point_pct_dev_max">Point % Deviation Max</label>
+            <input type="number" id="cal_point_pct_dev_max" name="cal_point_pct_dev_max"
+                   step="0.1" min="0"
+                   tal:attributes="value python:view.cal().get('point_pct_dev_max', '')" />
+            <span class="hint">Each calibration point must be within ±N% of curve. Leave blank for no limit.</span>
+          </div>
+          <div class="field-row">
+            <label for="cal_low_point_pct_dev_max">Low-Level Point % Dev Max</label>
+            <input type="number" id="cal_low_point_pct_dev_max" name="cal_low_point_pct_dev_max"
+                   step="0.1" min="0"
+                   tal:attributes="value python:view.cal().get('low_point_pct_dev_max') or ''" />
+            <span class="hint">Wider limit for lowest calibration level (e.g. 50 for EPA 537.1). Leave blank if same.</span>
+          </div>
+          <div class="field-row">
+            <div class="check-row">
+              <input type="checkbox" id="cal_force_origin" name="cal_force_origin"
+                     tal:attributes="checked python:'checked' if view.cal().get('force_origin') else None" />
+              <label for="cal_force_origin">Force through origin</label>
+            </div>
+            <span class="hint">Required by EPA 537.1 IS calibration technique</span>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── CCV ──────────────────────────────────────────────────────────── -->
+    <details open="open">
+      <summary>Continuing Calibration Verification (CCV)</summary>
+      <div class="section-body">
+        <div class="field-grid">
+          <div class="field-row">
+            <label for="ccv_frequency">CCV Frequency (every N samples)</label>
+            <input type="number" id="ccv_frequency" name="ccv_frequency"
+                   step="1" min="1"
+                   tal:attributes="value python:view.ccv().get('frequency', 10)" />
+            <span class="hint">6 for FDA 32-PFAS; 10 for EPA 537.1 / 1633A</span>
+          </div>
+          <div class="field-row">
+            <label for="ccv_recovery_min">Recovery Min %</label>
+            <input type="number" id="ccv_recovery_min" name="ccv_recovery_min"
+                   step="0.1"
+                   tal:attributes="value python:view.ccv().get('recovery_min', 70.0)" />
+          </div>
+          <div class="field-row">
+            <label for="ccv_recovery_max">Recovery Max %</label>
+            <input type="number" id="ccv_recovery_max" name="ccv_recovery_max"
+                   step="0.1"
+                   tal:attributes="value python:view.ccv().get('recovery_max', 130.0)" />
+          </div>
+          <div class="field-row">
+            <label for="ccv_low_level_min">Low-Level Min % (optional)</label>
+            <input type="number" id="ccv_low_level_min" name="ccv_low_level_min"
+                   step="0.1"
+                   tal:attributes="value python:view.ccv().get('low_level_min') or ''" />
+            <span class="hint">Wider window for the lowest CCC/CCV level. Leave blank if same as standard.</span>
+          </div>
+          <div class="field-row">
+            <label for="ccv_low_level_max">Low-Level Max % (optional)</label>
+            <input type="number" id="ccv_low_level_max" name="ccv_low_level_max"
+                   step="0.1"
+                   tal:attributes="value python:view.ccv().get('low_level_max') or ''" />
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── IS Response ───────────────────────────────────────────────────── -->
+    <details open="open">
+      <summary>Internal Standard (IS) / Surrogate Response</summary>
+      <div class="section-body">
+        <div class="field-grid">
+          <div class="field-row">
+            <label for="is_vs_ical_avg_min">vs. ICAL Average Min %</label>
+            <input type="number" id="is_vs_ical_avg_min" name="is_vs_ical_avg_min"
+                   step="0.1"
+                   tal:attributes="value python:view.is_section().get('vs_ical_avg_min') or ''" />
+          </div>
+          <div class="field-row">
+            <label for="is_vs_ical_avg_max">vs. ICAL Average Max %</label>
+            <input type="number" id="is_vs_ical_avg_max" name="is_vs_ical_avg_max"
+                   step="0.1"
+                   tal:attributes="value python:view.is_section().get('vs_ical_avg_max') or ''" />
+          </div>
+          <div class="field-row">
+            <label for="is_vs_last_ccv_min">vs. Last CCV Min % (optional)</label>
+            <input type="number" id="is_vs_last_ccv_min" name="is_vs_last_ccv_min"
+                   step="0.1"
+                   tal:attributes="value python:view.is_section().get('vs_last_ccv_min') or ''" />
+            <span class="hint">EPA 537.1 §9.3.4 requires this second condition. Leave blank for single-condition methods.</span>
+          </div>
+          <div class="field-row">
+            <label for="is_vs_last_ccv_max">vs. Last CCV Max % (optional)</label>
+            <input type="number" id="is_vs_last_ccv_max" name="is_vs_last_ccv_max"
+                   step="0.1"
+                   tal:attributes="value python:view.is_section().get('vs_last_ccv_max') or ''" />
+          </div>
+          <div class="field-row field-row-wide">
+            <label for="is_notes">Notes</label>
+            <input type="text" id="is_notes" name="is_notes"
+                   tal:attributes="value python:view.is_section().get('notes', '')" />
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── Chromatographic confirmation ─────────────────────────────────── -->
+    <details open="open">
+      <summary>Chromatographic Confirmation &amp; Signal Quality</summary>
+      <div class="section-body">
+        <div class="field-grid">
+          <div class="field-row">
+            <label for="conf_ion_ratio_tol_pct">Ion Ratio Tolerance ± %</label>
+            <input type="number" id="conf_ion_ratio_tol_pct" name="conf_ion_ratio_tol_pct"
+                   step="0.1" min="0"
+                   tal:attributes="value python:view.confirmation().get('ion_ratio_tol_pct') or ''" />
+            <span class="hint">30 for FDA; 50 for EPA 1633A; blank for 537.1 (no criterion)</span>
+          </div>
+          <div class="field-row">
+            <label for="conf_rrt_tol_pct">Relative RT Tolerance %</label>
+            <input type="number" id="conf_rrt_tol_pct" name="conf_rrt_tol_pct"
+                   step="0.1" min="0"
+                   tal:attributes="value python:view.confirmation().get('rrt_tol_pct') or ''" />
+            <span class="hint">1.0 for FDA (RRT ±1% of standard RT). Leave blank to use absolute tolerance.</span>
+          </div>
+          <div class="field-row">
+            <label for="conf_rt_tol_abs_min">Absolute RT Tolerance (min)</label>
+            <input type="number" id="conf_rt_tol_abs_min" name="conf_rt_tol_abs_min"
+                   step="0.01" min="0"
+                   tal:attributes="value python:view.confirmation().get('rt_tol_abs_min') or ''" />
+            <span class="hint">0.05 for EPA 537.1. Leave blank to use relative % tolerance.</span>
+          </div>
+          <div class="field-row">
+            <label for="conf_sn_quan_min">S/N Min — Quantitation Ion</label>
+            <input type="number" id="conf_sn_quan_min" name="conf_sn_quan_min"
+                   step="0.1" min="0"
+                   tal:attributes="value python:view.confirmation().get('sn_quan_min', 3.0)" />
+          </div>
+          <div class="field-row">
+            <label for="conf_sn_confirm_min">S/N Min — Confirm Ion (optional)</label>
+            <input type="number" id="conf_sn_confirm_min" name="conf_sn_confirm_min"
+                   step="0.1" min="0"
+                   tal:attributes="value python:view.confirmation().get('sn_confirm_min') or ''" />
+            <span class="hint">1.0 for EPA 1633A. Leave blank if same as quantitation threshold.</span>
+          </div>
+          <div class="field-row field-row-wide">
+            <div class="check-row">
+              <input type="checkbox" id="conf_require_confirm_ion_check"
+                     name="conf_require_confirm_ion_check"
+                     tal:attributes="checked python:'checked' if view.confirmation().get('require_confirm_ion_check') else None" />
+              <label for="conf_require_confirm_ion_check">
+                Require qualifier ion check for all analytes
+              </label>
+            </div>
+            <span class="hint">
+              ON for FDA 32-PFAS and EPA 1633A; OFF for EPA 537.1 (which has no ion-ratio criterion).
+              Controls whether the qualifier MRM column in the per-analyte table is enforced.
+            </span>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── Duplicate / LFSMD RPD ─────────────────────────────────────────── -->
+    <details open="open">
+      <summary>Duplicate / LFSMD RPD</summary>
+      <div class="section-body">
+        <div class="field-grid">
+          <div class="field-row">
+            <label for="dup_rpd_max">Max RPD %</label>
+            <input type="number" id="dup_rpd_max" name="dup_rpd_max"
+                   step="0.1" min="0"
+                   tal:attributes="value python:view.duplicate().get('rpd_max', 20.0)" />
+            <span class="hint">20 for FDA; 30 for EPA methods</span>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── Recovery Tiers ────────────────────────────────────────────────── -->
+    <details>
+      <summary>Recovery Tiers</summary>
+      <div class="section-body">
+        <p class="json-hint">
+          JSON array of tier objects.  Each tier: { "tier": 1, "description": "...",
+          "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0,
+          "key_analytes": [...], "tight_matrices": [...] }
+        </p>
+        <textarea class="json-area" name="recovery_tiers_json" rows="10"
+                  tal:content="view/recovery_tiers_json">[]</textarea>
+      </div>
+    </details>
+
+    <!-- ── Matrix Factors ────────────────────────────────────────────────── -->
+    <details>
+      <summary>Matrix Factors (instrument ng/mL → reported ng/g)</summary>
+      <div class="section-body">
+        <p class="json-hint">
+          JSON array: [ { "matrix": "muscle", "factor": 0.5 }, ... ]
+          Factor = dilution × weight ratio.  Leave empty for aqueous methods.
+        </p>
+        <textarea class="json-area" name="matrix_factors_json" rows="8"
+                  tal:content="view/matrix_factors_json">[]</textarea>
+      </div>
+    </details>
+
+    <!-- ── Surrogate Map ─────────────────────────────────────────────────── -->
+    <details>
+      <summary>Surrogate Map (native analyte → linked IS)</summary>
+      <div class="section-body">
+        <p class="json-hint">
+          JSON array: [ { "analyte": "PFOA", "surrogate_is": "M8PFOA" }, ... ]
+          Maps each native analyte to its quantitation IS.  Used for surrogate
+          recovery tracking and the SUR qualifier.
+        </p>
+        <textarea class="json-area" name="surrogate_map_json" rows="10"
+                  tal:content="view/surrogate_map_json">[]</textarea>
+      </div>
+    </details>
+
+    <!-- ── Per-Analyte Table ─────────────────────────────────────────────── -->
+    <details>
+      <summary>Per-Analyte Assignments</summary>
+      <div class="section-body">
+        <p class="json-hint">
+          JSON array.  Each row: { "analyte": "PFBA", "surrogate": "M3PFBA",
+          "no_labeled_std": false, "is_key_analyte": false,
+          "recovery_tier": 2, "confirm_ion_mz": "213.04&gt;18.99", "notes": "" }
+          confirm_ion_mz: primary qualifier MRM transition used for the
+          qualifier-ion check (enforced when require_confirm_ion_check is ON).
+        </p>
+        <textarea class="json-area" name="per_analyte_json" rows="14"
+                  tal:content="view/per_analyte_json">[]</textarea>
+      </div>
+    </details>
+
+    <!-- ── EPA 1633A EIS Overrides ───────────────────────────────────────── -->
+    <details>
+      <summary>EIS Recovery Overrides (EPA 1633A only)</summary>
+      <div class="section-body">
+        <p class="json-hint">
+          Per-analyte EIS recovery windows that differ from the method default.
+          JSON array: [ { "analyte": "M2-4:2FTS", "recovery_min": 20.0, "recovery_max": 150.0 }, ... ]
+          VERIFY all values against your purchased copy of EPA 1633A Tables 6/8.
+        </p>
+        <textarea class="json-area" name="eis_overrides_json" rows="8"
+                  tal:content="view/eis_overrides_json">[]</textarea>
+      </div>
+    </details>
+
+    <!-- ── Save bar ──────────────────────────────────────────────────────── -->
+    <div class="save-bar">
+      <button type="submit" class="btn-save">Save &amp; Export to Worker</button>
+      <a class="btn-cancel" href="@@pfas-method-profiles">Cancel</a>
+    </div>
+
+  </form>
+</div>
+
+</body>
+</html>

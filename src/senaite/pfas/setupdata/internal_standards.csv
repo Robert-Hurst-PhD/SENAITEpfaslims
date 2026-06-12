@@ -1,0 +1,22 @@
+Keyword,Title,LabeledAnalogOf,Role,QuantAgainst,Category
+M3PFBA,13C3-PFBA,PFBA,surrogate,M4PFOA,PFAS - Internal Standards
+M3PFPeA,13C3-PFPeA,PFPeA,surrogate,M4PFOA,PFAS - Internal Standards
+M5PFHxA,13C5-PFHxA,PFHxA,surrogate,M4PFOA,PFAS - Internal Standards
+M4PFHpA,13C4-PFHpA,PFHpA,surrogate,M4PFOA,PFAS - Internal Standards
+M8PFOA,13C8-PFOA,PFOA,surrogate,M4PFOA,PFAS - Internal Standards
+M4PFOA,13C4-PFOA,PFOA,injection_is,self,PFAS - Internal Standards
+M5PFNA,13C5-PFNA,PFNA,surrogate,M4PFOA,PFAS - Internal Standards
+M2PFDA,13C2-PFDA,PFDA,surrogate,M4PFOA,PFAS - Internal Standards
+MPFUdA,13C2-PFUDA,PFUDA,surrogate,M4PFOA,PFAS - Internal Standards
+MPFDoA,13C2-PFDoA,PFDoA,surrogate,M4PFOA,PFAS - Internal Standards
+M2PFTeDA,13C2-PFTeDA,PFTeDA,surrogate,M4PFOA,PFAS - Internal Standards
+M2PFHxDA,13C2-PFHxDA,PFHxDA,surrogate,M4PFOA,PFAS - Internal Standards
+M3PFBS,13C3-PFBS,PFBS,surrogate,M4PFOA,PFAS - Internal Standards
+M3PFHxS,13C3-PFHxS,PFHxS,surrogate,M4PFOA,PFAS - Internal Standards
+M8PFOS,13C8-PFOS,PFOS,surrogate,M4PFOA,PFAS - Internal Standards
+M3HFPO,13C3-GenX (HFPO-DA),GenX,surrogate,M4PFOA,PFAS - Internal Standards
+M8FOSA,13C8-FOSA,FOSA,surrogate,M4PFOA,PFAS - Internal Standards
+M2-4:2FTS,"13C2,D4-4:2FTS",4:2FTS,surrogate,M4PFOA,PFAS - Internal Standards
+M2-6:2FTS,"13C2,D4-6:2FTS",6:2FTS,surrogate,M4PFOA,PFAS - Internal Standards
+M2-8:2FTS,"13C2,D4-8:2FTS",8:2FTS,surrogate,M4PFOA,PFAS - Internal Standards
+M2-10:2FTS,"13C2,D4-10:2FTS",10:2FTS,surrogate,M4PFOA,PFAS - Internal Standards

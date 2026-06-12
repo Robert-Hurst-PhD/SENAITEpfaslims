@@ -1,0 +1,86 @@
+version: "3.8"
+
+services:
+  # ── SENAITE database layer ──────────────────────────────────────────
+  zeo:
+    image: senaite/senaite:v2.6.0
+    command: zeo
+    volumes:
+      - senaite-data:/data
+    networks: [senaite]
+    restart: unless-stopped
+
+  # ── SENAITE web application ─────────────────────────────────────────
+  senaite:
+    build:
+      context: .
+      dockerfile: Dockerfile.senaite
+    environment:
+      - ZEO_ADDRESS=zeo:8080
+      - SITE=senaite
+      # Mount project root as /addon so setup.py is at /addon/setup.py
+      - DEVELOP=/addon
+      - ADDONS=senaite.storage senaite.pfas
+      # shared-blob ensures client and server both use the ZEO server's bushy layout
+      - ZEO_SHARED_BLOB_DIR=on
+      # QC control-chart SQLite database (shared with pfas-worker)
+      - PFAS_QC_DB=/data/qc/pfas_qc_results.db
+    volumes:
+      # Mount the entire project root so buildout can find setup.py
+      - .:/addon
+      - senaite-data:/data
+      - pfas-qc:/data/qc
+    ports: ["8080:8080"]
+    depends_on: [zeo]
+    networks: [senaite]
+    restart: unless-stopped
+
+  # ── PFAS pipeline worker (watcher + QC engine + report gen) ─────────
+  pfas-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - SENAITE_URL=http://senaite:8080/senaite
+      - SENAITE_USER=admin
+      - SENAITE_PASS=admin
+      - WATCH_DIR=/data/instrument_output
+      - OUTPUT_DIR=/data/reports
+      - EXTRACTION_LOG_DIR=/data/extraction_logs
+      # QC control-chart SQLite database (shared with senaite container)
+      - PFAS_QC_DB=/data/qc/pfas_qc_results.db
+    volumes:
+      - ./pfas_pipeline:/app/pfas_pipeline
+      # DEV: local placeholder; replace with /mnt/pfas_share/Instrument_Output for production
+      - ./data/instrument_output:/data/instrument_output:ro
+      - pfas-reports:/data/reports
+      - pfas-extraction:/data/extraction_logs
+      - pfas-qc:/data/qc
+    depends_on: [senaite]
+    networks: [senaite]
+    restart: unless-stopped
+
+  # ── Tablet extraction-log UI (FastAPI; barcode scans POST here) ─────
+  extraction-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    command: uvicorn extraction_api:app --host 0.0.0.0 --port 9000
+    environment:
+      - SENAITE_URL=http://senaite:8080/senaite
+    volumes:
+      - ./pfas_pipeline:/app/pfas_pipeline
+      - ./extraction_api.py:/app/extraction_api.py
+      - pfas-extraction:/data/extraction_logs
+    ports: ["9000:9000"]
+    networks: [senaite]
+    restart: unless-stopped
+
+volumes:
+  senaite-data:
+  pfas-reports:
+  pfas-extraction:
+  pfas-qc:
+
+networks:
+  senaite:

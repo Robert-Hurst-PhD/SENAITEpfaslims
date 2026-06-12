@@ -1,0 +1,15 @@
+Prefix,Title,DefaultUnit,Methods,Hazardous,RetentionDays,MinVolume
+DW,Drinking Water,ng/L,EPA_537_1;EPA_1633A,N,14,250 mL
+GW,Groundwater,ng/L,EPA_1633A,N,14,250 mL
+SW,Surface Water,ng/L,EPA_1633A,N,14,250 mL
+WW,Wastewater,ng/L,EPA_1633A,N,14,250 mL
+LL,Landfill Leachate,ng/L,EPA_1633A,Y,14,250 mL
+SOIL,Soil,ng/g,EPA_1633A,N,28,5 g
+SED,Sediment,ng/g,EPA_1633A,N,28,5 g
+BIO,Biosolid,ng/g,EPA_1633A,Y,28,5 g
+TIS,Aquatic Tissue,ng/g,EPA_1633A;FDA_32PFAS,N,28,5 g
+MEAT,Meat / Muscle,ng/g,FDA_32PFAS,N,28,5 g
+EGG,Eggs,ng/g,FDA_32PFAS,N,28,5 g
+FISH,Fish / Seafood,ng/g,FDA_32PFAS,N,28,5 g
+MILK,Milk,ng/g,FDA_32PFAS,N,14,5 g
+FEED,Animal Feed,ng/g,FDA_32PFAS,N,60,5 g

@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<registry>
+  <record name="senaite.pfas.instrument_watch_dir">
+    <field type="plone.registry.field.TextLine">
+      <title>Instrument output watch directory</title>
+    </field>
+    <value>/data/instrument_output</value>
+  </record>
+  <record name="senaite.pfas.report_output_dir">
+    <field type="plone.registry.field.TextLine">
+      <title>Report output directory</title>
+    </field>
+    <value>/data/reports</value>
+  </record>
+  <record name="senaite.pfas.default_method">
+    <field type="plone.registry.field.TextLine">
+      <title>Default PFAS method profile</title>
+    </field>
+    <value>FDA_32PFAS</value>
+  </record>
+  <record name="senaite.pfas.ccv_frequency_override">
+    <field type="plone.registry.field.Int">
+      <title>CCV frequency override (0 = use method default)</title>
+    </field>
+    <value>0</value>
+  </record>
+</registry>

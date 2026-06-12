@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PFAS Calibration Review</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           font-size: 13px; background: #f5f5f5; color: #212121; }
+
+    .page-header { background: #263238; color: #fff; padding: 12px 24px;
+                   display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .page-header h1 { font-size: 17px; font-weight: 600; }
+    .header-meta { font-size: 11px; color: #90a4ae; }
+
+    .page-body { max-width: 1280px; margin: 0 auto; padding: 20px; }
+
+    /* ── Saved banner ──────────────────────────────────────────────────── */
+    .save-banner { background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 4px;
+                   padding: 10px 16px; margin-bottom: 16px; color: #1b5e20; font-weight: 600; }
+
+    /* ── Summary stat bar ─────────────────────────────────────────────── */
+    .stat-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .stat-box { background: #fff; border-radius: 6px; padding: 12px 18px;
+                box-shadow: 0 1px 3px rgba(0,0,0,.1); min-width: 100px; text-align: center; }
+    .stat-box .sv { font-size: 22px; font-weight: 700; color: #263238; }
+    .stat-box .sl { font-size: 10px; color: #78909c; text-transform: uppercase;
+                    letter-spacing: .05em; margin-top: 2px; }
+    .stat-box.good  .sv { color: #2e7d32; }
+    .stat-box.warn  .sv { color: #e65100; }
+    .stat-box.info  .sv { color: #1565c0; }
+
+    /* ── Filter bar ────────────────────────────────────────────────────── */
+    .filter-bar { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.1);
+                  padding: 14px 18px; margin-bottom: 18px;
+                  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+    .filter-bar label { font-size: 11px; color: #616161; font-weight: 700;
+                        text-transform: uppercase; display: block; margin-bottom: 3px; }
+    .filter-bar select, .filter-bar input[type=number] {
+      padding: 6px 10px; border: 1px solid #bdbdbd; border-radius: 4px;
+      font-size: 13px; background: #fafafa; }
+    .btn-filter { background: #1565c0; color: #fff; border: none; border-radius: 4px;
+                  padding: 7px 18px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-filter:hover { background: #1976d2; }
+
+    /* ── Calibration card ─────────────────────────────────────────────── */
+    .cal-card { background: #fff; border-radius: 6px;
+                box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 14px;
+                overflow: hidden; }
+    .cal-head { padding: 10px 16px; display: flex; align-items: center;
+                gap: 10px; cursor: pointer; background: #eceff1;
+                border-bottom: 1px solid #ddd; }
+    .cal-head h3 { flex: 1; font-size: 13px; font-weight: 700; }
+    .cal-body { padding: 14px 16px; }
+    .cal-card.collapsed .cal-body { display: none; }
+
+    /* ── Status badges ─────────────────────────────────────────────────── */
+    .badge { font-size: 10px; padding: 2px 8px; border-radius: 10px;
+             font-weight: 700; text-transform: uppercase; }
+    .badge-pending  { background: #fff3e0; color: #e65100; }
+    .badge-approved { background: #e8f5e9; color: #2e7d32; }
+    .badge-rejected { background: #fce4ec; color: #c62828; }
+    .badge-r2-ok    { background: #e3f2fd; color: #1565c0; }
+    .badge-r2-fail  { background: #fce4ec; color: #c62828; }
+
+    /* ── Metadata grid ─────────────────────────────────────────────────── */
+    .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                 gap: 8px 16px; margin-bottom: 12px; }
+    .meta-item { font-size: 12px; }
+    .meta-item .mk { color: #78909c; font-weight: 700; text-transform: uppercase;
+                     font-size: 10px; letter-spacing: .04em; }
+    .meta-item .mv { color: #212121; margin-top: 1px; }
+
+    /* ── Level table ───────────────────────────────────────────────────── */
+    .level-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+    .level-table th { background: #eceff1; padding: 5px 10px; text-align: left;
+                      font-size: 11px; color: #546e7a; text-transform: uppercase;
+                      font-weight: 700; letter-spacing: .04em; }
+    .level-table td { padding: 5px 10px; border-bottom: 1px solid #eceff1; }
+    .level-table tr:last-child td { border-bottom: none; }
+    .lv-pass { color: #2e7d32; font-weight: 700; }
+    .lv-fail { color: #c62828; font-weight: 700; }
+
+    /* ── Approval form ─────────────────────────────────────────────────── */
+    .approve-form { display: flex; gap: 10px; align-items: flex-end; margin-top: 12px;
+                    padding-top: 12px; border-top: 1px solid #eceff1; flex-wrap: wrap; }
+    .approve-form label { font-size: 11px; color: #616161; font-weight: 700;
+                          text-transform: uppercase; display: block; margin-bottom: 3px; }
+    .approve-form select, .approve-form input[type=text] {
+      padding: 6px 8px; border: 1px solid #bdbdbd; border-radius: 4px; font-size: 13px; }
+    .approve-form input[type=text] { min-width: 220px; }
+    .btn-approve { background: #2e7d32; color: #fff; border: none; border-radius: 4px;
+                   padding: 8px 18px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-approve:hover { background: #388e3c; }
+
+    /* ── Empty state ───────────────────────────────────────────────────── */
+    .empty-state { text-align: center; padding: 48px; color: #9e9e9e; }
+    .empty-state .ei { font-size: 36px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>PFAS Calibration Review</h1>
+  <span class="header-meta">
+    Secondary calibration review &bull;
+    R&sup2; minimum: <strong tal:content="view/r2_minimum">0.995</strong> &bull;
+    Max % deviation: <strong tal:content="view/cal_pct_max">20</strong>%
+  </span>
+</div>
+
+<div class="page-body">
+
+  <!-- Save confirmation -->
+  <div class="save-banner" tal:condition="view/save_message">
+    Calibration status updated.
+  </div>
+
+  <!-- ── Summary stats ────────────────────────────────────────────────── -->
+  <tal:stats tal:define="stats view/summary_stats">
+    <div class="stat-bar" tal:condition="stats">
+      <div class="stat-box">
+        <div class="sv" tal:content="stats/total">0</div>
+        <div class="sl">Total</div>
+      </div>
+      <div class="stat-box good">
+        <div class="sv" tal:content="stats/r2_pass">0</div>
+        <div class="sl">R&sup2; Pass</div>
+      </div>
+      <div class="stat-box warn">
+        <div class="sv" tal:content="stats/pending">0</div>
+        <div class="sl">Pending</div>
+      </div>
+      <div class="stat-box good">
+        <div class="sv" tal:content="stats/approved">0</div>
+        <div class="sl">Approved</div>
+      </div>
+      <div class="stat-box warn">
+        <div class="sv" tal:content="stats/rejected">0</div>
+        <div class="sl">Rejected</div>
+      </div>
+      <div class="stat-box info">
+        <div class="sv" tal:content="stats/avg_r2">—</div>
+        <div class="sl">Avg R&sup2;</div>
+      </div>
+    </div>
+  </tal:stats>
+
+  <!-- ── Filter bar ────────────────────────────────────────────────────── -->
+  <form method="GET" action="" class="filter-bar"
+        tal:attributes="action string:${context/absolute_url}/@@pfas-calibrations">
+
+    <div>
+      <label>Analyte</label>
+      <select name="analyte">
+        <option value="">— All —</option>
+        <tal:opts tal:repeat="a view/analytes">
+          <option tal:content="a"
+                  tal:attributes="value a; selected python:a == view.selected_analyte()">PFOA</option>
+        </tal:opts>
+      </select>
+    </div>
+
+    <div>
+      <label>Analyst</label>
+      <select name="analyst">
+        <option value="">— All —</option>
+        <tal:opts tal:repeat="a view/analysts">
+          <option tal:content="a"
+                  tal:attributes="value a; selected python:a == (view.selected_analyst() or '')">—</option>
+        </tal:opts>
+      </select>
+    </div>
+
+    <div>
+      <label>Instrument</label>
+      <select name="instrument_id">
+        <option value="">— All —</option>
+        <tal:opts tal:repeat="i view/instruments">
+          <option tal:content="i"
+                  tal:attributes="value i; selected python:i == (view.selected_instrument() or '')">—</option>
+        </tal:opts>
+      </select>
+    </div>
+
+    <div>
+      <label>Status</label>
+      <select name="status">
+        <option value="">— All —</option>
+        <option value="pending"
+                tal:attributes="selected python:view.selected_status()=='pending'">Pending</option>
+        <option value="approved"
+                tal:attributes="selected python:view.selected_status()=='approved'">Approved</option>
+        <option value="rejected"
+                tal:attributes="selected python:view.selected_status()=='rejected'">Rejected</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Show last</label>
+      <input type="number" name="limit" min="1" max="300"
+             tal:attributes="value view/selected_limit"
+             style="width:80px" />
+    </div>
+
+    <button type="submit" class="btn-filter">Apply</button>
+  </form>
+
+  <!-- ── Calibration cards ─────────────────────────────────────────────── -->
+  <tal:cals tal:define="cals view/calibrations">
+
+    <!-- Empty state -->
+    <div class="empty-state" tal:condition="not:cals">
+      <div class="ei">&#9654;</div>
+      <p>No calibration records found.</p>
+      <p style="font-size:11px;margin-top:6px;color:#bdbdbd">
+        Import an instrument data file to populate calibrations.
+      </p>
+    </div>
+
+    <tal:cal tal:repeat="cal cals">
+      <tal:define tal:define="cal_id cal/id">
+      <div class="cal-card" tal:attributes="id string:cal-${cal_id}">
+
+        <!-- Card header -->
+        <div class="cal-head"
+             tal:attributes="onclick string:toggleCard('cal-${cal_id}')">
+          <h3>
+            <span tal:replace="cal/analyte">PFOA</span>
+            &mdash;
+            <span tal:replace="cal/run_date">2026-01-01</span>
+            &nbsp;
+            <span class="badge badge-r2-ok"
+                  tal:condition="cal/r2_ok">R&sup2; OK</span>
+            <span class="badge badge-r2-fail"
+                  tal:condition="not:cal/r2_ok">R&sup2; LOW</span>
+          </h3>
+          <span tal:attributes="class python:'badge badge-' + cal['status']"
+                tal:content="cal/status">pending</span>
+        </div>
+
+        <div class="cal-body">
+
+          <!-- Metadata grid -->
+          <div class="meta-grid">
+            <div class="meta-item">
+              <div class="mk">Batch</div>
+              <div class="mv" tal:content="cal/batch_id">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="mk">Analyst</div>
+              <div class="mv" tal:content="cal/analyst">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="mk">Instrument</div>
+              <div class="mv" tal:content="cal/instrument_id">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="mk">Method</div>
+              <div class="mv" tal:content="cal/method">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="mk">Fit Type</div>
+              <div class="mv" tal:content="cal/fit_type">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="mk">Weighting</div>
+              <div class="mv" tal:content="cal/weight_type">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="mk">R&sup2;</div>
+              <div class="mv" tal:content="cal/r2">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="mk">Levels (n)</div>
+              <div class="mv" tal:content="cal/n_levels">—</div>
+            </div>
+            <div class="meta-item">
+              <div class="mk">Range</div>
+              <div class="mv">
+                <tal:rng tal:condition="cal/min_level">
+                  <span tal:replace="cal/min_level">0</span>
+                  &ndash;
+                  <span tal:replace="cal/max_level">0</span>
+                  ng/mL
+                </tal:rng>
+                <span tal:condition="not:cal/min_level">—</span>
+              </div>
+            </div>
+            <div class="meta-item" style="grid-column: 1 / -1">
+              <div class="mk">Equation</div>
+              <div class="mv" style="font-family:monospace" tal:content="cal/equation">—</div>
+            </div>
+            <div class="meta-item" style="grid-column: 1 / -1"
+                 tal:condition="cal/notes">
+              <div class="mk">Notes</div>
+              <div class="mv" tal:content="cal/notes">—</div>
+            </div>
+          </div>
+
+          <!-- Per-level calibration point table -->
+          <tal:levels tal:define="levels python:view.calibration_levels(cal['id'])">
+            <div tal:condition="levels" style="overflow-x:auto">
+              <table class="level-table">
+                <thead>
+                  <tr>
+                    <th>Level</th>
+                    <th>Expected (ng/mL)</th>
+                    <th>Calculated (ng/mL)</th>
+                    <th>% Deviation</th>
+                    <th>Pass?</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tal:lv tal:repeat="lv levels">
+                    <tr>
+                      <td tal:content="lv/level">1</td>
+                      <td tal:content="lv/expected">—</td>
+                      <td tal:content="lv/calculated">—</td>
+                      <td>
+                        <span tal:condition="python:lv['pct_deviation'] is not None"
+                              tal:attributes="class python:'lv-pass' if lv['passed'] else 'lv-fail'"
+                              tal:content="python:'{:+.2f}%'.format(lv['pct_deviation'])">0%</span>
+                        <span tal:condition="python:lv['pct_deviation'] is None">—</span>
+                      </td>
+                      <td tal:attributes="class python:'lv-pass' if lv['passed'] else 'lv-fail'"
+                          tal:content="python:'Pass' if lv['passed'] else 'FAIL'">—</td>
+                    </tr>
+                  </tal:lv>
+                </tbody>
+              </table>
+            </div>
+            <p tal:condition="not:levels" style="color:#9e9e9e;font-size:11px;margin-top:4px">
+              No per-level data recorded for this calibration.
+            </p>
+          </tal:levels>
+
+          <!-- Approval/rejection form (Manager only) -->
+          <form method="POST" action=""
+                class="approve-form"
+                tal:condition="view/is_manager"
+                tal:attributes="action string:${context/absolute_url}/@@pfas-calibrations">
+            <input type="hidden" name="calibration_id"
+                   tal:attributes="value cal/id" />
+            <div>
+              <label>Update Status</label>
+              <select name="new_status">
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="pending">Pending</option>
+              </select>
+            </div>
+            <div>
+              <label>Notes</label>
+              <input type="text" name="notes" placeholder="Optional reviewer note"
+                     tal:attributes="value cal/notes" />
+            </div>
+            <button type="submit" class="btn-approve">Update</button>
+          </form>
+
+        </div><!-- /cal-body -->
+      </div><!-- /cal-card -->
+      </tal:define>
+    </tal:cal>
+
+  </tal:cals>
+
+</div><!-- /page-body -->
+
+<script>
+function toggleCard(id) {
+  var el = document.getElementById(id);
+  if (el) el.classList.toggle('collapsed');
+}
+// Collapse all cards by default if there are many
+(function() {
+  var cards = document.querySelectorAll('.cal-card');
+  if (cards.length > 5) {
+    cards.forEach(function(c, i) {
+      if (i > 0) c.classList.add('collapsed');
+    });
+  }
+})();
+</script>
+</body>
+</html>
