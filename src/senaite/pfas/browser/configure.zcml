@@ -1,6 +1,31 @@
 <configure xmlns="http://namespaces.zope.org/zope"
            xmlns:browser="http://namespaces.zope.org/browser"
            i18n_domain="senaite.pfas">
+
+  <!-- PFAS dashboard tiles viewlet (renders below SENAITE dashboard panels) -->
+  <browser:viewlet
+      name="senaite.pfas.dashboard.tiles"
+      for="Products.CMFPlone.interfaces.IPloneSiteRoot"
+      manager="plone.app.layout.viewlets.interfaces.IBelowContent"
+      class=".pfas_nav.PFASDashboardTilesViewlet"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Stage sub-tab on Worksheet -->
+  <browser:page
+      name="pfas-ws-stage"
+      for="bika.lims.interfaces.IWorksheet"
+      class=".pfas_nav.PFASWorksheetStageTabView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Tracker sub-tab on AnalysisRequest (Sample) -->
+  <browser:page
+      name="pfas-ar-tracker"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      class=".pfas_nav.PFASARTrackerTabView"
+      permission="zope2.View"
+      />
   <!-- PFAS QC Control Chart — Levey-Jennings + Westgard multi-rules -->
   <browser:page
       name="pfas-control-chart"

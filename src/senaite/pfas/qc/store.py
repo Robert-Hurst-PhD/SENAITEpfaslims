@@ -473,13 +473,26 @@ class QCResultStore(object):
             rows = conn.execute(outer, params).fetchall()
         return [dict(r) for r in rows]
 
-    def get_analytes(self, qc_type=None):
+    def get_methods(self):
+        """Return distinct method identifiers stored in qc_results."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT method FROM qc_results "
+                "WHERE result_status='active' AND method != '' "
+                "ORDER BY method"
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def get_analytes(self, qc_type=None, method=None):
         sql = ("SELECT DISTINCT analyte FROM qc_results "
                "WHERE result_status='active'")
         params = []
         if qc_type:
             sql += " AND qc_type=?"
             params.append(qc_type)
+        if method:
+            sql += " AND method=?"
+            params.append(method)
         sql += " ORDER BY analyte"
         with self._connect() as conn:
             return [r[0] for r in conn.execute(sql, params).fetchall()]

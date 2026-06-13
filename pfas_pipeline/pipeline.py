@@ -127,6 +127,7 @@ def run_pipeline(
     batch_id: str | None = None,
     analyst: str = "",
     matrix: str = "",
+    method_id: str = "",
     extraction_log_path: str | Path | None = None,
     output_dir: str | Path = ".",
     senaite: "SenaiteConnector | None" = None,
@@ -179,7 +180,7 @@ def run_pipeline(
         for name in sorted({r.injection_name for r in rows})
     ]
 
-    queue = RunQueue(batch, review_plan)
+    queue = RunQueue(batch, review_plan, method_id=method_id)
     queue.auto_evaluate()
     logger.info("QC engine raised %d flags; %d checks pending review",
                 len(batch.qc_flags), len(queue.pending()))

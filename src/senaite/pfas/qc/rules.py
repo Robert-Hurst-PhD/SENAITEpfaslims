@@ -27,6 +27,127 @@ DEFAULT_RULES_PATH = os.environ.get(
 CHART_LJ       = "levey_jennings"   # Levey-Jennings + Westgard
 CHART_THRESHOLD = "threshold"       # flat threshold line only (blanks)
 
+# ── Method identifiers ────────────────────────────────────────────────────────
+METHODS = [
+    {"id": "FDA_32PFAS", "label": "FDA 32-PFAS"},
+    {"id": "EPA_537_1",  "label": "EPA 537.1"},
+    {"id": "EPA_1633A",  "label": "EPA 1633A"},
+]
+
+# ── Full library of evaluable QC rules ────────────────────────────────────────
+# Each entry: key, label, and the limit parameter(s) to show in the detail editor.
+RULE_LIBRARY = [
+    {"key": "is_response",         "label": "IS Response",
+     "params": [{"name": "is_response_pct", "label": "Max deviation (%)", "type": "number", "default": 50.0}]},
+    {"key": "rrt_deviation",       "label": "RRT / RT Deviation",
+     "params": [
+         {"name": "rt_tolerance_pct", "label": "RT tolerance (% relative)", "type": "number", "default": 5.0},
+         {"name": "rt_tolerance_min", "label": "RT tolerance (min absolute)", "type": "number", "default": 0.10},
+     ]},
+    {"key": "ion_ratio",           "label": "Ion Ratio",
+     "params": [
+         {"name": "qq_ratio_matching_pct", "label": "Isotopically matched (%)", "type": "number", "default": 20.0},
+         {"name": "qq_ratio_key_pct",      "label": "Key analytes (%)",          "type": "number", "default": 25.0},
+         {"name": "qq_ratio_non_iso_pct",  "label": "Non-iso-linked (%)",        "type": "number", "default": 30.0},
+     ]},
+    {"key": "cal_r2",              "label": u"Calibration r²",
+     "params": [{"name": "cal_r2_min", "label": u"Minimum r²", "type": "number", "default": 0.995}]},
+    {"key": "ccv_recovery",        "label": "CCV Recovery",
+     "params": [
+         {"name": "ccv_recovery_min", "label": "Min recovery (%)", "type": "number", "default": 70.0},
+         {"name": "ccv_recovery_max", "label": "Max recovery (%)", "type": "number", "default": 130.0},
+     ]},
+    {"key": "ccv_frequency",       "label": "CCV Frequency",
+     "params": [{"name": "ccv_frequency_n", "label": "CCV every N injections", "type": "integer", "default": 10}]},
+    {"key": "lcs_recovery",        "label": "LCS Recovery",
+     "params": [
+         {"name": "lcs_recovery_min", "label": "Min recovery (%)", "type": "number", "default": 60.0},
+         {"name": "lcs_recovery_max", "label": "Max recovery (%)", "type": "number", "default": 140.0},
+     ]},
+    {"key": "lfsm_recovery",       "label": "LFSM Recovery",
+     "params": [
+         {"name": "lfsm_recovery_min", "label": "Min recovery (%)", "type": "number", "default": 40.0},
+         {"name": "lfsm_recovery_max", "label": "Max recovery (%)", "type": "number", "default": 140.0},
+     ]},
+    {"key": "lfsmd_rpd",           "label": "LFSMD RPD",
+     "params": [{"name": "lfsmd_rpd_max", "label": "Max RPD (%)", "type": "number", "default": 30.0}]},
+    {"key": "mb_blank",            "label": "MB / LRB Blank",
+     "params": [{"name": "mb_max_conc", "label": "Max concentration (MDL multiplier)", "type": "number", "default": 3.0}]},
+    {"key": "sn_min",              "label": "S/N Minimum",
+     "params": [
+         {"name": "sn_min",      "label": "Min S/N for detection",     "type": "number", "default": 3.0},
+         {"name": "sn_quan_min", "label": "Min S/N for quantitation",  "type": "number", "default": 10.0},
+     ]},
+    {"key": "surrogate_recovery",  "label": "Surrogate Recovery",
+     "params": [
+         {"name": "surrogate_recovery_min", "label": "Min recovery (%)", "type": "number", "default": 50.0},
+         {"name": "surrogate_recovery_max", "label": "Max recovery (%)", "type": "number", "default": 150.0},
+     ]},
+    {"key": "blank_contamination", "label": "Blank Contamination",
+     "params": [{"name": "blank_max_conc", "label": "Max conc (ng/mL, 0 = none)", "type": "number", "default": 0.0}]},
+    {"key": "mdl_check",           "label": "MDL Check",
+     "params": [{"name": "mdl_n_min", "label": "Min replicate count", "type": "integer", "default": 7}]},
+]
+
+# ── Default toggle state per method ──────────────────────────────────────────
+# True = rule is evaluated; False = rule is skipped.
+DEFAULT_METHOD_RULE_TOGGLES = {
+    "FDA_32PFAS": {
+        "is_response": True, "rrt_deviation": True, "ion_ratio": True,
+        "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
+        "lcs_recovery": True, "lfsm_recovery": True, "lfsmd_rpd": True,
+        "mb_blank": True, "sn_min": False,
+        "surrogate_recovery": True, "blank_contamination": True,
+        "mdl_check": False,
+    },
+    "EPA_537_1": {
+        "is_response": True, "rrt_deviation": True, "ion_ratio": True,
+        "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
+        "lcs_recovery": True, "lfsm_recovery": True, "lfsmd_rpd": True,
+        "mb_blank": True, "sn_min": False,
+        "surrogate_recovery": True, "blank_contamination": False,
+        "mdl_check": True,
+    },
+    "EPA_1633A": {
+        "is_response": True, "rrt_deviation": True, "ion_ratio": True,
+        "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
+        "lcs_recovery": True, "lfsm_recovery": True, "lfsmd_rpd": True,
+        "mb_blank": True, "sn_min": True,
+        "surrogate_recovery": True, "blank_contamination": True,
+        "mdl_check": True,
+    },
+}
+
+# ── Default method-specific limit overrides ───────────────────────────────────
+# These override global/qc_type defaults on a per-method basis.
+# Empty by default; lab fills them in via the UI.
+DEFAULT_METHOD_OVERRIDES = {
+    "FDA_32PFAS": {},
+    "EPA_537_1":  {},
+    "EPA_1633A":  {},
+}
+
+# ── Mapping: RULE_LIBRARY key → engine review-check name(s) ──────────────────
+# Used by the pipeline worker to gate auto_evaluate() blocks.
+# Empty list = rule is UI-only; the toggle affects whether the check appears in
+# the review queue but there is no automated engine flag-check for it yet.
+LIBRARY_KEY_TO_ENGINE_CHECKS = {
+    "is_response":         ["is_response"],
+    "rrt_deviation":       ["rt_deviation"],
+    "ion_ratio":           ["ion_ratio"],
+    "cal_r2":              ["r_squared"],
+    "ccv_recovery":        ["ccv_pct_dev"],
+    "ccv_frequency":       [],   # UI only — CCV interval in InjectionSequenceBuilder
+    "lcs_recovery":        ["recovery"],
+    "lfsm_recovery":       ["lfsm_recovery"],
+    "lfsmd_rpd":           ["lfsmd_rpd"],
+    "mb_blank":            [],   # UI only — threshold set in blank_contamination check
+    "sn_min":              ["signal_to_noise"],
+    "surrogate_recovery":  [],   # UI only — surrogate check not yet auto-evaluated
+    "blank_contamination": ["blank_contamination"],
+    "mdl_check":           [],   # UI only — MDL assessment not auto-evaluated
+}
+
 # ── Default QC rule set ───────────────────────────────────────────────────────
 # Values are editable through the browser UI; these serve as built-in fallback.
 
@@ -34,6 +155,14 @@ DEFAULT_RULES = {
     "version": 1,
     "updated_by": "",
     "updated_at": "",
+
+    # Per-method rule toggle state.  True = rule is evaluated; False = skipped.
+    # These are proposed starting defaults (UI-editable); see DECISIONS.md.
+    "method_rule_toggles": DEFAULT_METHOD_RULE_TOGGLES,
+
+    # Per-method parameter overrides.  Sparse: only keys that differ from global
+    # are stored.  Missing keys fall through to global/qc_type defaults.
+    "method_overrides": DEFAULT_METHOD_OVERRIDES,
 
     # Global instrument-level criteria (not per-QC-type)
     "global": {
@@ -237,6 +366,18 @@ class QCRulesStore(object):
                     if matrix not in rules["salt_factors"]:
                         rules["salt_factors"][matrix] = {}
                     rules["salt_factors"][matrix].update(overrides)
+            # Per-method rule toggle overrides (deep-merge per method)
+            if "method_rule_toggles" in saved:
+                for method_id, method_toggles in saved["method_rule_toggles"].items():
+                    if method_id not in rules["method_rule_toggles"]:
+                        rules["method_rule_toggles"][method_id] = {}
+                    rules["method_rule_toggles"][method_id].update(method_toggles)
+            # Per-method parameter overrides (deep-merge per method)
+            if "method_overrides" in saved:
+                for method_id, method_params in saved["method_overrides"].items():
+                    if method_id not in rules["method_overrides"]:
+                        rules["method_overrides"][method_id] = {}
+                    rules["method_overrides"][method_id].update(method_params)
         except (ValueError, KeyError, IOError) as exc:
             logger.error("Could not load QC rules from %s: %s", self.path, exc)
         return rules

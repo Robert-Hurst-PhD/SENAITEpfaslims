@@ -65,6 +65,48 @@
     .json-editor { width: 100%; height: 400px; font-family: monospace; font-size: 12px;
                    padding: 10px; border: 1px solid #bdbdbd; border-radius: 4px;
                    background: #fafafa; resize: vertical; }
+
+    /* ── Rule Toggle Grid ────────────────────────────────────────────── */
+    .toggle-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .toggle-table th { background: #37474f; color: #fff; padding: 8px 12px;
+                       font-weight: 600; text-align: center; }
+    .toggle-table th.rule-col { text-align: left; min-width: 180px; }
+    .toggle-table td { padding: 7px 12px; border-bottom: 1px solid #eceff1; }
+    .toggle-table tr:hover td { background: #f5f5f5; }
+    .toggle-table td.rule-name { font-size: 13px; color: #37474f; }
+    .toggle-table td.check-cell { text-align: center; }
+    .toggle-wrap { display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .toggle-cb { width: 16px; height: 16px; cursor: pointer; }
+    .cb-label-on  { font-size: 10px; color: #2e7d32; font-weight: 700; }
+    .cb-label-off { font-size: 10px; color: #c62828; font-weight: 700; }
+
+    /* ── Method-Specific Limits ──────────────────────────────────────── */
+    .method-tabs { display: flex; gap: 0; border-bottom: 2px solid #1565c0;
+                   margin-bottom: 16px; }
+    .method-tab  { padding: 8px 18px; cursor: pointer; font-size: 13px;
+                   border: 1px solid transparent; border-bottom: none;
+                   border-radius: 4px 4px 0 0; color: #616161; background: #f5f5f5; }
+    .method-tab.active { background: #fff; border-color: #bdbdbd #bdbdbd #fff;
+                         color: #1565c0; font-weight: 600; }
+    .method-panel { display: none; }
+    .method-panel.active { display: block; }
+    .limit-rule-group { margin-bottom: 14px; background: #f9fbe7;
+                        border: 1px solid #e6ee9c; border-radius: 4px; padding: 10px 14px; }
+    .limit-rule-group.disabled { opacity: .45; background: #fafafa; border-color: #e0e0e0; }
+    .limit-rule-title { font-size: 12px; font-weight: 700; color: #33691e;
+                        text-transform: uppercase; margin-bottom: 8px;
+                        display: flex; align-items: center; gap: 8px; }
+    .limit-rule-title.disabled { color: #9e9e9e; }
+    .disabled-badge { background: #e0e0e0; color: #757575; font-size: 9px;
+                      padding: 2px 6px; border-radius: 8px; }
+    .override-row { display: flex; align-items: center; gap: 8px;
+                    margin-bottom: 6px; }
+    .override-row label { font-size: 11px; color: #616161; font-weight: 600;
+                          min-width: 200px; }
+    .override-input { padding: 5px 8px; border: 1px solid #bdbdbd; border-radius: 4px;
+                      font-size: 13px; background: #fff; width: 100px; }
+    .override-input.is-overridden { border-color: #1565c0; background: #e3f2fd; }
+    .inherited-hint { font-size: 10px; color: #9e9e9e; }
   </style>
 </head>
 <body>
@@ -212,6 +254,113 @@
       </div>
     </div>
 
+    <!-- ── Rule Toggle Grid ─────────────────────────────────────────────── -->
+    <div class="section" id="sec-toggles">
+      <div class="section-head" onclick="toggleSection('sec-toggles')">
+        <h2>Rule Toggle Grid</h2>
+        <span style="font-size:11px;color:#9e9e9e">
+          Enable or disable each QC rule per method. Disabled rules are skipped by the engine.
+        </span>
+      </div>
+      <div class="section-body">
+
+        <p style="font-size:12px;color:#546e7a;margin-bottom:14px;line-height:1.5">
+          Uncheck a cell to disable that rule for that method.
+          Rules marked <em>UI only</em> affect whether the check appears in the
+          analyst review queue but have no automated engine flag-check yet.
+        </p>
+
+        <table class="toggle-table">
+          <thead>
+            <tr>
+              <th class="rule-col">Rule</th>
+              <tal:mhdrs tal:repeat="m view/methods">
+                <th tal:content="m/label">Method</th>
+              </tal:mhdrs>
+            </tr>
+          </thead>
+          <tbody>
+            <tal:rows tal:repeat="row view/toggle_grid">
+              <tr>
+                <td class="rule-name" tal:content="row/rule_label">IS Response</td>
+                <tal:cells tal:repeat="state row/states">
+                  <td class="check-cell">
+                    <div class="toggle-wrap">
+                      <input type="checkbox" class="toggle-cb"
+                             tal:attributes="id python:'toggle_{}_{}'.format(state['method_id'], row['rule_key']);
+                                             data-method state/method_id;
+                                             data-rule row/rule_key;
+                                             checked state/enabled" />
+                      <span class="cb-label-on"  tal:condition="state/enabled">ON</span>
+                      <span class="cb-label-off" tal:condition="python:not state['enabled']">OFF</span>
+                    </div>
+                  </td>
+                </tal:cells>
+              </tr>
+            </tal:rows>
+          </tbody>
+        </table>
+
+      </div>
+    </div>
+
+    <!-- ── Method-Specific Limits ────────────────────────────────────────── -->
+    <div class="section" id="sec-method-limits">
+      <div class="section-head" onclick="toggleSection('sec-method-limits')">
+        <h2>Method-Specific Limits</h2>
+        <span style="font-size:11px;color:#9e9e9e">
+          Override rule parameters per method. Leave unchanged to inherit from Global Criteria.
+          Blue border = active override.
+        </span>
+      </div>
+      <div class="section-body">
+
+        <!-- Method selector tabs -->
+        <div class="method-tabs">
+          <tal:tabs tal:repeat="sec view/method_limit_sections">
+            <div class="method-tab"
+                 tal:attributes="id string:mtab-${sec/method_id};
+                                 onclick string:selectMethod('${sec/method_id}')"
+                 tal:content="sec/method_label">FDA 32-PFAS</div>
+          </tal:tabs>
+        </div>
+
+        <!-- One panel per method -->
+        <tal:panels tal:repeat="sec view/method_limit_sections">
+          <div class="method-panel"
+               tal:attributes="id string:mpanel-${sec/method_id}">
+
+            <tal:groups tal:repeat="grp sec/param_groups">
+              <div tal:attributes="class python:'limit-rule-group' + ('' if grp['enabled'] else ' disabled')">
+                <div tal:attributes="class python:'limit-rule-title' + ('' if grp['enabled'] else ' disabled')">
+                  <span tal:content="grp/rule_label">IS Response</span>
+                  <span class="disabled-badge"
+                        tal:condition="python:not grp['enabled']">disabled for this method</span>
+                </div>
+                <tal:params tal:repeat="p grp/params">
+                  <div class="override-row">
+                    <label tal:content="p/label">Max deviation (%)</label>
+                    <input type="number" step="any"
+                           tal:attributes="class python:'override-input' + (' is-overridden' if p['overridden'] else '');
+                                           data-method sec/method_id;
+                                           data-param p/name;
+                                           data-inherited p/inherited;
+                                           value p/value"
+                           onchange="markOverridden(this)" />
+                    <span class="inherited-hint">
+                      (global: <span tal:replace="p/inherited">50</span>)
+                    </span>
+                  </div>
+                </tal:params>
+              </div>
+            </tal:groups>
+
+          </div>
+        </tal:panels>
+
+      </div>
+    </div>
+
     <!-- ── Raw JSON fallback editor ─────────────────────────────────────── -->
     <div class="section" id="sec-json">
       <div class="section-head" onclick="toggleSection('sec-json')">
@@ -262,8 +411,12 @@ function buildRulesFromForm() {
     "version": 1,
     "global": {},
     "qc_types": {},
-    "salt_factors": {}
+    "salt_factors": {},
+    "method_rule_toggles": {},
+    "method_overrides": {}
   };
+
+  // --- named inputs (global, qc_types, salt_factors) ---
   var inputs = document.querySelectorAll('#rulesForm input[name]');
   inputs.forEach(function(inp) {
     var name = inp.name;
@@ -292,8 +445,77 @@ function buildRulesFromForm() {
       rules.salt_factors[matrix]['note'] = val;
     }
   });
+
+  // --- toggle checkboxes ---
+  document.querySelectorAll('.toggle-cb').forEach(function(cb) {
+    var method = cb.dataset.method;
+    var rule   = cb.dataset.rule;
+    if (!rules.method_rule_toggles[method]) rules.method_rule_toggles[method] = {};
+    rules.method_rule_toggles[method][rule] = cb.checked;
+  });
+
+  // --- method-specific overrides (only include values that differ from inherited) ---
+  document.querySelectorAll('.override-input').forEach(function(inp) {
+    var method    = inp.dataset.method;
+    var param     = inp.dataset.param;
+    var inherited = parseFloat(inp.dataset.inherited);
+    var current   = parseFloat(inp.value);
+    // Only store if the user has actively changed it from the inherited value
+    if (!isNaN(current) && (isNaN(inherited) || current !== inherited)) {
+      if (!rules.method_overrides[method]) rules.method_overrides[method] = {};
+      rules.method_overrides[method][param] = current;
+    }
+  });
+
   return rules;
 }
+
+// Activate the first method tab on page load
+(function() {
+  var tabs = document.querySelectorAll('.method-tab');
+  var panels = document.querySelectorAll('.method-panel');
+  if (tabs.length > 0) {
+    tabs[0].classList.add('active');
+    panels[0].classList.add('active');
+  }
+})();
+
+function selectMethod(methodId) {
+  document.querySelectorAll('.method-tab').forEach(function(t) {
+    t.classList.toggle('active', t.id === 'mtab-' + methodId);
+  });
+  document.querySelectorAll('.method-panel').forEach(function(p) {
+    p.classList.toggle('active', p.id === 'mpanel-' + methodId);
+  });
+}
+
+// Update the ON/OFF label next to a toggle checkbox
+function updateToggleLabel(cb) {
+  var wrap = cb.closest('.toggle-wrap');
+  if (!wrap) return;
+  var on  = wrap.querySelector('.cb-label-on');
+  var off = wrap.querySelector('.cb-label-off');
+  if (on)  on.style.display  = cb.checked ? '' : 'none';
+  if (off) off.style.display = cb.checked ? 'none' : '';
+}
+
+// Mark an override input as actively overridden (blue border)
+function markOverridden(inp) {
+  var inherited = parseFloat(inp.dataset.inherited);
+  var current   = parseFloat(inp.value);
+  if (!isNaN(current) && (isNaN(inherited) || current !== inherited)) {
+    inp.classList.add('is-overridden');
+  } else {
+    inp.classList.remove('is-overridden');
+  }
+}
+
+// Wire toggle checkboxes after DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.toggle-cb').forEach(function(cb) {
+    cb.addEventListener('change', function() { updateToggleLabel(cb); });
+  });
+});
 
 function prepareSubmit() {
   var rules = buildRulesFromForm();
@@ -312,7 +534,7 @@ function applyJson() {
 }
 
 function resetDefaults() {
-  document.getElementById('rules_json').value = '{"version":1,"global":{},"qc_types":{},"salt_factors":{}}';
+  document.getElementById('rules_json').value = '{"version":1,"global":{},"qc_types":{},"salt_factors":{},"method_rule_toggles":{},"method_overrides":{}}';
   document.getElementById('rulesForm').submit();
 }
 </script>

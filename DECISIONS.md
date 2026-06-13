@@ -5,6 +5,73 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-12  Round 2 item 4 — QC ruleset toggle grid
+
+- **Decision:** The `@@pfas-qc-rules` page gains a "Rule Toggle Grid" section (rows = 14
+  rules, columns = 3 methods, checkboxes) and a "Method-Specific Limits" section (tabbed
+  by method, shows param editors for each rule with per-method override capability).
+  Toggle state persists in `method_rule_toggles` inside `qc_rules.json`; param overrides
+  persist in `method_overrides` (sparse — only keys that differ from global are stored,
+  preserving the global→method inheritance chain).  The pipeline worker (`run_queue.py`)
+  reads toggles at `auto_evaluate()` time and gates each engine check block by the
+  corresponding `RULE_LIBRARY` key; the `LIBRARY_KEY_TO_ENGINE_CHECKS` mapping table in
+  `rules.py` is the canonical cross-reference.  Rules with no automated engine check
+  (ccv_frequency, mb_blank, surrogate_recovery, mdl_check) are UI-toggle-only: they
+  control whether the check appears in the analyst review queue but have no engine flag
+  block yet.  `run_pipeline()` accepts a new `method_id` parameter that flows to
+  `RunQueue`.
+- **Status:** confirmed
+- **Context:** User confirmed (Round 2): "grid is an off toggle and then further qc is
+  editable depending on method selected."  The starting toggle defaults in
+  `DEFAULT_METHOD_RULE_TOGGLES` (e.g. `sn_min` off for FDA/537.1, `mdl_check` on for
+  1633A) are *proposed defaults only* — all are UI-editable.  They are NOT based on
+  previously-existing hardcoded behavior and must be verified by the lab before relying
+  on them.
+
+## 2026-06-12  Round 2 item 3 — Control chart method-type filter
+
+- **Decision:** A "Method" dropdown is added as the first filter in the control chart
+  sidebar, above QC Type.  Selecting a method scopes the analyte list to analytes
+  with results under that method; the chart data query also filters by method.
+  "All methods" (empty selection) shows combined data from all methods — existing
+  behavior.  Method label is shown in the chart subtitle when a method is selected.
+  The `QCResultStore.get_analytes()` now accepts a `method` parameter; a new
+  `get_methods()` method returns distinct method IDs.
+- **Status:** confirmed
+- **Context:** User confirmed "selector that swaps method" approach.  Same analyte
+  (e.g. PFOA) has different QC limits per method; separate per-method series is the
+  correct scope for Levey-Jennings statistics.
+
+## 2026-06-12  Round 2 item 2 — PFAS navigation tiles and sub-tabs
+
+- **Decision:** 7 PFAS dashboard tiles (Batch Status, Control Charts, Calibrations,
+  Method Profiles, QC Rules, Sample Tracker, Setup Ref Defs) rendered via a
+  `IBelowContent` viewlet on `IPloneSiteRoot`.  Appears below the standard SENAITE
+  dashboard panels without modifying SENAITE core code.  Sub-tabs: "PFAS Stage" on
+  Worksheet and "Tracker" on AnalysisRequest, registered via `portal_actions` `object`
+  category in `profiles/default/actions.xml` (purge=False, condition on portal_type).
+- **Status:** confirmed
+- **Context:** Viewlet uses `metal:use-macro="here/main_template/macros/master"` in
+  the dashboard which includes `IBelowContent`.  Portal actions applied via
+  `runImportStepFromProfile` probe script (must be re-applied after reinstall).
+
+## 2026-06-12  Round 2 item 1 — UI rendering bugs found and fixed
+
+- **Decision:** Two rendering bugs corrected:
+  1. `@@pfas-sample-status` showed "No worksheets found" because `sort_on="created"`
+     is incompatible with `senaite_catalog_worksheet` in SENAITE 2.6 (raises
+     "an integer is required").  Fixed by removing the catalog-level sort and
+     sorting the result list in Python by `created` string (ISO date, so
+     lexicographic order is correct) after building it.
+  2. `controlchart.pt` line 374 used `tal:content` (not `tal:content="structure"`)
+     to embed JSON into a `<script>` tag.  Fixed to `structure` to prevent
+     HTML-escaping of characters like `<`, `>`, `&` that could appear in
+     future JSON payloads and would silently break the chart JavaScript.
+- **Status:** confirmed
+- **Context:** All 9 browser-view templates and the method-profile-edit view were
+  inspected via HTTP — no raw TAL/template expression leakage found elsewhere.
+  The `sort_on` bug is the root cause of the empty batch-status page.
+
 ## 2026-06-12  Stage 3 — anonymous access model for public tracker
 
 - **Decision:** All SENAITE object reads in `@@pfas-track` are performed under

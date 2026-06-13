@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      metal:use-macro="here/main_template/macros/master">
+
+<metal:content-core fill-slot="content-core"
+                    tal:define="info view/tracker_info">
+
+  <style>
+    .pfas-tracker-card {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 20px 24px;
+      max-width: 480px;
+      margin: 16px 0;
+    }
+    .pfas-tracker-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .pfas-tracking-number {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 24px;
+      font-weight: 900;
+      color: #1a237e;
+      letter-spacing: .08em;
+      background: #e8eaf6;
+      padding: 6px 14px;
+      border-radius: 4px;
+      display: inline-block;
+      margin: 8px 0 12px;
+    }
+    .pfas-no-tracking {
+      color: #9e9e9e;
+      font-size: 13px;
+      font-style: italic;
+    }
+    .pfas-tracker-links {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .pfas-tracker-links a {
+      font-size: 12px;
+      color: #1565c0;
+    }
+  </style>
+
+  <div class="pfas-tracker-card">
+    <div class="pfas-tracker-header">
+      <i class="fas fa-map-marker-alt" style="font-size:20px;color:#1a237e;"></i>
+      <strong style="font-size:15px;">PFAS Sample Tracker</strong>
+    </div>
+
+    <!-- Has tracking number -->
+    <tal:hasnum tal:condition="info/tracking_number">
+      <div style="font-size:12px;color:#616161;">Tracking number</div>
+      <div class="pfas-tracking-number" tal:content="info/tracking_number">
+        PF-260611-A3K9
+      </div>
+      <div class="pfas-tracker-links">
+        <a tal:attributes="href info/tracker_url" target="_blank">
+          Open client tracker &#8599;
+        </a>
+        <a tal:attributes="href string:${view/portal_url}/@@pfas-receipt?ar_id=${info/ar_id}">
+          Print receipt
+        </a>
+      </div>
+    </tal:hasnum>
+
+    <!-- No tracking number yet -->
+    <div class="pfas-no-tracking" tal:condition="not:info/tracking_number">
+      No tracking number assigned yet.
+      Tracking numbers are generated automatically when the sample is received
+      (workflow transition: <em>receive</em>).
+    </div>
+  </div>
+
+</metal:content-core>
+</html>

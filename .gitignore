@@ -13,6 +13,17 @@ var/
 .tox/
 .coverage
 .pytest_cache/
-data/instrument_output/
-data/reports/
-data/qc/
+
+# Lab data — keep directory stubs (.gitkeep) but never commit real run data
+data/instrument_output/*
+!data/instrument_output/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
+data/qc/*
+!data/qc/.gitkeep
+data/extraction_logs/*
+!data/extraction_logs/.gitkeep
+
+# Development/debug probe scripts (local use only)
+probe_*.py
+check_*.py

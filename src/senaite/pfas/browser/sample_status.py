@@ -275,11 +275,7 @@ class PFASSampleStatusView(BrowserView):
         if catalog is None:
             catalog = getToolByName(portal, "portal_catalog")
         try:
-            brains = catalog(
-                portal_type="Worksheet",
-                sort_on="created",
-                sort_order="descending",
-            )
+            brains = catalog(portal_type="Worksheet")
         except Exception as exc:
             logger.warning("Could not query Worksheets: %s", exc)
             return []
@@ -317,4 +313,5 @@ class PFASSampleStatusView(BrowserView):
             except Exception as exc:
                 logger.warning("Error processing worksheet %s: %s",
                                getattr(brain, "getId", lambda: "?")(), exc)
+        result.sort(key=lambda r: r["created"], reverse=True)
         return result

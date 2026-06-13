@@ -128,7 +128,20 @@
   <nav class="sidebar">
     <form class="filter-form" method="GET" action="" id="filterForm">
 
-      <!-- QC Type -->
+      <!-- Method (first filter — scopes the analyte list) -->
+      <div class="filter-section">
+        <label class="filter-label" for="method">Method</label>
+        <select id="method" name="method" onchange="this.form.submit()">
+          <option value="">— all methods —</option>
+          <tal:methods tal:repeat="m view/methods">
+            <option tal:attributes="value m;
+                                    selected python:m == view.selected_method()"
+                    tal:content="m">FDA_32PFAS</option>
+          </tal:methods>
+        </select>
+      </div>
+
+      <!-- QC Type + Analyte -->
       <div class="filter-section">
         <label class="filter-label" for="qc_type">QC Type</label>
         <select id="qc_type" name="qc_type" onchange="this.form.submit()">
@@ -139,7 +152,7 @@
           </tal:types>
         </select>
 
-        <!-- Analyte / Test -->
+        <!-- Analyte / Test (filtered by selected method) -->
         <label class="filter-label" for="analyte">Test (Analyte)</label>
         <select id="analyte" name="analyte" onchange="this.form.submit()">
           <option value="">— select test —</option>
@@ -338,6 +351,9 @@
                tal:content="string:${data/analyte} — ${data/qc_type}"></div>
           <div class="chart-subtitle">
             <tal:sub tal:content="string:${data/n_points} data points"></tal:sub>
+            <tal:meth tal:condition="data/method">
+              &nbsp;&bull; Method: <strong tal:replace="data/method">FDA_32PFAS</strong>
+            </tal:meth>
             <tal:lev tal:condition="data/qc_level">
               &nbsp;&bull; Level: <tal:l tal:replace="data/qc_level">L5</tal:l>
             </tal:lev>
@@ -371,7 +387,7 @@
 
 <!-- ── Chart.js ─────────────────────────────────────────────────────────── -->
 <tal:script tal:condition="view/has_data">
-<script tal:content="string:const CHART_DATA = ${view/chart_json};"></script>
+<script tal:content="structure string:const CHART_DATA = ${view/chart_json};"></script>
 <script>
 (function () {
   if (!CHART_DATA || !CHART_DATA.labels || !CHART_DATA.labels.length) return;

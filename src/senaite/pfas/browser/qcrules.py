@@ -107,6 +107,98 @@ class PFASQCRulesView(BrowserView):
             })
         return rows
 
+    # ── Toggle grid helpers ───────────────────────────────────────────────────
+
+    def methods(self):
+        from senaite.pfas.qc.rules import METHODS
+        return METHODS
+
+    def rule_library(self):
+        from senaite.pfas.qc.rules import RULE_LIBRARY
+        return RULE_LIBRARY
+
+    def toggle_grid(self):
+        """
+        Return list of row dicts for the toggle grid (one per rule).
+        Each row: {rule_key, rule_label, has_params, states: [per-method...]}
+        """
+        from senaite.pfas.qc.rules import RULE_LIBRARY, METHODS
+        rules = self.rules()
+        toggles = rules.get("method_rule_toggles", {})
+        rows = []
+        for rule in RULE_LIBRARY:
+            rkey = rule["key"]
+            states = []
+            for m in METHODS:
+                mid = m["id"]
+                method_toggles = toggles.get(mid, {})
+                enabled = method_toggles.get(rkey, True)
+                states.append({
+                    "method_id":    mid,
+                    "method_label": m["label"],
+                    "enabled":      enabled,
+                })
+            rows.append({
+                "rule_key":   rkey,
+                "rule_label": rule["label"],
+                "has_params": bool(rule.get("params")),
+                "states":     states,
+            })
+        return rows
+
+    def method_limit_sections(self):
+        """
+        Return one section per method with per-rule param editors.
+        Each: {method_id, method_label, param_groups}
+        param_groups are only included for ENABLED rules that have params.
+        Each param has an 'inherited' value (global default) so JS can detect
+        actual overrides vs inherited-same-value non-changes.
+        """
+        from senaite.pfas.qc.rules import RULE_LIBRARY, METHODS
+        rules = self.rules()
+        toggles = rules.get("method_rule_toggles", {})
+        overrides = rules.get("method_overrides", {})
+        global_vals = rules.get("global", {})
+        sections = []
+        for m in METHODS:
+            mid = m["id"]
+            method_toggles = toggles.get(mid, {})
+            method_overrides = overrides.get(mid, {})
+            param_groups = []
+            for rule in RULE_LIBRARY:
+                rkey = rule["key"]
+                if not rule.get("params"):
+                    continue
+                enabled = method_toggles.get(rkey, True)
+                params = []
+                for p in rule["params"]:
+                    pname = p["name"]
+                    # Inherited value: global > default (in that priority)
+                    inherited = global_vals.get(pname, p["default"])
+                    # Method override (may be None if not set)
+                    override_val = method_overrides.get(pname)
+                    display_val = override_val if override_val is not None else inherited
+                    params.append({
+                        "name":      pname,
+                        "label":     p["label"],
+                        "type":      p["type"],
+                        "value":     display_val,
+                        "inherited": inherited,
+                        "overridden": override_val is not None,
+                    })
+                param_groups.append({
+                    "rule_key":   rkey,
+                    "rule_label": rule["label"],
+                    "enabled":    enabled,
+                    "params":     params,
+                })
+            sections.append({
+                "method_id":    mid,
+                "method_label": m["label"],
+                "param_groups": param_groups,
+            })
+        return sections
+
     def save_message(self):
         return self.request.get("saved", "")
 

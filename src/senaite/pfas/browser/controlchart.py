@@ -78,6 +78,9 @@ class PFASControlChartView(BrowserView):
 
     # ── Request parameter accessors ──────────────────────────────────────
 
+    def selected_method(self):
+        return self.request.get("method", "")
+
     def selected_qc_type(self):
         return self.request.get("qc_type", "CCV")
 
@@ -117,6 +120,16 @@ class PFASControlChartView(BrowserView):
         from senaite.pfas.qc.store import QCResultStore
         return QCResultStore(self.db_path)
 
+    def methods(self):
+        """Distinct method IDs in the QC results store."""
+        if not self.db_available:
+            return []
+        try:
+            return self._store().get_methods()
+        except Exception as e:
+            logger.error("methods: %s", e)
+            return []
+
     def qc_types(self):
         if not self.db_available:
             return ["CCV", "LCS", "MB", "LFSM", "LFSMD", "IS"]
@@ -130,7 +143,8 @@ class PFASControlChartView(BrowserView):
         if not self.db_available:
             return []
         try:
-            return self._store().get_analytes(qc_type=qc_type)
+            method = self.selected_method() or None
+            return self._store().get_analytes(qc_type=qc_type, method=method)
         except Exception as e:
             logger.error("analytes: %s", e)
             return []
@@ -208,6 +222,7 @@ class PFASControlChartView(BrowserView):
     def _build_chart_dict(self):
         qc_type     = self.selected_qc_type()
         analyte     = self.selected_analyte()
+        method      = self.selected_method() or None
         qc_level    = self.selected_level() or None
         analyst     = self.selected_analyst()
         instrument  = self.selected_instrument()
@@ -224,6 +239,7 @@ class PFASControlChartView(BrowserView):
             rows = self._store().get_chart_data(
                 analyte, qc_type,
                 qc_level=qc_level,
+                method=method,
                 analyst=analyst,
                 instrument_id=instrument,
                 limit=limit,
@@ -305,6 +321,7 @@ class PFASControlChartView(BrowserView):
         return {
             "analyte":        analyte,
             "qc_type":        qc_type,
+            "method":         method or "",
             "qc_level":       qc_level or "",
             "units":          units,
             "labels":         labels,

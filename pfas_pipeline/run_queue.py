@@ -65,6 +65,26 @@ CHECK_PROMPTS: dict[str, str] = {
 }
 
 
+def _load_rule_toggles(method_id: str, rules_path: str = "/data/qc/qc_rules.json") -> dict:
+    """Return {rule_library_key: bool} for method_id.  Default all True on error."""
+    if not method_id:
+        return {}
+    try:
+        import os
+        if not os.path.exists(rules_path):
+            return {}
+        with open(rules_path) as f:
+            rules = json.load(f)
+        return rules.get("method_rule_toggles", {}).get(method_id, {})
+    except Exception:
+        return {}
+
+
+def _rule_enabled(toggles: dict, library_key: str) -> bool:
+    """True if the rule is enabled (default ON when key absent)."""
+    return bool(toggles.get(library_key, True))
+
+
 class RunQueue:
     """
     Stateful review queue for one batch.
@@ -77,8 +97,10 @@ class RunQueue:
         q.save("batch_260226_queue.json")  # resume later / from home
     """
 
-    def __init__(self, batch: Batch, review_plan: list[dict]):
+    def __init__(self, batch: Batch, review_plan: list[dict],
+                 method_id: Optional[str] = None):
         self.batch = batch
+        self.method_id = method_id or ""
         self.checks: list[ReviewCheck] = []
         for entry in review_plan:
             for check_name in entry["checks"]:
@@ -93,33 +115,56 @@ class RunQueue:
         """
         Run the full QC engine and mark checks AUTO_PASS / AUTO_FAIL.
         Equivalent to pressing every macro button in the xlsm at once.
+
+        Rule toggles are loaded from /data/qc/qc_rules.json for self.method_id.
+        LIBRARY_KEY → engine block mapping (rules.py LIBRARY_KEY_TO_ENGINE_CHECKS):
+          is_response   → is_raw_check
+          rrt_deviation → rt_deviation_check
+          ion_ratio     → qual_quan_check
+          cal_r2        → calibration_check (also covers ccv_recovery checks)
+          ccv_recovery  → calibration_check (run block if EITHER cal_r2 or ccv_recovery enabled)
+          sn_min        → signal_to_noise_check
         """
         rows = self.batch.injections
         flags_by_injection: dict[str, list[QCFlag]] = {}
+        toggles = _load_rule_toggles(self.method_id)
 
-        # 1. IS Raw (all internal standards)
-        for is_cmp in INTERNAL_STANDARDS:
-            for res in is_raw_check(rows, is_cmp):
-                if res.flag:
-                    flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
-                    self.batch.is_results.append(res)
+        # 1. IS Raw (is_response rule)
+        if _rule_enabled(toggles, "is_response"):
+            for is_cmp in INTERNAL_STANDARDS:
+                for res in is_raw_check(rows, is_cmp):
+                    if res.flag:
+                        flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
+                        self.batch.is_results.append(res)
 
-        # 2. RT Deviation + 3. Qual-Quan + 4. Calibration + S/N (all analytes)
+        # 2. RT Deviation (rrt_deviation rule)
+        rt_enabled  = _rule_enabled(toggles, "rrt_deviation")
+        # 3. Qual-Quan (ion_ratio rule)
+        iq_enabled  = _rule_enabled(toggles, "ion_ratio")
+        # 4. Calibration (cal_r2 OR ccv_recovery — run if either is on)
+        cal_enabled = _rule_enabled(toggles, "cal_r2") or _rule_enabled(toggles, "ccv_recovery")
+        # 5. Signal-to-Noise (sn_min rule)
+        sn_enabled  = _rule_enabled(toggles, "sn_min")
+
         for analyte in ANALYTES:
-            for res in rt_deviation_check(rows, analyte):
-                if res.flag:
-                    flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
-                self.batch.rt_results.append(res)
-            for res in qual_quan_check(rows, analyte):
-                if res.flag:
-                    flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
-                self.batch.qual_quan_results.append(res)
-            for res in calibration_check(rows, analyte):
-                if res.flag:
-                    flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
-                self.batch.cal_results.append(res)
-            for flag in signal_to_noise_check(rows, analyte):
-                flags_by_injection.setdefault(flag.injection_name, []).append(flag)
+            if rt_enabled:
+                for res in rt_deviation_check(rows, analyte):
+                    if res.flag:
+                        flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
+                    self.batch.rt_results.append(res)
+            if iq_enabled:
+                for res in qual_quan_check(rows, analyte):
+                    if res.flag:
+                        flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
+                    self.batch.qual_quan_results.append(res)
+            if cal_enabled:
+                for res in calibration_check(rows, analyte):
+                    if res.flag:
+                        flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
+                    self.batch.cal_results.append(res)
+            if sn_enabled:
+                for flag in signal_to_noise_check(rows, analyte):
+                    flags_by_injection.setdefault(flag.injection_name, []).append(flag)
 
         # Consolidate the QC Log (Sheet 6 equivalent)
         self.batch.qc_flags = [
