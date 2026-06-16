@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Import Studio — Instrument Mapping</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .studio-layout { display: flex; gap: 24px; align-items: flex-start; }
+    .studio-main   { flex: 1 1 auto; min-width: 0; }
+    .studio-side   { flex: 0 0 260px; }
+
+    /* ── Landing page ─────────────────────────────────────── */
+    .instr-list { list-style: none; padding: 0; margin: 0 0 20px; }
+    .instr-list li { padding: 10px 14px; border: 1px solid var(--s-border);
+                     border-radius: 8px; margin-bottom: 8px; display: flex;
+                     justify-content: space-between; align-items: center; }
+    .instr-list li .instr-title { font-weight: 600; font-size: 13px; }
+    .profile-badge { font-size: 11px; color: var(--s-secondary); margin-left: 8px; }
+    .instr-action  { font-size: 12px; }
+
+    /* ── Upload area ──────────────────────────────────────── */
+    .upload-box { border: 2px dashed var(--s-border); border-radius: 12px;
+                  padding: 40px 24px; text-align: center;
+                  background: #fafbfc; cursor: pointer;
+                  transition: border-color .15s; }
+    .upload-box:hover, .upload-box.drag-over { border-color: var(--s-primary); background: #f0f4ff; }
+    .upload-box .upload-icon { font-size: 36px; margin-bottom: 10px; }
+    .upload-box p  { font-size: 14px; color: var(--s-secondary); margin: 0; }
+    /* file input is rendered outside .upload-box; hidden via inline style */
+    .upload-chosen { font-size: 12px; color: var(--s-primary); margin-top: 8px; font-weight: 600; }
+
+    /* ── Detection banner ─────────────────────────────────── */
+    .detect-banner { border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
+                     font-size: 13px; display: flex; gap: 12px; align-items: center; }
+    .detect-banner.high  { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+    .detect-banner.med   { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; }
+    .detect-banner.low   { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+    .detect-banner strong { font-size: 14px; }
+    .conf-pill { font-size: 11px; padding: 2px 8px; border-radius: 10px;
+                 background: rgba(0,0,0,.12); font-weight: 700; }
+
+    /* ── Mapping grid ─────────────────────────────────────── */
+    .mapping-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .mapping-grid th { background: #f8f9fa; padding: 8px 10px; text-align: left;
+                       border-bottom: 2px solid var(--s-border); font-weight: 700; }
+    .mapping-grid td { padding: 5px 8px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    .mapping-grid td.col-name  { font-family: monospace; font-size: 11px; color: #333; max-width: 160px;
+                                  word-break: break-all; }
+    .mapping-grid td.col-preview { font-family: monospace; font-size: 10px; color: #666; max-width: 200px; }
+    .mapping-grid select { width: 100%; padding: 4px 6px; font-size: 12px;
+                           border: 1px solid var(--s-input-border); border-radius: 5px; }
+    .mapping-grid select.mapped   { border-color: #28a745; background: #f0fff4; }
+    .mapping-grid select.ignored  { border-color: #adb5bd; background: #f8f9fa; color: #6c757d; }
+
+    /* ── Preview rows ─────────────────────────────────────── */
+    .preview-table { width: 100%; border-collapse: collapse; font-size: 10px;
+                     font-family: monospace; margin-bottom: 20px; overflow-x: auto; display: block; }
+    .preview-table th { background: #f8f9fa; padding: 4px 6px;
+                        border: 1px solid var(--s-border); font-weight: 700; }
+    .preview-table td { padding: 3px 6px; border: 1px solid var(--s-border); white-space: nowrap; }
+
+    /* ── Side: save profile form ─────────────────────────── */
+    .profile-card { background: #f8f9fa; border: 1px solid var(--s-border);
+                    border-radius: 10px; padding: 18px; }
+    .profile-card h3 { font-size: 13px; font-weight: 700; margin: 0 0 14px; }
+    .profile-card label { font-size: 12px; font-weight: 600; display: block;
+                          margin-bottom: 3px; color: var(--s-dark); }
+    .profile-card input[type=text],
+    .profile-card select,
+    .profile-card textarea { width: 100%; padding: 6px 8px; font-size: 12px;
+                              border: 1px solid var(--s-input-border); border-radius: 5px;
+                              margin-bottom: 12px; box-sizing: border-box; }
+    .profile-card textarea { min-height: 60px; resize: vertical; }
+    .calc-explainer { font-size: 11px; color: #6c757d; margin-top: -8px; margin-bottom: 12px;
+                      line-height: 1.4; }
+    .btn-save-profile { width: 100%; padding: 9px; background: var(--s-primary); color: #fff;
+                        border: none; border-radius: 7px; font-size: 13px;
+                        font-weight: 600; cursor: pointer; }
+    .btn-save-profile:hover { opacity: .9; }
+
+    /* ── Existing profiles list ──────────────────────────── */
+    .saved-profiles { margin-top: 20px; }
+    .saved-profiles h4 { font-size: 12px; font-weight: 700; margin-bottom: 8px;
+                         color: var(--s-secondary); text-transform: uppercase; letter-spacing: .5px; }
+    .profile-row { font-size: 11px; padding: 5px 0;
+                   border-bottom: 1px solid var(--s-border); display: flex;
+                   justify-content: space-between; align-items: center; }
+    .profile-row .pv-tag { font-family: monospace; font-size: 11px; font-weight: 700; }
+    .profile-row .pv-vendor { color: var(--s-secondary); }
+    .pv-calc { font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+    .pv-calc.final { background: #d4edda; color: #155724; }
+    .pv-calc.raw   { background: #cce5ff; color: #004085; }
+
+    /* ── Alerts ────────────────────────────────────────────── */
+    .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .alert-info  { background: #cce5ff; border: 1px solid #b8daff; color: #004085;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+
+    .section-title { font-size: 16px; font-weight: 700; color: var(--s-dark);
+                     margin: 0 0 18px; padding-bottom: 8px;
+                     border-bottom: 2px solid var(--s-border); }
+    .instr-selector { margin-bottom: 20px; }
+    .instr-selector label { font-weight: 600; font-size: 13px; margin-right: 10px; }
+    .instr-selector select { padding: 7px 10px; font-size: 13px;
+                              border: 1px solid var(--s-input-border); border-radius: 6px;
+                              min-width: 280px; }
+  </style>
+  <script type="text/javascript">
+  //<![CDATA[
+  /* All Import Studio JS lives here (head-extra slot) because Plone's
+     transform pipeline strips <script> blocks from the body. */
+
+  var colMap = {};
+
+  var CALC_EXPLANATIONS = {
+    'final': '<strong>Final mode:</strong> the instrument software already computed ng/mL. Map the "Result" column and the pipeline uses it directly.',
+    'raw':   '<strong>Raw mode:</strong> map native peak area + IS peak area. The pipeline divides them, applies the calibration curve, salt factor, and matrix factor to compute the final result.'
+  };
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function purposeLabel(key) {
+    if (typeof PURPOSES === 'undefined') return key;
+    for (var i = 0; i < PURPOSES.length; i++) {
+      if (PURPOSES[i][0] === key) return PURPOSES[i][1];
+    }
+    return key;
+  }
+
+  function showLanding() {
+    document.getElementById('phase-landing').style.display = '';
+    document.getElementById('phase-mapping').style.display = 'none';
+  }
+  function showMapping() {
+    document.getElementById('phase-landing').style.display = 'none';
+    document.getElementById('phase-mapping').style.display = '';
+  }
+
+  function showChosen(inp) {
+    var n = inp && inp.files && inp.files[0] ? inp.files[0].name : '';
+    var el = document.getElementById('chosen-name');
+    if (el && n) { el.textContent = '✔ ' + n; el.style.display = ''; }
+    var btn = document.getElementById('upload-btn');
+    if (btn) { btn.disabled = !n; btn.style.opacity = n ? '1' : '.5'; }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    var box = document.getElementById('upload-box');
+    if (box) box.classList.remove('drag-over');
+    var files = e.dataTransfer.files;
+    if (!files.length) return;
+    var inp = document.getElementById('file-input');
+    var name = files[0].name;
+    var el = document.getElementById('chosen-name');
+    if (el) { el.textContent = '✔ ' + name; el.style.display = ''; }
+    if (inp) {
+      var dt = new DataTransfer();
+      dt.items.add(files[0]);
+      inp.files = dt.files;
+    }
+    var btn = document.getElementById('upload-btn');
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+
+  function syncInstrSel(sel) {}
+
+  function buildPurposeOptions(col) {
+    var cur = colMap[col] || 'ignore';
+    var html = '';
+    if (typeof PURPOSES === 'undefined') return html;
+    for (var i = 0; i < PURPOSES.length; i++) {
+      var k = PURPOSES[i][0], lbl = PURPOSES[i][1];
+      html += '<option value="' + esc(k) + '"' + (k === cur ? ' selected' : '') + '>' + esc(lbl) + '</option>';
+    }
+    return html;
+  }
+
+  function renderMappingGrid(headers, preview) {
+    var headTr = document.getElementById('preview-head');
+    if (headTr) {
+      var headHtml = '<th>#</th>';
+      headers.forEach(function(h) { headHtml += '<th>' + esc(h) + '</th>'; });
+      headTr.innerHTML = headHtml;
+    }
+    var bodyEl = document.getElementById('preview-body');
+    if (bodyEl) {
+      bodyEl.innerHTML = '';
+      preview.forEach(function(row, ri) {
+        var tr = document.createElement('tr');
+        var html = '<td>' + (ri + 1) + '</td>';
+        headers.forEach(function(h, ci) { html += '<td>' + esc(row[ci] == null ? '' : row[ci]) + '</td>'; });
+        tr.innerHTML = html;
+        bodyEl.appendChild(tr);
+      });
+    }
+    var tbody = document.getElementById('mapping-body');
+    if (tbody) {
+      tbody.innerHTML = '';
+      headers.forEach(function(col, ci) {
+        var sampleVals = preview.slice(0, 3).map(function(r) { return r[ci]; })
+                                .filter(function(v) { return v != null && String(v).trim(); })
+                                .slice(0, 3);
+        var tr = document.createElement('tr');
+        tr.setAttribute('data-col', col);
+        tr.innerHTML =
+          '<td class="col-name">' + esc(col) + '</td>' +
+          '<td><select onchange="setPurpose(\'' + esc(col).replace(/'/g, "\\'") + '\',this.value)" data-col="' + esc(col) + '">' +
+          buildPurposeOptions(col) + '</select></td>' +
+          '<td class="col-preview">' + esc(sampleVals.join(' | ')) + '</td>';
+        tbody.appendChild(tr);
+        styleSelect(col);
+      });
+      updateCount(headers);
+    }
+  }
+
+  function setPurpose(col, val) {
+    colMap[col] = val;
+    styleSelect(col);
+    updateCount(Object.keys(colMap));
+    updateColMapJson();
+  }
+
+  function styleSelect(col) {
+    var sel = document.querySelector('select[data-col="' + col + '"]');
+    if (!sel) return;
+    sel.className = (colMap[col] || 'ignore') === 'ignore' ? 'ignored' : 'mapped';
+  }
+
+  function updateCount(headers) {
+    var mapped = 0;
+    headers.forEach(function(col) { if ((colMap[col] || 'ignore') !== 'ignore') mapped++; });
+    var mc = document.getElementById('mapped-count');
+    var tc = document.getElementById('total-count');
+    if (mc) mc.textContent = mapped;
+    if (tc) tc.textContent = headers.length;
+  }
+
+  function autoIgnoreAll() {
+    Object.keys(colMap).forEach(function(col) { colMap[col] = 'ignore'; styleSelect(col); });
+    updateCount(Object.keys(colMap));
+    updateColMapJson();
+  }
+
+  function updateColMapJson() {
+    var el = document.getElementById('save-col-map');
+    if (el) el.value = JSON.stringify(colMap);
+  }
+
+  function updateCalChain() {
+    var s = document.getElementById('s-calc');
+    var mode = s ? s.value : 'final';
+    var ex = document.getElementById('calc-explainer');
+    if (ex) ex.innerHTML = CALC_EXPLANATIONS[mode] || '';
+    var box = document.getElementById('calc-chain-box');
+    if (box) box.style.display = (mode === 'raw') ? '' : 'none';
+    var vsel = document.getElementById('s-vendor');
+    var vk = document.getElementById('save-vendor-key');
+    if (vk) vk.value = vsel ? vsel.value : '';
+  }
+
+  function prepSave() { updateColMapJson(); return true; }
+
+  function renderSavedProfiles(profiles, instrUid) {
+    var box = document.getElementById('saved-profiles-box');
+    var list = document.getElementById('saved-profiles-list');
+    if (!profiles || !profiles.length) { if (box) box.style.display = 'none'; return; }
+    if (box) box.style.display = '';
+    if (list) {
+      list.innerHTML = '';
+      profiles.forEach(function(p) {
+        var editUrl = window.location.pathname +
+          '?action=edit_profile&instrument_uid=' + encodeURIComponent(instrUid || '') +
+          '&version=' + encodeURIComponent(p.version);
+        var div = document.createElement('div');
+        div.className = 'profile-row';
+        div.innerHTML =
+          '<span><span class="pv-tag">' + esc(p.version) + '</span> ' +
+          '<span class="pv-vendor">' + esc(p.vendor) + '</span> ' +
+          '<span class="pv-calc ' + esc(p.calc_mode) + '">' + esc(p.calc_mode) + '</span></span>' +
+          '<a href="' + esc(editUrl) + '" style="font-size:11px;font-weight:600;">Edit &#8594;</a>';
+        list.appendChild(div);
+      });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    /* disable upload button until file chosen */
+    var btn = document.getElementById('upload-btn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
+
+    /* belt-and-suspenders: also wire the change event directly */
+    var fi = document.getElementById('file-input');
+    if (fi) {
+      fi.addEventListener('change', function() { showChosen(this); });
+    }
+
+    /* if no upload result yet, nothing else to do */
+    if (typeof UPLOAD_RESULT === 'undefined' || !UPLOAD_RESULT) return;
+
+    var r = UPLOAD_RESULT;
+    colMap = r.col_map || {};
+    showMapping();
+
+    var mfn = document.getElementById('mapping-filename');
+    if (mfn) mfn.textContent = r.filename || '';
+
+    var banner = document.getElementById('detect-banner');
+    if (banner) {
+      var vendorLabels = {sciex:'SCIEX OS', agilent:'Agilent MassHunter',
+                          waters:'Waters MassLynx/TargetLynx', native:'Native / Pass-through'};
+      var vname = vendorLabels[r.vendor_key] || r.vendor_key || '';
+      var conf = r.confidence || 0;
+      banner.className = 'detect-banner ' + (conf >= 80 ? 'high' : conf >= 40 ? 'med' : 'low');
+      banner.style.display = '';
+      banner.innerHTML =
+        '<span style="font-size:20px;">&#128270;</span>' +
+        '<div><strong>Auto-detected: ' + esc(vname) + '</strong> ' +
+        '<span class="conf-pill">' + conf + '% confidence</span>' +
+        (r.auto_version ? '<br><small>Detected version: <code>' + esc(r.auto_version) + '</code></small>' : '') +
+        '</div>';
+    }
+
+    if (r.edit_mode) {
+      var np = document.getElementById('existing-profile-notice');
+      if (np) {
+        np.style.display = '';
+        np.innerHTML = 'Editing saved profile <strong>' + esc(r.auto_version || '') + '</strong>. ' +
+          'No file was uploaded — adjust the mapping below and save to update the profile. ' +
+          'Data preview is unavailable without a file.';
+      }
+    } else if (r.existing_profile) {
+      var np = document.getElementById('existing-profile-notice');
+      if (np) {
+        np.style.display = '';
+        np.innerHTML = 'A saved profile was found for this instrument. The suggested mapping below is pre-loaded from that profile. Adjust as needed and save to update it.';
+      }
+    }
+
+    renderMappingGrid(r.headers || [], r.preview || []);
+
+    var si = document.getElementById('save-instr-uid');
+    if (si) si.value = r.instrument_uid || '';
+    var sd = document.getElementById('s-instr-display');
+    if (sd) sd.value = r.instrument_title || '(no instrument selected)';
+    var scm = document.getElementById('save-col-map');
+    if (scm) scm.value = JSON.stringify(colMap);
+    var sv = document.getElementById('s-version');
+    if (sv && r.auto_version) sv.value = r.auto_version;
+    renderSavedProfiles(r.instrument_profiles || [], r.instrument_uid || '');
+
+    var vsel = document.getElementById('s-vendor');
+    if (vsel && r.vendor_key) {
+      for (var i = 0; i < vsel.options.length; i++) {
+        if (vsel.options[i].value === r.vendor_key) { vsel.selectedIndex = i; break; }
+      }
+    }
+    var svk = document.getElementById('save-vendor-key');
+    if (svk) svk.value = r.vendor_key || '';
+
+    updateCalChain();
+  });
+  //]]>
+  </script>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Import Studio &mdash; Instrument Column Mapping</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="header-meta" tal:attributes="href string:${view/portal_url}/@@lims-setup">
+      &#8592; Site Setup
+    </a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div tal:condition="view/ok_msg"    class="alert-ok"    tal:content="view/ok_msg"></div>
+    <div tal:condition="view/error_msg" class="alert-error" tal:content="view/error_msg"></div>
+
+    <!-- TAL-driven variables: inject server state for JS to consume -->
+    <script type="text/javascript">
+    var UPLOAD_RESULT = <tal:d tal:replace="structure view/upload_result_json" />;
+    var PURPOSES = <tal:p tal:replace="structure python:__import__('json').dumps(view.purposes())" />;
+    </script>
+
+    <!-- ════════════════════════════════════════════════════════════
+         PHASE 1 — No file yet: instrument selector + upload box
+         ════════════════════════════════════════════════════════════ -->
+    <tal:phase1 tal:define="instruments view/instruments">
+    <div id="phase-landing">
+
+      <h2 class="section-title">Step 1 — Select Instrument &amp; Upload a Test File</h2>
+
+      <p style="color:var(--s-secondary);font-size:13px;margin-bottom:20px;">
+        Drop any raw instrument export (CSV or TXT). The studio will auto-detect the
+        software format, suggest a column-to-purpose mapping, and let you fine-tune
+        every column before saving a reusable profile to the instrument record.
+      </p>
+
+      <form method="post" enctype="multipart/form-data"
+            tal:attributes="action string:${view/portal_url}/@@pfas-import-studio"
+            id="upload-form">
+        <input type="hidden" name="action" value="upload" />
+
+        <div class="instr-selector">
+          <label for="instr-sel">Instrument:</label>
+          <select id="instr-sel" name="instrument_uid" onchange="syncInstrSel(this)">
+            <option value="">(select instrument)</option>
+            <tal:opts tal:repeat="instr instruments">
+              <option tal:attributes="value python:instr['uid'];
+                                      selected python:request.form.get('instrument_uid','') == instr['uid']"
+                      tal:content="python:instr['title']"></option>
+            </tal:opts>
+          </select>
+        </div>
+
+        <!-- Upload box — label[for] activates the file input on any click regardless
+             of which child element the user clicks (strong, p, icon, etc.) -->
+        <label class="upload-box" id="upload-box" for="file-input"
+               style="display:block;cursor:pointer;"
+               ondragover="this.classList.add('drag-over');event.preventDefault()"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleDrop(event)">
+          <div class="upload-icon">&#128196;</div>
+          <p><strong>Drop a CSV or TXT instrument export here</strong></p>
+          <p>or click to browse &mdash; Waters, SCIEX, Agilent, and native formats all supported</p>
+          <p class="upload-chosen" id="chosen-name" style="display:none;"></p>
+        </label>
+        <!-- Input OUTSIDE the label avoids click bubbling back into the label -->
+        <input type="file" id="file-input" name="upload_file"
+               accept=".csv,.txt,.tsv,.xls,.xlsx"
+               onchange="showChosen(this)"
+               style="display:none;" />
+
+        <div style="margin-top:16px;">
+          <button type="submit" id="upload-btn"
+                  style="padding:9px 24px;background:var(--s-primary);color:#fff;
+                         border:none;border-radius:7px;font-size:13px;font-weight:600;
+                         cursor:pointer;opacity:.5;">
+            Detect &amp; Map Columns &#8594;
+          </button>
+        </div>
+      </form>
+
+      <!-- Instruments with saved profiles -->
+      <div style="margin-top:36px;" tal:condition="instruments">
+        <h2 class="section-title">Saved Profiles by Instrument</h2>
+        <ul class="instr-list">
+          <tal:li tal:repeat="instr instruments">
+          <li style="display:block;padding:10px 14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span>
+                <span class="instr-title" tal:content="python:instr['title']"></span>
+                <span class="profile-badge"
+                      tal:content="python:'{0} profile{1}'.format(len(instr['profiles']), 's' if len(instr['profiles'])!=1 else '')"></span>
+              </span>
+              <span class="instr-action">
+                <a tal:attributes="href python:'{0}/@@pfas-import-studio?instrument_uid={1}'.format(view.portal_url(), instr['uid'])"
+                   style="font-size:12px;">Upload new &#8594;</a>
+              </span>
+            </div>
+            <!-- Per-profile edit links -->
+            <tal:profiles tal:condition="instr/profiles">
+            <ul style="list-style:none;padding:0;margin:6px 0 0 0;">
+              <tal:prow tal:repeat="prof instr/profiles">
+              <li style="display:flex;justify-content:space-between;align-items:center;
+                         padding:4px 0;border-top:1px solid var(--s-border);font-size:11px;">
+                <span>
+                  <code style="font-weight:700;" tal:content="prof/version">3.4</code>
+                  <span style="color:var(--s-secondary);margin-left:6px;"
+                        tal:content="prof/vendor">SCIEX OS</span>
+                  <span tal:attributes="class python:'pv-calc '+prof['calc_mode']"
+                        tal:content="prof/calc_mode">final</span>
+                </span>
+                <a tal:attributes="href python:'{0}/@@pfas-import-studio?action=edit_profile&amp;instrument_uid={1}&amp;version={2}'.format(view.portal_url(), instr['uid'], prof['version'])"
+                   style="font-size:11px;font-weight:600;">Edit &#8594;</a>
+              </li>
+              </tal:prow>
+            </ul>
+            </tal:profiles>
+          </li>
+          </tal:li>
+        </ul>
+      </div>
+
+    </div><!-- /phase-landing -->
+    </tal:phase1>
+
+    <!-- ════════════════════════════════════════════════════════════
+         PHASE 2 — File parsed: mapping grid + profile save panel
+         ════════════════════════════════════════════════════════════ -->
+    <div id="phase-mapping" style="display:none;">
+
+      <!-- Detection banner (filled by JS) -->
+      <div id="detect-banner" class="detect-banner" style="display:none;"></div>
+
+      <!-- Existing-profile notice (filled by JS) -->
+      <div id="existing-profile-notice" class="alert-info" style="display:none;"></div>
+
+      <h2 class="section-title" id="mapping-title">
+        Column Mapping &mdash; <span id="mapping-filename"></span>
+      </h2>
+
+      <div class="studio-layout">
+
+        <!-- ── Main: preview + mapping grid ──────────────────────── -->
+        <div class="studio-main">
+
+          <!-- Data preview table -->
+          <div style="overflow-x:auto;margin-bottom:20px;">
+            <p style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--s-secondary);">
+              DATA PREVIEW (first 3 rows)</p>
+            <table class="preview-table" id="preview-table">
+              <thead><tr id="preview-head"></tr></thead>
+              <tbody id="preview-body"></tbody>
+            </table>
+          </div>
+
+          <!-- Mapping grid -->
+          <p style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--s-secondary);">
+            COLUMN MAPPING &mdash;
+            <span id="mapped-count">0</span> of <span id="total-count">0</span> columns assigned
+            &nbsp;|&nbsp;
+            <a href="#" onclick="autoIgnoreAll();return false;" style="font-size:11px;">Ignore all</a>
+          </p>
+          <table class="mapping-grid">
+            <thead>
+              <tr>
+                <th style="width:28%;">Column Name</th>
+                <th style="width:35%;">Purpose</th>
+                <th style="width:37%;">Sample Values</th>
+              </tr>
+            </thead>
+            <tbody id="mapping-body"></tbody>
+          </table>
+
+          <!-- Calculation chain (shown when calc_mode = raw) -->
+          <div id="calc-chain-box"
+               style="display:none;margin-top:24px;background:#f0f8ff;
+                      border:1px solid #b8daff;border-radius:8px;padding:16px;">
+            <p style="font-size:13px;font-weight:700;margin:0 0 8px;color:#004085;">
+              Raw-mode calculation chain</p>
+            <p style="font-size:12px;color:#004085;margin:0;">
+              <strong>Reported result</strong> =
+              (<em>native_area</em> / <em>IS_area</em>) &times;
+              <em>cal_factor</em> &times;
+              <em>salt_factor</em> &times;
+              <em>matrix_factor</em>
+            </p>
+            <ul style="font-size:11px;color:#555;margin:8px 0 0 16px;padding:0;">
+              <li><em>native_area</em> &larr; column mapped to "Raw Peak Area (native)"</li>
+              <li><em>IS_area</em> &larr; column mapped to "IS Peak Area"</li>
+              <li><em>cal_factor</em> &larr; computed from the calibration curve (FM-ENV-251)</li>
+              <li><em>salt_factor</em>, <em>matrix_factor</em> &larr; from Method Profile per analyte/matrix</li>
+            </ul>
+          </div>
+
+        </div><!-- /studio-main -->
+
+        <!-- ── Side: profile save form ───────────────────────────── -->
+        <div class="studio-side">
+          <div class="profile-card">
+            <h3>Save as Instrument Profile</h3>
+
+            <form method="post"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-import-studio"
+                  id="save-form">
+              <input type="hidden" name="action"         value="save_profile" />
+              <input type="hidden" name="instrument_uid" id="save-instr-uid" value="" />
+              <input type="hidden" name="vendor_key"     id="save-vendor-key" value="" />
+              <input type="hidden" name="col_map_json"   id="save-col-map"   value="{}" />
+
+              <label for="s-instr-display">Instrument</label>
+              <input type="text" id="s-instr-display" readonly="readonly"
+                     style="background:#f0f0f0;" />
+
+              <label for="s-vendor">Software / Vendor</label>
+              <select id="s-vendor" name="vendor_key_display"
+                      onchange="document.getElementById('save-vendor-key').value=this.value;updateCalChain()">
+                <tal:opts tal:repeat="pair view/vendor_names">
+                  <option tal:attributes="value python:pair[0]" tal:content="python:pair[1]"></option>
+                </tal:opts>
+              </select>
+
+              <label for="s-version">Software Version <span style="color:#dc3545;">*</span></label>
+              <input type="text" id="s-version" name="software_version"
+                     placeholder="e.g. 3.4.1.0" required="required" />
+
+              <label for="s-calc">Calculation Mode <span style="color:#dc3545;">*</span></label>
+              <select id="s-calc" name="calc_mode"
+                      onchange="updateCalChain()">
+                <option value="final">Final — file has measured concentrations</option>
+                <option value="raw">Raw — file has peak areas; pipeline computes result</option>
+              </select>
+              <p class="calc-explainer" id="calc-explainer">
+                <strong>Final mode:</strong> the instrument software already
+                computed ng/mL. Map the "Result" column and the pipeline uses it directly.
+              </p>
+
+              <label for="s-notes">Notes (optional)</label>
+              <textarea id="s-notes" name="notes"
+                        placeholder="e.g. export settings, quirks..."></textarea>
+
+              <button class="btn-save-profile" type="submit"
+                      onclick="return prepSave()">
+                Save Profile
+              </button>
+            </form>
+
+            <!-- Existing profiles for this instrument -->
+            <div class="saved-profiles" id="saved-profiles-box" style="display:none;">
+              <h4>Saved profiles</h4>
+              <div id="saved-profiles-list"></div>
+            </div>
+
+          </div><!-- /profile-card -->
+        </div><!-- /studio-side -->
+
+      </div><!-- /studio-layout -->
+
+      <!-- Back link -->
+      <div style="margin-top:24px;">
+        <a href="#" onclick="showLanding();return false;"
+           style="font-size:13px;color:var(--s-secondary);">
+          &#8592; Upload a different file
+        </a>
+      </div>
+    </div><!-- /phase-mapping -->
+
+  </div>
+
+  </div><!-- /content slot -->
+</body>
+</html>

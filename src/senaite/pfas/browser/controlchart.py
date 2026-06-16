@@ -79,10 +79,16 @@ class PFASControlChartView(BrowserView):
     # ── Request parameter accessors ──────────────────────────────────────
 
     def selected_method(self):
-        return self.request.get("method", "")
+        # request.get("method") returns the HTTP method (GET/POST) in Zope 2;
+        # request.form is the correct place to read query-string parameters.
+        return self.request.form.get("method", "")
 
     def selected_qc_type(self):
-        return self.request.get("qc_type", "CCV")
+        return self.request.get("qc_type", "")
+
+    def selected_chart_type_override(self):
+        """Return user-chosen chart type override: 'levey_jennings', 'threshold', or '' (auto)."""
+        return self.request.get("chart_type_override", "")
 
     def selected_analyte(self):
         return self.request.get("analyte", "")
@@ -231,7 +237,7 @@ class PFASControlChartView(BrowserView):
         units       = QC_TYPE_UNITS.get(qc_type, "")
         target      = QC_TYPE_TARGETS.get(qc_type)
 
-        if not self.db_available or not analyte:
+        if not self.db_available or not analyte or not qc_type:
             return self._empty_chart(analyte, qc_type, qc_level or "",
                                      units, limit, history)
 
@@ -274,15 +280,23 @@ class PFASControlChartView(BrowserView):
             })
 
         # Check if this QC type uses a threshold chart (blanks) vs L-J
+        chart_type_override = self.selected_chart_type_override()
         try:
             from senaite.pfas.qc.rules import get_store as _get_rules_store
-            is_threshold = _get_rules_store().is_threshold_chart(qc_type)
+            is_threshold_auto = _get_rules_store().is_threshold_chart(qc_type)
             threshold_val = _get_rules_store().get_qc_type_rules(qc_type).get(
                 "threshold"
             )
         except Exception:
-            is_threshold = qc_type in ("MB", "MxB", "LRB")
+            is_threshold_auto = qc_type in ("MB", "MxB", "LRB")
             threshold_val = None
+
+        if chart_type_override == "threshold":
+            is_threshold = True
+        elif chart_type_override == "levey_jennings":
+            is_threshold = False
+        else:
+            is_threshold = is_threshold_auto
 
         if is_threshold:
             limits = None

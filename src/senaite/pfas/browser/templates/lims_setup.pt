@@ -1,0 +1,155 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal"
+      xmlns:i18n="http://xml.zope.org/namespaces/i18n"
+      lang="en"
+      metal:use-macro="here/prefs_main_template/macros/master"
+      i18n:domain="senaite.core">
+
+  <body>
+
+    <metal:override fill-slot="top_slot"
+                    tal:define="disable_column_one python:request.set('disable_plone.leftcolumn', 1);
+                                disable_column_two python:request.set('disable_plone.rightcolumn', 1);"/>
+
+    <metal:block fill-slot="senaite_legacy_js"
+                 tal:define="portal context/@@plone_portal_state/portal;">
+      <script type="text/javascript"
+              src="senaite.core.setupview.js"
+              tal:attributes="src string:${portal/absolute_url}/++plone++senaite.core.static/js/senaite.core.setupview.js"></script>
+      <style>
+        /* ── Group headings ───────────────────────────────────────────── */
+        .pfas-group-heading {
+          width: 100%;
+          margin: 24px 0 10px;
+          padding: 6px 14px;
+          background: #f0f0f0;
+          border-left: 4px solid #428aaf;
+          border-radius: 0 4px 4px 0;
+          font-size: 13px;
+          font-weight: 700;
+          color: #343a40;
+          letter-spacing: .02em;
+        }
+        .pfas-group-heading:first-child { margin-top: 0; }
+        #setupview > .pfas-group-heading:first-of-type { margin-top: 12px; }
+
+        /* ── Rich tile layout — single source of truth for all tiles ──── */
+        .tile.rich-tile {
+          display: flex !important;
+          flex-direction: column;
+          gap: 4px;
+          min-height: 100px;
+          padding: 14px 16px;
+          height: 100%;
+          box-sizing: border-box;
+        }
+        .rich-tile-icon {
+          display: flex;
+          align-items: center;
+          min-height: 26px;
+          color: #428aaf;
+          font-size: 20px;
+          margin-bottom: 2px;
+        }
+        /* Core setup item icons are <img> elements rendered by senaite.core */
+        .rich-tile-icon img.icon {
+          width: 22px;
+          height: 22px;
+          vertical-align: middle;
+        }
+        /* PFAS tool icons are FontAwesome <i> elements */
+        .rich-tile-icon i {
+          font-size: 20px;
+          color: #428aaf;
+        }
+        .rich-tile-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: #293333;
+          line-height: 1.3;
+        }
+        .rich-tile-desc {
+          font-size: 11px;
+          color: #6c757d;
+          line-height: 1.4;
+          flex: 1;
+        }
+        .rich-tile-count {
+          font-size: 11px;
+          color: #6c757d;
+          margin-top: 4px;
+        }
+      </style>
+    </metal:block>
+
+    <div metal:fill-slot="prefs_configlet_main" id="lims-controlpanel">
+
+      <div id="setupview" class="row">
+
+        <!-- Search box (same id as original — filter JS targets #searchbox) -->
+        <div class="col-sm-12 mb-3">
+          <input id="searchbox"
+                 autofocus
+                 type="text"
+                 class="form-control form-control-lg"
+                 placeholder="Type to filter ..."
+                 i18n:attributes="placeholder" />
+        </div>
+
+        <!-- ── Grouped setup items ───────────────────────────────────────── -->
+        <tal:groups tal:repeat="group view/grouped_setup_items">
+
+          <!-- Group heading (full-width row break + label) -->
+          <div class="col-12 pfas-group-heading"
+               tal:content="group/title">Group</div>
+
+          <!-- Rich tile — same structure for both core items and PFAS tools -->
+          <tal:tiles tal:repeat="item group/tiles">
+            <div class="tilewrapper col-xs-12 col-sm-6 col-md-4 col-lg-3">
+              <a class="tile rich-tile text-capitalized text-decoration-none"
+                 tal:attributes="href item/absolute_url; title item/Title"
+                 i18n:attributes="title">
+
+                <!-- Icon: <img> for core items, <i class="fas"> for PFAS tools -->
+                <div class="rich-tile-icon">
+                  <tal:icon tal:replace="structure python:view.get_icon_for(item, css_class='icon')" />
+                </div>
+
+                <!-- Title -->
+                <div class="rich-tile-title"
+                     i18n:translate=""
+                     tal:content="item/Title">
+                  Setup Item Title
+                </div>
+
+                <!-- Description — from _CORE_DESCRIPTIONS for core items,
+                     from VirtualTile.Description() for PFAS tools -->
+                <div class="rich-tile-desc"
+                     tal:content="python:view.get_description(item)">
+                  Description
+                </div>
+
+                <!-- Item count — shown for core items with content, hidden for PFAS tools -->
+                <div class="rich-tile-count"
+                     tal:define="cnt python:view.get_count(item)"
+                     tal:condition="cnt">
+                  <span tal:content="cnt"></span>
+                  <tal:sing i18n:translate="label_setupview_item"
+                            tal:condition="python:cnt == 1">Item</tal:sing>
+                  <tal:plur i18n:translate="label_setupview_items"
+                            tal:condition="python:cnt != 1">Items</tal:plur>
+                </div>
+
+              </a>
+            </div>
+          </tal:tiles>
+
+        </tal:groups>
+
+      </div><!-- /#setupview -->
+
+    </div><!-- /#lims-controlpanel -->
+
+  </body>
+</html>

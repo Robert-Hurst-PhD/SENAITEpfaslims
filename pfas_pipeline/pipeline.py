@@ -26,9 +26,11 @@ from datetime import datetime
 from pathlib import Path
 
 from .importer import (
-    load_instrument_csv, validate_injection_name, classify_injection,
+    load_instrument_csv, detect_software_version,
+    validate_injection_name, classify_injection,
     group_by_injection,
 )
+from .vendor_profiles import detect_vendor
 from .models import Batch, SummaryResult
 from .run_queue import RunQueue
 from .injection_builder import REVIEW_CHECKS
@@ -145,8 +147,26 @@ def run_pipeline(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Import
-    rows = load_instrument_csv(csv_path)
+    # 1. Import — resolve column-mapping profile from Import Studio REST bridge
+    #    then load the CSV using that profile.  Strict mode: if SENAITE is
+    #    offline or no profile is saved, refuse with an informative error.
+    import_profile = None
+    if senaite is not None:
+        # Detect vendor and version from the file itself
+        import pandas as _pd
+        _headers = list(_pd.read_csv(csv_path, dtype=str, encoding="utf-8-sig",
+                                     nrows=0).columns)
+        _vendor_key = detect_vendor(_headers)
+        _version = detect_software_version(csv_path)
+        logger.info("Detected vendor=%s version=%s from %s",
+                    _vendor_key, _version or "(none)", csv_path.name)
+        # Fetch profile — raises on SENAITE connectivity failure (no fallback)
+        import_profile = senaite.get_instrument_profile(_vendor_key, _version)
+        if "error" in import_profile:
+            raise ImportError(import_profile["error"])
+        logger.info("Using Import Studio profile for %s:%s", _vendor_key, _version)
+
+    rows = load_instrument_csv(csv_path, profile=import_profile)
     logger.info("Loaded %d rows / %d injections from %s",
                 len(rows), len(group_by_injection(rows)), csv_path.name)
 

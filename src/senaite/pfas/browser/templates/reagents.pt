@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Reagent Inventory</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    /* ── Layout ─────────────────────────────────────── */
+    .rg-toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+                  margin-bottom:20px; }
+    .rg-toolbar input[type=text] { flex:1; min-width:200px; max-width:360px;
+      padding:8px 12px; font-size:13px; border:1px solid var(--s-input-border);
+      border-radius:7px; }
+    .rg-toolbar select { padding:8px 10px; font-size:13px;
+      border:1px solid var(--s-input-border); border-radius:7px; }
+
+    /* ── Summary cards ───────────────────────────────── */
+    .rg-summary { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
+    .rg-card { flex:1 1 140px; background:#f8f9fa; border:1px solid var(--s-border);
+               border-radius:10px; padding:14px 18px; text-align:center; }
+    .rg-card .rg-num { font-size:28px; font-weight:800; color:var(--s-primary); }
+    .rg-card .rg-lbl { font-size:12px; color:var(--s-secondary); margin-top:4px; }
+    .rg-card.warn .rg-num { color:#856404; }
+    .rg-card.danger .rg-num { color:#dc3545; }
+
+    /* ── Reagent table ───────────────────────────────── */
+    .rg-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .rg-table th { background:#f8f9fa; padding:8px 10px; text-align:left;
+                   border-bottom:2px solid var(--s-border); font-weight:700; white-space:nowrap; }
+    .rg-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
+                   vertical-align:middle; }
+    .rg-table tr:hover td { background:#fafbff; }
+    .rg-name { font-weight:600; }
+    .rg-cat { font-family:monospace; font-size:11px; color:#555; }
+    .rg-lot { font-family:monospace; font-size:11px; font-weight:700; }
+
+    /* ── Expiry cell colours ─────────────────────────── */
+    .exp-expired { color:#dc3545; font-weight:700; }
+    .exp-warning { color:#856404; font-weight:700; }
+
+    /* ── Status badges ───────────────────────────────── */
+    .badge { display:inline-block; font-size:10px; font-weight:700; padding:2px 8px;
+             border-radius:10px; white-space:nowrap; }
+    .badge-active     { background:#d4edda; color:#155724; }
+    .badge-opened     { background:#cce5ff; color:#004085; }
+    .badge-exhausted  { background:#e2e3e5; color:#495057; }
+    .badge-expired    { background:#f8d7da; color:#721c24; }
+    .badge-quarantine { background:#fff3cd; color:#856404; }
+
+    /* ── Action buttons ──────────────────────────────── */
+    .btn-primary { padding:8px 18px; background:var(--s-primary); color:#fff;
+                   border:none; border-radius:7px; font-size:13px; font-weight:600;
+                   cursor:pointer; white-space:nowrap; }
+    .btn-primary:hover { opacity:.9; }
+    .btn-scan { padding:8px 16px; background:#6610f2; color:#fff;
+                border:none; border-radius:7px; font-size:13px; font-weight:600;
+                cursor:pointer; white-space:nowrap; }
+    .btn-scan:hover { opacity:.9; }
+    .btn-ocr { padding:8px 16px; background:#20c997; color:#fff;
+               border:none; border-radius:7px; font-size:13px; font-weight:600;
+               cursor:pointer; white-space:nowrap; }
+    .btn-sm { padding:4px 10px; font-size:11px; border-radius:5px; cursor:pointer;
+              border:1px solid var(--s-border); background:#fff; }
+    .btn-sm:hover { background:#f0f0f0; }
+    .btn-danger { border-color:#dc3545; color:#dc3545; }
+
+    /* ── Add/Edit modal ──────────────────────────────── */
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
+                     z-index:1000; align-items:center; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal-box { background:#fff; border-radius:12px; padding:24px; width:90%;
+                 max-width:620px; max-height:90vh; overflow-y:auto;
+                 box-shadow:0 8px 32px rgba(0,0,0,.25); }
+    .modal-box h2 { font-size:16px; font-weight:700; margin:0 0 18px;
+                    padding-bottom:8px; border-bottom:2px solid var(--s-border); }
+    .form-row { display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap; }
+    .form-field { display:flex; flex-direction:column; flex:1 1 180px; }
+    .form-field.full { flex:1 1 100%; }
+    .form-field label { font-size:12px; font-weight:600; color:var(--s-dark); margin-bottom:3px; }
+    .form-field input, .form-field select, .form-field textarea {
+      padding:7px 10px; font-size:13px;
+      border:1px solid var(--s-input-border); border-radius:6px; }
+    .form-field textarea { min-height:60px; resize:vertical; }
+    .form-actions { display:flex; gap:10px; margin-top:18px; padding-top:14px;
+                    border-top:1px solid var(--s-border); }
+    .field-hint { font-size:11px; color:var(--s-secondary); margin-top:3px; }
+    .lot-scan-row { display:flex; gap:8px; align-items:center; }
+    .lot-scan-row input { flex:1; }
+
+    /* ── Camera/OCR modals ───────────────────────────── */
+    .cam-modal-box { background:#111; color:#fff; border-radius:12px; padding:20px;
+                     width:90%; max-width:520px; }
+    .cam-modal-box h2 { font-size:15px; font-weight:700; margin:0 0 14px; color:#fff; }
+    #cam-video, #ocr-video { width:100%; border-radius:8px; margin-bottom:12px; background:#000; }
+    .cam-result { font-size:13px; padding:10px; background:#1a1a2e;
+                  border-radius:6px; min-height:40px; word-break:break-all; }
+    .cam-result strong { color:#00ff88; }
+    .cam-btn-row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+    .cam-btn-row button { flex:1; padding:8px; font-size:12px; border:none;
+                          border-radius:6px; cursor:pointer; font-weight:600; }
+    .btn-use-result { background:#00ff88; color:#000; }
+    .btn-cancel-cam { background:#444; color:#fff; }
+    #ocr-capture-btn { background:#20c997; color:#fff; }
+    #ocr-status { font-size:11px; color:#aaa; margin-top:6px; min-height:20px; }
+    .cam-device-sel { width:100%; padding:6px; font-size:12px;
+                      background:#222; color:#fff; border:1px solid #555;
+                      border-radius:5px; margin-bottom:10px; }
+
+    /* ── Inventory lookup widget (used by logbooks) ──── */
+    .rg-lookup-badge { display:inline-block; font-size:11px; padding:2px 8px;
+                       background:#e8f0fe; color:#1a73e8; border-radius:8px;
+                       cursor:pointer; margin-left:6px; }
+
+    /* ── Alerts ─────────────────────────────────────── */
+    .alert-ok    { background:#d4edda; border:1px solid #c3e6cb; color:#155724;
+                   padding:10px 16px; border-radius:8px; margin-bottom:16px; font-size:13px; }
+    .alert-error { background:#f8d7da; border:1px solid #f5c6cb; color:#721c24;
+                   padding:10px 16px; border-radius:8px; margin-bottom:16px; font-size:13px; }
+    .section-title { font-size:16px; font-weight:700; color:var(--s-dark);
+                     margin:0 0 16px; padding-bottom:8px; border-bottom:2px solid var(--s-border); }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Reagent Inventory</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="header-meta" tal:attributes="href string:${view/portal_url}/@@lims-setup">
+      &#8592; Site Setup
+    </a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div tal:condition="view/ok_msg"    class="alert-ok"    tal:content="view/ok_msg"></div>
+    <div tal:condition="view/error_msg" class="alert-error" tal:content="view/error_msg"></div>
+
+    <!-- ─── Summary cards ──────────────────────────────────── -->
+    <div class="rg-summary">
+      <div class="rg-card">
+        <div class="rg-num" tal:content="view/total_count">0</div>
+        <div class="rg-lbl">Total Reagents</div>
+      </div>
+      <div class="rg-card">
+        <div class="rg-num" tal:content="view/active_count">0</div>
+        <div class="rg-lbl">Active / In Stock</div>
+      </div>
+      <div class="rg-card warn">
+        <div class="rg-num" tal:content="view/expiring_soon_count">0</div>
+        <div class="rg-lbl">Expiring &le; 30 days</div>
+      </div>
+    </div>
+
+    <!-- ─── Toolbar ─────────────────────────────────────────── -->
+    <div class="rg-toolbar">
+      <form method="get"
+            tal:attributes="action string:${view/portal_url}/@@pfas-reagents"
+            style="display:contents;">
+        <input type="text" name="q" placeholder="Search name, cat#, lot#, supplier..."
+               tal:attributes="value view/q" />
+        <select name="status">
+          <option value="">All statuses</option>
+          <tal:opts tal:repeat="pair view/all_statuses">
+            <option tal:attributes="value python:pair[0];
+                                    selected python:view.status_filter() == pair[0]"
+                    tal:content="python:pair[1]"></option>
+          </tal:opts>
+        </select>
+        <button type="submit" class="btn-sm">Filter</button>
+        <a tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
+           class="btn-sm" style="text-decoration:none;">Clear</a>
+      </form>
+      <button type="button" class="btn-scan" onclick="openScanModal()">&#128247; Scan Barcode</button>
+      <button type="button" class="btn-ocr"  onclick="openOCRModal()">&#128065; OCR Label</button>
+      <button type="button" class="btn-primary" onclick="openAddForm()">+ Add Reagent</button>
+    </div>
+
+    <!-- ─── Reagent table ───────────────────────────────────── -->
+    <table class="rg-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Cat #</th>
+          <th>Lot #</th>
+          <th>Supplier</th>
+          <th>Received</th>
+          <th>Expiry</th>
+          <th>Qty</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tal:rows tal:repeat="rg view/reagents">
+        <tr>
+          <td>
+            <div class="rg-name" tal:content="python:rg.get('name','')"></div>
+            <div style="font-size:11px;color:var(--s-secondary);"
+                 tal:content="python:rg.get('category','')"></div>
+          </td>
+          <td class="rg-cat" tal:content="python:rg.get('cat_number','')"></td>
+          <td class="rg-lot" tal:content="python:rg.get('lot_number','')"></td>
+          <td tal:content="python:rg.get('supplier','')"></td>
+          <td tal:content="python:rg.get('received_date','')"></td>
+          <td tal:attributes="class python:'exp-cell ' + view.expiry_class(rg)"
+              tal:content="python:view.effective_expiry(rg)"></td>
+          <td tal:content="python:(rg.get('quantity') or '') + ' ' + (rg.get('unit') or '')"></td>
+          <td>
+            <span tal:attributes="class python:'badge ' + view.status_badge_class(rg)"
+                  tal:content="python:view.status_label(rg)"></span>
+          </td>
+          <td style="white-space:nowrap;">
+            <button type="button" class="btn-sm rg-edit-btn"
+                    tal:attributes="data-rg python:__import__('json').dumps(rg)">
+              Edit
+            </button>
+            <tal:open tal:condition="python:rg.get('status') not in ('opened','exhausted','expired')">
+              <form method="post" style="display:inline;"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+                <input type="hidden" name="action" value="open" />
+                <input type="hidden" name="uid"
+                       tal:attributes="value python:rg.get('uid','')" />
+                <input type="hidden" name="opened_date"
+                       tal:attributes="value python:__import__('datetime').date.today().strftime('%Y-%m-%d')" />
+                <button class="btn-sm" type="submit">Mark Opened</button>
+              </form>
+            </tal:open>
+            <form method="post" style="display:inline;"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+              <input type="hidden" name="action" value="delete" />
+              <input type="hidden" name="uid"
+                     tal:attributes="value python:rg.get('uid','')" />
+              <button class="btn-sm btn-danger" type="submit"
+                      onclick="return confirm('Delete this reagent record?')">
+                Del
+              </button>
+            </form>
+          </td>
+        </tr>
+        </tal:rows>
+        <tr tal:condition="not:view/reagents">
+          <td colspan="9" style="text-align:center;color:var(--s-secondary);padding:32px;">
+            No reagents found. Use "Add Reagent" or scan a barcode to get started.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- ════════════════════════════════════════════════════
+         Add / Edit Modal
+         ════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="rg-modal">
+      <div class="modal-box">
+        <h2 id="modal-title">Add Reagent</h2>
+        <form method="post"
+              tal:attributes="action string:${view/portal_url}/@@pfas-reagents"
+              id="rg-form">
+          <input type="hidden" name="action" id="form-action" value="add" />
+          <input type="hidden" name="uid"    id="form-uid"    value="" />
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Reagent Name <span style="color:#dc3545">*</span></label>
+              <input type="text" name="name" id="f-name" required="required"
+                     placeholder="e.g. Methanol, LC-MS Grade" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Category</label>
+              <select name="category" id="f-category">
+                <option value=""></option>
+                <tal:cats tal:repeat="cat view/categories">
+                  <option tal:attributes="value cat" tal:content="cat"></option>
+                </tal:cats>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Supplier</label>
+              <input type="text" name="supplier" id="f-supplier"
+                     placeholder="e.g. Fisher Scientific" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Catalog Number</label>
+              <input type="text" name="cat_number" id="f-cat"
+                     placeholder="e.g. A456-4" />
+            </div>
+            <div class="form-field">
+              <label>Lot Number <span style="color:#dc3545">*</span></label>
+              <div class="lot-scan-row">
+                <input type="text" name="lot_number" id="f-lot" required="required"
+                       placeholder="Scan or type lot #" />
+                <button type="button" class="btn-scan"
+                        style="font-size:11px;padding:6px 10px;"
+                        onclick="openScanModal('lot')">&#128247;</button>
+              </div>
+              <p class="field-hint">Barcode scanners auto-fill this field (they act as keyboards)</p>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Received Date</label>
+              <input type="date" name="received_date" id="f-received" />
+            </div>
+            <div class="form-field">
+              <label>Manufacturer Expiry (from label)</label>
+              <input type="date" name="manufacturer_expiry" id="f-mfr-expiry" />
+              <p class="field-hint">Leave blank to auto-calculate from open date</p>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Opened Date</label>
+              <input type="date" name="opened_date" id="f-opened"
+                     onchange="calcAutoExpiry()" />
+            </div>
+            <div class="form-field">
+              <label>Calculated Expiry (from open date)</label>
+              <input type="date" name="expiry_date" id="f-expiry" />
+              <p class="field-hint" id="expiry-hint"></p>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Storage Location</label>
+              <input type="text" name="storage_location" id="f-location"
+                     placeholder="e.g. Solvent cabinet A" />
+            </div>
+            <div class="form-field">
+              <label>Quantity</label>
+              <div style="display:flex;gap:6px;">
+                <input type="text" name="quantity" id="f-qty" style="flex:1;"
+                       placeholder="e.g. 4" />
+                <select name="unit" id="f-unit" style="width:80px;">
+                  <option value="L">L</option>
+                  <option value="mL">mL</option>
+                  <option value="g">g</option>
+                  <option value="mg">mg</option>
+                  <option value="kg">kg</option>
+                  <option value="ea">ea</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Status</label>
+              <select name="status" id="f-status">
+                <tal:opts tal:repeat="pair view/all_statuses">
+                  <option tal:attributes="value python:pair[0]"
+                          tal:content="python:pair[1]"></option>
+                </tal:opts>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Notes</label>
+              <textarea name="notes" id="f-notes"
+                        placeholder="Any special handling, source notes, etc."></textarea>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Save Reagent</button>
+            <button type="button" class="btn-sm"
+                    onclick="closeModal('rg-modal')">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         Barcode Scan Modal (ZXing-js webcam)
+         ════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="scan-modal">
+      <div class="modal-box cam-modal-box">
+        <h2>&#128247; Barcode Scanner</h2>
+
+        <select class="cam-device-sel" id="scan-device-sel"
+                onchange="startScanner(this.value)"></select>
+
+        <video id="cam-video" autoplay="autoplay" playsinline="playsinline"
+               muted="muted" style="max-height:280px; object-fit:cover;"></video>
+
+        <div class="cam-result" id="scan-result">
+          <span style="color:#aaa;">Point the camera at a barcode...</span>
+        </div>
+        <p style="font-size:11px;color:#aaa;margin-top:6px;">
+          Supports CODE128, CODE39, QR, EAN, DataMatrix and more.
+          USB barcode scanners also work — just click the Lot # field and scan.
+        </p>
+        <div class="cam-btn-row">
+          <button class="btn-use-result" id="scan-use-btn" disabled="disabled"
+                  onclick="useScanResult()">Use This Result</button>
+          <button class="btn-cancel-cam" onclick="closeScanner()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         OCR Modal (Tesseract.js webcam capture)
+         ════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="ocr-modal">
+      <div class="modal-box cam-modal-box">
+        <h2>&#128065; OCR Label Reader</h2>
+
+        <select class="cam-device-sel" id="ocr-device-sel"
+                onchange="startOCR(this.value)"></select>
+
+        <video id="ocr-video" autoplay="autoplay" playsinline="playsinline"
+               muted="muted" style="max-height:280px; object-fit:cover;"></video>
+        <canvas id="ocr-canvas" style="display:none;"></canvas>
+
+        <div id="ocr-status">Ready — press Capture to extract text from the label.</div>
+        <div class="cam-result" id="ocr-result" style="white-space:pre-wrap;"></div>
+
+        <div class="cam-btn-row">
+          <button id="ocr-capture-btn" onclick="captureOCR()">Capture &amp; Read Text</button>
+          <button class="btn-cancel-cam" onclick="closeOCR()">Close</button>
+        </div>
+        <p style="font-size:10px;color:#666;margin-top:8px;">
+          Tip: copy relevant text (lot, catalog, expiry) from the result above and paste into the form.
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+  /* ── Modal helpers ──────────────────────────────────────────────── */
+  function openModal(id) { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+  /* ── Add / Edit form ────────────────────────────────────────────── */
+  var EDIT_DATA = <tal:d tal:replace="structure view/edit_data_json" />;
+
+  function openAddForm() {
+    document.getElementById('modal-title').textContent = 'Add Reagent';
+    document.getElementById('form-action').value = 'add';
+    clearForm();
+    openModal('rg-modal');
+  }
+
+  function openEditForm(rec) {
+    document.getElementById('modal-title').textContent = 'Edit Reagent';
+    document.getElementById('form-action').value = 'edit';
+    populateForm(rec);
+    openModal('rg-modal');
+  }
+
+  function clearForm() {
+    var ids = ['form-uid','f-name','f-category','f-supplier','f-cat','f-lot',
+               'f-received','f-mfr-expiry','f-opened','f-expiry','f-location',
+               'f-qty','f-notes'];
+    ids.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    var status = document.getElementById('f-status');
+    if (status) status.value = 'active';
+    var unit = document.getElementById('f-unit');
+    if (unit) unit.value = 'L';
+    document.getElementById('expiry-hint').textContent = '';
+  }
+
+  function populateForm(rec) {
+    function set(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.value = val || '';
+    }
+    set('form-uid',     rec.uid || '');
+    set('f-name',       rec.name);
+    set('f-category',   rec.category);
+    set('f-supplier',   rec.supplier);
+    set('f-cat',        rec.cat_number);
+    set('f-lot',        rec.lot_number);
+    set('f-received',   rec.received_date);
+    set('f-mfr-expiry', rec.manufacturer_expiry);
+    set('f-opened',     rec.opened_date);
+    set('f-expiry',     rec.expiry_date);
+    set('f-location',   rec.storage_location);
+    set('f-qty',        rec.quantity);
+    set('f-unit',       rec.unit || 'L');
+    set('f-status',     rec.status || 'active');
+    set('f-notes',      rec.notes);
+  }
+
+  /* Auto-calculate expiry from open date */
+  var MOBILE_PHASE_RE = /methanol|meoh|acetonitrile|acn|water|h2o|mobile.?phase|mph|formic/i;
+
+  function calcAutoExpiry() {
+    var opened = document.getElementById('f-opened').value;
+    var name   = document.getElementById('f-name').value;
+    var mfrExp = document.getElementById('f-mfr-expiry').value;
+    if (mfrExp) { /* manufacturer overrides; no auto-calc */
+      document.getElementById('expiry-hint').textContent = 'Using manufacturer date';
+      return;
+    }
+    if (!opened) return;
+    var d = new Date(opened);
+    var hint;
+    if (MOBILE_PHASE_RE.test(name)) {
+      d.setDate(d.getDate() + 7);
+      hint = 'Mobile phase: 7 days from open';
+    } else {
+      d.setFullYear(d.getFullYear() + 1);
+      hint = '1 year from open date';
+    }
+    document.getElementById('f-expiry').value = d.toISOString().slice(0,10);
+    document.getElementById('expiry-hint').textContent = hint;
+  }
+
+  /* Open form pre-filled with barcode result */
+  var _scanTarget = 'lot';
+
+  function openScanModal(target) {
+    _scanTarget = target || 'lot';
+    startScannerInit();
+    openModal('scan-modal');
+  }
+
+  /* ── ZXing-js barcode scanner ───────────────────────────────────── */
+  var _codeReader = null;
+  var _scanResult = null;
+  var _scanStream  = null;
+
+  function startScannerInit() {
+    var result = document.getElementById('scan-result');
+    result.innerHTML = '\u003cspan style="color:#aaa;">Loading scanner...\u003c/span>';
+    document.getElementById('scan-use-btn').disabled = true;
+    _scanResult = null;
+
+    if (typeof ZXing === 'undefined') {
+      result.innerHTML = '\u003cspan style="color:#f88;">ZXing not loaded. Check network connection.\u003c/span>';
+      return;
+    }
+
+    _codeReader = new ZXing.BrowserMultiFormatReader();
+    _codeReader.listVideoInputDevices().then(function(devices) {
+      var sel = document.getElementById('scan-device-sel');
+      sel.innerHTML = '';
+      if (!devices || !devices.length) {
+        result.innerHTML = '\u003cspan style="color:#f88;">No camera found. Use a USB scanner instead.\u003c/span>';
+        return;
+      }
+      devices.forEach(function(d, i) {
+        var opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || ('Camera ' + (i+1));
+        sel.appendChild(opt);
+      });
+      startScanner(devices[0].deviceId);
+    }).catch(function(err) {
+      result.innerHTML = '\u003cspan style="color:#f88;">Camera error: ' + err + '\u003c/span>';
+    });
+  }
+
+  function startScanner(deviceId) {
+    if (!_codeReader) return;
+    _codeReader.decodeFromVideoDevice(deviceId, 'cam-video', function(res, err) {
+      if (res) {
+        _scanResult = res.getText();
+        var el = document.getElementById('scan-result');
+        el.innerHTML = '\u003cstrong>' + _scanResult + '\u003c/strong>';
+        document.getElementById('scan-use-btn').disabled = false;
+      }
+    });
+  }
+
+  function closeScanner() {
+    if (_codeReader) { try { _codeReader.reset(); } catch(e){} _codeReader = null; }
+    closeModal('scan-modal');
+  }
+
+  function useScanResult() {
+    if (!_scanResult) return;
+    if (_scanTarget === 'lot') {
+      var el = document.getElementById('f-lot');
+      if (el) { el.value = _scanResult; openAddForm(); }
+    }
+    closeScanner();
+  }
+
+  /* ── Tesseract.js OCR ───────────────────────────────────────────── */
+  var _ocrReader = null;
+  var _ocrStream = null;
+
+  function startOCR(deviceId) {
+    var video = document.getElementById('ocr-video');
+    if (_ocrStream) { _ocrStream.getTracks().forEach(function(t){ t.stop(); }); }
+    navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId } } : true })
+      .then(function(stream) {
+        _ocrStream = stream;
+        video.srcObject = stream;
+      }).catch(function(err) {
+        document.getElementById('ocr-status').textContent = 'Camera error: ' + err;
+      });
+  }
+
+  function openOCRModal() {
+    openModal('ocr-modal');
+    navigator.mediaDevices.enumerateDevices().then(function(devs) {
+      var sel = document.getElementById('ocr-device-sel');
+      sel.innerHTML = '';
+      var cams = devs.filter(function(d){ return d.kind === 'videoinput'; });
+      cams.forEach(function(d, i) {
+        var opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || ('Camera ' + (i+1));
+        sel.appendChild(opt);
+      });
+      if (cams.length) startOCR(cams[0].deviceId);
+    });
+  }
+
+  function captureOCR() {
+    var video  = document.getElementById('ocr-video');
+    var canvas = document.getElementById('ocr-canvas');
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    if (typeof Tesseract === 'undefined') {
+      document.getElementById('ocr-status').textContent = 'Tesseract.js not loaded. Check network.';
+      return;
+    }
+    document.getElementById('ocr-status').textContent = 'Recognising text...';
+    document.getElementById('ocr-result').textContent  = '';
+
+    Tesseract.recognize(canvas, 'eng', { logger: function(m) {
+      if (m.status === 'recognizing text') {
+        document.getElementById('ocr-status').textContent =
+          'Recognising... ' + Math.round((m.progress||0)*100) + '%';
+      }
+    }}).then(function(r) {
+      var text = r.data ? r.data.text : (r.text || '');
+      document.getElementById('ocr-result').textContent = text.trim() || '(no text found)';
+      document.getElementById('ocr-status').textContent = 'Done. Copy the relevant text into the form.';
+    }).catch(function(err) {
+      document.getElementById('ocr-status').textContent = 'OCR error: ' + err;
+    });
+  }
+
+  function closeOCR() {
+    if (_ocrStream) { _ocrStream.getTracks().forEach(function(t){ t.stop(); }); _ocrStream = null; }
+    closeModal('ocr-modal');
+  }
+
+  /* ── Close modals on overlay click ─────────────────────────────── */
+  ['rg-modal','scan-modal','ocr-modal'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', function(e) {
+      if (e.target === el) {
+        if (id === 'scan-modal') closeScanner();
+        else if (id === 'ocr-modal') closeOCR();
+        else closeModal(id);
+      }
+    });
+  });
+
+  /* ── Wire Edit buttons (data-rg carries JSON; avoids quote-in-attribute issue) ── */
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.rg-edit-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        try { openEditForm(JSON.parse(btn.getAttribute('data-rg'))); }
+        catch(e) { console.error('Edit parse error', e); }
+      });
+    });
+    /* Pre-fill edit if edit_uid was set via URL */
+    if (EDIT_DATA) { openEditForm(EDIT_DATA); }
+  });
+  </script>
+
+  <!-- Load ZXing and Tesseract.js from CDN.
+       If the SENAITE Docker environment is air-gapped, copy these files into
+       src/senaite/pfas/browser/static/ and update the src attributes. -->
+  <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2/dist/tesseract.min.js"></script>
+  </div><!-- /content slot -->
+</body>
+</html>

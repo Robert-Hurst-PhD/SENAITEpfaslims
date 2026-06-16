@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Master PFAS analyte reference table.
 

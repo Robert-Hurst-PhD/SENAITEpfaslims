@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal"
+      xmlns:i18n="http://xml.zope.org/namespaces/i18n">
+<head>
+  <title metal:fill-slot="title">Maine EGAD EDD Configuration</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    /* ── EGAD Config panel styles ─────────────────────────────────── */
+    .egad-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--s-border);
+                 margin-bottom: 20px; flex-wrap: wrap; }
+    .egad-tab  { padding: 9px 18px; font-size: 13px; font-weight: 600;
+                 cursor: pointer; border: 1px solid transparent;
+                 border-bottom: none; border-radius: 4px 4px 0 0;
+                 color: var(--s-secondary); background: var(--s-light); margin-right: 2px;
+                 transition: background .15s; text-decoration: none; }
+    .egad-tab:hover { background: var(--s-bg); color: var(--s-body); }
+    .egad-tab.active { background: var(--s-bg); color: var(--s-primary);
+                       border-color: var(--s-border); position: relative;
+                       bottom: -2px; z-index: 1; }
+    .egad-tab-pane { display: none; }
+    .egad-tab-pane.active { display: block; }
+
+    .form-group { margin-bottom: 14px; }
+    .form-label { font-size: 12px; font-weight: 600; color: var(--s-secondary);
+                  text-transform: uppercase; letter-spacing: .04em;
+                  display: block; margin-bottom: 4px; }
+    .form-input  { width: 100%; padding: 7px 10px; font-size: 13px;
+                   border: 1px solid var(--s-input-border); border-radius: 4px;
+                   background: #fff; box-sizing: border-box; }
+    .form-input:focus { outline: 2px solid var(--s-primary); }
+    .form-select { width: 100%; padding: 7px 10px; font-size: 13px;
+                   border: 1px solid var(--s-input-border); border-radius: 4px;
+                   background: #fff; box-sizing: border-box; }
+    .form-hint   { font-size: 11px; color: var(--s-secondary); margin-top: 3px; }
+    .form-row    { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                   gap: 14px; }
+
+    .section-card { background: var(--s-bg); border: 1px solid var(--s-border);
+                    border-radius: 6px; padding: 18px; margin-bottom: 18px; }
+    .section-card h3 { font-size: 13px; font-weight: 700; color: var(--s-primary);
+                       margin: 0 0 14px 0; padding-bottom: 8px;
+                       border-bottom: 1px solid var(--s-border); }
+
+    .btn-save   { background: var(--s-primary); color: #fff; border: none;
+                  border-radius: 4px; padding: 8px 24px; cursor: pointer;
+                  font-size: 13px; font-weight: 600; }
+    .btn-save:hover { background: var(--s-primary-dk); }
+    .btn-danger { background: #c62828; color: #fff; border: none;
+                  border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 12px; }
+
+    /* CAS table */
+    .cas-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .cas-table th { background: var(--s-light); padding: 7px 8px; text-align: left;
+                    font-size: 11px; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: .04em; border-bottom: 2px solid var(--s-border); }
+    .cas-table td { padding: 5px 8px; border-bottom: 1px solid var(--s-border);
+                    vertical-align: middle; }
+    .cas-table tr:hover td { background: var(--s-light); }
+    .cas-input  { width: 100%; padding: 4px 6px; font-size: 12px;
+                  border: 1px solid var(--s-input-border); border-radius: 3px; }
+    .cas-input.blocking { border-color: #c62828; background: #fff5f5; }
+    .blocking-badge { font-size: 10px; font-weight: 700; color: #c62828;
+                      background: #ffebee; padding: 1px 6px; border-radius: 8px; }
+    .manual-badge   { font-size: 10px; font-weight: 700; color: #e65100;
+                      background: #fff3e0; padding: 1px 6px; border-radius: 8px; }
+
+    /* Qualifier/QC mapping tables */
+    .map-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .map-table th { background: var(--s-light); padding: 7px 10px;
+                    text-align: left; font-size: 11px; font-weight: 700;
+                    text-transform: uppercase; border-bottom: 2px solid var(--s-border); }
+    .map-table td { padding: 6px 10px; border-bottom: 1px solid var(--s-border); }
+    .map-table tr:hover td { background: var(--s-light); }
+    .map-input  { width: 100%; padding: 5px 8px; font-size: 13px;
+                  border: 1px solid var(--s-input-border); border-radius: 3px; }
+    .map-select { width: 100%; padding: 5px 8px; font-size: 13px;
+                  border: 1px solid var(--s-input-border); border-radius: 3px; }
+    .btn-add-row { font-size: 12px; padding: 5px 12px; cursor: pointer;
+                   background: var(--s-light); border: 1px solid var(--s-border);
+                   border-radius: 3px; }
+    .btn-add-row:hover { background: var(--s-bg); }
+    .btn-rm  { background: none; border: none; color: #c62828; cursor: pointer;
+               font-size: 16px; line-height: 1; padding: 2px 4px; }
+
+    /* Lookup info */
+    .lookup-stat { display: inline-block; background: var(--s-light); border: 1px solid var(--s-border);
+                   border-radius: 4px; padding: 4px 10px; font-size: 12px; margin: 3px 4px 3px 0; }
+    .lookup-stat strong { color: var(--s-primary); }
+
+    .save-banner { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px;
+                   padding: 10px 16px; margin-bottom: 16px; color: #155724; font-weight: 600;
+                   display: none; }
+    .save-banner.visible { display: block; }
+    .error-banner { background: #ffebee; border: 1px solid #ef9a9a; border-radius: 4px;
+                    padding: 10px 16px; margin-bottom: 16px; color: #b71c1c;
+                    display: none; }
+    .error-banner.visible { display: block; }
+
+    .blocking-summary { background: #ffebee; border: 1px solid #ef9a9a; border-radius: 4px;
+                        padding: 10px 16px; margin-bottom: 16px; color: #b71c1c; }
+
+    .method-block { border: 1px solid var(--s-border); border-radius: 6px;
+                    margin-bottom: 14px; overflow: hidden; }
+    .method-block-head { background: var(--s-light); padding: 9px 14px;
+                         font-size: 13px; font-weight: 700; color: var(--s-body);
+                         border-bottom: 1px solid var(--s-border); }
+    .method-block-body { padding: 14px; }
+
+    .file-upload-zone { border: 2px dashed var(--s-border); border-radius: 6px;
+                        padding: 24px; text-align: center; color: var(--s-secondary);
+                        margin-bottom: 14px; }
+  </style>
+  </tal:styles>
+</head>
+
+<body>
+<div metal:fill-slot="content">
+  <div class="pfas-page-header" style="margin-bottom:20px">
+    <a href="${view/portal_url}/@@lims-setup" class="pfas-back-link">
+      &#8592; Site Setup
+    </a>
+    <h1 style="margin:8px 0 4px">Maine EGAD EDD Configuration</h1>
+    <p style="margin:0;color:var(--s-secondary);font-size:13px">
+      Configure lab-global, method, and per-analyte settings for
+      Electronic Data Deliverable (EDD v6.0) submission to Maine DEP.
+    </p>
+  </div>
+
+  <div id="save-banner" class="save-banner">Settings saved.</div>
+  <div id="error-banner" class="error-banner">Save failed — see console.</div>
+
+  <tal:blocking tal:define="n view/blocking_cas_count" tal:condition="python:n > 0">
+    <div class="blocking-summary">
+      <strong><i class="fas fa-exclamation-triangle"></i>
+        ${n} analyte(s) have no CAS_NO assigned.</strong>
+      EDD cannot be submitted for batches containing these analytes until their
+      CAS or DEP##### codes are entered in the Analyte CAS tab below.
+    </div>
+  </tal:blocking>
+
+  <!-- Tab nav -->
+  <div class="egad-tabs">
+    <a class="egad-tab" id="tab-lab" href="#" onclick="switchTab('lab');return false">
+      <i class="fas fa-flask"></i> Lab Settings
+    </a>
+    <a class="egad-tab" id="tab-methods" href="#" onclick="switchTab('methods');return false">
+      <i class="fas fa-vials"></i> Methods
+    </a>
+    <a class="egad-tab" id="tab-cas" href="#" onclick="switchTab('cas');return false">
+      <i class="fas fa-table"></i> Analyte CAS
+      <tal:cnt tal:condition="python:view.blocking_cas_count() > 0">
+        <span class="blocking-badge">${view/blocking_cas_count} missing</span>
+      </tal:cnt>
+    </a>
+    <a class="egad-tab" id="tab-qualifiers" href="#" onclick="switchTab('qualifiers');return false">
+      <i class="fas fa-tag"></i> Qualifiers
+    </a>
+    <a class="egad-tab" id="tab-qc_types" href="#" onclick="switchTab('qc_types');return false">
+      <i class="fas fa-clipboard-check"></i> QC Types
+    </a>
+    <a class="egad-tab" id="tab-lookups" href="#" onclick="switchTab('lookups');return false">
+      <i class="fas fa-sync-alt"></i> Refresh Lookups
+    </a>
+    <a class="egad-tab"
+       tal:attributes="href string:${view/portal_url}/@@pfas-egad-batches"
+       style="margin-left:auto;">
+      <i class="fas fa-download"></i> Batch EDDs
+    </a>
+  </div>
+
+  <!-- ── LAB SETTINGS tab ────────────────────────────────────────────── -->
+  <div id="pane-lab" class="egad-tab-pane">
+    <tal:lab tal:define="lab view/lab_config">
+    <div class="section-card">
+      <h3><i class="fas fa-building"></i> Laboratory Identity</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">ANALYSIS_LAB Code *</label>
+          <input type="text" id="analysis_lab_code" name="analysis_lab_code"
+                 class="form-input"
+                 value="${lab/analysis_lab_code}"
+                 placeholder="e.g. ME001 — must be in EGAD ANALYSIS_LAB_LUP" />
+          <div class="form-hint">
+            Unique code assigned by Maine DEP to your laboratory.
+            Must match ANALYSIS_LAB_LUP exactly. Enter in Refresh Lookups
+            tab to see available codes.
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SAMPLED_BY Default</label>
+          <input type="text" id="sampled_by" name="sampled_by"
+                 class="form-input"
+                 value="${lab/sampled_by}"
+                 placeholder="e.g. J. Smith" />
+          <div class="form-hint">Name that collected the sample (can be overridden per-sample).</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h3><i class="fas fa-cog"></i> Default Field Values</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Default PREP_METHOD</label>
+          <input type="text" id="default_prep_method" name="default_prep_method"
+                 class="form-input"
+                 value="${lab/default_prep_method}"
+                 placeholder="SW3535" />
+          <div class="form-hint">Must match PREP_METHOD_LUP (e.g. SW3535 = Solid Phase Extraction).</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Default SAMPLE_COLLECTION_METHOD</label>
+          <input type="text" id="default_sample_collection_method"
+                 name="default_sample_collection_method"
+                 class="form-input"
+                 value="${lab/default_sample_collection_method}"
+                 placeholder="LFS" />
+          <div class="form-hint">LFS = Low-Flow Sampling. NA used for QC samples automatically.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Default TREATMENT_STATUS</label>
+          <select id="default_treatment_status" name="default_treatment_status"
+                  class="form-select">
+            <option tal:repeat="v python:['N','T','U','NA']"
+                    tal:attributes="value v; selected python:lab.get('default_treatment_status')== v"
+                    tal:content="v" />
+          </select>
+          <div class="form-hint">N = Not Treated (typical for PFAS water samples).</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Default PARAMETER_FILTERED</label>
+          <select id="default_parameter_filtered" name="default_parameter_filtered"
+                  class="form-select">
+            <option tal:repeat="v python:[('U','U — Unfiltered'),('NA','NA — Not Applicable'),('FL','FL — Filtered (lab)'),('FF','FF — Filtered (field)')]"
+                    tal:attributes="value python:v[0]; selected python:lab.get('default_parameter_filtered')==v[0]"
+                    tal:content="python:v[1]" />
+          </select>
+          <div class="form-hint">U = Unfiltered (typical for PFAS water sampling). QC samples use NA automatically.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h3><i class="fas fa-hashtag"></i> Sample Delivery Group (SDG)</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">SDG Prefix</label>
+          <input type="text" id="sdg_prefix" name="sdg_prefix"
+                 class="form-input"
+                 value="${lab/sdg_prefix}"
+                 placeholder="e.g. SDG- or LAB-" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">SDG Format Template</label>
+          <input type="text" id="sdg_format" name="sdg_format"
+                 class="form-input"
+                 value="${lab/sdg_format}"
+                 placeholder="{prefix}{batch_id}" />
+          <div class="form-hint">
+            Tokens: {prefix}, {batch_id}.
+            Example: prefix=SDG- format={prefix}{batch_id} → SDG-B20260615-001
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <button class="btn-save" onclick="saveSection('lab')">Save Lab Settings</button>
+    </div>
+    </tal:lab>
+  </div><!-- /pane-lab -->
+
+  <!-- ── METHODS tab ─────────────────────────────────────────────────── -->
+  <div id="pane-methods" class="egad-tab-pane">
+    <tal:methods tal:repeat="m view/method_list">
+    <div class="method-block">
+      <div class="method-block-head">${m/label}</div>
+      <div class="method-block-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">EGAD TEST Code *</label>
+            <input type="text"
+                   tal:attributes="name python:m['method_id']+'_test_code';
+                                   id python:m['method_id']+'_test_code';
+                                   value python:m.get('test_code','')"
+                   class="form-input"
+                   placeholder="e.g. E537.1" />
+            <div class="form-hint">Must match TEST_LUP exactly.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">PREP_METHOD Override</label>
+            <input type="text"
+                   tal:attributes="name python:m['method_id']+'_prep_method';
+                                   id python:m['method_id']+'_prep_method';
+                                   value python:m.get('prep_method','SW3535')"
+                   class="form-input"
+                   placeholder="SW3535" />
+            <div class="form-hint">Leave blank to use the lab-level default.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Units — Water Matrix</label>
+            <select tal:attributes="name python:m['method_id']+'_units_water';
+                                    id python:m['method_id']+'_units_water'"
+                    class="form-select">
+              <option tal:repeat="u python:['NG/L','NG/ML','PG/L','UG/L']"
+                      tal:attributes="value u; selected python:m.get('units_water','NG/L')==u"
+                      tal:content="u" />
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Units — Solid/Food Matrix</label>
+            <select tal:attributes="name python:m['method_id']+'_units_solid';
+                                    id python:m['method_id']+'_units_solid'"
+                    class="form-select">
+              <option tal:repeat="u python:['NG/KG','NG/G','NG/ML','PG/G']"
+                      tal:attributes="value u; selected python:m.get('units_solid','NG/KG')==u"
+                      tal:content="u" />
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    </tal:methods>
+    <div style="margin-top:4px">
+      <button class="btn-save" onclick="saveSection('methods')">Save Method Settings</button>
+    </div>
+  </div><!-- /pane-methods -->
+
+  <!-- ── ANALYTE CAS tab ─────────────────────────────────────────────── -->
+  <div id="pane-cas" class="egad-tab-pane">
+    <div class="section-card">
+      <h3><i class="fas fa-atom"></i> Analyte → EGAD CAS_NO Mapping</h3>
+      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
+        32 of 34 analytes are auto-matched from CAS_LUP (CATEGORY=PFC).
+        Entries marked <span class="blocking-badge">BLOCKING</span> must be
+        assigned before EDD submission.
+        DEP##### codes (e.g. DEP18024) are valid Maine-specific codes for
+        branched/linear isomers.
+      </p>
+      <form id="form-cas" onsubmit="saveSection('cas');return false">
+        <table class="cas-table">
+          <thead>
+            <tr>
+              <th style="width:130px">Analyte</th>
+              <th style="width:140px">EGAD CAS_NO</th>
+              <th style="width:180px">PARAMETER_NAME</th>
+              <th>Note / Override Reason</th>
+              <th style="width:80px">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tal:rows tal:repeat="row view/analyte_cas_rows">
+            <tr tal:attributes="class python:'blocking-row' if row['is_blocking'] else ''">
+              <td style="font-weight:600">${row/title}</td>
+              <td>
+                <input type="text"
+                       tal:attributes="name python:'cas_'+row['safe_keyword'];
+                                       value row/cas_no;
+                                       class python:'cas-input blocking' if row['is_blocking'] else 'cas-input'"
+                       placeholder="e.g. 375224 or DEP18024" />
+              </td>
+              <td>
+                <input type="text"
+                       tal:attributes="name python:'param_'+row['safe_keyword'];
+                                       value row/parameter_name"
+                       class="cas-input"
+                       placeholder="e.g. PFBA_A" />
+              </td>
+              <td>
+                <input type="text"
+                       tal:attributes="name python:'note_'+row['safe_keyword'];
+                                       value row/override_note"
+                       class="cas-input"
+                       placeholder="Optional note" />
+              </td>
+              <td style="text-align:center">
+                <tal:blocking tal:condition="row/is_blocking">
+                  <span class="blocking-badge">BLOCKING</span>
+                </tal:blocking>
+                <tal:manual tal:condition="python:row['needs_manual'] and not row['is_blocking']">
+                  <span class="manual-badge">manual</span>
+                </tal:manual>
+                <tal:ok tal:condition="python:not row['is_blocking'] and not row['needs_manual']">
+                  <span style="color:var(--s-success);font-size:12px">&#10003;</span>
+                </tal:ok>
+              </td>
+            </tr>
+            </tal:rows>
+          </tbody>
+        </table>
+      </form>
+      <div style="margin-top:14px">
+        <button class="btn-save" onclick="saveSection('cas')">Save CAS Mapping</button>
+      </div>
+    </div>
+  </div><!-- /pane-cas -->
+
+  <!-- ── QUALIFIERS tab ─────────────────────────────────────────────── -->
+  <div id="pane-qualifiers" class="egad-tab-pane">
+    <div class="section-card">
+      <h3><i class="fas fa-tag"></i> Qualifier Translation</h3>
+      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
+        Map your lab's reporting qualifiers to EGAD CONCENTRATION_QUALIFIER_LUP codes.
+        Editable by Manager / QAO / Lab Director / Owner only.
+      </p>
+      <table class="map-table" id="qual-table">
+        <thead>
+          <tr>
+            <th>Our Qualifier Label</th>
+            <th style="width:160px">EGAD Code</th>
+            <th>Description</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody id="qual-tbody">
+          <tal:rows tal:repeat="row view/qualifier_map">
+          <tr>
+            <td><input class="map-input" name="our_qualifier"
+                       value="${row/our_qualifier}" /></td>
+            <td>
+              <select class="map-select" name="egad_code">
+                <option tal:repeat="c view/egad_qualifier_codes"
+                        tal:attributes="value c; selected python:row['egad_code']==c"
+                        tal:content="c" />
+              </select>
+            </td>
+            <td><input class="map-input" name="description"
+                       value="${row/description}" /></td>
+            <td><button class="btn-rm" onclick="removeRow(this)">&#215;</button></td>
+          </tr>
+          </tal:rows>
+        </tbody>
+      </table>
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+        <button class="btn-add-row" onclick="addQualRow()">+ Add Row</button>
+        <button class="btn-save" onclick="saveQualifiers()">Save Qualifier Mapping</button>
+      </div>
+    </div>
+    <script>
+    /* qualifier codes for new row dropdowns */
+    var EGAD_QUAL_CODES = <tal:codes tal:replace="structure python:__import__('json').dumps(view.egad_qualifier_codes())" />;
+    </script>
+  </div><!-- /pane-qualifiers -->
+
+  <!-- ── QC TYPES tab ───────────────────────────────────────────────── -->
+  <div id="pane-qc_types" class="egad-tab-pane">
+    <div class="section-card">
+      <h3><i class="fas fa-clipboard-check"></i> QC Type Translation</h3>
+      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
+        Map your pipeline's QC type labels to EGAD QA_QC_TYPE_LUP codes.
+        Every batch's QC rows (MB, LFSM, CCV, duplicates) must appear in the EDD.
+      </p>
+      <table class="map-table" id="qct-table">
+        <thead>
+          <tr>
+            <th>Our QC Type Label</th>
+            <th style="width:160px">EGAD Code</th>
+            <th>Description</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody id="qct-tbody">
+          <tal:rows tal:repeat="row view/qc_type_map">
+          <tr>
+            <td><input class="map-input" name="our_qc_type"
+                       value="${row/our_qc_type}" /></td>
+            <td>
+              <select class="map-select" name="egad_code">
+                <option tal:repeat="c view/egad_qc_type_codes"
+                        tal:attributes="value c; selected python:row['egad_code']==c"
+                        tal:content="c" />
+              </select>
+            </td>
+            <td><input class="map-input" name="description"
+                       value="${row/description}" /></td>
+            <td><button class="btn-rm" onclick="removeRow(this)">&#215;</button></td>
+          </tr>
+          </tal:rows>
+        </tbody>
+      </table>
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+        <button class="btn-add-row" onclick="addQCTRow()">+ Add Row</button>
+        <button class="btn-save" onclick="saveQCTypes()">Save QC Type Mapping</button>
+      </div>
+    </div>
+    <script>
+    var EGAD_QCT_CODES = <tal:codes tal:replace="structure python:__import__('json').dumps(view.egad_qc_type_codes())" />;
+    </script>
+  </div><!-- /pane-qc_types -->
+
+  <!-- ── REFRESH LOOKUPS tab ────────────────────────────────────────── -->
+  <div id="pane-lookups" class="egad-tab-pane">
+    <div class="section-card">
+      <h3><i class="fas fa-sync-alt"></i> Refresh EGAD Lookup Tables</h3>
+      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 14px">
+        Maine DEP updates EGAD_Lookup_Tables.xlsx periodically.
+        Upload the new version here to refresh valid codes for qualifiers,
+        QC types, units, sample types, tests, and prep methods.
+        Your qualifier/QC type <em>mappings</em> are preserved — only the
+        valid-code lists are updated.
+      </p>
+
+      <tal:lup tal:define="info view/lookups_info">
+      <div style="margin-bottom:14px">
+        <strong style="font-size:13px">Current lookup tables</strong>
+        <tal:ref tal:condition="info/last_refresh">
+          <span style="font-size:11px;color:var(--s-secondary);margin-left:8px">
+            Last refreshed: ${info/last_refresh}
+          </span>
+        </tal:ref>
+        <tal:noref tal:condition="python:not info.get('last_refresh')">
+          <span style="font-size:11px;color:#e65100;margin-left:8px">
+            (using seeded defaults — upload EGAD_Lookup_Tables.xlsx to refresh)
+          </span>
+        </tal:noref>
+        <div style="margin-top:8px">
+          <span class="lookup-stat">Qualifiers: <strong>${info/qualifier_count}</strong></span>
+          <span class="lookup-stat">QC Types: <strong>${info/qc_type_count}</strong></span>
+          <span class="lookup-stat">Sample Types: <strong>${info/sample_type_count}</strong></span>
+          <span class="lookup-stat">Units: <strong>${info/units_count}</strong></span>
+          <span class="lookup-stat">Analysis Labs: <strong>${info/analysis_lab_count}</strong></span>
+          <span class="lookup-stat">Tests: <strong>${info/test_count}</strong></span>
+          <span class="lookup-stat">Prep Methods: <strong>${info/prep_method_count}</strong></span>
+        </div>
+      </div>
+      </tal:lup>
+
+      <form id="form-lookups" enctype="multipart/form-data">
+        <div class="file-upload-zone" id="drop-zone"
+             ondragover="event.preventDefault()"
+             ondrop="handleDrop(event)">
+          <i class="fas fa-file-excel" style="font-size:28px;color:var(--s-secondary);margin-bottom:8px;display:block"></i>
+          <div style="font-size:13px;margin-bottom:8px">
+            Drag &amp; drop <code>EGAD_Lookup_Tables.xlsx</code> here, or click to browse.
+          </div>
+          <input type="file" id="lookup_xlsx" name="lookup_xlsx"
+                 accept=".xlsx,.xls"
+                 style="display:none"
+                 onchange="showFileName(this)" />
+          <button type="button" onclick="document.getElementById('lookup_xlsx').click()"
+                  class="btn-add-row">Browse</button>
+          <div id="file-name" style="font-size:12px;color:var(--s-primary);margin-top:8px"></div>
+        </div>
+        <button class="btn-save" onclick="refreshLookups();return false">
+          Upload &amp; Refresh Lookups
+        </button>
+      </form>
+    </div>
+
+    <div class="section-card">
+      <h3><i class="fas fa-info-circle"></i> About EGAD Lookup Codes</h3>
+      <p style="font-size:12px;color:var(--s-secondary)">
+        Download the current lookup tables from the
+        <a href="https://www.maine.gov/dep/spills/egad/data-entry.html"
+           target="_blank" rel="noopener">Maine DEP EGAD Data Entry page</a>.
+        Look for the file named <em>EGAD_Lookup_Tables.xlsx</em>.
+      </p>
+    </div>
+  </div><!-- /pane-lookups -->
+
+</div><!-- content -->
+
+<tal:scripts metal:fill-slot="scripts">
+<script>
+/* ── Tab switching ────────────────────────────────────────────────────── */
+function switchTab(name) {
+  document.querySelectorAll('.egad-tab').forEach(function(el){el.classList.remove('active');});
+  document.querySelectorAll('.egad-tab-pane').forEach(function(el){el.classList.remove('active');});
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('pane-' + name).classList.add('active');
+}
+switchTab('${view/active_tab}');
+
+/* ── Generic save helper ───────────────────────────────────────────────── */
+function showBanner(ok, msg) {
+  var b = document.getElementById(ok ? 'save-banner' : 'error-banner');
+  b.textContent = msg || (ok ? 'Settings saved.' : 'Save failed.');
+  b.classList.add('visible');
+  setTimeout(function(){ b.classList.remove('visible'); }, 3000);
+}
+
+function saveSection(section) {
+  var formData = new FormData();
+  formData.append('section', section);
+
+  if (section === 'lab') {
+    ['analysis_lab_code','default_prep_method','default_sample_collection_method',
+     'default_treatment_status','default_parameter_filtered',
+     'sdg_prefix','sdg_format','sampled_by'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) formData.append(id, el.value);
+    });
+  }
+
+  if (section === 'methods') {
+    ['EPA_537_1','EPA_1633A','FDA_32PFAS'].forEach(function(mid){
+      ['test_code','prep_method','units_water','units_solid'].forEach(function(field){
+        var el = document.getElementById(mid + '_' + field);
+        if (el) formData.append(mid + '_' + field, el.value);
+      });
+    });
+  }
+
+  if (section === 'cas') {
+    var rows = document.querySelectorAll('#form-cas input[type=text]');
+    rows.forEach(function(el){ formData.append(el.name, el.value); });
+  }
+
+  fetch(window.location.pathname, {method:'POST', body: formData})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ showBanner(d.status === 'ok'); })
+    .catch(function(){ showBanner(false, 'Network error'); });
+}
+
+/* ── CAS form submit ─────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function(){
+  var form = document.getElementById('form-cas');
+  if (form) {
+    form.addEventListener('submit', function(e){ e.preventDefault(); saveSection('cas'); });
+  }
+});
+
+/* ── Qualifier mapping ───────────────────────────────────────────────── */
+function collectMapRows(tbodyId, keyField) {
+  var rows = [];
+  document.querySelectorAll('#' + tbodyId + ' tr').forEach(function(tr){
+    var our = tr.querySelector('input[name="' + keyField + '"]');
+    var code = tr.querySelector('select[name="egad_code"]');
+    var desc = tr.querySelector('input[name="description"]');
+    if (our && code) {
+      rows.push({our_qualifier: our.value, egad_code: code.value,
+                 description: desc ? desc.value : ''});
+    }
+  });
+  return rows;
+}
+
+function saveQualifiers() {
+  var rows = collectMapRows('qual-tbody', 'our_qualifier');
+  var fd = new FormData();
+  fd.append('section', 'qualifiers');
+  fd.append('qualifier_rows_json', JSON.stringify(rows));
+  fetch(window.location.pathname, {method:'POST', body: fd})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ showBanner(d.status === 'ok'); })
+    .catch(function(){ showBanner(false); });
+}
+
+function saveQCTypes() {
+  var rows = [];
+  document.querySelectorAll('#qct-tbody tr').forEach(function(tr){
+    var our = tr.querySelector('input[name="our_qc_type"]');
+    var code = tr.querySelector('select[name="egad_code"]');
+    var desc = tr.querySelector('input[name="description"]');
+    if (our && code) {
+      rows.push({our_qc_type: our.value, egad_code: code.value,
+                 description: desc ? desc.value : ''});
+    }
+  });
+  var fd = new FormData();
+  fd.append('section', 'qc_types');
+  fd.append('qc_type_rows_json', JSON.stringify(rows));
+  fetch(window.location.pathname, {method:'POST', body: fd})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ showBanner(d.status === 'ok'); })
+    .catch(function(){ showBanner(false); });
+}
+
+function makeOptions(codes, selectedVal) {
+  /* Split closing tags so Chameleon does not parse them as HTML */
+  var CLOSE_OPT = '<' + '/option>';
+  return codes.map(function(c){
+    return '<option value="' + c + '"' + (c === selectedVal ? ' selected' : '') + '>' + c + CLOSE_OPT;
+  }).join('');
+}
+
+function addQualRow() {
+  var CLOSE_TD  = '<' + '/td>';
+  var CLOSE_SEL = '<' + '/select>';
+  var CLOSE_BTN = '<' + '/button>';
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input class="map-input" name="our_qualifier" value="" /' + '>' + CLOSE_TD +
+    '<td><select class="map-select" name="egad_code">' + makeOptions(EGAD_QUAL_CODES, 'U') + CLOSE_SEL + CLOSE_TD +
+    '<td><input class="map-input" name="description" value="" /' + '>' + CLOSE_TD +
+    '<td><button class="btn-rm" onclick="removeRow(this)">&#215;' + CLOSE_BTN + CLOSE_TD;
+  document.getElementById('qual-tbody').appendChild(tr);
+}
+
+function addQCTRow() {
+  var CLOSE_TD  = '<' + '/td>';
+  var CLOSE_SEL = '<' + '/select>';
+  var CLOSE_BTN = '<' + '/button>';
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input class="map-input" name="our_qc_type" value="" /' + '>' + CLOSE_TD +
+    '<td><select class="map-select" name="egad_code">' + makeOptions(EGAD_QCT_CODES, 'NA') + CLOSE_SEL + CLOSE_TD +
+    '<td><input class="map-input" name="description" value="" /' + '>' + CLOSE_TD +
+    '<td><button class="btn-rm" onclick="removeRow(this)">&#215;' + CLOSE_BTN + CLOSE_TD;
+  document.getElementById('qct-tbody').appendChild(tr);
+}
+
+function removeRow(btn) {
+  btn.closest('tr').remove();
+}
+
+/* ── Lookup refresh ───────────────────────────────────────────────────── */
+function showFileName(input) {
+  var name = input.files[0] ? input.files[0].name : '';
+  document.getElementById('file-name').textContent = name;
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  var files = e.dataTransfer.files;
+  if (files.length) {
+    document.getElementById('lookup_xlsx').files = files;
+    document.getElementById('file-name').textContent = files[0].name;
+  }
+}
+
+function refreshLookups() {
+  var input = document.getElementById('lookup_xlsx');
+  if (!input.files.length) {
+    alert('Please select EGAD_Lookup_Tables.xlsx first.');
+    return;
+  }
+  var fd = new FormData();
+  fd.append('section', 'lookups');
+  fd.append('lookup_xlsx', input.files[0]);
+  showBanner(true, 'Uploading and refreshing...');
+  fetch(window.location.pathname, {method:'POST', body: fd})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.status === 'ok') {
+        var r = d.result || {};
+        showBanner(true, 'Refreshed: ' + (r.updated || []).join(', ') || 'done');
+        setTimeout(function(){ location.reload(); }, 1500);
+      } else {
+        showBanner(false, d.message || 'Refresh failed');
+      }
+    })
+    .catch(function(){ showBanner(false, 'Network error'); });
+}
+</script>
+</tal:scripts>
+
+</body>
+</html>

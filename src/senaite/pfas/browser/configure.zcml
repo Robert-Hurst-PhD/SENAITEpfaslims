@@ -2,7 +2,23 @@
            xmlns:browser="http://namespaces.zope.org/browser"
            i18n_domain="senaite.pfas">
 
-  <!-- PFAS dashboard tiles viewlet (renders below SENAITE dashboard panels) -->
+  <!-- @@lims-setup override on ISenaitePFASLayer (more specific than ISenaiteCore,
+       so Zope prefers our view over senaite.core's without any conflict). -->
+  <include file="overrides.zcml" />
+
+  <!-- Shared METAL macro provider — access via context/@@pfas-macros/macros/page -->
+  <browser:page
+      name="pfas-macros"
+      for="*"
+      class=".pfas_macros.PFASMacrosView"
+      permission="zope2.Public"
+      />
+
+  <!-- PFAS dashboard tiles viewlet — REMOVED (Round 6).
+       PFAS tools are now integrated directly into @@lims-setup groups via
+       VirtualTile entries in lims_setup.py SETUP_GROUPS.  The dark bottom
+       panel rendered twice on the Setup page and has been retired. -->
+  <!--
   <browser:viewlet
       name="senaite.pfas.dashboard.tiles"
       for="Products.CMFPlone.interfaces.IPloneSiteRoot"
@@ -10,6 +26,7 @@
       class=".pfas_nav.PFASDashboardTilesViewlet"
       permission="zope2.View"
       />
+  -->
 
   <!-- PFAS Stage sub-tab on Worksheet -->
   <browser:page
@@ -58,6 +75,14 @@
       permission="zope2.View"
       />
 
+  <!-- PFAS Guided New-Method Wizard -->
+  <browser:page
+      name="pfas-method-wizard"
+      for="*"
+      class=".method_wizard.PFASMethodWizardView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
   <!-- PFAS Method Profile list — Manager/LabManager only -->
   <browser:page
       name="pfas-method-profiles"
@@ -102,6 +127,142 @@
   <subscriber
       for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
       handler=".tracking.on_after_transition"
+      />
+
+  <!-- Guided Extraction Interface — stage-by-stage tablet workflow -->
+  <browser:page
+      name="pfas-extraction-guide"
+      for="*"
+      class=".extraction_guide.PFASExtractionGuideView"
+      permission="zope2.View"
+      />
+
+  <!-- Extraction Logbook PDF (ReportLab) -->
+  <browser:page
+      name="pfas-extraction-pdf"
+      for="*"
+      class=".extraction_pdf.PFASExtractionPDFView"
+      permission="zope2.View"
+      />
+
+  <!-- Reagent / Solution Label Printer -->
+  <browser:page
+      name="pfas-label"
+      for="*"
+      class=".label_print.PFASLabelPrintView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Reagent Inventory (ISO 17025 / MLAB lot tracking) -->
+  <browser:page
+      name="pfas-reagents"
+      for="*"
+      class=".reagents.PFASReagentsView"
+      permission="zope2.View"
+      />
+
+  <!-- Guided Instrument Import & Mapping Studio -->
+  <browser:page
+      name="pfas-import-studio"
+      for="*"
+      class=".import_studio.PFASImportStudioView"
+      permission="zope2.View"
+      />
+
+  <!-- Import Studio profile REST bridge — used by pfas_pipeline importer
+       to fetch a saved column-mapping profile by vendor_key + version.
+       Returns JSON {map, vendor, ...} or {error: "..."} if not saved yet. -->
+  <browser:page
+      name="pfas-instrument-profile"
+      for="*"
+      class=".import_studio.PFASInstrumentProfileView"
+      permission="zope2.View"
+      />
+
+  <!-- Maine EGAD EDD configuration panel (lab-global, method, analyte CAS, qualifiers) -->
+  <browser:page
+      name="pfas-egad-config"
+      for="*"
+      class=".egad_config.PFASEGADConfigView"
+      permission="zope2.View"
+      />
+
+  <!-- Per-client EGAD toggle and project/site settings -->
+  <browser:page
+      name="pfas-egad-client-config"
+      for="*"
+      class=".egad_config.PFASEGADClientConfigView"
+      permission="zope2.View"
+      />
+
+  <!-- EDD CSV export/download for a batch -->
+  <browser:page
+      name="pfas-egad-export"
+      for="*"
+      class=".egad_config.PFASEGADExportView"
+      permission="zope2.View"
+      />
+
+  <!-- Batch EDD dashboard and per-sample EGAD SAMPLE_TYPE override editor -->
+  <browser:page
+      name="pfas-egad-batches"
+      for="*"
+      class=".egad_config.PFASEGADBatchesView"
+      permission="zope2.View"
+      />
+
+  <!-- Generate EGAD EDD and email client when government-agency AR is published -->
+  <subscriber
+      for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".egad_publish.on_after_transition"
+      />
+
+  <!-- Logbook definition manager (portal-level) -->
+  <browser:page
+      name="pfas-logbook-admin"
+      for="*"
+      class=".logbooks.PFASLogbookAdminView"
+      permission="zope2.View"
+      />
+
+  <!-- Generic custom logbook renderer (batch-level) -->
+  <browser:page
+      name="pfas-logbook-custom"
+      for="*"
+      class=".logbooks.PFASLogbookCustomView"
+      permission="zope2.View"
+      />
+
+  <!-- Per-batch logbooks (FM-ENV-250 through 253) — registered on Batch context -->
+  <browser:page
+      name="pfas-logbook-index"
+      for="*"
+      class=".logbooks.PFASLogbookIndexView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-logbook-250"
+      for="*"
+      class=".logbooks.PFASLogbook250View"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-logbook-251"
+      for="*"
+      class=".logbooks.PFASLogbook251View"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-logbook-252"
+      for="*"
+      class=".logbooks.PFASLogbook252View"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-logbook-253"
+      for="*"
+      class=".logbooks.PFASLogbook253View"
+      permission="zope2.View"
       />
 
 </configure>

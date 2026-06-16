@@ -17,6 +17,39 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 logger = logging.getLogger("senaite.pfas.browser.qcrules")
 
+# Human-readable labels and units for the "global" rules section.
+# Any key not in this map falls back to the raw key as the label.
+GLOBAL_PARAM_META = {
+    "cal_r2_min":                {"label": u"Calibration r² Minimum",                  "unit": ""},
+    "is_response_pct":           {"label": "IS Response Max Deviation",                       "unit": "%"},
+    "rt_tolerance_min":          {"label": "RT Tolerance (absolute)",                         "unit": "min"},
+    "rt_tolerance_pct":          {"label": "RT Tolerance (relative)",                         "unit": "%"},
+    "sn_min":                    {"label": "S/N Minimum (detection)",                         "unit": ""},
+    "sn_quan_min":               {"label": "S/N Minimum (quantitation)",                      "unit": ""},
+    "rpd_max":                   {"label": "Max RPD",                                         "unit": "%"},
+    "qq_ratio_matching_pct":     {"label": u"Ion Ratio Tolerance — Isotopic Match",      "unit": "%"},
+    "qq_ratio_key_pct":          {"label": u"Ion Ratio Tolerance — Key Analytes",        "unit": "%"},
+    "qq_ratio_non_iso_pct":      {"label": u"Ion Ratio Tolerance — Non-Isotopic",        "unit": "%"},
+    "cal_pct_deviation_default": {"label": "Calibration % Deviation (default)",               "unit": "%"},
+    "cal_pct_deviation_tight":   {"label": "Calibration % Deviation (tight, inner bracket)",  "unit": "%"},
+    "cal_pct_deviation_loose":   {"label": "Calibration % Deviation (loose, outer bracket)",  "unit": "%"},
+}
+
+# Human-readable labels and units for per-QC-type field keys.
+QC_TYPE_FIELD_META = {
+    "pct_deviation_max":        {"label": "Max % Deviation",                   "unit": "%"},
+    "pct_deviation_warn":       {"label": "Warn % Deviation",                  "unit": "%"},
+    "recovery_min":             {"label": "Min Recovery",                      "unit": "%"},
+    "recovery_max":             {"label": "Max Recovery",                      "unit": "%"},
+    "recovery_warn_low":        {"label": "Recovery Warn Low",                 "unit": "%"},
+    "recovery_warn_high":       {"label": "Recovery Warn High",                "unit": "%"},
+    "threshold":                {"label": "Threshold Concentration",           "unit": ""},
+    "threshold_units":          {"label": "Threshold Units",                   "unit": ""},
+    "rpd_max":                  {"label": "Max RPD",                           "unit": "%"},
+    "recovery_min_key_matrix":  {"label": "Min Recovery (key analyte/matrix)", "unit": "%"},
+    "recovery_max_key_matrix":  {"label": "Max Recovery (key analyte/matrix)", "unit": "%"},
+}
+
 
 def _check_manager(context, request):
     """Return True if the current user has the Manager role."""
@@ -61,13 +94,34 @@ class PFASQCRulesView(BrowserView):
         return sorted(self.rules().get("qc_types", {}).keys())
 
     def global_fields(self):
-        return [{"key": k, "value": v}
-                for k, v in sorted(self.rules().get("global", {}).items())]
+        meta = GLOBAL_PARAM_META
+        return [
+            {
+                "key":   k,
+                "value": v,
+                "label": meta.get(k, {}).get("label", k),
+                "unit":  meta.get(k, {}).get("unit", ""),
+            }
+            for k, v in sorted(self.rules().get("global", {}).items())
+        ]
 
     def qc_type_fields(self, qtype):
         r = self.rules()
-        return [{"key": k, "value": v}
-                for k, v in sorted(r.get("qc_types", {}).get(qtype, {}).items())]
+        qt_data = r.get("qc_types", {}).get(qtype, {})
+        stored_threshold_units = qt_data.get("threshold_units", "")
+        fields = []
+        for k, v in sorted(qt_data.items()):
+            meta = QC_TYPE_FIELD_META.get(k, {})
+            unit = meta.get("unit", "")
+            if k == "threshold" and not unit:
+                unit = stored_threshold_units
+            fields.append({
+                "key":   k,
+                "value": v,
+                "label": meta.get("label", k),
+                "unit":  unit,
+            })
+        return fields
 
     def qc_label(self, qtype):
         r = self.rules()

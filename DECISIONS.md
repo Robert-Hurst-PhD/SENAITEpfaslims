@@ -5,6 +5,336 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-16  Plan B — Import Studio REST bridge design
+
+- **Decision (Q-010):** Pipeline identifies a file's instrument by auto-detecting
+  the vendor from CSV headers (sciex/agilent/waters/native). No instrument UID
+  or CLI argument needed. The software version is auto-detected from the first
+  20 lines of the file. The lookup key is `"vendor_key:version"`.
+- **Decision (Q-011):** Strict — the importer requires an explicitly saved profile
+  in `IAnnotations(portal)["senaite.pfas.vendor_profiles"]["vendor_key:version"]`.
+  Seeded default templates (`senaite.pfas.vendor_templates`) pre-fill the Import
+  Studio UI but do NOT satisfy the importer's profile check. First use of any
+  instrument/version requires a lab trip to Import Studio.
+- **Decision (Q-012):** Fail fast — if SENAITE is offline, the pipeline refuses to
+  process the file. No fallback to `vendor_profiles.py`. SENAITE downtime halts
+  instrument file processing; this enforces single source of truth.
+- **Implementation:** `@@pfas-instrument-profile` REST bridge view added to
+  `import_studio.py`. Portal-level stores: `senaite.pfas.vendor_profiles`
+  (pipeline reads), `senaite.pfas.vendor_templates` (Import Studio UI pre-fill).
+  `senaite_connector.get_instrument_profile()` fetches from SENAITE.
+  `load_instrument_csv(profile=...)` uses profile map; raises ImportError on error.
+  `run_pipeline()` detects vendor+version from CSV, fetches profile, refuses if
+  `{"error": ...}` returned. `vendor_profiles.py` maps still used when no senaite
+  connector (standalone mode for testing).
+- **Status:** confirmed — implemented and tested
+- **Context:** Round 8 Item 2 — Import Studio must be the single source of truth
+  for column mappings.
+
+---
+
+## 2026-06-16  Calibrations pane bug — request.get() picks up HTTP method
+
+- **Decision:** Use `self.request.form.get(key)` (not `self.request.get(key)`)
+  for all form parameter reads in browser views. In Zope 2's BaseRequest,
+  `request.get("method", "")` returns the HTTP verb ("GET") when there is no
+  form field named "method" — it searches env/headers before returning the
+  default. This silently injected `AND method='GET'` into the calibration
+  query, filtering out all 686 records.
+- **Status:** confirmed — fix applied to `calibrations.py`; root cause extends to
+  any view that reads form params with `request.get()`. Existing views use
+  `request.form.get()` for most params and have been audited.
+- **Context:** Discovered while seeding synthetic calibration data (Round 8
+  Item 4). Same class of bug as the METAL slot boundary issue (Round 8 Item 3)
+  — a silent null result.
+
+## 2026-06-16  Synthetic calibration seed data
+
+- **Decision:** Seed data lives in `pfas_pipeline/seed_calibrations.py`. All
+  synthetic records use `batch_id LIKE 'SYNTHETIC_%'` for easy identification
+  and purge. Script is idempotent (skips existing batch_id+analyte pairs).
+  One-command purge: `python seed_calibrations.py --purge` (in pfas-worker
+  container) or direct SQL via sqlite3.
+- **Status:** confirmed — 14 synthetic records inserted (3 methods: FDA_32PFAS,
+  EPA_537_1, EPA_1633A; mix of approved/pending/rejected; 2 intentional failures).
+- **Context:** Round 8 Item 4 — seed data needed to evaluate calibrations pane.
+
+---
+
+## 2026-06-16  Round 8 — Integration Consolidation
+
+- **Decision (A) — Analyte list canonical source:** `pfas_pipeline/constants.py` is the
+  canonical Python definition of ANALYTES and INTERNAL_STANDARDS. `src/.../analytes.py`
+  is simplified to import/derive from the setupdata CSVs rather than re-declaring.
+  Status: confirmed.
+
+- **Decision (B) — Import Studio REST bridge:** Add `@@pfas-instrument-profile` browser
+  view that serves saved ZODB profiles as JSON to the Python 3 pipeline worker. Portal-level
+  fallback store keyed by `vendor_key:version`. Importer reads profile via REST; refuses
+  with clear error if no profile found. `vendor_profiles.py` becomes seed-only reference.
+  Status: confirmed.
+
+- **Decision (C) — QC criteria single source:** Retire hardcoded limits in
+  `pfas_pipeline/method_profiles.py`; pipeline reads from `/data/qc/qc_rules.json`
+  (already written by `@@pfas-qc-rules`). `reload_criteria()` in `constants.py` already
+  does this; method_profiles.py dataclass defaults replaced with `get_rules()` lookups.
+  Status: confirmed.
+
+- **Decision (D) — Dormant in-Plone QC engine:** Delete `src/.../qc/engine.py` (duplicate
+  of pipeline engine, nothing calls it). `src/.../report/__init__.py` is empty, also removed.
+  `src/.../ingest/data_importer.py` is orphan — deleted in favour of Plan B REST bridge.
+  Status: confirmed.
+
+- **Decision — Reagents buttons root cause:** All PFAS templates with `<script>` blocks
+  after `</div><!-- /content slot -->` had their JS silently discarded by METAL macro
+  processing. Fixed in reagents.pt + 6 other templates by moving content slot close div
+  to after script blocks.
+  Status: confirmed.
+
+---
+
+## 2026-06-15  Round 7 — Maine EGAD EDD Exporter
+
+- **Decision (a):** Four-scope config model: lab-global → per-method → per-client →
+  per-sample override. Lab-global and method settings live in PFAS_EGAD_KEY portal
+  annotations; per-client settings live in IAnnotations(client)["senaite.pfas.egad_client"].
+- **Decision (b):** CAS_NO stored per-analyte (not per-method), because all 34 analytes
+  run on all three methods. View scope filtered by method for display only.
+- **Decision (c):** SAMPLE_TYPE default = GW (groundwater); configurable per-client and
+  overridable per-sample at intake via IAnnotations(ar)["senaite.pfas.egad_sample_type"].
+- **Decision (d):** Food/solid units = NG/KG; water units = NG/L. Configurable per-method.
+- **Decision (e):** SDG (Sample Delivery Group) is configurable: prefix + format template
+  in lab-global settings. Default format: {prefix}{batch_id}.
+- **Decision (f):** SAMPLE_COLLECTION_METHOD configurable in lab-global settings; default LFS.
+  QC samples always use NA automatically.
+- **Decision (g):** NC_Flag analytes → RESULT_TYPE_CODE = TIC (Tentatively Identified
+  Compound), sourced from RESULT_TYPE_LUP. This covers 9Cl-PF3ONS, 11Cl-PF3OUdS,
+  PFTrDA, PFODA, DONA, PFPeS, PFHpS, PFNS, PFDS, PFUnDS, PFDoS, PFTrDS.
+- **Decision (h):** PREP_METHOD = SW3535 (SW846: Solid Phase Extraction) as default.
+  Configurable per-method and lab-global.
+- **Decision (i):** ANALYSIS_LAB code is configurable in lab-global EGAD settings.
+  Override available per-client. Must match ANALYSIS_LAB_LUP exactly.
+- **Decision (j):** PFUnDS (CAS 749786-16-1): not in Maine EGAD CAS_LUP. Manual entry
+  required in EGAD Config. CAS_NO field left blank until DEP code assigned.
+  PFTrDS (CAS PLACEHOLDER): BLOCKING validation error until real CAS assigned.
+- **Decision (k):** EDD delivery: attached to client report email. No auto-send to
+  dep.edd@maine.gov. Client submits to DEP themselves.
+- **Decision (l):** Filename convention: {CLIENT_ID}_{SDG}_{YYYYMMDD}_EDD.csv
+- **Decision (m):** Lookups refreshable via manager upload of EGAD_Lookup_Tables.xlsx.
+  User mappings (qualifier_map, qc_type_map, analyte_cas) survive lookup refresh.
+- **Decision (n):** Per-report override toggle: default ON for gov clients; manager can
+  suppress EDD for a specific report at publish time.
+- **Decision (o):** QC type mapping (our → EGAD): MB→LB, LFSM→MS, LFSMD→MSD,
+  CCV→CCC, LCS→LCS, Dup→L, FD→D, Normal/NA→NA.
+- **Decision (p):** WEIGHT_BASIS = NA for water samples; DW (dry weight) for solid/food
+  matrices by default. No WEIGHT_BASIS_LUP exists in EGAD — free text field.
+- **Status:** confirmed (all answers provided by lab; Opus advisor review completed)
+- **Context:** Round 7 EGAD EDD exporter spec (REFINEMENT_PROMPT_7_EGAD_EDD.txt).
+  Advisor confirmed four-scope design is sound. Build sequence: format spike first,
+  then config UI, then wire config to generator.
+
+
+---
+
+## 2026-06-14  Extraction stages editor — Method Profile UI
+
+- **Decision:** Extraction stages are editable in `@@pfas-method-profile-edit` via
+  a drag-to-reorder card UI (one card per stage) with fields: order, id, name,
+  description, reagent_roles (CSV), equipment (CSV), creates_solution checkbox,
+  capture_pedigree checkbox.  The card list syncs to a hidden `extraction_stages_json`
+  field on form submit.  `get_profile()` backfills new default keys (including
+  `extraction_stages`) into previously-saved profiles so upgrades are seamless.
+- **Status:** confirmed
+- **Context:** Round 5 item 10 — extraction guide requires method-specific stage
+  definitions to be configurable in the Method Profile control panel.
+
+## 2026-06-14  ReportLab — optional dependency, not in install_requires
+
+- **Decision:** `reportlab` is commented out of `setup.py` `install_requires`.
+  It requires `gcc` and network access to download T1 fonts, neither of which
+  are available in the SENAITE Docker container.  The `@@pfas-extraction-pdf`
+  view handles `ImportError` gracefully.  Install manually if PDF export is needed.
+- **Status:** confirmed
+- **Context:** `reportlab` in `install_requires` caused buildout to crash during
+  container startup, preventing `zope.conf` from being generated.
+
+## 2026-06-14  Chameleon XML parser — `<` in JavaScript
+
+- **Decision:** All `<` characters inside JavaScript string literals and regex
+  patterns in `.pt` templates must be written as the `<` unicode escape.
+  JavaScript runtime decodes `<` → `<` transparently.  Chameleon's XML
+  parser treats literal `<` as tag-start, causing `ParseError` on patterns like
+  `</option>` or `/</g` in scripts.
+- **Status:** confirmed
+- **Context:** `@@pfas-import-studio` and `@@pfas-method-profile-edit` crashed
+  with `PTRuntimeError` when loaded; fixed by replacing all HTML-in-JS `<` with
+  `<` across all affected templates (import_studio, method_profile_edit,
+  extraction_guide, logbook_250/251/252/253).
+
+---
+
+## 2026-06-14  Round 5 item 7 — Per-batch logbooks data model
+
+- **Decision:** Four logbooks (FM-ENV-250/251/252/253) stored as JSON blobs in
+  ZODB annotations on the SENAITE Batch object. Annotation keys:
+  `senaite.pfas.logbook.250` / `.251` / `.252` / `.253`. Browser views
+  registered on `for="*"` context; CMF action `pfas_batch_logbooks` adds a
+  "Logbooks" sub-tab to Batch objects in SENAITE navigation.
+  FM-ENV-251 (Cal Curve) exports cal level data to
+  `/data/qc/batches/{batch_uid}/cal_251.json` for the pipeline injection builder,
+  and provides a "Download Cal Ladder CSV" button. Full sequence generation
+  (with QC bracketing) remains a pipeline worker function
+  (`pfas-pipeline build-sequence --batch-id ...`).
+  Storage in annotations chosen over Dexterity content types because SENAITE
+  Batch is not a folderish container; annotations pattern is consistent with
+  how method profiles are stored.
+- **Status:** confirmed
+- **Context:** User confirmed data model and injection builder link (2026-06-14).
+
+---
+
+## 2026-06-14  Round 5 item 6 — New-Method Wizard redesign
+
+- **Decision:** Redesigned wizard from pure "checklist + links" to 9-step
+  association-driven flow. Each step has an inline form for selecting/associating
+  existing SENAITE objects to the new method. Inline create for Method object in
+  Step 1. Sessions persisted in ZODB portal annotations under
+  `senaite.pfas.wizard_sessions`. Real SENAITE associations written:
+  `svc.setMethods([method])` in Step 3, `instr.setMethods([method])` in Step 9.
+  Other associations (dept, category, sample types, storage, containers) stored
+  in `senaite.pfas.method_associations` annotations keyed by method_id.
+  Step 5 (Profile) and Step 8 (QC Rules) open their respective editors in a
+  new tab; user confirms when done.
+- **Status:** confirmed
+- **Context:** User confirmed step list (9 steps as listed in DECISIONS above) and
+  inline-create for Step 1. Design: association-driven means wizard records
+  which items are associated with each method, not just that the items exist.
+
+---
+
+## 2026-06-14  Round 5 items 4–5 — sample tracker + analysis categories
+
+- **Decision (item 4):** Sample Tracker de-branded from "PFAS Lab" to generic "Laboratory"
+  branding. Tracker moved out of the PFAS Tools tile group and into the SENAITE top navigation
+  bar via a `portal_tabs` action registered in `profiles/default/actions.xml`. Works for any
+  received sample (not PFAS-specific). Accessible at `@@pfas-track` by any user with View.
+- **Decision (item 5):** Collapse the six chemical-class analysis categories
+  (`PFAS - PFCA`, `PFAS - PFSA`, `PFAS - FTS`, `PFAS - FOSA`, `PFAS - PFECA`,
+  `PFAS - Cl-PFAES`, `PFAS - other`) into a single **`PFAS`** category.
+  Internal standards remain in **`PFAS - Internal Standards`** (separate — analysts need
+  to distinguish IS from target analytes). `setuphandlers.py` calls `svc.setCategory()`
+  on every get-or-create to migrate existing services on profile re-run.
+- **Status:** confirmed
+
+---
+
+## 2026-06-13  Round 4 items 1–4 — design decisions
+
+- **Decision (item 1):** Glyph bug fixed by replacing non-ASCII chars in CSS `content:` properties with
+  CSS Unicode escapes (`\25B6`, `\25BC`, `\2713`). Root cause: Zope HTML-escapes non-ASCII text in
+  `<style>` blocks; HTML5 browsers don't parse `&#NNNN;` entities inside CSS. Rule going forward:
+  never put non-ASCII chars in CSS `content:` inside `.pt` files.
+- **Decision (item 2):** Unified chrome via METAL macro in `pfas_macros.pt`; all 7 PFAS page
+  templates use `metal:use-macro` to inherit the shared header/card/button skeleton.
+- **Decision (item 3):** Override `@@lims-setup` in-place via a Plone browser layer override
+  registered in `senaite.pfas`'s ZCML. The core view remains untouched; only the PFAS browser
+  layer shadows it. **Upgrade risk**: if `senaite.core` renames or restructures `@@lims-setup`,
+  the override will need updating. User accepted this risk explicitly.
+- **Decision (item 4):** Wizard step order corrected to match SENAITE dependency chain:
+  Storage → Containers → Lab Dept → Analysis Category → Sample Types → Analysis Services →
+  Method → Method Profile → Analysis Specs → QC Rules → Instruments. Lab Dept/Category
+  moved before Sample Types (services require a category; specs tie services to sample types).
+  Implementation: `@@pfas-method-wizard` view in `browser/method_wizard.py` / `templates/method_wizard.pt`.
+  Orchestrator pattern: links to existing SENAITE pages, does not reimplement forms.
+  Completion detected live from `senaite_catalog_setup` (not `portal_catalog` — setup items
+  are only indexed in the SENAITE-specific catalog). Wizard tile added to the "3. Method &
+  Analyte Setup" group in `@@lims-setup` via inline TAL in `lims_setup.pt`.
+  ZCML override mechanism: `ISenaitePFASLayer(ISenaiteCore)` browser layer defined in
+  `interfaces.py`; layer registered via `profiles/default/browserlayer.xml`;
+  `@@lims-setup` registered on `ISenaitePFASLayer` — more-specific adapter wins without
+  `ConfigurationConflictError`.
+- **Status:** confirmed
+
+---
+
+## 2026-06-13  Round 3 items 9+10 — seed script + Levey-Jennings verification
+
+- **Decision:** Synthetic QC test data seeded via `seed_test_data.py` (standalone Python 3 script).
+  Inserts 1,344 QC rows (CCV + LFB, 32 weeks, 7 analytes, 3 methods) and 672 calibration rows
+  into the shared `pfas-qc` Docker volume.  All records tagged `flag='TEST_DATA'` or
+  `flag='TEST_DATA_OUTLIER'`; `--purge` removes them before go-live.  Root bug fixed:
+  `self.request.get("method")` returns the HTTP request method ("GET") in Zope 2 — must use
+  `self.request.form.get("method", "")` for URL query parameters.  Levey-Jennings spec
+  confirmed: ±1/2/3SD lines rendered, point colors per violation severity, Westgard rules
+  fire correctly on seeded outliers.
+- **Status:** confirmed
+- **Context:** Items 9 (seed data) and 10 (Levey-Jennings verification) from Round 3 refinement.
+  LFB Recovery selected as the primary QC type (user does not recognize "LCS" as a QC type).
+
+---
+
+## 2026-06-13  Round 3 item 7 — PFAS tiles hidden for unauthenticated users
+
+- **Decision:** `PFASDashboardTilesViewlet.tiles()` checks `'Authenticated' not in user.getRoles()`
+  and returns an empty list for anonymous/unauthenticated requests.  The template's
+  `tal:condition="tiles"` naturally hides the entire section when the list is empty.
+  The viewlet ZCML registration retains `zope2.View` (available to everyone) — the
+  auth gate is applied at the Python level, not by changing the ZCML permission.
+- **Status:** confirmed
+- **Context:** PFAS tool tiles were appearing on the SENAITE login page because
+  `zope2.View` is granted to anonymous users.  The fix is a Python-level role check
+  rather than a ZCML permission change, so the viewlet remains installable without
+  CMF permission setup overhead.
+
+## 2026-06-13  Round 3 item 3 — Method × Matrix → unit map (confirmed)
+
+- **Decision:** A `METHOD_MATRIX_UNIT_MAP` dict in `rules.py` defines the concentration unit
+  for each method × matrix combination.  Confirmed values:
+  EPA_537_1 (any water matrix) → ng/L;
+  EPA_1633A (aqueous) → ng/L, (solid/sediment/soil) → ng/g dry wt, (tissue/fish tissue) → ng/g wet wt;
+  FDA_32PFAS (meat/fish/egg/feed) → ng/kg wet wt, (milk) → ng/mL.
+  Helper `get_unit_for_context(method, matrix)` retrieves the unit at runtime.
+  The unit is used for QC type field labels and result reporting.
+- **Status:** confirmed
+- **Context:** User confirmed 2026-06-13: "FDA 32 PFAS should be ng/kg except for milk
+  which is ng/mL."  Previous proposal used ng/g for FDA solids — corrected to ng/kg.
+
+## 2026-06-13  Round 3 item 2 — Control chart type selector
+
+- **Decision:** A "Chart Type" dropdown added to the control chart sidebar with options:
+  `auto` (empty — derives chart type from QC type as before), `levey_jennings`, `threshold`.
+  Stored as `chart_type_override` GET parameter.  The `selected_qc_type()` default changed
+  from `"CCV"` to `""` so no QC type is forced on page load — user must explicitly select.
+  When no QC type is selected, `chart_data()` returns an empty chart
+  (same as no analyte selected).
+- **Status:** confirmed
+- **Context:** User (2026-06-13): "Enable the option to choose the type of control chart
+  displayed — levy jennings vs threshold etc."  The selector is additive to the existing
+  auto-derived behavior; it does not replace it.
+
+## 2026-06-13  Round 3 items 1+6+8 — QC Rules page: SENAITE tokens, labels+units, slider toggles
+
+- **Decision:** Three changes applied together to `qcrules.pt` / `qcrules.py`:
+  1. (Item 8) Inline `<style>` block replaced with a `:root` CSS custom-property block
+     using actual SENAITE 2.6 palette tokens pulled from
+     `senaite.core-2.6.0/browser/static/bundles/senaite.core.css`.  Primary: `#428aaf`,
+     dark: `#343a40`, body text: `#293333`, borders: `#dee2e6`, input border: `#ced4da`.
+     All prior Material Design hand-picked colors (`#37474f`, `#1565c0`, `#eceff1`) removed.
+  2. (Item 1) `GLOBAL_PARAM_META` and `QC_TYPE_FIELD_META` dicts added to `qcrules.py`.
+     `global_fields()` and `qc_type_fields()` now return `label` and `unit` per field.
+     Templates use `item/label` (human-readable string) and a `<span class="unit-label">`
+     adjacent to each input.
+  3. (Item 6) Checkbox + text-label toggles replaced with a pure-CSS slider toggle
+     (`.toggle-switch` / `.toggle-track` — no JS for the visual state).  Client-side JS
+     (`updateRuleVisibility`) auto-enables/disables the corresponding method-specific
+     limit group when a toggle is flipped, with no page reload.
+- **Status:** confirmed
+- **Context:** qcrules.pt is the "one view" before/after for item 8; other standalone
+  views (controlchart.pt, calibrations.pt, tracker.pt, pfas_dashboard_tiles.pt) will be
+  restyled after the approach is confirmed.
+
+---
+
 ## 2026-06-12  Round 2 item 4 — QC ruleset toggle grid
 
 - **Decision:** The `@@pfas-qc-rules` page gains a "Rule Toggle Grid" section (rows = 14
@@ -271,3 +601,69 @@ in reverse-chronological order (newest first).
   `src/senaite/pfas/qc/engine.py` uses Python 3 syntax (dataclasses, f-strings)
   and is never imported by the Plone add-on — it is either dead code or an
   earlier draft superseded by `pfas_pipeline/qc_engine.py`.
+
+---
+
+## 2026-06-14  Item 8 — Guided Import Studio design (three decisions)
+
+- **Decision (a):** Instrument mapping profiles stored as JSON blobs in ZODB
+  annotations on the SENAITE Instrument object
+  (`IAnnotations(instrument)["senaite.pfas.instrument_profiles"]`), keyed by
+  software version string.
+- **Decision (b):** Software version auto-detected by scanning the first 20 lines
+  of the uploaded file for a version string (`X.Y.Z`); the detected value is
+  pre-populated but analyst-editable before saving the profile.
+- **Decision (c):** Pipeline worker writes results back to SENAITE via the REST
+  API (`senaite_connector.py`), not via direct `AnalysisResultsImporter` import.
+  The mapping profile is fetched by the pipeline from the Instrument object
+  via REST.
+- **Status:** confirmed
+- **Context:** Separates the Python 3 pipeline from the Python 2.7 Plone add-on;
+  keeps all UI in SENAITE; avoids Plone's AT import infrastructure.
+
+---
+
+## 2026-06-14  Item 9 — Reagent Inventory design
+
+- **Decision (a):** Reagent records stored in ZODB portal annotations
+  (`IAnnotations(portal)["senaite.pfas.reagents"]`) as a `PersistentMapping
+  {uid_hex: json_string}`. Multiple records per catalog number are supported:
+  each lot number is a distinct record sharing the same `cat_number` field.
+- **Decision (b):** Barcode scanning uses ZXing-js (browser-only webcam).
+  USB HID scanners work natively by typing into the Lot Number text field.
+- **Decision (c):** OCR fallback uses Tesseract.js (browser-only). The analyst
+  captures a still frame from the webcam; Tesseract extracts the text for
+  copy-paste into the form.
+- **Decision (d):** Expiry calculation from open date: 7 days for mobile phases
+  (name matches `/methanol|meoh|acetonitrile|acn|water|h2o|mobile.?phase|mph|formic/i`),
+  1 year for all others. Manufacturer expiry takes precedence when provided.
+- **Decision (e):** FM-ENV-250 Chemicals table gains a "From Inventory" button
+  that calls `@@pfas-reagents?action=lookup_json&q=...` and pre-fills rows.
+- **Status:** confirmed
+- **Context:** ISO 17025 / MLAB lot and expiry tracking requirement; eliminates
+  manual re-entry of catalog/lot/expiry data across logbooks.
+
+---
+
+## 2026-06-14  Item 10 — Guided Extraction Interface design
+
+- **Decision (a):** Extraction stages are configurable per method in the Method
+  Profile (`extraction_stages` array in the profile JSON). Default stages are
+  seeded for FDA_32PFAS (8 stages), EPA_537_1 (8 stages), and EPA_1633A
+  (7 stages). Managers can add/edit/reorder stages without code changes.
+- **Decision (b):** Session state (stage progress, reagent lots confirmed,
+  solutions prepared, pedigree) stored in ZODB annotations on the Batch:
+  `IAnnotations(batch)["senaite.pfas.extraction_session"]` as a JSON string.
+- **Decision (c):** PDF generated server-side by ReportLab (`reportlab>=3.0,<3.4`,
+  last series with Python 2.7 support). Added to `setup.py install_requires`.
+  Graceful error message if not yet installed in Docker image.
+- **Decision (d):** Label printer (`@@pfas-label`) is a standalone HTML page
+  with selectable or fully custom size (width × height in mm). JsBarcode renders
+  CODE128 barcodes client-side. Analyst uses browser Ctrl+P to send to label
+  printer.
+- **Decision (e):** Label generator accessed from within the extraction guide
+  (per solution prepared) and standalone from the reagent inventory. Labels are
+  printable on any standard label printer via browser print dialog.
+- **Status:** confirmed
+- **Context:** ISO 17025 / MLAB traceability requirements; guided workflow
+  replaces paper-based FM-ENV-252 with an auto-populated, PDF-exportable record.

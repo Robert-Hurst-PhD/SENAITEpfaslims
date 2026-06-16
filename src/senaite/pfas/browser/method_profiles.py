@@ -142,8 +142,9 @@ class PFASMethodProfileEditView(BrowserView):
     def recovery_tiers_json(self):
         return json.dumps(self.profile().get("recovery_tiers", []), indent=2)
 
-    def matrix_factors_json(self):
-        return json.dumps(self.profile().get("matrix_factors", []), indent=2)
+    def matrix_factor(self):
+        """Single integer matrix adjustment factor for this method (default 1)."""
+        return int(self.profile().get("matrix_factor", 1))
 
     def surrogate_map_json(self):
         return json.dumps(self.profile().get("surrogate_map", []), indent=2)
@@ -153,6 +154,16 @@ class PFASMethodProfileEditView(BrowserView):
 
     def eis_overrides_json(self):
         return json.dumps(self.profile().get("eis_overrides", []), indent=2)
+
+    def salt_adjustment_factors_json(self):
+        return json.dumps(self.profile().get("salt_adjustment_factors", []), indent=2)
+
+    def isomer_summation_json(self):
+        return json.dumps(self.profile().get("isomer_summation", []), indent=2)
+
+    def extraction_stages_json(self):
+        stages = self.profile().get("extraction_stages", [])
+        return json.dumps(sorted(stages, key=lambda s: s.get("order", 0)), indent=2)
 
     def display_name(self):
         return self.profile().get("display_name", self.method_id())
@@ -262,8 +273,10 @@ class PFASMethodProfileEditView(BrowserView):
         # Complex JSON sections (textareas)
         profile["recovery_tiers"] = _json_field(
             "recovery_tiers_json", profile.get("recovery_tiers", []))
-        profile["matrix_factors"]  = _json_field(
-            "matrix_factors_json",  profile.get("matrix_factors", []))
+        try:
+            profile["matrix_factor"] = int(f.get("matrix_factor", 1) or 1)
+        except (ValueError, TypeError):
+            profile["matrix_factor"] = 1
         profile["surrogate_map"]   = _json_field(
             "surrogate_map_json",   profile.get("surrogate_map", []))
         profile["per_analyte"]     = _json_field(
@@ -272,6 +285,18 @@ class PFASMethodProfileEditView(BrowserView):
         raw_eis = f.get("eis_overrides_json", "").strip()
         if raw_eis:
             profile["eis_overrides"] = json.loads(raw_eis)
+
+        profile["salt_adjustment_factors"] = _json_field(
+            "salt_adjustment_factors_json",
+            profile.get("salt_adjustment_factors", []))
+
+        profile["isomer_summation"] = _json_field(
+            "isomer_summation_json",
+            profile.get("isomer_summation", []))
+
+        profile["extraction_stages"] = _json_field(
+            "extraction_stages_json",
+            profile.get("extraction_stages", []))
 
         return profile
 

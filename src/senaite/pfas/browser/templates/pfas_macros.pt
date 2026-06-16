@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html metal:define-macro="page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title metal:define-slot="title">PFAS Tool</title>
+  <style>
+    /* ── SENAITE palette tokens (senaite.core 2.6 Bootstrap 4 base) */
+    :root {
+      --s-primary:      #428aaf;
+      --s-primary-dk:   #387493;
+      --s-primary-lt:   #e8f4f8;
+      --s-dark:         #343a40;
+      --s-body:         #293333;
+      --s-secondary:    #6c757d;
+      --s-light:        #f8f9fa;
+      --s-bg:           #ffffff;
+      --s-border:       #dee2e6;
+      --s-input-border: #ced4da;
+      --s-input-text:   #495057;
+      --s-success:      #28a745;
+      --s-danger:       #dc3545;
+      --s-warning:      #fd7e14;
+      --s-focus-ring:   rgba(66,138,175,.25);
+    }
+
+    /* ── Reset */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           font-size: 14px; background: var(--s-light); color: var(--s-body); }
+
+    /* ── Page chrome ─────────────────────────────────────────────────────── */
+    .page-header {
+      background: var(--s-dark); color: #fff;
+      padding: 14px 24px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    .page-header h1 { font-size: 18px; font-weight: 600; flex: 1; min-width: 0; }
+    .page-header a  {
+      color: rgba(255,255,255,.65); font-size: 12px;
+      text-decoration: none; white-space: nowrap;
+    }
+    .page-header a:hover { color: #fff; text-decoration: underline; }
+    .page-header .back-link::before { content: "\2190  "; } /* ← */
+
+    /* Context badge — monospace pill in the header */
+    .header-badge {
+      font-family: monospace; font-size: 13px;
+      background: rgba(255,255,255,.15);
+      padding: 3px 10px; border-radius: 4px;
+    }
+    /* Small inline meta text */
+    .header-meta {
+      font-size: 12px; color: rgba(255,255,255,.70);
+    }
+    .header-meta code {
+      background: rgba(255,255,255,.12);
+      padding: 1px 5px; border-radius: 3px; font-size: 11px;
+    }
+
+    /* ── Content container */
+    .page-body { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .page-body-narrow { max-width: 900px; margin: 0 auto; padding: 20px; }
+
+    /* ── Flash messages */
+    .alert { padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-weight: 600; }
+    .alert-success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+    .alert-error   { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+    .alert-info    { background: var(--s-primary-lt); border: 1px solid #bee5eb; color: #0c5460; }
+
+    /* ── Section cards (collapsible <details> or plain .pfas-card) */
+    details, .pfas-card {
+      background: var(--s-bg); border-radius: 6px; margin-bottom: 14px;
+      border: 1px solid var(--s-border);
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    details[open], .pfas-card { box-shadow: 0 2px 6px rgba(0,0,0,.1); }
+    summary, .pfas-card-head {
+      padding: 11px 16px; cursor: pointer;
+      font-size: 14px; font-weight: 600;
+      background: var(--s-light); border-radius: 6px; color: var(--s-body);
+      list-style: none; display: flex; align-items: center; gap: 8px;
+    }
+    details[open] summary { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); }
+    .pfas-card-head { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border);
+                      cursor: default; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "\25B6"; font-size: 10px; transition: transform .15s;
+                      color: var(--s-secondary); }
+    details[open] summary::before { transform: rotate(90deg); }
+    .section-body, .pfas-card-body { padding: 16px; }
+
+    /* ── Field layout */
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .field-row { display: flex; flex-direction: column; }
+    .field-row label {
+      font-size: 11px; color: var(--s-secondary); margin-bottom: 4px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .field-row input[type=number],
+    .field-row input[type=text],
+    .field-row select {
+      padding: 7px 9px; border: 1px solid var(--s-input-border);
+      border-radius: 4px; font-size: 13px;
+      background: #fafafa; color: var(--s-input-text); width: 100%;
+    }
+    .field-row input:focus, .field-row select:focus {
+      outline: none; border-color: var(--s-primary);
+      box-shadow: 0 0 0 3px var(--s-focus-ring);
+    }
+    .field-row .hint { font-size: 10px; color: var(--s-secondary); margin-top: 3px; }
+    .field-row-wide { grid-column: 1 / -1; }
+
+    /* ── Checkboxes */
+    .check-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+    .check-row label { font-size: 13px; color: var(--s-body); font-weight: normal;
+                       text-transform: none; letter-spacing: normal; }
+    .check-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+
+    /* ── Toggle switch (CSS-only pill) */
+    .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px;
+                     cursor: pointer; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                    background: var(--s-input-border); border-radius: 20px;
+                    transition: background .15s; }
+    .toggle-track::before { content: ""; position: absolute; width: 14px; height: 14px;
+                             left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+                             transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+    .toggle-switch input:checked + .toggle-track { background: var(--s-primary); }
+    .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
+
+    /* ── Tables */
+    .pfas-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .pfas-table th {
+      background: var(--s-light); color: var(--s-secondary);
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .04em; padding: 8px 12px;
+      border-bottom: 2px solid var(--s-border); text-align: left;
+    }
+    .pfas-table td { padding: 8px 12px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    .pfas-table tr:last-child td { border-bottom: none; }
+    .pfas-table tbody tr:hover td { background: var(--s-primary-lt); }
+
+    /* ── Buttons */
+    .btn { display: inline-block; padding: 8px 20px; border-radius: 4px;
+           font-size: 13px; font-weight: 600; cursor: pointer;
+           border: none; text-decoration: none; }
+    .btn-primary { background: var(--s-primary); color: #fff; }
+    .btn-primary:hover { background: var(--s-primary-dk); text-decoration: none; color: #fff; }
+    .btn-secondary { background: transparent; color: var(--s-secondary);
+                     border: 1px solid var(--s-border); }
+    .btn-secondary:hover { background: var(--s-light); text-decoration: none; }
+    .btn-danger  { background: var(--s-danger); color: #fff; }
+    .btn-danger:hover { opacity: .85; }
+    .btn-link { background: none; border: none; color: var(--s-primary);
+                padding: 0; cursor: pointer; font-size: 13px; text-decoration: underline; }
+
+    /* ── Sticky action bar */
+    .save-bar {
+      position: sticky; bottom: 0; background: var(--s-bg);
+      border-top: 2px solid var(--s-primary);
+      padding: 12px 20px; display: flex; gap: 12px; align-items: center;
+      box-shadow: 0 -2px 8px rgba(0,0,0,.08);
+    }
+
+    /* ── Mono badges / tags */
+    .mono-badge {
+      font-family: monospace; font-size: 12px; color: var(--s-primary);
+      background: var(--s-primary-lt); padding: 2px 7px; border-radius: 3px;
+    }
+    .status-badge {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    }
+    .status-ok   { background: #d4edda; color: #155724; }
+    .status-warn { background: #fff3cd; color: #856404; }
+    .status-fail { background: #f8d7da; color: #721c24; }
+  </style>
+  <tal:head-extra metal:define-slot="head-extra" />
+</head>
+<body>
+
+<div class="page-header">
+  <h1><tal:t metal:define-slot="header-title">PFAS Tool</tal:t></h1>
+  <tal:r metal:define-slot="header-right" />
+</div>
+
+<tal:body metal:define-slot="content">
+  <div class="page-body">
+    <p>No content.</p>
+  </div>
+</tal:body>
+
+</body>
+</html>

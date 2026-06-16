@@ -1,4 +1,5 @@
-"""senaite.pfas — PFAS LIMS extension for SENAITE."""
+# -*- coding: utf-8 -*-
+"""senaite.pfas -- PFAS LIMS extension for SENAITE."""
 import logging
 from zope.i18nmessageid import MessageFactory
 

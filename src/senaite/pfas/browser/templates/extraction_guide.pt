@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Extraction Guide</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    /* ── Touch-friendly tablet layout ─────────────────────── */
+    body { touch-action: manipulation; }
+    .eg-layout { display:flex; min-height:80vh; gap:0; }
+
+    /* ── Stage sidebar ──────────────────────────────────────── */
+    .eg-sidebar { width:220px; flex-shrink:0; background:#1a1a2e;
+                  padding:16px 0; overflow-y:auto; }
+    .eg-sidebar .method-badge { font-size:11px; color:#888; text-transform:uppercase;
+                                letter-spacing:.5px; padding:0 16px 12px;
+                                border-bottom:1px solid #2a2a4a; margin-bottom:8px; }
+    .eg-sidebar .method-name { font-size:13px; font-weight:700; color:#eee; }
+    .stage-item { display:flex; align-items:center; gap:10px; padding:12px 16px;
+                  cursor:pointer; transition:background .15s; }
+    .stage-item:hover { background:#2a2a4a; }
+    .stage-item.active { background:#0d3d6b; border-left:3px solid #4a9eff; }
+    .stage-item.done   { opacity:.7; }
+    .stage-num { width:26px; height:26px; border-radius:50%; display:flex;
+                 align-items:center; justify-content:center;
+                 font-size:11px; font-weight:700; flex-shrink:0; }
+    .stage-num.done    { background:#28a745; color:#fff; }
+    .stage-num.active  { background:#4a9eff; color:#fff; }
+    .stage-num.pending { background:#2a2a4a; color:#888; }
+    .stage-name { font-size:12px; color:#ccc; line-height:1.3; }
+    .stage-item.active .stage-name { color:#fff; font-weight:600; }
+
+    /* ── Progress bar ────────────────────────────────────────── */
+    .progress-bar-wrap { padding:0 16px 12px; border-bottom:1px solid #2a2a4a; }
+    .progress-bar { height:4px; background:#2a2a4a; border-radius:2px; margin-top:6px; }
+    .progress-fill { height:4px; background:#28a745; border-radius:2px;
+                     transition:width .4s; }
+    .progress-label { font-size:10px; color:#888; }
+
+    /* ── Main content area ───────────────────────────────────── */
+    .eg-main { flex:1; padding:24px; overflow-y:auto; max-width:900px; }
+    .eg-stage-header { margin-bottom:20px; padding-bottom:12px;
+                       border-bottom:2px solid var(--s-border); }
+    .eg-stage-header .stage-title { font-size:22px; font-weight:800; color:var(--s-dark); }
+    .eg-stage-header .stage-desc  { font-size:14px; color:var(--s-secondary); margin-top:4px; }
+    .eg-stage-header .stage-badge { display:inline-block; font-size:11px;
+                                    padding:3px 10px; border-radius:10px;
+                                    background:#e8f4fd; color:#0277bd;
+                                    font-weight:700; margin-bottom:8px; }
+
+    /* ── Cards / sections ────────────────────────────────────── */
+    .eg-card { background:#fff; border:1px solid var(--s-border); border-radius:10px;
+               padding:18px; margin-bottom:16px; }
+    .eg-card h3 { font-size:14px; font-weight:700; color:var(--s-dark);
+                  margin:0 0 14px; padding-bottom:6px;
+                  border-bottom:1px solid var(--s-border); }
+
+    /* ── Reagent confirmation rows ───────────────────────────── */
+    .reagent-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+                   padding:10px 0; border-bottom:1px solid #f0f0f0; }
+    .reagent-row:last-child { border-bottom:0; }
+    .reagent-role { font-weight:600; font-size:13px; min-width:200px; flex:1; }
+    .reagent-lot-field { font-size:13px; padding:7px 10px; border:1px solid var(--s-input-border);
+                         border-radius:6px; width:140px; }
+    .reagent-exp-field { font-size:13px; padding:7px 10px; border:1px solid var(--s-input-border);
+                         border-radius:6px; width:130px; }
+    .reagent-qty-field { font-size:13px; padding:7px 10px; border:1px solid var(--s-input-border);
+                         border-radius:6px; width:90px; }
+    .reagent-status-sel { font-size:12px; padding:6px 8px; border:1px solid var(--s-input-border);
+                          border-radius:6px; }
+    .reagent-status-sel.flagged { border-color:#dc3545; background:#fff5f5; }
+    .btn-scan-sm { padding:7px 12px; background:#6610f2; color:#fff; border:none;
+                   border-radius:6px; font-size:12px; cursor:pointer; white-space:nowrap; }
+    .exp-warn { color:#856404; font-size:11px; font-weight:700; }
+    .exp-expired { color:#dc3545; font-size:11px; font-weight:700; }
+    .inv-match { font-size:11px; color:#1a73e8; cursor:pointer; }
+
+    /* ── Equipment S/N grid ──────────────────────────────────── */
+    .eq-grid { display:flex; flex-wrap:wrap; gap:12px; }
+    .eq-field { display:flex; flex-direction:column; flex:1 1 160px; }
+    .eq-field label { font-size:12px; font-weight:600; margin-bottom:3px; color:var(--s-dark); }
+    .eq-field input { padding:7px 10px; font-size:13px;
+                      border:1px solid var(--s-input-border); border-radius:6px; }
+
+    /* ── Solutions prepared ──────────────────────────────────── */
+    .sol-card { background:#f0fff4; border:1px solid #c3e6cb; border-radius:8px;
+                padding:14px; margin-bottom:10px; }
+    .sol-card h4 { font-size:12px; font-weight:700; color:#155724; margin:0 0 10px; }
+    .sol-fields { display:flex; gap:10px; flex-wrap:wrap; }
+    .sol-field { display:flex; flex-direction:column; flex:1 1 120px; }
+    .sol-field label { font-size:11px; font-weight:600; margin-bottom:3px; }
+    .sol-field input { padding:6px 8px; font-size:12px;
+                       border:1px solid var(--s-input-border); border-radius:5px; }
+    .btn-add-sol  { margin-top:8px; padding:5px 14px; font-size:12px;
+                    background:#f0fff4; border:1px dashed #28a745;
+                    border-radius:6px; cursor:pointer; color:#155724; }
+    .btn-label    { padding:6px 12px; background:#fd7e14; color:#fff; border:none;
+                    border-radius:6px; font-size:12px; cursor:pointer; }
+    .btn-del-sol  { background:none; border:none; color:#dc3545;
+                    cursor:pointer; font-size:14px; float:right; }
+
+    /* ── Pedigree section ────────────────────────────────────── */
+    .ped-standard { background:#f8f9fa; border:1px solid var(--s-border);
+                    border-radius:8px; padding:14px; margin-bottom:12px; }
+    .ped-standard h4 { font-size:13px; font-weight:700; margin:0 0 10px; color:var(--s-dark); }
+    .ped-level { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;
+                 padding:8px; background:#fff; border-radius:6px;
+                 border:1px solid #eee; }
+    .ped-level-badge { font-size:10px; font-weight:700; padding:2px 8px;
+                       border-radius:8px; background:#e8f0fe; color:#1a73e8;
+                       white-space:nowrap; align-self:center; min-width:80px;
+                       text-align:center; }
+    .ped-field { display:flex; flex-direction:column; flex:1 1 120px; }
+    .ped-field label { font-size:11px; font-weight:600; margin-bottom:3px; }
+    .ped-field input { padding:5px 8px; font-size:12px;
+                       border:1px solid var(--s-input-border); border-radius:5px; }
+    .btn-add-ped-lvl { font-size:11px; padding:3px 10px; background:#e8f0fe;
+                       border:1px solid #90caf9; border-radius:5px;
+                       cursor:pointer; color:#1a73e8; margin-top:4px; }
+    .btn-del-ped-lvl { background:none; border:none; color:#dc3545;
+                       font-size:13px; cursor:pointer; }
+
+    /* ── Deviations ──────────────────────────────────────────── */
+    .deviation-field { width:100%; min-height:80px; padding:10px; font-size:13px;
+                       border:1px solid var(--s-input-border); border-radius:6px;
+                       resize:vertical; box-sizing:border-box; }
+
+    /* ── Action buttons ──────────────────────────────────────── */
+    .stage-actions { display:flex; gap:12px; margin-top:20px; flex-wrap:wrap;
+                     padding-top:16px; border-top:2px solid var(--s-border); }
+    .btn-complete { padding:14px 32px; background:#28a745; color:#fff; border:none;
+                    border-radius:8px; font-size:15px; font-weight:700;
+                    cursor:pointer; touch-action:manipulation; }
+    .btn-complete:hover { background:#218838; }
+    .btn-complete:disabled { opacity:.5; cursor:not-allowed; }
+    .btn-save-ped { padding:10px 20px; background:#1a73e8; color:#fff; border:none;
+                    border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
+
+    /* ── Start screen ────────────────────────────────────────── */
+    .eg-start { max-width:500px; margin:40px auto; text-align:center; }
+    .eg-start h2 { font-size:24px; font-weight:800; margin-bottom:8px; }
+    .eg-start p { color:var(--s-secondary); margin-bottom:24px; }
+    .start-form { text-align:left; }
+    .start-form label { font-size:13px; font-weight:600; display:block; margin-bottom:4px; }
+    .start-form select, .start-form input { width:100%; padding:10px 12px; font-size:14px;
+      border:1px solid var(--s-input-border); border-radius:8px; margin-bottom:14px; box-sizing:border-box; }
+    .btn-start { width:100%; padding:14px; background:var(--s-primary); color:#fff;
+                 border:none; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; }
+
+    /* ── Done screen ─────────────────────────────────────────── */
+    .eg-done { text-align:center; padding:40px 20px; }
+    .eg-done .check { font-size:64px; margin-bottom:16px; }
+    .eg-done h2 { font-size:24px; font-weight:800; margin-bottom:8px; color:#28a745; }
+    .btn-pdf { padding:14px 32px; background:#dc3545; color:#fff; border:none;
+               border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; }
+    .btn-pdf:hover { background:#c82333; }
+
+    /* ── Alerts ─────────────────────────────────────────────── */
+    .alert-ok    { background:#d4edda; border:1px solid #c3e6cb; color:#155724;
+                   padding:10px 16px; border-radius:8px; margin-bottom:14px; font-size:13px; }
+    .alert-error { background:#f8d7da; border:1px solid #f5c6cb; color:#721c24;
+                   padding:10px 16px; border-radius:8px; margin-bottom:14px; font-size:13px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Guided Extraction</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="header-meta" tal:attributes="href view/batch_url">&#8592; Batch</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+
+    <div tal:condition="view/ok_msg"    class="alert-ok"    tal:content="view/ok_msg"    style="margin:12px 16px;"></div>
+    <div tal:condition="view/error_msg" class="alert-error" tal:content="view/error_msg" style="margin:12px 16px;"></div>
+
+    <!-- ─── JS data ──────────────────────────────────────────── -->
+    <script>
+    var SESSION     = <tal:d tal:replace="structure view/session_json" />;
+    var STAGE_RGTINV= <tal:d tal:replace="structure view/stage_reagents_json" />;
+    var PEDIGREE    = <tal:d tal:replace="structure view/pedigree_json" />;
+    var PORTAL_URL  = "<tal:p tal:replace="view/portal_url" />";
+    var BATCH_UID   = "<tal:b tal:replace="view/batch_uid" />";
+    var SELF_URL    = PORTAL_URL + "/@@pfas-extraction-guide";
+    var LABEL_URL   = PORTAL_URL + "/@@pfas-label";
+    </script>
+
+    <!-- ════════════════════════════════════════════════════════════
+         START SCREEN — no session yet
+         ════════════════════════════════════════════════════════════ -->
+    <tal:start tal:condition="not:view/session">
+    <div class="eg-start">
+      <h2>Start Extraction</h2>
+      <p tal:content="string:Batch: ${view/batch_title}"></p>
+      <form method="post" class="start-form"
+            tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
+        <input type="hidden" name="action"    value="start" />
+        <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
+
+        <label>Method</label>
+        <select name="method_id">
+          <tal:opts tal:repeat="pair view/available_methods">
+            <option tal:attributes="value python:pair[0]" tal:content="python:pair[1]"></option>
+          </tal:opts>
+        </select>
+
+        <label>Lead Analyst</label>
+        <input type="text" name="analyst" placeholder="Your name" required="required" />
+
+        <button class="btn-start" type="submit">Begin Extraction &#8594;</button>
+      </form>
+    </div>
+    </tal:start>
+
+    <!-- ════════════════════════════════════════════════════════════
+         FINALIZED — show completion and PDF link
+         ════════════════════════════════════════════════════════════ -->
+    <tal:done tal:condition="python: view.session() and view.is_finalized()">
+    <div class="eg-done">
+      <div class="check">&#10003;</div>
+      <h2>Extraction Complete</h2>
+      <p style="color:var(--s-secondary);margin-bottom:24px;">
+        All stages recorded. Generate the traceability PDF below.
+      </p>
+      <a tal:attributes="href view/pdf_url" target="_blank">
+        <button class="btn-pdf">&#128196; Download Extraction Logbook PDF</button>
+      </a>
+      <br/><br/>
+      <a tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
+         style="font-size:13px;color:var(--s-secondary);">View Reagent Inventory</a>
+    </div>
+    </tal:done>
+
+    <!-- ════════════════════════════════════════════════════════════
+         ACTIVE SESSION — stage-by-stage UI
+         ════════════════════════════════════════════════════════════ -->
+    <tal:active tal:condition="python: view.session() and not view.is_finalized()">
+    <div class="eg-layout">
+
+      <!-- ── Sidebar ─────────────────────────────────────────────── -->
+      <div class="eg-sidebar">
+        <div class="method-badge">
+          <div class="method-name" tal:content="python:view.method_profile().get('display_name','')"></div>
+          <div style="margin-top:3px;" tal:content="python:'Batch: ' + view.batch_title()"></div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-label"
+               tal:content="python:'{0}% complete'.format(view.progress_pct())"></div>
+          <div class="progress-bar">
+            <div class="progress-fill"
+                 tal:attributes="style python:'width:{0}%'.format(view.progress_pct())"></div>
+          </div>
+        </div>
+        <tal:stages tal:repeat="stage view/extraction_stages">
+          <tal:define tal:define="status python:view.stage_status(stage)">
+          <div tal:attributes="class python:'stage-item ' + status"
+               onclick="javascript:void(0)">
+            <div tal:attributes="class python:'stage-num ' + status">
+              <tal:done tal:condition="python:status=='done'">&#10003;</tal:done>
+              <tal:other tal:condition="python:status!='done'"
+                         tal:content="python:stage.get('order','')"></tal:other>
+            </div>
+            <div class="stage-name" tal:content="python:stage.get('name','')"></div>
+          </div>
+          </tal:define>
+        </tal:stages>
+      </div>
+
+      <!-- ── Main content ────────────────────────────────────────── -->
+      <div class="eg-main">
+
+        <tal:current tal:define="stage view/current_stage">
+        <div class="eg-stage-header">
+          <div class="stage-badge"
+               tal:content="python:'Stage {0} of {1}'.format(stage.get('order',''), view.total_stages())"></div>
+          <div class="stage-title" tal:content="python:stage.get('name','')"></div>
+          <div class="stage-desc"  tal:content="python:stage.get('description','')"></div>
+        </div>
+
+        <form method="post"
+              tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide"
+              id="stage-form">
+          <input type="hidden" name="action"       value="complete_stage" />
+          <input type="hidden" name="batch_uid"    tal:attributes="value view/batch_uid" />
+          <input type="hidden" name="stage_order"  tal:attributes="value python:str(stage.get('order',''))" />
+          <input type="hidden" name="reagents_json"        id="reagents_json_field"        value="[]" />
+          <input type="hidden" name="equipment_sns_json"   id="equipment_sns_json_field"   value="{}" />
+          <input type="hidden" name="solutions_prepared_json" id="solutions_json_field"    value="[]" />
+
+          <!-- ── Analyst for this stage ── -->
+          <div class="eg-card">
+            <h3>Analyst</h3>
+            <input type="text" name="stage_analyst"
+                   style="font-size:14px;padding:9px 12px;border:1px solid var(--s-input-border);border-radius:6px;width:300px;"
+                   tal:attributes="value python:view.session().get('analyst','')"
+                   placeholder="Analyst name" />
+          </div>
+
+          <!-- ── Reagent confirmation ── -->
+          <tal:rgs tal:condition="python:stage.get('reagent_roles')">
+          <div class="eg-card" id="reagent-card">
+            <h3>Reagents — Verify Lot &amp; Expiry</h3>
+            <div id="reagent-rows"></div>
+            <button type="button" class="btn-add-sol" style="margin-top:6px;"
+                    onclick="addReagentRow('','','','','')">+ Add Reagent</button>
+          </div>
+          </tal:rgs>
+
+          <!-- ── Equipment S/Ns ── -->
+          <tal:eqs tal:condition="python:stage.get('equipment')">
+          <div class="eg-card">
+            <h3>Equipment Serial / Verification Numbers</h3>
+            <div class="eq-grid" id="eq-grid"></div>
+          </div>
+          </tal:eqs>
+
+          <!-- ── Solutions prepared (if applicable) ── -->
+          <tal:sol tal:condition="python:stage.get('creates_solution', False)">
+          <div class="eg-card" id="solutions-card">
+            <h3>Solutions Prepared at This Stage</h3>
+            <div id="sol-rows"></div>
+            <button type="button" class="btn-add-sol" onclick="addSolutionRow()">
+              + Prepare a New Solution / Label
+            </button>
+          </div>
+          </tal:sol>
+
+          <!-- ── Pedigree (spike stages) ── -->
+          <tal:ped tal:condition="python:stage.get('capture_pedigree', False)">
+          <div class="eg-card" id="pedigree-card">
+            <h3>Standard / IS Pedigree</h3>
+            <p style="font-size:12px;color:var(--s-secondary);margin-bottom:14px;">
+              Record the full chain: CRM &rarr; Stock &rarr; Working standard.
+              This becomes the parentage record in the final PDF.
+            </p>
+            <div id="ped-rows"></div>
+            <button type="button" class="btn-add-sol" style="border-color:#1a73e8;color:#1a73e8;"
+                    onclick="addPedigreeStandard()">+ Add Standard</button>
+            <input type="hidden" name="pedigree_json_stage" id="pedigree_hidden" value="{}" />
+          </div>
+          </tal:ped>
+
+          <!-- ── Deviations / observations ── -->
+          <div class="eg-card">
+            <h3>Deviations / Observations</h3>
+            <textarea class="deviation-field" name="deviations"
+                      placeholder="Document any deviations from SOP, unusual observations, or corrective actions taken..."></textarea>
+          </div>
+
+          <!-- ── Stage actions ── -->
+          <div class="stage-actions">
+            <button class="btn-complete" type="submit"
+                    onclick="return prepStageSubmit()">
+              &#10003; Complete Stage
+              <tal:next tal:condition="python:(stage.get('order',0) or 0) &lt; view.total_stages()">
+                &amp; Next Stage
+              </tal:next>
+            </button>
+          </div>
+
+        </form>
+
+        <!-- Finalize button (shown when all stages done) -->
+        <tal:final tal:condition="python:len(view.completed_stages()) >= view.total_stages()">
+        <div class="eg-card" style="margin-top:24px;background:#d4edda;border-color:#c3e6cb;">
+          <h3 style="color:#155724;">All Stages Complete — Finalize &amp; Generate PDF</h3>
+          <form method="post"
+                tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
+            <input type="hidden" name="action"    value="finalize" />
+            <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
+            <input type="text" name="analyst" style="font-size:13px;padding:8px;border:1px solid #c3e6cb;border-radius:6px;width:260px;margin-bottom:10px;"
+                   tal:attributes="value python:view.session().get('analyst','')"
+                   placeholder="Reviewing analyst sign-off" />
+            <br/>
+            <button type="submit"
+                    style="padding:12px 28px;background:#155724;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+              Finalize &amp; Create PDF
+            </button>
+          </form>
+        </div>
+        </tal:final>
+
+        </tal:current>
+
+      </div><!-- /eg-main -->
+    </div><!-- /eg-layout -->
+    </tal:active>
+
+
+  <script>
+  /* ── Utilities ────────────────────────────────────────────────────── */
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;').replace(/\u003e/g,'&gt;');
+  }
+  function todayISO() { return new Date().toISOString().slice(0,10); }
+  function isExpired(d) { return d && new Date(d) < new Date(); }
+  function expClass(d) {
+    if (!d) return '';
+    var exp = new Date(d);
+    var now = new Date();
+    if (exp < now) return 'exp-expired';
+    if ((exp-now) < 30*24*3600*1000) return 'exp-warn';
+    return '';
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     REAGENT ROWS
+     ═══════════════════════════════════════════════════════════════════ */
+  var reagentData = [];
+
+  /* Pre-populate from stage inventory matches */
+  var ROLES = STAGE_RGTINV || {};
+  Object.keys(ROLES).forEach(function(role) {
+    var matches = ROLES[role];
+    var best = null;
+    /* prefer status=opened, else active */
+    matches.forEach(function(m) {
+      if (!best || m.status === 'opened') best = m;
+    });
+    reagentData.push({
+      role:          role,
+      name:          best ? best.name : role,
+      lot:           best ? best.lot_number : '',
+      expiry:        best ? best.expiry_date : '',
+      qty_used:      '',
+      status:        'ok',
+      inventory_uid: best ? best.uid : '',
+      new_status:    '',
+    });
+  });
+
+  function addReagentRow(role, name, lot, expiry, invUid) {
+    reagentData.push({ role:role||'', name:name||'', lot:lot||'',
+                       expiry:expiry||'', qty_used:'', status:'ok',
+                       inventory_uid:invUid||'', new_status:'' });
+    renderReagents();
+  }
+
+  function renderReagents() {
+    var el = document.getElementById('reagent-rows');
+    if (!el) return;
+    el.innerHTML = '';
+    reagentData.forEach(function(r, i) {
+      var ec = expClass(r.expiry);
+      var div = document.createElement('div');
+      div.className = 'reagent-row';
+      div.innerHTML =
+        '\u003cspan class="reagent-role">' + esc(r.role || r.name) + '\u003c/span>'+
+        '\u003cinput class="reagent-lot-field" type="text" placeholder="Lot #"'+
+               ' value="'+esc(r.lot)+'"'+
+               ' oninput="reagentData['+i+'].lot=this.value;syncReagents()"/>'+
+        '\u003cbutton type="button" class="btn-scan-sm" onclick="scanReagentLot('+i+')">&#128247;\u003c/button>'+
+        '\u003cinput class="reagent-exp-field" type="date" value="'+esc(r.expiry)+'"'+
+               ' oninput="reagentData['+i+'].expiry=this.value;renderReagents()"/>'+
+        (ec ? '\u003cspan class="'+ec+'">'+(ec==='exp-expired'?'EXPIRED':'EXPIRING')+'\u003c/span>' : '')+
+        '\u003cinput class="reagent-qty-field" type="text" placeholder="Qty used"'+
+               ' value="'+esc(r.qty_used)+'"'+
+               ' oninput="reagentData['+i+'].qty_used=this.value;syncReagents()"/>'+
+        '\u003cselect class="reagent-status-sel'+(r.new_status?' flagged':'')+'"'+
+                ' onchange="flagReagent('+i+',this.value)">'+
+          '\u003coption value="">OK\u003c/option>'+
+          '\u003coption value="exhausted"'+(r.new_status==='exhausted'?' selected':'')+'>Lot Exhausted\u003c/option>'+
+          '\u003coption value="expired"'+(r.new_status==='expired'?' selected':'')+'>Expired — New Lot Opened\u003c/option>'+
+          '\u003coption value="quarantine"'+(r.new_status==='quarantine'?' selected':'')+'>Quarantine\u003c/option>'+
+        '\u003c/select>'+
+        (r.new_status ? '\u003cbutton type="button" style="font-size:11px;padding:5px 8px;background:#6610f2;color:#fff;border:none;border-radius:5px;cursor:pointer;" onclick="scanNewLot('+i+')">Scan New Lot &#128247;\u003c/button>' : '')+
+        '\u003cbutton type="button" style="background:none;border:none;color:#dc3545;cursor:pointer;font-size:14px;" onclick="reagentData.splice('+i+',1);renderReagents()">&#215;\u003c/button>';
+      el.appendChild(div);
+    });
+    syncReagents();
+  }
+
+  function flagReagent(i, val) {
+    reagentData[i].new_status = val;
+    renderReagents();
+  }
+
+  function scanReagentLot(i) {
+    openScanModal(function(result) { reagentData[i].lot = result; renderReagents(); });
+  }
+  function scanNewLot(i) {
+    openScanModal(function(result) {
+      /* When a new lot is scanned, open inventory lookup to add the new lot */
+      var url = PORTAL_URL + '/@@pfas-reagents?edit_uid=&q=' + encodeURIComponent(reagentData[i].role || '');
+      window.open(url, '_blank', 'width=700,height=600');
+    });
+  }
+
+  function syncReagents() {
+    var el = document.getElementById('reagents_json_field');
+    if (el) el.value = JSON.stringify(reagentData);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     EQUIPMENT S/N GRID
+     ═══════════════════════════════════════════════════════════════════ */
+  var equipmentSNs = {};
+
+  function renderEquipment() {
+    var el = document.getElementById('eq-grid');
+    if (!el) return;
+    el.innerHTML = '';
+    var equipList = <tal:eq tal:replace="structure python:__import__('json').dumps(view.current_stage().get('equipment', []))" />;
+    equipList.forEach(function(eq) {
+      equipmentSNs[eq] = equipmentSNs[eq] || '';
+      var div = document.createElement('div');
+      div.className = 'eq-field';
+      div.innerHTML =
+        '\u003clabel>'+esc(eq)+' S/N\u003c/label>'+
+        '\u003cinput type="text" value="'+esc(equipmentSNs[eq])+'"'+
+               ' oninput="equipmentSNs[\''+eq.replace(/'/g,"\\'")+'\']=this.value;syncEquipment()"/>';
+      el.appendChild(div);
+    });
+  }
+
+  function syncEquipment() {
+    var el = document.getElementById('equipment_sns_json_field');
+    if (el) el.value = JSON.stringify(equipmentSNs);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     SOLUTIONS PREPARED
+     ═══════════════════════════════════════════════════════════════════ */
+  var solutionsData = [];
+
+  function addSolutionRow() {
+    solutionsData.push({name:'', lot:'', conc:'', volume_ml:'', expiry:'', analyst:''});
+    renderSolutions();
+  }
+
+  function renderSolutions() {
+    var el = document.getElementById('sol-rows');
+    if (!el) return;
+    el.innerHTML = '';
+    solutionsData.forEach(function(s, i) {
+      var div = document.createElement('div');
+      div.className = 'sol-card';
+      div.innerHTML =
+        '\u003cbutton type="button" class="btn-del-sol" onclick="solutionsData.splice('+i+',1);renderSolutions()">&#215;\u003c/button>'+
+        '\u003ch4>Solution ' + (i+1) + '\u003c/h4>'+
+        '\u003cdiv class="sol-fields">'+
+          '\u003cdiv class="sol-field">\u003clabel>Name\u003c/label>'+
+            '\u003cinput type="text" value="'+esc(s.name)+'"'+
+                   ' oninput="solutionsData['+i+'].name=this.value;autoSolLot('+i+')"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Lot #\u003c/label>'+
+            '\u003cinput type="text" value="'+esc(s.lot)+'" id="sol-lot-'+i+'"'+
+                   ' oninput="solutionsData['+i+'].lot=this.value;syncSolutions()"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Concentration\u003c/label>'+
+            '\u003cinput type="text" value="'+esc(s.conc)+'" placeholder="e.g. 100 ng/mL"'+
+                   ' oninput="solutionsData['+i+'].conc=this.value;syncSolutions()"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Volume (mL)\u003c/label>'+
+            '\u003cinput type="number" step="0.1" value="'+esc(s.volume_ml)+'"'+
+                   ' oninput="solutionsData['+i+'].volume_ml=this.value;syncSolutions()"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Expiry\u003c/label>'+
+            '\u003cinput type="date" value="'+esc(s.expiry)+'" id="sol-exp-'+i+'"'+
+                   ' oninput="solutionsData['+i+'].expiry=this.value;syncSolutions()"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Storage\u003c/label>'+
+            '\u003cinput type="text" value="'+esc(s.storage||'')+'" placeholder="-20°C"'+
+                   ' oninput="solutionsData['+i+'].storage=this.value;syncSolutions()"/>\u003c/div>'+
+        '\u003c/div>'+
+        '\u003cdiv style="margin-top:10px;display:flex;gap:8px;">'+
+          '\u003cbutton type="button" class="btn-label" onclick="printLabel('+i+')">&#127991; Print Label\u003c/button>'+
+          '\u003cbutton type="button" class="btn-scan-sm" onclick="saveSolutionToInventory('+i+')">+ Add to Inventory\u003c/button>'+
+        '\u003c/div>';
+      el.appendChild(div);
+    });
+    syncSolutions();
+  }
+
+  var MOBILE_PHASE_RE = /methanol|meoh|acetonitrile|acn|water|h2o|mobile.?phase|mph|formic/i;
+  function autoSolLot(i) {
+    var s = solutionsData[i];
+    var d = new Date();
+    var yy = String(d.getFullYear()).slice(-2);
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var dd = String(d.getDate()).padStart(2,'0');
+    var lot = (s.name||'SOL').toUpperCase().replace(/\W+/g,'_') + '-' + yy+mm+dd;
+    solutionsData[i].lot = lot;
+    document.getElementById('sol-lot-'+i).value = lot;
+    var exp = new Date();
+    if (MOBILE_PHASE_RE.test(s.name||'')) {
+      exp.setDate(exp.getDate()+7);
+    } else {
+      exp.setFullYear(exp.getFullYear()+1);
+    }
+    solutionsData[i].expiry = exp.toISOString().slice(0,10);
+    var expEl = document.getElementById('sol-exp-'+i);
+    if (expEl) expEl.value = solutionsData[i].expiry;
+    syncSolutions();
+  }
+
+  function syncSolutions() {
+    var el = document.getElementById('solutions_json_field');
+    if (el) el.value = JSON.stringify(solutionsData);
+  }
+
+  function printLabel(i) {
+    var s = solutionsData[i];
+    var params = '?name='+encodeURIComponent(s.name||'')
+               + '&lot='+encodeURIComponent(s.lot||'')
+               + '&conc='+encodeURIComponent(s.conc||'')
+               + '&vol='+encodeURIComponent(s.volume_ml||'')
+               + '&exp='+encodeURIComponent(s.expiry||'')
+               + '&date='+encodeURIComponent(todayISO())
+               + '&back='+encodeURIComponent(window.location.href);
+    window.open(LABEL_URL + params, '_blank', 'width=600,height=500');
+  }
+
+  function saveSolutionToInventory(i) {
+    var s = solutionsData[i];
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = SELF_URL;
+    var fields = {action:'prepare_solution', batch_uid:BATCH_UID,
+                  sol_name:s.name, sol_lot:s.lot, sol_conc:s.conc,
+                  sol_volume:s.volume_ml, sol_storage:s.storage||''};
+    Object.keys(fields).forEach(function(k) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = k; inp.value = fields[k]||'';
+      form.appendChild(inp);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     PEDIGREE
+     ═══════════════════════════════════════════════════════════════════ */
+  var pedData = PEDIGREE || {};  /* {standard_name: [{level, lot, conc, ...}, ...]} */
+
+  var PED_LEVELS = ['CRM / Reference Material', 'Primary Stock', 'Secondary Stock', 'Working Standard'];
+
+  function addPedigreeStandard() {
+    var name = prompt('Standard / IS name:');
+    if (!name) return;
+    pedData[name] = pedData[name] || [];
+    if (!pedData[name].length) {
+      pedData[name].push({level:'CRM / Reference Material', supplier:'', lot:'', cert_conc:'', cert_date:'', coa:''});
+      pedData[name].push({level:'Primary Stock', lot:'', conc:'', volume_ml:'', prepared_by:'', prepared_date:''});
+      pedData[name].push({level:'Working Standard', lot:'', conc:'', volume_ml:'', prepared_by:'', prepared_date:''});
+    }
+    renderPedigree();
+  }
+
+  function renderPedigree() {
+    var el = document.getElementById('ped-rows');
+    if (!el) return;
+    el.innerHTML = '';
+    Object.keys(pedData).forEach(function(stdName) {
+      var levels = pedData[stdName];
+      var div = document.createElement('div');
+      div.className = 'ped-standard';
+      var html = '\u003ch4>' + esc(stdName) +
+                 ' \u003cbutton type="button" onclick="deletePedStd(\''+stdName.replace(/'/g,"\\'")+'\')" '+
+                 'style="background:none;border:none;color:#dc3545;cursor:pointer;font-size:12px;">&#215; Remove\u003c/button>\u003c/h4>';
+      levels.forEach(function(lvl, li) {
+        var isCRM = lvl.level.indexOf('CRM') !== -1 || lvl.level.indexOf('Reference') !== -1;
+        html += '\u003cdiv class="ped-level">'+
+                '\u003cspan class="ped-level-badge">'+esc(lvl.level)+'\u003c/span>';
+        if (isCRM) {
+          html += pedField('Supplier', stdName, li, 'supplier', lvl.supplier, 150) +
+                  pedField('Lot #', stdName, li, 'lot', lvl.lot, 120) +
+                  pedField('Cert. Conc (ng/mL)', stdName, li, 'cert_conc', lvl.cert_conc, 120) +
+                  pedField('Cert. Date', stdName, li, 'cert_date', lvl.cert_date, 120, 'date') +
+                  pedField('CoA #', stdName, li, 'coa', lvl.coa, 100);
+        } else {
+          html += pedField('Lot #', stdName, li, 'lot', lvl.lot, 130) +
+                  pedField('Conc (ng/mL)', stdName, li, 'conc', lvl.conc, 110) +
+                  pedField('Volume (mL)', stdName, li, 'volume_ml', lvl.volume_ml, 90) +
+                  pedField('Prep By', stdName, li, 'prepared_by', lvl.prepared_by, 120) +
+                  pedField('Prep Date', stdName, li, 'prepared_date', lvl.prepared_date, 120, 'date');
+        }
+        html += '\u003cbutton type="button" class="btn-del-ped-lvl" '+
+                'onclick="deletePedLevel(\''+stdName.replace(/'/g,"\\'")+'\',' + li + ')">&#215;\u003c/button>';
+        html += '\u003c/div>';
+      });
+      html += '\u003cbutton type="button" class="btn-add-ped-lvl" onclick="addPedLevel(\''+stdName.replace(/'/g,"\\'")+'\')">' +
+              '+ Add Dilution Level\u003c/button>';
+      div.innerHTML = html;
+      el.appendChild(div);
+    });
+    syncPedigree();
+  }
+
+  function pedField(label, stdName, li, key, val, w, type) {
+    type = type || 'text';
+    return '\u003cdiv class="ped-field" style="max-width:'+w+'px;">' +
+           '\u003clabel>'+esc(label)+'\u003c/label>' +
+           '\u003cinput type="'+type+'" value="'+esc(val||'')+'" ' +
+           'oninput="updatePed(\''+stdName.replace(/'/g,"\\'")+'\',' + li + ',\''+key+'\',this.value)"/>' +
+           '\u003c/div>';
+  }
+
+  function updatePed(stdName, li, key, val) {
+    if (pedData[stdName] && pedData[stdName][li]) {
+      pedData[stdName][li][key] = val;
+    }
+    syncPedigree();
+  }
+
+  function addPedLevel(stdName) {
+    if (!pedData[stdName]) return;
+    pedData[stdName].push({level:'Secondary Stock', lot:'', conc:'', volume_ml:'', prepared_by:'', prepared_date:''});
+    renderPedigree();
+  }
+
+  function deletePedLevel(stdName, li) {
+    if (pedData[stdName]) { pedData[stdName].splice(li,1); renderPedigree(); }
+  }
+
+  function deletePedStd(stdName) {
+    delete pedData[stdName];
+    renderPedigree();
+  }
+
+  function syncPedigree() {
+    var el = document.getElementById('pedigree_hidden');
+    if (el) el.value = JSON.stringify(pedData);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     BARCODE SCANNER MINI-MODAL
+     ═══════════════════════════════════════════════════════════════════ */
+  var _scanCallback = null;
+  var _scanReader   = null;
+
+  function openScanModal(cb) {
+    _scanCallback = cb;
+    var overlay = document.getElementById('scan-mini-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'scan-mini-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML =
+        '\u003cdiv style="background:#111;border-radius:12px;padding:20px;width:90%;max-width:420px;color:#fff;">'+
+        '\u003ch3 style="margin:0 0 12px;font-size:15px;">Scan Barcode\u003c/h3>'+
+        '\u003cvideo id="scan-mini-video" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000;max-height:240px;object-fit:cover;">\u003c/video>'+
+        '\u003cdiv id="scan-mini-result" style="margin-top:10px;font-size:13px;min-height:30px;background:#1a1a2e;padding:8px;border-radius:6px;">\u003c/div>'+
+        '\u003cdiv style="display:flex;gap:8px;margin-top:12px;">'+
+          '\u003cbutton id="scan-mini-use" style="flex:1;padding:9px;background:#00ff88;color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;" disabled onclick="useScanMini()">Use\u003c/button>'+
+          '\u003cbutton style="flex:1;padding:9px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;" onclick="closeScanMini()">Cancel\u003c/button>'+
+        '\u003c/div>'+
+        '\u003c/div>';
+      document.body.appendChild(overlay);
+    } else {
+      overlay.style.display = 'flex';
+    }
+    _scanMiniResult = null;
+    document.getElementById('scan-mini-result').textContent = 'Point camera at barcode...';
+    document.getElementById('scan-mini-use').disabled = true;
+    if (typeof ZXing !== 'undefined') {
+      _scanReader = new ZXing.BrowserMultiFormatReader();
+      _scanReader.decodeFromVideoDevice(null, 'scan-mini-video', function(res, err) {
+        if (res) {
+          _scanMiniResult = res.getText();
+          document.getElementById('scan-mini-result').innerHTML = '\u003cstrong style="color:#00ff88;">' + esc(_scanMiniResult) + '\u003c/strong>';
+          document.getElementById('scan-mini-use').disabled = false;
+        }
+      });
+    } else {
+      document.getElementById('scan-mini-result').textContent = 'ZXing not loaded. Enter lot manually.';
+    }
+  }
+
+  var _scanMiniResult = null;
+  function useScanMini() {
+    closeScanMini();
+    if (_scanCallback && _scanMiniResult) _scanCallback(_scanMiniResult);
+  }
+  function closeScanMini() {
+    if (_scanReader) { try { _scanReader.reset(); } catch(e){} _scanReader = null; }
+    var overlay = document.getElementById('scan-mini-overlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     FORM SUBMISSION
+     ═══════════════════════════════════════════════════════════════════ */
+  function prepStageSubmit() {
+    syncReagents();
+    syncEquipment();
+    syncSolutions();
+    /* Also save pedigree via separate POST if pedigree exists */
+    if (Object.keys(pedData).length) {
+      syncPedigree();
+      /* pedigree_hidden is submitted as part of the stage form */
+    }
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     INIT
+     ═══════════════════════════════════════════════════════════════════ */
+  document.addEventListener('DOMContentLoaded', function() {
+    renderReagents();
+    renderEquipment();
+    renderSolutions();
+    renderPedigree();
+  });
+  </script>
+
+  <!-- ZXing for inline barcode scanning -->
+  <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+  </div><!-- /content slot -->
+</body>
+</html>

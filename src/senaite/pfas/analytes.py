@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 PFAS Analyte Registry
 Extracted from FDA_Sample_Calculator_V13.xlsm shared strings and DATA table.
@@ -162,7 +163,7 @@ class QCCriteria:
     # If blank > RL → flag contamination
 
     @classmethod
-    def lfsm_criteria(cls, analyte: str, matrix: str) -> tuple[float, float]:
+    def lfsm_criteria(cls, analyte, matrix):
         """Return (low, high) acceptance window for LFSM recovery."""
         matrix_upper = matrix.upper()
         is_key = analyte in KEY_ANALYTES
@@ -172,7 +173,7 @@ class QCCriteria:
         return cls.LFSM_RECOVERY_MATCHING
 
     @classmethod
-    def qq_criteria(cls, analyte: str) -> float:
+    def qq_criteria(cls, analyte):
         """Return max % deviation for qual/quan ion ratio."""
         if analyte in NON_ISO_ANALYTES:
             return cls.QQ_RATIO_NON_ISO_PCT

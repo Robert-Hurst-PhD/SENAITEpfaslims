@@ -1,250 +1,189 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml"
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sample Tracker — PFAS Lab</title>
+  <title metal:fill-slot="title">Sample Tracker</title>
+  <tal:styles metal:fill-slot="head-extra">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-size: 15px; background: #f0f4f8; color: #1a202c; min-height: 100vh;
-    }
+    /* ── Public tracker overrides ─────────────────────────────────────── */
+    /* Narrow centered column, more breathing room for client-facing page */
+    .page-body { max-width: 640px; padding: 40px 16px 60px; }
 
-    /* ── Header ───────────────────────────────────────────────────────────── */
-    .site-header {
-      background: #1a237e; color: #fff;
-      padding: 16px 24px; display: flex; align-items: center; gap: 12px;
-    }
-    .site-header .logo-mark {
-      width: 36px; height: 36px; border-radius: 8px;
-      background: #3949ab; display: flex; align-items: center;
-      justify-content: center; font-weight: 900; font-size: 16px; flex-shrink: 0;
-    }
-    .site-header h1 { font-size: 20px; font-weight: 700; }
-    .site-header p  { font-size: 12px; color: #9fa8da; margin-top: 2px; }
-
-    /* ── Main layout ──────────────────────────────────────────────────────── */
-    .page-body {
-      max-width: 640px; margin: 40px auto; padding: 0 16px 60px;
-    }
-
-    /* ── Search card ──────────────────────────────────────────────────────── */
-    .search-card {
-      background: #fff; border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,.10);
-      padding: 28px 32px; margin-bottom: 24px;
-    }
-    .search-card h2 { font-size: 17px; color: #1a237e; margin-bottom: 6px; }
-    .search-card p  { font-size: 13px; color: #546e7a; margin-bottom: 18px; }
+    /* ── Search card ──────────────────────────────────────────────────── */
+    .search-card { background: var(--s-bg); border-radius: 12px;
+                   box-shadow: 0 2px 12px rgba(0,0,0,.10);
+                   padding: 28px 32px; margin-bottom: 24px; }
+    .search-card h2 { font-size: 17px; color: var(--s-body); margin-bottom: 6px; }
+    .search-card p  { font-size: 13px; color: var(--s-secondary); margin-bottom: 18px; }
 
     .search-row { display: flex; gap: 8px; }
-    .search-input {
-      flex: 1; padding: 10px 14px; font-size: 15px; font-family: monospace;
-      border: 2px solid #c5cae9; border-radius: 8px; outline: none;
-      text-transform: uppercase; letter-spacing: .06em; color: #1a237e;
-    }
-    .search-input:focus { border-color: #3949ab; box-shadow: 0 0 0 3px rgba(57,73,171,.12); }
-    .search-btn {
-      padding: 10px 22px; background: #1a237e; color: #fff;
-      border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
-      cursor: pointer; white-space: nowrap;
-    }
-    .search-btn:hover { background: #283593; }
+    .search-input { flex: 1; padding: 10px 14px; font-size: 15px; font-family: monospace;
+                    border: 2px solid var(--s-input-border); border-radius: 8px; outline: none;
+                    text-transform: uppercase; letter-spacing: .06em; color: var(--s-body); }
+    .search-input:focus { border-color: var(--s-primary); box-shadow: 0 0 0 3px var(--s-focus-ring); }
+    .search-btn { padding: 10px 22px; background: var(--s-primary); color: #fff;
+                  border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+                  cursor: pointer; white-space: nowrap; }
+    .search-btn:hover { background: var(--s-primary-dk); }
 
-    /* ── Not found ────────────────────────────────────────────────────────── */
-    .not-found {
-      background: #fff3e0; border: 1px solid #ffcc02; border-radius: 10px;
-      padding: 16px 20px; margin-bottom: 24px; font-size: 13px; color: #e65100;
-    }
+    /* ── Not found ────────────────────────────────────────────────────── */
+    .not-found { background: #fff3cd; border: 1px solid #ffeeba; border-radius: 10px;
+                 padding: 16px 20px; margin-bottom: 24px; font-size: 13px; color: #856404; }
     .not-found strong { display: block; font-size: 14px; margin-bottom: 4px; }
 
-    /* ── Result card ──────────────────────────────────────────────────────── */
-    .result-card {
-      background: #fff; border-radius: 12px;
-      box-shadow: 0 2px 12px rgba(0,0,0,.10); overflow: hidden;
-    }
+    /* ── Result card ──────────────────────────────────────────────────── */
+    .result-card { background: var(--s-bg); border-radius: 12px;
+                   box-shadow: 0 2px 12px rgba(0,0,0,.10); overflow: hidden; }
 
-    /* Stage hero banner */
-    .stage-hero {
-      padding: 20px 28px 16px; display: flex; align-items: center; gap: 20px;
-    }
-    .stage-1 .stage-hero { background: linear-gradient(135deg,#e3f2fd,#bbdefb); }
+    /* Stage hero gradient — intentionally vivid for client UX */
+    .stage-hero { padding: 20px 28px 16px; display: flex; align-items: center; gap: 20px; }
+    .stage-1 .stage-hero { background: linear-gradient(135deg,#e8f4f8,#bee5eb); }
     .stage-2 .stage-hero { background: linear-gradient(135deg,#fff3e0,#ffe0b2); }
     .stage-3 .stage-hero { background: linear-gradient(135deg,#fce4ec,#f8bbd0); }
     .stage-4 .stage-hero { background: linear-gradient(135deg,#f3e5f5,#e1bee7); }
-    .stage-5 .stage-hero { background: linear-gradient(135deg,#e8f5e9,#c8e6c9); }
+    .stage-5 .stage-hero { background: linear-gradient(135deg,#d4edda,#c3e6cb); }
 
-    .stage-animation {
-      width: 90px; height: 90px; flex-shrink: 0;
-      image-rendering: pixelated; image-rendering: crisp-edges;
-    }
+    .stage-animation { width: 90px; height: 90px; flex-shrink: 0;
+                       image-rendering: pixelated; image-rendering: crisp-edges; }
     .stage-animation svg { width: 90px; height: 90px; }
 
     .stage-hero-text h3 { font-size: 22px; font-weight: 800; }
-    .stage-1 .stage-hero-text h3 { color: #0d47a1; }
+    .stage-1 .stage-hero-text h3 { color: var(--s-primary); }
     .stage-2 .stage-hero-text h3 { color: #e65100; }
     .stage-3 .stage-hero-text h3 { color: #880e4f; }
     .stage-4 .stage-hero-text h3 { color: #4a148c; }
     .stage-5 .stage-hero-text h3 { color: #1b5e20; }
 
-    .stage-hero-text .tracking-num {
-      font-family: monospace; font-size: 13px; color: #546e7a;
-      margin-top: 4px; letter-spacing: .04em;
-    }
-    .stage-hero-text .method-name {
-      font-size: 12px; color: #78909c; margin-top: 3px;
-    }
+    .stage-hero-text .tracking-num { font-family: monospace; font-size: 13px;
+                                      color: var(--s-secondary); margin-top: 4px; letter-spacing: .04em; }
+    .stage-hero-text .method-name  { font-size: 12px; color: var(--s-secondary); margin-top: 3px; }
 
-    /* Stage progress bar */
+    /* Progress bar */
     .progress-section { padding: 18px 28px 0; }
-    .progress-steps {
-      display: flex; align-items: flex-start; position: relative;
-    }
-    .step {
-      flex: 1; display: flex; flex-direction: column; align-items: center;
-      position: relative;
-    }
-    .step:not(:last-child)::after {
-      content: "";
-      position: absolute; top: 14px; left: 50%; right: -50%;
-      height: 2px; background: #e0e0e0; z-index: 0;
-    }
-    .step.done::after  { background: #1565c0; }
-    .step-dot {
-      width: 30px; height: 30px; border-radius: 50%;
-      border: 2px solid #e0e0e0; background: #fff;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: #bdbdbd;
-      position: relative; z-index: 1;
-    }
-    .step.done    .step-dot { background:#1565c0; border-color:#1565c0; color:#fff; }
-    .step.current .step-dot {
-      background:#fff; border-color:#1565c0; color:#1565c0;
-      box-shadow: 0 0 0 4px rgba(21,101,192,.14);
-    }
-    .step-label {
-      font-size: 10px; color: #9e9e9e; text-align: center;
-      margin-top: 6px; line-height: 1.3; padding: 0 2px;
-    }
-    .step.done    .step-label { color:#1565c0; }
-    .step.current .step-label { color:#1565c0; font-weight:700; }
+    .progress-steps { display: flex; align-items: flex-start; position: relative; }
+    .step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
+    .step:not(:last-child)::after { content: ""; position: absolute; top: 14px;
+                                     left: 50%; right: -50%; height: 2px;
+                                     background: var(--s-border); z-index: 0; }
+    .step.done::after { background: var(--s-primary); }
+    .step-dot { width: 30px; height: 30px; border-radius: 50%;
+                border: 2px solid var(--s-border); background: var(--s-bg);
+                display: flex; align-items: center; justify-content: center;
+                font-size: 11px; font-weight: 700; color: var(--s-secondary);
+                position: relative; z-index: 1; }
+    .step.done    .step-dot { background: var(--s-primary); border-color: var(--s-primary); color: #fff; }
+    .step.current .step-dot { background: var(--s-bg); border-color: var(--s-primary);
+                               color: var(--s-primary); box-shadow: 0 0 0 4px var(--s-focus-ring); }
+    .step-label { font-size: 10px; color: var(--s-secondary); text-align: center;
+                  margin-top: 6px; line-height: 1.3; padding: 0 2px; }
+    .step.done    .step-label { color: var(--s-primary); }
+    .step.current .step-label { color: var(--s-primary); font-weight: 700; }
 
-    /* Estimate + method row */
-    .info-row {
-      display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
-      padding: 14px 28px 20px; border-top: 1px solid #f5f5f5; margin-top: 16px;
-      font-size: 12px; color: #546e7a;
-    }
-    .info-row .est-badge {
-      background: #e8f5e9; color: #2e7d32; font-weight: 700;
-      padding: 3px 10px; border-radius: 10px; font-size: 12px;
-    }
-    .info-row .est-na {
-      color: #9e9e9e; font-style: italic; font-size: 12px;
-    }
+    /* Time estimate row */
+    .info-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+                padding: 14px 28px 20px; border-top: 1px solid var(--s-border);
+                margin-top: 16px; font-size: 12px; color: var(--s-secondary); }
+    .info-row .est-badge { background: #d4edda; color: #155724; font-weight: 700;
+                           padding: 3px 10px; border-radius: 10px; font-size: 12px; }
+    .info-row .est-na { color: var(--s-secondary); font-style: italic; font-size: 12px; }
 
-    /* ── Footer ───────────────────────────────────────────────────────────── */
-    .page-footer {
-      text-align: center; color: #9e9e9e; font-size: 11px; margin-top: 32px;
-    }
-    .page-footer a { color: #b0bec5; }
+    /* Footer */
+    .page-footer { text-align: center; color: var(--s-secondary); font-size: 11px; margin-top: 32px; }
+    .page-footer a { color: var(--s-secondary); }
   </style>
+  </tal:styles>
 </head>
 <body>
+  <tal:t metal:fill-slot="header-title">Sample Tracker</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <span class="header-meta">Track your sample through the laboratory</span>
+  </tal:r>
 
-<header class="site-header">
-  <div class="logo-mark">PF</div>
-  <div>
-    <h1>PFAS Sample Tracker</h1>
-    <p>Track your sample through the laboratory</p>
-  </div>
-</header>
+  <div metal:fill-slot="content">
+  <div class="page-body">
 
-<div class="page-body">
-
-  <!-- Search form -->
-  <div class="search-card">
-    <h2>Find your sample</h2>
-    <p>Enter the tracking number from your receipt (e.g. PF-260611-A3K9)</p>
-    <form method="get" action="">
-      <div class="search-row">
-        <input class="search-input"
-               type="text"
-               name="t"
-               placeholder="PF-YYMMDD-XXXX"
-               maxlength="14"
-               autocomplete="off"
-               autocapitalize="characters"
-               tal:attributes="value view/tracking_number" />
-        <button class="search-btn" type="submit">Track</button>
-      </div>
-    </form>
-  </div>
-
-  <!-- Not found message -->
-  <div class="not-found" tal:condition="view/not_found">
-    <strong>Tracking number not found</strong>
-    Check the number on your receipt and try again.  If you continue to have
-    trouble, please contact the laboratory.
-  </div>
-
-  <!-- Result card -->
-  <tal:result tal:condition="view/status" tal:define="s view/status">
-    <div class="result-card"
-         tal:attributes="class string:result-card stage-${s/stage}">
-
-      <!-- Stage hero with animation -->
-      <div class="stage-hero">
-        <div class="stage-animation"
-             tal:content="structure view/animation_svg">
+    <!-- Search form -->
+    <div class="search-card">
+      <h2>Find your sample</h2>
+      <p>Enter the tracking number from your receipt (e.g. PF-260611-A3K9)</p>
+      <form method="get" action="">
+        <div class="search-row">
+          <input class="search-input"
+                 type="text"
+                 name="t"
+                 placeholder="PF-YYMMDD-XXXX"
+                 maxlength="14"
+                 autocomplete="off"
+                 autocapitalize="characters"
+                 tal:attributes="value view/tracking_number" />
+          <button class="search-btn" type="submit">Track</button>
         </div>
-        <div class="stage-hero-text">
-          <h3 tal:content="s/stage_label">On Instrument</h3>
-          <div class="tracking-num"
-               tal:content="view/tracking_number">PF-260611-A3K9</div>
-          <div class="method-name"
-               tal:condition="s/method"
-               tal:content="s/method">FDA 32-PFAS</div>
-        </div>
-      </div>
+      </form>
+    </div>
 
-      <!-- Five-stage progress bar -->
-      <div class="progress-section">
-        <div class="progress-steps">
-          <div tal:repeat="step s/steps"
-               tal:attributes="class string:step ${step/status}">
-            <div class="step-dot" tal:content="step/num">1</div>
-            <div class="step-label" tal:content="step/label">Received</div>
+    <!-- Not found message -->
+    <div class="not-found" tal:condition="view/not_found">
+      <strong>Tracking number not found</strong>
+      Check the number on your receipt and try again. If you continue to have
+      trouble, please contact the laboratory.
+    </div>
+
+    <!-- Result card -->
+    <tal:result tal:condition="view/status" tal:define="s view/status">
+      <div class="result-card"
+           tal:attributes="class string:result-card stage-${s/stage}">
+
+        <!-- Stage hero with animation -->
+        <div class="stage-hero">
+          <div class="stage-animation"
+               tal:content="structure view/animation_svg">
+          </div>
+          <div class="stage-hero-text">
+            <h3 tal:content="s/stage_label">On Instrument</h3>
+            <div class="tracking-num"
+                 tal:content="view/tracking_number">PF-260611-A3K9</div>
+            <div class="method-name"
+                 tal:condition="s/method"
+                 tal:content="s/method">FDA 32-PFAS</div>
           </div>
         </div>
-      </div>
 
-      <!-- Estimate + method footer -->
-      <div class="info-row">
-        <tal:est tal:condition="s/estimate_text">
-          Avg. time at this stage:
-          <span class="est-badge" tal:content="s/estimate_text">~4 hours</span>
-        </tal:est>
-        <span class="est-na" tal:condition="not:s/estimate_text">
-          Time estimate not yet available (insufficient history)
-        </span>
-      </div>
+        <!-- Five-stage progress bar -->
+        <div class="progress-section">
+          <div class="progress-steps">
+            <div tal:repeat="step s/steps"
+                 tal:attributes="class string:step ${step/status}">
+              <div class="step-dot" tal:content="step/num">1</div>
+              <div class="step-label" tal:content="step/label">Received</div>
+            </div>
+          </div>
+        </div>
 
-    </div><!-- /.result-card -->
-  </tal:result>
+        <!-- Estimate row -->
+        <div class="info-row">
+          <tal:est tal:condition="s/estimate_text">
+            Avg. time at this stage:
+            <span class="est-badge" tal:content="s/estimate_text">~4 hours</span>
+          </tal:est>
+          <span class="est-na" tal:condition="not:s/estimate_text">
+            Time estimate not yet available (insufficient history)
+          </span>
+        </div>
 
-</div><!-- /.page-body -->
+      </div><!-- /.result-card -->
+    </tal:result>
 
-<div class="page-footer">
-  PFAS Analytical Laboratory
-  &mdash;
-  <a tal:attributes="href string:${view/portal_url}/@@pfas-sample-status">
-    Lab staff login
-  </a>
-</div>
+    <div class="page-footer">
+      Laboratory
+      &mdash;
+      <a tal:attributes="href string:${view/portal_url}/@@pfas-sample-status">
+        Lab staff login
+      </a>
+    </div>
 
+  </div>
+  </div><!-- /content slot -->
 </body>
 </html>

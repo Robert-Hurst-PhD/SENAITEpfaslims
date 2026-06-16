@@ -1,542 +1,736 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml"
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PFAS QC Rule Configuration</title>
+  <title metal:fill-slot="title">PFAS QC Rule Configuration</title>
+  <tal:styles metal:fill-slot="head-extra">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           font-size: 14px; background: #f5f5f5; color: #212121; }
+    /* ── QC Rules page-specific ────────────────────────────────────────── */
+    .save-banner { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px;
+                   padding: 10px 16px; margin-bottom: 16px; color: #155724; font-weight: 600; }
 
-    .page-header { background: #37474f; color: #fff; padding: 12px 24px;
-                   display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    .page-header h1 { font-size: 17px; font-weight: 600; }
-    .header-meta { font-size: 11px; color: #b0bec5; }
-
-    .page-body { max-width: 1100px; margin: 0 auto; padding: 20px; }
-
-    /* ── Save banner ─────────────────────────────────────────────────── */
-    .save-banner { background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 4px;
-                   padding: 10px 16px; margin-bottom: 16px; color: #1b5e20;
-                   font-weight: 600; }
-
-    /* ── Section cards ───────────────────────────────────────────────── */
-    .section { background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.1);
-               margin-bottom: 18px; overflow: hidden; }
-    .section-head { background: #eceff1; padding: 10px 16px;
+    .section { background: var(--s-bg); border-radius: 6px;
+               border: 1px solid var(--s-border);
+               box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 18px; overflow: hidden; }
+    .section-head { background: var(--s-light); padding: 10px 16px;
                     display: flex; align-items: center; gap: 10px; cursor: pointer;
-                    border-bottom: 1px solid #ddd; }
-    .section-head h2 { font-size: 14px; font-weight: 600; flex: 1; }
+                    border-bottom: 1px solid var(--s-border); user-select: none; }
+    .section-head h2 { font-size: 14px; font-weight: 600; flex: 1; color: var(--s-body); }
+    .section-head .section-meta { font-size: 11px; color: var(--s-secondary); }
     .section-body { padding: 16px; }
     .section.collapsed .section-body { display: none; }
 
     .chart-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px;
                    font-weight: 700; text-transform: uppercase; }
-    .badge-lj        { background: #e3f2fd; color: #1565c0; }
+    .badge-lj        { background: var(--s-primary-lt); color: var(--s-primary); }
     .badge-threshold { background: #fff3e0; color: #e65100; }
 
-    /* ── Field grid ──────────────────────────────────────────────────── */
-    .field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr));
-                  gap: 12px; }
-    .field-row { display: flex; flex-direction: column; }
-    .field-row label { font-size: 11px; color: #616161; margin-bottom: 3px;
-                       font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-    .field-row input[type=number], .field-row input[type=text] {
-      padding: 6px 8px; border: 1px solid #bdbdbd; border-radius: 4px;
-      font-size: 13px; background: #fafafa; }
-    .field-row .hint { font-size: 10px; color: #9e9e9e; margin-top: 2px; }
-    .field-readonly { font-size: 13px; color: #455a64; padding: 6px 0; }
+    .field-with-unit { display: flex; align-items: center; gap: 6px; }
+    .field-with-unit input { flex: 1; min-width: 0; }
+    .unit-label { font-size: 12px; color: var(--s-secondary); font-weight: 600;
+                  white-space: nowrap; }
+    .field-readonly { font-size: 13px; color: var(--s-secondary); padding: 6px 0; }
 
-    /* ── Save bar ────────────────────────────────────────────────────── */
-    .save-bar { position: sticky; bottom: 0; background: #fff; border-top: 2px solid #1565c0;
-                padding: 12px 20px; display: flex; gap: 12px; align-items: center;
-                box-shadow: 0 -2px 6px rgba(0,0,0,.08); }
-    .btn-save { background: #1565c0; color: #fff; border: none; border-radius: 4px;
-                padding: 10px 28px; cursor: pointer; font-size: 14px; font-weight: 600; }
-    .btn-save:hover { background: #1976d2; }
-    .btn-reset { background: #fff; color: #616161; border: 1px solid #bdbdbd;
-                 border-radius: 4px; padding: 10px 18px; cursor: pointer; font-size: 13px; }
-    .path-info { font-size: 11px; color: #9e9e9e; }
+    .btn-save  { background: var(--s-primary); color: #fff; border: none; border-radius: 4px;
+                 padding: 8px 24px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .btn-save:hover { background: var(--s-primary-dk); }
+    .btn-reset { background: var(--s-bg); color: var(--s-secondary);
+                 border: 1px solid var(--s-input-border);
+                 border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 13px; }
+    .btn-reset:hover { background: var(--s-light); }
+    .path-info { font-size: 11px; color: var(--s-secondary); }
+    .path-info code { background: var(--s-light); padding: 1px 5px; border-radius: 3px; }
 
-    /* ── JSON editor fallback ────────────────────────────────────────── */
     .json-editor { width: 100%; height: 400px; font-family: monospace; font-size: 12px;
-                   padding: 10px; border: 1px solid #bdbdbd; border-radius: 4px;
+                   padding: 10px; border: 1px solid var(--s-input-border); border-radius: 4px;
                    background: #fafafa; resize: vertical; }
 
-    /* ── Rule Toggle Grid ────────────────────────────────────────────── */
+    /* Rule Toggle Grid */
     .toggle-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .toggle-table th { background: #37474f; color: #fff; padding: 8px 12px;
+    .toggle-table th { background: var(--s-dark); color: #fff; padding: 8px 12px;
                        font-weight: 600; text-align: center; }
-    .toggle-table th.rule-col { text-align: left; min-width: 180px; }
-    .toggle-table td { padding: 7px 12px; border-bottom: 1px solid #eceff1; }
-    .toggle-table tr:hover td { background: #f5f5f5; }
-    .toggle-table td.rule-name { font-size: 13px; color: #37474f; }
+    .toggle-table th.rule-col { text-align: left; min-width: 200px; }
+    .toggle-table td { padding: 7px 12px; border-bottom: 1px solid var(--s-border); }
+    .toggle-table tr:last-child td { border-bottom: none; }
+    .toggle-table tr:hover td { background: var(--s-light); }
+    .toggle-table td.rule-name { font-size: 13px; color: var(--s-body); }
     .toggle-table td.check-cell { text-align: center; }
-    .toggle-wrap { display: flex; align-items: center; justify-content: center; gap: 6px; }
-    .toggle-cb { width: 16px; height: 16px; cursor: pointer; }
-    .cb-label-on  { font-size: 10px; color: #2e7d32; font-weight: 700; }
-    .cb-label-off { font-size: 10px; color: #c62828; font-weight: 700; }
 
-    /* ── Method-Specific Limits ──────────────────────────────────────── */
-    .method-tabs { display: flex; gap: 0; border-bottom: 2px solid #1565c0;
-                   margin-bottom: 16px; }
+    .toggle-switch { position: relative; display: inline-block;
+                     width: 38px; height: 22px; cursor: pointer; margin: 0; vertical-align: middle; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                    background: var(--s-input-border); border-radius: 22px; transition: background .15s; }
+    .toggle-track::before { content: ""; position: absolute; width: 16px; height: 16px;
+                             left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+                             transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+    .toggle-switch input:checked + .toggle-track { background: var(--s-primary); }
+    .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
+    .toggle-switch input:focus + .toggle-track { box-shadow: 0 0 0 3px var(--s-focus-ring); }
+
+    /* Method tabs */
+    .method-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--s-primary);
+                   margin-bottom: 16px; flex-wrap: wrap; }
     .method-tab  { padding: 8px 18px; cursor: pointer; font-size: 13px;
                    border: 1px solid transparent; border-bottom: none;
-                   border-radius: 4px 4px 0 0; color: #616161; background: #f5f5f5; }
-    .method-tab.active { background: #fff; border-color: #bdbdbd #bdbdbd #fff;
-                         color: #1565c0; font-weight: 600; }
+                   border-radius: 4px 4px 0 0; color: var(--s-secondary); background: var(--s-light); }
+    .method-tab.active { background: var(--s-bg); border-color: var(--s-border) var(--s-border) var(--s-bg);
+                         color: var(--s-primary); font-weight: 600; }
     .method-panel { display: none; }
     .method-panel.active { display: block; }
-    .limit-rule-group { margin-bottom: 14px; background: #f9fbe7;
-                        border: 1px solid #e6ee9c; border-radius: 4px; padding: 10px 14px; }
-    .limit-rule-group.disabled { opacity: .45; background: #fafafa; border-color: #e0e0e0; }
-    .limit-rule-title { font-size: 12px; font-weight: 700; color: #33691e;
+
+    .limit-rule-group { margin-bottom: 14px; background: var(--s-primary-lt);
+                        border: 1px solid var(--s-primary); border-radius: 4px;
+                        padding: 10px 14px; opacity: 1; transition: opacity .15s; }
+    .limit-rule-group.disabled { opacity: .4; background: var(--s-light);
+                                  border-color: var(--s-border); }
+    .limit-rule-title { font-size: 12px; font-weight: 700; color: var(--s-primary);
                         text-transform: uppercase; margin-bottom: 8px;
                         display: flex; align-items: center; gap: 8px; }
-    .limit-rule-title.disabled { color: #9e9e9e; }
-    .disabled-badge { background: #e0e0e0; color: #757575; font-size: 9px;
+    .limit-rule-title.disabled { color: var(--s-secondary); }
+    .disabled-badge { background: var(--s-border); color: var(--s-secondary); font-size: 9px;
                       padding: 2px 6px; border-radius: 8px; }
-    .override-row { display: flex; align-items: center; gap: 8px;
-                    margin-bottom: 6px; }
-    .override-row label { font-size: 11px; color: #616161; font-weight: 600;
+    .override-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .override-row label { font-size: 11px; color: var(--s-secondary); font-weight: 600;
                           min-width: 200px; }
-    .override-input { padding: 5px 8px; border: 1px solid #bdbdbd; border-radius: 4px;
-                      font-size: 13px; background: #fff; width: 100px; }
-    .override-input.is-overridden { border-color: #1565c0; background: #e3f2fd; }
-    .inherited-hint { font-size: 10px; color: #9e9e9e; }
+    .override-input { padding: 5px 8px; border: 1px solid var(--s-input-border); border-radius: 4px;
+                      font-size: 13px; background: var(--s-bg); width: 100px; }
+    .override-input.is-overridden { border-color: var(--s-primary); background: var(--s-primary-lt); }
+    .inherited-hint { font-size: 10px; color: var(--s-secondary); }
+
+    .matrix-card { background: var(--s-light); border: 1px solid var(--s-border);
+                   border-radius: 4px; padding: 12px 16px; margin-bottom: 10px; }
+    .matrix-card-title { font-size: 13px; font-weight: 700; text-transform: uppercase;
+                         color: var(--s-secondary); margin-bottom: 8px; }
+    .form-note { font-size: 12px; color: var(--s-secondary); line-height: 1.5; margin-bottom: 14px; }
+
+    /* ── Right-click context menu ───────────────────────────────────────── */
+    #pfas-ctx-menu {
+      position: fixed; z-index: 9999; display: none;
+      background: var(--s-bg); border: 1px solid var(--s-border);
+      border-radius: 6px; box-shadow: 0 4px 20px rgba(0,0,0,.18);
+      min-width: 210px; overflow: hidden; padding: 4px 0;
+    }
+    .ctx-item {
+      display: block; width: 100%; text-align: left;
+      padding: 8px 16px; background: none; border: none;
+      cursor: pointer; font-size: 13px; color: var(--s-body);
+      white-space: nowrap;
+    }
+    .ctx-item:hover { background: var(--s-light); }
+    .ctx-item.danger { color: #dc3545; }
+    .ctx-sep { height: 1px; background: var(--s-border); margin: 4px 0; }
+    .ctx-label {
+      display: block; padding: 4px 16px 2px;
+      font-size: 10px; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--s-secondary);
+    }
   </style>
+  </tal:styles>
 </head>
 <body>
+  <tal:t metal:fill-slot="header-title">PFAS QC Rule Configuration</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <span class="header-meta">
+      Manager-only &bull; Rules stored at
+      <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
+    </span>
+    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@lims-setup">
+      Site Setup
+    </a>
+  </tal:r>
 
-<div class="page-header">
-  <h1>PFAS QC Rule Configuration</h1>
-  <span class="header-meta">
-    Manager-only &bull; Rules stored at
-    <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
-  </span>
-</div>
+  <div metal:fill-slot="content">
 
-<div class="page-body">
+  <!-- Floating context menu (populated by JS on right-click) -->
+  <div id="pfas-ctx-menu" role="menu"></div>
 
-  <!-- Save confirmation -->
-  <div class="save-banner" tal:condition="view/save_message">
-    Rules saved successfully.
-  </div>
+  <div class="page-body">
 
-  <form id="rulesForm" method="POST" action=""
-        tal:attributes="action string:${context/absolute_url}/@@pfas-qc-rules">
-
-    <!-- Global criteria -->
-    <div class="section" id="sec-global">
-      <div class="section-head" onclick="toggleSection('sec-global')">
-        <h2>Global Instrument Criteria</h2>
-        <span style="font-size:11px;color:#9e9e9e">Calibration, IS, RT, S/N, RPD</span>
-      </div>
-      <div class="section-body">
-        <div class="field-grid">
-          <tal:gfields tal:repeat="item view/global_fields">
-            <div class="field-row">
-              <label tal:content="item/key">key</label>
-              <input type="number" step="any"
-                     tal:attributes="name string:global.${item/key};
-                                     value item/value" />
-            </div>
-          </tal:gfields>
-        </div>
-      </div>
+    <div class="save-banner" tal:condition="view/save_message">
+      Rules saved successfully.
     </div>
 
-    <!-- Per QC-type sections -->
-    <tal:qcsections tal:repeat="qtype view/qc_types">
-      <div class="section" tal:attributes="id string:sec-${qtype}">
-        <div class="section-head"
-             tal:attributes="onclick string:toggleSection('sec-${qtype}')">
-          <h2 tal:content="python:'{} — {}'.format(qtype, view.qc_label(qtype))">CCV</h2>
-          <span tal:attributes="class python:'chart-badge badge-threshold' if view.chart_type(qtype)=='threshold' else 'chart-badge badge-lj'"
-                tal:content="python:'Threshold chart' if view.chart_type(qtype)=='threshold' else 'Levey-Jennings'">LJ</span>
+    <form id="rulesForm" method="POST" action=""
+          tal:attributes="action string:${context/absolute_url}/@@pfas-qc-rules">
+
+      <!-- Global criteria -->
+      <div class="section" id="sec-global">
+        <div class="section-head" onclick="toggleSection('sec-global')">
+          <h2>Global Instrument Criteria</h2>
+          <span class="section-meta">Calibration, IS response, RT tolerance, S/N, RPD</span>
         </div>
         <div class="section-body">
           <div class="field-grid">
-            <tal:fields tal:repeat="item python:view.qc_type_fields(qtype)">
-
-              <!-- label and chart_type are display-only -->
-              <tal:skip tal:condition="python:item['key'] not in ('label', 'chart_type', 'note')">
-                <div class="field-row">
-                  <label tal:content="item/key">key</label>
-                  <input type="number" step="any"
-                         tal:condition="python:isinstance(item['value'], (int, float))"
-                         tal:attributes="name string:qc_types.${qtype}.${item/key};
-                                         value item/value" />
-                  <input type="text"
-                         tal:condition="python:not isinstance(item['value'], (int, float)) and item['value'] is not None"
-                         tal:attributes="name string:qc_types.${qtype}.${item/key};
-                                         value item/value" />
-                  <span class="field-readonly"
-                        tal:condition="python:item['value'] is None">(uses per-analyte Reporting Limit)</span>
-                </div>
-              </tal:skip>
-
-              <!-- read-only display for note -->
-              <tal:show tal:condition="python:item['key'] == 'note'">
-                <div class="field-row" style="grid-column:1/-1">
-                  <label>Note</label>
-                  <span class="field-readonly" tal:content="item/value">-</span>
-                </div>
-              </tal:show>
-
-            </tal:fields>
-          </div>
-        </div>
-      </div>
-    </tal:qcsections>
-
-    <!-- ── Salt Adjustment Factors ──────────────────────────────────────── -->
-    <div class="section" id="sec-salt">
-      <div class="section-head" onclick="toggleSection('sec-salt')">
-        <h2>Salt Adjustment Factors</h2>
-        <span style="font-size:11px;color:#9e9e9e">
-          Per-matrix correction applied to reported concentrations after extraction
-        </span>
-      </div>
-      <div class="section-body">
-
-        <p style="font-size:12px;color:#546e7a;margin-bottom:14px;line-height:1.5">
-          <strong>Formula:</strong>
-          C<sub>reported</sub> = C<sub>instrument</sub> &times; salt_factor<br/>
-          Values of 1.00 apply no correction. Adjust after validating with
-          spike-recovery data for each matrix and extraction procedure.
-          Analyte-class overrides apply within that matrix when partitioning
-          differs significantly by chain length or functional group.
-        </p>
-
-        <tal:srows tal:repeat="mrow view/salt_factor_rows">
-          <div style="background:#f9fbe7;border:1px solid #e6ee9c;border-radius:4px;
-                      padding:12px 16px;margin-bottom:10px;">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
-              <strong style="font-size:13px;text-transform:uppercase;color:#33691e"
-                      tal:content="mrow/matrix">milk</strong>
-              <input type="hidden"
-                     tal:attributes="name string:salt_note.${mrow/matrix};
-                                     value mrow/note" />
-            </div>
-
-            <div class="field-grid">
-              <!-- Default factor -->
+            <tal:gfields tal:repeat="item view/global_fields">
               <div class="field-row">
-                <label>Default Factor</label>
-                <input type="number" step="0.0001" min="0.01" max="10"
-                       tal:attributes="name string:salt_factors.${mrow/matrix}.default;
-                                       value mrow/default" />
-                <span class="hint">Applied to all analytes unless an analyte-class override is set</span>
-              </div>
-
-              <!-- Per-analyte-class overrides -->
-              <tal:ov tal:repeat="ov mrow/overrides">
-                <div class="field-row">
-                  <label tal:content="ov/key">pfca_c4_c8</label>
-                  <input type="number" step="0.0001" min="0.01" max="10"
-                         tal:attributes="name string:salt_factors.${mrow/matrix}.${ov/key};
-                                         value ov/value" />
+                <label tal:content="item/label">Calibration r&#178; Minimum</label>
+                <div class="field-with-unit">
+                  <input type="number" step="any"
+                         tal:attributes="name string:global.${item/key}; value item/value" />
+                  <span class="unit-label" tal:condition="item/unit" tal:content="item/unit">%</span>
                 </div>
-              </tal:ov>
-            </div>
-
-            <div style="font-size:10px;color:#7cb342;margin-top:6px"
-                 tal:condition="mrow/note">
-              <em tal:content="mrow/note">note</em>
-            </div>
+              </div>
+            </tal:gfields>
           </div>
-        </tal:srows>
-
-      </div>
-    </div>
-
-    <!-- ── Rule Toggle Grid ─────────────────────────────────────────────── -->
-    <div class="section" id="sec-toggles">
-      <div class="section-head" onclick="toggleSection('sec-toggles')">
-        <h2>Rule Toggle Grid</h2>
-        <span style="font-size:11px;color:#9e9e9e">
-          Enable or disable each QC rule per method. Disabled rules are skipped by the engine.
-        </span>
-      </div>
-      <div class="section-body">
-
-        <p style="font-size:12px;color:#546e7a;margin-bottom:14px;line-height:1.5">
-          Uncheck a cell to disable that rule for that method.
-          Rules marked <em>UI only</em> affect whether the check appears in the
-          analyst review queue but have no automated engine flag-check yet.
-        </p>
-
-        <table class="toggle-table">
-          <thead>
-            <tr>
-              <th class="rule-col">Rule</th>
-              <tal:mhdrs tal:repeat="m view/methods">
-                <th tal:content="m/label">Method</th>
-              </tal:mhdrs>
-            </tr>
-          </thead>
-          <tbody>
-            <tal:rows tal:repeat="row view/toggle_grid">
-              <tr>
-                <td class="rule-name" tal:content="row/rule_label">IS Response</td>
-                <tal:cells tal:repeat="state row/states">
-                  <td class="check-cell">
-                    <div class="toggle-wrap">
-                      <input type="checkbox" class="toggle-cb"
-                             tal:attributes="id python:'toggle_{}_{}'.format(state['method_id'], row['rule_key']);
-                                             data-method state/method_id;
-                                             data-rule row/rule_key;
-                                             checked state/enabled" />
-                      <span class="cb-label-on"  tal:condition="state/enabled">ON</span>
-                      <span class="cb-label-off" tal:condition="python:not state['enabled']">OFF</span>
-                    </div>
-                  </td>
-                </tal:cells>
-              </tr>
-            </tal:rows>
-          </tbody>
-        </table>
-
-      </div>
-    </div>
-
-    <!-- ── Method-Specific Limits ────────────────────────────────────────── -->
-    <div class="section" id="sec-method-limits">
-      <div class="section-head" onclick="toggleSection('sec-method-limits')">
-        <h2>Method-Specific Limits</h2>
-        <span style="font-size:11px;color:#9e9e9e">
-          Override rule parameters per method. Leave unchanged to inherit from Global Criteria.
-          Blue border = active override.
-        </span>
-      </div>
-      <div class="section-body">
-
-        <!-- Method selector tabs -->
-        <div class="method-tabs">
-          <tal:tabs tal:repeat="sec view/method_limit_sections">
-            <div class="method-tab"
-                 tal:attributes="id string:mtab-${sec/method_id};
-                                 onclick string:selectMethod('${sec/method_id}')"
-                 tal:content="sec/method_label">FDA 32-PFAS</div>
-          </tal:tabs>
         </div>
+      </div>
 
-        <!-- One panel per method -->
-        <tal:panels tal:repeat="sec view/method_limit_sections">
-          <div class="method-panel"
-               tal:attributes="id string:mpanel-${sec/method_id}">
-
-            <tal:groups tal:repeat="grp sec/param_groups">
-              <div tal:attributes="class python:'limit-rule-group' + ('' if grp['enabled'] else ' disabled')">
-                <div tal:attributes="class python:'limit-rule-title' + ('' if grp['enabled'] else ' disabled')">
-                  <span tal:content="grp/rule_label">IS Response</span>
-                  <span class="disabled-badge"
-                        tal:condition="python:not grp['enabled']">disabled for this method</span>
-                </div>
-                <tal:params tal:repeat="p grp/params">
-                  <div class="override-row">
-                    <label tal:content="p/label">Max deviation (%)</label>
-                    <input type="number" step="any"
-                           tal:attributes="class python:'override-input' + (' is-overridden' if p['overridden'] else '');
-                                           data-method sec/method_id;
-                                           data-param p/name;
-                                           data-inherited p/inherited;
-                                           value p/value"
-                           onchange="markOverridden(this)" />
-                    <span class="inherited-hint">
-                      (global: <span tal:replace="p/inherited">50</span>)
-                    </span>
-                  </div>
-                </tal:params>
-              </div>
-            </tal:groups>
-
+      <!-- Per QC-type sections -->
+      <tal:qcsections tal:repeat="qtype view/qc_types">
+        <div class="section" tal:attributes="id string:sec-${qtype}">
+          <div class="section-head"
+               tal:attributes="onclick string:toggleSection('sec-${qtype}')">
+            <h2 tal:content="python:'{} — {}'.format(qtype, view.qc_label(qtype))">CCV</h2>
+            <span tal:attributes="class python:'chart-badge badge-threshold' if view.chart_type(qtype)=='threshold' else 'chart-badge badge-lj'"
+                  tal:content="python:'Threshold chart' if view.chart_type(qtype)=='threshold' else 'Levey-Jennings'">LJ</span>
           </div>
-        </tal:panels>
+          <div class="section-body">
+            <div class="field-grid">
+              <tal:fields tal:repeat="item python:view.qc_type_fields(qtype)">
+                <tal:skip tal:condition="python:item['key'] not in ('label', 'chart_type', 'note')">
+                  <div class="field-row">
+                    <label tal:content="item/label">Max % Deviation</label>
+                    <div class="field-with-unit">
+                      <input type="number" step="any"
+                             tal:condition="python:isinstance(item['value'], (int, float))"
+                             tal:attributes="name string:qc_types.${qtype}.${item/key}; value item/value" />
+                      <input type="text"
+                             tal:condition="python:not isinstance(item['value'], (int, float)) and item['value'] is not None"
+                             tal:attributes="name string:qc_types.${qtype}.${item/key}; value item/value" />
+                      <span class="field-readonly"
+                            tal:condition="python:item['value'] is None">(per-analyte Reporting Limit)</span>
+                      <span class="unit-label"
+                            tal:condition="python:item['unit'] and item['value'] is not None"
+                            tal:content="item/unit">%</span>
+                    </div>
+                  </div>
+                </tal:skip>
+                <tal:show tal:condition="python:item['key'] == 'note'">
+                  <div class="field-row" style="grid-column:1/-1">
+                    <label>Note</label>
+                    <span class="field-readonly" tal:content="item/value">-</span>
+                  </div>
+                </tal:show>
+              </tal:fields>
+            </div>
+          </div>
+        </div>
+      </tal:qcsections>
 
+      <!-- Matrix Adjustment Factors -->
+      <div class="section" id="sec-salt">
+        <div class="section-head" onclick="toggleSection('sec-salt')">
+          <h2>Matrix Adjustment Factors</h2>
+          <span class="section-meta">
+            Instrument concentration &#8594; reported concentration (volume/mass correction)
+          </span>
+        </div>
+        <div class="section-body">
+          <p class="form-note">
+            <strong>Formula:</strong>
+            C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor<br/>
+            Values of 1.00 apply no correction. Adjust after validating with spike-recovery
+            data for each matrix and extraction procedure.
+          </p>
+          <tal:srows tal:repeat="mrow view/salt_factor_rows">
+            <div class="matrix-card">
+              <div class="matrix-card-title" tal:content="mrow/matrix">Drinking Water</div>
+              <input type="hidden"
+                     tal:attributes="name string:salt_note.${mrow/matrix}; value mrow/note" />
+              <div class="field-grid">
+                <div class="field-row">
+                  <label>Default Factor</label>
+                  <div class="field-with-unit">
+                    <input type="number" step="0.0001" min="0.01" max="100"
+                           tal:attributes="name string:salt_factors.${mrow/matrix}.default; value mrow/default" />
+                    <span class="unit-label">&#215;</span>
+                  </div>
+                  <span class="hint">Applied to all analytes unless an analyte-class override is set</span>
+                </div>
+                <tal:ov tal:repeat="ov mrow/overrides">
+                  <div class="field-row">
+                    <label tal:content="ov/key">pfca_c4_c8</label>
+                    <div class="field-with-unit">
+                      <input type="number" step="0.0001" min="0.01" max="100"
+                             tal:attributes="name string:salt_factors.${mrow/matrix}.${ov/key}; value ov/value" />
+                      <span class="unit-label">&#215;</span>
+                    </div>
+                  </div>
+                </tal:ov>
+              </div>
+              <div style="font-size:10px;color:var(--s-secondary);margin-top:6px"
+                   tal:condition="mrow/note">
+                <em tal:content="mrow/note">note</em>
+              </div>
+            </div>
+          </tal:srows>
+        </div>
       </div>
-    </div>
 
-    <!-- ── Raw JSON fallback editor ─────────────────────────────────────── -->
-    <div class="section" id="sec-json">
-      <div class="section-head" onclick="toggleSection('sec-json')">
-        <h2>Raw JSON Editor</h2>
-        <span style="font-size:11px;color:#9e9e9e">Advanced: edit full rules document directly</span>
+      <!-- Rule Toggle Grid -->
+      <div class="section" id="sec-toggles">
+        <div class="section-head" onclick="toggleSection('sec-toggles')">
+          <h2>Rule Toggle Grid</h2>
+          <span class="section-meta">Enable or disable each QC rule per method</span>
+        </div>
+        <div class="section-body">
+          <p class="form-note">
+            Toggle a rule off to exclude it from automated engine evaluation for that method.
+            Rules marked <em>UI only</em> affect whether the check appears in the analyst
+            review queue but have no automated engine flag-check yet.
+          </p>
+          <table class="toggle-table">
+            <thead>
+              <tr>
+                <th class="rule-col">Rule</th>
+                <tal:mhdrs tal:repeat="m view/methods">
+                  <th tal:content="m/label">Method</th>
+                </tal:mhdrs>
+              </tr>
+            </thead>
+            <tbody>
+              <tal:rows tal:repeat="row view/toggle_grid">
+                <tr>
+                  <td class="rule-name" tal:content="row/rule_label">IS Response</td>
+                  <tal:cells tal:repeat="state row/states">
+                    <td class="check-cell">
+                      <label class="toggle-switch"
+                             tal:attributes="title python:'%s | %s' % (row['rule_label'], state['method_label'])">
+                        <input type="checkbox" class="toggle-cb"
+                               tal:attributes="id python:'toggle_{}_{}'.format(state['method_id'], row['rule_key']);
+                                               data-method state/method_id;
+                                               data-rule row/rule_key;
+                                               checked state/enabled" />
+                        <span class="toggle-track"></span>
+                      </label>
+                    </td>
+                  </tal:cells>
+                </tr>
+              </tal:rows>
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="section-body" style="display:none" id="sec-json-body">
-        <textarea id="rawJson" class="json-editor"
-                  tal:content="view/rules_json"></textarea>
-        <button type="button" onclick="applyJson()" style="margin-top:8px;padding:6px 14px">
-          Apply JSON to form
+
+      <!-- Method-Specific Limits -->
+      <div class="section" id="sec-method-limits">
+        <div class="section-head" onclick="toggleSection('sec-method-limits')">
+          <h2>Method-Specific Limits</h2>
+          <span class="section-meta">
+            Override rule parameters per method. Leave unchanged to inherit from Global Criteria.
+            Highlighted border = active override.
+          </span>
+        </div>
+        <div class="section-body">
+          <div class="method-tabs" id="methodTabBar">
+            <tal:tabs tal:repeat="sec view/method_limit_sections">
+              <div class="method-tab"
+                   tal:attributes="id string:mtab-${sec/method_id};
+                                   onclick string:selectMethod('${sec/method_id}')"
+                   tal:content="sec/method_label">FDA 32-PFAS</div>
+            </tal:tabs>
+            <button type="button" class="method-tab-add" title="Add method override tab"
+                    onclick="addMethodTab()" style="
+                      margin-left:6px; padding:4px 10px; cursor:pointer;
+                      background:var(--s-primary); color:#fff; border:none;
+                      border-radius:4px 4px 0 0; font-size:13px; font-weight:700;
+                      align-self:flex-end; margin-bottom:0;">
+              +
+            </button>
+          </div>
+          <tal:panels tal:repeat="sec view/method_limit_sections">
+            <div class="method-panel" tal:attributes="id string:mpanel-${sec/method_id}">
+              <tal:groups tal:repeat="grp sec/param_groups">
+                <div tal:attributes="class python:'limit-rule-group' + ('' if grp['enabled'] else ' disabled');
+                                     data-rule-key grp/rule_key">
+                  <div tal:attributes="class python:'limit-rule-title' + ('' if grp['enabled'] else ' disabled')">
+                    <span tal:content="grp/rule_label">IS Response</span>
+                    <span class="disabled-badge" tal:condition="python:not grp['enabled']">disabled for this method</span>
+                  </div>
+                  <tal:params tal:repeat="p grp/params">
+                    <div class="override-row">
+                      <label tal:content="p/label">Max deviation</label>
+                      <input type="number" step="any"
+                             tal:attributes="class python:'override-input' + (' is-overridden' if p['overridden'] else '');
+                                             data-method sec/method_id;
+                                             data-param p/name;
+                                             data-inherited p/inherited;
+                                             value p/value"
+                             onchange="markOverridden(this)" />
+                      <span class="inherited-hint">
+                        (global: <span tal:replace="p/inherited">50</span>)
+                      </span>
+                    </div>
+                  </tal:params>
+                </div>
+              </tal:groups>
+            </div>
+          </tal:panels>
+        </div>
+      </div>
+
+      <!-- Raw JSON fallback -->
+      <div class="section" id="sec-json">
+        <div class="section-head" onclick="toggleSection('sec-json')">
+          <h2>Raw JSON Editor</h2>
+          <span class="section-meta">Advanced: edit full rules document directly</span>
+        </div>
+        <div class="section-body" style="display:none" id="sec-json-body">
+          <textarea id="rawJson" class="json-editor"
+                    tal:content="view/rules_json"></textarea>
+          <button type="button" onclick="applyJson()"
+                  style="margin-top:8px;padding:6px 14px;cursor:pointer">
+            Apply JSON to form
+          </button>
+        </div>
+      </div>
+
+      <input type="hidden" id="rules_json" name="rules_json" value="" />
+
+      <div class="save-bar">
+        <button type="submit" class="btn btn-primary" onclick="return prepareSubmit()">
+          Save Rules
         </button>
+        <button type="button" class="btn btn-secondary"
+                onclick="if(confirm('Reset to factory defaults?')) resetDefaults()">
+          Reset to Defaults
+        </button>
+        <span class="path-info">
+          Saved to <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
+        </span>
       </div>
-    </div>
+    </form>
 
-    <!-- Hidden field carrying full rules JSON for POST -->
-    <input type="hidden" id="rules_json" name="rules_json" value="" />
-
-    <div class="save-bar">
-      <button type="submit" class="btn-save" onclick="return prepareSubmit()">
-        Save Rules
-      </button>
-      <button type="button" class="btn-reset"
-              onclick="if(confirm('Reset to factory defaults?')) resetDefaults()">
-        Reset to Defaults
-      </button>
-      <span class="path-info">
-        Saved to <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
-      </span>
-    </div>
-  </form>
-</div>
-
-<script>
-function toggleSection(id) {
-  var el = document.getElementById(id);
-  if (el) el.classList.toggle('collapsed');
-  // JSON editor uses a separate body div
-  if (id === 'sec-json') {
-    var body = document.getElementById('sec-json-body');
-    if (body) body.style.display = body.style.display === 'none' ? '' : 'none';
-  }
-}
-
-// Collect all form inputs into a rules object and put in hidden field
-function buildRulesFromForm() {
-  var rules = {
-    "version": 1,
-    "global": {},
-    "qc_types": {},
-    "salt_factors": {},
-    "method_rule_toggles": {},
-    "method_overrides": {}
-  };
-
-  // --- named inputs (global, qc_types, salt_factors) ---
-  var inputs = document.querySelectorAll('#rulesForm input[name]');
-  inputs.forEach(function(inp) {
-    var name = inp.name;
-    var val = inp.value;
-    if (name.startsWith('global.')) {
-      var key = name.slice(7);
-      var fval = parseFloat(val);
-      rules.global[key] = isNaN(fval) ? val : fval;
-    } else if (name.startsWith('qc_types.')) {
-      var parts = name.slice(9).split('.');
-      var qtype = parts[0];
-      var field = parts.slice(1).join('.');
-      if (!rules.qc_types[qtype]) rules.qc_types[qtype] = {};
-      var fval = parseFloat(val);
-      rules.qc_types[qtype][field] = isNaN(fval) ? val : fval;
-    } else if (name.startsWith('salt_factors.')) {
-      var sfParts = name.slice(13).split('.');
-      var matrix = sfParts[0];
-      var sfKey  = sfParts.slice(1).join('.');
-      if (!rules.salt_factors[matrix]) rules.salt_factors[matrix] = {};
-      var fval = parseFloat(val);
-      rules.salt_factors[matrix][sfKey] = isNaN(fval) ? val : fval;
-    } else if (name.startsWith('salt_note.')) {
-      var matrix = name.slice(10);
-      if (!rules.salt_factors[matrix]) rules.salt_factors[matrix] = {};
-      rules.salt_factors[matrix]['note'] = val;
+  <script>
+  function toggleSection(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('collapsed');
+    if (id === 'sec-json') {
+      var body = document.getElementById('sec-json-body');
+      if (body) body.style.display = body.style.display === 'none' ? '' : 'none';
     }
-  });
+  }
 
-  // --- toggle checkboxes ---
-  document.querySelectorAll('.toggle-cb').forEach(function(cb) {
-    var method = cb.dataset.method;
-    var rule   = cb.dataset.rule;
-    if (!rules.method_rule_toggles[method]) rules.method_rule_toggles[method] = {};
-    rules.method_rule_toggles[method][rule] = cb.checked;
-  });
+  (function() {
+    var tabs = document.querySelectorAll('.method-tab');
+    var panels = document.querySelectorAll('.method-panel');
+    if (tabs.length > 0) { tabs[0].classList.add('active'); panels[0].classList.add('active'); }
+  })();
 
-  // --- method-specific overrides (only include values that differ from inherited) ---
-  document.querySelectorAll('.override-input').forEach(function(inp) {
-    var method    = inp.dataset.method;
-    var param     = inp.dataset.param;
+  function selectMethod(methodId) {
+    document.querySelectorAll('.method-tab').forEach(function(t) {
+      t.classList.toggle('active', t.id === 'mtab-' + methodId);
+    });
+    document.querySelectorAll('.method-panel').forEach(function(p) {
+      p.classList.toggle('active', p.id === 'mpanel-' + methodId);
+    });
+  }
+
+  function updateRuleVisibility(methodId, ruleKey, enabled) {
+    var panel = document.getElementById('mpanel-' + methodId);
+    if (!panel) return;
+    panel.querySelectorAll('.limit-rule-group[data-rule-key]').forEach(function(grp) {
+      if (grp.dataset.ruleKey !== ruleKey) return;
+      var badge = grp.querySelector('.disabled-badge');
+      var title = grp.querySelector('.limit-rule-title');
+      if (enabled) {
+        grp.classList.remove('disabled');
+        if (title) title.classList.remove('disabled');
+        if (badge) badge.style.display = 'none';
+        grp.querySelectorAll('.override-input').forEach(function(i) { i.disabled = false; });
+      } else {
+        grp.classList.add('disabled');
+        if (title) title.classList.add('disabled');
+        if (badge) badge.style.display = '';
+        grp.querySelectorAll('.override-input').forEach(function(i) { i.disabled = true; });
+      }
+    });
+  }
+
+  function markOverridden(inp) {
     var inherited = parseFloat(inp.dataset.inherited);
     var current   = parseFloat(inp.value);
-    // Only store if the user has actively changed it from the inherited value
-    if (!isNaN(current) && (isNaN(inherited) || current !== inherited)) {
-      if (!rules.method_overrides[method]) rules.method_overrides[method] = {};
-      rules.method_overrides[method][param] = current;
+    inp.classList.toggle('is-overridden',
+      !isNaN(current) && (isNaN(inherited) || current !== inherited));
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.toggle-cb').forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        updateRuleVisibility(cb.dataset.method, cb.dataset.rule, cb.checked);
+      });
+    });
+    document.querySelectorAll('.toggle-cb').forEach(function(cb) {
+      updateRuleVisibility(cb.dataset.method, cb.dataset.rule, cb.checked);
+    });
+  });
+
+  function buildRulesFromForm() {
+    var rules = { "version": 1, "global": {}, "qc_types": {}, "salt_factors": {},
+                  "method_rule_toggles": {}, "method_overrides": {} };
+    document.querySelectorAll('#rulesForm input[name]').forEach(function(inp) {
+      var name = inp.name, val = inp.value;
+      if (name.indexOf('global.') === 0) {
+        var key = name.slice(7);
+        var fval = parseFloat(val);
+        rules.global[key] = isNaN(fval) ? val : fval;
+      } else if (name.indexOf('qc_types.') === 0) {
+        var parts = name.slice(9).split('.');
+        var qtype = parts[0], field = parts.slice(1).join('.');
+        if (!rules.qc_types[qtype]) rules.qc_types[qtype] = {};
+        var fval = parseFloat(val);
+        rules.qc_types[qtype][field] = isNaN(fval) ? val : fval;
+      } else if (name.indexOf('salt_factors.') === 0) {
+        var sfParts = name.slice(13).split('.');
+        var matrix = sfParts[0], sfKey = sfParts.slice(1).join('.');
+        if (!rules.salt_factors[matrix]) rules.salt_factors[matrix] = {};
+        var fval = parseFloat(val);
+        rules.salt_factors[matrix][sfKey] = isNaN(fval) ? val : fval;
+      } else if (name.indexOf('salt_note.') === 0) {
+        var matrix = name.slice(10);
+        if (!rules.salt_factors[matrix]) rules.salt_factors[matrix] = {};
+        rules.salt_factors[matrix]['note'] = val;
+      }
+    });
+    document.querySelectorAll('.toggle-cb').forEach(function(cb) {
+      var method = cb.dataset.method, rule = cb.dataset.rule;
+      if (!rules.method_rule_toggles[method]) rules.method_rule_toggles[method] = {};
+      rules.method_rule_toggles[method][rule] = cb.checked;
+    });
+    document.querySelectorAll('.override-input').forEach(function(inp) {
+      var method    = inp.dataset.method;
+      var param     = inp.dataset.param;
+      var inherited = parseFloat(inp.dataset.inherited);
+      var current   = parseFloat(inp.value);
+      if (!isNaN(current) && (isNaN(inherited) || current !== inherited)) {
+        if (!rules.method_overrides[method]) rules.method_overrides[method] = {};
+        rules.method_overrides[method][param] = current;
+      }
+    });
+    return rules;
+  }
+
+  function prepareSubmit() {
+    var rules = buildRulesFromForm();
+    document.getElementById('rules_json').value = JSON.stringify(rules, null, 2);
+    return true;
+  }
+
+  function applyJson() {
+    try {
+      var parsed = JSON.parse(document.getElementById('rawJson').value);
+      document.getElementById('rules_json').value = JSON.stringify(parsed, null, 2);
+      document.getElementById('rulesForm').submit();
+    } catch(e) { alert('Invalid JSON: ' + e.message); }
+  }
+
+  function addMethodTab() {
+    var label = prompt('New method label (e.g. "EPA 533"):');
+    if (!label) return;
+    var mid = label.replace(/[^a-zA-Z0-9]/g, '_');
+    if (document.getElementById('mtab-' + mid)) {
+      alert('A tab for "' + label + '" already exists.');
+      return;
     }
-  });
-
-  return rules;
-}
-
-// Activate the first method tab on page load
-(function() {
-  var tabs = document.querySelectorAll('.method-tab');
-  var panels = document.querySelectorAll('.method-panel');
-  if (tabs.length > 0) {
-    tabs[0].classList.add('active');
-    panels[0].classList.add('active');
+    // Create tab
+    var tab = document.createElement('div');
+    tab.className = 'method-tab';
+    tab.id = 'mtab-' + mid;
+    tab.textContent = label;
+    tab.onclick = function() { selectMethod(mid); };
+    var bar = document.getElementById('methodTabBar');
+    bar.insertBefore(tab, bar.querySelector('.method-tab-add'));
+    // Create panel with empty placeholder
+    var panel = document.createElement('div');
+    panel.className = 'method-panel';
+    panel.id = 'mpanel-' + mid;
+    panel.innerHTML = '<p style="color:var(--s-secondary);font-size:13px;padding:12px 0;">' +
+      'No rule parameters defined for this method yet. ' +
+      'Add global rule parameters first, then overrides will appear here on next save.' +
+      '</p>';
+    bar.parentNode.appendChild(panel);
+    selectMethod(mid);
   }
-})();
 
-function selectMethod(methodId) {
-  document.querySelectorAll('.method-tab').forEach(function(t) {
-    t.classList.toggle('active', t.id === 'mtab-' + methodId);
-  });
-  document.querySelectorAll('.method-panel').forEach(function(p) {
-    p.classList.toggle('active', p.id === 'mpanel-' + methodId);
-  });
-}
-
-// Update the ON/OFF label next to a toggle checkbox
-function updateToggleLabel(cb) {
-  var wrap = cb.closest('.toggle-wrap');
-  if (!wrap) return;
-  var on  = wrap.querySelector('.cb-label-on');
-  var off = wrap.querySelector('.cb-label-off');
-  if (on)  on.style.display  = cb.checked ? '' : 'none';
-  if (off) off.style.display = cb.checked ? 'none' : '';
-}
-
-// Mark an override input as actively overridden (blue border)
-function markOverridden(inp) {
-  var inherited = parseFloat(inp.dataset.inherited);
-  var current   = parseFloat(inp.value);
-  if (!isNaN(current) && (isNaN(inherited) || current !== inherited)) {
-    inp.classList.add('is-overridden');
-  } else {
-    inp.classList.remove('is-overridden');
-  }
-}
-
-// Wire toggle checkboxes after DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.toggle-cb').forEach(function(cb) {
-    cb.addEventListener('change', function() { updateToggleLabel(cb); });
-  });
-});
-
-function prepareSubmit() {
-  var rules = buildRulesFromForm();
-  document.getElementById('rules_json').value = JSON.stringify(rules, null, 2);
-  return true;
-}
-
-function applyJson() {
-  try {
-    var parsed = JSON.parse(document.getElementById('rawJson').value);
-    document.getElementById('rules_json').value = JSON.stringify(parsed, null, 2);
+  function resetDefaults() {
+    document.getElementById('rules_json').value =
+      '{"version":1,"global":{},"qc_types":{},"salt_factors":{},"method_rule_toggles":{},"method_overrides":{}}';
     document.getElementById('rulesForm').submit();
-  } catch(e) {
-    alert('Invalid JSON: ' + e.message);
   }
-}
 
-function resetDefaults() {
-  document.getElementById('rules_json').value = '{"version":1,"global":{},"qc_types":{},"salt_factors":{},"method_rule_toggles":{},"method_overrides":{}}';
-  document.getElementById('rulesForm').submit();
-}
-</script>
+  /* ── Context menu ───────────────────────────────────────────────────── */
+  var _ctxMenu = document.getElementById('pfas-ctx-menu');
+
+  function showCtxMenu(x, y, sections) {
+    _ctxMenu.innerHTML = '';
+    sections.forEach(function(section) {
+      if (section.label) {
+        var lbl = document.createElement('span');
+        lbl.className = 'ctx-label';
+        lbl.textContent = section.label;
+        _ctxMenu.appendChild(lbl);
+      }
+      (section.items || []).forEach(function(item) {
+        if (item === '-') {
+          var sep = document.createElement('div'); sep.className = 'ctx-sep';
+          _ctxMenu.appendChild(sep);
+          return;
+        }
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ctx-item' + (item.danger ? ' danger' : '');
+        btn.textContent = item.label;
+        btn.onclick = function() { hideCtxMenu(); item.action(); };
+        _ctxMenu.appendChild(btn);
+      });
+    });
+    _ctxMenu.style.left = x + 'px';
+    _ctxMenu.style.top  = y + 'px';
+    _ctxMenu.style.display = 'block';
+    // Keep in viewport
+    var r = _ctxMenu.getBoundingClientRect();
+    if (r.right  > window.innerWidth)  _ctxMenu.style.left = (x - r.width)  + 'px';
+    if (r.bottom > window.innerHeight) _ctxMenu.style.top  = (y - r.height) + 'px';
+  }
+
+  function hideCtxMenu() { _ctxMenu.style.display = 'none'; }
+
+  document.addEventListener('click',       hideCtxMenu);
+  document.addEventListener('contextmenu', function(e) {
+    // Close any open menu before opening a new one — individual handlers call showCtxMenu
+    hideCtxMenu();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideCtxMenu();
+  });
+
+  /* Helpers */
+  function setAllRules(methodId, enabled) {
+    document.querySelectorAll('.toggle-cb[data-method="' + methodId + '"]').forEach(function(cb) {
+      cb.checked = enabled;
+      updateRuleVisibility(methodId, cb.dataset.rule, enabled);
+    });
+  }
+
+  function resetRuleParams(methodId, ruleKey) {
+    var panel = document.getElementById('mpanel-' + methodId);
+    if (!panel) return;
+    panel.querySelectorAll('.limit-rule-group[data-rule-key="' + ruleKey + '"] .override-input')
+      .forEach(function(inp) {
+        inp.value = inp.dataset.inherited;
+        inp.classList.remove('is-overridden');
+      });
+  }
+
+  function duplicateRuleParams(srcMethod, ruleKey) {
+    var targets = [];
+    document.querySelectorAll('.method-tab').forEach(function(t) {
+      var mid = t.id.replace('mtab-', '');
+      if (mid !== srcMethod) targets.push({ id: mid, label: t.textContent.trim() });
+    });
+    if (!targets.length) { alert('No other method tabs exist to copy to.'); return; }
+    var opts = targets.map(function(t, i) { return (i + 1) + '. ' + t.label + ' (' + t.id + ')'; }).join('\n');
+    var ans = prompt('Copy "' + ruleKey + '" params to which method?\n\n' + opts + '\n\nEnter the method ID:');
+    if (!ans) return;
+    var srcPanel = document.getElementById('mpanel-' + srcMethod);
+    if (!srcPanel) return;
+    var srcVals = {};
+    srcPanel.querySelectorAll('.limit-rule-group[data-rule-key="' + ruleKey + '"] .override-input')
+      .forEach(function(inp) { srcVals[inp.dataset.param] = inp.value; });
+    var tgtPanel = document.getElementById('mpanel-' + ans.trim());
+    if (!tgtPanel) { alert('Method "' + ans.trim() + '" not found.'); return; }
+    tgtPanel.querySelectorAll('.limit-rule-group[data-rule-key="' + ruleKey + '"] .override-input')
+      .forEach(function(inp) {
+        if (srcVals[inp.dataset.param] !== undefined) {
+          inp.value = srcVals[inp.dataset.param];
+          markOverridden(inp);
+        }
+      });
+  }
+
+  /* Bind right-click handlers after DOM is ready */
+  document.addEventListener('DOMContentLoaded', function() {
+
+    /* Method tab bar — right-click on a tab */
+    var bar = document.getElementById('methodTabBar');
+    if (bar) {
+      bar.addEventListener('contextmenu', function(e) {
+        var tab = e.target.closest('.method-tab:not(.method-tab-add)');
+        if (!tab) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var methodId = tab.id.replace('mtab-', '');
+        var methodLabel = tab.textContent.trim();
+        showCtxMenu(e.clientX, e.clientY, [{
+          label: methodLabel,
+          items: [
+            { label: 'Enable all rules for this method',  action: function() { setAllRules(methodId, true);  } },
+            { label: 'Disable all rules for this method', action: function() { setAllRules(methodId, false); } },
+          ]
+        }]);
+      });
+    }
+
+    /* Method panels — right-click on rule groups or override inputs */
+    document.querySelectorAll('.method-panel').forEach(function(panel) {
+      panel.addEventListener('contextmenu', function(e) {
+        var methodId = panel.id.replace('mpanel-', '');
+
+        /* Right-click on an override input (most specific target first) */
+        var inp = e.target.closest('.override-input');
+        if (inp) {
+          e.preventDefault();
+          e.stopPropagation();
+          showCtxMenu(e.clientX, e.clientY, [{
+            items: [
+              { label: 'Clear override — revert to inherited (' + inp.dataset.inherited + ')',
+                action: function() {
+                  inp.value = inp.dataset.inherited;
+                  inp.classList.remove('is-overridden');
+                }
+              }
+            ]
+          }]);
+          return;
+        }
+
+        /* Right-click on a rule group */
+        var grp = e.target.closest('.limit-rule-group[data-rule-key]');
+        if (grp) {
+          e.preventDefault();
+          e.stopPropagation();
+          var ruleKey = grp.dataset.ruleKey;
+          var ruleLabel = (grp.querySelector('.limit-rule-title') || {}).textContent || ruleKey;
+          var cb = document.querySelector('.toggle-cb[data-method="' + methodId + '"][data-rule="' + ruleKey + '"]');
+          var enabled = cb ? cb.checked : true;
+          showCtxMenu(e.clientX, e.clientY, [{
+            label: ruleLabel.trim(),
+            items: [
+              { label: (enabled ? 'Disable' : 'Enable') + ' rule for this method',
+                action: function() {
+                  if (cb) { cb.checked = !enabled; updateRuleVisibility(methodId, ruleKey, !enabled); }
+                }
+              },
+              '-',
+              { label: 'Reset all params to global default',
+                action: function() { resetRuleParams(methodId, ruleKey); }
+              },
+              { label: 'Duplicate params to another method',
+                action: function() { duplicateRuleParams(methodId, ruleKey); }
+              },
+            ]
+          }]);
+        }
+      });
+    });
+
+  }); /* end DOMContentLoaded */
+  </script>
+
+  </div><!-- /page-body -->
+  </div><!-- /content slot -->
 </body>
 </html>

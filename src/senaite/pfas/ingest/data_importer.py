@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Instrument Data Importer
 Loads raw mass-spectrometry CSV exports (MassLynx / Analyst / Skyline)

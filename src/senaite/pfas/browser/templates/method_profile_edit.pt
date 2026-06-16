@@ -1,402 +1,665 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml"
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title tal:content="string:Edit ${view/display_name}">Edit Method Profile</title>
+  <title metal:fill-slot="title"
+         tal:content="string:Edit ${view/display_name}">Edit Method Profile</title>
+  <tal:styles metal:fill-slot="head-extra">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           font-size: 14px; background: #f5f5f5; color: #212121; }
-
-    .page-header { background: #1a237e; color: #fff; padding: 14px 24px;
-                   display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    .page-header h1 { font-size: 18px; font-weight: 600; flex: 1; }
-    .page-header a  { color: #c5cae9; font-size: 12px; text-decoration: none; white-space: nowrap; }
-    .page-header a:hover { text-decoration: underline; }
-    .method-badge { font-family: monospace; font-size: 13px; background: rgba(255,255,255,.15);
-                    padding: 3px 8px; border-radius: 4px; }
-
-    .page-body { max-width: 900px; margin: 0 auto; padding: 20px; }
-
-    .alert { padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-weight: 600; }
-    .alert-success { background: #e8f5e9; border: 1px solid #a5d6a7; color: #1b5e20; }
-    .alert-error   { background: #ffebee; border: 1px solid #ef9a9a; color: #b71c1c; }
-
-    /* Collapsible sections */
-    details { background: #fff; border-radius: 6px; margin-bottom: 14px;
-              box-shadow: 0 1px 3px rgba(0,0,0,.1); }
-    details[open] { box-shadow: 0 2px 6px rgba(0,0,0,.12); }
-    summary { padding: 11px 16px; cursor: pointer; font-size: 14px; font-weight: 600;
-              background: #eceff1; border-radius: 6px; color: #37474f;
-              list-style: none; display: flex; align-items: center; gap: 8px; }
-    details[open] summary { border-radius: 6px 6px 0 0; border-bottom: 1px solid #ddd; }
-    summary::-webkit-details-marker { display: none; }
-    summary::before { content: "▶"; font-size: 10px; transition: transform .15s; }
-    details[open] summary::before { transform: rotate(90deg); }
-
-    .section-body { padding: 16px; }
-
-    /* Field grid */
-    .field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                  gap: 14px; }
-    .field-row { display: flex; flex-direction: column; }
-    .field-row label { font-size: 11px; color: #616161; margin-bottom: 4px;
-                       font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-    .field-row input[type=number],
-    .field-row input[type=text]  { padding: 7px 9px; border: 1px solid #bdbdbd;
-                                    border-radius: 4px; font-size: 13px; background: #fafafa;
-                                    width: 100%; }
-    .field-row input:focus { outline: none; border-color: #1565c0;
-                              box-shadow: 0 0 0 2px rgba(21,101,192,.2); }
-    .field-row .hint { font-size: 10px; color: #9e9e9e; margin-top: 3px; }
-    .field-row-wide { grid-column: 1 / -1; }
-
-    /* Checkboxes */
-    .check-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
-    .check-row label { font-size: 13px; color: #37474f; font-weight: normal;
-                       text-transform: none; letter-spacing: normal; }
-    .check-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+    /* ── Method profile edit page-specific ─────────────────────────────── */
+    .page-body { max-width: 900px; }
 
     /* Textareas for JSON */
     .json-area { width: 100%; min-height: 160px; font-family: "Fira Code", monospace;
-                 font-size: 12px; padding: 8px; border: 1px solid #bdbdbd;
+                 font-size: 12px; padding: 8px; border: 1px solid var(--s-input-border);
                  border-radius: 4px; background: #fafafa; resize: vertical; }
-    .json-area:focus { outline: none; border-color: #1565c0;
-                       box-shadow: 0 0 0 2px rgba(21,101,192,.2); }
-    .json-hint { font-size: 11px; color: #9e9e9e; margin-top: 4px; font-family: monospace; }
+    .json-area:focus { outline: none; border-color: var(--s-primary);
+                       box-shadow: 0 0 0 3px var(--s-focus-ring); }
+    .json-hint { font-size: 11px; color: var(--s-secondary); margin-top: 4px;
+                 font-family: monospace; line-height: 1.5; }
 
-    /* Save bar */
-    .save-bar { position: sticky; bottom: 0; background: #fff; border-top: 2px solid #1a237e;
-                padding: 12px 20px; display: flex; gap: 12px; align-items: center;
-                box-shadow: 0 -2px 8px rgba(0,0,0,.08); }
-    .btn-save  { background: #1a237e; color: #fff; border: none; border-radius: 4px;
+    /* Factor tables */
+    .factor-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
+    .factor-table th { background: var(--s-light); color: var(--s-secondary);
+                       font-size: 11px; font-weight: 700; text-transform: uppercase;
+                       letter-spacing: .04em; padding: 7px 10px;
+                       border-bottom: 2px solid var(--s-border); text-align: left; }
+    .factor-table td { padding: 5px 6px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    .factor-table tr:last-child td { border-bottom: none; }
+    .factor-table input[type=text],
+    .factor-table input[type=number] { padding: 5px 8px; border: 1px solid var(--s-input-border);
+                                        border-radius: 4px; font-size: 13px; background: #fafafa;
+                                        color: var(--s-input-text); width: 100%; }
+    .factor-table input:focus { outline: none; border-color: var(--s-primary);
+                                 box-shadow: 0 0 0 2px var(--s-focus-ring); }
+    .factor-table .del-btn { background: none; border: none; cursor: pointer; color: var(--s-danger);
+                              font-size: 16px; padding: 2px 6px; line-height: 1; }
+    .factor-table .del-btn:hover { opacity: .75; }
+    .btn-add-row { background: none; border: 1px solid var(--s-primary);
+                   color: var(--s-primary); border-radius: 4px;
+                   padding: 6px 14px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .btn-add-row:hover { background: var(--s-primary-lt); }
+
+    /* Extraction stage cards */
+    .stage-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px;
+                  background: #fff; }
+    .stage-card.dragging { opacity: .4; }
+    .stage-card-hdr { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+                      background: var(--s-light); border-radius: 6px 6px 0 0;
+                      border-bottom: 1px solid var(--s-border); }
+    .stage-card-hdr .drag-handle { cursor: grab; color: var(--s-secondary); font-size: 16px;
+                                    user-select: none; flex-shrink: 0; }
+    .stage-card-hdr .stage-card-title { flex: 1; font-size: 13px; font-weight: 600;
+                                         color: var(--s-primary); }
+    .stage-card-hdr .del-btn { background: none; border: none; cursor: pointer;
+                                color: var(--s-danger); font-size: 16px; line-height: 1; padding: 0 4px; }
+    .stage-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .stage-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .stage-row label { display: flex; flex-direction: column; gap: 3px;
+                       font-size: 11px; font-weight: 600; color: var(--s-secondary); }
+    .stage-row label input[type=text],
+    .stage-row label input[type=number] { padding: 5px 8px; border: 1px solid var(--s-input-border);
+                                           border-radius: 4px; font-size: 13px;
+                                           font-family: inherit; background: #fff; }
+    .stage-row label input:focus { outline: none; border-color: var(--s-primary); }
+    .cb-label { flex-direction: row !important; align-items: center !important; gap: 6px !important;
+                font-size: 13px !important; font-weight: 500 !important; color: var(--s-text) !important;
+                cursor: pointer; }
+    .cb-label input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
+
+    .btn-save  { background: var(--s-primary); color: #fff; border: none; border-radius: 4px;
                  padding: 10px 28px; cursor: pointer; font-size: 14px; font-weight: 600; }
-    .btn-save:hover { background: #283593; }
-    .btn-cancel { color: #616161; text-decoration: none; font-size: 14px; padding: 10px 0; }
+    .btn-save:hover { background: var(--s-primary-dk); }
+    .btn-cancel { color: var(--s-secondary); text-decoration: none; font-size: 14px; padding: 10px 0; }
   </style>
+  </tal:styles>
 </head>
 <body>
+  <tal:t metal:fill-slot="header-title"
+         tal:content="string:Edit — ${view/display_name}">Edit Method Profile</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <span class="header-badge" tal:content="view/method_id">FDA_32PFAS</span>
+    <a href="@@pfas-method-profiles" class="back-link">All Methods</a>
+  </tal:r>
 
-<div class="page-header">
-  <h1>Edit Method Profile</h1>
-  <span class="method-badge" tal:content="view/method_id">FDA_32PFAS</span>
-  <a href="@@pfas-method-profiles">← All Methods</a>
-</div>
+  <div metal:fill-slot="content">
+  <div class="page-body">
 
-<div class="page-body">
-
-  <!-- Saved confirmation -->
-  <div class="alert alert-success" tal:condition="view/saved">
-    Profile saved and exported to <code>/data/qc/method_profiles.json</code>.
-    The pipeline worker will use the new values on the next batch run.
-  </div>
-
-  <!-- Error message -->
-  <div class="alert alert-error" tal:condition="view/error">
-    <span tal:content="view/error">Error message</span>
-  </div>
-
-  <form method="POST" tal:attributes="action string:@@pfas-method-profile-edit">
-    <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
-
-    <!-- ── Display info ──────────────────────────────────────────────────── -->
-    <details open="open">
-      <summary>Method Information</summary>
-      <div class="section-body">
-        <div class="field-grid">
-          <div class="field-row field-row-wide">
-            <label for="display_name">Display Name</label>
-            <input type="text" id="display_name" name="display_name"
-                   tal:attributes="value view/display_name" />
-          </div>
-          <div class="field-row field-row-wide">
-            <label for="description">Description</label>
-            <input type="text" id="description" name="description"
-                   tal:attributes="value view/description" />
-          </div>
-          <div class="field-row">
-            <label for="surrogate_is">Surrogate IS (all surrogates quantified against)</label>
-            <input type="text" id="surrogate_is" name="surrogate_is"
-                   tal:attributes="value view/surrogate_is" />
-            <span class="hint">e.g. M4PFOA — the IS used to quantify all surrogate recoveries</span>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── Calibration ───────────────────────────────────────────────────── -->
-    <details open="open">
-      <summary>Calibration</summary>
-      <div class="section-body">
-        <div class="field-grid">
-          <div class="field-row">
-            <label for="cal_r2_min">R² Minimum</label>
-            <input type="number" id="cal_r2_min" name="cal_r2_min"
-                   step="0.001" min="0.900" max="1.000"
-                   tal:attributes="value python:view.cal().get('r2_min', 0.990)" />
-            <span class="hint">e.g. 0.990 (FDA) or 0.995 (generic)</span>
-          </div>
-          <div class="field-row">
-            <label for="cal_point_pct_dev_max">Point % Deviation Max</label>
-            <input type="number" id="cal_point_pct_dev_max" name="cal_point_pct_dev_max"
-                   step="0.1" min="0"
-                   tal:attributes="value python:view.cal().get('point_pct_dev_max', '')" />
-            <span class="hint">Each calibration point must be within ±N% of curve. Leave blank for no limit.</span>
-          </div>
-          <div class="field-row">
-            <label for="cal_low_point_pct_dev_max">Low-Level Point % Dev Max</label>
-            <input type="number" id="cal_low_point_pct_dev_max" name="cal_low_point_pct_dev_max"
-                   step="0.1" min="0"
-                   tal:attributes="value python:view.cal().get('low_point_pct_dev_max') or ''" />
-            <span class="hint">Wider limit for lowest calibration level (e.g. 50 for EPA 537.1). Leave blank if same.</span>
-          </div>
-          <div class="field-row">
-            <div class="check-row">
-              <input type="checkbox" id="cal_force_origin" name="cal_force_origin"
-                     tal:attributes="checked python:'checked' if view.cal().get('force_origin') else None" />
-              <label for="cal_force_origin">Force through origin</label>
-            </div>
-            <span class="hint">Required by EPA 537.1 IS calibration technique</span>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── CCV ──────────────────────────────────────────────────────────── -->
-    <details open="open">
-      <summary>Continuing Calibration Verification (CCV)</summary>
-      <div class="section-body">
-        <div class="field-grid">
-          <div class="field-row">
-            <label for="ccv_frequency">CCV Frequency (every N samples)</label>
-            <input type="number" id="ccv_frequency" name="ccv_frequency"
-                   step="1" min="1"
-                   tal:attributes="value python:view.ccv().get('frequency', 10)" />
-            <span class="hint">6 for FDA 32-PFAS; 10 for EPA 537.1 / 1633A</span>
-          </div>
-          <div class="field-row">
-            <label for="ccv_recovery_min">Recovery Min %</label>
-            <input type="number" id="ccv_recovery_min" name="ccv_recovery_min"
-                   step="0.1"
-                   tal:attributes="value python:view.ccv().get('recovery_min', 70.0)" />
-          </div>
-          <div class="field-row">
-            <label for="ccv_recovery_max">Recovery Max %</label>
-            <input type="number" id="ccv_recovery_max" name="ccv_recovery_max"
-                   step="0.1"
-                   tal:attributes="value python:view.ccv().get('recovery_max', 130.0)" />
-          </div>
-          <div class="field-row">
-            <label for="ccv_low_level_min">Low-Level Min % (optional)</label>
-            <input type="number" id="ccv_low_level_min" name="ccv_low_level_min"
-                   step="0.1"
-                   tal:attributes="value python:view.ccv().get('low_level_min') or ''" />
-            <span class="hint">Wider window for the lowest CCC/CCV level. Leave blank if same as standard.</span>
-          </div>
-          <div class="field-row">
-            <label for="ccv_low_level_max">Low-Level Max % (optional)</label>
-            <input type="number" id="ccv_low_level_max" name="ccv_low_level_max"
-                   step="0.1"
-                   tal:attributes="value python:view.ccv().get('low_level_max') or ''" />
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── IS Response ───────────────────────────────────────────────────── -->
-    <details open="open">
-      <summary>Internal Standard (IS) / Surrogate Response</summary>
-      <div class="section-body">
-        <div class="field-grid">
-          <div class="field-row">
-            <label for="is_vs_ical_avg_min">vs. ICAL Average Min %</label>
-            <input type="number" id="is_vs_ical_avg_min" name="is_vs_ical_avg_min"
-                   step="0.1"
-                   tal:attributes="value python:view.is_section().get('vs_ical_avg_min') or ''" />
-          </div>
-          <div class="field-row">
-            <label for="is_vs_ical_avg_max">vs. ICAL Average Max %</label>
-            <input type="number" id="is_vs_ical_avg_max" name="is_vs_ical_avg_max"
-                   step="0.1"
-                   tal:attributes="value python:view.is_section().get('vs_ical_avg_max') or ''" />
-          </div>
-          <div class="field-row">
-            <label for="is_vs_last_ccv_min">vs. Last CCV Min % (optional)</label>
-            <input type="number" id="is_vs_last_ccv_min" name="is_vs_last_ccv_min"
-                   step="0.1"
-                   tal:attributes="value python:view.is_section().get('vs_last_ccv_min') or ''" />
-            <span class="hint">EPA 537.1 §9.3.4 requires this second condition. Leave blank for single-condition methods.</span>
-          </div>
-          <div class="field-row">
-            <label for="is_vs_last_ccv_max">vs. Last CCV Max % (optional)</label>
-            <input type="number" id="is_vs_last_ccv_max" name="is_vs_last_ccv_max"
-                   step="0.1"
-                   tal:attributes="value python:view.is_section().get('vs_last_ccv_max') or ''" />
-          </div>
-          <div class="field-row field-row-wide">
-            <label for="is_notes">Notes</label>
-            <input type="text" id="is_notes" name="is_notes"
-                   tal:attributes="value python:view.is_section().get('notes', '')" />
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── Chromatographic confirmation ─────────────────────────────────── -->
-    <details open="open">
-      <summary>Chromatographic Confirmation &amp; Signal Quality</summary>
-      <div class="section-body">
-        <div class="field-grid">
-          <div class="field-row">
-            <label for="conf_ion_ratio_tol_pct">Ion Ratio Tolerance ± %</label>
-            <input type="number" id="conf_ion_ratio_tol_pct" name="conf_ion_ratio_tol_pct"
-                   step="0.1" min="0"
-                   tal:attributes="value python:view.confirmation().get('ion_ratio_tol_pct') or ''" />
-            <span class="hint">30 for FDA; 50 for EPA 1633A; blank for 537.1 (no criterion)</span>
-          </div>
-          <div class="field-row">
-            <label for="conf_rrt_tol_pct">Relative RT Tolerance %</label>
-            <input type="number" id="conf_rrt_tol_pct" name="conf_rrt_tol_pct"
-                   step="0.1" min="0"
-                   tal:attributes="value python:view.confirmation().get('rrt_tol_pct') or ''" />
-            <span class="hint">1.0 for FDA (RRT ±1% of standard RT). Leave blank to use absolute tolerance.</span>
-          </div>
-          <div class="field-row">
-            <label for="conf_rt_tol_abs_min">Absolute RT Tolerance (min)</label>
-            <input type="number" id="conf_rt_tol_abs_min" name="conf_rt_tol_abs_min"
-                   step="0.01" min="0"
-                   tal:attributes="value python:view.confirmation().get('rt_tol_abs_min') or ''" />
-            <span class="hint">0.05 for EPA 537.1. Leave blank to use relative % tolerance.</span>
-          </div>
-          <div class="field-row">
-            <label for="conf_sn_quan_min">S/N Min — Quantitation Ion</label>
-            <input type="number" id="conf_sn_quan_min" name="conf_sn_quan_min"
-                   step="0.1" min="0"
-                   tal:attributes="value python:view.confirmation().get('sn_quan_min', 3.0)" />
-          </div>
-          <div class="field-row">
-            <label for="conf_sn_confirm_min">S/N Min — Confirm Ion (optional)</label>
-            <input type="number" id="conf_sn_confirm_min" name="conf_sn_confirm_min"
-                   step="0.1" min="0"
-                   tal:attributes="value python:view.confirmation().get('sn_confirm_min') or ''" />
-            <span class="hint">1.0 for EPA 1633A. Leave blank if same as quantitation threshold.</span>
-          </div>
-          <div class="field-row field-row-wide">
-            <div class="check-row">
-              <input type="checkbox" id="conf_require_confirm_ion_check"
-                     name="conf_require_confirm_ion_check"
-                     tal:attributes="checked python:'checked' if view.confirmation().get('require_confirm_ion_check') else None" />
-              <label for="conf_require_confirm_ion_check">
-                Require qualifier ion check for all analytes
-              </label>
-            </div>
-            <span class="hint">
-              ON for FDA 32-PFAS and EPA 1633A; OFF for EPA 537.1 (which has no ion-ratio criterion).
-              Controls whether the qualifier MRM column in the per-analyte table is enforced.
-            </span>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── Duplicate / LFSMD RPD ─────────────────────────────────────────── -->
-    <details open="open">
-      <summary>Duplicate / LFSMD RPD</summary>
-      <div class="section-body">
-        <div class="field-grid">
-          <div class="field-row">
-            <label for="dup_rpd_max">Max RPD %</label>
-            <input type="number" id="dup_rpd_max" name="dup_rpd_max"
-                   step="0.1" min="0"
-                   tal:attributes="value python:view.duplicate().get('rpd_max', 20.0)" />
-            <span class="hint">20 for FDA; 30 for EPA methods</span>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ── Recovery Tiers ────────────────────────────────────────────────── -->
-    <details>
-      <summary>Recovery Tiers</summary>
-      <div class="section-body">
-        <p class="json-hint">
-          JSON array of tier objects.  Each tier: { "tier": 1, "description": "...",
-          "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0,
-          "key_analytes": [...], "tight_matrices": [...] }
-        </p>
-        <textarea class="json-area" name="recovery_tiers_json" rows="10"
-                  tal:content="view/recovery_tiers_json">[]</textarea>
-      </div>
-    </details>
-
-    <!-- ── Matrix Factors ────────────────────────────────────────────────── -->
-    <details>
-      <summary>Matrix Factors (instrument ng/mL → reported ng/g)</summary>
-      <div class="section-body">
-        <p class="json-hint">
-          JSON array: [ { "matrix": "muscle", "factor": 0.5 }, ... ]
-          Factor = dilution × weight ratio.  Leave empty for aqueous methods.
-        </p>
-        <textarea class="json-area" name="matrix_factors_json" rows="8"
-                  tal:content="view/matrix_factors_json">[]</textarea>
-      </div>
-    </details>
-
-    <!-- ── Surrogate Map ─────────────────────────────────────────────────── -->
-    <details>
-      <summary>Surrogate Map (native analyte → linked IS)</summary>
-      <div class="section-body">
-        <p class="json-hint">
-          JSON array: [ { "analyte": "PFOA", "surrogate_is": "M8PFOA" }, ... ]
-          Maps each native analyte to its quantitation IS.  Used for surrogate
-          recovery tracking and the SUR qualifier.
-        </p>
-        <textarea class="json-area" name="surrogate_map_json" rows="10"
-                  tal:content="view/surrogate_map_json">[]</textarea>
-      </div>
-    </details>
-
-    <!-- ── Per-Analyte Table ─────────────────────────────────────────────── -->
-    <details>
-      <summary>Per-Analyte Assignments</summary>
-      <div class="section-body">
-        <p class="json-hint">
-          JSON array.  Each row: { "analyte": "PFBA", "surrogate": "M3PFBA",
-          "no_labeled_std": false, "is_key_analyte": false,
-          "recovery_tier": 2, "confirm_ion_mz": "213.04&gt;18.99", "notes": "" }
-          confirm_ion_mz: primary qualifier MRM transition used for the
-          qualifier-ion check (enforced when require_confirm_ion_check is ON).
-        </p>
-        <textarea class="json-area" name="per_analyte_json" rows="14"
-                  tal:content="view/per_analyte_json">[]</textarea>
-      </div>
-    </details>
-
-    <!-- ── EPA 1633A EIS Overrides ───────────────────────────────────────── -->
-    <details>
-      <summary>EIS Recovery Overrides (EPA 1633A only)</summary>
-      <div class="section-body">
-        <p class="json-hint">
-          Per-analyte EIS recovery windows that differ from the method default.
-          JSON array: [ { "analyte": "M2-4:2FTS", "recovery_min": 20.0, "recovery_max": 150.0 }, ... ]
-          VERIFY all values against your purchased copy of EPA 1633A Tables 6/8.
-        </p>
-        <textarea class="json-area" name="eis_overrides_json" rows="8"
-                  tal:content="view/eis_overrides_json">[]</textarea>
-      </div>
-    </details>
-
-    <!-- ── Save bar ──────────────────────────────────────────────────────── -->
-    <div class="save-bar">
-      <button type="submit" class="btn-save">Save &amp; Export to Worker</button>
-      <a class="btn-cancel" href="@@pfas-method-profiles">Cancel</a>
+    <div class="alert alert-success" tal:condition="view/saved">
+      Profile saved and exported to <code>/data/qc/method_profiles.json</code>.
+      The pipeline worker will use the new values on the next batch run.
     </div>
 
-  </form>
-</div>
+    <div class="alert alert-error" tal:condition="view/error">
+      <span tal:content="view/error">Error message</span>
+    </div>
 
+    <form method="POST" tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+
+      <!-- Method Information -->
+      <details open="open">
+        <summary>Method Information</summary>
+        <div class="section-body">
+          <div class="field-grid">
+            <div class="field-row field-row-wide">
+              <label for="display_name">Display Name</label>
+              <input type="text" id="display_name" name="display_name"
+                     tal:attributes="value view/display_name" />
+            </div>
+            <div class="field-row field-row-wide">
+              <label for="description">Description</label>
+              <input type="text" id="description" name="description"
+                     tal:attributes="value view/description" />
+            </div>
+            <div class="field-row">
+              <label for="surrogate_is">Surrogate IS</label>
+              <input type="text" id="surrogate_is" name="surrogate_is"
+                     tal:attributes="value view/surrogate_is" />
+              <span class="hint">e.g. M4PFOA &#8212; the IS used to quantify all surrogate recoveries</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Calibration -->
+      <details open="open">
+        <summary>Calibration</summary>
+        <div class="section-body">
+          <div class="field-grid">
+            <div class="field-row">
+              <label for="cal_r2_min">R&#178; Minimum</label>
+              <input type="number" id="cal_r2_min" name="cal_r2_min"
+                     step="0.001" min="0.900" max="1.000"
+                     tal:attributes="value python:view.cal().get('r2_min', 0.990)" />
+              <span class="hint">e.g. 0.990 (FDA) or 0.995 (generic)</span>
+            </div>
+            <div class="field-row">
+              <label for="cal_point_pct_dev_max">Point % Deviation Max</label>
+              <input type="number" id="cal_point_pct_dev_max" name="cal_point_pct_dev_max"
+                     step="0.1" min="0"
+                     tal:attributes="value python:view.cal().get('point_pct_dev_max', '')" />
+              <span class="hint">Each cal point must be within &#177;N% of curve. Leave blank for no limit.</span>
+            </div>
+            <div class="field-row">
+              <label for="cal_low_point_pct_dev_max">Low-Level Point % Dev Max</label>
+              <input type="number" id="cal_low_point_pct_dev_max" name="cal_low_point_pct_dev_max"
+                     step="0.1" min="0"
+                     tal:attributes="value python:view.cal().get('low_point_pct_dev_max') or ''" />
+              <span class="hint">Wider limit for lowest calibration level (e.g. 50 for EPA 537.1).</span>
+            </div>
+            <div class="field-row">
+              <div class="check-row">
+                <input type="checkbox" id="cal_force_origin" name="cal_force_origin"
+                       tal:attributes="checked python:'checked' if view.cal().get('force_origin') else None" />
+                <label for="cal_force_origin">Force through origin</label>
+              </div>
+              <span class="hint">Required by EPA 537.1 IS calibration technique</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- CCV -->
+      <details open="open">
+        <summary>Continuing Calibration Verification (CCV)</summary>
+        <div class="section-body">
+          <div class="field-grid">
+            <div class="field-row">
+              <label for="ccv_frequency">CCV Frequency (every N samples)</label>
+              <input type="number" id="ccv_frequency" name="ccv_frequency"
+                     step="1" min="1"
+                     tal:attributes="value python:view.ccv().get('frequency', 10)" />
+              <span class="hint">6 for FDA 32-PFAS; 10 for EPA 537.1 / 1633A</span>
+            </div>
+            <div class="field-row">
+              <label for="ccv_recovery_min">Recovery Min %</label>
+              <input type="number" id="ccv_recovery_min" name="ccv_recovery_min" step="0.1"
+                     tal:attributes="value python:view.ccv().get('recovery_min', 70.0)" />
+            </div>
+            <div class="field-row">
+              <label for="ccv_recovery_max">Recovery Max %</label>
+              <input type="number" id="ccv_recovery_max" name="ccv_recovery_max" step="0.1"
+                     tal:attributes="value python:view.ccv().get('recovery_max', 130.0)" />
+            </div>
+            <div class="field-row">
+              <label for="ccv_low_level_min">Low-Level Min % (optional)</label>
+              <input type="number" id="ccv_low_level_min" name="ccv_low_level_min" step="0.1"
+                     tal:attributes="value python:view.ccv().get('low_level_min') or ''" />
+              <span class="hint">Wider window for the lowest CCC/CCV level.</span>
+            </div>
+            <div class="field-row">
+              <label for="ccv_low_level_max">Low-Level Max % (optional)</label>
+              <input type="number" id="ccv_low_level_max" name="ccv_low_level_max" step="0.1"
+                     tal:attributes="value python:view.ccv().get('low_level_max') or ''" />
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- IS Response -->
+      <details open="open">
+        <summary>Internal Standard (IS) / Surrogate Response</summary>
+        <div class="section-body">
+          <div class="field-grid">
+            <div class="field-row">
+              <label for="is_vs_ical_avg_min">vs. ICAL Average Min %</label>
+              <input type="number" id="is_vs_ical_avg_min" name="is_vs_ical_avg_min" step="0.1"
+                     tal:attributes="value python:view.is_section().get('vs_ical_avg_min') or ''" />
+            </div>
+            <div class="field-row">
+              <label for="is_vs_ical_avg_max">vs. ICAL Average Max %</label>
+              <input type="number" id="is_vs_ical_avg_max" name="is_vs_ical_avg_max" step="0.1"
+                     tal:attributes="value python:view.is_section().get('vs_ical_avg_max') or ''" />
+            </div>
+            <div class="field-row">
+              <label for="is_vs_last_ccv_min">vs. Last CCV Min % (optional)</label>
+              <input type="number" id="is_vs_last_ccv_min" name="is_vs_last_ccv_min" step="0.1"
+                     tal:attributes="value python:view.is_section().get('vs_last_ccv_min') or ''" />
+              <span class="hint">EPA 537.1 &#167;9.3.4 requires this second condition.</span>
+            </div>
+            <div class="field-row">
+              <label for="is_vs_last_ccv_max">vs. Last CCV Max % (optional)</label>
+              <input type="number" id="is_vs_last_ccv_max" name="is_vs_last_ccv_max" step="0.1"
+                     tal:attributes="value python:view.is_section().get('vs_last_ccv_max') or ''" />
+            </div>
+            <div class="field-row field-row-wide">
+              <label for="is_notes">Notes</label>
+              <input type="text" id="is_notes" name="is_notes"
+                     tal:attributes="value python:view.is_section().get('notes', '')" />
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Chromatographic Confirmation -->
+      <details open="open">
+        <summary>Chromatographic Confirmation &amp; Signal Quality</summary>
+        <div class="section-body">
+          <div class="field-grid">
+            <div class="field-row">
+              <label for="conf_ion_ratio_tol_pct">Ion Ratio Tolerance &#177; %</label>
+              <input type="number" id="conf_ion_ratio_tol_pct" name="conf_ion_ratio_tol_pct"
+                     step="0.1" min="0"
+                     tal:attributes="value python:view.confirmation().get('ion_ratio_tol_pct') or ''" />
+              <span class="hint">30 for FDA; 50 for EPA 1633A; blank for 537.1 (no criterion)</span>
+            </div>
+            <div class="field-row">
+              <label for="conf_rrt_tol_pct">Relative RT Tolerance %</label>
+              <input type="number" id="conf_rrt_tol_pct" name="conf_rrt_tol_pct"
+                     step="0.1" min="0"
+                     tal:attributes="value python:view.confirmation().get('rrt_tol_pct') or ''" />
+              <span class="hint">1.0 for FDA (RRT &#177;1% of standard RT).</span>
+            </div>
+            <div class="field-row">
+              <label for="conf_rt_tol_abs_min">Absolute RT Tolerance (min)</label>
+              <input type="number" id="conf_rt_tol_abs_min" name="conf_rt_tol_abs_min"
+                     step="0.01" min="0"
+                     tal:attributes="value python:view.confirmation().get('rt_tol_abs_min') or ''" />
+              <span class="hint">0.05 for EPA 537.1.</span>
+            </div>
+            <div class="field-row">
+              <label for="conf_sn_quan_min">S/N Min &#8212; Quantitation Ion</label>
+              <input type="number" id="conf_sn_quan_min" name="conf_sn_quan_min"
+                     step="0.1" min="0"
+                     tal:attributes="value python:view.confirmation().get('sn_quan_min', 3.0)" />
+            </div>
+            <div class="field-row">
+              <label for="conf_sn_confirm_min">S/N Min &#8212; Confirm Ion (optional)</label>
+              <input type="number" id="conf_sn_confirm_min" name="conf_sn_confirm_min"
+                     step="0.1" min="0"
+                     tal:attributes="value python:view.confirmation().get('sn_confirm_min') or ''" />
+              <span class="hint">1.0 for EPA 1633A.</span>
+            </div>
+            <div class="field-row field-row-wide">
+              <div class="check-row">
+                <input type="checkbox" id="conf_require_confirm_ion_check"
+                       name="conf_require_confirm_ion_check"
+                       tal:attributes="checked python:'checked' if view.confirmation().get('require_confirm_ion_check') else None" />
+                <label for="conf_require_confirm_ion_check">
+                  Require qualifier ion check for all analytes
+                </label>
+              </div>
+              <span class="hint">
+                ON for FDA 32-PFAS and EPA 1633A; OFF for EPA 537.1.
+              </span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Duplicate / LFSMD RPD -->
+      <details open="open">
+        <summary>Duplicate / LFSMD RPD</summary>
+        <div class="section-body">
+          <div class="field-grid">
+            <div class="field-row">
+              <label for="dup_rpd_max">Max RPD %</label>
+              <input type="number" id="dup_rpd_max" name="dup_rpd_max"
+                     step="0.1" min="0"
+                     tal:attributes="value python:view.duplicate().get('rpd_max', 20.0)" />
+              <span class="hint">20 for FDA; 30 for EPA methods</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Recovery Tiers -->
+      <details>
+        <summary>Recovery Tiers</summary>
+        <div class="section-body">
+          <p class="json-hint">
+            JSON array of tier objects. Each tier: { "tier": 1, "description": "...",
+            "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0,
+            "key_analytes": [...], "tight_matrices": [...] }
+          </p>
+          <textarea class="json-area" name="recovery_tiers_json" rows="10"
+                    tal:content="view/recovery_tiers_json">[]</textarea>
+        </div>
+      </details>
+
+      <!-- Matrix Adjustment Factor (one per method) -->
+      <details>
+        <summary>Matrix Adjustment Factor</summary>
+        <div class="section-body">
+          <div class="field-grid">
+            <div class="field-row">
+              <label for="matrix_factor">Matrix Adjustment Factor</label>
+              <div class="field-sublabel">
+                Single integer multiplier applied to every result for this method.
+                C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor.
+                Set to 1 if no adjustment is needed.
+              </div>
+              <input type="number" id="matrix_factor" name="matrix_factor"
+                     step="1" min="1"
+                     style="width:100px;"
+                     tal:attributes="value view/matrix_factor" />
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Salt Adjustment Factors -->
+      <details>
+        <summary>Salt Adjustment Factors (per analyte, from CoA)</summary>
+        <div class="section-body">
+          <p class="json-hint">
+            Molar-mass correction for standards supplied as salts.
+            Factor = (M.W. free acid) / (M.W. salt form).
+          </p>
+          <table class="factor-table" id="saltAdjTable">
+            <thead>
+              <tr>
+                <th style="width:35%">Analyte</th>
+                <th style="width:20%">Factor</th>
+                <th style="width:35%">CoA Reference</th>
+                <th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody id="saltAdjBody"></tbody>
+          </table>
+          <button type="button" class="btn-add-row" onclick="addSaltRow()">+ Add row</button>
+          <input type="hidden" name="salt_adjustment_factors_json" id="salt_adjustment_factors_json"
+                 tal:attributes="value view/salt_adjustment_factors_json" />
+        </div>
+      </details>
+
+      <!-- Isomer Summation -->
+      <details>
+        <summary>Isomer Summation (linear + branched &#8594; reported analyte)</summary>
+        <div class="section-body">
+          <p class="json-hint">
+            Define which linear/branched instrument peaks sum into a single reported analyte.
+            Summation applied BEFORE salt and matrix adjustment factors.
+          </p>
+          <table class="factor-table" id="isomerTable">
+            <thead>
+              <tr>
+                <th style="width:25%">Linear peak</th>
+                <th style="width:25%">Branched peak</th>
+                <th style="width:25%">Reported as</th>
+                <th style="width:60px;text-align:center">Active</th>
+                <th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody id="isomerBody"></tbody>
+          </table>
+          <button type="button" class="btn-add-row" onclick="addIsomerRow()">+ Add pair</button>
+          <input type="hidden" name="isomer_summation_json" id="isomer_summation_json"
+                 tal:attributes="value view/isomer_summation_json" />
+        </div>
+      </details>
+
+      <!-- Surrogate Map -->
+      <details>
+        <summary>Surrogate Map (native analyte &#8594; linked IS)</summary>
+        <div class="section-body">
+          <p class="json-hint">
+            JSON array: [ { "analyte": "PFOA", "surrogate_is": "M8PFOA" }, ... ]
+          </p>
+          <textarea class="json-area" name="surrogate_map_json" rows="10"
+                    tal:content="view/surrogate_map_json">[]</textarea>
+        </div>
+      </details>
+
+      <!-- Per-Analyte Table -->
+      <details>
+        <summary>Per-Analyte Assignments</summary>
+        <div class="section-body">
+          <p class="json-hint">
+            JSON array. Each row: { "analyte": "PFBA", "surrogate": "M3PFBA",
+            "no_labeled_std": false, "is_key_analyte": false,
+            "recovery_tier": 2, "confirm_ion_mz": "213.04&gt;18.99", "notes": "" }
+          </p>
+          <textarea class="json-area" name="per_analyte_json" rows="14"
+                    tal:content="view/per_analyte_json">[]</textarea>
+        </div>
+      </details>
+
+      <!-- EPA 1633A EIS Overrides -->
+      <details>
+        <summary>EIS Recovery Overrides (EPA 1633A only)</summary>
+        <div class="section-body">
+          <p class="json-hint">
+            Per-analyte EIS recovery windows that differ from the method default.
+            JSON array: [ { "analyte": "M2-4:2FTS", "recovery_min": 20.0, "recovery_max": 150.0 }, ... ]
+            VERIFY all values against your purchased copy of EPA 1633A Tables 6/8.
+          </p>
+          <textarea class="json-area" name="eis_overrides_json" rows="8"
+                    tal:content="view/eis_overrides_json">[]</textarea>
+        </div>
+      </details>
+
+      <!-- Extraction Stages -->
+      <details open="open">
+        <summary>Extraction Stages</summary>
+        <div class="section-body">
+          <p class="json-hint">
+            Define the guided extraction workflow stages for this method.
+            Each stage appears as a step in the <strong>Extraction Guide</strong> on Batch objects.
+            Drag rows to reorder (order field updates automatically).
+          </p>
+          <div id="stage-list"></div>
+          <button type="button" class="btn-add-row" onclick="addStageCard()">+ Add stage</button>
+          <input type="hidden" name="extraction_stages_json" id="extraction_stages_json"
+                 tal:attributes="value view/extraction_stages_json" />
+        </div>
+      </details>
+
+      <div class="save-bar">
+        <button type="submit" class="btn-save">Save &amp; Export to Worker</button>
+        <a class="btn-cancel" href="@@pfas-method-profiles">Cancel</a>
+      </div>
+
+    </form>
+  </div><!-- /page-body -->
+
+  <script>
+  function tableToJson(tbodyId, fieldMap) {
+    var rows = document.getElementById(tbodyId).querySelectorAll('tr');
+    var result = [];
+    rows.forEach(function(row) {
+      var obj = {}, empty = true;
+      fieldMap.forEach(function(f) {
+        var el = row.querySelector('[data-field="' + f.key + '"]');
+        if (!el) return;
+        var val = el.type === 'checkbox' ? el.checked : el.value.trim();
+        obj[f.key] = f.type === 'number' ? (parseFloat(val) || 0) : val;
+        if (f.type !== 'bool' && val !== '' && val !== '0') empty = false;
+        if (f.type === 'bool') empty = false;
+      });
+      if (!empty) result.push(obj);
+    });
+    return result;
+  }
+
+  function syncJson(tbodyId, hiddenId, fieldMap) {
+    document.getElementById(hiddenId).value = JSON.stringify(tableToJson(tbodyId, fieldMap), null, 2);
+  }
+
+  var SA_FIELDS = [{key:'analyte',type:'text'},{key:'factor',type:'number'},{key:'source',type:'text'}];
+  function addSaltRow(analyte, factor, source) {
+    var tbody = document.getElementById('saltAdjBody');
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="text" data-field="analyte" value="' + (analyte||'') + '" placeholder="e.g. PFOS" /></td>' +
+      '<td><input type="number" data-field="factor" step="0.0001" min="0" max="1" value="' + (factor!=null?factor:'') + '" placeholder="0.9815" /></td>' +
+      '<td><input type="text" data-field="source" value="' + (source||'') + '" placeholder="CoA lot #" /></td>' +
+      '<td><button type="button" class="del-btn" onclick="this.closest(\'tr\').remove();syncSaltJson()">&#215;</button></td>';
+    tbody.appendChild(tr);
+    tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncSaltJson); i.addEventListener('input',syncSaltJson); });
+  }
+  function syncSaltJson() { syncJson('saltAdjBody','salt_adjustment_factors_json',SA_FIELDS); }
+
+  var IS_FIELDS = [{key:'linear',type:'text'},{key:'branched',type:'text'},{key:'reported',type:'text'},{key:'enabled',type:'bool'}];
+  function addIsomerRow(linear, branched, reported, enabled) {
+    var tbody = document.getElementById('isomerBody');
+    var tr = document.createElement('tr');
+    var checked = enabled !== false ? 'checked' : '';
+    tr.innerHTML =
+      '<td><input type="text" data-field="linear"   value="' + (linear||'')   + '" placeholder="lr-PFOS" /></td>' +
+      '<td><input type="text" data-field="branched" value="' + (branched||'') + '" placeholder="br-PFOS" /></td>' +
+      '<td><input type="text" data-field="reported" value="' + (reported||'') + '" placeholder="PFOS" /></td>' +
+      '<td style="text-align:center"><label class="toggle-switch">' +
+        '<input type="checkbox" data-field="enabled" ' + checked + ' />' +
+        '<span class="toggle-track"></span></label></td>' +
+      '<td><button type="button" class="del-btn" onclick="this.closest(\'tr\').remove();syncIsomerJson()">&#215;</button></td>';
+    tbody.appendChild(tr);
+    tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncIsomerJson); i.addEventListener('input',syncIsomerJson); });
+  }
+  function syncIsomerJson() { syncJson('isomerBody','isomer_summation_json',IS_FIELDS); }
+
+  /* ── Extraction Stages ─────────────────────────────────────── */
+  var _stageSeq = 0;
+  function addStageCard(s) {
+    s = s || {};
+    _stageSeq++;
+    var id     = 'stage-card-' + _stageSeq;
+    var order  = s.order !== undefined ? s.order : _stageSeq;
+    var stageId = s.id || '';
+    var name   = s.name || '';
+    var desc   = s.description || '';
+    var roles  = (s.reagent_roles || []).join(', ');
+    var equip  = (s.equipment || []).join(', ');
+    var crSol  = s.creates_solution ? 'checked' : '';
+    var crPed  = s.capture_pedigree ? 'checked' : '';
+
+    var card = document.createElement('div');
+    card.className = 'stage-card';
+    card.id = id;
+    card.setAttribute('draggable', 'true');
+    card.innerHTML =
+      '<div class="stage-card-hdr">' +
+        '<span class="drag-handle" title="Drag to reorder">&#9776;</span>' +
+        '<strong class="stage-card-title">' + (name || 'New Stage') + '</strong>' +
+        '<button type="button" class="del-btn" onclick="removeStageCard(\'' + id + '\')">&#215;</button>' +
+      '</div>' +
+      '<div class="stage-card-body">' +
+        '<div class="stage-row">' +
+          '<label>Order<input type="number" data-field="order" value="' + order + '" min="1" max="99" style="width:60px" /></label>' +
+          '<label>ID (slug)<input type="text" data-field="id" value="' + _esc(stageId) + '" placeholder="pre_setup" style="width:130px" /></label>' +
+          '<label>Name<input type="text" data-field="name" value="' + _esc(name) + '" placeholder="Stage name" style="flex:1" /></label>' +
+        '</div>' +
+        '<div class="stage-row">' +
+          '<label style="flex:1">Description<input type="text" data-field="description" value="' + _esc(desc) + '" placeholder="What happens at this stage" /></label>' +
+        '</div>' +
+        '<div class="stage-row">' +
+          '<label style="flex:1">Reagent Roles (comma-separated)<input type="text" data-field="reagent_roles" value="' + _esc(roles) + '" placeholder="Methanol (HPLC grade), Acetonitrile, ..." /></label>' +
+        '</div>' +
+        '<div class="stage-row">' +
+          '<label style="flex:1">Equipment (comma-separated)<input type="text" data-field="equipment" value="' + _esc(equip) + '" placeholder="Analytical balance, SPE manifold, ..." /></label>' +
+        '</div>' +
+        '<div class="stage-row" style="gap:20px">' +
+          '<label class="cb-label"><input type="checkbox" data-field="creates_solution" ' + crSol + ' /> Creates Solution</label>' +
+          '<label class="cb-label"><input type="checkbox" data-field="capture_pedigree" ' + crPed + ' /> Capture Standard Pedigree</label>' +
+        '</div>' +
+      '</div>';
+
+    /* update card title on name change */
+    card.querySelector('[data-field="name"]').addEventListener('input', function() {
+      card.querySelector('.stage-card-title').textContent = this.value || 'New Stage';
+      syncStageJson();
+    });
+    card.querySelectorAll('input').forEach(function(i) {
+      i.addEventListener('change', syncStageJson);
+      i.addEventListener('input', function() { if (i.type !== 'text') syncStageJson(); });
+    });
+
+    /* drag-to-reorder */
+    card.addEventListener('dragstart', function(e) {
+      e.dataTransfer.setData('text/plain', id);
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', function() {
+      card.classList.remove('dragging');
+      renumberStages();
+      syncStageJson();
+    });
+    card.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      var list = document.getElementById('stage-list');
+      var dragging = list.querySelector('.dragging');
+      if (!dragging || dragging === card) return;
+      var rect = card.getBoundingClientRect();
+      var mid  = rect.top + rect.height / 2;
+      if (e.clientY < mid) {
+        list.insertBefore(dragging, card);
+      } else {
+        list.insertBefore(dragging, card.nextSibling);
+      }
+    });
+
+    document.getElementById('stage-list').appendChild(card);
+    syncStageJson();
+  }
+
+  function removeStageCard(id) {
+    var el = document.getElementById(id);
+    if (el) { el.parentNode.removeChild(el); renumberStages(); syncStageJson(); }
+  }
+
+  function renumberStages() {
+    document.getElementById('stage-list').querySelectorAll('.stage-card').forEach(function(card, idx) {
+      var inp = card.querySelector('[data-field="order"]');
+      if (inp) inp.value = idx + 1;
+    });
+  }
+
+  function syncStageJson() {
+    var cards = document.getElementById('stage-list').querySelectorAll('.stage-card');
+    var result = [];
+    cards.forEach(function(card) {
+      var get = function(f) {
+        var el = card.querySelector('[data-field="' + f + '"]');
+        return el ? el.value.trim() : '';
+      };
+      var getBool = function(f) {
+        var el = card.querySelector('[data-field="' + f + '"]');
+        return el ? el.checked : false;
+      };
+      var splitCsv = function(s) {
+        return s ? s.split(',').map(function(x) { return x.trim(); }).filter(Boolean) : [];
+      };
+      result.push({
+        id:               get('id') || ('stage_' + (result.length + 1)),
+        order:            parseInt(get('order'), 10) || (result.length + 1),
+        name:             get('name'),
+        description:      get('description'),
+        reagent_roles:    splitCsv(get('reagent_roles')),
+        equipment:        splitCsv(get('equipment')),
+        creates_solution: getBool('creates_solution'),
+        capture_pedigree: getBool('capture_pedigree'),
+      });
+    });
+    document.getElementById('extraction_stages_json').value = JSON.stringify(result, null, 2);
+  }
+
+  function _esc(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;').replace(/\u003e/g,'&gt;');
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    try {
+      var sa = JSON.parse(document.getElementById('salt_adjustment_factors_json').value || '[]');
+      sa.forEach(function(r) { addSaltRow(r.analyte, r.factor, r.source || ''); });
+    } catch(e) {}
+    try {
+      var iso = JSON.parse(document.getElementById('isomer_summation_json').value || '[]');
+      iso.forEach(function(r) { addIsomerRow(r.linear, r.branched, r.reported, r.enabled !== false); });
+    } catch(e) {}
+    try {
+      var stages = JSON.parse(document.getElementById('extraction_stages_json').value || '[]');
+      stages.forEach(function(s) { addStageCard(s); });
+    } catch(e) {}
+  });
+
+  document.querySelector('form').addEventListener('submit', function() {
+    syncSaltJson(); syncIsomerJson(); syncStageJson();
+  });
+  </script>
+
+  </div><!-- /content slot -->
 </body>
 </html>

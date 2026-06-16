@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">EGAD EDD Settings — ${context/Title}</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .section-card { background: var(--s-bg); border: 1px solid var(--s-border);
+                    border-radius: 6px; padding: 18px; margin-bottom: 18px; }
+    .section-card h3 { font-size: 13px; font-weight: 700; color: var(--s-primary);
+                       margin: 0 0 14px 0; padding-bottom: 8px;
+                       border-bottom: 1px solid var(--s-border); }
+    .form-group { margin-bottom: 14px; }
+    .form-label { font-size: 12px; font-weight: 600; color: var(--s-secondary);
+                  text-transform: uppercase; letter-spacing: .04em;
+                  display: block; margin-bottom: 4px; }
+    .form-input  { width: 100%; padding: 7px 10px; font-size: 13px;
+                   border: 1px solid var(--s-input-border); border-radius: 4px;
+                   background: #fff; box-sizing: border-box; }
+    .form-select { width: 100%; padding: 7px 10px; font-size: 13px;
+                   border: 1px solid var(--s-input-border); border-radius: 4px;
+                   background: #fff; box-sizing: border-box; }
+    .form-hint   { font-size: 11px; color: var(--s-secondary); margin-top: 3px; }
+    .form-row    { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                   gap: 14px; }
+    .btn-save   { background: var(--s-primary); color: #fff; border: none;
+                  border-radius: 4px; padding: 8px 24px; cursor: pointer;
+                  font-size: 13px; font-weight: 600; }
+    .toggle-row  { display: flex; align-items: center; gap: 12px; padding: 12px;
+                   background: var(--s-light); border: 1px solid var(--s-border);
+                   border-radius: 6px; margin-bottom: 14px; }
+    .toggle-lbl  { font-size: 14px; font-weight: 600; }
+    .gov-enabled { background: #e8f5e9; border-color: #a5d6a7; }
+    .save-banner { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px;
+                   padding: 10px 16px; margin-bottom: 16px; color: #155724; font-weight: 600; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<div metal:fill-slot="content">
+  <div class="pfas-page-header" style="margin-bottom:20px">
+    <a href="${view/portal_url}/@@pfas-egad-config" class="pfas-back-link">
+      &#8592; EGAD Config
+    </a>
+    <h1 style="margin:8px 0 4px">EGAD Settings — ${context/Title}</h1>
+    <p style="margin:0;color:var(--s-secondary);font-size:13px">
+      Per-client EGAD EDD settings.  Government-agency flag enables EDD generation
+      when publishing reports for this client.
+    </p>
+  </div>
+
+  <tal:saved tal:condition="view/saved">
+    <div class="save-banner">Settings saved.</div>
+  </tal:saved>
+
+  <tal:cfg tal:define="cfg view/client_egad_config">
+  <form method="POST">
+    <div class="section-card">
+      <h3><i class="fas fa-flag-usa"></i> Government Agency Flag</h3>
+      <div tal:attributes="class python:'toggle-row gov-enabled' if cfg.get('egad_enabled') else 'toggle-row'">
+        <input type="checkbox" id="egad_enabled" name="egad_enabled" value="1"
+               tal:attributes="checked python:cfg.get('egad_enabled')"
+               style="width:18px;height:18px" />
+        <label for="egad_enabled" class="toggle-lbl">
+          Government agency — generate Maine EGAD EDD with each published report
+        </label>
+      </div>
+      <div class="form-hint" style="margin-top:6px">
+        When enabled, publishing a report for this client automatically generates
+        an EGAD EDD v6.0 CSV attached to the client's report email.
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h3><i class="fas fa-map-marker-alt"></i> Project / Site Information</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">PROJECT/SITE *</label>
+          <input type="text" name="project_site" class="form-input"
+                 value="${cfg/project_site}"
+                 placeholder="e.g. MAIN ST. WATER DEPT." />
+          <div class="form-hint">
+            Appears in the PROJECT/SITE column of every EDD row.
+            Use the client's official site or project name as it appears in EGAD.
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Default SAMPLE_TYPE</label>
+          <select name="default_sample_type" class="form-select">
+            <option tal:repeat="st view/sample_type_options"
+                    tal:attributes="value st; selected python:cfg.get('default_sample_type','GW')==st"
+                    tal:content="st" />
+          </select>
+          <div class="form-hint">
+            Default matrix code for field samples from this client.
+            Can be overridden per-sample at intake.
+            GW = Groundwater (most common).
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h3><i class="fas fa-flask"></i> Lab Overrides (optional)</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">ANALYSIS_LAB Override</label>
+          <select name="analysis_lab_override" class="form-select">
+            <option value="">— use lab-global default —</option>
+            <option tal:repeat="lab view/analysis_lab_options"
+                    tal:attributes="value lab; selected python:cfg.get('analysis_lab_override','')==lab"
+                    tal:content="lab" />
+          </select>
+          <div class="form-hint">
+            Leave blank to use the ANALYSIS_LAB code set in lab-global EGAD settings.
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Per-Report Override Default</label>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+            <input type="checkbox" id="per_report_override_default"
+                   name="per_report_override_default" value="1"
+                   tal:attributes="checked python:cfg.get('per_report_override_default', True)" />
+            <label for="per_report_override_default" style="font-size:13px">
+              Generate EDD by default when publishing (can be unchecked per report)
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:4px">
+      <button type="submit" class="btn-save">Save Client EGAD Settings</button>
+    </div>
+  </form>
+  </tal:cfg>
+</div>
+</body>
+</html>

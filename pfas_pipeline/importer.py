@@ -18,6 +18,9 @@ import pandas as pd
 from .models import InstrumentRow
 from .constants import INJECTION_PATTERNS, STARLIMS_RE, QC_TYPES
 
+# Software version regex (mirrors import_studio._detect_software_version)
+_VERSION_RE = re.compile(r'\b(\d+\.\d+[\.\d]*)\b')
+
 # ── Column header → internal name (matches table19.xml column list exactly) ──
 _COL_MAP: dict[str, str] = {
     "Compound Name":              "compound_name",
@@ -76,6 +79,22 @@ _FLOAT_COLS = {
 }
 
 
+def detect_software_version(path: "str | Path") -> str:
+    """Scan the first 20 lines of *path* for a version string like X.Y.Z."""
+    path = Path(path)
+    try:
+        with path.open(encoding="utf-8-sig", errors="replace") as fh:
+            for i, line in enumerate(fh):
+                if i >= 20:
+                    break
+                m = _VERSION_RE.search(line)
+                if m:
+                    return m.group(1)
+    except OSError:
+        pass
+    return ""
+
+
 def _parse_float(val: str) -> float | None:
     if not val or val.strip() in _ND_VALUES:
         return None
@@ -115,26 +134,42 @@ def _build_concat_id(row: dict) -> str:
 def load_instrument_csv(
     path: str | Path,
     vendor: str | None = None,
+    profile: "dict | None" = None,
 ) -> list[InstrumentRow]:
     """
     Load a MassLynx / MassHunter / SCIEX OS / native instrument export CSV.
     Returns a list of InstrumentRow objects (one per compound × injection).
 
-    vendor: one of waters/agilent/sciex/native, or None to auto-detect from
-    the header row.  Vendor headers are mapped onto canonical names first,
-    then the existing _COL_MAP handles any already-canonical columns.
+    profile: column-mapping profile dict from the Import Studio REST bridge
+             ({"map": {vendor_col: canonical_col}, ...}).  When provided,
+             this takes precedence over vendor_profiles.py.  If the dict
+             contains an "error" key, ImportError is raised immediately.
+
+    vendor: legacy fallback — one of waters/agilent/sciex/native.  Ignored
+            when *profile* is provided.  Only used when profile is None AND
+            vendor_profiles.py is still available (deprecated path).
     """
+    if profile is not None:
+        if "error" in profile:
+            raise ImportError(profile["error"])
+
     path = Path(path)
     rows: list[InstrumentRow] = []
 
     df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
 
-    # Vendor remap (Pass 4): translate vendor headers → canonical headers
-    from .vendor_profiles import get_vendor_profile, detect_vendor
-    vkey = vendor or detect_vendor(list(df.columns))
-    vprofile = get_vendor_profile(vkey)
-    if vprofile["map"]:
-        df = df.rename(columns=vprofile["map"])
+    if profile is not None:
+        # Use Import Studio profile map exclusively
+        col_map = profile.get("map", {})
+        if col_map:
+            df = df.rename(columns=col_map)
+    else:
+        # Legacy path: hardcoded vendor_profiles.py (only runs when no profile)
+        from .vendor_profiles import get_vendor_profile, detect_vendor
+        vkey = vendor or detect_vendor(list(df.columns))
+        vprofile = get_vendor_profile(vkey)
+        if vprofile["map"]:
+            df = df.rename(columns=vprofile["map"])
 
     # Normalise header names (canonical → internal)
     rename = {c: _COL_MAP[c] for c in df.columns if c in _COL_MAP}

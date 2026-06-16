@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">FM-ENV-252: Extraction Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .lb-form { max-width: 1000px; }
+    .lb-section { margin-bottom: 28px; }
+    .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
+                     margin-bottom: 12px; padding-bottom: 6px;
+                     border-bottom: 2px solid var(--s-border); }
+    .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .lb-field { display: flex; flex-direction: column; }
+    .lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-input, .lb-select { padding: 7px 10px; font-size: 13px;
+                              border: 1px solid var(--s-input-border); border-radius: 6px; }
+    .lb-input-md { width: 180px; } .lb-input-lg { width: 260px; }
+    /* Big sample table */
+    .ext-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ext-table th { background: #f8f9fa; padding: 6px 8px; text-align: left;
+                    border-bottom: 2px solid var(--s-border); font-weight: 700; font-size: 11px; }
+    .ext-table td { padding: 3px 4px; border-bottom: 1px solid var(--s-border); }
+    .ext-table td input, .ext-table td select {
+      width: 100%; padding: 4px 6px; font-size: 11px;
+      border: 1px solid var(--s-input-border); border-radius: 4px; }
+    .ext-table td.num-cell { width: 36px; text-align: center; font-weight: 700;
+                              color: var(--s-secondary); }
+    /* Supplies tables */
+    .sup-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .sup-table th { background: #f8f9fa; padding: 6px 10px; border-bottom: 2px solid var(--s-border); font-weight: 700; }
+    .sup-table td { padding: 4px 8px; border-bottom: 1px solid var(--s-border); }
+    .sup-table td input { width: 100%; padding: 4px 8px; font-size: 12px;
+                          border: 1px solid var(--s-input-border); border-radius: 4px; }
+    .btn-add-row { margin-top: 8px; padding: 5px 14px; background: #f8f9fa;
+                   border: 1px dashed var(--s-border); border-radius: 6px;
+                   font-size: 12px; cursor: pointer; color: var(--s-secondary); }
+    .btn-del-row { background: none; border: none; cursor: pointer; color: #dc3545; font-size: 13px; padding: 2px 4px; }
+    .checkbox-field { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; }
+    .sig-block { display: flex; gap: 40px; flex-wrap: wrap; }
+    .sig-field { display: flex; flex-direction: column; }
+    .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border); }
+    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
+                border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">FM-ENV-252: Extraction Log</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="header-meta"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">
+      &#8592; All Logbooks
+    </a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+
+    <form class="lb-form" method="post"
+          tal:attributes="action string:${view/batch_url}/@@pfas-logbook-252">
+      <input type="hidden" id="samples_json" name="samples_json" value="[]" />
+      <input type="hidden" id="reagents_json" name="reagents_json" value="[]" />
+      <input type="hidden" id="standards_json" name="standards_json" value="[]" />
+      <input type="hidden" id="extraction_materials_json" name="extraction_materials_json" value="[]" />
+
+      <!-- Header -->
+      <div class="lb-section">
+        <h3>Extraction Details</h3>
+        <div class="lb-row">
+          <div class="lb-field">
+            <label>Method</label>
+            <select name="method" class="lb-select lb-input-lg">
+              <tal:opts tal:repeat="mid python:['FDA_32PFAS', 'EPA_537_1', 'EPA_1633A']">
+                <option tal:attributes="value mid; selected python:view.data().get('method','FDA_32PFAS') == mid"
+                        tal:content="mid">Method</option>
+              </tal:opts>
+            </select>
+          </div>
+          <div class="lb-field">
+            <label>Analyst</label>
+            <input class="lb-input lb-input-lg" type="text" name="analyst"
+                   tal:attributes="value python:view.data().get('analyst','')" />
+          </div>
+          <div class="lb-field">
+            <label>Extraction Date</label>
+            <input class="lb-input lb-input-md" type="date" name="extraction_date"
+                   tal:attributes="value python:view.data().get('extraction_date','')" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Sample rows (up to 25) -->
+      <div class="lb-section">
+        <h3>Sample List (up to 25 rows)</h3>
+        <table class="ext-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th style="min-width:110px;">Sample ID</th>
+              <th style="min-width:120px;">Matrix Type</th>
+              <th style="min-width:100px;">Sample Type</th>
+              <th style="min-width:80px;">Spike (ng)</th>
+              <th style="min-width:70px;">Dilution 1:X</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="samples-body"></tbody>
+        </table>
+        <button type="button" class="btn-add-row"
+                onclick="addSampleRow()" id="add-sample-btn">
+          + Add Sample Row
+        </button>
+      </div>
+
+      <!-- Reagents -->
+      <div class="lb-section">
+        <h3>Reagents</h3>
+        <table class="sup-table">
+          <thead><tr><th>Reagent</th><th>Vendor</th><th>Lot #</th><th>Expiry</th><th></th></tr></thead>
+          <tbody id="reagents-body"></tbody>
+        </table>
+        <button type="button" class="btn-add-row" onclick="addSupRow('reagents','reagents-body',reagentsData)">+ Add Reagent</button>
+      </div>
+
+      <!-- Standards -->
+      <div class="lb-section">
+        <h3>Standards</h3>
+        <table class="sup-table">
+          <thead><tr><th>Standard</th><th>Vendor</th><th>Lot #</th><th>Expiry</th><th></th></tr></thead>
+          <tbody id="standards-body"></tbody>
+        </table>
+        <button type="button" class="btn-add-row" onclick="addSupRow('standards','standards-body',standardsData)">+ Add Standard</button>
+      </div>
+
+      <!-- Extraction Materials -->
+      <div class="lb-section">
+        <h3>Extraction Materials</h3>
+        <table class="sup-table" style="max-width:500px;">
+          <thead><tr><th>Material</th><th>Lot #</th><th></th></tr></thead>
+          <tbody id="materials-body"></tbody>
+        </table>
+        <button type="button" class="btn-add-row" onclick="addMatRow()">+ Add Material</button>
+      </div>
+
+      <!-- Needle cleaned -->
+      <div class="lb-section">
+        <h3>Equipment Check</h3>
+        <div class="checkbox-field">
+          <input type="checkbox" id="needle_cleaned" name="needle_cleaned" value="yes"
+                 tal:attributes="checked python:view.data().get('needle_cleaned', False)" />
+          <label for="needle_cleaned">Needle/syringe cleaned before use</label>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="lb-section">
+        <h3>Notes</h3>
+        <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:13px; border:1px solid var(--s-input-border); border-radius:6px;"
+                  tal:content="python:view.data().get('notes','')"></textarea>
+      </div>
+
+      <!-- Sign-off -->
+      <div class="lb-section">
+        <h3>Sign-off</h3>
+        <div class="sig-block">
+          <div class="sig-field">
+            <label>Reviewed By</label>
+            <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
+                   tal:attributes="value python:view.data().get('reviewed_by','')" />
+          </div>
+          <div class="sig-field">
+            <label>Date Reviewed</label>
+            <input class="lb-input lb-input-md" type="date" name="reviewed_date"
+                   tal:attributes="value python:view.data().get('reviewed_date','')" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-save" type="submit">Save Logbook</button>
+      </div>
+    </form>
+
+  </div>
+
+  <script>
+  var SAVED = <tal:d tal:replace="structure view/data_json" />;
+
+  var samplesData = SAVED.samples || [];
+  var reagentsData = SAVED.reagents || [];
+  var standardsData = SAVED.standards || [
+    {name:'IS PDS B', vendor:'', lot_num:'', expiry:''},
+    {name:'SUR PDS B', vendor:'', lot_num:'', expiry:''},
+    {name:'Analyte Spike', vendor:'', lot_num:'', expiry:''}
+  ];
+  var materialsData = SAVED.extraction_materials || [];
+
+  var SAMPLE_TYPES = ['Sample', 'MB', 'MxB', 'LFSM', 'Dup'];
+  var MATRIX_TYPES = ['Drinking Water', 'Surface Water', 'Groundwater', 'Wastewater',
+                      'Fish Tissue', 'Soil', 'Sediment', 'Biosolid', 'Food', 'Feed', 'Serum', 'Other'];
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;');
+  }
+
+  function renderSamples() {
+    var tbody = document.getElementById('samples-body');
+    tbody.innerHTML = '';
+    samplesData.forEach(function(row, i) {
+      var typeOpts = SAMPLE_TYPES.map(function(t) {
+        return '\u003coption value="'+t+'"' + (row.sample_type===t?' selected':'') + '>'+t+'\u003c/option>';
+      }).join('');
+      var matOpts = MATRIX_TYPES.map(function(m) {
+        return '\u003coption value="'+m+'"' + (row.matrix_type===m?' selected':'') + '>'+m+'\u003c/option>';
+      }).join('');
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd class="num-cell">' + (i+1) + '\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.sample_id)+'" oninput="samplesData['+i+'].sample_id=this.value;syncSamples()"/>\u003c/td>' +
+        '\u003ctd>\u003cselect onchange="samplesData['+i+'].matrix_type=this.value;syncSamples()">'+matOpts+'\u003c/select>\u003c/td>' +
+        '\u003ctd>\u003cselect onchange="samplesData['+i+'].sample_type=this.value;syncSamples()">'+typeOpts+'\u003c/select>\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="0.01" value="'+esc(row.spike_amount_ng||'')+'" oninput="samplesData['+i+'].spike_amount_ng=this.value;syncSamples()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="1" min="1" value="'+esc(row.dilution_factor||'')+'" oninput="samplesData['+i+'].dilution_factor=this.value;syncSamples()"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="delSample('+i+')">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    document.getElementById('add-sample-btn').style.display =
+      samplesData.length >= 25 ? 'none' : '';
+    syncSamples();
+  }
+
+  function addSampleRow() {
+    if (samplesData.length >= 25) return;
+    samplesData.push({sample_id:'', matrix_type:'Drinking Water', sample_type:'Sample',
+                      spike_amount_ng:null, dilution_factor:null});
+    renderSamples();
+  }
+
+  function delSample(i) { samplesData.splice(i,1); renderSamples(); }
+  function syncSamples() {
+    document.getElementById('samples_json').value = JSON.stringify(samplesData);
+  }
+
+  /* Generic supply table */
+  function renderSupply(dataArr, tbodyId, jsonFieldId, fields) {
+    var tbody = document.getElementById(tbodyId);
+    tbody.innerHTML = '';
+    dataArr.forEach(function(row, i) {
+      var cells = fields.map(function(fld) {
+        return '\u003ctd>\u003cinput type="text" value="'+esc(row[fld]||'')+'" oninput="'+dataArr.varName+'['+i+'].'+fld+'=this.value;sync(\''+jsonFieldId+'\','+dataArr.varName+')"/>\u003c/td>';
+      }).join('');
+      var tr = document.createElement('tr');
+      tr.innerHTML = cells +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="delRow(\''+dataArr.varName+'\','+i+',\''+tbodyId+'\',\''+jsonFieldId+'\')">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    sync(jsonFieldId, dataArr);
+  }
+
+  function sync(fieldId, arr) {
+    document.getElementById(fieldId).value = JSON.stringify(arr);
+  }
+
+  /* Simpler supply renderers */
+  function renderReagents() {
+    var tbody = document.getElementById('reagents-body');
+    tbody.innerHTML = '';
+    reagentsData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.reagent||'')+'" oninput="reagentsData['+i+'].reagent=this.value;syncReagents()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.vendor||'')+'" oninput="reagentsData['+i+'].vendor=this.value;syncReagents()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.lot_num||'')+'" oninput="reagentsData['+i+'].lot_num=this.value;syncReagents()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="date" value="'+esc(row.expiry||'')+'" oninput="reagentsData['+i+'].expiry=this.value;syncReagents()"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="reagentsData.splice('+i+',1);renderReagents()">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncReagents();
+  }
+  function addSupRow(type, tbodyId, arr) {
+    arr.push({reagent:'', vendor:'', lot_num:'', expiry:'', name:'', standard:''});
+    if (type==='reagents') renderReagents();
+    else renderStandards();
+  }
+  function syncReagents() {
+    document.getElementById('reagents_json').value = JSON.stringify(reagentsData);
+  }
+
+  function renderStandards() {
+    var tbody = document.getElementById('standards-body');
+    tbody.innerHTML = '';
+    standardsData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.name||'')+'" oninput="standardsData['+i+'].name=this.value;syncStandards()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.vendor||'')+'" oninput="standardsData['+i+'].vendor=this.value;syncStandards()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.lot_num||'')+'" oninput="standardsData['+i+'].lot_num=this.value;syncStandards()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="date" value="'+esc(row.expiry||'')+'" oninput="standardsData['+i+'].expiry=this.value;syncStandards()"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="standardsData.splice('+i+',1);renderStandards()">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncStandards();
+  }
+  function syncStandards() {
+    document.getElementById('standards_json').value = JSON.stringify(standardsData);
+  }
+
+  function renderMaterials() {
+    var tbody = document.getElementById('materials-body');
+    tbody.innerHTML = '';
+    materialsData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.material||'')+'" oninput="materialsData['+i+'].material=this.value;syncMaterials()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.lot_num||'')+'" oninput="materialsData['+i+'].lot_num=this.value;syncMaterials()"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="materialsData.splice('+i+',1);renderMaterials()">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncMaterials();
+  }
+  function addMatRow() {
+    materialsData.push({material:'', lot_num:''});
+    renderMaterials();
+  }
+  function syncMaterials() {
+    document.getElementById('extraction_materials_json').value = JSON.stringify(materialsData);
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    renderSamples();
+    renderReagents();
+    renderStandards();
+    renderMaterials();
+  });
+  </script>
+  </div><!-- /content slot -->
+</body>
+</html>

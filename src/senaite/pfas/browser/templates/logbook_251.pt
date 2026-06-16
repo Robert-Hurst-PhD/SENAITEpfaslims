@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">FM-ENV-251: Calibration Curve Prep Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .lb-form { max-width: 860px; }
+    .lb-section { margin-bottom: 28px; }
+    .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
+                     margin-bottom: 12px; padding-bottom: 6px;
+                     border-bottom: 2px solid var(--s-border); }
+    .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .lb-field { display: flex; flex-direction: column; }
+    .lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-input, .lb-select { padding: 7px 10px; font-size: 13px;
+                              border: 1px solid var(--s-input-border); border-radius: 6px; }
+    .lb-input:focus, .lb-select:focus { outline: none; border-color: var(--s-primary); }
+    .lb-input-sm { width: 100px; }
+    .lb-input-md { width: 180px; }
+    .lb-input-lg { width: 260px; }
+    .lb-lot { width: 200px; }
+    /* Cal table */
+    .cal-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .cal-table th { background: #f8f9fa; padding: 7px 10px; text-align: left;
+                    border-bottom: 2px solid var(--s-border); font-weight: 700; }
+    .cal-table td { padding: 5px 8px; border-bottom: 1px solid var(--s-border); }
+    .cal-table td:first-child { font-weight: 600; color: var(--s-dark); }
+    .cal-table td input[type="number"] { width: 110px; padding: 4px 8px; font-size: 12px;
+                                          border: 1px solid var(--s-input-border); border-radius: 4px; }
+    .cal-table td input[type="text"]   { width: 160px; padding: 4px 8px; font-size: 12px;
+                                          border: 1px solid var(--s-input-border); border-radius: 4px; }
+    /* PDS section */
+    .pds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    /* Actions */
+    .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border);
+                    display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
+                border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-save:hover { background: var(--s-primary-dk); }
+    .btn-dl { padding: 9px 18px; background: #28a745; color: #fff;
+              border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-dl:hover { background: #1e7e34; }
+    .sig-block { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 8px; }
+    .sig-field { display: flex; flex-direction: column; }
+    .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .inj-builder-note {
+      background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;
+      padding: 10px 16px; border-radius: 8px; font-size: 12px; margin-top: 8px;
+    }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">FM-ENV-251: Calibration Curve Prep Log</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="header-meta"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">
+      &#8592; All Logbooks
+    </a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+
+    <form class="lb-form" method="post"
+          tal:attributes="action string:${view/batch_url}/@@pfas-logbook-251">
+      <input type="hidden" id="cal_points_json" name="cal_points_json" value="[]" />
+
+      <!-- Header -->
+      <div class="lb-section">
+        <h3>Preparation Details</h3>
+        <div class="lb-row">
+          <div class="lb-field">
+            <label>Method</label>
+            <select name="method" class="lb-select lb-input-lg">
+              <tal:opts tal:repeat="mid python:['FDA_32PFAS', 'EPA_537_1', 'EPA_1633A']">
+                <option tal:attributes="value mid;
+                                        selected python:view.data().get('method','FDA_32PFAS') == mid"
+                        tal:content="mid">Method</option>
+              </tal:opts>
+            </select>
+          </div>
+          <div class="lb-field">
+            <label>Prepared By</label>
+            <input class="lb-input lb-input-lg" type="text" name="prepared_by"
+                   tal:attributes="value python:view.data().get('prepared_by','')" />
+          </div>
+          <div class="lb-field">
+            <label>Date Prepared</label>
+            <input class="lb-input lb-input-md" type="date" name="prepared_date"
+                   tal:attributes="value python:view.data().get('prepared_date','')" />
+          </div>
+        </div>
+      </div>
+
+      <!-- PDS / Standard Lots -->
+      <div class="lb-section">
+        <h3>Standard Solutions — Lot Numbers</h3>
+        <div class="pds-grid">
+          <div class="lb-field">
+            <label>IS/SUR PDS-A Lot #</label>
+            <input class="lb-input lb-lot" type="text" name="pds_a_lot"
+                   tal:attributes="value python:view.data().get('pds_a_lot','')" />
+          </div>
+          <div class="lb-field">
+            <label>IS/SUR PDS-B Lot #</label>
+            <input class="lb-input lb-lot" type="text" name="pds_b_lot"
+                   tal:attributes="value python:view.data().get('pds_b_lot','')" />
+          </div>
+          <div class="lb-field">
+            <label>Analyte PDS Lot #</label>
+            <input class="lb-input lb-lot" type="text" name="analyte_pds_lot"
+                   tal:attributes="value python:view.data().get('analyte_pds_lot','')" />
+          </div>
+          <div class="lb-field">
+            <label>Analyte Spike Lot #</label>
+            <input class="lb-input lb-lot" type="text" name="analyte_spike_lot"
+                   tal:attributes="value python:view.data().get('analyte_spike_lot','')" />
+          </div>
+          <div class="lb-field">
+            <label>CAL-A Lot #</label>
+            <input class="lb-input lb-lot" type="text" name="cal_a_lot"
+                   tal:attributes="value python:view.data().get('cal_a_lot','')" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Calibration Points -->
+      <div class="lb-section">
+        <h3>Calibration Ladder</h3>
+        <p style="font-size:12px; color:var(--s-secondary); margin-bottom:8px;">
+          Default concentrations follow the FDA 32-PFAS serial dilution
+          (20 &#8594; 0.039 ng/mL).  Edit concentrations if your prep differs.
+          This data is exported to the injection builder.
+        </p>
+        <table class="cal-table" id="cal-table">
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th>Name</th>
+              <th>Conc. (ng/mL)</th>
+            </tr>
+          </thead>
+          <tbody id="cal-body"></tbody>
+        </table>
+      </div>
+
+      <!-- CCV / ICV / Diluent -->
+      <div class="lb-section">
+        <h3>CCV / ICV / Diluent</h3>
+        <div class="lb-row">
+          <div class="lb-field">
+            <label>ICV Concentration (ng/mL)</label>
+            <input class="lb-input lb-input-sm" type="number" step="0.001"
+                   name="icv_conc_ng_ml"
+                   tal:attributes="value python:view.data().get('icv_conc_ng_ml','1.25')" />
+          </div>
+          <div class="lb-field">
+            <label>CCV Concentration (ng/mL)</label>
+            <input class="lb-input lb-input-sm" type="number" step="0.001"
+                   name="ccv_conc_ng_ml"
+                   tal:attributes="value python:view.data().get('ccv_conc_ng_ml','1.25')" />
+          </div>
+          <div class="lb-field">
+            <label>Diluent IS/SUR Concentration (ng/mL)</label>
+            <input class="lb-input lb-input-sm" type="number" step="0.001"
+                   name="diluent_is_conc"
+                   tal:attributes="value python:view.data().get('diluent_is_conc','1.0')" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="lb-section">
+        <h3>Notes</h3>
+        <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:13px; border:1px solid var(--s-input-border); border-radius:6px;"
+                  tal:content="python:view.data().get('notes','')"></textarea>
+      </div>
+
+      <!-- Sign-off -->
+      <div class="lb-section">
+        <h3>Sign-off</h3>
+        <div class="sig-block">
+          <div class="sig-field">
+            <label>Reviewed By</label>
+            <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
+                   tal:attributes="value python:view.data().get('reviewed_by','')" />
+          </div>
+          <div class="sig-field">
+            <label>Date Reviewed</label>
+            <input class="lb-input lb-input-md" type="date" name="reviewed_date"
+                   tal:attributes="value python:view.data().get('reviewed_date','')" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-save" type="submit">Save Logbook</button>
+        <button class="btn-dl" type="submit" name="action" value="download_csv">
+          &#8595; Download Cal Ladder CSV
+        </button>
+      </div>
+    </form>
+
+    <div class="inj-builder-note" tal:condition="view/ok_msg">
+      <strong>Injection Builder:</strong> Cal data has been exported to
+      <code>/data/qc/batches/</code>.  Run
+      <code>pfas-pipeline build-sequence --batch-id <tal:bid tal:replace="view/batch_id" /></code>
+      to generate the full autosampler injection sequence.
+    </div>
+
+  </div>
+
+  <script>
+  var SAVED_DATA = <tal:d tal:replace="structure view/data_json" />;
+  var DEFAULTS = <tal:dd tal:replace="structure view/default_cal_points_json" />;
+
+  var calData = (SAVED_DATA.cal_points && SAVED_DATA.cal_points.length)
+                ? SAVED_DATA.cal_points
+                : DEFAULTS;
+
+  function renderCal() {
+    var tbody = document.getElementById('cal-body');
+    tbody.innerHTML = '';
+    calData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>' + esc(row.level||'') + '\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.name||'') + '" oninput="calData['+i+'].name=this.value;syncCal()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="0.0001" value="' + esc(row.conc_ng_ml||'') + '" oninput="calData['+i+'].conc_ng_ml=parseFloat(this.value);syncCal()"/>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncCal();
+  }
+
+  function syncCal() {
+    document.getElementById('cal_points_json').value = JSON.stringify(calData);
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;');
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    renderCal();
+  });
+  </script>
+  </div><!-- /content slot -->
+</body>
+</html>

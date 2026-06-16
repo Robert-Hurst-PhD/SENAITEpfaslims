@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">FM-ENV-253: Sample Processing Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .lb-form { max-width: 1000px; }
+    .lb-section { margin-bottom: 28px; }
+    .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
+                     margin-bottom: 12px; padding-bottom: 6px;
+                     border-bottom: 2px solid var(--s-border); }
+    .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .lb-field { display: flex; flex-direction: column; }
+    .lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-input, .lb-select { padding: 7px 10px; font-size: 13px;
+                              border: 1px solid var(--s-input-border); border-radius: 6px; }
+    .lb-input-sm { width: 90px; } .lb-input-md { width: 180px; } .lb-input-lg { width: 260px; }
+    /* Sample processing table */
+    .proc-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .proc-table th { background: #f8f9fa; padding: 5px 6px; text-align: left;
+                     border-bottom: 2px solid var(--s-border); font-weight: 700; font-size: 11px; }
+    .proc-table td { padding: 3px 4px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    .proc-table td input[type="text"], .proc-table td input[type="number"],
+    .proc-table td select {
+      width: 100%; padding: 4px 5px; font-size: 11px;
+      border: 1px solid var(--s-input-border); border-radius: 4px; }
+    .proc-table td.yn-cell { width: 50px; text-align: center; }
+    .proc-table td input[type="checkbox"] { width: auto; }
+    /* Materials table */
+    .sup-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .sup-table th { background: #f8f9fa; padding: 6px 10px; border-bottom: 2px solid var(--s-border); font-weight: 700; }
+    .sup-table td { padding: 4px 8px; border-bottom: 1px solid var(--s-border); }
+    .sup-table td input { width: 100%; padding: 4px 8px; font-size: 12px;
+                          border: 1px solid var(--s-input-border); border-radius: 4px; }
+    .btn-add-row { margin-top: 8px; padding: 5px 14px; background: #f8f9fa;
+                   border: 1px dashed var(--s-border); border-radius: 6px;
+                   font-size: 12px; cursor: pointer; color: var(--s-secondary); }
+    .btn-del-row { background: none; border: none; cursor: pointer; color: #dc3545; font-size: 13px; padding: 2px 4px; }
+    .checkbox-field { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; }
+    .sig-block { display: flex; gap: 40px; flex-wrap: wrap; }
+    .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; display: block; }
+    .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border); }
+    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
+                border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .sample-factor-note { font-size: 11px; color: #856404; margin-top: 4px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">FM-ENV-253: Sample Processing Log</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="header-meta"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">
+      &#8592; All Logbooks
+    </a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+
+    <form class="lb-form" method="post"
+          tal:attributes="action string:${view/batch_url}/@@pfas-logbook-253">
+      <input type="hidden" id="samples_json" name="samples_json" value="[]" />
+      <input type="hidden" id="processing_materials_json" name="processing_materials_json" value="[]" />
+
+      <!-- Header -->
+      <div class="lb-section">
+        <h3>Processing Details</h3>
+        <div class="lb-row">
+          <div class="lb-field">
+            <label>Analyst</label>
+            <input class="lb-input lb-input-lg" type="text" name="analyst"
+                   tal:attributes="value python:view.data().get('analyst','')" />
+          </div>
+          <div class="lb-field">
+            <label>Processing Date</label>
+            <input class="lb-input lb-input-md" type="date" name="processing_date"
+                   tal:attributes="value python:view.data().get('processing_date','')" />
+          </div>
+          <div class="lb-field">
+            <label>Balance S/N</label>
+            <input class="lb-input lb-input-md" type="text" name="balance_sn"
+                   tal:attributes="value python:view.data().get('balance_sn','')" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-sample rows -->
+      <div class="lb-section">
+        <h3>Sample Processing Records</h3>
+        <p class="sample-factor-note">
+          Sample Factor = matrix adjustment factor applied to this sample.
+          Feeds the matrix-size correction in the pipeline QC engine.
+        </p>
+        <table class="proc-table">
+          <thead>
+            <tr>
+              <th style="min-width:100px;">Sample ID</th>
+              <th style="min-width:110px;">Matrix</th>
+              <th class="yn-cell">Split?</th>
+              <th style="min-width:50px;"># Splits</th>
+              <th class="yn-cell">Dry Ice?</th>
+              <th style="min-width:70px;">DI Wt (g)</th>
+              <th class="yn-cell">Spoiled?</th>
+              <th style="min-width:80px;">Aliquot (g)</th>
+              <th style="min-width:80px;">Sample Factor</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="samples-body"></tbody>
+        </table>
+        <button type="button" class="btn-add-row" onclick="addSampleRow()">+ Add Sample Row</button>
+      </div>
+
+      <!-- Processing Materials -->
+      <div class="lb-section">
+        <h3>Processing Materials &amp; Lots</h3>
+        <table class="sup-table" style="max-width:500px;">
+          <thead><tr><th>Material</th><th>Lot #</th><th></th></tr></thead>
+          <tbody id="materials-body"></tbody>
+        </table>
+        <button type="button" class="btn-add-row" onclick="addMatRow()">+ Add Material</button>
+      </div>
+
+      <!-- Equipment -->
+      <div class="lb-section">
+        <h3>Equipment Check</h3>
+        <div class="checkbox-field">
+          <input type="checkbox" id="grinder_cleaned" name="grinder_cleaned" value="yes"
+                 tal:attributes="checked python:view.data().get('grinder_cleaned', False)" />
+          <label for="grinder_cleaned">Grinder/homogenizer cleaned before use</label>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="lb-section">
+        <h3>Notes</h3>
+        <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:13px; border:1px solid var(--s-input-border); border-radius:6px;"
+                  tal:content="python:view.data().get('notes','')"></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-save" type="submit">Save Logbook</button>
+      </div>
+    </form>
+
+  </div>
+
+  <script>
+  var SAVED = <tal:d tal:replace="structure view/data_json" />;
+
+  var samplesData = SAVED.samples || [];
+  var materialsData = SAVED.processing_materials || [];
+
+  var MATRIX_TYPES = ['Fish Tissue', 'Soil', 'Sediment', 'Biosolid',
+                      'Food', 'Feed', 'Meat', 'Milk', 'Serum',
+                      'Drinking Water', 'Wastewater', 'Other'];
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;');
+  }
+
+  function yn(val, i, field) {
+    return '\u003cinput type="checkbox"' + (val?' checked':'') +
+           ' onchange="samplesData['+i+'].'+field+'=this.checked;syncSamples()"/>';
+  }
+
+  function renderSamples() {
+    var tbody = document.getElementById('samples-body');
+    tbody.innerHTML = '';
+    samplesData.forEach(function(row, i) {
+      var matOpts = MATRIX_TYPES.map(function(m) {
+        return '\u003coption value="'+m+'"'+(row.matrix===m?' selected':'')+'>'+m+'\u003c/option>';
+      }).join('');
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.sample_id||'')+'" oninput="samplesData['+i+'].sample_id=this.value;syncSamples()"/>\u003c/td>' +
+        '\u003ctd>\u003cselect onchange="samplesData['+i+'].matrix=this.value;syncSamples()">'+matOpts+'\u003c/select>\u003c/td>' +
+        '\u003ctd class="yn-cell">'+yn(row.split,i,'split')+'\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" min="1" step="1" value="'+esc(row.split_count||'')+'" oninput="samplesData['+i+'].split_count=this.value;syncSamples()"/>\u003c/td>' +
+        '\u003ctd class="yn-cell">'+yn(row.dry_ice_composite,i,'dry_ice_composite')+'\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="0.01" value="'+esc(row.dry_ice_weight_g||'')+'" oninput="samplesData['+i+'].dry_ice_weight_g=this.value;syncSamples()"/>\u003c/td>' +
+        '\u003ctd class="yn-cell">'+yn(row.spoiled,i,'spoiled')+'\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="0.0001" value="'+esc(row.aliquot_mass_g||'')+'" oninput="samplesData['+i+'].aliquot_mass_g=this.value;syncSamples()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="0.001" value="'+esc(row.sample_factor||1)+'" oninput="samplesData['+i+'].sample_factor=parseFloat(this.value);syncSamples()"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="samplesData.splice('+i+',1);renderSamples()">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncSamples();
+  }
+
+  function addSampleRow() {
+    samplesData.push({sample_id:'', matrix:'Fish Tissue', split:false, split_count:null,
+                      dry_ice_composite:false, dry_ice_weight_g:null,
+                      spoiled:false, aliquot_mass_g:null, sample_factor:1.0});
+    renderSamples();
+  }
+
+  function syncSamples() {
+    document.getElementById('samples_json').value = JSON.stringify(samplesData);
+  }
+
+  function renderMaterials() {
+    var tbody = document.getElementById('materials-body');
+    tbody.innerHTML = '';
+    materialsData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.material||'')+'" oninput="materialsData['+i+'].material=this.value;syncMaterials()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="'+esc(row.lot_num||'')+'" oninput="materialsData['+i+'].lot_num=this.value;syncMaterials()"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="materialsData.splice('+i+',1);renderMaterials()">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncMaterials();
+  }
+
+  function addMatRow() {
+    materialsData.push({material:'', lot_num:''});
+    renderMaterials();
+  }
+
+  function syncMaterials() {
+    document.getElementById('processing_materials_json').value = JSON.stringify(materialsData);
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    renderSamples();
+    renderMaterials();
+  });
+  </script>
+  </div><!-- /content slot -->
+</body>
+</html>

@@ -56,11 +56,10 @@ def setup_handler(context):
     bika_setup = portal["bika_setup"]  # legacy BikaSetup (still holds AnalysisServices)
 
     # ── Analysis categories ─────────────────────────────────────────────
+    # Two categories only: target analytes in "PFAS", IS in "PFAS - Internal Standards".
     cat_folder = new_setup["analysiscategories"]
     categories = {}
-    for cat in [u"PFAS - PFCA", u"PFAS - PFSA", u"PFAS - FTS", u"PFAS - FOSA",
-                u"PFAS - PFECA", u"PFAS - Cl-PFAES", u"PFAS - other",
-                u"PFAS - Internal Standards"]:
+    for cat in [u"PFAS", u"PFAS - Internal Standards"]:
         categories[cat] = _get_or_create(cat_folder, "AnalysisCategory", cat)
 
     # ── Methods ─────────────────────────────────────────────────────────
@@ -77,21 +76,26 @@ def setup_handler(context):
 
     # ── Native analyte AnalysisServices ─────────────────────────────────
     svc_folder = bika_setup["bika_analysisservices"]
+    pfas_cat = categories[u"PFAS"]
     for row in _read("analysis_services.csv"):
-        cat = categories.get(row["Category"], categories[u"PFAS - other"])
         svc = _get_or_create(svc_folder, "AnalysisService", row["Title"],
-                             Keyword=row["Keyword"], Category=cat)
+                             Keyword=row["Keyword"], Category=pfas_cat)
         try:
+            svc.setCategory(pfas_cat)   # migrate existing services to collapsed category
             svc.setCASNumber(row["CAS"] if row["CAS"] != "PLACEHOLDER" else "")
             svc.setPrecision(int(row["PrecisionDigits"]))
         except Exception:
             pass
 
     # ── Internal standards / surrogates ─────────────────────────────────
+    is_cat = categories[u"PFAS - Internal Standards"]
     for row in _read("internal_standards.csv"):
-        _get_or_create(svc_folder, "AnalysisService", row["Title"],
-                       Keyword=row["Keyword"],
-                       Category=categories[u"PFAS - Internal Standards"])
+        svc = _get_or_create(svc_folder, "AnalysisService", row["Title"],
+                             Keyword=row["Keyword"], Category=is_cat)
+        try:
+            svc.setCategory(is_cat)     # migrate existing IS services
+        except Exception:
+            pass
 
     # ── Sample types ────────────────────────────────────────────────────
     st_folder = new_setup["sampletypes"]
@@ -134,6 +138,20 @@ def setup_handler(context):
     except Exception as e:
         logger.warning("Method profiles not seeded: %s", e)
 
+    # ── EGAD EDD config ───────────────────────────────────────────────────
+    try:
+        from senaite.pfas.egad_store import seed_defaults as seed_egad_defaults
+        seed_egad_defaults(portal)
+    except Exception as e:
+        logger.warning("EGAD EDD defaults not seeded: %s", e)
+
+    # ── Logbook definitions ───────────────────────────────────────────────
+    try:
+        from senaite.pfas.logbook_store import seed_defaults as seed_logbook_defaults
+        seed_logbook_defaults(portal)
+    except Exception as e:
+        logger.warning("Logbook defaults not seeded: %s", e)
+
     # ── Reference Definitions ────────────────────────────────────────────
     # Build one ReferenceDefinition per QC type from QC rules.
     # Deferred until after AnalysisServices are created above.
@@ -163,7 +181,10 @@ def create_reference_definitions(portal):
     # Collect AnalysisService (uid, keyword) pairs
     try:
         from bika.lims import api
-        catalog = api.get_tool("bika_setup_catalog")
+        try:
+            catalog = api.get_tool("senaite_catalog_setup")
+        except Exception:
+            catalog = api.get_tool("bika_setup_catalog")
         brains = catalog(portal_type="AnalysisService")
         analyte_uids = []
         for brain in brains:
@@ -202,6 +223,14 @@ def create_reference_definitions(portal):
 
 def post_install(context):
     logger.info("senaite.pfas post_install")
+    try:
+        from senaite.pfas.browser.import_studio import seed_vendor_templates
+        from Products.CMFCore.utils import getToolByName
+        portal = context.getSite()
+        n = seed_vendor_templates(portal)
+        logger.info("Import Studio: seeded %d vendor template(s)", n)
+    except Exception as exc:
+        logger.error("Failed to seed vendor templates: %s", exc)
 
 
 def post_uninstall(context):

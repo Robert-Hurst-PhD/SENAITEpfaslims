@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Reagent content type — a barcode-scanned reagent/standard lot."""
 from plone.dexterity.content import Item
 from plone.supermodel import model

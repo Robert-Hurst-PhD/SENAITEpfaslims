@@ -4,6 +4,48 @@
         meta_type="Plone Actions Tool"
         purge="False">
 
+  <!-- Top navigation link: "Sample Tracker" -->
+  <object name="portal_tabs" meta_type="CMF Action Category" purge="False">
+    <object name="pfas_sample_tracker" meta_type="CMF Action" i18n:domain="senaite.pfas">
+      <property name="title" i18n:translate="">Sample Tracker</property>
+      <property name="description" i18n:translate="">Track any sample through the laboratory stages</property>
+      <property name="url_expr">string:${portal_url}/@@pfas-track</property>
+      <property name="link_target"></property>
+      <property name="icon_expr"></property>
+      <property name="available_expr"></property>
+      <property name="permissions">
+        <element value="View"/>
+      </property>
+      <property name="visible">True</property>
+    </object>
+  </object>
+
+  <!-- Per-batch sub-tabs on Batch -->
+  <object name="object" meta_type="CMF Action Category" purge="False">
+    <object name="pfas_batch_extraction" meta_type="CMF Action" i18n:domain="senaite.pfas">
+      <property name="title" i18n:translate="">Extraction Guide</property>
+      <property name="description" i18n:translate="">Guided stage-by-stage extraction workflow</property>
+      <property name="url_expr">string:${object_url}/@@pfas-extraction-guide?batch_uid=${object/UID}</property>
+      <property name="link_target"></property>
+      <property name="icon_expr"></property>
+      <property name="available_expr">python:context.portal_type == 'Batch'</property>
+      <property name="permissions"><element value="View"/></property>
+      <property name="visible">True</property>
+    </object>
+    <object name="pfas_batch_logbooks" meta_type="CMF Action" i18n:domain="senaite.pfas">
+      <property name="title" i18n:translate="">Logbooks</property>
+      <property name="description" i18n:translate="">FM-ENV-250/251/252/253 per-batch logbooks</property>
+      <property name="url_expr">string:${object_url}/@@pfas-logbook-index</property>
+      <property name="link_target"></property>
+      <property name="icon_expr"></property>
+      <property name="available_expr">python:context.portal_type == 'Batch'</property>
+      <property name="permissions">
+        <element value="View"/>
+      </property>
+      <property name="visible">True</property>
+    </object>
+  </object>
+
   <!-- PFAS sub-tab on Worksheet: "PFAS Stage" -->
   <object name="object" meta_type="CMF Action Category" purge="False">
     <object name="pfas_ws_stage" meta_type="CMF Action" i18n:domain="senaite.pfas">

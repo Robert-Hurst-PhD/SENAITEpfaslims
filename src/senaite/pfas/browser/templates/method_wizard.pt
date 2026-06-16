@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">New Method Wizard</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    /* ── Layout: sidebar + main ─────────────────────────────────────── */
+    .wiz-layout { display: flex; gap: 32px; align-items: flex-start; }
+
+    /* Stepper sidebar */
+    .wiz-stepper { width: 220px; flex-shrink: 0; }
+    .wiz-step-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 10px; border-radius: 8px; cursor: pointer;
+      text-decoration: none; color: inherit;
+    }
+    .wiz-step-item.is-current { background: #f0f7fb; }
+    .wiz-step-item:hover      { background: #f8f9fa; }
+    .wiz-step-num {
+      width: 26px; height: 26px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+    }
+    .wiz-step-item.status-done     .wiz-step-num { background: var(--s-primary); color: #fff; }
+    .wiz-step-item.status-defaults .wiz-step-num { background: #0c5460; color: #fff; }
+    .wiz-step-item.status-pending  .wiz-step-num { background: #e9ecef; color: var(--s-secondary); }
+    .wiz-step-item.is-current      .wiz-step-num { box-shadow: 0 0 0 3px var(--s-focus-ring); }
+    .wiz-step-label { font-size: 12px; line-height: 1.4; color: var(--s-body); }
+    .wiz-step-item.is-current .wiz-step-label { font-weight: 700; }
+
+    /* ── Main panel ─────────────────────────────────────────────────── */
+    .wiz-main { flex: 1; min-width: 0; }
+
+    .wiz-step-header { margin-bottom: 16px; }
+    .wiz-step-header h2 { font-size: 18px; color: var(--s-dark); margin-bottom: 4px; }
+    .wiz-step-header .step-num-label { font-size: 12px; color: var(--s-secondary); }
+
+    .wiz-explain {
+      font-size: 13px; color: var(--s-body); line-height: 1.7;
+      background: #f8f9fa; border-left: 3px solid var(--s-primary);
+      padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 20px;
+    }
+    .wiz-depends {
+      font-size: 12px; color: #856404; background: #fff3cd;
+      border: 1px solid #ffeeba; border-radius: 6px;
+      padding: 8px 14px; margin-bottom: 20px;
+    }
+
+    /* ── Forms ──────────────────────────────────────────────────────── */
+    .wiz-form { max-width: 640px; }
+    .wiz-field { margin-bottom: 16px; }
+    .wiz-field label { display: block; font-size: 13px; font-weight: 600;
+                       color: var(--s-dark); margin-bottom: 4px; }
+    .wiz-input, .wiz-textarea, .wiz-select {
+      width: 100%; padding: 8px 12px; font-size: 13px;
+      border: 1px solid var(--s-input-border); border-radius: 6px;
+      color: var(--s-body); box-sizing: border-box;
+    }
+    .wiz-textarea { min-height: 80px; resize: vertical; }
+    .wiz-input:focus, .wiz-textarea:focus, .wiz-select:focus {
+      outline: none; border-color: var(--s-primary);
+      box-shadow: 0 0 0 3px var(--s-focus-ring);
+    }
+
+    /* Checkbox lists */
+    .check-section { margin-bottom: 20px; }
+    .check-section h4 { font-size: 13px; font-weight: 700;
+                        color: var(--s-dark); margin-bottom: 10px; }
+    .check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+                  gap: 6px; }
+    .check-item { display: flex; align-items: center; gap: 8px;
+                  padding: 6px 10px; border: 1px solid var(--s-border);
+                  border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .check-item:hover { background: #f8f9fa; }
+    .check-item input[type="checkbox"] { flex-shrink: 0; }
+    .check-item input[type="radio"]    { flex-shrink: 0; }
+    .check-item .cat-tag {
+      margin-left: auto; font-size: 10px; color: var(--s-secondary);
+      background: #e9ecef; padding: 1px 7px; border-radius: 8px; white-space: nowrap;
+    }
+    .check-item.is-linked { background: #f0f7fb; border-color: #b8d9ee; }
+
+    /* Action buttons */
+    .wiz-actions { display: flex; gap: 12px; margin-top: 24px; padding-top: 16px;
+                   border-top: 1px solid var(--s-border); }
+    .btn-primary { padding: 9px 22px; background: var(--s-primary); color: #fff;
+                   border: none; border-radius: 7px; font-size: 13px; font-weight: 600;
+                   cursor: pointer; }
+    .btn-primary:hover { background: var(--s-primary-dk); }
+    .btn-secondary { padding: 9px 18px; background: #fff; color: var(--s-body);
+                     border: 1px solid var(--s-border); border-radius: 7px;
+                     font-size: 13px; cursor: pointer; text-decoration: none;
+                     display: inline-flex; align-items: center; }
+    .btn-secondary:hover { background: #f8f9fa; }
+    .btn-success { padding: 9px 22px; background: #28a745; color: #fff;
+                   border: none; border-radius: 7px; font-size: 13px; font-weight: 600;
+                   cursor: pointer; }
+
+    /* Spec status table */
+    .spec-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+    .spec-table th { text-align: left; padding: 8px 12px; background: #f8f9fa;
+                     border-bottom: 2px solid var(--s-border); font-weight: 700; }
+    .spec-table td { padding: 8px 12px; border-bottom: 1px solid var(--s-border); }
+    .badge-ok      { background: #d4edda; color: #155724; padding: 2px 10px;
+                     border-radius: 8px; font-size: 11px; font-weight: 700; }
+    .badge-missing { background: #f8d7da; color: #721c24; padding: 2px 10px;
+                     border-radius: 8px; font-size: 11px; font-weight: 700; }
+
+    /* Or divider */
+    .or-divider { display: flex; align-items: center; gap: 12px;
+                  color: var(--s-secondary); font-size: 12px; margin: 16px 0; }
+    .or-divider::before, .or-divider::after {
+      content: ""; flex: 1; height: 1px; background: var(--s-border); }
+
+    /* Alerts */
+    .wiz-alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
+                       padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+                       font-size: 13px; }
+    .wiz-alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
+                       padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+                       font-size: 13px; }
+
+    /* Landing page */
+    .landing-card { background: var(--s-bg); border: 1px solid var(--s-border);
+                    border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
+    .landing-card h3 { font-size: 15px; margin-bottom: 6px; }
+    .landing-card .meta { font-size: 12px; color: var(--s-secondary); margin-bottom: 12px; }
+
+    /* Complete state */
+    .wiz-complete { text-align: center; padding: 40px 20px; }
+    .wiz-complete .check-big { font-size: 56px; color: #28a745; margin-bottom: 16px; }
+    .wiz-complete h2 { font-size: 22px; color: var(--s-dark); margin-bottom: 8px; }
+    .wiz-complete p  { color: var(--s-secondary); font-size: 14px; margin-bottom: 24px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">New Method Wizard</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="header-meta"
+       tal:attributes="href string:${view/portal_url}/@@lims-setup">
+      &#8592; PFAS Setup
+    </a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <!-- ============================================================ -->
+    <!-- LANDING PAGE (no wid) -->
+    <!-- ============================================================ -->
+    <tal:landing tal:condition="not:view/wid">
+
+      <p style="font-size:14px; color:var(--s-body); margin-bottom:28px; max-width:680px; line-height:1.7;">
+        This wizard walks you through standing up a new analytical method in
+        SENAITE: creating the Method record, linking the analytes, selecting
+        sample types, setting QC criteria, and associating instruments.
+        Each step has an inline form so you can complete the entire setup
+        without leaving the wizard.
+      </p>
+
+      <!-- Start new wizard -->
+      <form method="post"
+            tal:attributes="action string:${view/portal_url}/@@pfas-method-wizard">
+        <input type="hidden" name="action" value="new" />
+        <button class="btn-primary" type="submit">
+          + Start New Method Wizard
+        </button>
+      </form>
+
+      <!-- Existing sessions -->
+      <tal:sessions tal:condition="view/existing_sessions">
+        <h3 style="margin:32px 0 12px; font-size:14px; color:var(--s-dark);">
+          In-progress wizards
+        </h3>
+        <tal:each tal:repeat="sess view/existing_sessions">
+          <div class="landing-card">
+            <h3 tal:content="sess/method_name">Method</h3>
+            <p class="meta">
+              <span tal:content="sess/steps_done">0</span> of 9 steps completed
+            </p>
+            <a class="btn-secondary" tal:attributes="href sess/url">
+              Resume &#8594;
+            </a>
+          </div>
+        </tal:each>
+      </tal:sessions>
+
+    </tal:landing>
+
+    <!-- ============================================================ -->
+    <!-- WIZARD (wid set) -->
+    <!-- ============================================================ -->
+    <tal:wizard tal:condition="view/wid">
+
+      <!-- Alerts -->
+      <div class="wiz-alert-ok"    tal:condition="view/success_msg" tal:content="view/success_msg"></div>
+      <div class="wiz-alert-error" tal:condition="view/error_msg"   tal:content="view/error_msg"></div>
+
+      <!-- Complete state -->
+      <tal:complete tal:condition="python:view.current_step() == 9 and view.success_msg()">
+        <div class="wiz-complete">
+          <div class="check-big">&#10003;</div>
+          <h2>Method setup complete!</h2>
+          <p>
+            All 9 steps finished for
+            <strong tal:content="view/method_display_name">this method</strong>.
+            You can revisit any step from the sidebar at any time.
+          </p>
+          <a class="btn-secondary" tal:attributes="href string:${view/portal_url}/@@lims-setup">
+            &#8592; Return to Setup
+          </a>
+        </div>
+      </tal:complete>
+
+      <!-- Main wizard layout -->
+      <tal:wizard-body tal:condition="not:python:view.current_step() == 9 and view.success_msg()">
+      <div class="wiz-layout">
+
+        <!-- Stepper sidebar -->
+        <nav class="wiz-stepper">
+          <tal:steps tal:repeat="s view/steps_summary">
+            <a class="wiz-step-item"
+               tal:attributes="href s/url;
+                                class python:'wiz-step-item status-' + s['status'] + (' is-current' if s['is_current'] else '')">
+              <div class="wiz-step-num" tal:content="s/num">1</div>
+              <div class="wiz-step-label" tal:content="s/title">Step Title</div>
+            </a>
+          </tal:steps>
+        </nav>
+
+        <!-- Step main area -->
+        <div class="wiz-main">
+          <tal:step tal:define="step view/current_step; wid view/wid; base view/portal_url">
+
+            <!-- Step header -->
+            <div class="wiz-step-header">
+              <p class="step-num-label">Step <span tal:content="step">1</span> of 9</p>
+              <h2 tal:content="python:view.step_title()">Step Title</h2>
+            </div>
+
+            <!-- Explain -->
+            <div class="wiz-explain" tal:content="python:view.step_explain()">Explanation</div>
+
+            <!-- Depends -->
+            <div class="wiz-depends" tal:condition="python:view.step_depends()">
+              <strong>Requires:</strong>
+              <tal:d tal:replace="python:view.step_depends()" />
+            </div>
+
+            <!-- ================================================ -->
+            <!-- STEP 1: Method Identity -->
+            <!-- ================================================ -->
+            <tal:step1 tal:condition="python: step == 1">
+              <div class="wiz-form">
+                <tal:existing tal:condition="view/existing_methods">
+                  <div class="wiz-field">
+                    <label for="existing_method_uid">Use an existing method</label>
+                    <form method="post"
+                          tal:attributes="action string:${base}/@@pfas-method-wizard">
+                      <input type="hidden" name="wid" tal:attributes="value wid" />
+                      <input type="hidden" name="step" value="1" />
+                      <select id="existing_method_uid" name="existing_method_uid"
+                              class="wiz-select">
+                        <option value="">-- select an existing method --</option>
+                        <tal:opts tal:repeat="m view/existing_methods">
+                          <option tal:attributes="value m/uid" tal:content="m/title">Method</option>
+                        </tal:opts>
+                      </select>
+                      <div class="wiz-actions">
+                        <button class="btn-primary" type="submit">Use This Method &#8594;</button>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div class="or-divider">or create a new one</div>
+                </tal:existing>
+
+                <!-- Create new -->
+                <form method="post"
+                      tal:attributes="action string:${base}/@@pfas-method-wizard">
+                  <input type="hidden" name="wid" tal:attributes="value wid" />
+                  <input type="hidden" name="step" value="1" />
+                  <input type="hidden" name="existing_method_uid" value="" />
+                  <div class="wiz-field">
+                    <label for="new_method_title">Method title *</label>
+                    <input id="new_method_title" name="new_method_title" type="text"
+                           class="wiz-input" placeholder="e.g. EPA 8327"
+                           tal:attributes="value python:view.step1_data().get('title', '')" />
+                  </div>
+                  <div class="wiz-field">
+                    <label for="new_method_id">Method ID (keyword, no spaces) *</label>
+                    <input id="new_method_id" name="new_method_id" type="text"
+                           class="wiz-input" placeholder="e.g. EPA_8327"
+                           tal:attributes="value python:view.step1_data().get('method_id', '')" />
+                  </div>
+                  <div class="wiz-field">
+                    <label for="new_method_description">Description (optional)</label>
+                    <textarea id="new_method_description" name="new_method_description"
+                              class="wiz-textarea"
+                              tal:content="python:view.step1_data().get('description', '')"></textarea>
+                  </div>
+                  <div class="wiz-actions">
+                    <button class="btn-primary" type="submit">Create Method &#8594;</button>
+                  </div>
+                </form>
+              </div>
+            </tal:step1>
+
+            <!-- ================================================ -->
+            <!-- STEP 2: Lab Dept & Category -->
+            <!-- ================================================ -->
+            <tal:step2 tal:condition="python: step == 2">
+              <form class="wiz-form" method="post"
+                    tal:attributes="action string:${base}/@@pfas-method-wizard">
+                <input type="hidden" name="wid"  tal:attributes="value wid" />
+                <input type="hidden" name="step" value="2" />
+
+                <div class="check-section">
+                  <h4>Lab Department</h4>
+                  <div class="check-grid">
+                    <tal:depts tal:repeat="dept view/departments">
+                      <label class="check-item"
+                             tal:attributes="for string:dept-${dept/uid}">
+                        <input type="radio"
+                               name="dept_uid"
+                               tal:attributes="id    string:dept-${dept/uid};
+                                               value dept/uid;
+                                               checked python:view.step2_data().get('dept_uid') == dept['uid']" />
+                        <span tal:content="dept/title">Department</span>
+                      </label>
+                    </tal:depts>
+                  </div>
+                  <p tal:condition="not:view/departments"
+                     style="font-size:12px; color:#721c24;">
+                    No departments found. Create one in
+                    <a tal:attributes="href string:${base}/setup/departments">Setup &#8594; Departments</a>.
+                  </p>
+                </div>
+
+                <div class="check-section">
+                  <h4>Analysis Category (for target analytes)</h4>
+                  <div class="check-grid">
+                    <tal:cats tal:repeat="cat view/categories">
+                      <label class="check-item"
+                             tal:attributes="for string:cat-${cat/uid}">
+                        <input type="radio"
+                               name="category_uid"
+                               tal:attributes="id    string:cat-${cat/uid};
+                                               value cat/uid;
+                                               checked python:view.step2_data().get('category_uid') == cat['uid']" />
+                        <span tal:content="cat/title">Category</span>
+                      </label>
+                    </tal:cats>
+                  </div>
+                </div>
+
+                <div class="wiz-actions">
+                  <button class="btn-primary" type="submit">Save &amp; Continue &#8594;</button>
+                  <a class="btn-secondary"
+                     tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=1">
+                    &#8592; Back
+                  </a>
+                </div>
+              </form>
+            </tal:step2>
+
+            <!-- ================================================ -->
+            <!-- STEP 3: Associate Analytes -->
+            <!-- ================================================ -->
+            <tal:step3 tal:condition="python: step == 3">
+              <form class="wiz-form" method="post"
+                    tal:attributes="action string:${base}/@@pfas-method-wizard">
+                <input type="hidden" name="wid"  tal:attributes="value wid" />
+                <input type="hidden" name="step" value="3" />
+
+                <div class="check-section">
+                  <h4>Select analytes and internal standards for this method</h4>
+                  <p style="font-size:12px; color:var(--s-secondary); margin-bottom:10px;">
+                    Currently linked services are pre-checked.
+                    Unchecking a service will NOT remove the method link from
+                    previously-linked services on re-submission -- add and verify
+                    links here, then edit service records directly to remove.
+                  </p>
+                  <div class="check-grid">
+                    <tal:svcs tal:repeat="svc view/all_services">
+                      <label class="check-item"
+                             tal:attributes="for    string:svc-${svc/uid};
+                                             class  python:'check-item is-linked' if svc['is_linked'] else 'check-item'">
+                        <input type="checkbox"
+                               name="service_uid:list"
+                               tal:attributes="id      string:svc-${svc/uid};
+                                               value   svc/uid;
+                                               checked svc/is_linked" />
+                        <span tal:content="svc/title">Service</span>
+                        <span class="cat-tag" tal:content="svc/category"></span>
+                      </label>
+                    </tal:svcs>
+                  </div>
+                  <p tal:condition="not:view/all_services"
+                     style="font-size:12px; color:#721c24;">
+                    No analysis services found. Create them in
+                    <a tal:attributes="href string:${base}/bika_setup/bika_analysisservices">
+                      Analysis Services</a>.
+                  </p>
+                </div>
+
+                <div class="wiz-actions">
+                  <button class="btn-primary" type="submit">Link Analytes &amp; Continue &#8594;</button>
+                  <a class="btn-secondary"
+                     tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=2">
+                    &#8592; Back
+                  </a>
+                </div>
+              </form>
+            </tal:step3>
+
+            <!-- ================================================ -->
+            <!-- STEP 4: Sample Types -->
+            <!-- ================================================ -->
+            <tal:step4 tal:condition="python: step == 4">
+              <form class="wiz-form" method="post"
+                    tal:attributes="action string:${base}/@@pfas-method-wizard">
+                <input type="hidden" name="wid"  tal:attributes="value wid" />
+                <input type="hidden" name="step" value="4" />
+
+                <div class="check-section">
+                  <h4>Select sample types this method analyzes</h4>
+                  <div class="check-grid">
+                    <tal:sts tal:repeat="st view/sample_types">
+                      <label class="check-item"
+                             tal:attributes="for string:st-${st/uid}">
+                        <input type="checkbox"
+                               name="sampletype_uid:list"
+                               tal:attributes="id      string:st-${st/uid};
+                                               value   st/uid;
+                                               checked python:st['uid'] in view.step4_data().get('sampletype_uids', [])" />
+                        <span tal:content="st/title">Sample Type</span>
+                      </label>
+                    </tal:sts>
+                  </div>
+                  <p tal:condition="not:view/sample_types"
+                     style="font-size:12px; color:#721c24;">
+                    No sample types found. Create them in
+                    <a tal:attributes="href string:${base}/setup/sampletypes">Sample Types</a>.
+                  </p>
+                </div>
+
+                <div class="wiz-actions">
+                  <button class="btn-primary" type="submit">Save &amp; Continue &#8594;</button>
+                  <a class="btn-secondary"
+                     tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=3">
+                    &#8592; Back
+                  </a>
+                </div>
+              </form>
+            </tal:step4>
+
+            <!-- ================================================ -->
+            <!-- STEP 5: Method Profile -->
+            <!-- ================================================ -->
+            <tal:step5 tal:condition="python: step == 5">
+              <div class="wiz-form">
+                <p style="font-size:13px; margin-bottom:16px;">
+                  <strong>Current status:</strong>
+                  <span tal:content="view/profile_status_label">...</span>
+                </p>
+                <a class="btn-secondary"
+                   target="_blank"
+                   tal:attributes="href view/profile_edit_url">
+                  Open Method Profile Editor &#8594;
+                </a>
+                <p style="font-size:12px; color:var(--s-secondary); margin-top:12px;">
+                  The editor opens in a new tab. Save your changes there, then
+                  return here and click "Confirmed" below.
+                </p>
+                <form method="post"
+                      tal:attributes="action string:${base}/@@pfas-method-wizard">
+                  <input type="hidden" name="wid"  tal:attributes="value wid" />
+                  <input type="hidden" name="step" value="5" />
+                  <div class="wiz-actions">
+                    <button class="btn-primary" type="submit">Profile Confirmed &#8594;</button>
+                    <a class="btn-secondary"
+                       tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=4">
+                      &#8592; Back
+                    </a>
+                  </div>
+                </form>
+              </div>
+            </tal:step5>
+
+            <!-- ================================================ -->
+            <!-- STEP 6: Analysis Specifications -->
+            <!-- ================================================ -->
+            <tal:step6 tal:condition="python: step == 6">
+              <div class="wiz-form">
+                <tal:has-types tal:condition="view/sample_types_spec_status">
+                  <table class="spec-table">
+                    <thead>
+                      <tr>
+                        <th>Sample Type</th>
+                        <th>Spec status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tal:rows tal:repeat="row view/sample_types_spec_status">
+                        <tr>
+                          <td tal:content="row/title">Sample Type</td>
+                          <td>
+                            <span class="badge-ok"
+                                  tal:condition="row/has_spec">Spec exists</span>
+                            <span class="badge-missing"
+                                  tal:condition="not:row/has_spec">No spec yet</span>
+                          </td>
+                          <td>
+                            <a tal:condition="not:row/has_spec"
+                               tal:attributes="href row/create_url">
+                              Create spec &#8594;
+                            </a>
+                            <span tal:condition="row/has_spec"
+                                  style="color:var(--s-secondary); font-size:12px;">
+                              &#10003; OK
+                            </span>
+                          </td>
+                        </tr>
+                      </tal:rows>
+                    </tbody>
+                  </table>
+                </tal:has-types>
+                <p tal:condition="not:view/sample_types_spec_status"
+                   style="font-size:13px; color:var(--s-secondary);">
+                  No sample types were selected in Step 4. Return to Step 4 to
+                  select sample types, then come back here to create their specs.
+                </p>
+                <form method="post"
+                      tal:attributes="action string:${base}/@@pfas-method-wizard">
+                  <input type="hidden" name="wid"  tal:attributes="value wid" />
+                  <input type="hidden" name="step" value="6" />
+                  <div class="wiz-actions">
+                    <button class="btn-primary" type="submit">Acknowledged &#8594; Continue</button>
+                    <a class="btn-secondary"
+                       tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=5">
+                      &#8592; Back
+                    </a>
+                  </div>
+                </form>
+              </div>
+            </tal:step6>
+
+            <!-- ================================================ -->
+            <!-- STEP 7: Storage & Containers -->
+            <!-- ================================================ -->
+            <tal:step7 tal:condition="python: step == 7">
+              <form class="wiz-form" method="post"
+                    tal:attributes="action string:${base}/@@pfas-method-wizard">
+                <input type="hidden" name="wid"  tal:attributes="value wid" />
+                <input type="hidden" name="step" value="7" />
+
+                <div class="check-section">
+                  <h4>Storage Locations</h4>
+                  <div class="check-grid">
+                    <tal:locs tal:repeat="loc view/storage_locations">
+                      <label class="check-item"
+                             tal:attributes="for string:loc-${loc/uid}">
+                        <input type="checkbox"
+                               name="storage_uid:list"
+                               tal:attributes="id      string:loc-${loc/uid};
+                                               value   loc/uid;
+                                               checked python:loc['uid'] in view.step7_selected_storage()" />
+                        <span tal:content="loc/title">Location</span>
+                      </label>
+                    </tal:locs>
+                  </div>
+                  <p tal:condition="not:view/storage_locations"
+                     style="font-size:12px; color:var(--s-secondary);">
+                    No storage locations found.
+                  </p>
+                </div>
+
+                <div class="check-section">
+                  <h4>Sample Containers</h4>
+                  <div class="check-grid">
+                    <tal:conts tal:repeat="cont view/containers">
+                      <label class="check-item"
+                             tal:attributes="for string:cont-${cont/uid}">
+                        <input type="checkbox"
+                               name="container_uid:list"
+                               tal:attributes="id      string:cont-${cont/uid};
+                                               value   cont/uid;
+                                               checked python:cont['uid'] in view.step7_selected_containers()" />
+                        <span tal:content="cont/title">Container</span>
+                      </label>
+                    </tal:conts>
+                  </div>
+                  <p tal:condition="not:view/containers"
+                     style="font-size:12px; color:var(--s-secondary);">
+                    No containers found.
+                  </p>
+                </div>
+
+                <div class="wiz-actions">
+                  <button class="btn-primary" type="submit">Save &amp; Continue &#8594;</button>
+                  <a class="btn-secondary"
+                     tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=6">
+                    &#8592; Back
+                  </a>
+                </div>
+              </form>
+            </tal:step7>
+
+            <!-- ================================================ -->
+            <!-- STEP 8: QC Rule Toggles -->
+            <!-- ================================================ -->
+            <tal:step8 tal:condition="python: step == 8">
+              <div class="wiz-form">
+                <p style="font-size:13px; margin-bottom:16px;">
+                  Review and adjust QC rule toggles for this method in the
+                  QC Rules editor. Defaults are pre-loaded from the Method
+                  Profile you configured in Step 5.
+                </p>
+                <a class="btn-secondary"
+                   target="_blank"
+                   tal:attributes="href view/qcrules_url">
+                  Open QC Rules &#8594;
+                </a>
+                <p style="font-size:12px; color:var(--s-secondary); margin-top:12px;">
+                  Changes are saved automatically in the QC Rules editor.
+                  Return here and click "Rules Reviewed" when done.
+                </p>
+                <form method="post"
+                      tal:attributes="action string:${base}/@@pfas-method-wizard">
+                  <input type="hidden" name="wid"  tal:attributes="value wid" />
+                  <input type="hidden" name="step" value="8" />
+                  <div class="wiz-actions">
+                    <button class="btn-primary" type="submit">Rules Reviewed &#8594;</button>
+                    <a class="btn-secondary"
+                       tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=7">
+                      &#8592; Back
+                    </a>
+                  </div>
+                </form>
+              </div>
+            </tal:step8>
+
+            <!-- ================================================ -->
+            <!-- STEP 9: Link Instruments -->
+            <!-- ================================================ -->
+            <tal:step9 tal:condition="python: step == 9">
+              <form class="wiz-form" method="post"
+                    tal:attributes="action string:${base}/@@pfas-method-wizard">
+                <input type="hidden" name="wid"  tal:attributes="value wid" />
+                <input type="hidden" name="step" value="9" />
+
+                <div class="check-section">
+                  <h4>Select instruments certified for this method</h4>
+                  <div class="check-grid">
+                    <tal:instrs tal:repeat="instr view/instruments">
+                      <label class="check-item"
+                             tal:attributes="for   string:instr-${instr/uid};
+                                             class python:'check-item is-linked' if instr['is_linked'] else 'check-item'">
+                        <input type="checkbox"
+                               name="instrument_uid:list"
+                               tal:attributes="id      string:instr-${instr/uid};
+                                               value   instr/uid;
+                                               checked instr/is_linked" />
+                        <span tal:content="instr/title">Instrument</span>
+                      </label>
+                    </tal:instrs>
+                  </div>
+                  <p tal:condition="not:view/instruments"
+                     style="font-size:12px; color:var(--s-secondary);">
+                    No instruments found. Create them in
+                    <a tal:attributes="href string:${base}/bika_setup/bika_instruments">
+                      Instruments</a>.
+                  </p>
+                </div>
+
+                <div class="wiz-actions">
+                  <button class="btn-success" type="submit">
+                    Link Instruments &amp; Complete Wizard &#10003;
+                  </button>
+                  <a class="btn-secondary"
+                     tal:attributes="href string:${base}/@@pfas-method-wizard?wid=${wid}&amp;step=8">
+                    &#8592; Back
+                  </a>
+                </div>
+              </form>
+            </tal:step9>
+
+          </tal:step>
+        </div><!-- /.wiz-main -->
+      </div><!-- /.wiz-layout -->
+      </tal:wizard-body>
+
+    </tal:wizard>
+
+  </div><!-- /.page-body -->
+  </div><!-- /content slot -->
+</body>
+</html>

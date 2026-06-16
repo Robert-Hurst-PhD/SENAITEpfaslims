@@ -239,7 +239,11 @@ class PFASSetupRefsView(BrowserView):
         try:
             from bika.lims import api
             portal = self.context.portal_url.getPortalObject()
-            catalog = api.get_tool("bika_setup_catalog")
+            # SENAITE 2.x renamed bika_setup_catalog → senaite_catalog_setup
+            try:
+                catalog = api.get_tool("senaite_catalog_setup")
+            except Exception:
+                catalog = api.get_tool("bika_setup_catalog")
             brains = catalog(portal_type="AnalysisService")
             results = []
             for brain in brains:

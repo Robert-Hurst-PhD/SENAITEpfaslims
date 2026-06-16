@@ -51,23 +51,23 @@ class PFASCalibrationsView(BrowserView):
     # ── Request parameter accessors ──────────────────────────────────────
 
     def selected_analyte(self):
-        return self.request.get("analyte", "")
+        return self.request.form.get("analyte", "")
 
     def selected_analyst(self):
-        return self.request.get("analyst", "") or None
+        return self.request.form.get("analyst", "") or None
 
     def selected_instrument(self):
-        return self.request.get("instrument_id", "") or None
+        return self.request.form.get("instrument_id", "") or None
 
     def selected_method(self):
-        return self.request.get("method", "") or None
+        return self.request.form.get("method", "") or None
 
     def selected_status(self):
-        return self.request.get("status", "")
+        return self.request.form.get("status", "")
 
     def selected_limit(self):
         try:
-            v = int(self.request.get("limit", DEFAULT_LIMIT))
+            v = int(self.request.form.get("limit", DEFAULT_LIMIT))
             return min(max(v, 1), 300)
         except (TypeError, ValueError):
             return DEFAULT_LIMIT
@@ -76,7 +76,7 @@ class PFASCalibrationsView(BrowserView):
         return _is_manager(self.context)
 
     def save_message(self):
-        return self.request.get("saved", "")
+        return self.request.form.get("saved", "")
 
     # ── Store helpers ─────────────────────────────────────────────────────
 
@@ -254,9 +254,9 @@ class PFASCalibrationsView(BrowserView):
             self.request.response.setStatus(403)
             return "Forbidden: Manager role required to update calibrations"
 
-        cal_id = self.request.get("calibration_id", "")
-        new_status = self.request.get("new_status", "")
-        notes = self.request.get("notes", "")
+        cal_id = self.request.form.get("calibration_id", "")
+        new_status = self.request.form.get("new_status", "")
+        notes = self.request.form.get("notes", "")
 
         if not cal_id or new_status not in ("approved", "rejected", "pending"):
             self.request.response.setStatus(400)

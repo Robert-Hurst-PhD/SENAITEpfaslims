@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 PFAS QC Engine
 Complete port of all QC macros from FDA_Sample_Calculator_V13.xlsm:

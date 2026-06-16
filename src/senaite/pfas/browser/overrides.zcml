@@ -1,0 +1,19 @@
+<configure xmlns="http://namespaces.zope.org/zope"
+           xmlns:browser="http://namespaces.zope.org/browser">
+
+  <!--
+    Override @@lims-setup from senaite.core.
+
+    We register on ISenaitePFASLayer (which extends ISenaiteCore) so Zope's
+    adapter-lookup specificity selects our view over the senaite.core
+    registration on ISenaiteCore — no conflict, no includeOverrides needed.
+  -->
+  <browser:page
+      name="lims-setup"
+      for="Products.CMFPlone.interfaces.IPloneSiteRoot"
+      class="senaite.pfas.browser.lims_setup.PFASSetupView"
+      permission="senaite.core.permissions.ManageBika"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
+</configure>

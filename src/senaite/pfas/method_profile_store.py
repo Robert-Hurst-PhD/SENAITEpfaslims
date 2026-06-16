@@ -246,6 +246,95 @@ DEFAULT_PROFILES = {
         ],
         "surrogate_is": "M4PFOA",
         "per_analyte": _fda_per_analyte(),
+        "salt_adjustment_factors": [],
+        "isomer_summation": [
+            {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
+            {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
+        ],
+        "extraction_stages": [
+            {
+                "id": "pre_setup",
+                "order": 1,
+                "name": "Pre-Extraction Setup",
+                "description": "Verify reagents, standards, equipment; log balance S/N",
+                "reagent_roles": ["Mobile Phase A (water+5mM AmAc)", "Mobile Phase B (MeOH+5mM AmAc)",
+                                  "Acetonitrile (LC-MS grade)", "Ammonium Acetate"],
+                "equipment": ["Analytical Balance", "Centrifuge", "Vortex Mixer"],
+                "creates_solution": True,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "weighing",
+                "order": 2,
+                "name": "Sample Weighing & Aliquoting",
+                "description": "Weigh 1 g (±0.02 g) test portion into 50 mL centrifuge tube",
+                "reagent_roles": [],
+                "equipment": ["Analytical Balance", "50 mL Centrifuge Tubes"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "spike",
+                "order": 3,
+                "name": "Surrogate & IS Spike Addition",
+                "description": "Add surrogate/IS spike solution; vortex 30 s",
+                "reagent_roles": ["Surrogate IS Spike Solution"],
+                "equipment": ["Pipette (100-1000 μL)", "Vortex Mixer"],
+                "creates_solution": False,
+                "capture_pedigree": True,
+            },
+            {
+                "id": "extraction",
+                "order": 4,
+                "name": "Extraction",
+                "description": "Add ACN; cap, vortex 2 min, centrifuge 5 min at 3000 rpm",
+                "reagent_roles": ["Acetonitrile (LC-MS grade)"],
+                "equipment": ["Centrifuge", "Vortex Mixer"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "dspe",
+                "order": 5,
+                "name": "Dispersive SPE Cleanup",
+                "description": "Transfer extract to tube containing dSPE material; vortex, centrifuge",
+                "reagent_roles": ["Primary Secondary Amine (PSA)", "MgSO₄ (anhydrous)",
+                                  "C18 (if lipid matrix)"],
+                "equipment": ["Centrifuge", "Vortex Mixer"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "concentration",
+                "order": 6,
+                "name": "Concentration",
+                "description": "Evaporate under N₂ at 40°C to near dryness",
+                "reagent_roles": [],
+                "equipment": ["Turbovap / N₂ Evaporator", "Water Bath (40°C)"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "reconstitution",
+                "order": 7,
+                "name": "Reconstitution & Injection IS Addition",
+                "description": "Reconstitute in 1 mL Mobile Phase A; add injection IS",
+                "reagent_roles": ["Mobile Phase A (water+5mM AmAc)", "Injection IS Solution"],
+                "equipment": ["Vortex Mixer", "Analytical Balance"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "transfer",
+                "order": 8,
+                "name": "QC Check & Transfer to Vial",
+                "description": "Filter through PTFE syringe filter; transfer to LC vial",
+                "reagent_roles": ["PTFE Syringe Filter (0.2 μm)"],
+                "equipment": ["1 mL Syringe", "LC Vials"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+        ],
     },
 
     "EPA_537_1": {
@@ -303,6 +392,90 @@ DEFAULT_PROFILES = {
         "surrogate_map": [],
         "surrogate_is": "",
         "per_analyte": [],
+        "salt_adjustment_factors": [],
+        "isomer_summation": [],
+        "extraction_stages": [
+            {
+                "id": "pre_setup",
+                "order": 1,
+                "name": "Pre-Extraction Setup",
+                "description": "Check SPE cartridges (ENVI-18 or equivalent), reagents, pH meter",
+                "reagent_roles": ["Methanol (LC-MS grade)", "Reagent Water", "Ammonium Acetate"],
+                "equipment": ["pH Meter", "SPE Manifold", "Analytical Balance"],
+                "creates_solution": True,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "ph_adjust",
+                "order": 2,
+                "name": "Sample pH Adjustment",
+                "description": "Adjust pH to 5.5–6.5 with ammonium acetate buffer; measure and log pH",
+                "reagent_roles": ["Ammonium Acetate Buffer (0.1 M)", "Acetic Acid"],
+                "equipment": ["pH Meter", "Magnetic Stir Plate"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "spike",
+                "order": 3,
+                "name": "Isotope Spike Addition",
+                "description": "Add isotopically labelled IS spike to sample; mix gently",
+                "reagent_roles": ["EPA 537.1 IS Spike Mix"],
+                "equipment": ["Pipette"],
+                "creates_solution": False,
+                "capture_pedigree": True,
+            },
+            {
+                "id": "spe_condition",
+                "order": 4,
+                "name": "SPE Cartridge Conditioning",
+                "description": "Condition cartridge: 5 mL MeOH, then 10 mL reagent water",
+                "reagent_roles": ["Methanol (LC-MS grade)", "Reagent Water"],
+                "equipment": ["SPE Manifold", "Vacuum Pump"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "loading",
+                "order": 5,
+                "name": "Sample Loading",
+                "description": "Load spiked sample at ≤5 mL/min; do not allow cartridge to dry",
+                "reagent_roles": [],
+                "equipment": ["SPE Manifold", "Vacuum Pump"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "drying",
+                "order": 6,
+                "name": "Cartridge Drying",
+                "description": "Apply vacuum for 15 min to dry cartridge",
+                "reagent_roles": [],
+                "equipment": ["SPE Manifold", "Vacuum Pump"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "elution",
+                "order": 7,
+                "name": "Elution",
+                "description": "Elute with 2 × 5 mL MeOH into PP tubes",
+                "reagent_roles": ["Methanol (LC-MS grade)"],
+                "equipment": ["SPE Manifold", "50 mL PP Tubes"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "reconstitution",
+                "order": 8,
+                "name": "Concentration & Reconstitution",
+                "description": "Evaporate under N₂ to ~0.5 mL; bring to 1 mL with reagent water",
+                "reagent_roles": ["Reagent Water"],
+                "equipment": ["N₂ Evaporator", "1 mL LC Vials"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+        ],
     },
 
     "EPA_1633A": {
@@ -369,6 +542,84 @@ DEFAULT_PROFILES = {
         "surrogate_map": [],
         "surrogate_is": "",
         "per_analyte": [],
+        "salt_adjustment_factors": [],
+        "isomer_summation": [
+            {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
+            {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
+        ],
+        "extraction_stages": [
+            {
+                "id": "pre_setup",
+                "order": 1,
+                "name": "Pre-Extraction Setup",
+                "description": "Check Oasis WAX cartridges, homogenizer, reagents; log S/Ns",
+                "reagent_roles": ["Methanol (LC-MS grade)", "Ammonium Formate Buffer"],
+                "equipment": ["Homogenizer/Blender", "Analytical Balance", "SPE Manifold"],
+                "creates_solution": True,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "homogenization",
+                "order": 2,
+                "name": "Sample Homogenization",
+                "description": "Homogenize solid / semi-solid matrices; record aliquot mass",
+                "reagent_roles": [],
+                "equipment": ["Homogenizer/Blender", "Analytical Balance"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "spike",
+                "order": 3,
+                "name": "EIS Spike Addition",
+                "description": "Add EIS spike solution; mix well; allow equilibration ≥15 min",
+                "reagent_roles": ["EPA 1633A EIS Spike Mix"],
+                "equipment": ["Pipette", "Vortex Mixer"],
+                "creates_solution": False,
+                "capture_pedigree": True,
+            },
+            {
+                "id": "extraction",
+                "order": 4,
+                "name": "Extraction",
+                "description": "Add MeOH (or ACN for solids); shake, centrifuge; collect supernatant",
+                "reagent_roles": ["Methanol (LC-MS grade)", "Acetonitrile (LC-MS grade)"],
+                "equipment": ["Centrifuge", "Orbital Shaker"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "spe_cleanup",
+                "order": 5,
+                "name": "Oasis WAX SPE Cleanup",
+                "description": "Condition WAX cartridge; load extract; wash; elute with MeOH",
+                "reagent_roles": ["Methanol (LC-MS grade)", "Reagent Water",
+                                  "0.3% NH₄OH in MeOH"],
+                "equipment": ["SPE Manifold", "Vacuum Pump"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "concentration",
+                "order": 6,
+                "name": "Concentration",
+                "description": "Evaporate under N₂ at 40°C to ~0.5 mL",
+                "reagent_roles": [],
+                "equipment": ["N₂ Evaporator", "Water Bath (40°C)"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+            {
+                "id": "reconstitution",
+                "order": 7,
+                "name": "Reconstitution & Final Check",
+                "description": "Reconstitute in mobile phase A; vortex; transfer to LC vial",
+                "reagent_roles": ["Mobile Phase A"],
+                "equipment": ["Vortex Mixer", "LC Vials", "PTFE Syringe Filter"],
+                "creates_solution": False,
+                "capture_pedigree": False,
+            },
+        ],
     },
 }
 
@@ -389,6 +640,11 @@ def get_profile(portal, method_id):
     """
     Return the profile dict for method_id.  Falls back to DEFAULT_PROFILES if
     not yet customised.  Always returns a fresh dict; mutations do not persist.
+
+    When a saved profile exists, top-level keys present in DEFAULT_PROFILES but
+    absent from the saved copy are back-filled from the default.  This lets new
+    fields added to DEFAULT_PROFILES (e.g. extraction_stages) appear in existing
+    saved profiles without requiring a manual re-save.
     """
     store = get_profile_store(portal)
     raw = store.get(method_id)
@@ -398,7 +654,13 @@ def get_profile(portal, method_id):
             return {"method_id": method_id}
         return copy.deepcopy(dflt)
     try:
-        return json.loads(raw)
+        saved = json.loads(raw)
+        dflt = DEFAULT_PROFILES.get(method_id)
+        if dflt:
+            for key, default_val in dflt.items():
+                if key not in saved:
+                    saved[key] = copy.deepcopy(default_val)
+        return saved
     except (ValueError, TypeError):
         logger.warning("Corrupt profile JSON for %s; returning default", method_id)
         return copy.deepcopy(DEFAULT_PROFILES.get(method_id, {"method_id": method_id}))

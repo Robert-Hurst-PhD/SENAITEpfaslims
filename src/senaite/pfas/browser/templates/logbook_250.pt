@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">FM-ENV-250: Solvent / Reagent Prep Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .lb-form { max-width: 900px; }
+    .lb-section { margin-bottom: 28px; }
+    .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
+                     margin-bottom: 12px; padding-bottom: 6px;
+                     border-bottom: 2px solid var(--s-border); }
+    .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .lb-field { display: flex; flex-direction: column; }
+    .lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-input, .lb-select, .lb-textarea {
+      padding: 7px 10px; font-size: 13px; border: 1px solid var(--s-input-border);
+      border-radius: 6px; color: var(--s-body);
+    }
+    .lb-input:focus, .lb-select:focus { outline: none; border-color: var(--s-primary); }
+    .lb-input-sm { width: 110px; }
+    .lb-input-md { width: 180px; }
+    .lb-input-lg { width: 260px; }
+    /* Dynamic table */
+    .dyn-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .dyn-table th { background: #f8f9fa; padding: 6px 10px; text-align: left;
+                    border-bottom: 2px solid var(--s-border); font-weight: 700; }
+    .dyn-table td { padding: 4px 6px; border-bottom: 1px solid var(--s-border); }
+    .dyn-table td input { width: 100%; padding: 5px 8px; font-size: 12px;
+                          border: 1px solid var(--s-input-border); border-radius: 4px; }
+    .dyn-table td input:focus { outline: none; border-color: var(--s-primary); }
+    .btn-add-row { margin-top: 8px; padding: 5px 14px; background: #f8f9fa;
+                   border: 1px dashed var(--s-border); border-radius: 6px;
+                   font-size: 12px; cursor: pointer; color: var(--s-secondary); }
+    .btn-add-row:hover { background: #e9ecef; color: var(--s-dark); }
+    .btn-del-row { background: none; border: none; cursor: pointer;
+                   color: #dc3545; font-size: 14px; padding: 2px 6px; }
+    .expiry-rule { font-size: 11px; color: #856404; margin-left: 8px; }
+    /* Signature block */
+    .sig-block { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 16px; }
+    .sig-field { display: flex; flex-direction: column; }
+    .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    /* Submit */
+    .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border); }
+    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
+                border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-save:hover { background: var(--s-primary-dk); }
+    .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">FM-ENV-250: Solvent / Reagent Prep Log</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="header-meta"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">
+      &#8592; All Logbooks
+    </a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+
+    <form class="lb-form" method="post"
+          tal:attributes="action string:${view/batch_url}/@@pfas-logbook-250">
+
+      <!-- Hidden JSON fields (populated/updated by JS) -->
+      <input type="hidden" id="solutions_json"  name="solutions_json"  value="[]" />
+      <input type="hidden" id="chemicals_json"  name="chemicals_json"  value="[]" />
+
+      <!-- ── Header fields ── -->
+      <div class="lb-section">
+        <h3>Preparation Details</h3>
+        <div class="lb-row">
+          <div class="lb-field">
+            <label>Prepared By</label>
+            <input class="lb-input lb-input-lg" type="text" name="prepared_by"
+                   tal:attributes="value python:view.data().get('prepared_by','')" />
+          </div>
+          <div class="lb-field">
+            <label>Date Prepared</label>
+            <input class="lb-input lb-input-md" type="date" name="prepared_date"
+                   tal:attributes="value python:view.data().get('prepared_date','')" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Solutions table ── -->
+      <div class="lb-section">
+        <h3>Solutions Prepared</h3>
+        <p style="font-size:12px; color:var(--s-secondary); margin-bottom:8px;">
+          Lot numbers are auto-generated as <strong>NAME-YYMMDD</strong>.
+          Mobile phases expire in <strong>1 week</strong>; all others in 1 year.
+        </p>
+        <table class="dyn-table" id="solutions-table">
+          <thead>
+            <tr>
+              <th>Solution Name</th>
+              <th>Volume (mL)</th>
+              <th>Lot Number</th>
+              <th>Expiry Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="solutions-body"></tbody>
+        </table>
+        <button type="button" class="btn-add-row" onclick="addSolutionRow()">
+          + Add Solution
+        </button>
+      </div>
+
+      <!-- ── Chemicals table ── -->
+      <div class="lb-section">
+        <h3>Chemicals Used</h3>
+        <table class="dyn-table" id="chemicals-table">
+          <thead>
+            <tr>
+              <th>Material</th>
+              <th>Vendor</th>
+              <th>Part #</th>
+              <th>Lot #</th>
+              <th>Expiry</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="chemicals-body"></tbody>
+        </table>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button type="button" class="btn-add-row" onclick="addChemicalRow()">
+            + Add Chemical (manual)
+          </button>
+          <button type="button" class="btn-add-row"
+                  style="border-color:#1a73e8;color:#1a73e8;"
+                  onclick="openInvLookup()">
+            &#128196; From Inventory
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Inventory lookup modal (reagent_inventory) ── -->
+      <div id="inv-overlay" style="display:none;position:fixed;inset:0;
+           background:rgba(0,0,0,.45);z-index:1000;
+           align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:22px;
+                    width:90%;max-width:540px;box-shadow:0 8px 32px rgba(0,0,0,.25);">
+          <div style="display:flex;justify-content:space-between;align-items:center;
+                      margin-bottom:14px;">
+            <strong style="font-size:15px;">&#128196; Reagent Inventory Lookup</strong>
+            <button type="button" onclick="closeInvLookup()"
+                    style="background:none;border:none;font-size:18px;cursor:pointer;">&#215;</button>
+          </div>
+          <input id="inv-search" type="text" placeholder="Search name, cat#, lot#..."
+                 style="width:100%;padding:8px 10px;font-size:13px;
+                        border:1px solid #ccc;border-radius:6px;box-sizing:border-box;"
+                 oninput="invSearch(this.value)" />
+          <div id="inv-results"
+               style="margin-top:10px;max-height:280px;overflow-y:auto;"></div>
+        </div>
+      </div>
+
+      <!-- ── Ammonium acetate ── -->
+      <div class="lb-section">
+        <h3>Ammonium Acetate</h3>
+        <div class="lb-row">
+          <div class="lb-field">
+            <label>Weight (g)</label>
+            <input class="lb-input lb-input-sm" type="number" step="0.0001"
+                   name="ammonium_acetate_weight_g"
+                   tal:attributes="value python:view.data().get('ammonium_acetate_weight_g','')" />
+          </div>
+          <div class="lb-field">
+            <label>Balance S/N</label>
+            <input class="lb-input lb-input-md" type="text" name="balance_sn"
+                   tal:attributes="value python:view.data().get('balance_sn','')" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Notes ── -->
+      <div class="lb-section">
+        <h3>Notes</h3>
+        <textarea class="lb-textarea" name="notes" style="width:100%; min-height:60px;"
+                  tal:content="python:view.data().get('notes','')"></textarea>
+      </div>
+
+      <!-- ── Signature block ── -->
+      <div class="lb-section">
+        <h3>Sign-off</h3>
+        <div class="sig-block">
+          <div class="sig-field">
+            <label>Reviewed By</label>
+            <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
+                   tal:attributes="value python:view.data().get('reviewed_by','')" />
+          </div>
+          <div class="sig-field">
+            <label>Date Reviewed</label>
+            <input class="lb-input lb-input-md" type="date" name="reviewed_date"
+                   tal:attributes="value python:view.data().get('reviewed_date','')" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-save" type="submit">Save Logbook</button>
+      </div>
+    </form>
+
+  </div>
+
+  <script>
+  /* ── Data from server ── */
+  var SAVED_DATA = <tal:d tal:replace="structure view/data_json" />;
+
+  /* ── Date helper ── */
+  function todayYYMMDD() {
+    var d = new Date();
+    var yy = String(d.getFullYear()).slice(-2);
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var dd = String(d.getDate()).padStart(2,'0');
+    return yy + mm + dd;
+  }
+  function addDays(dateStr, days) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0,10);
+  }
+  function addYears(dateStr, yrs) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr);
+    d.setFullYear(d.getFullYear() + yrs);
+    return d.toISOString().slice(0,10);
+  }
+  function autoLot(name) {
+    return (name || 'SOL').toUpperCase().replace(/\s+/g,'_') + '-' + todayYYMMDD();
+  }
+  function autoExpiry(name, prepDate) {
+    var mobile = /mph|methoh|meoh|meph/i.test(name || '');
+    return mobile ? addDays(prepDate, 7) : addYears(prepDate, 1);
+  }
+
+  /* ── Solutions table ── */
+  var solutionsData = SAVED_DATA.solutions || [];
+  function renderSolutions() {
+    var tbody = document.getElementById('solutions-body');
+    tbody.innerHTML = '';
+    solutionsData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.name||'') + '" oninput="solutionsData[' + i + '].name=this.value; autoFillLot(' + i + ')"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="1" min="0" style="width:80px" value="' + esc(row.volume_ml||'') + '" oninput="solutionsData[' + i + '].volume_ml=this.value"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.lot_number||'') + '" id="s-lot-' + i + '" oninput="solutionsData[' + i + '].lot_number=this.value"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="date" value="' + esc(row.expiry||'') + '" id="s-exp-' + i + '" oninput="solutionsData[' + i + '].expiry=this.value"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="delSolution(' + i + ')">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncSolutions();
+  }
+  function autoFillLot(i) {
+    var prepDate = document.querySelector('[name="prepared_date"]').value;
+    var name = solutionsData[i].name;
+    document.getElementById('s-lot-' + i).value = autoLot(name);
+    document.getElementById('s-exp-' + i).value = autoExpiry(name, prepDate);
+    solutionsData[i].lot_number = autoLot(name);
+    solutionsData[i].expiry = autoExpiry(name, prepDate);
+    syncSolutions();
+  }
+  function addSolutionRow() {
+    solutionsData.push({name:'', volume_ml:'', lot_number:'', expiry:''});
+    renderSolutions();
+  }
+  function delSolution(i) {
+    solutionsData.splice(i,1);
+    renderSolutions();
+  }
+  function syncSolutions() {
+    document.getElementById('solutions_json').value = JSON.stringify(solutionsData);
+  }
+
+  /* ── Chemicals table ── */
+  var chemicalsData = SAVED_DATA.chemicals || [];
+  function renderChemicals() {
+    var tbody = document.getElementById('chemicals-body');
+    tbody.innerHTML = '';
+    chemicalsData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.material||'') + '" oninput="chemicalsData['+i+'].material=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.vendor||'') + '" oninput="chemicalsData['+i+'].vendor=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.part_num||'') + '" style="width:90px" oninput="chemicalsData['+i+'].part_num=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.lot_num||'') + '" oninput="chemicalsData['+i+'].lot_num=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="date" value="' + esc(row.expiry||'') + '" oninput="chemicalsData['+i+'].expiry=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="delChemical('+i+')">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncChemicals();
+  }
+  function addChemicalRow() {
+    chemicalsData.push({material:'', vendor:'', part_num:'', lot_num:'', expiry:''});
+    renderChemicals();
+  }
+  function delChemical(i) {
+    chemicalsData.splice(i,1);
+    renderChemicals();
+  }
+  function syncChemicals() {
+    document.getElementById('chemicals_json').value = JSON.stringify(chemicalsData);
+  }
+
+  /* ── Utility ── */
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;');
+  }
+
+  /* ── Inventory lookup ── */
+  var INV_URL = '/@@pfas-reagents?action=lookup_json&q=';
+
+  function openInvLookup() {
+    document.getElementById('inv-overlay').style.display = 'flex';
+    invSearch('');
+  }
+  function closeInvLookup() {
+    document.getElementById('inv-overlay').style.display = 'none';
+  }
+  function invSearch(q) {
+    fetch(INV_URL + encodeURIComponent(q))
+      .then(function(r){ return r.json(); })
+      .then(function(data) { renderInvResults(data.items || []); })
+      .catch(function(){ renderInvResults([]); });
+  }
+  function renderInvResults(items) {
+    var el = document.getElementById('inv-results');
+    if (!items.length) {
+      el.innerHTML = '\u003cp style="font-size:12px;color:#888;padding:10px 0;">No reagents found.\u003c/p>';
+      return;
+    }
+    el.innerHTML = items.map(function(r) {
+      var expired = r.expiry_date && new Date(r.expiry_date) < new Date();
+      var expColor = expired ? '#dc3545' : '#155724';
+      return '\u003cdiv style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;"' +
+             ' onmouseover="this.style.background=\'#f0f4ff\'"' +
+             ' onmouseout="this.style.background=\'\'"' +
+             ' onclick=\'addChemicalFromInventory(' + JSON.stringify(r) + ')\'>' +
+             '\u003cstrong>' + esc(r.name) + '\u003c/strong>' +
+             (expired ? ' \u003cspan style="color:#dc3545;font-size:10px;">EXPIRED\u003c/span>' : '') +
+             '\u003cbr>' +
+             'Cat: \u003ccode>' + esc(r.cat_number) + '\u003c/code>' +
+             ' &nbsp; Lot: \u003ccode>' + esc(r.lot_number) + '\u003c/code>' +
+             (r.expiry_date ? ' &nbsp; Exp: \u003cspan style="color:'+expColor+';">' + esc(r.expiry_date) + '\u003c/span>' : '') +
+             ' &nbsp; Supplier: ' + esc(r.supplier) +
+             '\u003c/div>';
+    }).join('');
+  }
+  function addChemicalFromInventory(r) {
+    chemicalsData.push({
+      material: r.name,
+      vendor:   r.supplier,
+      part_num: r.cat_number,
+      lot_num:  r.lot_number,
+      expiry:   r.expiry_date || ''
+    });
+    renderChemicals();
+    closeInvLookup();
+  }
+  document.getElementById('inv-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeInvLookup();
+  });
+
+  /* ── Init ── */
+  document.addEventListener('DOMContentLoaded', function() {
+    if (!solutionsData.length) {
+      solutionsData = [
+        {name:'FDA-MPH2O',    volume_ml:500, lot_number:'', expiry:''},
+        {name:'FDA-MPMeOH',   volume_ml:500, lot_number:'', expiry:''},
+        {name:'FDA-Pre-Ex-I', volume_ml:100, lot_number:'', expiry:''},
+        {name:'FDA-Pre-Ex-II',volume_ml:100, lot_number:'', expiry:''}
+      ];
+    }
+    renderSolutions();
+    renderChemicals();
+  });
+  </script>
+  </div><!-- /content slot -->
+</body>
+</html>

@@ -2,18 +2,19 @@
     xmlns="http://namespaces.zope.org/zope"
     i18n_domain="senaite.pfas">
 
-  <!-- Reagent (barcode-scanned lot) -->
+  <!-- Reagent (barcode-scanned lot) — Dexterity fields are not callable
+       methods, so use <allow attributes> rather than <require interface>
+       to avoid "security declaration for nonexistent method" warnings. -->
   <class class=".content.reagent.Reagent">
-    <require
-        permission="zope2.View"
-        interface=".content.reagent.IReagent" />
+    <allow attributes="catalog_number lot_number manufacturer expiry_date
+                        date_opened reagent_class barcode storage_location
+                        scan_count" />
   </class>
 
   <!-- EnvironmentalReading (RPi temperature/humidity) -->
   <class class=".content.envreading.EnvironmentalReading">
-    <require
-        permission="zope2.View"
-        interface=".content.envreading.IEnvironmentalReading" />
+    <allow attributes="location sensor_id temperature_c humidity_pct
+                        reading_time nist_verified out_of_range" />
   </class>
 
 </configure>

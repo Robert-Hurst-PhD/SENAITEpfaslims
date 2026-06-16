@@ -1,542 +1,517 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml"
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PFAS QC Control Charts</title>
+  <title metal:fill-slot="title">PFAS QC Control Charts</title>
+  <tal:extras metal:fill-slot="head-extra">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           font-size: 14px; background: #f5f5f5; color: #212121; }
-
-    /* ── Header ───────────────────────────────────────────────────────── */
-    .page-header { background: #1565c0; color: #fff; padding: 12px 24px;
-                   display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    .page-header h1 { font-size: 17px; font-weight: 600; }
-    .header-badge { background: rgba(255,255,255,.15); border-radius: 4px;
-                    padding: 3px 10px; font-size: 12px; }
-
-    /* ── Layout ───────────────────────────────────────────────────────── */
+    /* ── Control chart layout ──────────────────────────────────────────── */
     .layout { display: flex; min-height: calc(100vh - 48px); }
-    .sidebar { width: 230px; flex-shrink: 0; background: #fff;
-               border-right: 1px solid #e0e0e0; padding: 14px;
+    .sidebar { width: 240px; flex-shrink: 0; background: var(--s-bg);
+               border-right: 1px solid var(--s-border); padding: 14px;
                overflow-y: auto; }
     .main { flex: 1; padding: 18px; min-width: 0; }
 
-    /* ── Filter form ──────────────────────────────────────────────────── */
     .filter-section { margin-bottom: 14px; }
-    .filter-section + .filter-section { border-top: 1px solid #f0f0f0;
+    .filter-section + .filter-section { border-top: 1px solid var(--s-border);
                                          padding-top: 14px; }
-    .filter-label { display: block; font-size: 11px; color: #616161;
+    .filter-label { display: block; font-size: 11px; color: var(--s-secondary);
                     margin-bottom: 4px; font-weight: 700;
                     text-transform: uppercase; letter-spacing: .04em; }
     .filter-form select, .filter-form input[type=number],
     .filter-form input[type=text] {
-      width: 100%; padding: 6px 8px; border: 1px solid #bdbdbd;
-      border-radius: 4px; font-size: 13px; background: #fafafa; }
+      width: 100%; padding: 6px 8px; border: 1px solid var(--s-input-border);
+      border-radius: 4px; font-size: 13px; background: #fafafa;
+      color: var(--s-input-text); }
     .filter-form select { margin-bottom: 8px; }
+    .filter-form select:focus, .filter-form input:focus {
+      outline: none; border-color: var(--s-primary);
+      box-shadow: 0 0 0 3px var(--s-focus-ring); }
     .filter-form button.apply-btn {
-      width: 100%; padding: 8px; background: #1565c0; color: #fff;
+      width: 100%; padding: 8px; background: var(--s-primary); color: #fff;
       border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
       font-weight: 600; margin-top: 4px; }
-    .filter-form button.apply-btn:hover { background: #1976d2; }
+    .filter-form button.apply-btn:hover { background: var(--s-primary-dk); }
 
-    /* Limit row */
     .limit-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
-    .limit-row label { font-size: 11px; color: #616161; white-space: nowrap; }
+    .limit-row label { font-size: 11px; color: var(--s-secondary); white-space: nowrap; }
     .limit-row input { width: 60px; flex-shrink: 0; }
-    .limit-row .hint { font-size: 10px; color: #9e9e9e; }
+    .limit-row .hint { font-size: 10px; color: var(--s-secondary); }
 
-    /* History toggle */
     .toggle-row { display: flex; align-items: center; gap: 8px;
                   font-size: 12px; margin-bottom: 8px; }
     .toggle-row input[type=checkbox] { width: 14px; height: 14px; }
 
-    /* ── Summary counts ───────────────────────────────────────────────── */
-    .summary-heading { font-size: 11px; color: #757575; text-transform: uppercase;
+    .summary-heading { font-size: 11px; color: var(--s-secondary);
+                       text-transform: uppercase;
                        letter-spacing: .04em; font-weight: 700;
                        margin-bottom: 6px; margin-top: 14px; }
     .summary-row { display: flex; justify-content: space-between;
                    font-size: 12px; padding: 3px 0; }
-    .fail-count { color: #c62828; font-weight: 600; }
+    .fail-count { color: var(--s-danger); font-weight: 600; }
 
-    /* ── Main stats bar ───────────────────────────────────────────────── */
     .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-    .stat-box { background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;
-                padding: 8px 14px; min-width: 90px; text-align: center; }
-    .stat-label { font-size: 10px; color: #827717; text-transform: uppercase;
+    .stat-box { background: var(--s-bg); border: 1px solid var(--s-border);
+                border-radius: 4px; padding: 8px 14px; min-width: 90px; text-align: center; }
+    .stat-label { font-size: 10px; color: var(--s-secondary); text-transform: uppercase;
                   letter-spacing: .04em; }
-    .stat-value { font-size: 18px; font-weight: 700; color: #37474f; }
-    .stat-box.ok   { border-color: #a5d6a7; background: #f1f8e9; }
-    .stat-box.warn { border-color: #ffcc80; background: #fff8e1; }
-    .stat-box.rej  { border-color: #ef9a9a; background: #ffebee; }
+    .stat-value { font-size: 18px; font-weight: 700; color: var(--s-dark); }
+    .stat-box.ok   { border-color: #b8daff; background: #cce5ff; }
+    .stat-box.warn { border-color: #ffeeba; background: #fff3cd; }
+    .stat-box.rej  { border-color: #f5c6cb; background: #f8d7da; }
 
-    /* ── Chart card ───────────────────────────────────────────────────── */
-    .chart-card { background: #fff; border-radius: 6px;
-                  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    .chart-card { background: var(--s-bg); border-radius: 6px;
+                  border: 1px solid var(--s-border);
+                  box-shadow: 0 1px 3px rgba(0,0,0,.06);
                   padding: 18px; margin-bottom: 18px; }
-    .chart-title { font-size: 15px; font-weight: 600; color: #212121;
+    .chart-title { font-size: 15px; font-weight: 600; color: var(--s-body);
                    margin-bottom: 2px; }
-    .chart-subtitle { font-size: 12px; color: #757575; margin-bottom: 14px; }
+    .chart-subtitle { font-size: 12px; color: var(--s-secondary); margin-bottom: 14px; }
     .chart-container { position: relative; height: 290px; }
-    .no-data { text-align: center; padding: 50px 20px; color: #9e9e9e; }
+    .no-data { text-align: center; padding: 50px 20px; color: var(--s-secondary); }
     .no-data strong { display: block; font-size: 14px; margin-bottom: 6px;
-                      color: #616161; }
+                      color: var(--s-secondary); }
 
-    /* ── Violation table ──────────────────────────────────────────────── */
     .viol-card { border-radius: 6px; padding: 14px; margin-bottom: 16px; }
-    .viol-card.warn { background: #fff8e1; border: 1px solid #ffe082; }
-    .viol-card.rej  { background: #ffebee; border: 1px solid #ffcdd2; }
+    .viol-card.warn { background: #fff3cd; border: 1px solid #ffeeba; }
+    .viol-card.rej  { background: #f8d7da; border: 1px solid #f5c6cb; }
     .viol-card h3 { font-size: 13px; margin-bottom: 8px; }
-    .viol-card.warn h3 { color: #e65100; }
-    .viol-card.rej  h3 { color: #b71c1c; }
+    .viol-card.warn h3 { color: #856404; }
+    .viol-card.rej  h3 { color: #721c24; }
     table.vt { width: 100%; border-collapse: collapse; font-size: 12px; }
     table.vt th { text-align: left; padding: 5px 8px;
-                  border-bottom: 1px solid #ddd; color: #616161;
-                  font-weight: 700; }
-    table.vt td { padding: 4px 8px; border-bottom: 1px solid #eee; }
+                  border-bottom: 1px solid var(--s-border);
+                  color: var(--s-secondary); font-weight: 700; }
+    table.vt td { padding: 4px 8px; border-bottom: 1px solid var(--s-border); }
 
-    /* ── Badges ───────────────────────────────────────────────────────── */
     .badge { display: inline-block; padding: 1px 7px; border-radius: 10px;
              font-size: 11px; font-weight: 700; text-transform: uppercase; }
-    .badge-ok   { background: #e8f5e9; color: #1b5e20; }
-    .badge-warn { background: #fff3e0; color: #e65100; }
-    .badge-rej  { background: #ffebee; color: #b71c1c; }
-    .badge-sup  { background: #f3e5f5; color: #6a1b9a; }
+    .badge-ok   { background: #d4edda; color: #155724; }
+    .badge-warn { background: #fff3cd; color: #856404; }
+    .badge-rej  { background: #f8d7da; color: #721c24; }
+    .badge-sup  { background: #e2d9f3; color: #432874; }
 
-    /* ── History mode banner ──────────────────────────────────────────── */
-    .history-banner { background: #e8eaf6; border: 1px solid #c5cae9;
+    .history-banner { background: var(--s-primary-lt); border: 1px solid var(--s-primary);
                       border-radius: 4px; padding: 8px 14px; margin-bottom: 14px;
-                      font-size: 12px; color: #3949ab; }
+                      font-size: 12px; color: var(--s-primary); }
   </style>
+  </tal:extras>
 </head>
 <body>
+  <tal:t metal:fill-slot="header-title">PFAS QC Control Charts</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <span class="header-badge">Levey-Jennings + Westgard multi-rules</span>
+    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@lims-setup">
+      Site Setup
+    </a>
+  </tal:r>
 
-<div class="page-header">
-  <h1>PFAS QC Control Charts</h1>
-  <span class="header-badge"
-        tal:content="string:Levey-Jennings + Westgard multi-rules">
-  </span>
-</div>
+  <div metal:fill-slot="content">
+  <div class="layout">
 
-<div class="layout">
+    <!-- ── Sidebar ────────────────────────────────────────────────────── -->
+    <nav class="sidebar">
+      <form class="filter-form" method="GET" action="" id="filterForm"
+            tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
 
-  <!-- ── Sidebar ────────────────────────────────────────────────────── -->
-  <nav class="sidebar">
-    <form class="filter-form" method="GET" action="" id="filterForm">
-
-      <!-- Method (first filter — scopes the analyte list) -->
-      <div class="filter-section">
-        <label class="filter-label" for="method">Method</label>
-        <select id="method" name="method" onchange="this.form.submit()">
-          <option value="">— all methods —</option>
-          <tal:methods tal:repeat="m view/methods">
-            <option tal:attributes="value m;
-                                    selected python:m == view.selected_method()"
-                    tal:content="m">FDA_32PFAS</option>
-          </tal:methods>
-        </select>
-      </div>
-
-      <!-- QC Type + Analyte -->
-      <div class="filter-section">
-        <label class="filter-label" for="qc_type">QC Type</label>
-        <select id="qc_type" name="qc_type" onchange="this.form.submit()">
-          <tal:types tal:repeat="qt view/qc_types">
-            <option tal:attributes="value qt;
-                                    selected python:qt == view.selected_qc_type()"
-                    tal:content="qt">CCV</option>
-          </tal:types>
-        </select>
-
-        <!-- Analyte / Test (filtered by selected method) -->
-        <label class="filter-label" for="analyte">Test (Analyte)</label>
-        <select id="analyte" name="analyte" onchange="this.form.submit()">
-          <option value="">— select test —</option>
-          <tal:analytes tal:repeat="a python:view.analytes(view.selected_qc_type())">
-            <option tal:attributes="value a;
-                                    selected python:a == view.selected_analyte()"
-                    tal:content="a">PFOA</option>
-          </tal:analytes>
-        </select>
-
-        <!-- QC Level -->
-        <label class="filter-label" for="qc_level">QC Level</label>
-        <select id="qc_level" name="qc_level" onchange="this.form.submit()">
-          <option value="">— all levels —</option>
-          <tal:levels tal:repeat="lv python:view.qc_levels(view.selected_qc_type(), view.selected_analyte())">
-            <option tal:attributes="value lv;
-                                    selected python:lv == view.selected_level()"
-                    tal:content="lv">L5</option>
-          </tal:levels>
-        </select>
-      </div>
-
-      <!-- Analyst + Instrument filters -->
-      <div class="filter-section">
-        <label class="filter-label" for="analyst">Analyst</label>
-        <select id="analyst" name="analyst" onchange="this.form.submit()">
-          <option value="">— all analysts —</option>
-          <tal:analysts tal:repeat="a view/analysts">
-            <option tal:attributes="value a;
-                                    selected python:a == (view.selected_analyst() or '')"
-                    tal:content="a">KCP</option>
-          </tal:analysts>
-        </select>
-
-        <label class="filter-label" for="instrument_id">Instrument</label>
-        <select id="instrument_id" name="instrument_id" onchange="this.form.submit()">
-          <option value="">— all instruments —</option>
-          <tal:insts tal:repeat="inst view/instruments">
-            <option tal:attributes="value inst;
-                                    selected python:inst == (view.selected_instrument() or '')"
-                    tal:content="inst">QTOF-1</option>
-          </tal:insts>
-        </select>
-      </div>
-
-      <!-- Data range + history toggle -->
-      <div class="filter-section">
-        <label class="filter-label">Data Range</label>
-        <div class="limit-row">
-          <label for="limit">Show last</label>
-          <input type="number" id="limit" name="limit" min="5" max="300"
-                 tal:attributes="value view/selected_limit" />
-          <span class="hint">runs</span>
-        </div>
-        <p style="font-size:10px;color:#9e9e9e;margin-bottom:8px">
-          Default 20 (monthly). Set 200+ for annual analyst review.
-        </p>
-
-        <div class="toggle-row">
-          <input type="checkbox" id="show_history" name="show_history" value="1"
-                 tal:attributes="checked python:view.show_history() and 'checked' or None"
-                 onchange="this.form.submit()" />
-          <label for="show_history">Include superseded results</label>
-        </div>
-      </div>
-
-      <button class="apply-btn" type="submit">Apply Filters</button>
-    </form>
-
-    <!-- DB summary -->
-    <div class="summary-heading">Database summary</div>
-    <tal:summary tal:repeat="row view/summary">
-      <div class="summary-row">
-        <span tal:content="row/qc_type">CCV</span>
-        <span>
-          <span tal:content="row/n">0</span>
-          <span tal:condition="python:int(row.get('failures',0))>0"
-                class="fail-count"
-                tal:content="string: (${row/failures})"></span>
-        </span>
-      </div>
-    </tal:summary>
-    <tal:nosum tal:condition="not:view/summary">
-      <div style="font-size:12px;color:#9e9e9e;font-style:italic;padding:4px 0">
-        No data yet
-      </div>
-    </tal:nosum>
-
-    <div style="margin-top:18px;font-size:10px;color:#9e9e9e;line-height:1.6">
-      Control limits from first 20 in-control results.<br/>
-      Rules: 1-2S warn &bull; 1-3S / 2-2S / R-4S / 4-1S / 10X reject.
-    </div>
-  </nav>
-
-  <!-- ── Main ───────────────────────────────────────────────────────── -->
-  <main class="main">
-
-    <!-- No DB -->
-    <tal:nodbwarn tal:condition="not:view/db_available">
-      <div class="chart-card">
-        <div class="no-data">
-          <strong>No QC database found</strong>
-          Expected at <code tal:content="view/db_path">/data/qc/pfas_qc_results.db</code>.
-          Run the PFAS batch pipeline to populate results.
-        </div>
-      </div>
-    </tal:nodbwarn>
-
-    <tal:content tal:condition="view/db_available"
-                 tal:define="chartJson view/chart_json;
-                             violations view/westgard_violations;
-                             data view/chart_data">
-
-      <!-- History mode banner -->
-      <div class="history-banner" tal:condition="view/show_history">
-        Showing superseded results (analyst review mode). Superseded points are
-        shown as hollow markers and excluded from Westgard evaluation.
-      </div>
-
-      <!-- Stats bar -->
-      <div class="stats-bar" tal:condition="view/has_data">
-
-        <div class="stat-box">
-          <div class="stat-label">Points</div>
-          <div class="stat-value" tal:content="data/n_points">0</div>
+        <div class="filter-section">
+          <label class="filter-label" for="method">Method</label>
+          <select id="method" name="method" onchange="this.form.submit()">
+            <option value="">&#8212; all methods &#8212;</option>
+            <tal:methods tal:repeat="m view/methods">
+              <option tal:attributes="value m;
+                                      selected python:m == view.selected_method()"
+                      tal:content="m">FDA_32PFAS</option>
+            </tal:methods>
+          </select>
         </div>
 
-        <div class="stat-box"
-             tal:condition="python:data.get('limits')">
-          <div class="stat-label">Mean</div>
-          <div class="stat-value"
-               tal:content="python:'{:.3g}'.format(data['limits']['mean'])">0</div>
+        <div class="filter-section">
+          <label class="filter-label" for="qc_type">QC Type</label>
+          <select id="qc_type" name="qc_type" onchange="this.form.submit()">
+            <option value="">&#8212; all QC types &#8212;</option>
+            <tal:types tal:repeat="qt view/qc_types">
+              <option tal:attributes="value qt;
+                                      selected python:qt == view.selected_qc_type()"
+                      tal:content="qt">CCV</option>
+            </tal:types>
+          </select>
+
+          <label class="filter-label" for="chart_type_override">Chart Type</label>
+          <select id="chart_type_override" name="chart_type_override" onchange="this.form.submit()">
+            <option value="">&#8212; auto (from QC type) &#8212;</option>
+            <option value="levey_jennings"
+                    tal:attributes="selected python:view.selected_chart_type_override()=='levey_jennings'">
+              Levey-Jennings
+            </option>
+            <option value="threshold"
+                    tal:attributes="selected python:view.selected_chart_type_override()=='threshold'">
+              Threshold
+            </option>
+          </select>
+
+          <label class="filter-label" for="analyte">Test (Analyte)</label>
+          <select id="analyte" name="analyte" onchange="this.form.submit()">
+            <option value="">&#8212; select test &#8212;</option>
+            <tal:analytes tal:repeat="a python:view.analytes(view.selected_qc_type())">
+              <option tal:attributes="value a;
+                                      selected python:a == view.selected_analyte()"
+                      tal:content="a">PFOA</option>
+            </tal:analytes>
+          </select>
+
+          <label class="filter-label" for="qc_level">QC Level</label>
+          <select id="qc_level" name="qc_level" onchange="this.form.submit()">
+            <option value="">&#8212; all levels &#8212;</option>
+            <tal:levels tal:repeat="lv python:view.qc_levels(view.selected_qc_type(), view.selected_analyte())">
+              <option tal:attributes="value lv;
+                                      selected python:lv == view.selected_level()"
+                      tal:content="lv">L5</option>
+            </tal:levels>
+          </select>
         </div>
 
-        <div class="stat-box"
-             tal:condition="python:data.get('limits')">
-          <div class="stat-label">±1 SD</div>
-          <div class="stat-value"
-               tal:content="python:'{:.3g}'.format(data['limits']['sd'])">0</div>
+        <div class="filter-section">
+          <label class="filter-label" for="analyst">Analyst</label>
+          <select id="analyst" name="analyst" onchange="this.form.submit()">
+            <option value="">&#8212; all analysts &#8212;</option>
+            <tal:analysts tal:repeat="a view/analysts">
+              <option tal:attributes="value a;
+                                      selected python:a == (view.selected_analyst() or '')"
+                      tal:content="a">KCP</option>
+            </tal:analysts>
+          </select>
+
+          <label class="filter-label" for="instrument_id">Instrument</label>
+          <select id="instrument_id" name="instrument_id" onchange="this.form.submit()">
+            <option value="">&#8212; all instruments &#8212;</option>
+            <tal:insts tal:repeat="inst view/instruments">
+              <option tal:attributes="value inst;
+                                      selected python:inst == (view.selected_instrument() or '')"
+                      tal:content="inst">QTOF-1</option>
+            </tal:insts>
+          </select>
         </div>
 
-        <!-- Westgard status -->
-        <div tal:condition="python:data.get('has_rejects')"
-             class="stat-box rej">
-          <div class="stat-label">Westgard</div>
-          <div class="stat-value">REJECT</div>
+        <div class="filter-section">
+          <label class="filter-label">Data Range</label>
+          <div class="limit-row">
+            <label for="limit">Show last</label>
+            <input type="number" id="limit" name="limit" min="5" max="300"
+                   tal:attributes="value view/selected_limit" />
+            <span class="hint">runs</span>
+          </div>
+          <p style="font-size:10px;color:var(--s-secondary);margin-bottom:8px">
+            Default 20 (monthly). Set 200+ for annual analyst review.
+          </p>
+
+          <div class="toggle-row">
+            <input type="checkbox" id="show_history" name="show_history" value="1"
+                   tal:attributes="checked python:view.show_history() and 'checked' or None"
+                   onchange="this.form.submit()" />
+            <label for="show_history">Include superseded results</label>
+          </div>
         </div>
-        <div tal:condition="python:data.get('has_warnings') and not data.get('has_rejects')"
-             class="stat-box warn">
-          <div class="stat-label">Westgard</div>
-          <div class="stat-value">WARN</div>
+
+        <button class="apply-btn" type="submit">Apply Filters</button>
+      </form>
+
+      <div class="summary-heading">Database summary</div>
+      <tal:summary tal:repeat="row view/summary">
+        <div class="summary-row">
+          <span tal:content="row/qc_type">CCV</span>
+          <span>
+            <span tal:content="row/n">0</span>
+            <span tal:condition="python:int(row.get('failures',0))>0"
+                  class="fail-count"
+                  tal:content="string: (${row/failures})"></span>
+          </span>
         </div>
-        <div tal:condition="python:not data.get('has_warnings') and not data.get('has_rejects')"
-             class="stat-box ok">
-          <div class="stat-label">Westgard</div>
-          <div class="stat-value">OK</div>
+      </tal:summary>
+      <tal:nosum tal:condition="not:view/summary">
+        <div style="font-size:12px;color:var(--s-secondary);font-style:italic;padding:4px 0">
+          No data yet
         </div>
+      </tal:nosum>
+
+      <div style="margin-top:18px;font-size:10px;color:var(--s-secondary);line-height:1.6">
+        Control limits from first 20 in-control results.<br/>
+        Rules: 1-2S warn &bull; 1-3S / 2-2S / R-4S / 4-1S / 10X reject.
       </div>
+    </nav>
 
-      <!-- Violation table -->
-      <tal:viols tal:condition="violations">
-        <div tal:define="has_rej python:any(v['severity']=='reject' for v in violations)"
-             tal:attributes="class python:'viol-card rej' if has_rej else 'viol-card warn'">
-          <h3 tal:condition="has_rej">Westgard Reject Violations</h3>
-          <h3 tal:condition="not:has_rej">Westgard Warnings</h3>
-          <table class="vt">
-            <thead>
-              <tr>
-                <th>Rule</th>
-                <th>Description</th>
-                <th>Severity</th>
-                <th>Run(s)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tal:vrow tal:repeat="v violations">
+    <!-- ── Main ───────────────────────────────────────────────────────── -->
+    <main class="main">
+
+      <tal:nodbwarn tal:condition="not:view/db_available">
+        <div class="chart-card">
+          <div class="no-data">
+            <strong>No QC database found</strong>
+            Expected at <code tal:content="view/db_path">/data/qc/pfas_qc_results.db</code>.
+            Run the PFAS batch pipeline to populate results.
+          </div>
+        </div>
+      </tal:nodbwarn>
+
+      <tal:content tal:condition="view/db_available"
+                   tal:define="chartJson view/chart_json;
+                               violations view/westgard_violations;
+                               data view/chart_data">
+
+        <div class="history-banner" tal:condition="view/show_history">
+          Showing superseded results (analyst review mode). Superseded points are
+          shown as hollow markers and excluded from Westgard evaluation.
+        </div>
+
+        <div class="stats-bar" tal:condition="view/has_data">
+
+          <div class="stat-box">
+            <div class="stat-label">Points</div>
+            <div class="stat-value" tal:content="data/n_points">0</div>
+          </div>
+
+          <div class="stat-box" tal:condition="python:data.get('limits')">
+            <div class="stat-label">Mean</div>
+            <div class="stat-value"
+                 tal:content="python:'{:.3g}'.format(data['limits']['mean'])">0</div>
+          </div>
+
+          <div class="stat-box" tal:condition="python:data.get('limits')">
+            <div class="stat-label">&#177;1 SD</div>
+            <div class="stat-value"
+                 tal:content="python:'{:.3g}'.format(data['limits']['sd'])">0</div>
+          </div>
+
+          <div tal:condition="python:data.get('has_rejects')" class="stat-box rej">
+            <div class="stat-label">Westgard</div>
+            <div class="stat-value">REJECT</div>
+          </div>
+          <div tal:condition="python:data.get('has_warnings') and not data.get('has_rejects')"
+               class="stat-box warn">
+            <div class="stat-label">Westgard</div>
+            <div class="stat-value">WARN</div>
+          </div>
+          <div tal:condition="python:not data.get('has_warnings') and not data.get('has_rejects')"
+               class="stat-box ok">
+            <div class="stat-label">Westgard</div>
+            <div class="stat-value">OK</div>
+          </div>
+        </div>
+
+        <tal:viols tal:condition="violations">
+          <div tal:define="has_rej python:any(v['severity']=='reject' for v in violations)"
+               tal:attributes="class python:'viol-card rej' if has_rej else 'viol-card warn'">
+            <h3 tal:condition="has_rej">Westgard Reject Violations</h3>
+            <h3 tal:condition="not:has_rej">Westgard Warnings</h3>
+            <table class="vt">
+              <thead>
                 <tr>
-                  <td><strong tal:content="v/rule">1-3S</strong></td>
-                  <td tal:content="v/description">-</td>
-                  <td>
-                    <span tal:attributes="class python:'badge badge-rej' if v['severity']=='reject' else 'badge badge-warn'"
-                          tal:content="v/severity">reject</span>
-                  </td>
-                  <td tal:content="python:', '.join(str(x+1) for x in v['indices'])">1</td>
+                  <th>Rule</th><th>Description</th><th>Severity</th><th>Run(s)</th>
                 </tr>
-              </tal:vrow>
-            </tbody>
-          </table>
-        </div>
-      </tal:viols>
-
-      <!-- Chart -->
-      <div class="chart-card">
-        <tal:hasdata tal:condition="view/has_data">
-          <div class="chart-title"
-               tal:content="string:${data/analyte} — ${data/qc_type}"></div>
-          <div class="chart-subtitle">
-            <tal:sub tal:content="string:${data/n_points} data points"></tal:sub>
-            <tal:meth tal:condition="data/method">
-              &nbsp;&bull; Method: <strong tal:replace="data/method">FDA_32PFAS</strong>
-            </tal:meth>
-            <tal:lev tal:condition="data/qc_level">
-              &nbsp;&bull; Level: <tal:l tal:replace="data/qc_level">L5</tal:l>
-            </tal:lev>
-            <tal:lim tal:condition="python:data.get('limits')">
-              &nbsp;&bull; Mean: <tal:m tal:replace="python:'{:.3g}'.format(data['limits']['mean'])">0</tal:m>
-              &nbsp;&plusmn;<tal:s tal:replace="python:'{:.3g}'.format(data['limits']['sd'])">0</tal:s>
-              &nbsp;<tal:u tal:replace="data/units">%</tal:u>
-            </tal:lim>
+              </thead>
+              <tbody>
+                <tal:vrow tal:repeat="v violations">
+                  <tr>
+                    <td><strong tal:content="v/rule">1-3S</strong></td>
+                    <td tal:content="v/description">-</td>
+                    <td>
+                      <span tal:attributes="class python:'badge badge-rej' if v['severity']=='reject' else 'badge badge-warn'"
+                            tal:content="v/severity">reject</span>
+                    </td>
+                    <td tal:content="python:', '.join(str(x+1) for x in v['indices'])">1</td>
+                  </tr>
+                </tal:vrow>
+              </tbody>
+            </table>
           </div>
-          <div class="chart-container">
-            <canvas id="qcChart"></canvas>
+        </tal:viols>
+
+        <div class="chart-card">
+          <tal:hasdata tal:condition="view/has_data">
+            <div class="chart-title"
+                 tal:content="string:${data/analyte} &#8212; ${data/qc_type}"></div>
+            <div class="chart-subtitle">
+              <tal:sub tal:content="string:${data/n_points} data points"></tal:sub>
+              <tal:meth tal:condition="data/method">
+                &nbsp;&bull; Method: <strong tal:replace="data/method">FDA_32PFAS</strong>
+              </tal:meth>
+              <tal:lev tal:condition="data/qc_level">
+                &nbsp;&bull; Level: <tal:l tal:replace="data/qc_level">L5</tal:l>
+              </tal:lev>
+              <tal:lim tal:condition="python:data.get('limits')">
+                &nbsp;&bull; Mean: <tal:m tal:replace="python:'{:.3g}'.format(data['limits']['mean'])">0</tal:m>
+                &nbsp;&#177;<tal:s tal:replace="python:'{:.3g}'.format(data['limits']['sd'])">0</tal:s>
+                &nbsp;<tal:u tal:replace="data/units">%</tal:u>
+              </tal:lim>
+            </div>
+            <div class="chart-container">
+              <canvas id="qcChart"></canvas>
+            </div>
+          </tal:hasdata>
+
+          <div class="no-data" tal:condition="not:view/has_data">
+            <strong>No data for this selection</strong>
+            <tal:noanalyte tal:condition="not:view/selected_analyte">
+              Select a test (analyte) from the sidebar to view its control chart.
+            </tal:noanalyte>
+            <tal:noqctype tal:condition="python:view.selected_analyte() and not view.selected_qc_type()">
+              Select a QC type to view data for
+              <strong tal:content="view/selected_analyte">PFOA</strong>.
+            </tal:noqctype>
+            <tal:withboth tal:condition="python:view.selected_analyte() and view.selected_qc_type()">
+              No results for <strong tal:content="view/selected_analyte">PFOA</strong>
+              (<tal:qt tal:replace="view/selected_qc_type">CCV</tal:qt>)
+              with current filters.
+            </tal:withboth>
           </div>
-        </tal:hasdata>
-
-        <div class="no-data" tal:condition="not:view/has_data">
-          <strong>No data for this selection</strong>
-          <tal:noanalyte tal:condition="not:view/selected_analyte">
-            Select a test (analyte) from the sidebar to view its control chart.
-          </tal:noanalyte>
-          <tal:withanalyte tal:condition="view/selected_analyte">
-            No results for <strong tal:content="view/selected_analyte">PFOA</strong>
-            (<tal:qt tal:replace="view/selected_qc_type">CCV</tal:qt>)
-            with current filters.
-          </tal:withanalyte>
         </div>
-      </div>
 
-    </tal:content>
-  </main>
-</div>
+      </tal:content>
+    </main>
+  </div>
 
-<!-- ── Chart.js ─────────────────────────────────────────────────────────── -->
-<tal:script tal:condition="view/has_data">
-<script tal:content="structure string:const CHART_DATA = ${view/chart_json};"></script>
-<script>
-(function () {
-  if (!CHART_DATA || !CHART_DATA.labels || !CHART_DATA.labels.length) return;
+  <tal:script tal:condition="view/has_data">
+  <script tal:content="structure string:const CHART_DATA = ${view/chart_json};"></script>
+  <script>
+  (function () {
+    if (!CHART_DATA || !CHART_DATA.labels || !CHART_DATA.labels.length) return;
 
-  var lim         = CHART_DATA.limits;
-  var statuses    = CHART_DATA.point_status || [];
-  var violations  = CHART_DATA.westgard || [];
+    var lim         = CHART_DATA.limits;
+    var statuses    = CHART_DATA.point_status || [];
+    var violations  = CHART_DATA.westgard || [];
 
-  // ── Per-point violation severity ──────────────────────────────────
-  var pSeverity = {};
-  violations.forEach(function (v) {
-    v.indices.forEach(function (idx) {
-      var prev = pSeverity[idx] || 'ok';
-      if (v.severity === 'reject') pSeverity[idx] = 'reject';
-      else if (prev !== 'reject' && v.severity === 'warning') pSeverity[idx] = 'warning';
-    });
-  });
-
-  // ── Point colours and sizes ───────────────────────────────────────
-  var ptColour = CHART_DATA.values.map(function (_, i) {
-    var st = statuses[i] || 'active';
-    if (st === 'superseded') return 'rgba(149,117,205,0.5)';
-    var sev = pSeverity[i] || 'ok';
-    return sev === 'reject' ? '#d32f2f' : sev === 'warning' ? '#f57c00' : '#1565c0';
-  });
-
-  var ptStyle = statuses.map(function (st) {
-    return st === 'superseded' ? 'circle' : 'circle';
-  });
-
-  var ptRadius = CHART_DATA.values.map(function (_, i) {
-    return pSeverity[i] ? 6 : 4;
-  });
-
-  var ptBorder = CHART_DATA.values.map(function (_, i) {
-    return statuses[i] === 'superseded' ? 'rgba(149,117,205,0.8)' : ptColour[i];
-  });
-
-  // ── Reference line datasets (L-J limits OR threshold) ────────────
-  var limitDatasets = [];
-  function flat(y) { return CHART_DATA.labels.map(function () { return y; }); }
-
-  if (CHART_DATA.chart_type === 'threshold') {
-    // Blank / MB chart: show a single threshold line (red) + pass zone fill
-    var thresh = CHART_DATA.threshold !== null && CHART_DATA.threshold !== undefined
-                   ? CHART_DATA.threshold : CHART_DATA.target;
-    if (thresh !== null && thresh !== undefined) {
-      limitDatasets.push({
-        label: 'Threshold (Reporting Limit)',
-        data: flat(thresh), borderColor: '#e53935', borderDash: [5,3],
-        borderWidth: 2, pointRadius: 0, fill: false, tension: 0,
+    var pSeverity = {};
+    violations.forEach(function (v) {
+      v.indices.forEach(function (idx) {
+        var prev = pSeverity[idx] || 'ok';
+        if (v.severity === 'reject') pSeverity[idx] = 'reject';
+        else if (prev !== 'reject' && v.severity === 'warning') pSeverity[idx] = 'warning';
       });
-    }
-  } else {
-    // Levey-Jennings: full suite of SD lines
-    if (lim) {
-      var limDefs = [
-        ['+3SD (reject)', lim.ucl_3, '#e53935', [4,4], 1.2],
-        ['-3SD (reject)', lim.lcl_3, '#e53935', [4,4], 1.2],
-        ['+2SD (warn)',   lim.ucl_2, '#fb8c00', [6,3], 1.0],
-        ['-2SD (warn)',   lim.lcl_2, '#fb8c00', [6,3], 1.0],
-        ['+1SD',          lim.ucl_1, '#43a047', [2,4], 0.8],
-        ['-1SD',          lim.lcl_1, '#43a047', [2,4], 0.8],
-        ['Mean',          lim.mean,  '#212121', [],    1.2],
-      ];
-      limDefs.forEach(function (d) {
+    });
+
+    var ptColour = CHART_DATA.values.map(function (_, i) {
+      var st = statuses[i] || 'active';
+      if (st === 'superseded') return 'rgba(149,117,205,0.5)';
+      var sev = pSeverity[i] || 'ok';
+      return sev === 'reject' ? '#dc3545' : sev === 'warning' ? '#fd7e14' : '#428aaf';
+    });
+
+    var ptRadius = CHART_DATA.values.map(function (_, i) {
+      return pSeverity[i] ? 6 : 4;
+    });
+
+    var ptBorder = CHART_DATA.values.map(function (_, i) {
+      return statuses[i] === 'superseded' ? 'rgba(149,117,205,0.8)' : ptColour[i];
+    });
+
+    var limitDatasets = [];
+    function flat(y) { return CHART_DATA.labels.map(function () { return y; }); }
+
+    if (CHART_DATA.chart_type === 'threshold') {
+      var thresh = CHART_DATA.threshold !== null && CHART_DATA.threshold !== undefined
+                     ? CHART_DATA.threshold : CHART_DATA.target;
+      if (thresh !== null && thresh !== undefined) {
         limitDatasets.push({
-          label: d[0], data: flat(d[1]), borderColor: d[2],
-          borderDash: d[3], borderWidth: d[4],
+          label: 'Threshold (Reporting Limit)',
+          data: flat(thresh), borderColor: '#e53935', borderDash: [5,3],
+          borderWidth: 2, pointRadius: 0, fill: false, tension: 0,
+        });
+      }
+    } else {
+      if (lim) {
+        var limDefs = [
+          ['+3SD (reject)', lim.ucl_3, '#dc3545', [4,4], 1.2],
+          ['-3SD (reject)', lim.lcl_3, '#dc3545', [4,4], 1.2],
+          ['+2SD (warn)',   lim.ucl_2, '#fd7e14', [6,3], 1.0],
+          ['-2SD (warn)',   lim.lcl_2, '#fd7e14', [6,3], 1.0],
+          ['+1SD',          lim.ucl_1, '#28a745', [2,4], 0.8],
+          ['-1SD',          lim.lcl_1, '#28a745', [2,4], 0.8],
+          ['Mean',          lim.mean,  '#293333', [],    1.2],
+        ];
+        limDefs.forEach(function (d) {
+          limitDatasets.push({
+            label: d[0], data: flat(d[1]), borderColor: d[2],
+            borderDash: d[3], borderWidth: d[4],
+            pointRadius: 0, fill: false, tension: 0,
+          });
+        });
+      }
+      if (CHART_DATA.target !== null && CHART_DATA.target !== undefined) {
+        limitDatasets.push({
+          label: 'Target',
+          data: flat(CHART_DATA.target),
+          borderColor: '#8e24aa', borderDash: [8,4], borderWidth: 1,
           pointRadius: 0, fill: false, tension: 0,
         });
-      });
-    }
-    if (CHART_DATA.target !== null && CHART_DATA.target !== undefined) {
-      limitDatasets.push({
-        label: 'Target',
-        data: flat(CHART_DATA.target),
-        borderColor: '#8e24aa', borderDash: [8,4], borderWidth: 1,
-        pointRadius: 0, fill: false, tension: 0,
-      });
-    }
-  }
-
-  // ── Main data dataset ─────────────────────────────────────────────
-  var main = {
-    label: CHART_DATA.analyte + ' (' + CHART_DATA.qc_type + ')',
-    data: CHART_DATA.values,
-    borderColor: '#90a4ae', borderWidth: 1,
-    pointBackgroundColor: ptColour,
-    pointBorderColor:     ptBorder,
-    pointRadius:          ptRadius,
-    pointHoverRadius:     8,
-    tension: 0.15,
-    fill: false,
-    order: 0,
-  };
-
-  // ── Tooltip ───────────────────────────────────────────────────────
-  var tooltipPlugin = {
-    callbacks: {
-      afterBody: function (items) {
-        var idx    = items[0].dataIndex;
-        var batch  = (CHART_DATA.batch_ids  || [])[idx] || '';
-        var flag   = (CHART_DATA.flags      || [])[idx] || '';
-        var anly   = (CHART_DATA.analysts   || [])[idx] || '';
-        var inst   = (CHART_DATA.instruments|| [])[idx] || '';
-        var viol   = (CHART_DATA.violations || [])[idx] || '';
-        var status = (CHART_DATA.point_status||[])[idx] || '';
-        var lines  = [];
-        if (batch)  lines.push('Batch: '     + batch);
-        if (anly)   lines.push('Analyst: '   + anly);
-        if (inst)   lines.push('Instrument: '+ inst);
-        if (flag)   lines.push('Flag: '      + flag);
-        if (viol)   lines.push('Westgard: '  + viol);
-        if (status && status !== 'active') lines.push('Status: ' + status);
-        return lines;
       }
     }
-  };
 
-  new Chart(document.getElementById('qcChart'), {
-    type: 'line',
-    data: { labels: CHART_DATA.labels, datasets: [main].concat(limitDatasets) },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        tooltip: tooltipPlugin,
-        legend: { labels: { boxWidth: 12, font: { size: 11 } }, position: 'bottom' },
-      },
-      scales: {
-        x: {
-          type: 'category',
-          title: { display: true, text: 'Run Date', font: { size: 11 } },
-          ticks: { maxTicksLimit: 20, maxRotation: 45, font: { size: 10 } },
-          grid: { display: false },
-        },
-        y: {
-          title: { display: true, text: CHART_DATA.units || 'Value',
-                   font: { size: 11 } },
-          grid: { color: 'rgba(0,0,0,0.06)' },
-        },
-      },
-    },
-  });
-})();
-</script>
-</tal:script>
+    var main = {
+      label: CHART_DATA.analyte + ' (' + CHART_DATA.qc_type + ')',
+      data: CHART_DATA.values,
+      borderColor: '#90a4ae', borderWidth: 1,
+      pointBackgroundColor: ptColour,
+      pointBorderColor:     ptBorder,
+      pointRadius:          ptRadius,
+      pointHoverRadius:     8,
+      tension: 0.15,
+      fill: false,
+      order: 0,
+    };
 
+    var tooltipPlugin = {
+      callbacks: {
+        afterBody: function (items) {
+          var idx    = items[0].dataIndex;
+          var batch  = (CHART_DATA.batch_ids  || [])[idx] || '';
+          var flag   = (CHART_DATA.flags      || [])[idx] || '';
+          var anly   = (CHART_DATA.analysts   || [])[idx] || '';
+          var inst   = (CHART_DATA.instruments|| [])[idx] || '';
+          var viol   = (CHART_DATA.violations || [])[idx] || '';
+          var status = (CHART_DATA.point_status||[])[idx] || '';
+          var lines  = [];
+          if (batch)  lines.push('Batch: '     + batch);
+          if (anly)   lines.push('Analyst: '   + anly);
+          if (inst)   lines.push('Instrument: '+ inst);
+          if (flag)   lines.push('Flag: '      + flag);
+          if (viol)   lines.push('Westgard: '  + viol);
+          if (status && status !== 'active') lines.push('Status: ' + status);
+          return lines;
+        }
+      }
+    };
+
+    new Chart(document.getElementById('qcChart'), {
+      type: 'line',
+      data: { labels: CHART_DATA.labels, datasets: [main].concat(limitDatasets) },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          tooltip: tooltipPlugin,
+          legend: { labels: { boxWidth: 12, font: { size: 11 } }, position: 'bottom' },
+        },
+        scales: {
+          x: {
+            type: 'category',
+            title: { display: true, text: 'Run Date', font: { size: 11 } },
+            ticks: { maxTicksLimit: 20, maxRotation: 45, font: { size: 10 } },
+            grid: { display: false },
+          },
+          y: {
+            title: { display: true, text: CHART_DATA.units || 'Value', font: { size: 11 } },
+            grid: { color: 'rgba(0,0,0,0.06)' },
+          },
+        },
+      },
+    });
+  })();
+  </script>
+  </tal:script>
+  </div><!-- /content slot -->
 </body>
 </html>

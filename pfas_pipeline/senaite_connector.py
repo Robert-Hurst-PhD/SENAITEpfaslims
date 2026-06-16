@@ -133,6 +133,31 @@ class SenaiteConnector:
         )
         self._post(f"update/{batch_uid}", {"Remarks": text})
 
+    # ── Import Studio profile bridge ─────────────────────────────────────────
+    def get_instrument_profile(self, vendor_key: str, version: str = "") -> dict:
+        """
+        Fetch a saved Import Studio column-mapping profile from SENAITE.
+
+        Returns the profile dict ({"vendor": ..., "map": {...}, ...}) on success.
+        Returns {"error": "..."} when no profile has been saved for this
+        vendor_key+version — the importer should refuse and tell the user to open
+        Import Studio.
+
+        Raises requests.HTTPError / ConnectionError if SENAITE is unreachable.
+        In strict mode (Round 8 Q-012), callers do NOT catch this exception —
+        SENAITE downtime halts file processing.
+        """
+        params: dict = {"vendor_key": vendor_key}
+        if version:
+            params["version"] = version
+        r = self.session.get(
+            f"{self.base}/@@pfas-instrument-profile",
+            params=params,
+            timeout=self.timeout,
+        )
+        r.raise_for_status()
+        return r.json()
+
     # ── Reagents (barcode registry) ──────────────────────────────────────────
     def register_reagent(self, reagent: dict) -> Optional[str]:
         """

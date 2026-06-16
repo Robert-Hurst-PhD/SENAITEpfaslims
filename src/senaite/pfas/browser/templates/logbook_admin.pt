@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Logbook Management</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .lb-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .lb-table th { background:var(--s-light); color:var(--s-secondary);
+                   font-size:11px; font-weight:700; text-transform:uppercase;
+                   letter-spacing:.04em; padding:8px 10px; text-align:left;
+                   border-bottom:2px solid var(--s-border); }
+    .lb-table td { padding:9px 10px; border-bottom:1px solid var(--s-border);
+                   vertical-align:middle; }
+    .lb-table tr:hover td { background:var(--s-hover); }
+    .badge-builtin { background:#e3f2fd; color:#1565c0; font-size:11px;
+                     padding:2px 8px; border-radius:3px; font-weight:600; }
+    .badge-custom  { background:#f3e5f5; color:#6a1b9a; font-size:11px;
+                     padding:2px 8px; border-radius:3px; font-weight:600; }
+    .badge-off     { background:#f5f5f5; color:#9e9e9e; font-size:11px;
+                     padding:2px 8px; border-radius:3px; }
+    .btn { display:inline-block; padding:4px 10px; font-size:12px; font-weight:600;
+           border-radius:3px; cursor:pointer; border:1px solid transparent;
+           text-decoration:none; }
+    .btn-sm { padding:2px 8px; font-size:11px; }
+    .btn-primary   { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
+    .btn-secondary { background:var(--s-light); color:var(--s-body); border-color:var(--s-border); }
+    .btn-danger    { background:#ffebee; color:#c62828; border-color:#ef9a9a; }
+    .btn-primary:hover   { opacity:.9; }
+    .btn-secondary:hover { background:var(--s-border); }
+    .btn-danger:hover    { background:#ffcdd2; }
+    .inline-form { display:flex; gap:6px; align-items:center; }
+    .inline-input { padding:4px 8px; font-size:12px; border:1px solid var(--s-input-border);
+                    border-radius:3px; }
+    .add-card { background:var(--s-bg); border:1px solid var(--s-border);
+                border-radius:6px; padding:20px; margin-top:24px; }
+    .add-card h3 { font-size:13px; font-weight:700; color:var(--s-primary);
+                   margin:0 0 16px; padding-bottom:8px;
+                   border-bottom:1px solid var(--s-border); }
+    .form-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .form-group { display:flex; flex-direction:column; gap:4px; }
+    .form-group label { font-size:11px; font-weight:700; color:var(--s-secondary);
+                        text-transform:uppercase; letter-spacing:.04em; }
+    .form-group input { padding:7px 10px; font-size:13px;
+                        border:1px solid var(--s-input-border); border-radius:4px; }
+    .form-group input.wide { min-width:280px; }
+    .hint { font-size:11px; color:var(--s-secondary); margin-top:2px; }
+    .alert-saved { background:#e8f5e9; border:1px solid #a5d6a7; color:#2e7d32;
+                   padding:10px 14px; border-radius:4px; margin-bottom:14px;
+                   font-size:13px; font-weight:600; }
+    .move-btns { display:flex; gap:3px; }
+    .toggle-off { opacity:.5; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Logbook Management</tal:t>
+
+  <div metal:fill-slot="content">
+  <div style="max-width:900px;margin:0 auto;">
+
+    <tal:saved tal:condition="view/saved">
+      <div class="alert-saved">Changes saved.</div>
+    </tal:saved>
+
+    <p style="font-size:13px;color:var(--s-secondary);margin-bottom:20px;">
+      Rename logbooks, change form numbers, reorder, toggle visibility, or add
+      new custom logbooks.  Built-in logbooks cannot be deleted but can be
+      renamed or hidden.
+    </p>
+
+    <!-- Logbook list -->
+    <table class="lb-table">
+      <thead>
+        <tr>
+          <th>Order</th>
+          <th>Form #</th>
+          <th>Title</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr tal:repeat="lb view/logbook_defs">
+
+          <!-- Move up/down -->
+          <td>
+            <div class="move-btns">
+              <form method="POST" tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                <input type="hidden" name="action" value="move_up"/>
+                <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                <button type="submit" class="btn btn-secondary btn-sm"
+                        tal:condition="not:repeat/lb/start">&#8593;</button>
+              </form>
+              <form method="POST" tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                <input type="hidden" name="action" value="move_down"/>
+                <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                <button type="submit" class="btn btn-secondary btn-sm"
+                        tal:condition="not:repeat/lb/end">&#8595;</button>
+              </form>
+            </div>
+          </td>
+
+          <!-- Inline rename form -->
+          <td>
+            <form class="inline-form" method="POST"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+              <input type="hidden" name="action" value="rename"/>
+              <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+              <input class="inline-input" style="width:90px" type="text"
+                     name="form_num" tal:attributes="value lb/form_num"/>
+            </form>
+          </td>
+          <td>
+            <form class="inline-form" method="POST"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin"
+                  id="rename-form-${lb/slug}">
+              <input type="hidden" name="action" value="rename"/>
+              <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+              <input class="inline-input wide" type="text"
+                     name="title" tal:attributes="value lb/title"/>
+              <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            </form>
+          </td>
+
+          <td>
+            <span class="badge-builtin" tal:condition="lb/builtin">Built-in</span>
+            <span class="badge-custom"  tal:condition="not:lb/builtin">Custom</span>
+          </td>
+
+          <td>
+            <span tal:condition="lb/active" class="badge-builtin">Active</span>
+            <span tal:condition="not:lb/active" class="badge-off">Hidden</span>
+          </td>
+
+          <td>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <!-- Toggle active -->
+              <form method="POST"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                <input type="hidden" name="action" value="toggle"/>
+                <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                <button type="submit" class="btn btn-secondary btn-sm"
+                        tal:content="python:'Hide' if lb.get('active') else 'Show'">
+                  Hide
+                </button>
+              </form>
+              <!-- Delete (custom only) -->
+              <form method="POST"
+                    tal:condition="not:lb/builtin"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin"
+                    onsubmit="return confirm('Delete this logbook definition? Existing data on batches is preserved.')">
+                <input type="hidden" name="action" value="delete"/>
+                <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+              </form>
+            </div>
+          </td>
+
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Add new logbook -->
+    <div class="add-card">
+      <h3><i class="fas fa-plus"></i> Add New Logbook</h3>
+      <form method="POST"
+            tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+        <input type="hidden" name="action" value="add"/>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Form Number</label>
+            <input class="inline-input" type="text" name="new_form_num"
+                   placeholder="e.g. FM-ENV-260"/>
+          </div>
+          <div class="form-group">
+            <label>Logbook Title</label>
+            <input class="inline-input wide" type="text" name="new_title"
+                   placeholder="e.g. SPE Cartridge Log" required="required"/>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:14px;">
+          <label>Table Columns <span style="font-weight:400;">(comma-separated, optional)</span></label>
+          <input class="inline-input" style="min-width:420px;" type="text"
+                 name="new_columns"
+                 placeholder="e.g. Lot Number, Expiry Date, Count Used, Analyst Initials"/>
+          <span class="hint">
+            Defines columns in the data table.  Leave blank for a notes-only logbook.
+          </span>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Logbook</button>
+      </form>
+    </div>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

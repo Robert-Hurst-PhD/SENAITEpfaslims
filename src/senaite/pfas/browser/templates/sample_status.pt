@@ -1,239 +1,178 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml"
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PFAS Batch Status</title>
+  <title metal:fill-slot="title">PFAS Batch Status</title>
+  <tal:styles metal:fill-slot="head-extra">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           font-size: 14px; background: #f5f5f5; color: #212121; }
+    /* ── Batch status page-specific ────────────────────────────────────── */
+    .lead { color: var(--s-secondary); margin-bottom: 20px; font-size: 13px; }
 
-    .page-header { background: #1a237e; color: #fff; padding: 14px 24px;
-                   display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    .page-header h1 { font-size: 18px; font-weight: 600; }
-    .page-header a  { color: #c5cae9; font-size: 12px; text-decoration: none; }
-    .page-header a:hover { text-decoration: underline; }
-
-    .page-body { max-width: 1100px; margin: 0 auto; padding: 24px; }
-
-    .lead { color: #546e7a; margin-bottom: 20px; font-size: 13px; }
-
-    /* ── Batch cards ─────────────────────────────────────────────────── */
     .batches { display: flex; flex-direction: column; gap: 16px; }
 
-    .batch-card {
-      background: #fff; border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.10); overflow: hidden;
-    }
+    .batch-card { background: var(--s-bg); border-radius: 8px;
+                  border: 1px solid var(--s-border);
+                  box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; }
 
-    .batch-header {
-      padding: 10px 18px; background: #f8f9fa;
-      border-bottom: 1px solid #e0e0e0;
-      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    }
-    .batch-id  { font-family: monospace; font-size: 13px; color: #1565c0;
-                 background: #e3f2fd; padding: 2px 8px; border-radius: 3px;
+    .batch-header { padding: 10px 18px; background: var(--s-light);
+                    border-bottom: 1px solid var(--s-border);
+                    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .batch-id  { font-family: monospace; font-size: 13px; color: var(--s-primary);
+                 background: var(--s-primary-lt); padding: 2px 8px; border-radius: 3px;
                  font-weight: 700; }
-    .batch-method { font-size: 12px; color: #546e7a; }
-    .batch-date { font-size: 12px; color: #9e9e9e; margin-left: auto; }
+    .batch-method { font-size: 12px; color: var(--s-secondary); }
+    .batch-date { font-size: 12px; color: var(--s-secondary); margin-left: auto; }
 
     .batch-body { padding: 14px 18px; }
 
-    /* ── Progress steps ──────────────────────────────────────────────── */
-    .progress-steps {
-      display: flex; align-items: flex-start;
-      margin-bottom: 14px; position: relative;
-    }
-
-    .step {
-      flex: 1; display: flex; flex-direction: column; align-items: center;
-      position: relative;
-    }
-
-    /* Connector line between dots */
+    .progress-steps { display: flex; align-items: flex-start; margin-bottom: 14px; position: relative; }
+    .step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
     .step:not(:last-child)::after {
-      content: "";
-      position: absolute; top: 13px; left: 50%; right: -50%;
-      height: 2px; background: #e0e0e0; z-index: 0;
+      content: ""; position: absolute; top: 13px; left: 50%; right: -50%;
+      height: 2px; background: var(--s-border); z-index: 0;
     }
-    .step.done::after  { background: #1565c0; }
-    .step.current::after { background: #e0e0e0; }
+    .step.done::after { background: var(--s-primary); }
+    .step-dot { width: 28px; height: 28px; border-radius: 50%;
+                border: 2px solid var(--s-border); background: var(--s-bg);
+                display: flex; align-items: center; justify-content: center;
+                font-size: 11px; font-weight: 700; color: var(--s-secondary);
+                position: relative; z-index: 1; }
+    .step.done    .step-dot { background: var(--s-primary); border-color: var(--s-primary); color: #fff; }
+    .step.current .step-dot { background: var(--s-bg); border-color: var(--s-primary);
+                               color: var(--s-primary);
+                               box-shadow: 0 0 0 4px var(--s-focus-ring); }
+    .step-label { font-size: 10px; color: var(--s-secondary); text-align: center;
+                  margin-top: 5px; line-height: 1.3; padding: 0 2px; }
+    .step.done    .step-label { color: var(--s-primary); }
+    .step.current .step-label { color: var(--s-primary); font-weight: 700; }
 
-    .step-dot {
-      width: 28px; height: 28px; border-radius: 50%;
-      border: 2px solid #e0e0e0; background: #fff;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: #bdbdbd;
-      position: relative; z-index: 1;
-    }
-    .step.done .step-dot {
-      background: #1565c0; border-color: #1565c0; color: #fff;
-    }
-    .step.current .step-dot {
-      background: #fff; border-color: #1565c0; color: #1565c0;
-      box-shadow: 0 0 0 4px rgba(21,101,192,.14);
-    }
+    .batch-meta { display: flex; gap: 24px; flex-wrap: wrap; font-size: 12px;
+                  color: var(--s-secondary); margin-bottom: 8px; }
+    .meta-item strong { color: var(--s-body); }
 
-    .step-label {
-      font-size: 10px; color: #9e9e9e; text-align: center;
-      margin-top: 5px; line-height: 1.3; padding: 0 2px;
-    }
-    .step.done    .step-label { color: #1565c0; }
-    .step.current .step-label { color: #1565c0; font-weight: 700; }
-
-    /* ── Metadata row ────────────────────────────────────────────────── */
-    .batch-meta {
-      display: flex; gap: 24px; flex-wrap: wrap; font-size: 12px;
-      color: #546e7a; margin-bottom: 8px;
-    }
-    .meta-item strong { color: #212121; }
-
-    /* ── Stage badge ─────────────────────────────────────────────────── */
-    .stage-badge {
-      display: inline-block; font-size: 11px; font-weight: 700;
-      padding: 2px 9px; border-radius: 10px; text-transform: uppercase;
-      letter-spacing: .03em;
-    }
-    .stage-1 { background: #e3f2fd; color: #1565c0; }
-    .stage-2 { background: #fff8e1; color: #f57f17; }
-    .stage-3 { background: #fce4ec; color: #880e4f; }
+    .stage-badge { display: inline-block; font-size: 11px; font-weight: 700;
+                   padding: 2px 9px; border-radius: 10px; text-transform: uppercase;
+                   letter-spacing: .03em; }
+    .stage-1 { background: var(--s-primary-lt); color: var(--s-primary); }
+    .stage-2 { background: #fff3cd; color: #856404; }
+    .stage-3 { background: #f8d7da; color: #721c24; }
     .stage-4 { background: #f3e5f5; color: #6a1b9a; }
-    .stage-5 { background: #e8f5e9; color: #1b5e20; }
+    .stage-5 { background: #d4edda; color: #155724; }
 
-    /* ── Sample list ─────────────────────────────────────────────────── */
     details { margin-top: 6px; }
-    summary {
-      cursor: pointer; font-size: 11px; color: #1565c0;
-      user-select: none; outline: none; list-style: none;
-    }
+    summary { cursor: pointer; font-size: 11px; color: var(--s-primary);
+              user-select: none; outline: none; list-style: none; }
     summary::-webkit-details-marker { display: none; }
-    summary::before { content: "▶ "; font-size: 9px; }
-    details[open] summary::before { content: "▼ "; }
-    .sample-list {
-      margin-top: 6px; font-family: monospace; font-size: 11px;
-      color: #616161; line-height: 1.8; padding-left: 4px;
-    }
+    summary::before { content: "\25B6 "; font-size: 9px; }
+    details[open] summary::before { content: "\25BC "; }
+    .sample-list { margin-top: 6px; font-family: monospace; font-size: 11px;
+                   color: var(--s-secondary); line-height: 1.8; padding-left: 4px; }
 
-    /* ── Extraction detail ───────────────────────────────────────────── */
-    .extraction-info {
-      margin-top: 6px; font-size: 11px; color: #616161;
-      background: #fafafa; border: 1px solid #f0f0f0;
-      border-radius: 4px; padding: 6px 10px; display: inline-block;
-    }
+    .extraction-info { margin-top: 6px; font-size: 11px; color: var(--s-secondary);
+                       background: var(--s-light); border: 1px solid var(--s-border);
+                       border-radius: 4px; padding: 6px 10px; display: inline-block; }
 
-    .empty-state {
-      text-align: center; color: #9e9e9e; padding: 48px 0; font-size: 13px;
-    }
+    .empty-state { text-align: center; color: var(--s-secondary); padding: 48px 0; font-size: 13px; }
   </style>
+  </tal:styles>
 </head>
 <body>
+  <tal:t metal:fill-slot="header-title">PFAS Batch Status</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-method-profiles">
+      Method Profiles
+    </a>
+    <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-control-chart">
+      Control Charts
+    </a>
+    <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-track">
+      Client Tracker
+    </a>
+  </tal:r>
 
-<div class="page-header">
-  <h1>PFAS Batch Status</h1>
-  <a tal:attributes="href string:${view/portal_url}/@@pfas-method-profiles">
-    Method Profiles
-  </a>
-  <a tal:attributes="href string:${view/portal_url}/@@pfas-control-chart">
-    Control Charts
-  </a>
-  <a tal:attributes="href string:${view/portal_url}/@@pfas-track">
-    Client Tracker
-  </a>
-</div>
+  <div metal:fill-slot="content">
+  <div class="page-body">
 
-<div class="page-body">
-  <p class="lead">
-    Real-time batch progress — stage is computed from SENAITE worksheet
-    workflow state and extraction logs.  Batches are sorted newest first.
-  </p>
+    <p class="lead">
+      Real-time batch progress &#8212; stage is computed from SENAITE worksheet
+      workflow state and extraction logs. Batches are sorted newest first.
+    </p>
 
-  <!-- No batches -->
-  <div class="empty-state" tal:condition="not:view/batches">
-    No worksheets found.  Create a worksheet in SENAITE to begin tracking.
-  </div>
+    <div class="empty-state" tal:condition="not:view/batches">
+      No worksheets found. Create a worksheet in SENAITE to begin tracking.
+    </div>
 
-  <!-- Batch cards -->
-  <div class="batches" tal:condition="view/batches">
+    <div class="batches" tal:condition="view/batches">
 
-    <div class="batch-card" tal:repeat="b view/batches">
+      <div class="batch-card" tal:repeat="b view/batches">
 
-      <!-- Card header -->
-      <div class="batch-header">
-        <span class="batch-id" tal:content="b/batch_id">WS-001</span>
-        <span class="batch-method" tal:content="b/method"></span>
-        <span class="batch-date" tal:content="b/created">2026-06-11</span>
+        <div class="batch-header">
+          <span class="batch-id"     tal:content="b/batch_id">WS-001</span>
+          <span class="batch-method" tal:content="b/method"></span>
+          <span class="batch-date"   tal:content="b/created">2026-06-11</span>
+        </div>
+
+        <div class="batch-body">
+
+          <div class="progress-steps">
+            <div tal:repeat="step b/steps"
+                 tal:attributes="class string:step ${step/status}">
+              <div class="step-dot" tal:content="step/num">1</div>
+              <div class="step-label" tal:content="step/label">Received</div>
+            </div>
+          </div>
+
+          <div class="batch-meta">
+
+            <div class="meta-item">
+              <span tal:attributes="class string:stage-badge stage-${b/stage}"
+                    tal:content="b/stage_label">Received</span>
+            </div>
+
+            <div class="meta-item" tal:condition="b/responsible">
+              Responsible: <strong tal:content="b/responsible">Jane Smith</strong>
+            </div>
+
+            <div class="meta-item" tal:condition="b/sample_count">
+              Samples: <strong tal:content="b/sample_count">18</strong>
+            </div>
+
+            <div class="meta-item">
+              WS state: <strong tal:content="b/ws_state">open</strong>
+            </div>
+
+          </div>
+
+          <div class="extraction-info" tal:condition="b/extraction_started">
+            Extraction started:
+            <strong tal:content="b/extraction_started">2026-06-11 09:14</strong>
+            <tal:done tal:condition="b/extraction_completed">
+              &mdash; completed:
+              <strong tal:content="b/extraction_completed">2026-06-11 11:30</strong>
+            </tal:done>
+            <tal:inprog tal:condition="not:b/extraction_completed">
+              &mdash; <em>in progress</em>
+            </tal:inprog>
+          </div>
+
+          <details tal:condition="b/sample_ids">
+            <summary tal:content="string:Show ${b/sample_count} samples">
+              Show samples
+            </summary>
+            <div class="sample-list">
+              <tal:sid tal:repeat="sid b/sample_ids">
+                <tal:content tal:content="sid">AR-001</tal:content><tal:comma tal:condition="not:repeat/sid/end">,  </tal:comma>
+              </tal:sid>
+            </div>
+          </details>
+
+        </div>
       </div>
 
-      <!-- Card body -->
-      <div class="batch-body">
-
-        <!-- Five-stage progress indicator -->
-        <div class="progress-steps">
-          <div tal:repeat="step b/steps"
-               tal:attributes="class string:step ${step/status}">
-            <div class="step-dot" tal:content="step/num">1</div>
-            <div class="step-label" tal:content="step/label">Received</div>
-          </div>
-        </div>
-
-        <!-- Metadata row -->
-        <div class="batch-meta">
-
-          <div class="meta-item">
-            <span tal:attributes="class string:stage-badge stage-${b/stage}"
-                  tal:content="b/stage_label">Received</span>
-          </div>
-
-          <div class="meta-item" tal:condition="b/responsible">
-            Responsible: <strong tal:content="b/responsible">Jane Smith</strong>
-          </div>
-
-          <div class="meta-item" tal:condition="b/sample_count">
-            Samples:
-            <strong tal:content="b/sample_count">18</strong>
-          </div>
-
-          <div class="meta-item">
-            WS state:
-            <strong tal:content="b/ws_state">open</strong>
-          </div>
-
-        </div>
-
-        <!-- Extraction log detail (only if a log exists) -->
-        <div class="extraction-info"
-             tal:condition="b/extraction_started">
-          Extraction started:
-          <strong tal:content="b/extraction_started">2026-06-11 09:14</strong>
-          <tal:done tal:condition="b/extraction_completed">
-            &mdash; completed:
-            <strong tal:content="b/extraction_completed">2026-06-11 11:30</strong>
-          </tal:done>
-          <tal:inprog tal:condition="not:b/extraction_completed">
-            &mdash; <em>in progress</em>
-          </tal:inprog>
-        </div>
-
-        <!-- Collapsible sample list -->
-        <details tal:condition="b/sample_ids">
-          <summary tal:content="string:Show ${b/sample_count} samples">
-            Show samples
-          </summary>
-          <div class="sample-list">
-            <tal:sid tal:repeat="sid b/sample_ids">
-              <tal:content tal:content="sid">AR-001</tal:content><tal:comma tal:condition="not:repeat/sid/end">,  </tal:comma>
-            </tal:sid>
-          </div>
-        </details>
-
-      </div><!-- /.batch-body -->
-    </div><!-- /.batch-card -->
-
-  </div><!-- /.batches -->
-</div><!-- /.page-body -->
-
+    </div>
+  </div>
+  </div><!-- /content slot -->
 </body>
 </html>

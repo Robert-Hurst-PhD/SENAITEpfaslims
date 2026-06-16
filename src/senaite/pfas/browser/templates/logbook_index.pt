@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Logbooks</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .lb-card {
+      display: flex; align-items: center; gap: 20px;
+      padding: 18px 22px; border: 1px solid var(--s-border);
+      border-radius: 10px; margin-bottom: 12px; background: var(--s-bg);
+      text-decoration: none; color: inherit;
+    }
+    .lb-card:hover { background: #f8f9fa; border-color: var(--s-primary); }
+    .lb-num {
+      font-size: 11px; font-weight: 700; color: var(--s-secondary);
+      background: #e9ecef; padding: 3px 10px; border-radius: 8px;
+      white-space: nowrap;
+    }
+    .lb-title { font-size: 14px; font-weight: 600; flex: 1; }
+    .lb-badge-ok      { font-size: 11px; background: #d4edda; color: #155724;
+                        padding: 2px 10px; border-radius: 8px; white-space: nowrap; }
+    .lb-badge-pending { font-size: 11px; background: #f8f9fa; color: var(--s-secondary);
+                        border: 1px solid var(--s-border); padding: 2px 10px;
+                        border-radius: 8px; white-space: nowrap; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">
+    Batch Logbooks
+  </tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <span class="header-meta"
+          tal:content="view/batch_title">Batch</span>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <p style="font-size:13px; color:var(--s-body); margin-bottom:24px;">
+      Logbooks for this batch.  Fill them in on the bench or tablet before
+      extraction and instrument run.
+      <a tal:attributes="href view/admin_url"
+         style="margin-left:12px;font-size:12px;color:var(--s-secondary);">
+        <i class="fas fa-cog"></i> Manage logbooks
+      </a>
+    </p>
+
+    <tal:lbs tal:repeat="lb view/logbooks">
+      <a class="lb-card" tal:attributes="href lb/url">
+        <span class="lb-num" tal:content="lb/num">250</span>
+        <span class="lb-title" tal:content="lb/title">Logbook</span>
+        <span class="lb-badge-ok"
+              tal:condition="lb/filled">Data entered</span>
+        <span class="lb-badge-pending"
+              tal:condition="not:lb/filled">Pending</span>
+        <span style="color:var(--s-secondary);">&#8594;</span>
+      </a>
+    </tal:lbs>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

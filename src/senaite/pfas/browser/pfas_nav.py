@@ -58,6 +58,20 @@ class PFASDashboardTilesViewlet(ViewletBase):
             'icon':  'fa-toggle-on',
         },
         {
+            'id':    'reagents',
+            'title': 'Reagent Inventory',
+            'desc':  'ISO 17025 lot/expiry tracking with barcode scan & OCR',
+            'view':  '@@pfas-reagents',
+            'icon':  'fa-flask',
+        },
+        {
+            'id':    'import-studio',
+            'title': 'Import Studio',
+            'desc':  'Guided instrument column-mapping & profile editor',
+            'view':  '@@pfas-import-studio',
+            'icon':  'fa-file-import',
+        },
+        {
             'id':    'sample-tracker',
             'title': 'Sample Tracker',
             'desc':  'Public client-facing sample progress lookup',
@@ -71,12 +85,45 @@ class PFASDashboardTilesViewlet(ViewletBase):
             'view':  '@@pfas-setup-references',
             'icon':  'fa-sync-alt',
         },
+        {
+            'id':    'extraction-guide',
+            'title': 'Extraction Guide',
+            'desc':  'Step-by-step tablet workflow for extraction analysts',
+            'view':  '@@pfas-extraction-guide',
+            'icon':  'fa-microscope',
+        },
+        {
+            'id':    'logbooks',
+            'title': 'Logbooks',
+            'desc':  'Manage and customise per-batch regulatory logbooks',
+            'view':  '@@pfas-logbook-admin',
+            'icon':  'fa-book',
+        },
+        {
+            'id':    'egad-config',
+            'title': 'EGAD EDD Config',
+            'desc':  'Maine DEP EGAD EDD v6.0 submission settings',
+            'view':  '@@pfas-egad-config',
+            'icon':  'fa-file-export',
+        },
+        {
+            'id':    'egad-batches',
+            'title': 'Batch EDDs',
+            'desc':  'Download EDD files and set per-sample SAMPLE_TYPE',
+            'view':  '@@pfas-egad-batches',
+            'icon':  'fa-download',
+        },
     ]
 
     def portal_url(self):
         return _portal_url(self.context)
 
     def tiles(self):
+        from AccessControl import getSecurityManager
+        user = getSecurityManager().getUser()
+        # Hide PFAS tools section for unauthenticated users (login page, public views)
+        if 'Authenticated' not in user.getRoles():
+            return []
         base = _portal_url(self.context)
         result = []
         for t in self.TILES:

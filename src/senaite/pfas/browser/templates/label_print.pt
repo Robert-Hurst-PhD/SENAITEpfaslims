@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal">
+<!--
+  Standalone label page — no PFAS METAL macro (this page IS the printed output).
+  Open in a popup; analyst presses Ctrl+P to print to label printer.
+-->
+<head>
+  <meta charset="utf-8" />
+  <title tal:content="string:Label: ${view/name}">Label</title>
+  <style>
+    /* ── Screen UI (hidden when printing) ─────────────────── */
+    @media screen {
+      body { font-family: Arial, sans-serif; background: #f0f0f0;
+             margin: 0; padding: 16px; }
+      .screen-ui { background: #fff; border-radius: 10px; padding: 16px;
+                   max-width: 500px; margin: 0 auto 20px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+      .screen-ui h2 { font-size: 15px; margin: 0 0 12px; color: #1a1a2e; }
+      .size-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+      .size-row label { font-size: 13px; font-weight: 600; }
+      .size-row select { padding: 6px 8px; font-size: 13px; border: 1px solid #ccc;
+                         border-radius: 5px; }
+      .custom-size { display: none; gap: 8px; align-items: center; font-size: 13px; }
+      .custom-size input { width: 70px; padding: 5px 8px; border: 1px solid #ccc;
+                           border-radius: 5px; font-size: 13px; }
+      .btn-print { padding: 10px 24px; background: #1a73e8; color: #fff;
+                   border: none; border-radius: 7px; font-size: 14px;
+                   font-weight: 700; cursor: pointer; }
+      .btn-print:hover { background: #1557b0; }
+      .btn-back  { padding: 10px 18px; background: #f0f0f0; color: #333;
+                   border: 1px solid #ccc; border-radius: 7px; font-size: 13px;
+                   cursor: pointer; text-decoration: none; display: inline-block; }
+      .preview-label { margin: 16px auto; border: 2px dashed #ccc; border-radius: 4px;
+                       background: #fff; box-sizing: border-box; }
+    }
+
+    /* ── Label body (both screen and print) ────────────────── */
+    .label-body { display: none; } /* hidden until size is chosen */
+
+    @media print {
+      .screen-ui { display: none !important; }
+      body { margin: 0; padding: 0; background: #fff; }
+      .label-body { display: block !important; }
+    }
+
+    /* ── Label content styles ──────────────────────────────── */
+    .label-wrap { width: 100%; height: 100%; padding: 4mm; box-sizing: border-box;
+                  font-family: Arial, Helvetica, sans-serif; overflow: hidden;
+                  display: flex; flex-direction: column; justify-content: space-between; }
+    .label-name  { font-size: 12pt; font-weight: 800; color: #000;
+                   border-bottom: 1pt solid #000; margin-bottom: 2mm; padding-bottom: 1mm;
+                   line-height: 1.2; }
+    .label-name.small { font-size: 9pt; }
+    .label-row   { display: flex; justify-content: space-between; align-items: center;
+                   margin-bottom: 1mm; }
+    .label-kv    { font-size: 7.5pt; color: #000; }
+    .label-kv b  { font-size: 8pt; }
+    .label-lot   { font-size: 9pt; font-weight: 700; color: #000; }
+    .label-exp   { font-size: 8pt; font-weight: 700; }
+    .label-exp.warn   { color: #7a5c00; }
+    .label-exp.danger { color: #9b1c1c; }
+    .label-barcode-wrap { margin: 1mm 0; text-align: center; }
+    .label-barcode-wrap svg { max-width: 100%; height: auto; }
+    .label-footer { font-size: 6pt; color: #555; border-top: 0.5pt solid #ccc;
+                    padding-top: 1mm; }
+    .label-storage { font-size: 7pt; font-weight: 700; background: #000; color: #fff;
+                     padding: 0 2mm; border-radius: 1mm; display: inline-block; }
+    /* Large-format extras */
+    .label-big .label-name { font-size: 16pt; }
+    .label-big .label-kv   { font-size: 9pt; }
+    .label-big .label-lot  { font-size: 12pt; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Screen UI ─────────────────────────────────────────────── -->
+  <div class="screen-ui">
+    <h2>&#127991; Print Reagent Label</h2>
+
+    <div class="size-row">
+      <label for="size-sel">Label Size:</label>
+      <select id="size-sel" onchange="applySize()">
+        <tal:opts tal:repeat="size view/label_sizes">
+          <option tal:attributes="value python:size[0];
+                                  selected python:view.label_size()==size[0]"
+                  tal:content="python:size[1]"></option>
+        </tal:opts>
+      </select>
+    </div>
+
+    <div class="custom-size" id="custom-row">
+      <label>W:</label>
+      <input type="number" id="custom-w" value="50" min="10" max="300" step="1" />
+      <span>mm &nbsp; H:</span>
+      <input type="number" id="custom-h" value="25" min="10" max="300" step="1" />
+      <span>mm</span>
+      <button onclick="applySize()" style="padding:4px 10px;font-size:12px;
+              border:1px solid #1a73e8;color:#1a73e8;background:#fff;
+              border-radius:5px;cursor:pointer;">Apply</button>
+    </div>
+
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn-print" onclick="window.print()">&#128424; Print Label</button>
+      <a class="btn-back"
+         tal:attributes="href view/back_url">&#8592; Back</a>
+    </div>
+
+    <!-- Screen preview (just shows the label at scale) -->
+    <div class="preview-label" id="preview-frame" style="max-height:200px;overflow:hidden;">
+    </div>
+  </div>
+
+  <!-- ── Printable label (shown on print, hidden on screen until rendered) ── -->
+  <div class="label-body" id="label-body">
+    <div class="label-wrap" id="label-wrap">
+
+      <div class="label-name" id="label-name-el"
+           tal:content="view/name">Reagent Name</div>
+
+      <div class="label-row">
+        <span class="label-lot">Lot: <tal:v tal:replace="view/lot">—</tal:v></span>
+        <span class="label-storage"
+              tal:content="view/storage">-20°C</span>
+      </div>
+
+      <tal:conc tal:condition="view/conc">
+      <div class="label-kv">
+        <b>Conc:</b> <tal:v tal:replace="view/conc" />
+        <tal:vol tal:condition="view/vol">
+          &nbsp;&nbsp;<b>Vol:</b> <tal:v tal:replace="view/vol" />
+        </tal:vol>
+      </div>
+      </tal:conc>
+
+      <div class="label-barcode-wrap" id="barcode-wrap"></div>
+
+      <div class="label-row" style="flex-wrap:wrap;gap:4mm;">
+        <span class="label-kv" tal:condition="view/prep_date">
+          <b>Prep:</b> <tal:v tal:replace="view/prep_date" />
+        </span>
+        <span class="label-kv" id="exp-el"
+              tal:condition="view/exp">
+          <b>Exp:</b> <tal:v tal:replace="view/exp" />
+        </span>
+        <span class="label-kv" tal:condition="view/analyst">
+          <b>By:</b> <tal:v tal:replace="view/analyst" />
+        </span>
+        <span class="label-kv" tal:condition="view/method">
+          <b>Method:</b> <tal:v tal:replace="view/method" />
+        </span>
+      </div>
+
+      <div class="label-footer">
+        PFAS Laboratory &mdash; generated by LIMS
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+  var SIZES = <tal:s tal:replace="structure view/size_dict_json" />;
+
+  var LOT = "<tal:l tal:replace="view/lot" />";
+  var EXP = "<tal:e tal:replace="view/exp" />";
+  var NAME_LEN = <tal:n tal:replace="python:len(view.name())" />;
+
+  /* ── Expiry colour ─────────────────────────────────────────── */
+  function colorExp() {
+    var el = document.getElementById('exp-el');
+    if (!el || !EXP) return;
+    var d = new Date(EXP);
+    var now = new Date();
+    if (d < now) {
+      el.className = 'label-kv label-exp danger';
+    } else if ((d - now) < 30 * 24 * 3600 * 1000) {
+      el.className = 'label-kv label-exp warn';
+    }
+  }
+
+  /* ── Barcode rendering (JsBarcode) ─────────────────────────── */
+  function renderBarcode() {
+    if (!LOT || typeof JsBarcode === 'undefined') return;
+    var wrap = document.getElementById('barcode-wrap');
+    wrap.innerHTML = '<svg id="bc"></svg>';
+    try {
+      JsBarcode('#bc', LOT, {
+        format:       'CODE128',
+        width:        1.5,
+        height:       28,
+        displayValue: true,
+        fontSize:     9,
+        margin:       2,
+      });
+    } catch(e) {
+      wrap.innerHTML = '';
+    }
+  }
+
+  /* ── Label name sizing ─────────────────────────────────────── */
+  function setNameSize() {
+    var el = document.getElementById('label-name-el');
+    if (!el) return;
+    if (NAME_LEN > 40) el.className = 'label-name small';
+  }
+
+  /* ── Apply size to DOM ─────────────────────────────────────── */
+  function applySize() {
+    var sel = document.getElementById('size-sel');
+    var sid = sel ? sel.value : '2x1';
+    var custom = document.getElementById('custom-row');
+    if (sid === 'custom') {
+      custom.style.display = 'flex';
+    } else {
+      custom.style.display = 'none';
+    }
+
+    var w_mm, h_mm;
+    if (sid === 'custom') {
+      w_mm = parseFloat(document.getElementById('custom-w').value) || 50;
+      h_mm = parseFloat(document.getElementById('custom-h').value) || 25;
+    } else {
+      var s = SIZES[sid];
+      w_mm = s ? s.w : 50.8;
+      h_mm = s ? s.h : 25.4;
+    }
+
+    /* Apply @page size for print */
+    var styleId = 'page-size-style';
+    var existing = document.getElementById(styleId);
+    if (existing) existing.remove();
+    var style = document.createElement('style');
+    style.id = styleId;
+    var isFullPage = (h_mm > 200);
+    if (isFullPage) {
+      style.textContent =
+        '@page { size: ' + w_mm + 'mm ' + h_mm + 'mm; margin: 10mm; }' +
+        '#label-wrap { padding: 8mm; }' +
+        '.label-name { font-size: 20pt; }' +
+        '.label-kv { font-size: 11pt; }';
+    } else {
+      style.textContent =
+        '@page { size: ' + w_mm + 'mm ' + h_mm + 'mm; margin: 0; }';
+    }
+    document.head.appendChild(style);
+
+    /* Screen preview: scale to fit the preview frame */
+    var body = document.getElementById('label-body');
+    var wrap = document.getElementById('label-wrap');
+    if (wrap) {
+      wrap.style.width  = w_mm + 'mm';
+      wrap.style.height = h_mm + 'mm';
+    }
+
+    var frame = document.getElementById('preview-frame');
+    if (frame) {
+      frame.style.width  = (w_mm * 2) + 'px';  /* rough screen px */
+      frame.style.height = (h_mm * 2) + 'px';
+      frame.innerHTML = '';
+      var clone = body.cloneNode(true);
+      clone.style.display = 'block';
+      clone.style.transform = 'scale(0.7)';
+      clone.style.transformOrigin = 'top left';
+      frame.appendChild(clone);
+    }
+
+    body.style.display = 'block';
+    renderBarcode();
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    colorExp();
+    setNameSize();
+    applySize();
+  });
+  </script>
+
+  <!-- JsBarcode for CODE128 rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+</body>
+</html>

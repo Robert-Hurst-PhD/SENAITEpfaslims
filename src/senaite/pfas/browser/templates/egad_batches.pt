@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">EGAD EDD — Batches</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .page-header { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .page-header h2 { font-size:16px; font-weight:700; color:var(--s-primary); margin:0; }
+    .back-link { font-size:12px; color:var(--s-secondary); text-decoration:none; }
+    .back-link:hover { text-decoration:underline; }
+
+    /* Batch list */
+    .batch-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .batch-table th { background:var(--s-light); color:var(--s-secondary);
+                      font-size:11px; font-weight:700; text-transform:uppercase;
+                      letter-spacing:.04em; padding:8px 10px; text-align:left;
+                      border-bottom:2px solid var(--s-border); }
+    .batch-table td { padding:9px 10px; border-bottom:1px solid var(--s-border);
+                      vertical-align:middle; }
+    .batch-table tr:hover td { background:var(--s-hover); }
+    .badge { display:inline-block; padding:2px 8px; border-radius:3px;
+             font-size:11px; font-weight:600; }
+    .badge-ok  { background:#e8f5e9; color:#2e7d32; }
+    .badge-warn{ background:#fff3e0; color:#e65100; }
+    .badge-err { background:#ffebee; color:#c62828; }
+    .badge-none{ background:#f5f5f5; color:#9e9e9e; }
+    .btn { display:inline-block; padding:5px 12px; font-size:12px; font-weight:600;
+           border-radius:4px; text-decoration:none; cursor:pointer; border:none; }
+    .btn-primary { background:var(--s-primary); color:#fff; }
+    .btn-secondary { background:var(--s-light); color:var(--s-primary);
+                     border:1px solid var(--s-border); }
+    .btn-sm { padding:3px 9px; font-size:11px; }
+    .btn-primary:hover { opacity:.9; }
+    .btn-secondary:hover { background:var(--s-border); }
+    .egad-off { color:#bdbdbd; font-style:italic; font-size:12px; }
+
+    /* Sample type editor */
+    .editor-header { margin-bottom:16px; }
+    .editor-header h3 { font-size:14px; font-weight:700; color:var(--s-primary); margin:0 0 4px; }
+    .editor-header p { font-size:12px; color:var(--s-secondary); margin:0; }
+    .st-table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:16px; }
+    .st-table th { background:var(--s-light); color:var(--s-secondary);
+                   font-size:11px; font-weight:700; text-transform:uppercase;
+                   letter-spacing:.04em; padding:8px 10px; text-align:left;
+                   border-bottom:2px solid var(--s-border); }
+    .st-table td { padding:8px 10px; border-bottom:1px solid var(--s-border);
+                   vertical-align:middle; }
+    .st-table select { padding:4px 8px; font-size:12px; border:1px solid var(--s-input-border);
+                       border-radius:3px; }
+    .ar-id { font-family:monospace; font-size:12px; }
+    .alert-saved { background:#e8f5e9; border:1px solid #a5d6a7; color:#2e7d32;
+                   padding:10px 14px; border-radius:4px; margin-bottom:14px;
+                   font-size:13px; font-weight:600; }
+    .actions-bar { display:flex; gap:10px; align-items:center; margin-top:6px; }
+    .egad-link { font-size:12px; color:var(--s-secondary); }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <div metal:fill-slot="content">
+  <div style="max-width:960px;margin:0 auto;">
+
+    <!-- ── BRANCH: per-batch sample type editor ── -->
+    <tal:editor tal:condition="view/batch_id">
+
+      <div class="page-header">
+        <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-egad-batches">
+          &#8592; Batch EDD Dashboard
+        </a>
+        <h2>
+          EGAD Sample Types —
+          <span tal:content="view/batch_id">B-001</span>
+        </h2>
+      </div>
+
+      <tal:saved tal:condition="view/saved_count">
+        <div class="alert-saved">
+          <span tal:content="view/saved_count">0</span> sample type(s) saved.
+        </div>
+      </tal:saved>
+
+      <div class="editor-header">
+        <h3>Per-sample EGAD SAMPLE_TYPE overrides</h3>
+        <p>
+          Set the EGAD SAMPLE_TYPE code for each sample in this batch.
+          The default comes from the client's EGAD configuration.
+          Changes here are used when generating the next EDD export.
+        </p>
+      </div>
+
+      <tal:nosamps tal:condition="not:view/batch_sample_types">
+        <p style="color:var(--s-secondary);font-size:13px;">
+          No samples found in batch <strong tal:content="view/batch_id">B-001</strong>.
+        </p>
+      </tal:nosamps>
+
+      <form tal:condition="view/batch_sample_types"
+            method="POST"
+            tal:attributes="action string:${view/portal_url}/@@pfas-egad-batches">
+        <input type="hidden" name="batch_id" tal:attributes="value view/batch_id" />
+
+        <table class="st-table">
+          <thead>
+            <tr>
+              <th>Sample ID</th>
+              <th>Sample Title</th>
+              <th>SENAITE Sample Type</th>
+              <th>EGAD SAMPLE_TYPE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr tal:repeat="row view/batch_sample_types">
+              <td class="ar-id" tal:content="row/ar_id">AR-001</td>
+              <td tal:content="row/ar_title">Sample Title</td>
+              <td tal:content="row/senaite_sample_type">Drinking Water</td>
+              <td>
+                <select tal:attributes="name row/field_name">
+                  <tal:opt tal:repeat="code view/sample_type_options">
+                    <option tal:attributes="
+                      value code;
+                      selected python:code == row['egad_sample_type']"
+                      tal:content="code">GW</option>
+                  </tal:opt>
+                </select>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="actions-bar">
+          <button type="submit" class="btn btn-primary">Save Sample Types</button>
+          <a tal:attributes="href string:${view/portal_url}/@@pfas-egad-export?batch_id=${view/batch_id}"
+             class="btn btn-secondary">Download EDD</a>
+          <a tal:attributes="href string:${view/portal_url}/@@pfas-egad-export?batch_id=${view/batch_id}&amp;preview=1"
+             class="egad-link" target="_blank">Preview / Validate</a>
+        </div>
+
+      </form>
+
+    </tal:editor>
+
+    <!-- ── BRANCH: batch list dashboard ── -->
+    <tal:dashboard tal:condition="not:view/batch_id">
+
+      <div class="page-header">
+        <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-egad-config">
+          &#8592; EGAD EDD Config
+        </a>
+        <h2>Batch EDD Dashboard</h2>
+      </div>
+
+      <tal:empty tal:condition="not:view/recent_batches">
+        <p style="color:var(--s-secondary);font-size:13px;">No batches found.</p>
+      </tal:empty>
+
+      <table class="batch-table" tal:condition="view/recent_batches">
+        <thead>
+          <tr>
+            <th>Batch ID</th>
+            <th>Client</th>
+            <th>Created</th>
+            <th>EGAD</th>
+            <th>EDD Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr tal:repeat="b view/recent_batches">
+            <td style="font-family:monospace;font-size:12px;" tal:content="b/batch_id">B-001</td>
+            <td tal:content="b/client_title">Client A</td>
+            <td tal:content="b/created">2026-06-15</td>
+            <td>
+              <span tal:condition="b/egad_enabled" class="badge badge-ok">Enabled</span>
+              <span tal:condition="not:b/egad_enabled" class="egad-off">Off</span>
+            </td>
+            <td>
+              <tal:nostored tal:condition="not:b/has_edd">
+                <span class="badge badge-none">Not generated</span>
+              </tal:nostored>
+              <tal:stored tal:condition="b/has_edd">
+                <tal:blocking tal:condition="b/edd_blocking">
+                  <span class="badge badge-err"
+                        tal:content="string:${b/edd_blocking} BLOCKING">1 BLOCKING</span>
+                </tal:blocking>
+                <tal:warn tal:condition="python:b['has_edd'] and not b['edd_blocking'] and b['edd_error_count']">
+                  <span class="badge badge-warn"
+                        tal:content="string:${b/edd_error_count} warnings">2 warnings</span>
+                </tal:warn>
+                <tal:ok tal:condition="python:b['has_edd'] and not b['edd_blocking'] and not b['edd_error_count']">
+                  <span class="badge badge-ok">Clean</span>
+                </tal:ok>
+                <br/>
+                <span style="font-size:11px;color:var(--s-secondary);"
+                      tal:content="b/edd_generated">2026-06-15</span>
+              </tal:stored>
+            </td>
+            <td>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <a tal:attributes="href b/download_url"
+                   class="btn btn-primary btn-sm">Download EDD</a>
+                <a tal:attributes="href b/sampletype_url"
+                   class="btn btn-secondary btn-sm">Sample Types</a>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+    </tal:dashboard>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

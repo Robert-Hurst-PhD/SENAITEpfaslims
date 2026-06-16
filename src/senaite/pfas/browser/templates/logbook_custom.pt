@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title"
+         tal:content="string:${view/logbook_def/form_num}: ${view/logbook_def/title}">
+    Logbook
+  </title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .section-card { background:var(--s-bg); border:1px solid var(--s-border);
+                    border-radius:6px; padding:20px; margin-bottom:18px; }
+    .section-card h3 { font-size:13px; font-weight:700; color:var(--s-primary);
+                       margin:0 0 14px; padding-bottom:8px;
+                       border-bottom:1px solid var(--s-border); }
+    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .form-group { display:flex; flex-direction:column; gap:4px; }
+    .form-label { font-size:11px; font-weight:700; color:var(--s-secondary);
+                  text-transform:uppercase; letter-spacing:.04em; }
+    .form-input  { padding:7px 10px; font-size:13px;
+                   border:1px solid var(--s-input-border); border-radius:4px; }
+    .form-input:focus { outline:none; border-color:var(--s-primary); }
+    textarea.form-input { min-height:80px; resize:vertical; }
+
+    /* Data table */
+    .data-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .data-table th { background:var(--s-light); color:var(--s-secondary);
+                     font-size:11px; font-weight:700; text-transform:uppercase;
+                     letter-spacing:.04em; padding:7px 10px; text-align:left;
+                     border-bottom:2px solid var(--s-border); }
+    .data-table td { padding:6px 8px; border-bottom:1px solid var(--s-border); }
+    .data-table input { width:100%; padding:4px 6px; font-size:12px;
+                        border:1px solid transparent; border-radius:3px;
+                        background:transparent; }
+    .data-table input:focus { border-color:var(--s-input-border);
+                              background:#fff; outline:none; }
+    .data-table tr:hover td { background:var(--s-hover); }
+    .btn { display:inline-block; padding:5px 14px; font-size:12px; font-weight:600;
+           border-radius:4px; cursor:pointer; border:none; }
+    .btn-primary   { background:var(--s-primary); color:#fff; }
+    .btn-secondary { background:var(--s-light); color:var(--s-body);
+                     border:1px solid var(--s-border); }
+    .btn-danger    { background:#ffebee; color:#c62828;
+                     border:1px solid #ef9a9a; }
+    .btn-sm { padding:3px 9px; font-size:11px; }
+    .btn-primary:hover   { opacity:.9; }
+    .btn-secondary:hover { background:var(--s-border); }
+    .actions-bar { display:flex; gap:10px; align-items:center; margin-top:8px; }
+    .alert-ok { background:#e8f5e9; border:1px solid #a5d6a7; color:#2e7d32;
+                padding:10px 14px; border-radius:4px; margin-bottom:14px;
+                font-size:13px; font-weight:600; }
+    .no-cols { font-size:13px; color:var(--s-secondary); font-style:italic; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title"
+         tal:content="string:${view/logbook_def/form_num}: ${view/logbook_def/title}">
+    Logbook
+  </tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <span class="header-meta" tal:content="view/batch_title">Batch</span>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <tal:ok tal:condition="view/ok_msg">
+      <div class="alert-ok" tal:content="view/ok_msg">Saved.</div>
+    </tal:ok>
+
+    <form method="POST"
+          tal:attributes="action string:${view/batch_url}/@@pfas-logbook-custom">
+      <input type="hidden" name="slug"
+             tal:attributes="value view/logbook_def/slug"/>
+
+      <!-- Header fields -->
+      <div class="section-card">
+        <h3><i class="fas fa-info-circle"></i> General</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Analyst</label>
+            <input class="form-input" type="text" name="analyst"
+                   tal:attributes="value python:view.data().get('analyst','')"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date</label>
+            <input class="form-input" type="date" name="log_date"
+                   tal:attributes="value python:view.data().get('log_date','')"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Reviewed By</label>
+            <input class="form-input" type="text" name="reviewed_by"
+                   tal:attributes="value python:view.data().get('reviewed_by','')"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Review Date</label>
+            <input class="form-input" type="date" name="reviewed_date"
+                   tal:attributes="value python:view.data().get('reviewed_date','')"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dynamic data table (only if columns configured) -->
+      <div class="section-card" tal:condition="view/table_columns">
+        <h3><i class="fas fa-table"></i> Data</h3>
+        <table class="data-table" id="custom-table">
+          <thead>
+            <tr>
+              <tal:col tal:repeat="col view/table_columns">
+                <th tal:content="col">Column</th>
+              </tal:col>
+              <th style="width:50px;"></th>
+            </tr>
+          </thead>
+          <tbody id="custom-tbody">
+            <!-- rows rendered by JS from rows_json -->
+          </tbody>
+        </table>
+        <div class="actions-bar" style="margin-top:10px;">
+          <button type="button" class="btn btn-secondary btn-sm"
+                  onclick="addRow()">+ Add Row</button>
+        </div>
+        <input type="hidden" name="rows_json" id="rows_json"
+               tal:attributes="value view/rows_json"/>
+      </div>
+
+      <tal:nocols tal:condition="not:view/table_columns">
+        <input type="hidden" name="rows_json" value="[]"/>
+      </tal:nocols>
+
+      <!-- Notes -->
+      <div class="section-card">
+        <h3><i class="fas fa-sticky-note"></i> Notes</h3>
+        <div class="form-group">
+          <textarea class="form-input" name="notes" rows="4"
+                    tal:content="python:view.data().get('notes','')"></textarea>
+        </div>
+      </div>
+
+      <div class="actions-bar">
+        <button type="submit" class="btn btn-primary">Save Logbook</button>
+        <a tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index"
+           class="btn btn-secondary">Back to Logbooks</a>
+      </div>
+
+    </form>
+
+  </div>
+
+<tal:scripts metal:fill-slot="body-extra">
+<script tal:condition="view/table_columns">
+(function () {
+  var COLS = <tal:c tal:replace="view/table_columns_json">[]</tal:c>;
+  var rows = [];
+  try { rows = JSON.parse(document.getElementById('rows_json').value || '[]'); } catch(e){}
+
+  function renderTable() {
+    var tbody = document.getElementById('custom-tbody');
+    tbody.innerHTML = '';
+    rows.forEach(function(row, ri) {
+      var tr = document.createElement('tr');
+      COLS.forEach(function(col, ci) {
+        var td = document.createElement('td');
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.value = row[ci] || '';
+        inp.oninput = function() { rows[ri][ci] = this.value; syncHidden(); };
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+      var del = document.createElement('td');
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-danger btn-sm';
+      btn.textContent = '×';
+      btn.onclick = function() { rows.splice(ri, 1); renderTable(); syncHidden(); };
+      del.appendChild(btn);
+      tr.appendChild(del);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function syncHidden() {
+    document.getElementById('rows_json').value = JSON.stringify(rows);
+  }
+
+  window.addRow = function() {
+    var empty = [];
+    COLS.forEach(function() { empty.push(''); });
+    rows.push(empty);
+    renderTable();
+    syncHidden();
+  };
+
+  renderTable();
+})();
+</script>
+</tal:scripts>
+
+  </div><!-- /content slot -->
+</body>
+</html>
