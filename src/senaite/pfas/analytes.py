@@ -46,14 +46,18 @@ PFAS_ANALYTES = [
     ("lr-PFOS",          "498.92>80.02",  ["498.92>98.94"]),
 ]
 
-# Key analytes with tighter criteria (PFOS, PFNA, PFHxS, PFOA in certain matrices)
-KEY_ANALYTES = {"PFOS", "PFNA", "PFHxS", "PFOA"}
+# Key analytes with tighter criteria (PFOS, PFNA, PFHxS, PFOA + their branched
+# isomers in certain matrices). Derived from analyte_reference.py is_key_analyte
+# field (row[8]) — do not duplicate here.
+from senaite.pfas.analyte_reference import (
+    get_key_analyte_keywords as _get_key_kw,
+    get_no_labeled_keywords as _get_no_labeled_kw,
+)
+KEY_ANALYTES = _get_key_kw()
 
-# Non-isotopically linked analytes (looser QQ criteria)
-NON_ISO_ANALYTES = {
-    "9Cl-PF3ONS", "11Cl-PF3OUdS", "PFDoS", "PFDS", "PFNS",
-    "PFODA", "PFPeS", "PFTrDA", "PFTrDS", "PFUnDS"
-}
+# Non-isotopically linked analytes (looser QQ criteria) — derived from
+# analyte_reference.py no_labeled field (row[7]).
+NON_ISO_ANALYTES = _get_no_labeled_kw()
 
 # ── Internal standards ────────────────────────────────────────────────────────
 INTERNAL_STANDARDS = [
@@ -104,83 +108,6 @@ IS_MRM = {
     "13C8-PFOA":            ("420.95>376.00", ["420.95>171.98"]),
     "13C8-PFOS":            ("506.97>79.98",  ["506.97>98.94"]),
 }
-
-# ── QC Acceptance Criteria ─────────────────────────────────────────────────────
-# From workbook strings: "65 - 135 %", "40 - 140 %", "80 - 120 %", "≤ 25 %", "≤ 30 %"
-# Calibration % deviation: ≤ 20%, ≤ 25%, ≤ 30% depending on analyte/level
-
-class QCCriteria:
-    """
-    FDA PFAS in Food and Feed acceptance criteria.
-    From workbook QC Criteria table (strings 91-112).
-    """
-
-    # ── Calibration ────────────────────────────────────────────────────────────
-    CAL_PCT_DEVIATION = {
-        "default":  25.0,   # ≤ 25 % deviation from curve
-        "tight":    20.0,   # ≤ 20 % (first/last cal level)
-        "loose":    30.0,   # ≤ 30 % (BLoQ levels)
-    }
-    CAL_R2_MIN = 0.995      # minimum R² for calibration curve
-
-    # ── IS Response ────────────────────────────────────────────────────────────
-    IS_RESPONSE_PCT = 50.0  # ± 50 % of batch average triggers IS flag
-
-    # ── RT Deviation ───────────────────────────────────────────────────────────
-    RT_TOLERANCE_MIN = 0.10  # ± 0.10 min absolute
-    RT_TOLERANCE_PCT = 5.0   # ± 5 % relative (use whichever is wider)
-
-    # ── Qual/Quan Ion Ratio ─────────────────────────────────────────────────────
-    # Matching mass-label (isotopically linked) analytes: tighter
-    QQ_RATIO_MATCHING_PCT = 20.0    # ≤ 20 % deviation from expected (** analytes)
-    # Key analytes (PFOS/PFNA/PFHxS/PFOA) in Egg, Muscle, Fish
-    QQ_RATIO_KEY_PCT = 25.0         # ≤ 25 %
-    # Non-isotopically linked analytes (*** group)
-    QQ_RATIO_NON_ISO_PCT = 30.0     # ≤ 30 %
-
-    # ── Signal to Noise ────────────────────────────────────────────────────────
-    SN_MIN = 3.0            # minimum S/N for detection
-    SN_QUAN_MIN = 10.0      # minimum S/N for quantitation (above RL)
-
-    # ── LFSM/LFSMD Recovery ────────────────────────────────────────────────────
-    # Two-tier: depends on analyte group and matrix
-    # Key analytes (PFOS, PFNA, PFHxS, PFOA) in Egg/Muscle/Fish
-    LFSM_RECOVERY_KEY_MATRIX = (65.0, 135.0)   # "65 - 135 %"
-    # All other isotopically linked analytes
-    LFSM_RECOVERY_MATCHING = (40.0, 140.0)     # "40 - 140 %"
-    # Surrogate/IS internal recovery criteria
-    LFSM_RECOVERY_SUR = (80.0, 120.0)          # "80 - 120 %"
-
-    # ── RPD (LFSMD duplicate, sample duplicate) ─────────────────────────────
-    RPD_MAX = 30.0          # ≤ 30 % relative percent difference
-
-    # ── MDL ───────────────────────────────────────────────────────────────────
-    MDL_MIN_REPS = 7        # minimum replicates for MDL study
-    MDL_T_CONFIDENCE = 0.99 # one-tailed t at 99 % (EPA MDL procedure)
-
-    # ── Method Blank ──────────────────────────────────────────────────────────
-    # If blank ≥ sample → flag <LOD
-    # If blank > RL → flag contamination
-
-    @classmethod
-    def lfsm_criteria(cls, analyte, matrix):
-        """Return (low, high) acceptance window for LFSM recovery."""
-        matrix_upper = matrix.upper()
-        is_key = analyte in KEY_ANALYTES
-        is_bio_matrix = any(m in matrix_upper for m in ("EGG", "MUSCLE", "FISH", "MEAT"))
-        if is_key and is_bio_matrix:
-            return cls.LFSM_RECOVERY_KEY_MATRIX
-        return cls.LFSM_RECOVERY_MATCHING
-
-    @classmethod
-    def qq_criteria(cls, analyte):
-        """Return max % deviation for qual/quan ion ratio."""
-        if analyte in NON_ISO_ANALYTES:
-            return cls.QQ_RATIO_NON_ISO_PCT
-        if analyte in KEY_ANALYTES:
-            return cls.QQ_RATIO_KEY_PCT
-        return cls.QQ_RATIO_MATCHING_PCT
-
 
 # ── Calibration levels from batch ─────────────────────────────────────────────
 # Concentrations (ng/mL) extracted from sample descriptions

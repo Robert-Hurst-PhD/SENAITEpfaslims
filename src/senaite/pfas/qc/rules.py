@@ -599,19 +599,23 @@ class LiveCriteria(object):
     def lfsm_criteria(self, analyte, matrix):
         """Return (low, high) acceptance window for LFSM recovery."""
         from senaite.pfas.analytes import KEY_ANALYTES
+        from senaite.pfas.analyte_reference import COMPOUND_NAME_TO_KEYWORD
+        keyword = COMPOUND_NAME_TO_KEYWORD.get(analyte, analyte)
         matrix_upper = matrix.upper()
-        is_key = analyte in KEY_ANALYTES
-        is_bio = any(m in matrix_upper for m in ("EGG", "MUSCLE", "FISH", "MEAT"))
-        if is_key and is_bio:
+        # "TISSUE" covers "Aquatic Tissue"; pending canonical matrix vocabulary.
+        is_bio = any(m in matrix_upper for m in ("EGG", "MUSCLE", "FISH", "MEAT", "TISSUE"))
+        if keyword in KEY_ANALYTES and is_bio:
             return self.LFSM_RECOVERY_KEY_MATRIX
         return self.LFSM_RECOVERY_MATCHING
 
     def qq_criteria(self, analyte):
         """Return max % deviation for qual/quan ion ratio."""
         from senaite.pfas.analytes import KEY_ANALYTES, NON_ISO_ANALYTES
-        if analyte in NON_ISO_ANALYTES:
+        from senaite.pfas.analyte_reference import COMPOUND_NAME_TO_KEYWORD
+        keyword = COMPOUND_NAME_TO_KEYWORD.get(analyte, analyte)
+        if keyword in NON_ISO_ANALYTES:
             return self.QQ_RATIO_NON_ISO_PCT
-        if analyte in KEY_ANALYTES:
+        if keyword in KEY_ANALYTES:
             return self.QQ_RATIO_KEY_PCT
         return self.QQ_RATIO_MATCHING_PCT
 

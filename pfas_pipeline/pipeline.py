@@ -41,6 +41,7 @@ from .constants import (
     QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC,
     reload_criteria,
 )
+from .method_profiles import reload_from_profiles
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +140,10 @@ def run_pipeline(
     Full pipeline on one instrument export.
     Returns (batch, run_queue, report_pdf_path).
     """
-    # Reload QC criteria from the exported method profiles JSON so manager
-    # changes in the SENAITE UI are picked up without a worker restart.
+    # Reload QC criteria and full profile data from the exported JSON so
+    # manager changes in the SENAITE UI take effect without a worker restart.
     reload_criteria()
+    reload_from_profiles()
 
     csv_path = Path(csv_path)
     output_dir = Path(output_dir)

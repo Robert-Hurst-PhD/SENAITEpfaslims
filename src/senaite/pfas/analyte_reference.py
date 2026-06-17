@@ -9,56 +9,57 @@ native analytes to their isotopically-labeled internal standards / surrogates.
 CAS numbers and full chemical names are populated where well-established;
 entries marked PLACEHOLDER need lab confirmation against your standard COAs.
 
-Fields:
-  keyword       — SENAITE Analysis keyword (no spaces; used in imports/results)
-  name          — display name as it appears on instrument export & report
-  cas           — CAS Registry Number ("" or PLACEHOLDER if unverified)
-  full_name     — IUPAC-ish full chemical name
-  klass         — PFCA | PFSA | FTS | FOSA | PFECA | Cl-PFAES | other
-  chain         — perfluorocarbon chain length (approx, for sort order)
-  is_native     — True for target analytes, False for IS/surrogates
-  surrogate_is  — for natives: the labeled surrogate used as its IS (FDA 9-1)
-  quant_is      — for surrogates: the injection IS they quantify against
-  no_labeled    — True if no commercially matched labeled standard (N.C. tier)
+Fields (NATIVE_ANALYTES tuple, 9 elements):
+  [0] keyword        — SENAITE Analysis keyword (no spaces; used in imports/results)
+  [1] name           — display name as it appears on instrument export & report
+  [2] cas            — CAS Registry Number ("" or PLACEHOLDER if unverified)
+  [3] full_name      — IUPAC-ish full chemical name
+  [4] klass          — PFCA | PFSA | FTS | FOSA | PFECA | Cl-PFAES | other
+  [5] chain          — perfluorocarbon chain length (approx, for sort order)
+  [6] surrogate_is   — the labeled IS keyword that quantifies this native (FDA §9-1)
+  [7] no_labeled     — True if no commercially matched labeled standard (N.C. tier)
+  [8] is_key_analyte — True for the four regulatory priority analytes and their
+                       branched isomers: PFOS, PFOA, PFHxS, PFNA (+ br-PFOS,
+                       br-PFHxS). FDA Table 10-1 Tier 1 analytes in tight matrices.
 """
 
 # ── 34 native target analytes ────────────────────────────────────────────────
 NATIVE_ANALYTES = [
-    # keyword,        name,           cas,          full_name, class, chain, surrogate_is, no_labeled
-    ("PFBA",   "PFBA",   "375-22-4",  "Perfluorobutanoic acid",            "PFCA", 4,  "M3PFBA",  False),
-    ("PFPeA",  "PFPeA",  "2706-90-3", "Perfluoropentanoic acid",           "PFCA", 5,  "M3PFPeA", False),
-    ("PFHxA",  "PFHxA",  "307-24-4",  "Perfluorohexanoic acid",            "PFCA", 6,  "M5PFHxA", False),
-    ("PFHpA",  "PFHpA",  "375-85-9",  "Perfluoroheptanoic acid",           "PFCA", 7,  "M4PFHpA", False),
-    ("PFOA",   "PFOA",   "335-67-1",  "Perfluorooctanoic acid",            "PFCA", 8,  "M8PFOA",  False),
-    ("PFNA",   "PFNA",   "375-95-1",  "Perfluorononanoic acid",            "PFCA", 9,  "M5PFNA",  False),
-    ("PFDA",   "PFDA",   "335-76-2",  "Perfluorodecanoic acid",            "PFCA", 10, "M2PFDA",  False),
-    ("PFUDA",  "PFUDA",  "2058-94-8", "Perfluoroundecanoic acid",          "PFCA", 11, "MPFUdA",  False),
-    ("PFDoA",  "PFDoA",  "307-55-1",  "Perfluorododecanoic acid",          "PFCA", 12, "MPFDoA",  False),
-    ("PFTrDA", "PFTrDA", "72629-94-8","Perfluorotridecanoic acid",         "PFCA", 13, "MPFDoA",  True),
-    ("PFTeDA", "PFTeDA", "376-06-7",  "Perfluorotetradecanoic acid",       "PFCA", 14, "M2PFTeDA",False),
-    ("PFHxDA", "PFHxDA", "67905-19-5","Perfluorohexadecanoic acid",        "PFCA", 16, "M2PFHxDA",False),
-    ("PFODA",  "PFODA",  "16517-11-6","Perfluorooctadecanoic acid",        "PFCA", 18, "",        True),
-    ("PFBS",   "PFBS",   "375-73-5",  "Perfluorobutanesulfonic acid",      "PFSA", 4,  "M3PFBS",  False),
-    ("PFPeS",  "PFPeS",  "2706-91-4", "Perfluoropentanesulfonic acid",     "PFSA", 5,  "",        True),
-    ("PFHxS",  "lr-PFHxS","355-46-4", "Perfluorohexanesulfonic acid (linear)","PFSA",6,"M3PFHxS", False),
-    ("br-PFHxS","br-PFHxS","",        "Perfluorohexanesulfonic acid (branched)","PFSA",6,"M3PFHxS",False),
-    ("PFHpS",  "PFHpS",  "375-92-8",  "Perfluoroheptanesulfonic acid",     "PFSA", 7,  "",        True),
-    ("PFOS",   "lr-PFOS","1763-23-1", "Perfluorooctanesulfonic acid (linear)","PFSA",8,"M8PFOS",  False),
-    ("br-PFOS","br-PFOS","",          "Perfluorooctanesulfonic acid (branched)","PFSA",8,"M8PFOS",False),
-    ("PFNS",   "PFNS",   "68259-12-1","Perfluorononanesulfonic acid",      "PFSA", 9,  "",        True),
-    ("PFDS",   "PFDS",   "335-77-3",  "Perfluorodecanesulfonic acid",      "PFSA", 10, "",        True),
-    ("PFDoS",  "PFDoS",  "79780-39-5","Perfluorododecanesulfonic acid",    "PFSA", 12, "",        True),
-    ("PFTrDS", "PFTrDS", "PLACEHOLDER","Perfluorotridecanesulfonic acid",  "PFSA", 13, "",        True),
-    ("PFUnDS", "PFUnDS", "749786-16-1","Perfluoroundecanesulfonic acid",   "PFSA", 11, "",        True),
-    ("4:2FTS", "4:2 FTS","757124-72-4","1H,1H,2H,2H-perfluorohexane sulfonic acid","FTS",6,"13C2,D4-4:2FTS",False),
-    ("6:2FTS", "6:2FTS", "27619-97-2","1H,1H,2H,2H-perfluorooctane sulfonic acid","FTS",8,"13C2,D4-6:2FTS",False),
-    ("8:2FTS", "8:2 FTS","39108-34-4","1H,1H,2H,2H-perfluorodecane sulfonic acid","FTS",10,"13C2,D4-8:2FTS",False),
-    ("10:2FTS","10:2 FTS","120226-60-0","1H,1H,2H,2H-perfluorododecane sulfonic acid","FTS",12,"13C2,D4-10:2FTS",False),
-    ("FOSA",   "FOSA",   "754-91-6",  "Perfluorooctanesulfonamide",        "FOSA", 8,  "13C8-FOSA",False),
-    ("GenX",   "GenX (HFPO-DA)","13252-13-6","Hexafluoropropylene oxide dimer acid","PFECA",6,"13C3-GenX (HFPO-DA)",False),
-    ("DONA",   "DONA",   "919005-14-4","4,8-dioxa-3H-perfluorononanoic acid (ADONA)","PFECA",7,"",True),
-    ("9ClPF3ONS","9Cl-PF3ONS","756426-58-1","9-chlorohexadecafluoro-3-oxanonane-1-sulfonic acid (F-53B major)","Cl-PFAES",8,"",True),
-    ("11ClPF3OUdS","11Cl-PF3OUdS","763051-92-9","11-chloroeicosafluoro-3-oxaundecane-1-sulfonic acid (F-53B minor)","Cl-PFAES",10,"",True),
+    # keyword,        name,           cas,          full_name, class, chain, surrogate_is, no_labeled, is_key
+    ("PFBA",   "PFBA",   "375-22-4",   "Perfluorobutanoic acid",                          "PFCA",    4,  "M3PFBA",           False, False),
+    ("PFPeA",  "PFPeA",  "2706-90-3",  "Perfluoropentanoic acid",                         "PFCA",    5,  "M3PFPeA",          False, False),
+    ("PFHxA",  "PFHxA",  "307-24-4",   "Perfluorohexanoic acid",                          "PFCA",    6,  "M5PFHxA",          False, False),
+    ("PFHpA",  "PFHpA",  "375-85-9",   "Perfluoroheptanoic acid",                         "PFCA",    7,  "M4PFHpA",          False, False),
+    ("PFOA",   "PFOA",   "335-67-1",   "Perfluorooctanoic acid",                          "PFCA",    8,  "M8PFOA",           False, True),
+    ("PFNA",   "PFNA",   "375-95-1",   "Perfluorononanoic acid",                          "PFCA",    9,  "M5PFNA",           False, True),
+    ("PFDA",   "PFDA",   "335-76-2",   "Perfluorodecanoic acid",                          "PFCA",    10, "M2PFDA",           False, False),
+    ("PFUDA",  "PFUDA",  "2058-94-8",  "Perfluoroundecanoic acid",                        "PFCA",    11, "MPFUdA",           False, False),
+    ("PFDoA",  "PFDoA",  "307-55-1",   "Perfluorododecanoic acid",                        "PFCA",    12, "MPFDoA",           False, False),
+    ("PFTrDA", "PFTrDA", "72629-94-8", "Perfluorotridecanoic acid",                       "PFCA",    13, "MPFDoA",           True,  False),
+    ("PFTeDA", "PFTeDA", "376-06-7",   "Perfluorotetradecanoic acid",                     "PFCA",    14, "M2PFTeDA",         False, False),
+    ("PFHxDA", "PFHxDA", "67905-19-5", "Perfluorohexadecanoic acid",                      "PFCA",    16, "M2PFHxDA",         False, False),
+    ("PFODA",  "PFODA",  "16517-11-6", "Perfluorooctadecanoic acid",                      "PFCA",    18, "",                 True,  False),
+    ("PFBS",   "PFBS",   "375-73-5",   "Perfluorobutanesulfonic acid",                    "PFSA",    4,  "M3PFBS",           False, False),
+    ("PFPeS",  "PFPeS",  "2706-91-4",  "Perfluoropentanesulfonic acid",                   "PFSA",    5,  "",                 True,  False),
+    ("PFHxS",  "lr-PFHxS","355-46-4",  "Perfluorohexanesulfonic acid (linear)",           "PFSA",    6,  "M3PFHxS",          False, True),
+    ("br-PFHxS","br-PFHxS","",         "Perfluorohexanesulfonic acid (branched)",          "PFSA",    6,  "M3PFHxS",          False, True),
+    ("PFHpS",  "PFHpS",  "375-92-8",   "Perfluoroheptanesulfonic acid",                   "PFSA",    7,  "",                 True,  False),
+    ("PFOS",   "lr-PFOS","1763-23-1",  "Perfluorooctanesulfonic acid (linear)",            "PFSA",    8,  "M8PFOS",           False, True),
+    ("br-PFOS","br-PFOS","",           "Perfluorooctanesulfonic acid (branched)",           "PFSA",    8,  "M8PFOS",           False, True),
+    ("PFNS",   "PFNS",   "68259-12-1", "Perfluorononanesulfonic acid",                    "PFSA",    9,  "",                 True,  False),
+    ("PFDS",   "PFDS",   "335-77-3",   "Perfluorodecanesulfonic acid",                    "PFSA",    10, "",                 True,  False),
+    ("PFDoS",  "PFDoS",  "79780-39-5", "Perfluorododecanesulfonic acid",                  "PFSA",    12, "",                 True,  False),
+    ("PFTrDS", "PFTrDS", "PLACEHOLDER","Perfluorotridecanesulfonic acid",                 "PFSA",    13, "",                 True,  False),
+    ("PFUnDS", "PFUnDS", "749786-16-1","Perfluoroundecanesulfonic acid",                  "PFSA",    11, "",                 True,  False),
+    ("4:2FTS", "4:2 FTS","757124-72-4","1H,1H,2H,2H-perfluorohexane sulfonic acid",       "FTS",     6,  "13C2,D4-4:2FTS",   False, False),
+    ("6:2FTS", "6:2FTS", "27619-97-2", "1H,1H,2H,2H-perfluorooctane sulfonic acid",       "FTS",     8,  "13C2,D4-6:2FTS",   False, False),
+    ("8:2FTS", "8:2 FTS","39108-34-4", "1H,1H,2H,2H-perfluorodecane sulfonic acid",       "FTS",     10, "13C2,D4-8:2FTS",   False, False),
+    ("10:2FTS","10:2 FTS","120226-60-0","1H,1H,2H,2H-perfluorododecane sulfonic acid",    "FTS",     12, "13C2,D4-10:2FTS",  False, False),
+    ("FOSA",   "FOSA",   "754-91-6",   "Perfluorooctanesulfonamide",                      "FOSA",    8,  "13C8-FOSA",        False, False),
+    ("GenX",   "GenX (HFPO-DA)","13252-13-6","Hexafluoropropylene oxide dimer acid",      "PFECA",   6,  "13C3-GenX (HFPO-DA)",False,False),
+    ("DONA",   "DONA",   "919005-14-4","4,8-dioxa-3H-perfluorononanoic acid (ADONA)",     "PFECA",   7,  "",                 True,  False),
+    ("9ClPF3ONS","9Cl-PF3ONS","756426-58-1","9-chlorohexadecafluoro-3-oxanonane-1-sulfonic acid (F-53B major)","Cl-PFAES",8,"",True,False),
+    ("11ClPF3OUdS","11Cl-PF3OUdS","763051-92-9","11-chloroeicosafluoro-3-oxaundecane-1-sulfonic acid (F-53B minor)","Cl-PFAES",10,"",True,False),
 ]
 
 # ── 21 isotopically-labeled internal standards / surrogates ──────────────────
@@ -110,12 +111,12 @@ SAMPLE_TYPES = [
     ("SOIL","Soil",                 "ng/g", ["EPA_1633A"],              False, 28),
     ("SED", "Sediment",             "ng/g", ["EPA_1633A"],              False, 28),
     ("BIO", "Biosolid",             "ng/g", ["EPA_1633A"],              True,  28),
-    ("TIS", "Aquatic Tissue",       "ng/g", ["EPA_1633A", "FDA_32PFAS"],False, 28),
-    ("MEAT","Meat / Muscle",        "ng/g", ["FDA_32PFAS"],             False, 28),
-    ("EGG", "Eggs",                 "ng/g", ["FDA_32PFAS"],             False, 28),
-    ("FISH","Fish / Seafood",       "ng/g", ["FDA_32PFAS"],             False, 28),
-    ("MILK","Milk",                 "ng/g", ["FDA_32PFAS"],             False, 14),
-    ("FEED","Animal Feed",          "ng/g", ["FDA_32PFAS"],             False, 60),
+    ("TIS", "Aquatic Tissue",       "ng/kg", ["EPA_1633A", "FDA_32PFAS"],False, 28),
+    ("MEAT","Meat / Muscle",        "ng/kg", ["FDA_32PFAS"],             False, 28),
+    ("EGG", "Eggs",                 "ng/kg", ["FDA_32PFAS"],             False, 28),
+    ("FISH","Fish / Seafood",       "ng/kg", ["FDA_32PFAS"],             False, 28),
+    ("MILK","Milk",                 "ng/kg", ["FDA_32PFAS"],             False, 14),
+    ("FEED","Animal Feed",          "ng/kg", ["FDA_32PFAS"],             False, 60),
 ]
 
 # ── Sample containers (PFAS-safe; NO PTFE/fluoropolymer contact) ─────────────
@@ -166,9 +167,59 @@ CAL_LADDERS = {
 }
 
 
-def native_count() -> int:
+def native_count():
     return len(NATIVE_ANALYTES)
 
 
-def is_count() -> int:
+def is_count():
     return len(INTERNAL_STANDARDS)
+
+
+# ── Derived sets from NATIVE_ANALYTES ────────────────────────────────────────
+
+def get_key_analyte_keywords():
+    """Frozenset of SENAITE keywords for key analytes (FDA Table 10-1 Tier 1)."""
+    return frozenset(row[0] for row in NATIVE_ANALYTES if row[8])
+
+
+def get_key_analyte_names():
+    """Frozenset of display names for key analytes."""
+    return frozenset(row[1] for row in NATIVE_ANALYTES if row[8])
+
+
+def get_no_labeled_keywords():
+    """Frozenset of SENAITE keywords for analytes with no matched labeled standard."""
+    return frozenset(row[0] for row in NATIVE_ANALYTES if row[7])
+
+
+def get_no_labeled_names():
+    """Frozenset of display names for analytes with no matched labeled standard."""
+    return frozenset(row[1] for row in NATIVE_ANALYTES if row[7])
+
+
+def get_surrogate_map_by_keyword():
+    """Dict of {native_keyword: surrogate_is_keyword} for analytes with a matched IS."""
+    return {row[0]: row[6] for row in NATIVE_ANALYTES if row[6]}
+
+
+def get_surrogate_map_by_name():
+    """Dict of {native_display_name: surrogate_is_keyword} for analytes with a matched IS."""
+    return {row[1]: row[6] for row in NATIVE_ANALYTES if row[6]}
+
+
+# ── Compound-name → keyword reverse lookup ───────────────────────────────────
+# Maps instrument export display names back to SENAITE keyword (row[0]) when
+# they differ.  Example: "lr-PFOS" → "PFOS", "9Cl-PF3ONS" → "9ClPF3ONS".
+# br-PFOS / br-PFHxS map to themselves (keyword == display name).
+# Use: COMPOUND_NAME_TO_KEYWORD.get(compound_name, compound_name)
+
+def _build_compound_name_to_keyword():
+    mapping = {}
+    for row in NATIVE_ANALYTES:
+        keyword, display_name = row[0], row[1]
+        if display_name != keyword:
+            mapping[display_name] = keyword
+    return mapping
+
+
+COMPOUND_NAME_TO_KEYWORD = _build_compound_name_to_keyword()

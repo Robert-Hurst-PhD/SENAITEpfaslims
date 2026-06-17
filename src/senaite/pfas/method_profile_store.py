@@ -36,16 +36,23 @@ PROFILES_EXPORT_PATH = os.environ.get(
 )
 
 # ── Constants used to seed the FDA_32PFAS per-analyte table ───────────────────
+# Derived from analyte_reference.py — single source of truth for is_key_analyte
+# and no_labeled flags. Do not duplicate these lists here.
 
-_FDA_NO_LABELED_STD = frozenset([
-    "9Cl-PF3ONS", "11Cl-PF3OUdS", "PFDoS", "PFDS",
-    "PFNS", "PFODA", "PFPeS", "PFTrDA", "PFTrDS", "PFUnDS",
-])
+from senaite.pfas.analyte_reference import (
+    get_key_analyte_keywords as _get_key_kw,
+    get_key_analyte_names as _get_key_names,
+    get_no_labeled_names as _get_no_labeled_names,
+    get_surrogate_map_by_name as _get_surrogate_map_by_name,
+)
 
-_FDA_BIG4 = frozenset([
-    "PFOS", "PFOA", "PFHxS", "PFNA",
-    "lr-PFOS", "br-PFOS", "lr-PFHxS", "br-PFHxS",
-])
+# Display names (as used in _FDA_ANALYTE_ORDER) for no-labeled-std analytes
+_FDA_NO_LABELED_STD = _get_no_labeled_names()
+
+# Includes both keywords (e.g. "PFOS") and display names (e.g. "lr-PFOS") for
+# the big-four, because _fda_per_analyte() iterates over display names in
+# _FDA_ANALYTE_ORDER.
+_FDA_BIG4 = _get_key_kw() | _get_key_names()
 
 _FDA_ANALYTE_ORDER = [
     "10:2 FTS", "11Cl-PF3OUdS", "4:2 FTS", "6:2FTS", "8:2 FTS",
@@ -56,18 +63,10 @@ _FDA_ANALYTE_ORDER = [
     "br-PFOS", "br-PFHxS",
 ]
 
-# Native analyte → surrogate IS  (FDA Table 9-1, abbreviated names — see Q-001)
-_FDA_SURROGATE_MAP_DICT = {
-    "PFBA": "M3PFBA",   "PFPeA": "M3PFPeA",  "PFHxA": "M5PFHxA",
-    "PFHpA": "M4PFHpA", "PFOA": "M8PFOA",    "PFNA": "M5PFNA",
-    "PFDA": "M2PFDA",   "PFUDA": "MPFUdA",   "PFDoA": "MPFDoA",
-    "PFTrDA": "MPFDoA", "PFTeDA": "M2PFTeDA", "PFHxDA": "M2PFHxDA",
-    "PFBS": "M3PFBS",   "lr-PFHxS": "M3PFHxS", "br-PFHxS": "M3PFHxS",
-    "lr-PFOS": "M8PFOS", "br-PFOS": "M8PFOS",
-    "GenX (HFPO-DA)": "M3HFPO",  "FOSA": "M8FOSA",
-    "4:2 FTS": "13C2,D4 4:2 FTS",  "6:2FTS": "13C2,D4 6:2 FTS",
-    "8:2 FTS": "13C2,D4 8:2 FTS",  "10:2 FTS": "13C2,D4 10:2 FTS",
-}
+# Native analyte (display name) → surrogate IS keyword — derived from
+# analyte_reference.py. _fda_per_analyte() iterates _FDA_ANALYTE_ORDER which
+# uses display names, so we use the name-keyed map.
+_FDA_SURROGATE_MAP_DICT = _get_surrogate_map_by_name()
 
 # Primary qualifier MRM transition per analyte (from analytes.py PFAS_ANALYTES)
 # PFBA / PFPeA use the 18.99 fluoride fragment — no HRMS required (see DECISIONS.md)
@@ -115,6 +114,77 @@ def _fda_per_analyte():
             "notes": "",
         })
     return rows
+
+
+# ── Relational model: canonical matrix vocabulary + analyte × matrix sets ─────
+
+# Canonical FDA matrix names — must match SAMPLE_TYPES titles in analyte_reference.py
+_FDA_MATRICES = [
+    "Aquatic Tissue",
+    "Meat / Muscle",
+    "Eggs",
+    "Fish / Seafood",
+    "Milk",
+    "Animal Feed",
+]
+
+# 32 reportable native analyte keywords for FDA_32PFAS.
+# br-PFOS and br-PFHxS are EXCLUDED: they are always reported summed with their
+# linear isomers via isomer_summation, never as independent rows in the report.
+_FDA_MASTER_ANALYTE_KEYWORDS = [
+    "PFBA", "PFPeA", "PFHxA", "PFHpA", "PFOA", "PFNA",
+    "PFDA", "PFUDA", "PFDoA", "PFTrDA", "PFTeDA", "PFHxDA", "PFODA",
+    "PFBS", "PFPeS", "PFHxS", "PFHpS", "PFOS", "PFNS", "PFDS", "PFDoS",
+    "PFTrDS", "PFUnDS",
+    "4:2FTS", "6:2FTS", "8:2FTS", "10:2FTS",
+    "FOSA", "GenX", "DONA",
+    "9ClPF3ONS", "11ClPF3OUdS",
+]
+
+# Analytes excluded from specific matrices (keyword → set of matrix names).
+# All other analyte × matrix intersections default to True (included/reportable).
+_FDA_MATRIX_EXCLUSIONS = {
+    "PFODA": {"Eggs"},   # FDA carve-out: PFODA not reportable in egg matrix
+    # Flag: additional carve-outs from the method document should be added here.
+    # Any unknown carve-outs are seeded True (included) as a conservative default.
+}
+
+# EPA_537_1: drinking water only; no per-analyte matrix exclusions known.
+_EPA537_MATRICES = ["Drinking Water", "Groundwater", "Surface Water"]
+
+# EPA_1633A: multi-matrix; units differ by matrix class.
+_EPA1633A_MATRICES = [
+    "Aqueous", "Drinking Water", "Surface Water",
+    "Solid", "Sediment", "Soil", "Aquatic Tissue", "Biosolid",
+]
+_EPA1633A_UNIT_MAP = {
+    "Aqueous":        "ng/L",
+    "Drinking Water": "ng/L",
+    "Surface Water":  "ng/L",
+    "Solid":          "ng/g",
+    "Sediment":       "ng/g",
+    "Soil":           "ng/g",
+    "Aquatic Tissue": "ng/g",
+    "Biosolid":       "ng/g",
+}
+
+
+def _fda_analyte_matrix_inclusion():
+    """Build the 32 × 6 analyte-matrix inclusion dict for FDA_32PFAS.
+
+    Returns {keyword: {matrix_name: bool}} with all entries True except
+    the known FDA carve-outs in _FDA_MATRIX_EXCLUSIONS.
+    """
+    result = {}
+    for keyword in _FDA_MASTER_ANALYTE_KEYWORDS:
+        excluded = _FDA_MATRIX_EXCLUSIONS.get(keyword, set())
+        result[keyword] = {m: (m not in excluded) for m in _FDA_MATRICES}
+    return result
+
+
+def _all_included_matrix(keywords, matrices):
+    """Return all-True inclusion dict for methods with no known exclusions."""
+    return {kw: {m: True for m in matrices} for kw in keywords}
 
 
 # ── Default profiles (seeded from all current hardcoded values) ───────────────
@@ -251,6 +321,16 @@ DEFAULT_PROFILES = {
             {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
             {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
         ],
+        # ── Relational data model (Round 9) ──────────────────────────────────
+        "supported_matrices": list(_FDA_MATRICES),
+        # 32 reportable target analytes (br-isomers excluded; summed via isomer_summation)
+        "master_analyte_set": list(_FDA_MASTER_ANALYTE_KEYWORDS),
+        # keyword → {matrix_name → bool}  — the inclusion checkbox grid
+        # PFODA × Eggs = False; all other intersections = True
+        "analyte_matrix_inclusion": _fda_analyte_matrix_inclusion(),
+        # ng/kg for all FDA food matrices (confirmed 2026-06-16)
+        # Note: rules.py METHOD_MATRIX_UNIT_MAP has Milk as "ng/mL" — verify with lab
+        "unit_map": {m: "ng/kg" for m in _FDA_MATRICES},
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -394,6 +474,14 @@ DEFAULT_PROFILES = {
         "per_analyte": [],
         "salt_adjustment_factors": [],
         "isomer_summation": [],
+        # ── Relational data model (Round 9) ──────────────────────────────────
+        "supported_matrices": list(_EPA537_MATRICES),
+        # EPA 537.1 has 29 analytes; seeded from FDA 32-analyte set pending confirmation
+        "master_analyte_set": list(_FDA_MASTER_ANALYTE_KEYWORDS),
+        "analyte_matrix_inclusion": _all_included_matrix(
+            _FDA_MASTER_ANALYTE_KEYWORDS, _EPA537_MATRICES
+        ),
+        "unit_map": {m: "ng/L" for m in _EPA537_MATRICES},
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -547,6 +635,14 @@ DEFAULT_PROFILES = {
             {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
             {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
         ],
+        # ── Relational data model (Round 9) ──────────────────────────────────
+        "supported_matrices": list(_EPA1633A_MATRICES),
+        # EPA 1633A has 40 analytes; seeded from FDA 32-analyte set pending confirmation
+        "master_analyte_set": list(_FDA_MASTER_ANALYTE_KEYWORDS),
+        "analyte_matrix_inclusion": _all_included_matrix(
+            _FDA_MASTER_ANALYTE_KEYWORDS, _EPA1633A_MATRICES
+        ),
+        "unit_map": dict(_EPA1633A_UNIT_MAP),
         "extraction_stages": [
             {
                 "id": "pre_setup",

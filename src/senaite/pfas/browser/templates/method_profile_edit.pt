@@ -69,6 +69,22 @@
                 cursor: pointer; }
     .cb-label input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
 
+    /* Analyte × matrix inclusion grid */
+    .inclusion-wrap { overflow-x: auto; margin-bottom: 8px; }
+    .inclusion-grid { border-collapse: collapse; font-size: 12px; }
+    .inclusion-grid th { background: var(--s-light); padding: 5px 10px;
+                         border-bottom: 2px solid var(--s-border); text-align: center;
+                         font-size: 11px; font-weight: 700; text-transform: uppercase;
+                         letter-spacing: .04em; color: var(--s-secondary); white-space: nowrap; }
+    .inclusion-grid th.analyte-col { text-align: left; min-width: 130px; padding-left: 6px; }
+    .inclusion-grid td { padding: 3px 8px; border-bottom: 1px solid var(--s-border); }
+    .inclusion-grid td.analyte-name { font-size: 12px; font-family: "Fira Code", monospace;
+                                       color: var(--s-text); white-space: nowrap; }
+    .inclusion-grid td.check-cell { text-align: center; min-width: 90px; }
+    .inclusion-grid input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+    .inclusion-grid tr:last-child td { border-bottom: none; }
+    .inclusion-grid tr:hover td { background: var(--s-primary-lt, #f0f4ff); }
+
     .btn-save  { background: var(--s-primary); color: #fff; border: none; border-radius: 4px;
                  padding: 10px 28px; cursor: pointer; font-size: 14px; font-weight: 600; }
     .btn-save:hover { background: var(--s-primary-dk); }

@@ -5,6 +5,45 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-17  Round 9 — Relational data model schema (pre-build sign-off)
+
+- **Decision (schema):** Consolidate to two canonical layers:
+  1. **Analyte Library** (`analyte_reference.py`) — single source for keyword, name,
+     CAS (standard format), EGAD CAS/parameter_name, full_name, class, chain,
+     is_native, no_labeled_std, is_key_analyte, quan_mrm, qual_mrm_list, surrogate_is.
+     All duplicate declarations in `analytes.py`, `constants.py`, `method_profiles.py`,
+     and `method_profile_store.py` are retired. MRM data absorbed from `analytes.py`.
+  2. **Method Profile ZODB store** (`method_profile_store.py`) — owns all
+     method-level config: master_analyte_set, supported_matrices,
+     analyte_matrix_inclusion (the checkbox grid), surrogate_map, recovery_tiers
+     (per analyte × matrix, stored explicitly — NOT computed invisibly in Python),
+     eis_limits (1633A only), unit_map, cas_map, QC ruleset, salt factors,
+     matrix adjustment, isomer summation, logbook templates. Exported to
+     `/data/qc/method_profiles.json` for the pipeline.
+
+- **Decision (Q2 — UI editing):** `analyte_reference.py` seeds the analyte library
+  on first install, but ALL fields (including MRMs, CAS, flags) must be editable
+  through a UI tool so the lab can extend or correct them without code changes.
+
+- **Decision (Q3 — method_profiles.py fallback):** Keep `pfas_pipeline/method_profiles.py`
+  Python dataclasses as factory-default seeds AND offline fallback (Option A).
+  Regulatory reason: all QC tolerances must be readable by auditors through the UI.
+  Values hidden in code do not satisfy ISO 17025 / regulatory audit requirements.
+  Consequence: the resolution logic (e.g. "big-four in eggs/meat → 80–120%") must
+  be stored explicitly as a visible table in ZODB, not computed invisibly by a
+  Python method. The Python dataclasses seed those explicit table rows on first
+  install and serve as the fallback only when the JSON export is absent.
+
+- **Retirements (pending build):** duplicate NON_ISO_ANALYTES / KEY_ANALYTES /
+  _FDA_BIG4 / _FDA_NO_LABELED_STD sets across 4 files → derived from library flags.
+  `QCCriteria` class in `analytes.py` → retired. `ANALYTE_CAS_DEFAULTS` in
+  `egad_edd.py` → absorbed into method profile `cas_map`. `METHOD_MATRIX_UNIT_MAP`
+  in `qc/rules.py` → absorbed into method profile `unit_map`.
+- **Status:** confirmed — schema approved, build not yet started
+- **Context:** Round 9 item 0 schema audit; §9 relational data model.
+
+---
+
 ## 2026-06-16  Plan B — Import Studio REST bridge design
 
 - **Decision (Q-010):** Pipeline identifies a file's instrument by auto-detecting
@@ -667,3 +706,49 @@ in reverse-chronological order (newest first).
 - **Status:** confirmed
 - **Context:** ISO 17025 / MLAB traceability requirements; guided workflow
   replaces paper-based FM-ENV-252 with an auto-populated, PDF-exportable record.
+
+---
+
+## 2026-06-17  Round 9 Decision A — MRM transitions excluded from analyte library
+
+- **Decision:** MRM transitions (quantifier m/z and qualifier m/z list) are NOT
+  stored in `analyte_reference.py`. They belong to instrument acquisition methods
+  and are managed separately. `analyte_reference.py` gains an `is_key_analyte`
+  boolean as its 9th tuple field to identify the four regulatory priority analytes
+  (PFOS, PFOA, PFHxS, PFNA) and their branched isomers. `analytes.py` retains MRM
+  data for now; `KEY_ANALYTES` and `NON_ISO_ANALYTES` are derived from
+  `analyte_reference.py` is_key_analyte / no_labeled fields.
+- **Status:** confirmed
+- **Context:** Audit of data duplication across analyte library files (Round 9
+  schema audit). MRM values are method/instrument-specific parameters, not intrinsic
+  analyte identity.
+
+---
+
+## 2026-06-17  Round 9 Decision B — EPA 537.1/1633A analyte sets remain UI-editable placeholders
+
+- **Decision:** EPA 537.1 and EPA 1633A analyte sets in `method_profile_store.py`
+  are seeded from the FDA 32-analyte set as placeholders, clearly flagged
+  `NEEDS_LAB_VERIFICATION`. The UI allows managers to edit these sets without code
+  changes. The placeholder warning is visible in the profile editor.
+- **Status:** confirmed
+- **Context:** Lab has not yet confirmed the exact EPA 537.1/1633A reportable analyte
+  lists from their purchased method copies. Conservative default is to include all 32
+  FDA analytes until verified.
+
+---
+
+## 2026-06-17  Round 9 Decision C — All QC rule logic data-driven from stored profile JSON
+
+- **Decision:** ALL recovery tier logic, matrix-conditional thresholds, CCV
+  frequency, r² values, and IS limits for ALL three methods (FDA 32-PFAS, EPA 537.1,
+  EPA 1633A) are read from the stored profile JSON at batch start. Python
+  `MethodProfile` classes in `pfas_pipeline/method_profiles.py` are rule-engine
+  interpreters, not sources of hardcoded values. Module-level constants `_FDA_BIG4`,
+  `_FDA_NO_LABELED_STD`, `_FDA_TIGHT_MATRICES` are removed and replaced with
+  lookups into `_profile_data_cache` loaded from `/data/qc/method_profiles.json`.
+  The QCCriteria class in `analytes.py` (already dead code — engine.py uses
+  `_LiveCriteria()`) is removed.
+- **Status:** confirmed
+- **Context:** Core requirement of Round 9. Hardcoded thresholds are the #1 defect
+  per CLAUDE.md §0. This decision applies to ALL methods, not just FDA 32-PFAS.
