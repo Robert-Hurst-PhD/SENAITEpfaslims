@@ -20,122 +20,110 @@ file index.
 
 ## Build rounds completed (git log)
 
-| Commit | Round | What was built |
-|--------|-------|----------------|
-| e2dd6e9 | 1–2 | Stage 1 de-hardcode QC; Stage 2 analyst status UI; QC rule toggle grid; control chart |
-| 63930ae | 3 | Stage 3 tracking numbers, public client tracker, QR receipts |
+| Commit  | Round | What was built |
+|---------|-------|----------------|
+| e2dd6e9 | 1–2   | Stage 1 de-hardcode QC; Stage 2 analyst status UI; QC rule toggle grid; control chart |
+| 63930ae | 3     | Stage 3 tracking numbers, public client tracker, QR receipts |
 | f0bd94d | 3-fix | Public tracker stage detection fix |
-| 1bab697 | 3–8 | EGAD EDD exporter, reagents, logbooks, import studio, calibrations, REST bridge |
-| 1bdf6b3 | 9 | Relational data model schema + data-driven QC rules (see below) |
+| 1bab697 | 3–8   | EGAD EDD exporter, reagents, logbooks, import studio, calibrations, REST bridge |
+| 1bdf6b3 | 9     | Relational data model schema + data-driven QC rules |
+| 5d927b2 | 9     | SESSION_CONTEXT.md + CLAUDE.md pointer |
+| 37ced41 | 9 A+B | Phase A (remove duplicate lists) + Phase B (EIS structural fix) + uncommitted Round 9 UI |
 
 ---
 
-## Round 9 — what the commit actually did vs what is still pending
+## Round 9 — what commit 37ced41 did
 
-### DONE in commit 1bdf6b3:
-- `analyte_reference.py` is the single source of truth for analyte identity:
-  keyword, name, CAS, full_name, class, chain, surrogate_is, no_labeled,
-  is_key_analyte (9-field tuple per analyte)
-- `analytes.py`: removed dead QCCriteria class; KEY_ANALYTES and NON_ISO_ANALYTES
-  now derived from analyte_reference.py (not re-declared)
-- `method_profile_store.py`: added `supported_matrices`, `master_analyte_set`,
-  `analyte_matrix_inclusion` (the checkbox grid), `unit_map`, `spike_levels`,
-  `extraction_stages` to all three method profiles. PFODA × Eggs = False seeded.
-  `get_included_analytes(portal, method_id, matrix)` implemented.
-  `_FDA_BIG4`, `_FDA_NO_LABELED_STD` derived from analyte_reference.py.
-  `_fda_per_analyte()` seeds the per_analyte table from analyte_reference.py.
-- `method_profiles.py` (pipeline): Decision C — all QC rule logic reads from
-  `_profile_data_cache` loaded from JSON. Module-level constants `_FDA_BIG4`,
-  `_FDA_NO_LABELED_STD`, `_FDA_TIGHT_MATRICES` removed. `_DEFAULT_PROFILE_CACHE`
-  has full recovery_tier, ccv, calibration, confirmation, is, duplicate data for
-  all three methods. `reload_from_profiles()` loads JSON at batch start.
-- `CLAUDE.md` §9 added (the relational data model section).
-- `pipeline.py`: `Batch.method_id` now stored (parentage gap fixed).
-- All regression tests pass.
+### Phase A — Duplicate removal (DONE):
+- `pfas_pipeline/constants.py`: removed `ANALYTES`, `INTERNAL_STANDARDS`,
+  `NON_ISO_ANALYTES`, `ALL_COMPOUNDS`
+- `pfas_pipeline/method_profiles.py`: added `_FDA_DISPLAY_ANALYTES`,
+  `_FDA_IS_DISPLAY_NAMES` as defaults; added `get_analyte_list()`,
+  `get_non_iso_set()`, `get_is_list()` helpers
+- `pfas_pipeline/run_queue.py` + `pipeline.py`: use helpers; pass `non_iso_set`
+  to `qual_quan_check()`
+- `pfas_pipeline/qc_engine.py`: `qual_quan_check()` accepts optional `non_iso_set`
+- `src/senaite/pfas/analytes.py`: removed flat `INTERNAL_STANDARDS` list
+- `src/senaite/pfas/method_profile_store.py`: removed `_FDA_ANALYTE_ORDER` and
+  `_CONFIRM_ION_MZ`; `_fda_per_analyte()` now iterates `NATIVE_ANALYTES` and
+  reads confirm ion from `PFAS_ANALYTES`
+- `pfas_pipeline/egad_edd.py`: removed `ANALYTE_CAS_DEFAULTS` dict
 
-### PENDING from Round 9 (not yet built):
+### Phase B — EIS overrides structural fix (DONE):
+- `reload_from_profiles()` converts eis_overrides from store list format to dict
+  so `EPA1633AProfile.qc_rules()` dict-access works after JSON round-trip
 
-**Item 1 — Method × Matrix Analyte Inclusion Matrix UI:**
-- The data model (analyte_matrix_inclusion) EXISTS in method_profile_store.py
-- The query function (get_included_analytes) EXISTS
-- **Missing:** checkbox grid UI in method_profile_edit.pt — the manager has no
-  way to view or edit the inclusion matrix through the browser
-- **Missing:** downstream tools don't call get_included_analytes() yet — they
-  still use flat global analyte lists
-
-**Item 2 — Surrogate Map drag-and-drop:**
-- Data lives in DEFAULT_PROFILES["FDA_32PFAS"]["surrogate_map"] (list of
-  {analyte, surrogate_is} dicts)
-- **Missing:** drag-and-drop UI — currently JSON/array text entry only
-- Must use get_included_analytes() to populate native analyte list (left column)
-  and method's IS set to populate the IS list (right column)
-
-**Item 3 — Recovery Tiers per analyte, matrix-conditional (FDA):**
-- Data EXISTS in method_profile_store.py recovery_tiers (tier 1/2/3 with
-  key_analytes, tight_matrices, no_std_analytes lists)
-- Pipeline reads from _DEFAULT_PROFILE_CACHE correctly
-- **Missing:** per-analyte table view in the UI (method_profile_edit.pt)
-  showing each analyte's assigned tier, with ability to edit
-
-**Item 4 — Matrix Adjustment (confirm one-per-method):**
-- matrix_factors list exists in method_profile_store.py — confirmed correct
-- **Missing:** Just needs confirmation it's visible in the UI (it was already
-  there in method_profile_edit.pt). Low priority.
-
-**Item 5 — EIS Recovery Overrides (EPA 1633A only):**
-- Data EXISTS in DEFAULT_PROFILES["EPA_1633A"]["eis_overrides"] as list of
-  {analyte, recovery_min, recovery_max}
-- **STRUCTURAL MISMATCH:** method_profiles.py _DEFAULT_PROFILE_CACHE stores
-  eis_overrides as a DICT {analyte: {recovery_min, recovery_max}}; the store
-  uses a LIST of objects — these will break on JSON round-trip if not aligned
-- **Missing:** method-conditional display in UI (hide EIS tab for FDA/537.1)
-
-**Item 6 — EGAD EDD dead config tabs + missing CAS codes:**
-- The main EGAD EDD config TABS don't populate when clicked (dead tab bug)
-- Two analytes block EDD export: PFUnDS (CAS not in EGAD CAS_LUP) and
-  PFTrDS (CAS = PLACEHOLDER)
-- **Missing:** root cause fix for dead tabs; inline editor for missing CAS
-
-**Item 7 — Logbooks preview + parentage + example batch:**
-- Logbooks exist (FM-ENV-250/251/252/253) stored as ZODB annotations on Batch
-- **Missing:** live preview when configuring columns
-- **Missing:** example batch for playing with the extraction logbook
-- **Missing:** on-screen explanation of how stages → logbook instance
-
-**Item 8 — Parentage end-to-end:**
-- Batch.method_id gap was fixed in commit 1bdf6b3 ✓
-- **Remaining gap:** LFSMResult.passes / LFSMDResult.passes in models.py still
-  use flat CRITERIA dict (Decision C violation) — proposed: delete these
-  convenience properties, nothing external calls them
+### Previously uncommitted Round 9 work now committed:
+- `models.py`: `Batch.method_id` field added
+- `method_profile_store.py`: `supported_matrices`, `master_analyte_set`,
+  `analyte_matrix_inclusion`, `unit_map`, `spike_levels` in all 3 method profiles;
+  `_FDA_BIG4`/`_FDA_NO_LABELED_STD` derived from `analyte_reference.py`
+- `qc/rules.py`: removed `METHOD_MATRIX_UNIT_MAP` (owned by method profiles)
+- `browser/method_profiles.py`: inclusion matrix + surrogate IS grid view helpers
+- `browser/templates/method_profile_edit.pt`: full edit template with analyte×matrix
+  checkbox grid, surrogate IS lane UI, EIS conditional tab, per-analyte recovery
+  tiers table, spike levels, extraction stages
+- `browser/egad_config.py` + `egad_config.pt`: EDD config tab fixes
+- `browser/logbooks.py` + `logbook_*.pt` + `logbook_index.pt`: preview + parentage
+- `seed_example_batch.py`: example batch with all 4 logbooks (Item 7)
 
 ---
 
-## Remaining duplications identified in schema audit (2026-06-18)
+## Round 9 — what is STILL PENDING
 
-These are the outstanding duplicate-removal tasks approved in schema audit:
+### Phase C — Wire get_included_analytes() to downstream consumers
+- `pfas_pipeline/pipeline.py` `build_summary()` and `run_queue.py`
+  `auto_evaluate()` still iterate `_FDA_DISPLAY_ANALYTES` (34 display names).
+  They should call `get_included_analytes(portal, method_id, matrix)` for the
+  batch's method × matrix panel — so excluded analytes (e.g. PFODA × Eggs)
+  are omitted from the output automatically.
+- `pfas_pipeline/egad_edd.py`: EDD generator should respect inclusion matrix
+- Report generator: only report analytes in the panel
+- Note: `master_analyte_set` in ZODB store uses KEYWORDS; pipeline's display-name
+  lists use DISPLAY NAMES. Phase C needs COMPOUND_NAME_TO_KEYWORD translation.
 
-1. `pfas_pipeline/constants.py`: still has `ANALYTES` list (34 display names),
-   `INTERNAL_STANDARDS` list (21 flat names), `NON_ISO_ANALYTES` frozenset —
-   should be removed; pipeline reads analyte set from method profile JSON
-2. `src/senaite/pfas/analytes.py`: still has `INTERNAL_STANDARDS` flat name list
-   (not derived from analyte_reference.py) — remove
-3. `method_profile_store.py` `_FDA_ANALYTE_ORDER` (34 display names) — still
-   present; should use master_analyte_set from the profile instead
-4. `pfas_pipeline/egad_edd.py` `ANALYTE_CAS_DEFAULTS` — duplicate of
-   egad_store.py DEFAULT_ANALYTE_CAS; remove from egad_edd.py
-5. `method_profile_store.py` `_CONFIRM_ION_MZ` dict — partial duplicate of
-   analytes.py PFAS_ANALYTES qual_mrm_list; remove, seed from analytes.py
+### Phase D — Fix Decision C violations
+- `pfas_pipeline/models.py`: `LFSMResult.passes` and `LFSMDResult.passes`
+  still read from flat `CRITERIA` dict (recovery_min_pct, rpd_max_pct).
+  These should be removed — nothing external calls them.
+
+### Round 9 UI items (browser) — status after 37ced41:
+- **Item 1 — Analyte×Matrix checkbox grid:** Template built, JS POST handler
+  wired. **VERIFY** that saving the grid persists to ZODB correctly by testing
+  in the running SENAITE instance.
+- **Item 2 — Surrogate map drag-and-drop:** Lane UI built in template.
+  **VERIFY** save/load round-trip.
+- **Item 3 — Recovery tiers per-analyte table:** UI present. **VERIFY** it
+  correctly shows per-analyte tiers and allows editing.
+- **Item 4 — Matrix adjustment confirm:** Should be visible in template.
+- **Item 5 — EIS overrides conditional:** `show_eis_overrides()` helper
+  implemented; structural mismatch fixed (Phase B). **VERIFY** in UI.
+- **Item 6 — EGAD dead config tabs + missing CAS:** `egad_config.pt` changed.
+  **VERIFY** tabs now load correctly. PFUnDS/PFTrDS CAS still need inline
+  editor — check if the EGAD config UI allows editing them now.
+- **Item 7 — Logbooks preview + example batch:** `seed_example_batch.py`
+  committed; logbook templates committed. **VERIFY** by running seed script
+  against live SENAITE and checking the logbook UI.
+- **Item 8 — Parentage end-to-end:** `Batch.method_id` fixed; `LFSMResult.passes`
+  deferred. All profiled QC functions in `run_queue.py` wired correctly.
 
 ---
 
-## Open design question (needs lab answer before building)
+## Key design decisions (for continuity)
 
-**CAS map ownership conflict:**
-- CLAUDE.md §9 says CAS MAP is owned by the method
-- Round 7 Decision (b) says CAS_NO stored per-analyte (not per-method)
-- Current implementation: egad_store.DEFAULT_ANALYTE_CAS owns it per-analyte
-- Claude's proposed resolution: KEEP per-analyte in egad_store.py (Round 7 wins)
-- **Needs explicit confirmation from lab before implementing**
+- **CAS map ownership:** per-analyte in `egad_store.DEFAULT_ANALYTE_CAS`
+  (Round 7 Decision b). NOT per-method. The pipeline reads from the exported
+  `analyte_cas.json` when available.
+- **`master_analyte_set` format:** KEYWORDS in ZODB store; DISPLAY NAMES in
+  pipeline `_FDA_DISPLAY_ANALYTES`. These differ for "4:2FTS"/"4:2 FTS",
+  "PFHxS"/"lr-PFHxS" etc. Phase C will unify via `COMPOUND_NAME_TO_KEYWORD`.
+- **`eis_overrides` format:** list-of-objects in ZODB store (UI-friendly);
+  dict in pipeline cache (code-friendly). Phase B added normalization in
+  `reload_from_profiles()`.
+- **`_fda_per_analyte()` now derives from NATIVE_ANALYTES + PFAS_ANALYTES.**
+  No more separate `_FDA_ANALYTE_ORDER` or `_CONFIRM_ION_MZ` dicts.
+- **`qual_quan_check()` now accepts `non_iso_set` parameter** (default: lazy
+  load from `get_non_iso_set()`). Callers should pass the method's set.
 
 ---
 
@@ -150,18 +138,6 @@ These are the outstanding duplicate-removal tasks approved in schema audit:
 
 ---
 
-## What was pending at session end (2026-06-18)
-
-The schema audit was just presented to the lab for sign-off. Lab needs to answer:
-1. Approve the 4-phase consolidation plan (Phases A-D above)?
-2. CAS map ownership: keep per-analyte in egad_store.py (Claude's proposal)?
-3. Build order preference: Phase A (duplicate removal) first, or jump straight
-   to the Round 9 UI items (inclusion matrix UI, drag-drop surrogate map)?
-
-Claude has NOT started any Round 9 UI implementation yet — waiting for sign-off.
-
----
-
 ## Infrastructure
 
 - Docker: `docker compose up -d` from `/home/robin/Downloads/senaite_pfas/`
@@ -172,3 +148,14 @@ Claude has NOT started any Round 9 UI implementation yet — waiting for sign-of
   `curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared && chmod +x /tmp/cloudflared && /tmp/cloudflared tunnel --url http://localhost:80 --no-autoupdate &`
 - Public URL changes on every restart (ephemeral)
 - nginx VHM config: must use VirtualHostRoot/senaite/$1 order (see CLAUDE.md §7)
+
+---
+
+## Next build session — recommended order
+
+1. **Verify in browser** that the Round 9 UI items all save/load correctly
+   (start Docker stack, test each tab in method profile edit view)
+2. **Phase C** — wire `get_included_analytes()` to build_summary, auto_evaluate,
+   EDD exporter, and report generator (needs COMPOUND_NAME_TO_KEYWORD mapping)
+3. **Phase D** — remove `LFSMResult.passes` / `LFSMDResult.passes` (Decision C)
+4. **Item 6** — verify EGAD config tabs + test inline CAS editor for PFUnDS/PFTrDS
