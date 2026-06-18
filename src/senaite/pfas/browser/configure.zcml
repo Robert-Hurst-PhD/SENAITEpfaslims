@@ -2,6 +2,12 @@
            xmlns:browser="http://namespaces.zope.org/browser"
            i18n_domain="senaite.pfas">
 
+  <!-- Static JS/CSS resources served via ++resource++senaite.pfas/<file> -->
+  <browser:resourceDirectory
+      name="senaite.pfas"
+      directory="static"
+      />
+
   <!-- @@lims-setup override on ISenaitePFASLayer (more specific than ISenaiteCore,
        so Zope prefers our view over senaite.core's without any conflict). -->
   <include file="overrides.zcml" />

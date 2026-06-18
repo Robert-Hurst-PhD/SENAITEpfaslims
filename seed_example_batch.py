@@ -189,29 +189,30 @@ def _find_or_create_batch(portal, clear=False):
         print("Found existing batch: %s" % existing.getId())
         return existing
 
-    # Create new batch
-    from plone.api.content import create
-    batch = create(
-        container=batches_folder,
-        type="Batch",
-        title=_BATCH_TITLE,
-        id="example-batch-fda32",
-    )
+    # Create new batch using direct invokeFactory (plone.api needs full traversal context)
+    batches_folder.invokeFactory("Batch", "example-batch-fda32", title=_BATCH_TITLE)
+    batch = batches_folder["example-batch-fda32"]
+    batch.setTitle(_BATCH_TITLE)
+    batch.reindexObject()
     print("Created new batch: %s" % batch.getId())
     return batch
 
 
 def run(app):
-    from Testing.makerequest import makerequest
-    app = makerequest(app)
+    from zope.site.hooks import setSite, setHooks
+    setHooks()  # install traversal hooks before any site access
+
+    # Direct attribute access + explicit setSite — same pattern that works in
+    # interactive bin/instance run scripts for Plone 4/5.
+    portal = app.senaite
+    setSite(portal)
+
     from AccessControl.SecurityManagement import newSecurityManager
     user = app.acl_users.getUser("admin")
     if user is None:
         print("ERROR: admin user not found")
         sys.exit(1)
     newSecurityManager(None, user.__of__(app.acl_users))
-
-    portal = app.senaite
 
     clear = "--clear" in sys.argv
 

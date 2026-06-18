@@ -148,7 +148,12 @@ class PFASMethodProfileEditView(BrowserView):
         return json.dumps(self.profile().get("surrogate_map", []), indent=2)
 
     def per_analyte_json(self):
-        return json.dumps(self.profile().get("per_analyte", []), indent=2)
+        from senaite.pfas.method_profile_store import DEFAULT_PROFILES
+        per_a = self.profile().get("per_analyte") or []
+        if not per_a:
+            # Stored profile has explicit [] (old seeded profile); back-fill from defaults.
+            per_a = DEFAULT_PROFILES.get(self.method_id(), {}).get("per_analyte", [])
+        return json.dumps(per_a, indent=2)
 
     def eis_overrides_json(self):
         return json.dumps(self.profile().get("eis_overrides", []), indent=2)
