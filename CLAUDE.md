@@ -43,6 +43,9 @@ Existing structure you must BUILD ON, not replace:
 
 Read `README.md` and `RESOURCE_MAP.md` before doing anything.
 
+**After a session loss or reboot:** read `.claude/SESSION_CONTEXT.md` first —
+it tracks exactly what was built, what is pending, and what decisions are open.
+
 ---
 
 ## 2. Architecture principles (non-negotiable)
