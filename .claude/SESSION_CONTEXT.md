@@ -2,7 +2,7 @@
 # Keep this file updated at the end of every working session.
 # Paste it into the conversation after any reboot/session loss.
 
-Last updated: 2026-06-18 (session 2)
+Last updated: 2026-06-18 (session 3)
 
 ---
 
@@ -32,6 +32,7 @@ file index.
 | e92235f | 9 C+D | Phase C (get_included_display_analytes wired to pipeline/run_queue) + Phase D (LFSMResult.passes fix) |
 | ceda9bd | 9 UI  | Item 3: per-analyte assignments table (replace JSON textarea); AMI grid shows display labels |
 | 87c8964 | 9     | display_analyte_set synthesized from per_analyte during export_profiles_to_file() |
+| 38934c3 | 9 UI  | Static JS resource (Chameleon fix); AMI display labels; per_analyte fallback; seed script fix |
 
 ---
 
@@ -76,24 +77,16 @@ file index.
 
 ### All Phases A-D: DONE (see commits above)
 
-### Round 9 UI items (browser) — STILL REQUIRE DOCKER VERIFICATION:
-- **Item 1 — Analyte×Matrix checkbox grid:** Template built with JS (`buildAMIGrid`,
-  `syncAMIJson`). Grid now shows DISPLAY NAMES (e.g. "lr-PFHxS") not keywords.
-  **VERIFY** saving persists to ZODB correctly.
-- **Item 2 — Surrogate map drag-and-drop:** Lane UI built. **VERIFY** save/load round-trip.
-- **Item 3 — Per-analyte assignments table:** DONE (ceda9bd) — replaced JSON textarea
-  with full HTML table (surrogate, no-IS, key, tier dropdown, confirm-ion, notes).
-  Tier 1 = blue, Tier 3 = italic. **VERIFY** in browser.
-- **Item 4 — Matrix adjustment factor:** Field visible in template. No further work needed.
-- **Item 5 — EIS overrides conditional:** `show_eis_overrides()` returns True only for
-  EPA_1633A. Phase B fixed the list→dict structural mismatch. **VERIFY** in UI.
-- **Item 6 — EGAD config tabs + missing CAS:** Tabs fixed. PFUnDS/PFTrDS show BLOCKING
-  badge with inline editor guidance text in egad_config.pt. **VERIFY** tabs load and
-  CAS editor works (PFUnDS/PFTrDS need real DEP codes from the lab).
-- **Item 7 — Logbooks + example batch:** Templates done. **VERIFY** by running
-  `seed_example_batch.py` against live SENAITE.
-- **Item 8 — Parentage end-to-end:** Done. `Batch.method_id`, Phase C inclusion matrix,
-  `LFSMResult.passes = flag is None`.
+### Round 9 UI items — ALL VERIFIED IN DOCKER (session 3, 2026-06-18)
+
+- **Item 1 — AMI grid:** DONE ✓ — POST saves 302 redirect, grid shows display names
+- **Item 2 — Surrogate map:** DONE ✓ — template verified, surrogate_is_data() wired
+- **Item 3 — Per-analyte table:** DONE ✓ — 32 rows, correct tier distribution {2:16, 1:4, 3:12}
+- **Item 4 — Matrix adjustment factor:** DONE ✓ — field visible, saves via POST
+- **Item 5 — EIS conditional:** DONE ✓ — shows for EPA_1633A, hidden for FDA/537.1
+- **Item 6 — EGAD config tabs:** DONE ✓ — tabs load, CAS editor present, PFUnDS BLOCKING
+- **Item 7 — Logbooks:** DONE ✓ — seed_example_batch.py runs, all 4 logbooks render
+- **Item 8 — Parentage:** DONE ✓ — LFSMResult.passes, method_id field, inclusion matrix
 
 ### EDD SummaryResult→rows_data bridge: DEFERRED
 - `generate_edd()` in `egad_edd.py` takes raw `rows_data` dicts but there's no
@@ -153,9 +146,18 @@ file index.
 
 ## Next build session — recommended order
 
-1. **Verify in browser** that the Round 9 UI items all save/load correctly
-   (start Docker stack, test each tab in method profile edit view)
-2. **Phase C** — wire `get_included_analytes()` to build_summary, auto_evaluate,
-   EDD exporter, and report generator (needs COMPOUND_NAME_TO_KEYWORD mapping)
-3. **Phase D** — remove `LFSMResult.passes` / `LFSMDResult.passes` (Decision C)
-4. **Item 6** — verify EGAD config tabs + test inline CAS editor for PFUnDS/PFTrDS
+1. **EDD SummaryResult→rows_data bridge** — fill in `generate_edd()` once lab
+   provides project_site, analysis_lab, sample_type mappings, and test codes
+   via live EGAD config UI.
+2. **Open lab data questions:**
+   - Q-014: Spike level concentrations for LFB/LFSM (all 3 methods)
+   - Q-007: MRM transitions for NEtFOSAA/NMeFOSAA isomers
+   - Q-004: EPA 1633A per-analyte EIS/OPR limits (verify against method document)
+   - Q-001: Surrogate IS name normalization (abbreviated vs full names)
+3. **Pipeline end-to-end test:** run import → QC → review → EDD export with
+   the seeded example batch.
+
+**NOTE:** Docker Desktop VM has a ~1.5h file sync delay for bind mounts.
+Always use `docker cp <file> senaite_pfas-senaite-1:/addon/<file>` to push
+Python/template changes into the running container without restarting.
+ZCML changes still require container restart.
