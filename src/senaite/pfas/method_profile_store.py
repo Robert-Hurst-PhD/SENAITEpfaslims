@@ -804,6 +804,17 @@ def export_profiles_to_file(portal, path=None):
         except (ValueError, TypeError):
             pass
 
+    # Augment each exported profile with derived fields the pipeline expects.
+    for profile in all_profiles.values():
+        # display_analyte_set: display names in analyte order, derived from
+        # per_analyte rows.  The pipeline's get_analyte_list() checks this
+        # first so it does not need to fall back to a hardcoded list.
+        per_a = profile.get("per_analyte", [])
+        if per_a and "display_analyte_set" not in profile:
+            profile["display_analyte_set"] = [
+                r["analyte"] for r in per_a if r.get("analyte")
+            ]
+
     d = os.path.dirname(path)
     if d and not os.path.exists(d):
         try:
