@@ -169,11 +169,15 @@ class PFASMethodProfileEditView(BrowserView):
     # ── Analyte × Matrix Inclusion Matrix ────────────────────────────────────
 
     def analyte_matrix_grid_data(self):
-        """JSON for the JS grid builder: ordered analytes and matrices."""
+        """JSON for the JS grid builder: ordered analytes, matrices, display labels."""
+        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+        kw_to_display = {row[0]: row[1] for row in NATIVE_ANALYTES}
         profile = self.profile()
+        keywords = profile.get("master_analyte_set", [])
         return json.dumps({
-            "analytes": profile.get("master_analyte_set", []),
-            "matrices": profile.get("supported_matrices", []),
+            "analytes":       keywords,
+            "analyte_labels": {kw: kw_to_display.get(kw, kw) for kw in keywords},
+            "matrices":       profile.get("supported_matrices", []),
         })
 
     def analyte_matrix_json(self):

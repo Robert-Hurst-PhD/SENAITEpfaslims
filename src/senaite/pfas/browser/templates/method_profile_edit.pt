@@ -69,6 +69,25 @@
                 cursor: pointer; }
     .cb-label input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
 
+    /* Per-analyte assignments table */
+    .pa-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .pa-table th { background: var(--s-light); padding: 6px 8px; text-align: left;
+                   border-bottom: 2px solid var(--s-border); font-size: 11px; font-weight: 700;
+                   text-transform: uppercase; letter-spacing: .04em; color: var(--s-secondary);
+                   white-space: nowrap; }
+    .pa-table td { padding: 4px 6px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    .pa-table tr:hover td { background: var(--s-light); }
+    .pa-table .pa-name { font-family: "Fira Code", monospace; font-size: 12px; white-space: nowrap; }
+    .pa-table input[type=text] { width: 100%; box-sizing: border-box; padding: 3px 5px;
+                                  border: 1px solid var(--s-border); border-radius: 3px;
+                                  font-size: 11px; font-family: inherit; }
+    .pa-table input[type=text].pa-mono { font-family: "Fira Code", monospace; }
+    .pa-table select { padding: 3px 5px; border: 1px solid var(--s-border); border-radius: 3px;
+                       font-size: 11px; background: #fff; }
+    .pa-table input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
+    .pa-tier-1 { color: var(--s-primary); font-weight: 600; }
+    .pa-tier-3 { color: var(--s-secondary); font-style: italic; }
+
     /* Analyte × matrix inclusion grid */
     .inclusion-wrap { overflow-x: auto; margin-bottom: 8px; }
     .inclusion-grid { border-collapse: collapse; font-size: 12px; }
@@ -585,13 +604,30 @@
       <details>
         <summary>Per-Analyte Assignments</summary>
         <div class="section-body">
-          <p class="json-hint">
-            JSON array. Each row: { "analyte": "PFBA", "surrogate": "M3PFBA",
-            "no_labeled_std": false, "is_key_analyte": false,
-            "recovery_tier": 2, "confirm_ion_mz": "213.04&gt;18.99", "notes": "" }
+          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+            Per-analyte QC flags and confirm-ion MRM. <strong>Recovery Tier</strong>: 1 = key analyte
+            (tight window in specified matrices), 2 = standard, 3 = no labeled IS.
+            <strong>Confirm Ion</strong>: qualifier MRM transition (precursor&gt;product).
           </p>
-          <textarea class="json-area" name="per_analyte_json" rows="14"
-                    tal:content="view/per_analyte_json">[]</textarea>
+          <div style="overflow-x:auto">
+            <table class="pa-table">
+              <thead>
+                <tr>
+                  <th style="min-width:110px">Analyte</th>
+                  <th style="min-width:100px">Surrogate IS</th>
+                  <th style="width:70px;text-align:center">No IS</th>
+                  <th style="width:70px;text-align:center">Key</th>
+                  <th style="width:110px">Tier</th>
+                  <th style="min-width:130px">Confirm Ion (m/z)</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="perAnalyteBody"></tbody>
+            </table>
+          </div>
+          <!-- synced by JS before submit -->
+          <input type="hidden" name="per_analyte_json" id="per_analyte_json"
+                 tal:attributes="value view/per_analyte_json" />
         </div>
       </details>
 
@@ -1227,6 +1263,78 @@
     if (scEl) scEl.value = JSON.stringify(chain);
   }
 
+  /* ── Per-Analyte Assignments table ───────────────────────────── */
+
+  var PA_TIERS = [
+    {v:1, label:'Tier 1 — Key analyte'},
+    {v:2, label:'Tier 2 — Standard'},
+    {v:3, label:'Tier 3 — No labeled IS'},
+  ];
+
+  function buildPerAnalyteTable() {
+    var tbody = document.getElementById('perAnalyteBody');
+    var jsonEl = document.getElementById('per_analyte_json');
+    if (!tbody || !jsonEl) return;
+    var rows = [];
+    try { rows = JSON.parse(jsonEl.value || '[]'); } catch(e) { return; }
+    tbody.innerHTML = '';
+    rows.forEach(function(row, i) {
+      var tierOpts = PA_TIERS.map(function(t) {
+        return '<option value="' + t.v + '"' + (row.recovery_tier === t.v ? ' selected' : '') +
+               '>' + t.label + '</option>';
+      }).join('');
+      var tierClass = row.recovery_tier === 1 ? 'pa-tier-1' : (row.recovery_tier === 3 ? 'pa-tier-3' : '');
+      var tr = document.createElement('tr');
+      if (tierClass) tr.className = tierClass;
+      tr.innerHTML =
+        '<td class="pa-name">' + _esc(row.analyte || '') + '</td>' +
+        '<td><input type="text" class="pa-inp" data-row="' + i + '" data-field="surrogate"' +
+          ' value="' + _esc(row.surrogate || '') + '" placeholder="M3PFBA"' +
+          ' oninput="syncPerAnalyteJson()" /></td>' +
+        '<td style="text-align:center">' +
+          '<input type="checkbox" class="pa-cb" data-row="' + i + '" data-field="no_labeled_std"' +
+          (row.no_labeled_std ? ' checked' : '') + ' onchange="syncPerAnalyteJson()" /></td>' +
+        '<td style="text-align:center">' +
+          '<input type="checkbox" class="pa-cb" data-row="' + i + '" data-field="is_key_analyte"' +
+          (row.is_key_analyte ? ' checked' : '') + ' onchange="syncPerAnalyteJson()" /></td>' +
+        '<td><select class="pa-sel" data-row="' + i + '" data-field="recovery_tier"' +
+          ' onchange="syncPerAnalyteJson()">' + tierOpts + '</select></td>' +
+        '<td><input type="text" class="pa-inp pa-mono" data-row="' + i + '" data-field="confirm_ion_mz"' +
+          ' value="' + _esc(row.confirm_ion_mz || '') + '" placeholder="213.04>18.99"' +
+          ' oninput="syncPerAnalyteJson()" /></td>' +
+        '<td><input type="text" class="pa-inp" data-row="' + i + '" data-field="notes"' +
+          ' value="' + _esc(row.notes || '') + '"' +
+          ' oninput="syncPerAnalyteJson()" /></td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function syncPerAnalyteJson() {
+    var jsonEl = document.getElementById('per_analyte_json');
+    if (!jsonEl) return;
+    var rows = [];
+    try { rows = JSON.parse(jsonEl.value || '[]'); } catch(e) { return; }
+    /* text inputs */
+    document.querySelectorAll('#perAnalyteBody .pa-inp').forEach(function(inp) {
+      var i = parseInt(inp.getAttribute('data-row'), 10);
+      var f = inp.getAttribute('data-field');
+      if (rows[i] !== undefined) rows[i][f] = inp.value;
+    });
+    /* checkboxes */
+    document.querySelectorAll('#perAnalyteBody .pa-cb').forEach(function(cb) {
+      var i = parseInt(cb.getAttribute('data-row'), 10);
+      var f = cb.getAttribute('data-field');
+      if (rows[i] !== undefined) rows[i][f] = cb.checked;
+    });
+    /* selects */
+    document.querySelectorAll('#perAnalyteBody .pa-sel').forEach(function(sel) {
+      var i = parseInt(sel.getAttribute('data-row'), 10);
+      var f = sel.getAttribute('data-field');
+      if (rows[i] !== undefined) rows[i][f] = parseInt(sel.value, 10);
+    });
+    jsonEl.value = JSON.stringify(rows);
+  }
+
   /* ── Analyte × Matrix Inclusion grid ─────────────────────────── */
 
   function buildAMIGrid() {
@@ -1243,6 +1351,7 @@
     }
 
     var analytes = gridData.analytes || [];
+    var labels   = gridData.analyte_labels || {};
     var matrices = gridData.matrices || [];
 
     if (!analytes.length || !matrices.length) {
@@ -1262,9 +1371,10 @@
     html += '</tr></thead><tbody>';
 
     analytes.forEach(function(kw, ri) {
+      var label = labels[kw] || kw;
       html += '<tr><td class="analyte-name">' +
-        '<button type="button" class="ami-row-btn" title="Toggle row" onclick="amiRowToggle(' + ri + ')">' +
-        _esc(kw) + '</button></td>';
+        '<button type="button" class="ami-row-btn" title="Toggle row — keyword: ' + _esc(kw) + '" onclick="amiRowToggle(' + ri + ')">' +
+        _esc(label) + '</button></td>';
       matrices.forEach(function(mat) {
         var checked = !(inclusion[kw] && inclusion[kw][mat] === false);
         html += '<td class="check-cell">' +
@@ -1346,11 +1456,13 @@
     buildRecoveryTiersGrid();
     buildSurrogateGrid();
     buildAMIGrid();
+    buildPerAnalyteTable();
   });
 
   document.querySelector('form').addEventListener('submit', function() {
     syncSaltJson(); syncIsomerJson(); syncStageJson(); syncEisJson();
     syncRecoveryTiersJson(); syncSurrogateJson(); syncAMIJson();
+    syncPerAnalyteJson();
   });
   </script>
 
