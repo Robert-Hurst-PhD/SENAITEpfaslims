@@ -2,7 +2,7 @@
 # Keep this file updated at the end of every working session.
 # Paste it into the conversation after any reboot/session loss.
 
-Last updated: 2026-06-18
+Last updated: 2026-06-18 (session 2)
 
 ---
 
@@ -29,6 +29,9 @@ file index.
 | 1bdf6b3 | 9     | Relational data model schema + data-driven QC rules |
 | 5d927b2 | 9     | SESSION_CONTEXT.md + CLAUDE.md pointer |
 | 37ced41 | 9 A+B | Phase A (remove duplicate lists) + Phase B (EIS structural fix) + uncommitted Round 9 UI |
+| e92235f | 9 C+D | Phase C (get_included_display_analytes wired to pipeline/run_queue) + Phase D (LFSMResult.passes fix) |
+| ceda9bd | 9 UI  | Item 3: per-analyte assignments table (replace JSON textarea); AMI grid shows display labels |
+| 87c8964 | 9     | display_analyte_set synthesized from per_analyte during export_profiles_to_file() |
 
 ---
 
@@ -71,41 +74,32 @@ file index.
 
 ## Round 9 — what is STILL PENDING
 
-### Phase C — Wire get_included_analytes() to downstream consumers
-- `pfas_pipeline/pipeline.py` `build_summary()` and `run_queue.py`
-  `auto_evaluate()` still iterate `_FDA_DISPLAY_ANALYTES` (34 display names).
-  They should call `get_included_analytes(portal, method_id, matrix)` for the
-  batch's method × matrix panel — so excluded analytes (e.g. PFODA × Eggs)
-  are omitted from the output automatically.
-- `pfas_pipeline/egad_edd.py`: EDD generator should respect inclusion matrix
-- Report generator: only report analytes in the panel
-- Note: `master_analyte_set` in ZODB store uses KEYWORDS; pipeline's display-name
-  lists use DISPLAY NAMES. Phase C needs COMPOUND_NAME_TO_KEYWORD translation.
+### All Phases A-D: DONE (see commits above)
 
-### Phase D — Fix Decision C violations
-- `pfas_pipeline/models.py`: `LFSMResult.passes` and `LFSMDResult.passes`
-  still read from flat `CRITERIA` dict (recovery_min_pct, rpd_max_pct).
-  These should be removed — nothing external calls them.
+### Round 9 UI items (browser) — STILL REQUIRE DOCKER VERIFICATION:
+- **Item 1 — Analyte×Matrix checkbox grid:** Template built with JS (`buildAMIGrid`,
+  `syncAMIJson`). Grid now shows DISPLAY NAMES (e.g. "lr-PFHxS") not keywords.
+  **VERIFY** saving persists to ZODB correctly.
+- **Item 2 — Surrogate map drag-and-drop:** Lane UI built. **VERIFY** save/load round-trip.
+- **Item 3 — Per-analyte assignments table:** DONE (ceda9bd) — replaced JSON textarea
+  with full HTML table (surrogate, no-IS, key, tier dropdown, confirm-ion, notes).
+  Tier 1 = blue, Tier 3 = italic. **VERIFY** in browser.
+- **Item 4 — Matrix adjustment factor:** Field visible in template. No further work needed.
+- **Item 5 — EIS overrides conditional:** `show_eis_overrides()` returns True only for
+  EPA_1633A. Phase B fixed the list→dict structural mismatch. **VERIFY** in UI.
+- **Item 6 — EGAD config tabs + missing CAS:** Tabs fixed. PFUnDS/PFTrDS show BLOCKING
+  badge with inline editor guidance text in egad_config.pt. **VERIFY** tabs load and
+  CAS editor works (PFUnDS/PFTrDS need real DEP codes from the lab).
+- **Item 7 — Logbooks + example batch:** Templates done. **VERIFY** by running
+  `seed_example_batch.py` against live SENAITE.
+- **Item 8 — Parentage end-to-end:** Done. `Batch.method_id`, Phase C inclusion matrix,
+  `LFSMResult.passes = flag is None`.
 
-### Round 9 UI items (browser) — status after 37ced41:
-- **Item 1 — Analyte×Matrix checkbox grid:** Template built, JS POST handler
-  wired. **VERIFY** that saving the grid persists to ZODB correctly by testing
-  in the running SENAITE instance.
-- **Item 2 — Surrogate map drag-and-drop:** Lane UI built in template.
-  **VERIFY** save/load round-trip.
-- **Item 3 — Recovery tiers per-analyte table:** UI present. **VERIFY** it
-  correctly shows per-analyte tiers and allows editing.
-- **Item 4 — Matrix adjustment confirm:** Should be visible in template.
-- **Item 5 — EIS overrides conditional:** `show_eis_overrides()` helper
-  implemented; structural mismatch fixed (Phase B). **VERIFY** in UI.
-- **Item 6 — EGAD dead config tabs + missing CAS:** `egad_config.pt` changed.
-  **VERIFY** tabs now load correctly. PFUnDS/PFTrDS CAS still need inline
-  editor — check if the EGAD config UI allows editing them now.
-- **Item 7 — Logbooks preview + example batch:** `seed_example_batch.py`
-  committed; logbook templates committed. **VERIFY** by running seed script
-  against live SENAITE and checking the logbook UI.
-- **Item 8 — Parentage end-to-end:** `Batch.method_id` fixed; `LFSMResult.passes`
-  deferred. All profiled QC functions in `run_queue.py` wired correctly.
+### EDD SummaryResult→rows_data bridge: DEFERRED
+- `generate_edd()` in `egad_edd.py` takes raw `rows_data` dicts but there's no
+  code that converts `batch.summary` SummaryResult objects to EDD format.
+- Deferred until EGAD config (project_site, analysis_lab, sample_type mapping,
+  test code) is filled in via the live UI — these are required fields.
 
 ---
 
@@ -115,15 +109,21 @@ file index.
   (Round 7 Decision b). NOT per-method. The pipeline reads from the exported
   `analyte_cas.json` when available.
 - **`master_analyte_set` format:** KEYWORDS in ZODB store; DISPLAY NAMES in
-  pipeline `_FDA_DISPLAY_ANALYTES`. These differ for "4:2FTS"/"4:2 FTS",
-  "PFHxS"/"lr-PFHxS" etc. Phase C will unify via `COMPOUND_NAME_TO_KEYWORD`.
+  pipeline. 8 analytes differ: PFHxS→lr-PFHxS, PFOS→lr-PFOS, GenX→GenX (HFPO-DA),
+  4:2FTS→4:2 FTS, 8:2FTS→8:2 FTS, 10:2FTS→10:2 FTS, 9ClPF3ONS→9Cl-PF3ONS,
+  11ClPF3OUdS→11Cl-PF3OUdS. Mapping in `_FDA_KW_TO_DISPLAY` / `_FDA_DISPLAY_TO_KW`
+  in `pfas_pipeline/method_profiles.py`. AMI grid tooltip shows keyword; cell shows
+  display name.
+- **`display_analyte_set`:** Synthesized by `export_profiles_to_file()` from
+  `per_analyte[].analyte` (display names). Pipeline's `get_analyte_list()` reads
+  this first; no fallback to hardcoded list needed once the JSON is exported.
 - **`eis_overrides` format:** list-of-objects in ZODB store (UI-friendly);
-  dict in pipeline cache (code-friendly). Phase B added normalization in
-  `reload_from_profiles()`.
-- **`_fda_per_analyte()` now derives from NATIVE_ANALYTES + PFAS_ANALYTES.**
-  No more separate `_FDA_ANALYTE_ORDER` or `_CONFIRM_ION_MZ` dicts.
-- **`qual_quan_check()` now accepts `non_iso_set` parameter** (default: lazy
-  load from `get_non_iso_set()`). Callers should pass the method's set.
+  dict in pipeline cache (code-friendly). `reload_from_profiles()` normalizes.
+- **`_fda_per_analyte()` derives from NATIVE_ANALYTES + PFAS_ANALYTES.**
+  No separate `_FDA_ANALYTE_ORDER` or `_CONFIRM_ION_MZ` dicts.
+- **`qual_quan_check()` accepts `non_iso_set` parameter** (default: lazy load).
+- **`LFSMResult.passes` / `LFSMDResult.passes`:** `return self.flag is None`
+  (Phase D). No longer read from flat CRITERIA dict.
 
 ---
 
