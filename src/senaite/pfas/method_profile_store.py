@@ -40,77 +40,38 @@ PROFILES_EXPORT_PATH = os.environ.get(
 # and no_labeled flags. Do not duplicate these lists here.
 
 from senaite.pfas.analyte_reference import (
-    get_key_analyte_keywords as _get_key_kw,
-    get_key_analyte_names as _get_key_names,
-    get_no_labeled_names as _get_no_labeled_names,
+    NATIVE_ANALYTES as _NATIVE_ANALYTES,
     get_surrogate_map_by_name as _get_surrogate_map_by_name,
 )
 
-# Display names (as used in _FDA_ANALYTE_ORDER) for no-labeled-std analytes
-_FDA_NO_LABELED_STD = _get_no_labeled_names()
-
-# Includes both keywords (e.g. "PFOS") and display names (e.g. "lr-PFOS") for
-# the big-four, because _fda_per_analyte() iterates over display names in
-# _FDA_ANALYTE_ORDER.
-_FDA_BIG4 = _get_key_kw() | _get_key_names()
-
-_FDA_ANALYTE_ORDER = [
-    "10:2 FTS", "11Cl-PF3OUdS", "4:2 FTS", "6:2FTS", "8:2 FTS",
-    "9Cl-PF3ONS", "DONA", "FOSA", "GenX (HFPO-DA)", "PFBA", "PFBS",
-    "PFDA", "PFDoA", "PFDoS", "PFDS", "PFHpA", "PFHpS", "PFHxA",
-    "PFHxDA", "lr-PFHxS", "PFNA", "PFNS", "PFOA", "PFODA", "lr-PFOS",
-    "PFPeA", "PFPeS", "PFTeDA", "PFTrDA", "PFTrDS", "PFUDA", "PFUnDS",
-    "br-PFOS", "br-PFHxS",
-]
-
 # Native analyte (display name) → surrogate IS keyword — derived from
-# analyte_reference.py. _fda_per_analyte() iterates _FDA_ANALYTE_ORDER which
-# uses display names, so we use the name-keyed map.
+# analyte_reference.py. _fda_per_analyte() uses display names, so use the
+# name-keyed map.
 _FDA_SURROGATE_MAP_DICT = _get_surrogate_map_by_name()
-
-# Primary qualifier MRM transition per analyte (from analytes.py PFAS_ANALYTES)
-# PFBA / PFPeA use the 18.99 fluoride fragment — no HRMS required (see DECISIONS.md)
-_CONFIRM_ION_MZ = {
-    "10:2 FTS": "626.83>606.92",  "11Cl-PF3OUdS": "630.92>83.06",
-    "4:2 FTS":  "326.94>306.97",  "6:2FTS":        "426.92>406.99",
-    "8:2 FTS":  "527.03>507.07",  "9Cl-PF3ONS":    "530.93>82.96",
-    "GenX (HFPO-DA)": "285.00>119.00",
-    "PFBA":     "213.04>18.99",   "PFBS":   "299.00>98.99",
-    "PFDA":     "512.96>268.98",  "PFDoA":  "612.94>168.97",
-    "PFDoS":    "698.86>98.96",   "PFDS":   "598.99>98.92",
-    "PFHpA":    "362.90>169.02",  "PFHpS":  "448.90>98.96",
-    "PFHxA":    "312.97>119.03",  "PFHxDA": "812.96>168.88",
-    "PFHxS":    "398.85>98.97",   "PFNA":   "462.86>269.02",
-    "PFNS":     "549.01>98.92",   "PFOA":   "376.86>85.02",
-    "PFODA":    "912.93>218.94",  "PFOS":   "498.92>98.94",
-    "PFPeA":    "263.01>18.99",   "PFPeS":  "348.94>98.92",
-    "PFTeDA":   "712.75>218.91",  "PFTrDA": "662.79>218.93",
-    "PFTrDS":   "748.73>98.94",   "PFUnDS": "562.85>269.00",
-    "PFUDA":    "648.82>98.91",   "DONA":   "412.91>219.01",
-    "FOSA":     "498.92>98.94",
-    "br-PFHxS": "398.85>98.97",   "br-PFOS": "498.92>98.94",
-    "lr-PFHxS": "398.85>98.97",   "lr-PFOS": "498.92>98.94",
-}
 
 
 def _fda_per_analyte():
+    # Build confirm-ion map from PFAS_ANALYTES (canonical MRM source, Decision A).
+    from senaite.pfas.analytes import PFAS_ANALYTES as _pfas_a
+    confirm_map = {name: qls[0] for name, _, qls in _pfas_a if qls}
+
+    master_kws = frozenset(_FDA_MASTER_ANALYTE_KEYWORDS)
     rows = []
-    for analyte in _FDA_ANALYTE_ORDER:
-        no_std = analyte in _FDA_NO_LABELED_STD
-        is_key = analyte in _FDA_BIG4
-        if no_std:
-            tier = 3
-        elif is_key:
-            tier = 1   # Tier 1 in tight matrices; Tier 2 in others
-        else:
-            tier = 2
+    for row in _NATIVE_ANALYTES:
+        keyword = row[0]
+        if keyword not in master_kws:
+            continue
+        analyte = row[1]   # display name (e.g. "lr-PFHxS", "GenX (HFPO-DA)")
+        no_std = row[7]
+        is_key = row[8]
+        tier = 3 if no_std else (1 if is_key else 2)
         rows.append({
-            "analyte": analyte,
-            "surrogate": _FDA_SURROGATE_MAP_DICT.get(analyte, ""),
+            "analyte":        analyte,
+            "surrogate":      _FDA_SURROGATE_MAP_DICT.get(analyte, ""),
             "no_labeled_std": no_std,
             "is_key_analyte": is_key,
-            "recovery_tier": tier,
-            "confirm_ion_mz": _CONFIRM_ION_MZ.get(analyte, ""),
+            "recovery_tier":  tier,
+            "confirm_ion_mz": confirm_map.get(analyte, ""),
             "notes": "",
         })
     return rows
@@ -315,6 +276,30 @@ DEFAULT_PROFILES = {
             {"analyte": "10:2 FTS",       "surrogate_is": "13C2,D4 10:2 FTS"},
         ],
         "surrogate_is": "M4PFOA",
+        # surrogate_is_chain: which injection IS each labeled surrogate quantifies against
+        # For FDA 32-PFAS all 20 surrogates quantify against M4PFOA (FDA Table 9-1)
+        "surrogate_is_chain": {
+            "M3PFBA":    "M4PFOA",
+            "M3PFPeA":   "M4PFOA",
+            "M5PFHxA":   "M4PFOA",
+            "M4PFHpA":   "M4PFOA",
+            "M8PFOA":    "M4PFOA",
+            "M5PFNA":    "M4PFOA",
+            "M2PFDA":    "M4PFOA",
+            "MPFUdA":    "M4PFOA",
+            "MPFDoA":    "M4PFOA",
+            "M2PFTeDA":  "M4PFOA",
+            "M2PFHxDA":  "M4PFOA",
+            "M3PFBS":    "M4PFOA",
+            "M3PFHxS":   "M4PFOA",
+            "M8PFOS":    "M4PFOA",
+            "M3HFPO":    "M4PFOA",
+            "M8FOSA":    "M4PFOA",
+            "M2-4:2FTS": "M4PFOA",
+            "M2-6:2FTS": "M4PFOA",
+            "M2-8:2FTS": "M4PFOA",
+            "M2-10:2FTS":"M4PFOA",
+        },
         "per_analyte": _fda_per_analyte(),
         "salt_adjustment_factors": [],
         "isomer_summation": [
@@ -328,9 +313,18 @@ DEFAULT_PROFILES = {
         # keyword → {matrix_name → bool}  — the inclusion checkbox grid
         # PFODA × Eggs = False; all other intersections = True
         "analyte_matrix_inclusion": _fda_analyte_matrix_inclusion(),
-        # ng/kg for all FDA food matrices (confirmed 2026-06-16)
-        # Note: rules.py METHOD_MATRIX_UNIT_MAP has Milk as "ng/mL" — verify with lab
-        "unit_map": {m: "ng/kg" for m in _FDA_MATRICES},
+        # Milk → ng/mL (liquid matrix, per-volume); all other FDA matrices → ng/kg.
+        # Unit is per-matrix and editable via the Method Profile UI (Q-013).
+        "unit_map": dict(
+            [(m, "ng/mL" if m == "Milk" else "ng/kg") for m in _FDA_MATRICES]
+        ),
+        # Spike level options for LFSM (and LFB) injections.
+        # The lab MUST enter the actual ppt values here via the Method Profile UI.
+        # Leave empty until real spike amounts are confirmed (see QUESTIONS.md Q-014).
+        "spike_levels": {
+            "LFB":  [],
+            "LFSM": [],
+        },
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -482,6 +476,10 @@ DEFAULT_PROFILES = {
             _FDA_MASTER_ANALYTE_KEYWORDS, _EPA537_MATRICES
         ),
         "unit_map": {m: "ng/L" for m in _EPA537_MATRICES},
+        "spike_levels": {
+            "LFB":  [],
+            "LFSM": [],
+        },
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -643,6 +641,10 @@ DEFAULT_PROFILES = {
             _FDA_MASTER_ANALYTE_KEYWORDS, _EPA1633A_MATRICES
         ),
         "unit_map": dict(_EPA1633A_UNIT_MAP),
+        "spike_levels": {
+            "LFB":  [],
+            "LFSM": [],
+        },
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -818,6 +820,26 @@ def export_profiles_to_file(portal, path=None):
     except (IOError, OSError) as exc:
         logger.error("Failed to export method profiles to %s: %s", path, exc)
         raise
+
+
+def get_included_analytes(portal, method_id, matrix):
+    """Return the ordered list of analyte keywords reportable for method × matrix.
+
+    Reads analyte_matrix_inclusion from the stored profile.  Analytes where the
+    checkbox is True (or absent — conservative default) are included.  PFODA in
+    FDA × Eggs is excluded by default (seeded carve-out).
+
+    Downstream callers (surrogate map, recovery tiers, QC engine, report, EDD)
+    must use this function rather than reading master_analyte_set directly so
+    that the Method × Matrix panel is always respected.
+    """
+    profile = get_profile(portal, method_id)
+    master = profile.get("master_analyte_set", [])
+    inclusion = profile.get("analyte_matrix_inclusion", {})
+    if not inclusion:
+        return list(master)
+    return [kw for kw in master
+            if inclusion.get(kw, {}).get(matrix, True)]
 
 
 def seed_default_profiles(portal):

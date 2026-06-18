@@ -40,6 +40,19 @@
   <div metal:fill-slot="content">
   <div class="page-body">
 
+    <!-- Breadcrumb -->
+    <div class="lb-breadcrumb">
+      <a tal:attributes="href view/portal_url">Lab</a>
+      <span class="lb-bc-sep">›</span>
+      <tal:m tal:condition="view/batch_method">
+        <span tal:content="view/batch_method">Method</span>
+        <span class="lb-bc-sep">›</span>
+      </tal:m>
+      <strong tal:content="view/batch_title">Batch</strong>
+      <span class="lb-bc-sep">›</span>
+      <strong>Logbooks</strong>
+    </div>
+
     <p style="font-size:13px; color:var(--s-body); margin-bottom:24px;">
       Logbooks for this batch.  Fill them in on the bench or tablet before
       extraction and instrument run.

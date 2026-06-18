@@ -109,52 +109,6 @@ _QC_REQUIRED = frozenset([
     "SAMPLE_DELIVERY_GROUP", "ANALYSIS_DATE", "ANALYSIS_TIME",
 ])
 
-# ── Seeded CAS mapping (analyte keyword → EGAD CAS_NO, PARAMETER_NAME) ───────
-# CAS_NO format: digits only (no dashes) or DEP##### code — as in CAS_LUP.
-# Source: CAS_LUP VALUE and CAS_NO columns, CATEGORY = PFC.
-# _A suffix in VALUE = acid form (reported in water/food matrices).
-# Missing entries require manual entry in the config panel.
-
-ANALYTE_CAS_DEFAULTS = {
-    # keyword          CAS_NO         PARAMETER_NAME (EGAD VALUE column)
-    "9ClPF3ONS":     ("756426581",   "9CL-PF3ONS_A"),
-    "11ClPF3OUdS":   ("763051929",   "11CL-PF3OUDS_A"),
-    "FOSA":          ("754916",      "PFOSA"),
-    "4:2FTS":        ("757124724",   "4:2 FTS_A"),
-    "6:2FTS":        ("27619972",    "6:2 FTS_A"),
-    "8:2FTS":        ("39108344",    "8:2 FTS_A"),
-    "10:2FTS":       ("120226600",   "10:2 FTS_A"),
-    "PFBA":          ("375224",      "PFBA_A"),
-    "PFPeA":         ("2706903",     "PFPEA_A"),
-    "PFHxA":         ("307244",      "PFHXA_A"),
-    "PFHpA":         ("375859",      "PFHPA_A"),
-    "PFOA":          ("335671",      "PFOA_A"),
-    "PFNA":          ("375951",      "PFNA_A"),
-    "PFDA":          ("335762",      "PFDA_A"),
-    "PFUDA":         ("2058948",     "PFUNDA_A"),
-    "PFDoA":         ("307551",      "PFDOA_A"),
-    "PFTrDA":        ("72629948",    "PFTRIA_A"),
-    "PFTeDA":        ("376067",      "PFTEA_A"),
-    "PFHxDA":        ("67905195",    "PFHXDA_A"),
-    "PFODA":         ("16517116",    "PFODA_A"),
-    "GenX":          ("13252136",    "HFPO-DA_A"),
-    "DONA":          ("919005144",   "ADONA_A"),
-    "PFBS":          ("375735",      "PFBS_A"),
-    "PFPeS":         ("2706914",     "PFPES_A"),
-    "PFHxS":         ("DEP18024",    "PFHXS_A_L"),    # lr-PFHxS = linear
-    "br-PFHxS":      ("DEP18023",    "PFHXS_A_BR"),   # branched isomer
-    "PFHpS":         ("375928",      "PFHPS_A"),
-    "PFOS":          ("DEP18026",    "PFOS_A_L"),     # lr-PFOS = linear
-    "br-PFOS":       ("DEP18025",    "PFOS_A_BR"),    # branched isomer
-    "PFNS":          ("68259121",    "PFNS_A"),
-    "PFDS":          ("335773",      "PFDS_A"),
-    # PFUnDS: real CAS 749786-16-1 not in EGAD CAS_LUP — manual entry required
-    "PFUnDS":        ("",            ""),
-    "PFDoS":         ("79780395",    "PFDOS_A"),
-    # PFTrDS: CAS is PLACEHOLDER — BLOCKING validation error until resolved
-    "PFTrDS":        ("PLACEHOLDER", ""),
-}
-
 # ── Default qualifier mapping (our label → EGAD CONCENTRATION_QUALIFIER_LUP) ─
 
 DEFAULT_QUALIFIER_MAP = {
@@ -520,8 +474,8 @@ def make_spike_rows():
         "lab_sample_id": "PFAS-2026-001",
         "qc_type": "NA",
         "result_type_code": "TRG",
-        "cas_no": ANALYTE_CAS_DEFAULTS["PFBA"][0],
-        "parameter_name": ANALYTE_CAS_DEFAULTS["PFBA"][1],
+        "cas_no": "375224",       # PFBA, format-spike only
+        "parameter_name": "PFBA_A",
         "concentration": None,          # non-detect → blank
         "lab_qualifier": "U",
         "reporting_limit": 2.0,
@@ -539,8 +493,8 @@ def make_spike_rows():
         "sample_type": "AQ",
         "qc_type": "LB",
         "result_type_code": "TRG",
-        "cas_no": ANALYTE_CAS_DEFAULTS["PFBA"][0],
-        "parameter_name": ANALYTE_CAS_DEFAULTS["PFBA"][1],
+        "cas_no": "375224",       # PFBA, format-spike only
+        "parameter_name": "PFBA_A",
         "concentration": None,
         "lab_qualifier": "U",
         "reporting_limit": 2.0,
@@ -561,8 +515,8 @@ def make_spike_rows():
         "sample_type": "AQ",
         "qc_type": "MS",
         "result_type_code": "TRG",
-        "cas_no": ANALYTE_CAS_DEFAULTS["PFBA"][0],
-        "parameter_name": ANALYTE_CAS_DEFAULTS["PFBA"][1],
+        "cas_no": "375224",       # PFBA, format-spike only
+        "parameter_name": "PFBA_A",
         "concentration": 10.3,
         "lab_qualifier": "",
         "reporting_limit": 2.0,

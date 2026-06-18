@@ -113,6 +113,14 @@ class _LogbookBase(BrowserView):
     def batch_title(self):
         return self.context.Title() if hasattr(self.context, "Title") else self.batch_id()
 
+    def batch_method(self):
+        """Best-guess method ID for this batch from saved logbook data."""
+        for form_num in (251, 252):
+            method = _get_logbook(self.context, form_num).get("method", "")
+            if method:
+                return method
+        return ""
+
     def _redirect(self, url):
         self.request.response.redirect(url)
         return ""
@@ -386,7 +394,7 @@ class PFASLogbook253View(_LogbookBase):
 
 # ── Logbook Admin (portal-level) ──────────────────────────────────────────────
 
-_ALLOWED_ROLES = frozenset(("Manager", "LabManager", "QAO", "LabDirector", "Owner"))
+_ALLOWED_ROLES = frozenset(("Manager", "LabManager", "Owner"))
 
 
 def _require_manager(context, request):

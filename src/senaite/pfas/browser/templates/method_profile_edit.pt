@@ -84,6 +84,90 @@
     .inclusion-grid input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
     .inclusion-grid tr:last-child td { border-bottom: none; }
     .inclusion-grid tr:hover td { background: var(--s-primary-lt, #f0f4ff); }
+    .ami-bulk-btn { background: none; border: 1px solid var(--s-border); border-radius: 3px;
+                    cursor: pointer; font-size: 11px; padding: 1px 5px; margin: 0 2px;
+                    color: var(--s-secondary); line-height: 1.4; }
+    .ami-bulk-btn:hover { border-color: var(--s-primary); color: var(--s-primary); }
+    .ami-col-ctrl { display: block; margin-top: 4px; }
+    .ami-row-btn { background: none; border: none; cursor: pointer; padding: 0;
+                   color: var(--s-text); font-family: "Fira Code", monospace; font-size: 12px;
+                   text-align: left; width: 100%; }
+    .ami-row-btn:hover { color: var(--s-primary); text-decoration: underline; }
+    .ami-excluded { color: var(--s-danger, #c0392b); font-size: 11px; display: block; }
+
+    /* Surrogate IS-lane grid */
+    .sur-grid { display: flex; flex-direction: column; gap: 0; }
+    .sur-unassigned { border: 1px dashed var(--s-border); border-radius: 6px;
+                      padding: 8px 10px; margin-bottom: 10px; background: #fffbf0; }
+    .sur-unassigned-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                             letter-spacing: .04em; color: var(--s-secondary); margin-bottom: 6px; }
+    .sur-chip-pool { display: flex; flex-wrap: wrap; gap: 4px; min-height: 26px; }
+    .sur-lane { display: flex; align-items: stretch; border-bottom: 1px solid var(--s-border);
+                background: #fff; }
+    .sur-lane:last-child { border-bottom: none; }
+    .sur-lane:nth-child(even) { background: var(--s-light, #f8f9fa); }
+    .sur-lane-hdr { flex: 0 0 200px; display: flex; flex-direction: column; justify-content: center;
+                    padding: 6px 10px; border-right: 1px solid var(--s-border);
+                    background: var(--s-light); }
+    .sur-lane-name { font-family: "Fira Code", monospace; font-size: 12px; font-weight: 700;
+                     color: var(--s-primary); }
+    .sur-lane-label { font-size: 10px; color: var(--s-secondary); margin-bottom: 4px; }
+    .sur-chain-sel { font-size: 11px; padding: 2px 4px; border: 1px solid var(--s-input-border);
+                     border-radius: 3px; color: var(--s-text); background: #fff;
+                     max-width: 140px; margin-top: 2px; }
+    .sur-lane-body { flex: 1; padding: 5px 8px; display: flex; flex-wrap: wrap;
+                     align-content: center; gap: 4px; min-height: 36px; }
+    .sur-lane-body.drag-over { background: var(--s-primary-lt, #e8f0ff);
+                                outline: 2px dashed var(--s-primary); outline-offset: -2px; }
+    .sur-chip { display: inline-flex; align-items: center; gap: 4px;
+                background: var(--s-primary-lt, #e8f0ff); border: 1px solid var(--s-primary);
+                border-radius: 12px; padding: 2px 8px; font-size: 11px;
+                font-family: "Fira Code", monospace; color: var(--s-primary);
+                cursor: grab; user-select: none; white-space: nowrap; }
+    .sur-chip:active { cursor: grabbing; opacity: .7; }
+    .sur-chip.dragging { opacity: .35; }
+    .sur-chip-rm { background: none; border: none; cursor: pointer; padding: 0 0 0 2px;
+                   color: var(--s-secondary); font-size: 13px; line-height: 1; }
+    .sur-chip-rm:hover { color: var(--s-danger); }
+    .sur-unassigned .sur-chip { background: #fff3cd; border-color: #e0a800; color: #7a5800; }
+
+    /* Recovery tier cards */
+    .tier-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px; background: #fff; }
+    .tier-card-hdr { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+                     background: var(--s-light); border-radius: 6px 6px 0 0;
+                     border-bottom: 1px solid var(--s-border); }
+    .tier-badge { flex-shrink: 0; background: var(--s-primary); color: #fff; border-radius: 10px;
+                  padding: 1px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .tier-desc { flex: 1; border: 1px solid transparent; border-radius: 4px; padding: 3px 6px;
+                 font-size: 13px; font-family: inherit; background: transparent; color: var(--s-text); }
+    .tier-desc:focus { outline: none; border-color: var(--s-primary); background: #fff;
+                       box-shadow: 0 0 0 2px var(--s-focus-ring); }
+    .tier-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .tier-limits { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13px; }
+    .tier-limits label { display: flex; align-items: center; gap: 5px; font-weight: 600;
+                         font-size: 11px; color: var(--s-secondary); }
+    .tier-limits input[type=number] { width: 70px; padding: 4px 6px; border: 1px solid var(--s-input-border);
+                                       border-radius: 4px; font-size: 13px; background: #fafafa;
+                                       color: var(--s-text); }
+    .tier-limits input:focus { outline: none; border-color: var(--s-primary); }
+    .tier-chipfield { border-top: 1px dashed var(--s-border); padding-top: 7px; }
+    .tier-chipfield > label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                               letter-spacing: .04em; color: var(--s-secondary); display: block;
+                               margin-bottom: 5px; }
+    .tier-chip-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .tier-chip { display: inline-flex; align-items: center; gap: 3px; border-radius: 10px;
+                 padding: 2px 7px; font-size: 11px; font-family: "Fira Code", monospace;
+                 background: #e8f5e9; border: 1px solid #81c784; color: #2e7d32;
+                 user-select: none; }
+    .tier-chip.mat-chip { background: #fff3e0; border-color: #ffb74d; color: #e65100; }
+    .tier-chip.nostd-chip { background: #fce4ec; border-color: #ef9a9a; color: #b71c1c; }
+    .tier-chip-rm { background: none; border: none; cursor: pointer; padding: 0 0 0 2px;
+                    color: inherit; font-size: 13px; line-height: 1; opacity: .7; }
+    .tier-chip-rm:hover { opacity: 1; }
+    .tier-add-sel { font-size: 11px; padding: 3px 5px; border: 1px dashed var(--s-border);
+                    border-radius: 10px; color: var(--s-secondary); background: #fafafa;
+                    cursor: pointer; max-width: 200px; }
+    .tier-add-sel:focus { outline: none; border-color: var(--s-primary); }
 
     .btn-save  { background: var(--s-primary); color: #fff; border: none; border-radius: 4px;
                  padding: 10px 28px; cursor: pointer; font-size: 14px; font-weight: 600; }
@@ -326,13 +410,59 @@
       <details>
         <summary>Recovery Tiers</summary>
         <div class="section-body">
-          <p class="json-hint">
-            JSON array of tier objects. Each tier: { "tier": 1, "description": "...",
-            "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0,
-            "key_analytes": [...], "tight_matrices": [...] }
+          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+            Each tier card sets the recovery window (min/max %) and optional RSD limit.
+            <strong>Key Analytes</strong> — analytes subject to this tier's stricter limits.
+            <strong>Tight Matrices</strong> — if set, this tier only applies in those matrices.
+            <strong>No-Std Analytes</strong> — analytes that always fall to this tier (no labeled IS).
+            Leave all three pickers empty for a catch-all default tier.
           </p>
-          <textarea class="json-area" name="recovery_tiers_json" rows="10"
-                    tal:content="view/recovery_tiers_json">[]</textarea>
+          <div id="recoveryTiersContainer"></div>
+          <button type="button" class="btn-add-row" style="margin-top:4px"
+                  onclick="addRecoveryTier()">+ Add Tier</button>
+
+          <!-- Serialised tiers (read by JS on load; written by syncRecoveryTiersJson before submit) -->
+          <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
+                 tal:attributes="value view/recovery_tiers_json" />
+        </div>
+      </details>
+
+      <!-- Analyte × Matrix Inclusion -->
+      <details>
+        <summary>Analyte &#215; Matrix Inclusion</summary>
+        <div class="section-body">
+
+          <!-- Persistent verification banner for EPA methods (Decision B) -->
+          <div class="alert alert-warn"
+               tal:condition="view/analyte_matrix_needs_verification"
+               style="margin-bottom:12px">
+            &#9888; <strong>Lab verification required.</strong>
+            The analyte set for this method is seeded from the FDA 32-analyte list
+            as a placeholder. Review each row against your purchased method copy
+            and uncheck any analytes not reportable under this method before
+            production use.
+          </div>
+
+          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+            Each checked cell means the analyte is <strong>reportable</strong> in
+            that matrix. Unchecked analytes are excluded from the surrogate map,
+            recovery tiers, QC checks, reports, and EDD for that matrix.
+            Click an analyte name to toggle its whole row; click &#10003;/&#10007;
+            under a matrix column header to check/uncheck the whole column.
+          </p>
+
+          <div class="inclusion-wrap">
+            <div id="amiGridContainer">
+              <em style="color:var(--s-secondary);font-size:12px">Loading&#8230;</em>
+            </div>
+          </div>
+
+          <!-- Read-only ordered structure for JS; inclusion dict is the live value -->
+          <input type="hidden" id="ami_grid_data"
+                 tal:attributes="value view/analyte_matrix_grid_data" />
+          <input type="hidden" name="analyte_matrix_inclusion_json"
+                 id="analyte_matrix_inclusion_json"
+                 tal:attributes="value view/analyte_matrix_json" />
         </div>
       </details>
 
@@ -408,15 +538,46 @@
         </div>
       </details>
 
-      <!-- Surrogate Map -->
+      <!-- Spike Levels -->
       <details>
-        <summary>Surrogate Map (native analyte &#8594; linked IS)</summary>
+        <summary>Spike Levels (LFB / LFSM)</summary>
         <div class="section-body">
           <p class="json-hint">
-            JSON array: [ { "analyte": "PFOA", "surrogate_is": "M8PFOA" }, ... ]
+            JSON object. Keys are QC types (<code>"LFB"</code>, <code>"LFSM"</code>).
+            Each value is an array of <code>{"label": "High", "ppt": 10.0}</code> entries.
+            The pipeline uses these to resolve spike concentrations from injection names
+            (e.g. <em>"; LFSM High"</em> &rarr; label "High" &rarr; ppt value here).
+            LFSMD uses the same levels as LFSM.
+            <strong>Enter the lab's actual spike amounts — do not leave at zero.</strong>
           </p>
-          <textarea class="json-area" name="surrogate_map_json" rows="10"
-                    tal:content="view/surrogate_map_json">[]</textarea>
+          <textarea class="json-area" name="spike_levels_json" id="spike_levels_json" rows="12"
+                    tal:content="view/spike_levels_json">{"LFB": [], "LFSM": []}</textarea>
+        </div>
+      </details>
+
+      <!-- Surrogate Map (IS-lane bucket UI) -->
+      <details>
+        <summary>Surrogate Map (native analyte &#8594; labeled IS &#8594; injection IS)</summary>
+        <div class="section-body">
+          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+            Drag a native analyte chip into the IS lane that quantifies it.
+            For isotope-dilution methods, also set the <em>Quantified by</em> injection IS
+            for each surrogate lane. Analytes with no IS assigned appear in the
+            <strong>Unassigned</strong> tray.
+          </p>
+          <div id="surrogateGridContainer">
+            <em style="color:var(--s-secondary);font-size:12px">Loading&#8230;</em>
+          </div>
+
+          <!-- Structural data for JS (read-only) -->
+          <input type="hidden" id="surrogate_is_data"
+                 tal:attributes="value view/surrogate_is_data" />
+          <!-- Submitted values written by JS before form submit -->
+          <input type="hidden" name="surrogate_map_json"
+                 id="surrogate_map_json" value="[]" />
+          <input type="hidden" name="surrogate_is_chain_json"
+                 id="surrogate_is_chain_json"
+                 tal:attributes="value view/surrogate_is_chain_json" />
         </div>
       </details>
 
@@ -434,17 +595,30 @@
         </div>
       </details>
 
-      <!-- EPA 1633A EIS Overrides -->
-      <details>
-        <summary>EIS Recovery Overrides (EPA 1633A only)</summary>
+      <!-- EPA 1633A EIS Overrides — hidden for FDA and EPA 537.1 -->
+      <details tal:condition="view/show_eis_overrides">
+        <summary>EIS Recovery Overrides <span style="font-size:11px;color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span></summary>
         <div class="section-body">
-          <p class="json-hint">
-            Per-analyte EIS recovery windows that differ from the method default.
-            JSON array: [ { "analyte": "M2-4:2FTS", "recovery_min": 20.0, "recovery_max": 150.0 }, ... ]
-            VERIFY all values against your purchased copy of EPA 1633A Tables 6/8.
-          </p>
-          <textarea class="json-area" name="eis_overrides_json" rows="8"
-                    tal:content="view/eis_overrides_json">[]</textarea>
+          <div class="alert alert-warn" style="margin-bottom:10px">
+            &#9888; <strong>Lab verification required.</strong>
+            Per-analyte EIS/OPR recovery windows from EPA 1633A Tables 6 and 8.
+            Values shown are placeholders — verify each row against your purchased method copy
+            before production use.
+          </div>
+          <table class="factor-table" id="eisOverrideTable">
+            <thead>
+              <tr>
+                <th>EIS / Surrogate Analyte</th>
+                <th>Recovery Min (%)</th>
+                <th>Recovery Max (%)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="eisOverrideBody"></tbody>
+          </table>
+          <button type="button" class="btn-add-row" onclick="addEisRow()">+ Add row</button>
+          <input type="hidden" name="eis_overrides_json" id="eis_overrides_json"
+                 tal:attributes="value view/eis_overrides_json" />
         </div>
       </details>
 
@@ -508,6 +682,25 @@
     tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncSaltJson); i.addEventListener('input',syncSaltJson); });
   }
   function syncSaltJson() { syncJson('saltAdjBody','salt_adjustment_factors_json',SA_FIELDS); }
+
+  var EIS_FIELDS = [{key:'analyte',type:'text'},{key:'recovery_min',type:'number'},{key:'recovery_max',type:'number'}];
+  function addEisRow(analyte, rmin, rmax) {
+    var tbody = document.getElementById('eisOverrideBody');
+    if (!tbody) return;
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="text" data-field="analyte" value="' + _esc(analyte||'') + '" placeholder="e.g. M2-4:2FTS" /></td>' +
+      '<td><input type="number" data-field="recovery_min" step="0.1" min="0" value="' + (rmin!=null?rmin:'') + '" placeholder="20.0" /></td>' +
+      '<td><input type="number" data-field="recovery_max" step="0.1" min="0" value="' + (rmax!=null?rmax:'') + '" placeholder="150.0" /></td>' +
+      '<td><button type="button" class="del-btn" onclick="this.closest(\'tr\').remove();syncEisJson()">&#215;</button></td>';
+    tbody.appendChild(tr);
+    tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncEisJson); i.addEventListener('input',syncEisJson); });
+  }
+  function syncEisJson() {
+    if (document.getElementById('eis_overrides_json')) {
+      syncJson('eisOverrideBody','eis_overrides_json',EIS_FIELDS);
+    }
+  }
 
   var IS_FIELDS = [{key:'linear',type:'text'},{key:'branched',type:'text'},{key:'reported',type:'text'},{key:'enabled',type:'bool'}];
   function addIsomerRow(linear, branched, reported, enabled) {
@@ -656,6 +849,480 @@
     return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;').replace(/\u003e/g,'&gt;');
   }
 
+  /* ── Recovery Tiers ──────────────────────────────────────────── */
+
+  function _tierChipHtml(val, cssClass, field) {
+    return '<span class="tier-chip ' + cssClass + '" data-field="' + field + '" data-val="' + _esc(val) + '">' +
+      _esc(val) +
+      '<button type="button" class="tier-chip-rm" onclick="removeTierChip(this)">&times;</button>' +
+      '</span>';
+  }
+
+  function _tierAddSelHtml(allItems, current, field, label) {
+    var available = allItems.filter(function(x) { return current.indexOf(x) === -1; });
+    var opts = '<option value="">' + _esc(label) + '</option>';
+    available.forEach(function(x) { opts += '<option value="' + _esc(x) + '">' + _esc(x) + '</option>'; });
+    return '<select class="tier-add-sel" data-field="' + field + '" data-all="' + _esc(JSON.stringify(allItems)) + '"' +
+      ' onchange="addTierChip(this)">' + opts + '</select>';
+  }
+
+  function _buildTierCard(tier, idx, allAnalytes, allMatrices) {
+    var ka  = tier.key_analytes    || [];
+    var tm  = tier.tight_matrices  || [];
+    var ns  = tier.no_std_analytes || [];
+
+    var kaChips = ka.map(function(v) { return _tierChipHtml(v, '', 'key_analytes'); }).join('');
+    var tmChips = tm.map(function(v) { return _tierChipHtml(v, 'mat-chip', 'tight_matrices'); }).join('');
+    var nsChips = ns.map(function(v) { return _tierChipHtml(v, 'nostd-chip', 'no_std_analytes'); }).join('');
+
+    return '<div class="tier-card" data-tier-idx="' + idx + '">' +
+      '<div class="tier-card-hdr">' +
+        '<span class="tier-badge">Tier ' + (idx + 1) + '</span>' +
+        '<input type="text" class="tier-desc" value="' + _esc(tier.description || '') + '" placeholder="Describe when this tier applies" />' +
+        '<button type="button" class="del-btn" title="Remove tier" onclick="removeTierCard(this)">&#215;</button>' +
+      '</div>' +
+      '<div class="tier-card-body">' +
+        '<div class="tier-limits">' +
+          '<label>Min Recovery <input type="number" class="tier-min" step="0.1" min="0" max="100" value="' + (tier.recovery_min != null ? tier.recovery_min : '') + '" oninput="syncRecoveryTiersJson()" /> %</label>' +
+          '<label>Max Recovery <input type="number" class="tier-max" step="0.1" min="0" max="200" value="' + (tier.recovery_max != null ? tier.recovery_max : '') + '" oninput="syncRecoveryTiersJson()" /> %</label>' +
+          '<label>RSD &#8804; <input type="number" class="tier-rsd" step="0.1" min="0" value="' + (tier.rsd_max != null ? tier.rsd_max : '') + '" oninput="syncRecoveryTiersJson()" /> %</label>' +
+        '</div>' +
+        '<div class="tier-chipfield" data-field="key_analytes">' +
+          '<label>Key Analytes (stricter limits apply to these)</label>' +
+          '<div class="tier-chip-row">' + kaChips + _tierAddSelHtml(allAnalytes, ka, 'key_analytes', '+ Add analyte') + '</div>' +
+        '</div>' +
+        '<div class="tier-chipfield" data-field="tight_matrices">' +
+          '<label>Tight Matrices (leave empty = any matrix)</label>' +
+          '<div class="tier-chip-row">' + tmChips + _tierAddSelHtml(allMatrices, tm, 'tight_matrices', '+ Add matrix') + '</div>' +
+        '</div>' +
+        '<div class="tier-chipfield" data-field="no_std_analytes">' +
+          '<label>No-Std Analytes (always this tier, no labeled IS)</label>' +
+          '<div class="tier-chip-row">' + nsChips + _tierAddSelHtml(allAnalytes, ns, 'no_std_analytes', '+ Add analyte') + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _tierMeta() {
+    var gridData = {};
+    try { gridData = JSON.parse((document.getElementById('ami_grid_data') || {value:'{}'}).value || '{}'); }
+    catch(e) {}
+    return { analytes: gridData.analytes || [], matrices: gridData.matrices || [] };
+  }
+
+  function buildRecoveryTiersGrid() {
+    var el = document.getElementById('recoveryTiersContainer');
+    if (!el) return;
+
+    var tiers = [];
+    try { tiers = JSON.parse(document.getElementById('recovery_tiers_json').value || '[]'); }
+    catch(e) {}
+
+    var meta = _tierMeta();
+    var html = '';
+    tiers.forEach(function(t, i) { html += _buildTierCard(t, i, meta.analytes, meta.matrices); });
+    el.innerHTML = html;
+
+    /* wire desc/limits inputs for live sync */
+    el.querySelectorAll('.tier-desc').forEach(function(inp) {
+      inp.addEventListener('input', syncRecoveryTiersJson);
+    });
+  }
+
+  function addRecoveryTier() {
+    var el = document.getElementById('recoveryTiersContainer');
+    var meta = _tierMeta();
+    var count = el.querySelectorAll('.tier-card').length;
+    var frag = document.createElement('div');
+    frag.innerHTML = _buildTierCard({}, count, meta.analytes, meta.matrices);
+    var card = frag.firstChild;
+    el.appendChild(card);
+    card.querySelector('.tier-desc').addEventListener('input', syncRecoveryTiersJson);
+    _renumberTierBadges();
+    syncRecoveryTiersJson();
+  }
+
+  function removeTierCard(btn) {
+    btn.closest('.tier-card').remove();
+    _renumberTierBadges();
+    syncRecoveryTiersJson();
+  }
+
+  function _renumberTierBadges() {
+    document.querySelectorAll('#recoveryTiersContainer .tier-card').forEach(function(card, i) {
+      var badge = card.querySelector('.tier-badge');
+      if (badge) badge.textContent = 'Tier ' + (i + 1);
+      card.setAttribute('data-tier-idx', i);
+    });
+  }
+
+  function addTierChip(sel) {
+    var val = sel.value;
+    if (!val) return;
+    sel.value = '';
+    var field = sel.getAttribute('data-field');
+    var chipfield = sel.closest('.tier-chipfield');
+    var row = sel.closest('.tier-chip-row');
+    var cssClass = field === 'tight_matrices' ? 'mat-chip' : (field === 'no_std_analytes' ? 'nostd-chip' : '');
+    var chip = document.createElement('span');
+    chip.className = 'tier-chip ' + cssClass;
+    chip.setAttribute('data-field', field);
+    chip.setAttribute('data-val', val);
+    chip.innerHTML = _esc(val) + '<button type="button" class="tier-chip-rm" onclick="removeTierChip(this)">&times;</button>';
+    row.insertBefore(chip, sel);
+    /* remove from dropdown */
+    var opt = sel.querySelector('option[value="' + val.replace(/"/g, '\\"') + '"]');
+    if (opt) opt.remove();
+    syncRecoveryTiersJson();
+  }
+
+  function removeTierChip(btn) {
+    var chip = btn.closest('.tier-chip');
+    if (!chip) return;
+    var val = chip.getAttribute('data-val');
+    var field = chip.getAttribute('data-field');
+    var row = chip.closest('.tier-chip-row');
+    chip.remove();
+    /* add back to dropdown (sorted) */
+    var sel = row.querySelector('select.tier-add-sel[data-field="' + field + '"]');
+    if (sel && val) {
+      var opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = val;
+      /* insert sorted */
+      var inserted = false;
+      for (var i = 1; i < sel.options.length; i++) {
+        if (sel.options[i].value > val) {
+          sel.insertBefore(opt, sel.options[i]);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) sel.appendChild(opt);
+    }
+    syncRecoveryTiersJson();
+  }
+
+  function syncRecoveryTiersJson() {
+    var tiers = [];
+    document.querySelectorAll('#recoveryTiersContainer .tier-card').forEach(function(card, idx) {
+      var tier = { tier: idx + 1 };
+      var desc = card.querySelector('.tier-desc');
+      if (desc) tier.description = desc.value.trim();
+      var minEl = card.querySelector('.tier-min');
+      var maxEl = card.querySelector('.tier-max');
+      var rsdEl = card.querySelector('.tier-rsd');
+      if (minEl && minEl.value !== '') tier.recovery_min = parseFloat(minEl.value);
+      if (maxEl && maxEl.value !== '') tier.recovery_max = parseFloat(maxEl.value);
+      if (rsdEl && rsdEl.value !== '') tier.rsd_max     = parseFloat(rsdEl.value);
+      ['key_analytes', 'tight_matrices', 'no_std_analytes'].forEach(function(field) {
+        var chips = card.querySelectorAll('.tier-chip[data-field="' + field + '"]');
+        var vals = Array.prototype.map.call(chips, function(c) { return c.getAttribute('data-val'); });
+        tier[field] = vals;
+      });
+      tiers.push(tier);
+    });
+    var el = document.getElementById('recovery_tiers_json');
+    if (el) el.value = JSON.stringify(tiers);
+  }
+
+  /* ── Surrogate IS-lane grid ───────────────────────────────────── */
+
+  var _surDragAnalyte = null;
+  var _surDragSrc     = null;
+
+  function buildSurrogateGrid() {
+    var el = document.getElementById('surrogateGridContainer');
+    if (!el) return;
+
+    var d;
+    try { d = JSON.parse(document.getElementById('surrogate_is_data').value || '{}'); }
+    catch(e) { el.textContent = 'Error loading surrogate data.'; return; }
+
+    var analytes    = d.analytes    || [];
+    var surrogates  = d.surrogates  || [];   /* [[kw, name], ...] */
+    var injIsList   = d.injection_is || [];  /* [[kw, name], ...] */
+    var currentMap  = d.map         || {};   /* {analyte: surrogate_kw} */
+    var chain       = d.chain       || {};   /* {surrogate_kw: inj_is_kw} */
+
+    if (!analytes.length) {
+      el.innerHTML = '<em style="color:var(--s-secondary);font-size:12px">No analytes configured.</em>';
+      return;
+    }
+
+    /* ── build injection IS option list; selection applied per-lane below ── */
+    var _injIsRows = injIsList.slice();  /* cache for per-lane rendering */
+
+    /* ── figure out which analytes are already assigned ── */
+    function assignedTo(kwSur) {
+      return analytes.filter(function(a) { return currentMap[a] === kwSur; });
+    }
+    function unassigned() {
+      return analytes.filter(function(a) { return !currentMap[a]; });
+    }
+
+    function chipHtml(analyte, inPool) {
+      return '<span class="sur-chip' + (inPool ? '' : '') + '" draggable="true"' +
+        ' data-analyte="' + _esc(analyte) + '">' +
+        _esc(analyte) +
+        '<button type="button" class="sur-chip-rm" title="Remove" onclick="surChipRemove(this)">&times;</button>' +
+        '</span>';
+    }
+
+    /* ── unassigned pool ── */
+    var ua = unassigned();
+    var html = '<div class="sur-unassigned" id="surUnassigned"' +
+      ' ondragover="surDragOver(event)" ondrop="surDrop(event,null)">' +
+      '<div class="sur-unassigned-label">Unassigned (' + ua.length + ')</div>' +
+      '<div class="sur-chip-pool">';
+    ua.forEach(function(a) { html += chipHtml(a, true); });
+    html += '</div></div>';
+
+    /* ── IS lanes ── */
+    html += '<div class="sur-grid" id="surLanesContainer">';
+    surrogates.forEach(function(row) {
+      var kw = row[0], name = row[1];
+      var assigned = assignedTo(kw);
+      var chainVal = chain[kw] || '';
+      var selOpts = '<option value="">— None —</option>';
+      _injIsRows.forEach(function(ir) {
+        selOpts += '<option value="' + _esc(ir[0]) + '"' +
+          (ir[0] === chainVal ? ' selected' : '') + '>' +
+          _esc(ir[0]) + ' (' + _esc(ir[1]) + ')</option>';
+      });
+      html += '<div class="sur-lane" data-sur-kw="' + _esc(kw) + '">' +
+        '<div class="sur-lane-hdr">' +
+          '<div class="sur-lane-name">' + _esc(kw) + '</div>' +
+          '<div class="sur-lane-label">' + _esc(name) + '</div>' +
+          '<select class="sur-chain-sel" data-sur-kw="' + _esc(kw) + '"' +
+            ' title="Quantified by (injection IS)" onchange="syncSurrogateJson()">' +
+            selOpts +
+          '</select>' +
+        '</div>' +
+        '<div class="sur-lane-body" data-sur-kw="' + _esc(kw) + '"' +
+          ' ondragover="surDragOver(event)" ondrop="surDrop(event,' + JSON.stringify(kw) + ')">';
+      assigned.forEach(function(a) { html += chipHtml(a, false); });
+      html += '</div></div>';
+    });
+    html += '</div>';
+
+    el.innerHTML = html;
+
+    /* wire chip drag events (event delegation won't fire on dynamically-added draggable) */
+    _surRewireChips(el);
+    syncSurrogateJson();
+  }
+
+  function _surRewireChips(container) {
+    (container || document).querySelectorAll('.sur-chip').forEach(function(chip) {
+      chip.addEventListener('dragstart', function(e) {
+        _surDragAnalyte = chip.getAttribute('data-analyte');
+        _surDragSrc = chip.closest('[data-sur-kw]') || chip.closest('#surUnassigned');
+        chip.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      chip.addEventListener('dragend', function() {
+        chip.classList.remove('dragging');
+        _surDragAnalyte = null;
+        _surDragSrc = null;
+      });
+    });
+  }
+
+  function surDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+    e.dataTransfer.dropEffect = 'move';
+  }
+
+  document.addEventListener('dragleave', function(e) {
+    var t = e.target;
+    if (t && (t.classList.contains('sur-lane-body') || t.id === 'surUnassigned')) {
+      t.classList.remove('drag-over');
+    }
+  });
+
+  function surDrop(e, surKw) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    if (!_surDragAnalyte) return;
+
+    /* remove chip from its current home */
+    var existing = document.querySelector('.sur-chip[data-analyte="' + _surDragAnalyte + '"]');
+    if (existing) existing.remove();
+
+    /* append chip to target */
+    var targetBody;
+    if (surKw) {
+      targetBody = document.querySelector('.sur-lane-body[data-sur-kw="' + surKw + '"]');
+    } else {
+      targetBody = document.querySelector('#surUnassigned .sur-chip-pool');
+    }
+    if (targetBody) {
+      var chipEl = document.createElement('span');
+      chipEl.className = 'sur-chip';
+      chipEl.setAttribute('draggable', 'true');
+      chipEl.setAttribute('data-analyte', _surDragAnalyte);
+      chipEl.innerHTML = _esc(_surDragAnalyte) +
+        '<button type="button" class="sur-chip-rm" title="Remove" onclick="surChipRemove(this)">&times;</button>';
+      targetBody.appendChild(chipEl);
+      _surRewireChips(targetBody);
+    }
+
+    /* update unassigned count */
+    _surUpdateUnassignedCount();
+    syncSurrogateJson();
+  }
+
+  function surChipRemove(btn) {
+    var chip = btn.closest('.sur-chip');
+    if (!chip) return;
+    var analyte = chip.getAttribute('data-analyte');
+    chip.remove();
+
+    /* move to unassigned pool */
+    var pool = document.querySelector('#surUnassigned .sur-chip-pool');
+    if (pool) {
+      var chipEl = document.createElement('span');
+      chipEl.className = 'sur-chip';
+      chipEl.setAttribute('draggable', 'true');
+      chipEl.setAttribute('data-analyte', analyte);
+      chipEl.innerHTML = _esc(analyte) +
+        '<button type="button" class="sur-chip-rm" title="Remove" onclick="surChipRemove(this)">&times;</button>';
+      pool.appendChild(chipEl);
+      _surRewireChips(pool);
+    }
+
+    _surUpdateUnassignedCount();
+    syncSurrogateJson();
+  }
+
+  function _surUpdateUnassignedCount() {
+    var pool = document.querySelector('#surUnassigned .sur-chip-pool');
+    var label = document.querySelector('#surUnassigned .sur-unassigned-label');
+    if (pool && label) {
+      label.textContent = 'Unassigned (' + pool.querySelectorAll('.sur-chip').length + ')';
+    }
+  }
+
+  function syncSurrogateJson() {
+    /* build surrogate_map: [{analyte, surrogate_is}] */
+    var map = [];
+    document.querySelectorAll('#surLanesContainer .sur-lane').forEach(function(lane) {
+      var surKw = lane.getAttribute('data-sur-kw');
+      lane.querySelectorAll('.sur-chip').forEach(function(chip) {
+        map.push({analyte: chip.getAttribute('data-analyte'), surrogate_is: surKw});
+      });
+    });
+    var smEl = document.getElementById('surrogate_map_json');
+    if (smEl) smEl.value = JSON.stringify(map);
+
+    /* build surrogate_is_chain: {surKw: injIsKw} */
+    var chain = {};
+    document.querySelectorAll('.sur-chain-sel').forEach(function(sel) {
+      var kw = sel.getAttribute('data-sur-kw');
+      if (kw && sel.value) chain[kw] = sel.value;
+    });
+    var scEl = document.getElementById('surrogate_is_chain_json');
+    if (scEl) scEl.value = JSON.stringify(chain);
+  }
+
+  /* ── Analyte × Matrix Inclusion grid ─────────────────────────── */
+
+  function buildAMIGrid() {
+    var gridEl = document.getElementById('amiGridContainer');
+    if (!gridEl) return;
+
+    var gridData, inclusion;
+    try {
+      gridData  = JSON.parse(document.getElementById('ami_grid_data').value  || '{}');
+      inclusion = JSON.parse(document.getElementById('analyte_matrix_inclusion_json').value || '{}');
+    } catch(e) {
+      gridEl.textContent = 'Error loading grid data.';
+      return;
+    }
+
+    var analytes = gridData.analytes || [];
+    var matrices = gridData.matrices || [];
+
+    if (!analytes.length || !matrices.length) {
+      gridEl.innerHTML = '<em style="color:var(--s-secondary);font-size:12px">No analytes configured for this method.</em>';
+      return;
+    }
+
+    var html = '<table class="inclusion-grid"><thead><tr>';
+    html += '<th class="analyte-col">Analyte</th>';
+    matrices.forEach(function(mat, ci) {
+      html += '<th>' + _esc(mat) +
+        '<span class="ami-col-ctrl">' +
+        '<button type="button" class="ami-bulk-btn" title="Check all" onclick="amiColAll(' + ci + ',true)">&#10003;</button>' +
+        '<button type="button" class="ami-bulk-btn" title="Uncheck all" onclick="amiColAll(' + ci + ',false)">&#10007;</button>' +
+        '</span></th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    analytes.forEach(function(kw, ri) {
+      html += '<tr><td class="analyte-name">' +
+        '<button type="button" class="ami-row-btn" title="Toggle row" onclick="amiRowToggle(' + ri + ')">' +
+        _esc(kw) + '</button></td>';
+      matrices.forEach(function(mat) {
+        var checked = !(inclusion[kw] && inclusion[kw][mat] === false);
+        html += '<td class="check-cell">' +
+          '<input type="checkbox" class="ami-cb"' +
+          ' data-analyte="' + _esc(kw) + '"' +
+          ' data-matrix-idx="' + matrices.indexOf(mat) + '"' +
+          (checked ? ' checked' : '') +
+          ' onchange="syncAMIJson()" /></td>';
+        if (!checked) {
+          html += '';  /* ⚠ shown via CSS :not(:checked) sibling if needed */
+        }
+      });
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    gridEl.innerHTML = html;
+  }
+
+  function amiColAll(colIdx, state) {
+    var rows = document.querySelectorAll('.inclusion-grid tbody tr');
+    rows.forEach(function(row) {
+      var tds = row.querySelectorAll('td.check-cell');
+      var cb = tds[colIdx] && tds[colIdx].querySelector('input[type=checkbox]');
+      if (cb) cb.checked = state;
+    });
+    syncAMIJson();
+  }
+
+  function amiRowToggle(rowIdx) {
+    var rows = document.querySelectorAll('.inclusion-grid tbody tr');
+    var row = rows[rowIdx];
+    if (!row) return;
+    var cbs = row.querySelectorAll('input[type=checkbox]');
+    var anyChecked = Array.prototype.some.call(cbs, function(cb) { return cb.checked; });
+    Array.prototype.forEach.call(cbs, function(cb) { cb.checked = !anyChecked; });
+    syncAMIJson();
+  }
+
+  function syncAMIJson() {
+    var cbs = document.querySelectorAll('.ami-cb');
+    var gridData;
+    try { gridData = JSON.parse(document.getElementById('ami_grid_data').value || '{}'); }
+    catch(e) { return; }
+    var matrices = gridData.matrices || [];
+
+    var result = {};
+    Array.prototype.forEach.call(cbs, function(cb) {
+      var a = cb.getAttribute('data-analyte');
+      var mi = parseInt(cb.getAttribute('data-matrix-idx'), 10);
+      var mat = matrices[mi];
+      if (!a || mat === undefined) return;
+      if (!result[a]) result[a] = {};
+      result[a][mat] = cb.checked;
+    });
+    document.getElementById('analyte_matrix_inclusion_json').value = JSON.stringify(result);
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     try {
       var sa = JSON.parse(document.getElementById('salt_adjustment_factors_json').value || '[]');
@@ -669,10 +1336,21 @@
       var stages = JSON.parse(document.getElementById('extraction_stages_json').value || '[]');
       stages.forEach(function(s) { addStageCard(s); });
     } catch(e) {}
+    try {
+      var eisEl = document.getElementById('eis_overrides_json');
+      if (eisEl) {
+        var eis = JSON.parse(eisEl.value || '[]');
+        eis.forEach(function(r) { addEisRow(r.analyte, r.recovery_min, r.recovery_max); });
+      }
+    } catch(e) {}
+    buildRecoveryTiersGrid();
+    buildSurrogateGrid();
+    buildAMIGrid();
   });
 
   document.querySelector('form').addEventListener('submit', function() {
-    syncSaltJson(); syncIsomerJson(); syncStageJson();
+    syncSaltJson(); syncIsomerJson(); syncStageJson(); syncEisJson();
+    syncRecoveryTiersJson(); syncSurrogateJson(); syncAMIJson();
   });
   </script>
 

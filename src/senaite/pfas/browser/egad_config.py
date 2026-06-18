@@ -11,7 +11,7 @@ Views:
   @@pfas-egad-batches         GET=batch EDD dashboard; ?batch_id=X = sample type editor
                               POST=save per-sample EGAD SAMPLE_TYPE overrides
 
-Roles required: Manager, LabManager, QAO, LabDirector, Owner
+Roles required: Manager, LabManager, Owner
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
@@ -43,7 +43,7 @@ from senaite.pfas.egad_store import (
 
 logger = logging.getLogger("senaite.pfas.browser.egad_config")
 
-_ALLOWED_ROLES = frozenset(("Manager", "LabManager", "QAO", "LabDirector", "Owner"))
+_ALLOWED_ROLES = frozenset(("Manager", "LabManager", "Owner"))
 
 _METHODS = ("EPA_537_1", "EPA_1633A", "FDA_32PFAS")
 
@@ -119,7 +119,7 @@ class PFASEGADConfigView(BrowserView):
     def __call__(self):
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
-            return "Forbidden: Manager/LabManager/QAO/LabDirector/Owner role required"
+            return "Forbidden: Manager, LabManager, or Owner role required"
 
         if self.request.method == "POST":
             return self._handle_post()

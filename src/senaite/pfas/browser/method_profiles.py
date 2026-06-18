@@ -9,7 +9,7 @@ PFAS Method Profile browser views.
     Edit a single method profile; POST saves to ZODB and exports
     /data/qc/method_profiles.json for the pipeline worker.
 
-Both views require Manager, LabManager, QA Officer, Lab Director, or Owner role.
+Both views require Manager, LabManager, or Owner role.
 Python 2.7 compatible.
 """
 from __future__ import absolute_import, print_function, unicode_literals
@@ -31,10 +31,8 @@ from senaite.pfas.method_profile_store import (
 logger = logging.getLogger("senaite.pfas.browser.method_profiles")
 
 
-# Roles that may edit Method Profiles.  Manager, LabManager, and Owner exist in
-# SENAITE core.  QAO and LabDirector are intended custom roles (see QUESTIONS.md
-# Q-006); they harmlessly no-op until those roles are defined in the portal.
-_ALLOWED_ROLES = frozenset(("Manager", "LabManager", "QAO", "LabDirector", "Owner"))
+# Roles that may edit Method Profiles (Q-006: LabManager covers QAO/Lab Director).
+_ALLOWED_ROLES = frozenset(("Manager", "LabManager", "Owner"))
 
 
 def _require_manager(context, request):
@@ -61,7 +59,7 @@ class PFASMethodProfilesView(BrowserView):
     def __call__(self):
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
-            return "Forbidden: Manager, LabManager, QAO, LabDirector, or Owner role required"
+            return "Forbidden: Manager, LabManager, or Owner role required"
         return self.template()
 
     def portal_url(self):
@@ -97,7 +95,7 @@ class PFASMethodProfileEditView(BrowserView):
     def __call__(self):
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
-            return "Forbidden: Manager, LabManager, QAO, LabDirector, or Owner role required"
+            return "Forbidden: Manager, LabManager, or Owner role required"
 
         if self.request.method == "POST":
             return self._handle_post()
@@ -161,9 +159,55 @@ class PFASMethodProfileEditView(BrowserView):
     def isomer_summation_json(self):
         return json.dumps(self.profile().get("isomer_summation", []), indent=2)
 
+    def spike_levels_json(self):
+        return json.dumps(self.profile().get("spike_levels", {"LFB": [], "LFSM": []}), indent=2)
+
     def extraction_stages_json(self):
         stages = self.profile().get("extraction_stages", [])
         return json.dumps(sorted(stages, key=lambda s: s.get("order", 0)), indent=2)
+
+    # ── Analyte × Matrix Inclusion Matrix ────────────────────────────────────
+
+    def analyte_matrix_grid_data(self):
+        """JSON for the JS grid builder: ordered analytes and matrices."""
+        profile = self.profile()
+        return json.dumps({
+            "analytes": profile.get("master_analyte_set", []),
+            "matrices": profile.get("supported_matrices", []),
+        })
+
+    def analyte_matrix_json(self):
+        """JSON of the current analyte × matrix inclusion dict."""
+        inclusion = self.profile().get("analyte_matrix_inclusion", {})
+        return json.dumps(inclusion)
+
+    def analyte_matrix_needs_verification(self):
+        return self.method_id() in ("EPA_537_1", "EPA_1633A")
+
+    def show_eis_overrides(self):
+        return self.method_id() == "EPA_1633A"
+
+    # ── Surrogate IS lane data ────────────────────────────────────────────────
+
+    def surrogate_is_data(self):
+        """JSON payload for the JS surrogate IS-lane grid builder."""
+        from senaite.pfas.analyte_reference import get_surrogates, get_injection_is_list
+        profile = self.profile()
+        sur_map = profile.get("surrogate_map", [])
+        map_dict = {}
+        for row in sur_map:
+            map_dict[row.get("analyte", "")] = row.get("surrogate_is", "")
+        return json.dumps({
+            "analytes":     profile.get("master_analyte_set", []),
+            "surrogates":   get_surrogates(),
+            "injection_is": get_injection_is_list(),
+            "map":          map_dict,
+            "chain":        profile.get("surrogate_is_chain", {}),
+        })
+
+    def surrogate_is_chain_json(self):
+        """JSON of the current surrogate → injection IS chain dict."""
+        return json.dumps(self.profile().get("surrogate_is_chain", {}))
 
     def display_name(self):
         return self.profile().get("display_name", self.method_id())
@@ -279,6 +323,9 @@ class PFASMethodProfileEditView(BrowserView):
             profile["matrix_factor"] = 1
         profile["surrogate_map"]   = _json_field(
             "surrogate_map_json",   profile.get("surrogate_map", []))
+        raw_chain = f.get("surrogate_is_chain_json", "").strip()
+        if raw_chain:
+            profile["surrogate_is_chain"] = json.loads(raw_chain)
         profile["per_analyte"]     = _json_field(
             "per_analyte_json",     profile.get("per_analyte", []))
 
@@ -294,9 +341,18 @@ class PFASMethodProfileEditView(BrowserView):
             "isomer_summation_json",
             profile.get("isomer_summation", []))
 
+        raw_sl = f.get("spike_levels_json", "").strip()
+        if raw_sl:
+            profile["spike_levels"] = json.loads(raw_sl)
+
         profile["extraction_stages"] = _json_field(
             "extraction_stages_json",
             profile.get("extraction_stages", []))
+
+        # Analyte × matrix inclusion grid (serialised by JS before submit)
+        raw_ami = f.get("analyte_matrix_inclusion_json", "").strip()
+        if raw_ami:
+            profile["analyte_matrix_inclusion"] = json.loads(raw_ami)
 
         return profile
 

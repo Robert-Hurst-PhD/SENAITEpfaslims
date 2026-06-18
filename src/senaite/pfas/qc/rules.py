@@ -34,46 +34,6 @@ METHODS = [
     {"id": "EPA_1633A",  "label": "EPA 1633A"},
 ]
 
-# ── Method × Matrix → concentration unit map ─────────────────────────────────
-# Defines the reported concentration unit for each method × matrix combination.
-# Used for QC type field unit labels and result reporting.
-# Confirmed by lab (2026-06-13): FDA_32PFAS solid matrices → ng/kg.
-METHOD_MATRIX_UNIT_MAP = {
-    "EPA_537_1": {
-        "Drinking Water": "ng/L",
-        "Ground Water":   "ng/L",
-        "Surface Water":  "ng/L",
-        "Aqueous":        "ng/L",
-        "default":        "ng/L",
-    },
-    "EPA_1633A": {
-        "Aqueous":        "ng/L",
-        "Surface Water":  "ng/L",
-        "Drinking Water": "ng/L",
-        "Solid":          "ng/g",   # dry weight
-        "Sediment":       "ng/g",   # dry weight
-        "Soil":           "ng/g",   # dry weight
-        "Tissue":         "ng/g",   # wet weight
-        "Fish Tissue":    "ng/g",   # wet weight
-        "default":        "ng/L",
-    },
-    "FDA_32PFAS": {
-        "Meat":           "ng/kg",  # wet weight
-        "Fish":           "ng/kg",  # wet weight
-        "Fish Tissue":    "ng/kg",  # wet weight
-        "Egg":            "ng/kg",  # wet weight
-        "Feed":           "ng/kg",  # wet weight
-        "Milk":           "ng/mL",
-        "default":        "ng/kg",
-    },
-}
-
-
-def get_unit_for_context(method, matrix):
-    """Return concentration unit for the given method+matrix combination."""
-    method_map = METHOD_MATRIX_UNIT_MAP.get(method, {})
-    return method_map.get(matrix) or method_map.get("default") or ""
-
 # ── Full library of evaluable QC rules ────────────────────────────────────────
 # Each entry: key, label, and the limit parameter(s) to show in the detail editor.
 RULE_LIBRARY = [

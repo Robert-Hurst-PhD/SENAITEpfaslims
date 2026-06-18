@@ -207,6 +207,16 @@ def get_surrogate_map_by_name():
     return {row[1]: row[6] for row in NATIVE_ANALYTES if row[6]}
 
 
+def get_surrogates():
+    """List of [keyword, name] for labeled IS with role='surrogate'."""
+    return [[row[0], row[1]] for row in INTERNAL_STANDARDS if row[3] == "surrogate"]
+
+
+def get_injection_is_list():
+    """List of [keyword, name] for IS with role='injection_is' (e.g. M4PFOA)."""
+    return [[row[0], row[1]] for row in INTERNAL_STANDARDS if row[3] == "injection_is"]
+
+
 # ── Compound-name → keyword reverse lookup ───────────────────────────────────
 # Maps instrument export display names back to SENAITE keyword (row[0]) when
 # they differ.  Example: "lr-PFOS" → "PFOS", "9Cl-PF3ONS" → "9ClPF3ONS".

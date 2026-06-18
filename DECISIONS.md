@@ -5,6 +5,26 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-18  Q-011 — LFSM/LFSMD per-analyte tiered recovery wiring
+
+- **Decision:** LFSM recovery and LFSMD RPD are evaluated automatically by the pipeline engine using per-analyte tiered limits from the method profile. Spike concentration is resolved from the method profile's `spike_levels` section using the level label encoded in the injection name (e.g. `"; LFSM High"` → `"High"` → configured ppt). No spike → check stays PENDING. Flat `CRITERIA` values remain for `LFSMResult.passes` / `LFSMDResult.passes` only.
+- **Decision:** LFSM/LFSMD checks no longer silently AUTO_PASS when no QC engine runs them (the previous regulatory defect). They now stay PENDING until spike levels are configured.
+- **Decision:** Spike level values are lab-specific and must be entered via the Method Profile UI (`spike_levels` JSON field). Seed values are empty lists; see Q-014 for values outstanding.
+- **Status:** confirmed — implemented in `run_queue.py::auto_evaluate()`, `method_profiles.py::resolve_spike_ppt()`, and all three method profile seeds.
+- **Context:** Q-011 answer from lab: per-analyte tiered limits; spikes rotate through configured options defined in method profile.
+
+## 2026-06-18  Q-013 + Q-005 confirmed
+
+- **Q-013 (Milk unit):** FDA 32-PFAS Milk matrix reports in **ng/mL** (per-volume, liquid). All other FDA matrices report in ng/kg. Unit map is per-matrix and editable via the Method Profile UI. Seed updated in `method_profile_store.py`.
+- **Q-005 (cal_r2_min):** R² minimum is per-method (the profile system already supports this — each method profile has its own `cal_r2_min` field). Values are editable via the Method Profile UI. Status: confirmed and closed.
+
+## 2026-06-18  Item 8 — Parentage audit findings
+
+- **Decision (gap fixed):** `pfas_pipeline.models.Batch` now carries `method_id: str`. Previously `run_pipeline()` accepted `method_id` but never stored it on `Batch`, so result sets could not name their method parent (§9.3 rule 3). Fixed in `models.py` + `pipeline.py`. Report header updated to surface `Method:` on every PDF.
+- **Decision (deferred):** `LFSMResult.passes` / `LFSMDResult.passes` in `models.py` and the recovery/RPD checks in `qc_engine.py` still use the flat `CRITERIA` dict (constants.py `_build_criteria_from_profile` explicitly defers recovery_min/max and rpd_max mapping). These are Decision-C violations, not parentage gaps. To be addressed as a separate item after the lab confirms which profile JSON fields to map.
+- **Status:** Gap 1 confirmed. Deferred gaps noted in QUESTIONS.md.
+- **Context:** Item 8 "Verify parentage end-to-end" — systematic audit of result → analyte → method × matrix → batch traceability.
+
 ## 2026-06-17  Round 9 — Relational data model schema (pre-build sign-off)
 
 - **Decision (schema):** Consolidate to two canonical layers:

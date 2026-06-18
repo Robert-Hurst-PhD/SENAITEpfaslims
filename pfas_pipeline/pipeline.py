@@ -37,11 +37,14 @@ from .injection_builder import REVIEW_CHECKS
 from .barcode import ExtractionLog
 from .report import generate_batch_report
 from .constants import (
-    ANALYTES, NON_ISO_ANALYTES,
     QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC,
     reload_criteria,
 )
-from .method_profiles import reload_from_profiles
+from .method_profiles import (
+    reload_from_profiles,
+    get_analyte_list as _get_analytes,
+    get_non_iso_set as _get_non_iso_set,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +81,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     for r in sample_rows:
         by_sample.setdefault(r.injection_name, {})[r.compound_name] = r
 
+    _method = getattr(batch, "method_id", "") or "FDA_32PFAS"
+    _analytes = _get_analytes(_method)
+    _non_iso = _get_non_iso_set(_method)
+
     for sample_name, compounds in by_sample.items():
-        for analyte in ANALYTES:
+        for analyte in _analytes:
             row = compounds.get(analyte)
             flags: list[str] = []
             qualifier = ""
@@ -102,7 +109,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                             and conc < row.reporting_limit):
                         qualifier = QUALIFIER_BLOQ
                     # N.C. for non-isotopically linked analytes
-                    if analyte in NON_ISO_ANALYTES:
+                    if analyte in _non_iso:
                         flags.append(QUALIFIER_NC)
                     # SUR if any linked IS was flagged on this injection
                     linked_is = row.linked_is
@@ -187,6 +194,7 @@ def run_pipeline(
         analyst=analyst,
         date=datetime.now(),
         matrix=matrix,
+        method_id=method_id,
         instrument_file=csv_path.name,
         injections=rows,
     )

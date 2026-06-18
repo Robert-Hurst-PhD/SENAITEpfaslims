@@ -17,7 +17,7 @@ import statistics
 from datetime import datetime
 from typing import Optional
 
-from .constants import CRITERIA, NON_ISO_ANALYTES, QUALIFIER_NC, QUALIFIER_ND
+from .constants import CRITERIA, QUALIFIER_NC, QUALIFIER_ND
 from .models import (
     InstrumentRow, QCFlag,
     ISRawResult, RTResult, QualQuanResult, CalibrationResult,
@@ -187,12 +187,17 @@ def rt_deviation_check(
 def qual_quan_check(
     rows: list[InstrumentRow],
     analyte: str,
+    non_iso_set: frozenset | None = None,
 ) -> list[QualQuanResult]:
     """
     Compute Qual/Quan response ratio relative to calibration average.
     Non-ISO analytes get N.C. qualifier.
+    Pass non_iso_set from get_non_iso_set(method_id) for method-aware behaviour.
     """
-    is_non_iso = analyte in NON_ISO_ANALYTES
+    if non_iso_set is None:
+        from .method_profiles import get_non_iso_set
+        non_iso_set = get_non_iso_set()
+    is_non_iso = analyte in non_iso_set
 
     std_rows = [r for r in rows
                 if r.compound_name == analyte

@@ -183,6 +183,44 @@
     .status-ok   { background: #d4edda; color: #155724; }
     .status-warn { background: #fff3cd; color: #856404; }
     .status-fail { background: #f8d7da; color: #721c24; }
+
+    /* ── Logbook breadcrumb */
+    .lb-breadcrumb {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--s-secondary);
+      padding: 8px 0 16px 0;
+    }
+    .lb-breadcrumb a { color: var(--s-secondary); text-decoration: none; }
+    .lb-breadcrumb a:hover { color: var(--s-primary); text-decoration: underline; }
+    .lb-breadcrumb .lb-bc-sep { opacity: .5; }
+    .lb-breadcrumb strong { color: var(--s-body); }
+
+    /* ── Print preview button */
+    .btn-print-preview {
+      padding: 9px 18px; background: #f8f9fa; color: var(--s-secondary);
+      border: 1px solid var(--s-border); border-radius: 7px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-print-preview:hover { background: #e9ecef; }
+
+    /* ── @media print: render logbooks cleanly */
+    @media print {
+      .page-header { display: none !important; }
+      .lb-breadcrumb { display: none !important; }
+      .btn-save, .btn-dl, .btn-print-preview, .btn-add-row,
+      .btn-del-row, .form-actions, #add-sample-btn { display: none !important; }
+      .alert-ok, .alert-error, .inj-builder-note { display: none !important; }
+      #inv-overlay { display: none !important; }
+      input[type="text"], input[type="number"], input[type="date"],
+      select, textarea {
+        border: none !important; background: transparent !important;
+        box-shadow: none !important; padding: 2px 0 !important;
+      }
+      table { page-break-inside: auto; }
+      tr { page-break-inside: avoid; }
+      .lb-section h3 { border-bottom: 1px solid #999 !important; }
+      body { font-size: 11px; }
+    }
   </style>
   <tal:head-extra metal:define-slot="head-extra" />
 </head>

@@ -18,8 +18,9 @@ as a json_string:
   {"egad_enabled": bool, "project_site": str, "default_sample_type": str,
    "analysis_lab_override": str, "per_report_override": bool}
 
-The Python 3 pipeline twin (pfas_pipeline/egad_edd.py) shares the same
-default values — keep ANALYTE_CAS_DEFAULTS in sync if updated.
+The Python 3 pipeline worker (pfas_pipeline/egad_edd.py) reads CAS data from
+the exported analyte_cas.json when available; DEFAULT_ANALYTE_CAS here is the
+authoritative source.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 

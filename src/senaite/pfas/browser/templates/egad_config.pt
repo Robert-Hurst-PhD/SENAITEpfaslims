@@ -388,6 +388,27 @@
                 </tal:ok>
               </td>
             </tr>
+            <!-- Inline guidance row for analytes needing manual DEP code entry -->
+            <tr tal:condition="row/needs_manual"
+                style="background:#fff8e1;border-left:3px solid #f59e0b">
+              <td colspan="5" style="padding:8px 12px">
+                <strong style="font-size:11px;color:#92400e">&#9888; Manual DEP Code Required</strong>
+                <span tal:condition="python:row['keyword']=='PFUnDS'"
+                      style="font-size:11px;color:#78350f;display:block;margin-top:2px">
+                  <strong>PFUnDS</strong> (CAS 749786-16-1) is not in Maine EGAD&#8217;s CAS_LUP.
+                  Contact Maine DEP to request a DEP##### code, then enter it in the
+                  <em>EGAD CAS_NO</em> field above. The PARAMETER_NAME should follow
+                  the pattern <code>PFUNDS_A</code>.
+                </span>
+                <span tal:condition="python:row['keyword']=='PFTrDS'"
+                      style="font-size:11px;color:#78350f;display:block;margin-top:2px">
+                  <strong>PFTrDS</strong> has no confirmed CAS number in any public registry.
+                  Check with Maine DEP whether this analyte is reportable under your EDD
+                  version; if so, request a DEP##### code. Enter it above when received.
+                  Leave blank only if Maine DEP confirms PFTrDS is not required in your EDD.
+                </span>
+              </td>
+            </tr>
             </tal:rows>
           </tbody>
         </table>
@@ -439,10 +460,6 @@
         <button class="btn-save" onclick="saveQualifiers()">Save Qualifier Mapping</button>
       </div>
     </div>
-    <script>
-    /* qualifier codes for new row dropdowns */
-    var EGAD_QUAL_CODES = <tal:codes tal:replace="structure python:__import__('json').dumps(view.egad_qualifier_codes())" />;
-    </script>
   </div><!-- /pane-qualifiers -->
 
   <!-- ── QC TYPES tab ───────────────────────────────────────────────── -->
@@ -486,9 +503,6 @@
         <button class="btn-save" onclick="saveQCTypes()">Save QC Type Mapping</button>
       </div>
     </div>
-    <script>
-    var EGAD_QCT_CODES = <tal:codes tal:replace="structure python:__import__('json').dumps(view.egad_qc_type_codes())" />;
-    </script>
   </div><!-- /pane-qc_types -->
 
   <!-- ── REFRESH LOOKUPS tab ────────────────────────────────────────── -->
@@ -565,14 +579,27 @@
 
 <tal:scripts metal:fill-slot="scripts">
 <script>
-/* ── Tab switching ────────────────────────────────────────────────────── */
+/* ── Lookup code lists (injected here to guarantee they're defined before use) */
+var EGAD_QUAL_CODES = <tal:q tal:replace="structure python:__import__('json').dumps(view.egad_qualifier_codes())" />;
+var EGAD_QCT_CODES  = <tal:q tal:replace="structure python:__import__('json').dumps(view.egad_qc_type_codes())" />;
+
+/* ── Tab switching with URL-hash persistence ─────────────────────────── */
+var _VALID_TABS = ['lab','methods','cas','qualifiers','qc_types','lookups'];
 function switchTab(name) {
+  if (_VALID_TABS.indexOf(name) === -1) name = 'lab';
   document.querySelectorAll('.egad-tab').forEach(function(el){el.classList.remove('active');});
   document.querySelectorAll('.egad-tab-pane').forEach(function(el){el.classList.remove('active');});
-  document.getElementById('tab-' + name).classList.add('active');
-  document.getElementById('pane-' + name).classList.add('active');
+  var tabEl = document.getElementById('tab-' + name);
+  var paneEl = document.getElementById('pane-' + name);
+  if (tabEl)  tabEl.classList.add('active');
+  if (paneEl) paneEl.classList.add('active');
+  if (history.replaceState) history.replaceState(null, '', '#' + name);
 }
-switchTab('${view/active_tab}');
+/* honour URL hash on load, fall back to server-side active_tab param */
+(function(){
+  var hash = (location.hash || '').replace('#', '');
+  switchTab(hash || '${view/active_tab}');
+})();
 
 /* ── Generic save helper ───────────────────────────────────────────────── */
 function showBanner(ok, msg) {

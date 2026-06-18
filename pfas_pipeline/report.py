@@ -73,7 +73,8 @@ def generate_batch_report(
     # ── 1. Cover ──────────────────────────────────────────────────────────────
     story.append(Paragraph(f"PFAS Batch Report — {batch.batch_id}", _H1))
     story.append(Paragraph(
-        f"Matrix: {batch.matrix} &nbsp;|&nbsp; Analyst: {batch.analyst} "
+        f"Method: {batch.method_id or '—'} &nbsp;|&nbsp; Matrix: {batch.matrix} "
+        f"&nbsp;|&nbsp; Analyst: {batch.analyst} "
         f"&nbsp;|&nbsp; Date: {batch.date:%Y-%m-%d} "
         f"&nbsp;|&nbsp; Instrument file: {batch.instrument_file}", _BODY))
     story.append(Spacer(1, 12))

@@ -216,6 +216,7 @@ class Batch:
     analyst:            str
     date:               datetime
     matrix:             str
+    method_id:          str
     instrument_file:    str
     injections:         list[InstrumentRow]  = field(default_factory=list)
     qc_flags:           list[QCFlag]         = field(default_factory=list)

@@ -1,13 +1,9 @@
 """
-Compound lists and acceptance criteria extracted directly from
-FDA_Sample_Calculator_V13.xlsm (verified against actual sheet data).
+QC acceptance criteria and pipeline constants.
 
-Sheet 1  = IS Raw         → INTERNAL_STANDARDS
-Sheet 2  = RT Deviation   → ANALYTES (native)
-Sheet 3  = Qual-Quan      → same analyte list
-Sheet 4  = Calibration %  → same analyte list
-Sheet 5  = Summary Sheet  → actual result output seen in real data
-Sheet 6  = QC Log         → QC flag format
+Analyte display names and IS lists have been moved to method_profiles.py
+(get_analyte_list / get_is_list / get_non_iso_set) so they are owned by
+the method profile rather than hard-coded here.
 """
 
 import json
@@ -18,77 +14,6 @@ import re
 logger = logging.getLogger("pfas_pipeline.constants")
 
 PROFILES_PATH = os.environ.get("PFAS_PROFILES_PATH", "/data/qc/method_profiles.json")
-
-# ── Internal Standards & Surrogates (Sheet 1, row 1, odd columns C→AQ) ───────
-INTERNAL_STANDARDS = [
-    "13C4-PFOA",
-    "13C2,D4-10:2FTS",
-    "13C2,D4-4:2FTS",
-    "13C2,D4-6:2FTS",
-    "13C2,D4-8:2FTS",
-    "13C2-PFDA",
-    "13C2-PFDoA",
-    "13C2-PFHxDA",
-    "13C2-PFTeDA",
-    "13C2-PFUDA",
-    "13C3-GenX (HFPO-DA)",
-    "13C3-PFBA",
-    "13C3-PFBS",
-    "13C3-PFHxS",
-    "13C3-PFPeA",
-    "13C4-PFHpA",
-    "13C5-PFHxA",
-    "13C5-PFNA",
-    "13C8-FOSA",
-    "13C8-PFOA",
-    "13C8-PFOS",
-]
-
-# ── Native PFAS analytes (Sheet 2, row 1, confirmed from real batch data) ────
-ANALYTES = [
-    "10:2 FTS",
-    "11Cl-PF3OUdS",
-    "4:2 FTS",
-    "6:2FTS",
-    "8:2 FTS",
-    "9Cl-PF3ONS",
-    "DONA",
-    "FOSA",
-    "GenX (HFPO-DA)",
-    "PFBA",
-    "PFBS",
-    "PFDA",
-    "PFDoA",
-    "PFDoS",
-    "PFDS",
-    "PFHpA",
-    "PFHpS",
-    "PFHxA",
-    "PFHxDA",
-    "lr-PFHxS",
-    "PFNA",
-    "PFNS",
-    "PFOA",
-    "PFODA",
-    "lr-PFOS",
-    "PFPeA",
-    "PFPeS",
-    "PFTeDA",
-    "PFTrDA",
-    "PFTrDS",
-    "PFUDA",
-    "PFUnDS",
-    "br-PFOS",
-    "br-PFHxS",
-]
-
-# ── Non-isotopically linked analytes (no dedicated IS; flagged as N.C.) ───────
-NON_ISO_ANALYTES = frozenset({
-    "9Cl-PF3ONS", "11Cl-PF3OUdS", "PFDoS", "PFDS",
-    "PFNS", "PFODA", "PFPeS", "PFTrDA", "PFTrDS", "PFUnDS",
-})
-
-ALL_COMPOUNDS = INTERNAL_STANDARDS + ANALYTES
 
 # ── QC type codes parsed from injection names ─────────────────────────────────
 QC_TYPES = {
@@ -180,10 +105,12 @@ def _build_criteria_from_profile(profile):
     if conf.get("sn_quan_min") is not None:
         crit["sn_min"] = float(conf["sn_quan_min"])
 
-    # NOTE: recovery_min_pct / recovery_max_pct / rpd_max_pct are intentionally
-    # NOT mapped here. The lfsm_check / lfsmd_check functions that use those keys
-    # are not yet wired into auto_evaluate. Keeping the generic defaults avoids a
-    # silent behaviour change on install. Wire these when the profiled checks land.
+    # recovery_min_pct / recovery_max_pct / rpd_max_pct are used only by
+    # LFSMResult.passes and LFSMDResult.passes (convenience properties on the
+    # dataclass). The actual QC engine uses recovery_check_profiled /
+    # rpd_check_profiled in auto_evaluate, which resolve per-analyte tiered
+    # limits from the method profile directly. The flat CRITERIA values remain
+    # as a safe fallback for .passes until those properties are removed.
 
     return crit
 

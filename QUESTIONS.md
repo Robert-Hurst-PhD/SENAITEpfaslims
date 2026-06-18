@@ -2,6 +2,40 @@
 
 ---
 
+## Q-014  Spike level concentrations (LFB and LFSM) — all three methods
+
+- **Question:** The Method Profile now has a `spike_levels` section for LFB and
+  LFSM injections (editable via the Method Profile UI in Site Setup). The
+  pipeline resolves spike concentrations from this profile using the level label
+  encoded in the injection name (e.g. `"; LFSM High"` → looks up `"High"` →
+  returns the configured ppt). Until these values are entered, LFSM/LFSMD checks
+  remain PENDING rather than auto-evaluated.
+  - What are the available spike levels and their concentrations (ppt) for:
+    - FDA 32-PFAS LFB / LFSM?
+    - EPA 537.1 LFB / LFSM (ng/L)?
+    - EPA 1633A LFB / LFSM (units per matrix)?
+  - Typical format: Low / Mid / High with one concentration per label.
+  - Once answered, enter via Method Profile UI → `spike_levels` field. No code
+    change needed.
+- **Status:** open — spike amounts must come from the lab's SOP / method validation.
+- **Raised:** 2026-06-18
+
+## Q-013  FDA_32PFAS Milk unit — ng/kg or ng/mL?
+
+- **Status:** closed — ng/mL confirmed (2026-06-18). Seed updated. Unit is per-matrix and editable in the Method Profile UI.
+
+## Q-011  Item 8 deferred — wire recovery_min/max and rpd_max from profile JSON?
+
+- **Status:** closed (2026-06-18). Per-analyte tiered limits confirmed by lab.
+  Implementation: `auto_evaluate()` in `run_queue.py` now calls
+  `recovery_check_profiled()` / `rpd_check_profiled()` for every LFSM/LFSMD
+  injection. Spike concentration resolved from method profile `spike_levels`
+  (level label in injection name → ppt). `lfsm_check`/`lfsmd_check` remain as
+  dead code; flat CRITERIA values remain for `LFSMResult.passes` only.
+  False AUTO_PASS bug (LFSM always passing silently) also fixed: checks stay
+  PENDING until spike levels are configured in the profile.
+- **Raised:** 2026-06-18 during Item 8 parentage audit.
+
 ## Q-010  Plan B — How does a dropped file get identified with an instrument + software version?
 
 - **Question:** Round 8 Item 2 says the importer must "look up the saved Studio
@@ -64,54 +98,25 @@
 
 ---
 
-## Q-007  Item 5 — MRM transitions for additional linear/branched isomers
+## Q-007  MRM transitions for additional linear/branched isomers
 
-- **Question:** The lab confirmed (2026-06-13) that isomer summation should be
-  extensible to cover NEtFOSAA, NMeFOSAA, PFOA, PFNA, FOSA and any other analytes
-  with separate linear/branched peaks.  However, `analytes.py` only defines
-  `lr-PFOS`, `br-PFOS`, `lr-PFHxS`, `br-PFHxS`.  Before adding the other analyte
-  variants, provide the following for each new compound:
-    - Compound name (exactly as it appears in the MassLynx export)
-    - Quantifier MRM transition (precursor > product, negative ion mode)
-    - Qualifier MRM transition(s) if any
-    - Which method(s) it appears in (FDA_32PFAS / EPA_537_1 / EPA_1633A)
-    - Which reported analyte it sums into (e.g., lr-NEtFOSAA + br-NEtFOSAA → NEtFOSAA)
-  The two existing pairs (lr-PFOS+br-PFOS→PFOS, lr-PFHxS+br-PFHxS→PFHxS) are
-  implemented.  The UI is already extensible — new pairs can be added via the
-  isomer summation table in the Method Profile editor once the analyte definitions
-  are confirmed.
-- **Status:** open — blocked on lab MRM data
+- **Confirmed pairs (2026-06-18):** NEtFOSAA (lr+br→NEtFOSAA), NMeFOSAA (lr+br→NMeFOSAA), PFOA (lr+br→PFOA), PFNA (lr+br→PFNA).
+- **Still needed per pair** before implementation: compound name EXACTLY as MassLynx exports it, quantifier MRM transition (precursor > product, negative mode), qualifier MRM(s) if any, which method(s).
+- **Status:** open — confirmed analyte list; blocked on lab MRM data.
 - **Raised:** 2026-06-13
 
 ---
 
 ## Q-006  QAO and Lab Director roles — define in SENAITE or use existing?
 
-- **Question:** CLAUDE.md §3 names four roles that should be able to edit QC
-  criteria: Manager, QA Officer (QAO), Lab Director, and Owner.  Only `Manager`,
-  `LabManager`, and `Owner` exist in standard SENAITE 2.6 core.  `QAO` and
-  `LabDirector` do not exist and would silently never match the permission check
-  until added.  Options: (a) use `LabManager` as the stand-in for QAO/Lab Director
-  (accept the three built-in roles that cover these responsibilities); or (b) add
-  custom roles `QAO` and `LabDirector` via a `rolemap.xml` in the add-on's
-  GenericSetup profile and wire them as needed.  Which approach does the lab prefer?
-- **Status:** open — current code admits `Manager`, `LabManager`, `Owner`, `QAO`,
-  `LabDirector`; the last two are no-ops until defined
+- **Status:** closed — LabManager covers QAO and Lab Director (2026-06-18). QAO and LabDirector removed from all `_ALLOWED_ROLES` sets in `method_profiles.py`, `egad_config.py`, `logbooks.py`.
 - **Raised:** 2026-06-11
 
 ---
 
-## Q-005  cal_r2_min 0.995 vs 0.990 — which should be the lab standard?
+## Q-005  cal_r2_min — per-method value
 
-- **Question:** The live engine currently uses `cal_r2_min = 0.995`.  The FDA
-  32-PFAS method document specifies **0.990** as the acceptance criterion.  The
-  seeded default deliberately matches the existing value (0.995) so that
-  install does not change behaviour.  Once the Method Profile control panel is
-  live, a manager must explicitly edit the FDA_32PFAS profile to 0.990 if the
-  lab wants to align with the method specification.  Does the lab want to use
-  0.990 (FDA specification) or retain 0.995 (more conservative)?  The answer
-  should be documented in DECISIONS.md and set via the UI.
-- **Status:** open — default preserved at 0.995; manager editable via `@@pfas-method-profile-edit`
+- **Status:** closed — confirmed per-method (2026-06-18). Already implemented: each method profile has its own `cal_r2_min` field, editable via the Method Profile UI. No global default. The lab sets each method's value through the UI.
 - **Raised:** 2026-06-11
 
 ---

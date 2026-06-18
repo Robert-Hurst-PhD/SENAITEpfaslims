@@ -113,6 +113,32 @@ class SequenceRule:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# FDA display-name lists (instrument export format, MassLynx compound names).
+# Moved here from constants.py so they are owned by the method layer.
+# Note: master_analyte_set in the ZODB store uses KEYWORDS; these are the
+# DISPLAY NAMES the instrument software exports — used for compound_name
+# lookups in instrument rows.  Phase C will unify via COMPOUND_NAME_TO_KEYWORD.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_FDA_DISPLAY_ANALYTES = [
+    "10:2 FTS", "11Cl-PF3OUdS", "4:2 FTS", "6:2FTS", "8:2 FTS",
+    "9Cl-PF3ONS", "DONA", "FOSA", "GenX (HFPO-DA)", "PFBA", "PFBS",
+    "PFDA", "PFDoA", "PFDoS", "PFDS", "PFHpA", "PFHpS", "PFHxA",
+    "PFHxDA", "lr-PFHxS", "PFNA", "PFNS", "PFOA", "PFODA", "lr-PFOS",
+    "PFPeA", "PFPeS", "PFTeDA", "PFTrDA", "PFTrDS", "PFUDA", "PFUnDS",
+    "br-PFOS", "br-PFHxS",
+]
+
+_FDA_IS_DISPLAY_NAMES = [
+    "13C4-PFOA",
+    "13C2,D4-10:2FTS", "13C2,D4-4:2FTS", "13C2,D4-6:2FTS", "13C2,D4-8:2FTS",
+    "13C2-PFDA", "13C2-PFDoA", "13C2-PFHxDA", "13C2-PFTeDA", "13C2-PFUDA",
+    "13C3-GenX (HFPO-DA)", "13C3-PFBA", "13C3-PFBS", "13C3-PFHxS", "13C3-PFPeA",
+    "13C4-PFHpA", "13C5-PFHxA", "13C5-PFNA",
+    "13C8-FOSA", "13C8-PFOA", "13C8-PFOS",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Profile data cache — populated from /data/qc/method_profiles.json at batch
 # start via reload_from_profiles().  Initialized with inline defaults below so
 # that the engine works before any manager has saved a profile.
@@ -317,7 +343,21 @@ def reload_from_profiles(profiles_path=None):
 
     for method_id in list(_profile_data_cache.keys()):
         if method_id in all_profiles:
-            _profile_data_cache[method_id] = all_profiles[method_id]
+            data = all_profiles[method_id]
+            # Phase B: normalize eis_overrides from store list format to dict.
+            # Store saves [{analyte, recovery_min, recovery_max}, ...] (UI-friendly);
+            # profile classes use {analyte: {recovery_min, recovery_max}} for fast lookup.
+            eis = data.get("eis_overrides")
+            if isinstance(eis, list):
+                data = dict(data)
+                data["eis_overrides"] = {
+                    e["analyte"]: {
+                        "recovery_min": e.get("recovery_min"),
+                        "recovery_max": e.get("recovery_max"),
+                    }
+                    for e in eis if "analyte" in e
+                }
+            _profile_data_cache[method_id] = data
             logger.info("Loaded profile data for %s from %s",
                         method_id, profiles_path)
         else:
@@ -418,6 +458,15 @@ class MethodProfile:
 
     def _profile_data(self):
         return _profile_data_cache.get(self.method_id, {})
+
+    def resolve_spike_ppt(self, qc_type, level_label):
+        """Return configured spike ppt for qc_type+level, or None if not set."""
+        levels = self._profile_data().get("spike_levels", {}).get(qc_type, [])
+        for entry in levels:
+            if entry.get("label", "").strip().lower() == level_label.strip().lower():
+                ppt = entry.get("ppt")
+                return float(ppt) if ppt is not None else None
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -705,6 +754,55 @@ def get_profile(method):
 
 def available_profiles():
     return {pid: p.description for pid, p in _PROFILES.items()}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Analyte / IS list helpers — replace constants.ANALYTES / INTERNAL_STANDARDS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_analyte_list(method_id: str = "FDA_32PFAS") -> list:
+    """Display-name ordered analyte list for method_id.
+
+    After a JSON profile load the cache may carry a ``display_analyte_set``
+    field exported by the store; otherwise falls back to the inline defaults.
+    """
+    data = _profile_data_cache.get(method_id, {})
+    explicit = data.get("display_analyte_set")
+    if explicit is not None:
+        return list(explicit)
+    if method_id == "FDA_32PFAS":
+        return list(_FDA_DISPLAY_ANALYTES)
+    return []
+
+
+def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
+    """Return the frozenset of analyte display names that have no labeled std.
+
+    Reads ``no_std_analytes`` from tier 3 of the method's recovery_tiers.
+    Falls back to tier 3 of the inline FDA default if the profile isn't loaded.
+    """
+    tiers = _profile_data_cache.get(method_id, {}).get("recovery_tiers", [])
+    if not tiers and method_id == "FDA_32PFAS":
+        tiers = _DEFAULT_PROFILE_CACHE["FDA_32PFAS"]["recovery_tiers"]
+    for tier in tiers:
+        if tier.get("tier") == 3:
+            return frozenset(tier.get("no_std_analytes", []))
+    return frozenset()
+
+
+def get_is_list(method_id: str = "FDA_32PFAS") -> list:
+    """Display-name IS / surrogate list for method_id.
+
+    After a JSON profile load the cache may carry ``internal_standards``
+    exported by the store; otherwise falls back to the inline FDA defaults.
+    """
+    data = _profile_data_cache.get(method_id, {})
+    explicit = data.get("internal_standards")
+    if explicit is not None:
+        return list(explicit)
+    if method_id == "FDA_32PFAS":
+        return list(_FDA_IS_DISPLAY_NAMES)
+    return []
 
 
 # Load profile data immediately if the export already exists

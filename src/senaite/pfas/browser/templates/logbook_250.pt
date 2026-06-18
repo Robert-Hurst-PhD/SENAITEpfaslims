@@ -66,6 +66,20 @@
   <div metal:fill-slot="content">
   <div class="page-body">
 
+    <!-- Breadcrumb -->
+    <div class="lb-breadcrumb">
+      <a tal:attributes="href view/portal_url">Lab</a>
+      <span class="lb-bc-sep">›</span>
+      <tal:m tal:condition="view/batch_method">
+        <span tal:content="view/batch_method">Method</span>
+        <span class="lb-bc-sep">›</span>
+      </tal:m>
+      <a tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index"
+         tal:content="view/batch_title">Batch</a>
+      <span class="lb-bc-sep">›</span>
+      <strong>FM-ENV-250</strong>
+    </div>
+
     <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
 
@@ -210,6 +224,9 @@
 
       <div class="form-actions">
         <button class="btn-save" type="submit">Save Logbook</button>
+        <button type="button" class="btn-print-preview" onclick="window.print()">
+          &#128438; Print Preview
+        </button>
       </div>
     </form>
 

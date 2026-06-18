@@ -59,31 +59,6 @@ KEY_ANALYTES = _get_key_kw()
 # analyte_reference.py no_labeled field (row[7]).
 NON_ISO_ANALYTES = _get_no_labeled_kw()
 
-# ── Internal standards ────────────────────────────────────────────────────────
-INTERNAL_STANDARDS = [
-    "13C2,D4-10:2FTS",
-    "13C3-PFHxS",
-    "13C2,D4-4:2FTS",
-    "13C2,D4-6:2FTS",
-    "13C2,D4-8:2FTS",
-    "13C2-PFDA",
-    "13C2-PFDoA",
-    "13C2-PFHxDA",
-    "13C2-PFTeDA",
-    "13C2-PFUDA",
-    "13C3-GenX (HFPO-DA)",
-    "13C3-PFBA",
-    "13C3-PFBS",
-    "13C3-PFPeA",
-    "13C4-PFHpA",
-    "13C4-PFOA",
-    "13C5-PFHxA",
-    "13C5-PFNA",
-    "13C8-FOSA",
-    "13C8-PFOA",
-    "13C8-PFOS",
-]
-
 # ── MRM transitions for IS ────────────────────────────────────────────────────
 IS_MRM = {
     "13C2,D4-10:2FTS":      ("632.92>81.99",  ["632.92>612.11"]),

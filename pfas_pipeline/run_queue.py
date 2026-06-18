@@ -18,12 +18,21 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from .models import Batch, QCFlag
+import re
+
+from .models import Batch, QCFlag, LFSMResult, LFSMDResult
 from .qc_engine import (
     is_raw_check, rt_deviation_check, qual_quan_check,
     calibration_check, signal_to_noise_check,
+    recovery_check_profiled, rpd_check_profiled,
 )
-from .constants import INTERNAL_STANDARDS, ANALYTES, CRITERIA
+from .constants import CRITERIA
+from .method_profiles import (
+    get_profile as _get_method_profile,
+    get_analyte_list as _get_analytes,
+    get_is_list as _get_is_list,
+    get_non_iso_set as _get_non_iso_set,
+)
 
 
 class CheckStatus(str, Enum):
@@ -63,6 +72,34 @@ CHECK_PROMPTS: dict[str, str] = {
     "duplicate_rpd":       "Verify sample duplicate RPD ≤ 30%",
     "signal_to_noise":     "Verify S/N ≥ 3 for reported analytes",
 }
+
+
+# ── LFSM/LFSMD injection name helpers ────────────────────────────────────────
+
+def _lfsm_parent_name(lfsm_inj):
+    """'KCP ... ; LFSM High' → 'KCP ...'  (strip the LFSM suffix)."""
+    idx = lfsm_inj.find("; LFSM ")
+    return lfsm_inj[:idx] if idx >= 0 else lfsm_inj
+
+
+def _lfsm_level_label(lfsm_inj):
+    """'KCP ... ; LFSM High' → 'High'."""
+    idx = lfsm_inj.find("; LFSM ")
+    return lfsm_inj[idx + 7:].strip() if idx >= 0 else ""
+
+
+def _lfsmd_to_lfsm_name(lfsmd_inj):
+    """'KCP ... ; LFSM High Dup.' → 'KCP ... ; LFSM High'."""
+    if lfsmd_inj.endswith(" Dup."):
+        return lfsmd_inj[:-5].rstrip()
+    return lfsmd_inj
+
+
+def _get_conc(inj_name, analyte, lookup):
+    for row in lookup.get(inj_name, []):
+        if row.compound_name == analyte:
+            return row.measured_conc or row.calculated_conc
+    return None
 
 
 def _load_rule_toggles(method_id: str, rules_path: str = "/data/qc/qc_rules.json") -> dict:
@@ -129,9 +166,13 @@ class RunQueue:
         flags_by_injection: dict[str, list[QCFlag]] = {}
         toggles = _load_rule_toggles(self.method_id)
 
+        _method = self.method_id or "FDA_32PFAS"
+        _analytes = _get_analytes(_method)
+        _non_iso = _get_non_iso_set(_method)
+
         # 1. IS Raw (is_response rule)
         if _rule_enabled(toggles, "is_response"):
-            for is_cmp in INTERNAL_STANDARDS:
+            for is_cmp in _get_is_list(_method):
                 for res in is_raw_check(rows, is_cmp):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
@@ -142,18 +183,21 @@ class RunQueue:
         # 3. Qual-Quan (ion_ratio rule)
         iq_enabled  = _rule_enabled(toggles, "ion_ratio")
         # 4. Calibration (cal_r2 OR ccv_recovery — run if either is on)
-        cal_enabled = _rule_enabled(toggles, "cal_r2") or _rule_enabled(toggles, "ccv_recovery")
+        cal_enabled  = _rule_enabled(toggles, "cal_r2") or _rule_enabled(toggles, "ccv_recovery")
         # 5. Signal-to-Noise (sn_min rule)
-        sn_enabled  = _rule_enabled(toggles, "sn_min")
+        sn_enabled   = _rule_enabled(toggles, "sn_min")
+        # 6. LFSM/LFSMD (lfsm_recovery / lfsmd_rpd rules)
+        lfsm_enabled  = _rule_enabled(toggles, "lfsm_recovery")
+        lfsmd_enabled = _rule_enabled(toggles, "lfsmd_rpd")
 
-        for analyte in ANALYTES:
+        for analyte in _analytes:
             if rt_enabled:
                 for res in rt_deviation_check(rows, analyte):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.rt_results.append(res)
             if iq_enabled:
-                for res in qual_quan_check(rows, analyte):
+                for res in qual_quan_check(rows, analyte, _non_iso):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.qual_quan_results.append(res)
@@ -165,6 +209,136 @@ class RunQueue:
             if sn_enabled:
                 for flag in signal_to_noise_check(rows, analyte):
                     flags_by_injection.setdefault(flag.injection_name, []).append(flag)
+
+        # 6. LFSM recovery + LFSMD RPD (per-analyte tiered limits from method profile)
+        lfsm_evaluated  = set()   # injection names where spike was resolved + check ran
+        lfsmd_evaluated = set()
+
+        if lfsm_enabled or lfsmd_enabled:
+            profile = None
+            if self.method_id:
+                try:
+                    profile = _get_method_profile(self.method_id)
+                except KeyError:
+                    pass
+
+            matrix = self.batch.matrix or ""
+            conc_lookup = {}
+            for row in rows:
+                conc_lookup.setdefault(row.injection_name, []).append(row)
+
+            # Identify unique LFSM injection names (not duplicates)
+            seen_lfsm = set()
+            lfsm_inj_names = []
+            for row in rows:
+                name = row.injection_name
+                if "; LFSM " in name and not name.rstrip().endswith(" Dup."):
+                    if name not in seen_lfsm:
+                        seen_lfsm.add(name)
+                        lfsm_inj_names.append(name)
+
+            # Per-LFSM-injection evaluation
+            lfsm_results_by_inj = {}   # lfsm_inj → {analyte: LFSMResult}
+
+            if lfsm_enabled and profile is not None:
+                for lfsm_inj in lfsm_inj_names:
+                    level_label = _lfsm_level_label(lfsm_inj)
+                    spike_ppt = profile.resolve_spike_ppt("LFSM", level_label)
+                    if spike_ppt is None or spike_ppt == 0:
+                        continue  # spike concentration not configured — stays PENDING
+
+                    parent_inj = _lfsm_parent_name(lfsm_inj)
+                    lfsm_results_by_inj[lfsm_inj] = {}
+
+                    for analyte in _analytes:
+                        fortified = _get_conc(lfsm_inj, analyte, conc_lookup)
+                        if fortified is None:
+                            continue
+                        unfort = _get_conc(parent_inj, analyte, conc_lookup) or 0.0
+                        recovery_pct = (fortified - unfort) / spike_ppt * 100.0
+
+                        raw_flag = recovery_check_profiled(
+                            profile, analyte, matrix, "LFSM", recovery_pct, lfsm_inj
+                        )
+                        flag = None
+                        if raw_flag is not None:
+                            # Normalise source so _CHECK_SOURCES mapping picks it up
+                            flag = QCFlag(
+                                source="LFSM & LFSMD",
+                                analyte=raw_flag.analyte,
+                                injection_name=raw_flag.injection_name,
+                                value=raw_flag.value,
+                                issue=raw_flag.issue,
+                            )
+                            flags_by_injection.setdefault(lfsm_inj, []).append(flag)
+
+                        lfsm_result = LFSMResult(
+                            analyte=analyte,
+                            lfsm_injection=lfsm_inj,
+                            parent_injection=parent_inj,
+                            spike_value_ppt=spike_ppt,
+                            fortified_conc=fortified,
+                            unfortified_conc=unfort,
+                            recovery_pct=recovery_pct,
+                            flag=flag,
+                        )
+                        self.batch.lfsm_results.append(lfsm_result)
+                        lfsm_results_by_inj[lfsm_inj][analyte] = lfsm_result
+
+                    lfsm_evaluated.add(lfsm_inj)
+
+            # LFSMD RPD evaluation (requires matching LFSM result)
+            if lfsmd_enabled and profile is not None:
+                seen_lfsmd = set()
+                for row in rows:
+                    name = row.injection_name
+                    if "; LFSM " in name and name.rstrip().endswith(" Dup."):
+                        if name not in seen_lfsmd:
+                            seen_lfsmd.add(name)
+                            lfsm_inj = _lfsmd_to_lfsm_name(name)
+                            inj_lfsm_results = lfsm_results_by_inj.get(lfsm_inj, {})
+                            if not inj_lfsm_results:
+                                continue  # LFSM not evaluated → stays PENDING
+
+                            for analyte in _analytes:
+                                lfsm_res = inj_lfsm_results.get(analyte)
+                                if lfsm_res is None:
+                                    continue
+                                fortified_dup = _get_conc(name, analyte, conc_lookup)
+                                if fortified_dup is None:
+                                    continue
+
+                                rec_dup  = ((fortified_dup - lfsm_res.unfortified_conc)
+                                            / lfsm_res.spike_value_ppt * 100.0)
+                                mean_rec = (lfsm_res.recovery_pct + rec_dup) / 2.0
+                                rpd_pct  = (abs(lfsm_res.recovery_pct - rec_dup)
+                                            / mean_rec * 100.0 if mean_rec else 0.0)
+
+                                raw_flag = rpd_check_profiled(
+                                    profile, analyte, matrix, "LFSMD", rpd_pct, name
+                                )
+                                flag = None
+                                if raw_flag is not None:
+                                    flag = QCFlag(
+                                        source="LFSM & LFSMD",
+                                        analyte=raw_flag.analyte,
+                                        injection_name=raw_flag.injection_name,
+                                        value=raw_flag.value,
+                                        issue=raw_flag.issue,
+                                    )
+                                    flags_by_injection.setdefault(name, []).append(flag)
+
+                                self.batch.lfsmd_results.append(LFSMDResult(
+                                    analyte=analyte,
+                                    lfsm_injection=lfsm_inj,
+                                    lfsmd_injection=name,
+                                    recovery_lfsm=lfsm_res.recovery_pct,
+                                    recovery_lfsmd=rec_dup,
+                                    rpd_pct=rpd_pct,
+                                    flag=flag,
+                                ))
+
+                            lfsmd_evaluated.add(name)
 
         # Consolidate the QC Log (Sheet 6 equivalent)
         self.batch.qc_flags = [
@@ -192,7 +366,19 @@ class RunQueue:
                 chk.status = CheckStatus.AUTO_FAIL
                 chk.flags = [f.as_dict() for f in relevant]
             elif chk.check_name in _CHECK_SOURCES:
-                chk.status = CheckStatus.AUTO_PASS
+                # LFSM/LFSMD checks: only AUTO_PASS if the engine actually ran them.
+                # If the toggle is ON but spike ppt is not yet configured, stay PENDING
+                # so the reviewer sees the check rather than a silent pass.
+                if chk.check_name == "lfsm_recovery" and lfsm_enabled:
+                    if chk.injection_name in lfsm_evaluated:
+                        chk.status = CheckStatus.AUTO_PASS
+                    # else: stays PENDING — spike not configured yet
+                elif chk.check_name == "lfsmd_rpd" and lfsmd_enabled:
+                    if chk.injection_name in lfsmd_evaluated:
+                        chk.status = CheckStatus.AUTO_PASS
+                    # else: stays PENDING
+                else:
+                    chk.status = CheckStatus.AUTO_PASS
             # checks not auto-resolvable (blank_contamination, bloq_check, …)
             # remain PENDING for the human
 
