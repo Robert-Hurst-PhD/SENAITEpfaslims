@@ -145,10 +145,7 @@ class LFSMResult:
 
     @property
     def passes(self) -> bool:
-        from .constants import CRITERIA
-        return (CRITERIA["recovery_min_pct"]
-                <= self.recovery_pct
-                <= CRITERIA["recovery_max_pct"])
+        return self.flag is None
 
 
 @dataclass
@@ -163,8 +160,7 @@ class LFSMDResult:
 
     @property
     def passes(self) -> bool:
-        from .constants import CRITERIA
-        return self.rpd_pct <= CRITERIA["rpd_max_pct"]
+        return self.flag is None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -105,13 +105,6 @@ def _build_criteria_from_profile(profile):
     if conf.get("sn_quan_min") is not None:
         crit["sn_min"] = float(conf["sn_quan_min"])
 
-    # recovery_min_pct / recovery_max_pct / rpd_max_pct are used only by
-    # LFSMResult.passes and LFSMDResult.passes (convenience properties on the
-    # dataclass). The actual QC engine uses recovery_check_profiled /
-    # rpd_check_profiled in auto_evaluate, which resolve per-analyte tiered
-    # limits from the method profile directly. The flat CRITERIA values remain
-    # as a safe fallback for .passes until those properties are removed.
-
     return crit
 
 

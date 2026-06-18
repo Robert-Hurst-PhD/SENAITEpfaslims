@@ -44,6 +44,7 @@ from .method_profiles import (
     reload_from_profiles,
     get_analyte_list as _get_analytes,
     get_non_iso_set as _get_non_iso_set,
+    get_included_display_analytes as _get_included_analytes,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,8 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         by_sample.setdefault(r.injection_name, {})[r.compound_name] = r
 
     _method = getattr(batch, "method_id", "") or "FDA_32PFAS"
-    _analytes = _get_analytes(_method)
+    _matrix = getattr(batch, "matrix", "") or ""
+    _analytes = _get_included_analytes(_method, _matrix) if _matrix else _get_analytes(_method)
     _non_iso = _get_non_iso_set(_method)
 
     for sample_name, compounds in by_sample.items():

@@ -115,10 +115,25 @@ class SequenceRule:
 # ─────────────────────────────────────────────────────────────────────────────
 # FDA display-name lists (instrument export format, MassLynx compound names).
 # Moved here from constants.py so they are owned by the method layer.
-# Note: master_analyte_set in the ZODB store uses KEYWORDS; these are the
-# DISPLAY NAMES the instrument software exports — used for compound_name
-# lookups in instrument rows.  Phase C will unify via COMPOUND_NAME_TO_KEYWORD.
+#
+# The ZODB store's analyte_matrix_inclusion uses KEYWORDS as dict keys
+# (e.g. "PFHxS", "PFOS") while these lists use DISPLAY NAMES (e.g. "lr-PFHxS",
+# "lr-PFOS") to match instrument export.  The map below bridges them.
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Analyte keyword → instrument display name (only entries that differ)
+_FDA_KW_TO_DISPLAY: dict = {
+    "PFHxS":       "lr-PFHxS",
+    "PFOS":        "lr-PFOS",
+    "GenX":        "GenX (HFPO-DA)",
+    "4:2FTS":      "4:2 FTS",
+    "8:2FTS":      "8:2 FTS",
+    "10:2FTS":     "10:2 FTS",
+    "9ClPF3ONS":   "9Cl-PF3ONS",
+    "11ClPF3OUdS": "11Cl-PF3OUdS",
+}
+# Reverse: display name → keyword (for inclusion-matrix lookup)
+_FDA_DISPLAY_TO_KW: dict = {v: k for k, v in _FDA_KW_TO_DISPLAY.items()}
 
 _FDA_DISPLAY_ANALYTES = [
     "10:2 FTS", "11Cl-PF3OUdS", "4:2 FTS", "6:2FTS", "8:2 FTS",
@@ -803,6 +818,34 @@ def get_is_list(method_id: str = "FDA_32PFAS") -> list:
     if method_id == "FDA_32PFAS":
         return list(_FDA_IS_DISPLAY_NAMES)
     return []
+
+
+def get_included_display_analytes(method_id: str, matrix: str) -> list:
+    """Return display-name analyte list filtered by the Method × Matrix panel.
+
+    Reads ``analyte_matrix_inclusion`` from the profile cache (keyword-keyed
+    dict exported from the ZODB store).  If the cache has no inclusion data
+    yet (profile JSON not loaded), falls back to the full analyte list so
+    the pipeline continues to work before first configuration.
+
+    Keyword keys that differ from display names are handled via
+    _FDA_DISPLAY_TO_KW / _FDA_KW_TO_DISPLAY.  Default: included (True) when a
+    keyword is not found in the inclusion dict (conservative — never silently
+    drop an analyte due to missing config data).
+    """
+    data = _profile_data_cache.get(method_id, {})
+    inclusion = data.get("analyte_matrix_inclusion")
+    full_list = get_analyte_list(method_id)
+    if not inclusion:
+        return full_list
+
+    result = []
+    for display_name in full_list:
+        keyword = _FDA_DISPLAY_TO_KW.get(display_name, display_name)
+        matrix_map = inclusion.get(keyword, {})
+        if matrix_map.get(matrix, True):
+            result.append(display_name)
+    return result
 
 
 # Load profile data immediately if the export already exists

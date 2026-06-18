@@ -32,6 +32,7 @@ from .method_profiles import (
     get_analyte_list as _get_analytes,
     get_is_list as _get_is_list,
     get_non_iso_set as _get_non_iso_set,
+    get_included_display_analytes as _get_included_analytes,
 )
 
 
@@ -167,7 +168,9 @@ class RunQueue:
         toggles = _load_rule_toggles(self.method_id)
 
         _method = self.method_id or "FDA_32PFAS"
-        _analytes = _get_analytes(_method)
+        _matrix = self.batch.matrix or ""
+        _analytes = (_get_included_analytes(_method, _matrix)
+                     if _matrix else _get_analytes(_method))
         _non_iso = _get_non_iso_set(_method)
 
         # 1. IS Raw (is_response rule)
