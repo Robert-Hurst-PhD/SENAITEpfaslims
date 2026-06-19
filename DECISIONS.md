@@ -5,6 +5,49 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-19  Q-001 — MassLynx IS naming confirmed as 13C prefix
+
+- **Decision:** Waters MassLynx exports IS/surrogate compound names using the **13C prefix** format (e.g. `13C8-PFOS`, `13C3-PFBA`, `13C4-PFOA`). The M-prefix identifiers (M8PFOS, M3PFBA) are internal SENAITE keywords only. The pipeline's `get_is_list()` already returns `_FDA_IS_DISPLAY_NAMES` in 13C format — no code change required.
+- **Decision:** `internal_standards.csv` stores `Keyword=M-prefix, Title=13C-name`. All pipeline IS lookups and surrogate_map field values must use the 13C Title names.
+- **Status:** confirmed — closed Q-001.
+
+## 2026-06-19  PFTrDS CAS number resolved
+
+- **Decision:** PFTrDS (perfluorotridecane-1-sulfonic acid) CAS registry number is **791563-89-8** (Restek compound database; molecular formula C13HF27O3S). Updated in `setupdata/analysis_services.csv`. EGAD EDD export no longer blocked on this analyte.
+- **Status:** confirmed — PLACEHOLDER replaced.
+
+## 2026-06-19  EPA 1633A matrix alignment — removed phantom matrices
+
+- **Decision:** `_EPA1633A_MATRICES` corrected to exactly match SENAITE SampleType titles. Removed `"Aqueous"` (no matching SampleType — Groundwater batches were silently getting no spike_levels) and `"Solid"` (no SampleType; Sediment/Soil already listed). Added `"Groundwater"`, `"Wastewater"`, `"Landfill Leachate"` which ARE SampleTypes associated with EPA_1633A.
+- **Decision:** `export_profiles_to_file()` bug fixed — it previously exported stored profiles without back-filling absent keys from DEFAULT_PROFILES, so any ZODB-deleted key was absent from the worker JSON. Now back-fills before export.
+- **Decision:** `sample_types.csv` updated to link Groundwater and Surface Water to EPA_537_1 (they were already in `_EPA537_MATRICES` but not in the CSV method association).
+- **Status:** confirmed — pipeline matrix lookups for Groundwater/Wastewater/Landfill Leachate now resolve correctly.
+
+## 2026-06-19  Method Profile UI redesign (session 4)
+
+- **Decision:** Surrogate Map replaced drag-and-drop chip UI (which was broken/non-functional) with a simple per-analyte dropdown table. Each native analyte gets one `<select>` for its labeled IS. Injection IS field moved into the Surrogate Map section.
+- **Decision:** Matrix Adjustment Factor changed from a single integer field to a per-sample-type table (matching the `matrix_factors` list format the pipeline already reads). Batch matrix substring-matched against table entries.
+- **Decision:** Per-Analyte table streamlined — removed Surrogate IS, Key Analyte, and Recovery Tier columns (these were duplicates of Surrogate Map and Recovery Tiers sections; pipeline never read them from per_analyte). Remaining columns: Analyte, No IS, Confirm Ion, Notes.
+- **Decision:** Form sections regrouped with visible dividers: Analyte Configuration / Instrument QC Criteria / Sample Prep & Corrections / Lab Workflow. All sections start collapsed except Method Information.
+- **Status:** confirmed — deployed and verified in container.
+
+---
+
+## 2026-06-19  Q-014 — Spike levels restructured to per-matrix
+
+- **Decision:** `spike_levels` data structure changed from flat `{"LFB":[...], "LFSM":[...]}` to per-matrix `{"Matrix Name": {"LFB":[...], "LFSM":[...]}}`. Matrix keys come from the method's `supported_matrices`. Lab confirmed spike concentrations vary by matrix when backcalculating to sample size (ppt = mass / sample_size per matrix).
+- **Decision:** Storing ppt directly per matrix (not spike mass + per-matrix sample size). Simple, explicit, matches what goes on the report.
+- **Shape migration:** `_migrate_spike_levels()` in `method_profile_store.py` auto-upgrades stored old-format profiles on read (`get_profile()`) and on export (`export_profiles_to_file()`). No manual ZODB migration required.
+- **Status:** confirmed — implemented in `method_profile_store.py`, `browser/method_profiles.py`, `method_profile_edit.pt`, `method_profile_edit.js`, `method_profiles.py` (pipeline), `run_queue.py`.
+- **Context:** Q-014 lab directive: "will this be changeable by matrix? When backcalculating to sample size the spikes vary by matrix."
+
+## 2026-06-19  Q-004 — 1633A EIS limits implemented from EPA 820-R-24-007
+
+- **Decision:** `eis_overrides` in DEFAULT_PROFILES for EPA_1633A replaced with actual per-analyte limits from EPA 1633A Table 6 (aqueous, 24 EIS compounds). `eis_matrix_overrides` dict added for per-matrix-class limits (leachate, solid, tissue, biosolid) from Tables 6 and 8.
+- **Decision:** Pipeline `EPA1633AProfile.qc_rules()` selects the EIS limit for the analyte × matrix-class combination at runtime. Matrix class is derived from the batch matrix name via `_1633a_matrix_class()`.
+- **Status:** confirmed — implemented in `method_profile_store.py` and `method_profiles.py` (pipeline).
+- **Context:** Q-004 lab directive: "1633 is available on the EPA website and the pdf can be used."
+
 ## 2026-06-18  Q-011 — LFSM/LFSMD per-analyte tiered recovery wiring
 
 - **Decision:** LFSM recovery and LFSMD RPD are evaluated automatically by the pipeline engine using per-analyte tiered limits from the method profile. Spike concentration is resolved from the method profile's `spike_levels` section using the level label encoded in the injection name (e.g. `"; LFSM High"` → `"High"` → configured ppt). No spike → check stays PENDING. Flat `CRITERIA` values remain for `LFSMResult.passes` / `LFSMDResult.passes` only.

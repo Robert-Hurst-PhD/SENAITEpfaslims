@@ -246,7 +246,7 @@ class RunQueue:
             if lfsm_enabled and profile is not None:
                 for lfsm_inj in lfsm_inj_names:
                     level_label = _lfsm_level_label(lfsm_inj)
-                    spike_ppt = profile.resolve_spike_ppt("LFSM", level_label)
+                    spike_ppt = profile.resolve_spike_ppt("LFSM", level_label, matrix=matrix)
                     if spike_ppt is None or spike_ppt == 0:
                         continue  # spike concentration not configured — stays PENDING
 

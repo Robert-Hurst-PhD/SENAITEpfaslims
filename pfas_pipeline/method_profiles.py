@@ -474,9 +474,22 @@ class MethodProfile:
     def _profile_data(self):
         return _profile_data_cache.get(self.method_id, {})
 
-    def resolve_spike_ppt(self, qc_type, level_label):
-        """Return configured spike ppt for qc_type+level, or None if not set."""
-        levels = self._profile_data().get("spike_levels", {}).get(qc_type, [])
+    def resolve_spike_ppt(self, qc_type, level_label, matrix=None):
+        """Return configured spike ppt for qc_type+level+matrix, or None if not set.
+
+        spike_levels may be in old flat format {LFB:[...], LFSM:[...]} or
+        new per-matrix format {matrix: {LFB:[...], LFSM:[...]}}.
+        """
+        spike_levels = self._profile_data().get("spike_levels", {})
+        # Detect old flat format
+        if "LFB" in spike_levels or "LFSM" in spike_levels:
+            levels = spike_levels.get(qc_type, [])
+        elif matrix and matrix in spike_levels:
+            levels = spike_levels[matrix].get(qc_type, [])
+        else:
+            # New format but matrix not matched; fall back to first available matrix
+            first = next(iter(spike_levels.values()), {})
+            levels = first.get(qc_type, []) if isinstance(first, dict) else []
         for entry in levels:
             if entry.get("label", "").strip().lower() == level_label.strip().lower():
                 ppt = entry.get("ppt")
@@ -661,6 +674,20 @@ class EPA537Profile(MethodProfile):
 # EPA 1633A  (aqueous / solid / biosolid / tissue)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _1633a_matrix_class(matrix: str) -> str:
+    """Map a 1633A matrix name to the EIS table class used in eis_matrix_overrides."""
+    m = matrix.lower().strip()
+    if "leachate" in m:
+        return "leachate"
+    if "tissue" in m:
+        return "tissue"
+    if "biosolid" in m:
+        return "biosolid"
+    if any(x in m for x in ("solid", "sediment", "soil")):
+        return "solid"
+    return "aqueous"
+
+
 class EPA1633AProfile(MethodProfile):
     method_id = "EPA_1633A"
     description = ("EPA 1633A — 40 PFAS in aqueous, solid, biosolid, "
@@ -670,6 +697,7 @@ class EPA1633AProfile(MethodProfile):
         profile = self._profile_data()
         tiers = profile.get("recovery_tiers", [])
         eis_overrides = profile.get("eis_overrides", {})
+        eis_matrix = profile.get("eis_matrix_overrides", {})
 
         default_lo, default_hi = 40.0, 130.0
         for tier in tiers:
@@ -678,12 +706,21 @@ class EPA1633AProfile(MethodProfile):
                 default_hi = float(tier.get("recovery_max", 130.0))
 
         if qc_type in ("EIS", "SUR", "surrogate"):
+            # Aqueous default from eis_overrides
             override = eis_overrides.get(analyte, {})
             lo = float(override.get("recovery_min", default_lo))
             hi = float(override.get("recovery_max", default_hi))
-            return QCRule(lo, hi, verify_against_method=True,
-                          notes="EIS limits are per-analyte AND per-matrix "
-                                "(1633A Tables 6/8) — verify against method")
+            # Apply matrix-class-specific override when available (Tables 6/8)
+            if matrix:
+                mat_class = _1633a_matrix_class(matrix)
+                if mat_class != "aqueous":
+                    mat_override = eis_matrix.get(mat_class, {}).get(analyte)
+                    if mat_override:
+                        lo = float(mat_override.get("recovery_min", lo))
+                        hi = float(mat_override.get("recovery_max", hi))
+            return QCRule(lo, hi,
+                          notes="EIS limits per-analyte x matrix class "
+                                "(1633A Tables 6/8, EPA 820-R-24-007)")
         if qc_type in ("OPR", "LCS", "LFB"):
             return QCRule(70.0, 130.0, verify_against_method=True,
                           notes="OPR/IPR limits are per-analyte "
@@ -846,6 +883,16 @@ def get_included_display_analytes(method_id: str, matrix: str) -> list:
         if matrix_map.get(matrix, True):
             result.append(display_name)
     return result
+
+
+def get_isomer_summation(method_id: str = "FDA_32PFAS") -> list:
+    """Return the active isomer summation pairs for method_id.
+
+    Each pair is ``{"linear": ..., "branched": ..., "reported": ..., "enabled": bool}``.
+    Only enabled pairs are returned.
+    """
+    pairs = _profile_data_cache.get(method_id, {}).get("isomer_summation", [])
+    return [p for p in pairs if p.get("enabled", True)]
 
 
 # Load profile data immediately if the export already exists

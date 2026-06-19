@@ -114,41 +114,24 @@
     .ami-row-btn:hover { color: var(--s-primary); text-decoration: underline; }
     .ami-excluded { color: var(--s-danger, #c0392b); font-size: 11px; display: block; }
 
-    /* Surrogate IS-lane grid */
-    .sur-grid { display: flex; flex-direction: column; gap: 0; }
-    .sur-unassigned { border: 1px dashed var(--s-border); border-radius: 6px;
-                      padding: 8px 10px; margin-bottom: 10px; background: #fffbf0; }
-    .sur-unassigned-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
-                             letter-spacing: .04em; color: var(--s-secondary); margin-bottom: 6px; }
-    .sur-chip-pool { display: flex; flex-wrap: wrap; gap: 4px; min-height: 26px; }
-    .sur-lane { display: flex; align-items: stretch; border-bottom: 1px solid var(--s-border);
-                background: #fff; }
-    .sur-lane:last-child { border-bottom: none; }
-    .sur-lane:nth-child(even) { background: var(--s-light, #f8f9fa); }
-    .sur-lane-hdr { flex: 0 0 200px; display: flex; flex-direction: column; justify-content: center;
-                    padding: 6px 10px; border-right: 1px solid var(--s-border);
-                    background: var(--s-light); }
-    .sur-lane-name { font-family: "Fira Code", monospace; font-size: 12px; font-weight: 700;
-                     color: var(--s-primary); }
-    .sur-lane-label { font-size: 10px; color: var(--s-secondary); margin-bottom: 4px; }
-    .sur-chain-sel { font-size: 11px; padding: 2px 4px; border: 1px solid var(--s-input-border);
-                     border-radius: 3px; color: var(--s-text); background: #fff;
-                     max-width: 140px; margin-top: 2px; }
-    .sur-lane-body { flex: 1; padding: 5px 8px; display: flex; flex-wrap: wrap;
-                     align-content: center; gap: 4px; min-height: 36px; }
-    .sur-lane-body.drag-over { background: var(--s-primary-lt, #e8f0ff);
-                                outline: 2px dashed var(--s-primary); outline-offset: -2px; }
-    .sur-chip { display: inline-flex; align-items: center; gap: 4px;
-                background: var(--s-primary-lt, #e8f0ff); border: 1px solid var(--s-primary);
-                border-radius: 12px; padding: 2px 8px; font-size: 11px;
-                font-family: "Fira Code", monospace; color: var(--s-primary);
-                cursor: grab; user-select: none; white-space: nowrap; }
-    .sur-chip:active { cursor: grabbing; opacity: .7; }
-    .sur-chip.dragging { opacity: .35; }
-    .sur-chip-rm { background: none; border: none; cursor: pointer; padding: 0 0 0 2px;
-                   color: var(--s-secondary); font-size: 13px; line-height: 1; }
-    .sur-chip-rm:hover { color: var(--s-danger); }
-    .sur-unassigned .sur-chip { background: #fff3cd; border-color: #e0a800; color: #7a5800; }
+    /* Section group dividers */
+    .section-group-hdr { padding: 7px 14px; background: var(--s-light);
+                         border: 1px solid var(--s-border); border-radius: 4px;
+                         font-size: 10px; font-weight: 700; letter-spacing: .1em;
+                         text-transform: uppercase; color: var(--s-secondary);
+                         margin: 22px 0 8px 0; }
+
+    /* Surrogate map table select */
+    .factor-table select, .sur-map-sel { padding: 4px 6px; border: 1px solid var(--s-input-border);
+                                          border-radius: 4px; font-size: 12px; background: #fafafa;
+                                          color: var(--s-input-text); width: 100%; }
+
+    /* Per-matrix spike level sections */
+    .spike-matrix-section { border: 1px solid var(--s-border); border-radius: 6px;
+                             margin-bottom: 12px; background: #fff; overflow: hidden; }
+    .spike-matrix-hdr { padding: 7px 12px; background: var(--s-light);
+                        border-bottom: 1px solid var(--s-border);
+                        font-size: 12px; font-weight: 700; color: var(--s-primary); }
 
     /* Recovery tier cards */
     .tier-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px; background: #fff; }
@@ -233,18 +216,185 @@
               <input type="text" id="description" name="description"
                      tal:attributes="value view/description" />
             </div>
-            <div class="field-row">
-              <label for="surrogate_is">Surrogate IS</label>
-              <input type="text" id="surrogate_is" name="surrogate_is"
-                     tal:attributes="value view/surrogate_is" />
-              <span class="hint">e.g. M4PFOA &#8212; the IS used to quantify all surrogate recoveries</span>
-            </div>
           </div>
         </div>
       </details>
 
+      <!-- ── ANALYTE CONFIGURATION ─────────────────────────────────── -->
+      <div class="section-group-hdr">Analyte Configuration</div>
+
+      <!-- Analyte × Matrix Inclusion -->
+      <details>
+        <summary>Analyte &#215; Matrix Inclusion</summary>
+        <div class="section-body">
+          <div class="alert alert-warn"
+               tal:condition="view/analyte_matrix_needs_verification"
+               style="margin-bottom:12px">
+            &#9888; <strong>Lab verification required.</strong>
+            The analyte set for this method is seeded from the FDA 32-analyte list
+            as a placeholder. Review each row against your purchased method copy
+            and uncheck any analytes not reportable under this method before
+            production use.
+          </div>
+          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+            Each checked cell means the analyte is <strong>reportable</strong> in
+            that matrix. Unchecked analytes are excluded from the surrogate map,
+            recovery tiers, QC checks, reports, and EDD for that matrix.
+            Click an analyte name to toggle its whole row; click &#10003;/&#10007;
+            under a matrix column header to check/uncheck the whole column.
+          </p>
+          <div class="inclusion-wrap">
+            <div id="amiGridContainer">
+              <em style="color:var(--s-secondary);font-size:12px">Loading&#8230;</em>
+            </div>
+          </div>
+          <input type="hidden" id="ami_grid_data"
+                 tal:attributes="value view/analyte_matrix_grid_data" />
+          <input type="hidden" name="analyte_matrix_inclusion_json"
+                 id="analyte_matrix_inclusion_json"
+                 tal:attributes="value view/analyte_matrix_json" />
+        </div>
+      </details>
+
+      <!-- Per-Analyte Assignments -->
+      <details>
+        <summary>Per-Analyte Assignments</summary>
+        <div class="section-body">
+          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+            <strong>No IS</strong> — analyte has no labeled IS; its tier is controlled
+            entirely by the Recovery Tiers No-Std list.
+            <strong>Confirm Ion</strong> — qualifier MRM transition (precursor&gt;product,
+            e.g. 413.04&gt;369.00). Surrogate IS assignment is in the Surrogate Map section below.
+          </p>
+          <div style="overflow-x:auto">
+            <table class="pa-table">
+              <thead>
+                <tr>
+                  <th style="min-width:120px">Analyte</th>
+                  <th style="width:65px;text-align:center">No IS</th>
+                  <th style="min-width:150px">Confirm Ion (m/z)</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="perAnalyteBody"></tbody>
+            </table>
+          </div>
+          <input type="hidden" name="per_analyte_json" id="per_analyte_json"
+                 tal:attributes="value view/per_analyte_json" />
+        </div>
+      </details>
+
+      <!-- Recovery Tiers -->
+      <details>
+        <summary>Recovery Tiers</summary>
+        <div class="section-body">
+          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+            Each tier card sets the recovery window (min/max %) and optional RSD limit.
+            <strong>Key Analytes</strong> &#8212; analytes subject to this tier&#39;s stricter limits.
+            <strong>Tight Matrices</strong> &#8212; if set, this tier only applies in those matrices.
+            <strong>No-Std Analytes</strong> &#8212; analytes that always fall to this tier (no labeled IS).
+            Leave all three pickers empty for a catch-all default tier.
+          </p>
+          <div id="recoveryTiersContainer"></div>
+          <button type="button" class="btn-add-row" style="margin-top:4px"
+                  onclick="addRecoveryTier()">+ Add Tier</button>
+          <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
+                 tal:attributes="value view/recovery_tiers_json" />
+        </div>
+      </details>
+
+      <!-- Surrogate Map -->
+      <details>
+        <summary>Surrogate Map (analyte &#8594; labeled IS)</summary>
+        <div class="section-body">
+          <div class="field-grid" style="margin-bottom:14px">
+            <div class="field-row">
+              <label for="surrogate_is">Injection IS</label>
+              <div class="field-sublabel">
+                The IS used to quantify all surrogate recoveries (e.g. M4PFOA).
+              </div>
+              <input type="text" id="surrogate_is" name="surrogate_is"
+                     tal:attributes="value view/surrogate_is" />
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:8px">
+            Assign each native analyte to the labeled IS that quantifies it.
+            Analytes with no assignment are treated as unquantified by a labeled IS.
+          </p>
+          <table class="factor-table" id="surMapTable">
+            <thead>
+              <tr>
+                <th style="width:45%">Analyte</th>
+                <th>Surrogate IS</th>
+              </tr>
+            </thead>
+            <tbody id="surMapBody"></tbody>
+          </table>
+          <input type="hidden" name="surrogate_map_json" id="surrogate_map_json"
+                 tal:attributes="value view/surrogate_map_json" />
+          <input type="hidden" id="surrogate_is_data"
+                 tal:attributes="value view/surrogate_is_data" />
+        </div>
+      </details>
+
+      <!-- Isomer Summation -->
+      <details>
+        <summary>Isomer Summation (linear + branched &#8594; reported analyte)</summary>
+        <div class="section-body">
+          <p class="json-hint">
+            Define which linear/branched instrument peaks sum into a single reported analyte.
+            Summation applied BEFORE salt and matrix adjustment factors.
+          </p>
+          <table class="factor-table" id="isomerTable">
+            <thead>
+              <tr>
+                <th style="width:25%">Linear peak</th>
+                <th style="width:25%">Branched peak</th>
+                <th style="width:25%">Reported as</th>
+                <th style="width:60px;text-align:center">Active</th>
+                <th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody id="isomerBody"></tbody>
+          </table>
+          <button type="button" class="btn-add-row" onclick="addIsomerRow()">+ Add pair</button>
+          <input type="hidden" name="isomer_summation_json" id="isomer_summation_json"
+                 tal:attributes="value view/isomer_summation_json" />
+        </div>
+      </details>
+
+      <!-- EIS Recovery Overrides — hidden for FDA and EPA 537.1 -->
+      <details tal:condition="view/show_eis_overrides">
+        <summary>EIS Recovery Overrides <span style="font-size:11px;color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span></summary>
+        <div class="section-body">
+          <div class="alert alert-warn" style="margin-bottom:10px">
+            &#9888; <strong>Lab verification required.</strong>
+            Per-analyte EIS/OPR recovery limits from EPA 1633A Tables 6 and 8
+            (EPA 820-R-24-007, December 2024). Verify each value against your
+            purchased method copy before production use.
+          </div>
+          <table class="factor-table" id="eisOverrideTable">
+            <thead>
+              <tr>
+                <th>EIS / Surrogate Analyte</th>
+                <th>Recovery Min (%)</th>
+                <th>Recovery Max (%)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="eisOverrideBody"></tbody>
+          </table>
+          <button type="button" class="btn-add-row" onclick="addEisRow()">+ Add row</button>
+          <input type="hidden" name="eis_overrides_json" id="eis_overrides_json"
+                 tal:attributes="value view/eis_overrides_json" />
+        </div>
+      </details>
+
+      <!-- ── INSTRUMENT QC CRITERIA ─────────────────────────────────── -->
+      <div class="section-group-hdr">Instrument QC Criteria</div>
+
       <!-- Calibration -->
-      <details open="open">
+      <details>
         <summary>Calibration</summary>
         <div class="section-body">
           <div class="field-grid">
@@ -282,7 +432,7 @@
       </details>
 
       <!-- CCV -->
-      <details open="open">
+      <details>
         <summary>Continuing Calibration Verification (CCV)</summary>
         <div class="section-body">
           <div class="field-grid">
@@ -319,7 +469,7 @@
       </details>
 
       <!-- IS Response -->
-      <details open="open">
+      <details>
         <summary>Internal Standard (IS) / Surrogate Response</summary>
         <div class="section-body">
           <div class="field-grid">
@@ -354,7 +504,7 @@
       </details>
 
       <!-- Chromatographic Confirmation -->
-      <details open="open">
+      <details>
         <summary>Chromatographic Confirmation &amp; Signal Quality</summary>
         <div class="section-body">
           <div class="field-grid">
@@ -401,16 +551,14 @@
                   Require qualifier ion check for all analytes
                 </label>
               </div>
-              <span class="hint">
-                ON for FDA 32-PFAS and EPA 1633A; OFF for EPA 537.1.
-              </span>
+              <span class="hint">ON for FDA 32-PFAS and EPA 1633A; OFF for EPA 537.1.</span>
             </div>
           </div>
         </div>
       </details>
 
       <!-- Duplicate / LFSMD RPD -->
-      <details open="open">
+      <details>
         <summary>Duplicate / LFSMD RPD</summary>
         <div class="section-body">
           <div class="field-grid">
@@ -425,84 +573,24 @@
         </div>
       </details>
 
-      <!-- Recovery Tiers -->
+      <!-- ── SAMPLE PREP & CORRECTIONS ─────────────────────────────── -->
+      <div class="section-group-hdr">Sample Prep &amp; Corrections</div>
+
+      <!-- Spike Levels — per matrix -->
       <details>
-        <summary>Recovery Tiers</summary>
+        <summary>Spike Levels (LFB / LFSM) by Matrix</summary>
         <div class="section-body">
           <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
-            Each tier card sets the recovery window (min/max %) and optional RSD limit.
-            <strong>Key Analytes</strong> — analytes subject to this tier's stricter limits.
-            <strong>Tight Matrices</strong> — if set, this tier only applies in those matrices.
-            <strong>No-Std Analytes</strong> — analytes that always fall to this tier (no labeled IS).
-            Leave all three pickers empty for a catch-all default tier.
+            Set the spike concentration (ppt) for each level and matrix.
+            LFSMD uses the same levels as LFSM.
+            The pipeline matches injection names (e.g.
+            <em>"; LFSM High"</em> &rarr; label &#8220;High&#8221; &rarr; ppt here)
+            for the batch matrix.
+            <strong>Enter actual spike amounts before running QC.</strong>
           </p>
-          <div id="recoveryTiersContainer"></div>
-          <button type="button" class="btn-add-row" style="margin-top:4px"
-                  onclick="addRecoveryTier()">+ Add Tier</button>
-
-          <!-- Serialised tiers (read by JS on load; written by syncRecoveryTiersJson before submit) -->
-          <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
-                 tal:attributes="value view/recovery_tiers_json" />
-        </div>
-      </details>
-
-      <!-- Analyte × Matrix Inclusion -->
-      <details>
-        <summary>Analyte &#215; Matrix Inclusion</summary>
-        <div class="section-body">
-
-          <!-- Persistent verification banner for EPA methods (Decision B) -->
-          <div class="alert alert-warn"
-               tal:condition="view/analyte_matrix_needs_verification"
-               style="margin-bottom:12px">
-            &#9888; <strong>Lab verification required.</strong>
-            The analyte set for this method is seeded from the FDA 32-analyte list
-            as a placeholder. Review each row against your purchased method copy
-            and uncheck any analytes not reportable under this method before
-            production use.
-          </div>
-
-          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
-            Each checked cell means the analyte is <strong>reportable</strong> in
-            that matrix. Unchecked analytes are excluded from the surrogate map,
-            recovery tiers, QC checks, reports, and EDD for that matrix.
-            Click an analyte name to toggle its whole row; click &#10003;/&#10007;
-            under a matrix column header to check/uncheck the whole column.
-          </p>
-
-          <div class="inclusion-wrap">
-            <div id="amiGridContainer">
-              <em style="color:var(--s-secondary);font-size:12px">Loading&#8230;</em>
-            </div>
-          </div>
-
-          <!-- Read-only ordered structure for JS; inclusion dict is the live value -->
-          <input type="hidden" id="ami_grid_data"
-                 tal:attributes="value view/analyte_matrix_grid_data" />
-          <input type="hidden" name="analyte_matrix_inclusion_json"
-                 id="analyte_matrix_inclusion_json"
-                 tal:attributes="value view/analyte_matrix_json" />
-        </div>
-      </details>
-
-      <!-- Matrix Adjustment Factor (one per method) -->
-      <details>
-        <summary>Matrix Adjustment Factor</summary>
-        <div class="section-body">
-          <div class="field-grid">
-            <div class="field-row">
-              <label for="matrix_factor">Matrix Adjustment Factor</label>
-              <div class="field-sublabel">
-                Single integer multiplier applied to every result for this method.
-                C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor.
-                Set to 1 if no adjustment is needed.
-              </div>
-              <input type="number" id="matrix_factor" name="matrix_factor"
-                     step="1" min="1"
-                     style="width:100px;"
-                     tal:attributes="value view/matrix_factor" />
-            </div>
-          </div>
+          <div id="spikeLevelsContainer"></div>
+          <input type="hidden" name="spike_levels_json" id="spike_levels_json"
+                 tal:attributes="value view/spike_levels_json" />
         </div>
       </details>
 
@@ -531,135 +619,37 @@
         </div>
       </details>
 
-      <!-- Isomer Summation -->
+      <!-- Matrix Adjustment Factors (per sample type) -->
       <details>
-        <summary>Isomer Summation (linear + branched &#8594; reported analyte)</summary>
+        <summary>Matrix Adjustment Factors (per sample type)</summary>
         <div class="section-body">
           <p class="json-hint">
-            Define which linear/branched instrument peaks sum into a single reported analyte.
-            Summation applied BEFORE salt and matrix adjustment factors.
+            C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor.
+            &#8220;Sample type&#8221; is matched as a case-insensitive substring of the batch matrix
+            name (e.g. &#8220;milk&#8221; matches &#8220;Whole Milk&#8221;).
+            Leave empty if no adjustment needed for a matrix type.
           </p>
-          <table class="factor-table" id="isomerTable">
+          <table class="factor-table" id="matrixFactorsTable">
             <thead>
               <tr>
-                <th style="width:25%">Linear peak</th>
-                <th style="width:25%">Branched peak</th>
-                <th style="width:25%">Reported as</th>
-                <th style="width:60px;text-align:center">Active</th>
+                <th style="width:50%">Sample Type (substring match)</th>
+                <th style="width:25%">Factor</th>
                 <th style="width:36px"></th>
               </tr>
             </thead>
-            <tbody id="isomerBody"></tbody>
+            <tbody id="matrixFactorsBody"></tbody>
           </table>
-          <button type="button" class="btn-add-row" onclick="addIsomerRow()">+ Add pair</button>
-          <input type="hidden" name="isomer_summation_json" id="isomer_summation_json"
-                 tal:attributes="value view/isomer_summation_json" />
+          <button type="button" class="btn-add-row" onclick="addMatrixFactorRow()">+ Add row</button>
+          <input type="hidden" name="matrix_factors_json" id="matrix_factors_json"
+                 tal:attributes="value view/matrix_factors_json" />
         </div>
       </details>
 
-      <!-- Spike Levels -->
-      <details>
-        <summary>Spike Levels (LFB / LFSM)</summary>
-        <div class="section-body">
-          <p class="json-hint">
-            JSON object. Keys are QC types (<code>"LFB"</code>, <code>"LFSM"</code>).
-            Each value is an array of <code>{"label": "High", "ppt": 10.0}</code> entries.
-            The pipeline uses these to resolve spike concentrations from injection names
-            (e.g. <em>"; LFSM High"</em> &rarr; label "High" &rarr; ppt value here).
-            LFSMD uses the same levels as LFSM.
-            <strong>Enter the lab's actual spike amounts — do not leave at zero.</strong>
-          </p>
-          <textarea class="json-area" name="spike_levels_json" id="spike_levels_json" rows="12"
-                    tal:content="view/spike_levels_json">{"LFB": [], "LFSM": []}</textarea>
-        </div>
-      </details>
-
-      <!-- Surrogate Map (IS-lane bucket UI) -->
-      <details>
-        <summary>Surrogate Map (native analyte &#8594; labeled IS &#8594; injection IS)</summary>
-        <div class="section-body">
-          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
-            Drag a native analyte chip into the IS lane that quantifies it.
-            For isotope-dilution methods, also set the <em>Quantified by</em> injection IS
-            for each surrogate lane. Analytes with no IS assigned appear in the
-            <strong>Unassigned</strong> tray.
-          </p>
-          <div id="surrogateGridContainer">
-            <em style="color:var(--s-secondary);font-size:12px">Loading&#8230;</em>
-          </div>
-
-          <!-- Structural data for JS (read-only) -->
-          <input type="hidden" id="surrogate_is_data"
-                 tal:attributes="value view/surrogate_is_data" />
-          <!-- Submitted values written by JS before form submit -->
-          <input type="hidden" name="surrogate_map_json"
-                 id="surrogate_map_json" value="[]" />
-          <input type="hidden" name="surrogate_is_chain_json"
-                 id="surrogate_is_chain_json"
-                 tal:attributes="value view/surrogate_is_chain_json" />
-        </div>
-      </details>
-
-      <!-- Per-Analyte Table -->
-      <details>
-        <summary>Per-Analyte Assignments</summary>
-        <div class="section-body">
-          <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
-            Per-analyte QC flags and confirm-ion MRM. <strong>Recovery Tier</strong>: 1 = key analyte
-            (tight window in specified matrices), 2 = standard, 3 = no labeled IS.
-            <strong>Confirm Ion</strong>: qualifier MRM transition (precursor&gt;product).
-          </p>
-          <div style="overflow-x:auto">
-            <table class="pa-table">
-              <thead>
-                <tr>
-                  <th style="min-width:110px">Analyte</th>
-                  <th style="min-width:100px">Surrogate IS</th>
-                  <th style="width:70px;text-align:center">No IS</th>
-                  <th style="width:70px;text-align:center">Key</th>
-                  <th style="width:110px">Tier</th>
-                  <th style="min-width:130px">Confirm Ion (m/z)</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody id="perAnalyteBody"></tbody>
-            </table>
-          </div>
-          <!-- synced by JS before submit -->
-          <input type="hidden" name="per_analyte_json" id="per_analyte_json"
-                 tal:attributes="value view/per_analyte_json" />
-        </div>
-      </details>
-
-      <!-- EPA 1633A EIS Overrides — hidden for FDA and EPA 537.1 -->
-      <details tal:condition="view/show_eis_overrides">
-        <summary>EIS Recovery Overrides <span style="font-size:11px;color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span></summary>
-        <div class="section-body">
-          <div class="alert alert-warn" style="margin-bottom:10px">
-            &#9888; <strong>Lab verification required.</strong>
-            Per-analyte EIS/OPR recovery windows from EPA 1633A Tables 6 and 8.
-            Values shown are placeholders — verify each row against your purchased method copy
-            before production use.
-          </div>
-          <table class="factor-table" id="eisOverrideTable">
-            <thead>
-              <tr>
-                <th>EIS / Surrogate Analyte</th>
-                <th>Recovery Min (%)</th>
-                <th>Recovery Max (%)</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="eisOverrideBody"></tbody>
-          </table>
-          <button type="button" class="btn-add-row" onclick="addEisRow()">+ Add row</button>
-          <input type="hidden" name="eis_overrides_json" id="eis_overrides_json"
-                 tal:attributes="value view/eis_overrides_json" />
-        </div>
-      </details>
+      <!-- ── LAB WORKFLOW ─────────────────────────────────────────────── -->
+      <div class="section-group-hdr">Lab Workflow</div>
 
       <!-- Extraction Stages -->
-      <details open="open">
+      <details>
         <summary>Extraction Stages</summary>
         <div class="section-body">
           <p class="json-hint">

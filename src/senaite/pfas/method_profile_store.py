@@ -41,13 +41,16 @@ PROFILES_EXPORT_PATH = os.environ.get(
 
 from senaite.pfas.analyte_reference import (
     NATIVE_ANALYTES as _NATIVE_ANALYTES,
+    INTERNAL_STANDARDS as _INTERNAL_STANDARDS,
     get_surrogate_map_by_name as _get_surrogate_map_by_name,
 )
 
 # Native analyte (display name) → surrogate IS keyword — derived from
 # analyte_reference.py. _fda_per_analyte() uses display names, so use the
 # name-keyed map.
-_FDA_SURROGATE_MAP_DICT = _get_surrogate_map_by_name()
+_FDA_SURROGATE_MAP_DICT = _get_surrogate_map_by_name()  # {display_name: M-keyword}
+# M-keyword → 13C display name (for human-readable per_analyte.surrogate column).
+_IS_KW_TO_NAME = {row[0]: row[1] for row in _INTERNAL_STANDARDS}
 
 
 def _fda_per_analyte():
@@ -67,7 +70,7 @@ def _fda_per_analyte():
         tier = 3 if no_std else (1 if is_key else 2)
         rows.append({
             "analyte":        analyte,
-            "surrogate":      _FDA_SURROGATE_MAP_DICT.get(analyte, ""),
+            "surrogate":      _IS_KW_TO_NAME.get(_FDA_SURROGATE_MAP_DICT.get(analyte, ""), ""),
             "no_labeled_std": no_std,
             "is_key_analyte": is_key,
             "recovery_tier":  tier,
@@ -75,6 +78,37 @@ def _fda_per_analyte():
             "notes": "",
         })
     return rows
+
+
+# ── Spike levels helper ───────────────────────────────────────────────────────
+
+def _per_matrix_spike_levels(matrices):
+    """Return spike_levels in per-matrix format with all ppt values null."""
+    levels = [
+        {"label": "Low",  "ppt": None},
+        {"label": "Mid",  "ppt": None},
+        {"label": "High", "ppt": None},
+    ]
+    return {
+        m: {
+            "LFB":  copy.deepcopy(levels),
+            "LFSM": copy.deepcopy(levels),
+        }
+        for m in matrices
+    }
+
+
+def _migrate_spike_levels(saved, dflt):
+    """Upgrade old flat {LFB:[...], LFSM:[...]} to per-matrix format in-place."""
+    sl = saved.get("spike_levels")
+    if sl is None:
+        return
+    if not ("LFB" in sl or "LFSM" in sl):
+        return  # already per-matrix
+    matrices = (saved.get("supported_matrices")
+                or (dflt or {}).get("supported_matrices")
+                or [])
+    saved["spike_levels"] = {m: copy.deepcopy(sl) for m in matrices}
 
 
 # ── Relational model: canonical matrix vocabulary + analyte × matrix sets ─────
@@ -113,21 +147,62 @@ _FDA_MATRIX_EXCLUSIONS = {
 # EPA_537_1: drinking water only; no per-analyte matrix exclusions known.
 _EPA537_MATRICES = ["Drinking Water", "Groundwater", "Surface Water"]
 
+# EPA 537.1 — 18 analytes per EPA/600/R-20/006 Table 1.1 (Section 1.1)
+_EPA537_ANALYTE_KEYWORDS = [
+    # PFCAs (9)
+    "PFHxA", "PFHpA", "PFOA", "PFNA", "PFDA",
+    "PFUDA", "PFDoA", "PFTrDA", "PFTeDA",
+    # PFSAs (3)
+    "PFBS", "PFHxS", "PFOS",
+    # Sulfonamidoacetic acids (2)
+    "NMeFOSAA", "NEtFOSAA",
+    # Ether acids / sulfonics (4)
+    "GenX", "DONA", "9ClPF3ONS", "11ClPF3OUdS",
+]
+
 # EPA_1633A: multi-matrix; units differ by matrix class.
+# Matrix names MUST exactly match SENAITE SampleType titles so that batch
+# matrix → spike_levels / unit_map lookups resolve correctly.
 _EPA1633A_MATRICES = [
-    "Aqueous", "Drinking Water", "Surface Water",
-    "Solid", "Sediment", "Soil", "Aquatic Tissue", "Biosolid",
+    "Groundwater", "Drinking Water", "Surface Water",
+    "Wastewater", "Landfill Leachate",
+    "Sediment", "Soil", "Aquatic Tissue", "Biosolid",
 ]
 _EPA1633A_UNIT_MAP = {
-    "Aqueous":        "ng/L",
-    "Drinking Water": "ng/L",
-    "Surface Water":  "ng/L",
-    "Solid":          "ng/g",
-    "Sediment":       "ng/g",
-    "Soil":           "ng/g",
-    "Aquatic Tissue": "ng/g",
-    "Biosolid":       "ng/g",
+    "Groundwater":      "ng/L",
+    "Drinking Water":   "ng/L",
+    "Surface Water":    "ng/L",
+    "Wastewater":       "ng/L",
+    "Landfill Leachate":"ng/L",
+    "Sediment":         "ng/g",
+    "Soil":             "ng/g",
+    "Aquatic Tissue":   "ng/g",
+    "Biosolid":         "ng/g",
 }
+
+# EPA 1633A — 40 analytes per EPA 820-R-24-007 Table 1, December 2024.
+# br-PFHxS and br-PFOS are excluded here (summed via isomer_summation).
+_EPA1633A_ANALYTE_KEYWORDS = [
+    # PFCAs (11)
+    "PFBA", "PFPeA", "PFHxA", "PFHpA", "PFOA", "PFNA",
+    "PFDA", "PFUDA", "PFDoA", "PFTrDA", "PFTeDA",
+    # PFSAs (8)
+    "PFBS", "PFPeS", "PFHxS", "PFHpS", "PFOS", "PFNS", "PFDS", "PFDoS",
+    # Fluorotelomer sulfonics (3)
+    "4:2FTS", "6:2FTS", "8:2FTS",
+    # Sulfonamides (3)
+    "FOSA", "NMeFOSA", "NEtFOSA",
+    # Sulfonamidoacetic acids (2)
+    "NMeFOSAA", "NEtFOSAA",
+    # Sulfonamide ethanols (2)
+    "NMeFOSE", "NEtFOSE",
+    # Ether carboxylic acids (5)
+    "GenX", "DONA", "PFMPA", "PFMBA", "NFDHA",
+    # Ether sulfonics (3)
+    "9ClPF3ONS", "11ClPF3OUdS", "PFEESA",
+    # Fluorotelomer carboxylic acids (3)
+    "3:3FTCA", "5:3FTCA", "7:3FTCA",
+]
 
 
 def _fda_analyte_matrix_inclusion():
@@ -303,6 +378,8 @@ DEFAULT_PROFILES = {
         "per_analyte": _fda_per_analyte(),
         "salt_adjustment_factors": [],
         "isomer_summation": [
+            {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
+            {"linear": "lr-PFNA",  "branched": "br-PFNA",  "reported": "PFNA",  "enabled": True},
             {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
             {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
         ],
@@ -318,13 +395,9 @@ DEFAULT_PROFILES = {
         "unit_map": dict(
             [(m, "ng/mL" if m == "Milk" else "ng/kg") for m in _FDA_MATRICES]
         ),
-        # Spike level options for LFSM (and LFB) injections.
-        # The lab MUST enter the actual ppt values here via the Method Profile UI.
-        # Leave empty until real spike amounts are confirmed (see QUESTIONS.md Q-014).
-        "spike_levels": {
-            "LFB":  [],
-            "LFSM": [],
-        },
+        # Spike level options for LFSM (and LFB) injections — keyed by matrix.
+        # ppt values left as null — the lab enters them via the Method Profile UI.
+        "spike_levels": _per_matrix_spike_levels(_FDA_MATRICES),
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -467,19 +540,21 @@ DEFAULT_PROFILES = {
         "surrogate_is": "",
         "per_analyte": [],
         "salt_adjustment_factors": [],
-        "isomer_summation": [],
+        "isomer_summation": [
+            {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
+            {"linear": "lr-PFNA",  "branched": "br-PFNA",  "reported": "PFNA",  "enabled": True},
+            {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
+            {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
+        ],
         # ── Relational data model (Round 9) ──────────────────────────────────
         "supported_matrices": list(_EPA537_MATRICES),
-        # EPA 537.1 has 29 analytes; seeded from FDA 32-analyte set pending confirmation
-        "master_analyte_set": list(_FDA_MASTER_ANALYTE_KEYWORDS),
+        # EPA 537.1: 18 analytes per EPA/600/R-20/006 Table 1.1
+        "master_analyte_set": list(_EPA537_ANALYTE_KEYWORDS),
         "analyte_matrix_inclusion": _all_included_matrix(
-            _FDA_MASTER_ANALYTE_KEYWORDS, _EPA537_MATRICES
+            _EPA537_ANALYTE_KEYWORDS, _EPA537_MATRICES
         ),
         "unit_map": {m: "ng/L" for m in _EPA537_MATRICES},
-        "spike_levels": {
-            "LFB":  [],
-            "LFSM": [],
-        },
+        "spike_levels": _per_matrix_spike_levels(_EPA537_MATRICES),
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -616,35 +691,137 @@ DEFAULT_PROFILES = {
                 "verify_against_method": True,
             },
         ],
+        # EIS recovery limits — from EPA 1633A (December 2024, EPA 820-R-24-007)
+        # eis_overrides: per-analyte aqueous defaults (Table 6, non-leachate column).
+        # eis_matrix_overrides: per-analyte limits by matrix class from Tables 6 and 8.
+        # Matrix class key: "aqueous" (Table 6 col 1), "leachate" (Table 6 col 2),
+        #                   "solid" (Table 8 col 1), "tissue" (Table 8 col 2),
+        #                   "biosolid" (Table 8 col 3).
+        # NIS compounds all use 50–200% across all matrix classes.
         "eis_overrides": [
-            {"analyte": "M2-4:2FTS",   "recovery_min": 20.0, "recovery_max": 150.0},
-            {"analyte": "M2-6:2FTS",   "recovery_min": 20.0, "recovery_max": 150.0},
-            {"analyte": "M2-8:2FTS",   "recovery_min": 20.0, "recovery_max": 150.0},
-            {"analyte": "d3-NMeFOSAA", "recovery_min": 20.0, "recovery_max": 150.0},
-            {"analyte": "d5-NEtFOSAA", "recovery_min": 20.0, "recovery_max": 150.0},
-            {"analyte": "M8FOSA",      "recovery_min": 20.0, "recovery_max": 150.0},
+            {"analyte": "13C4-PFBA",     "recovery_min":  5.0, "recovery_max": 130.0},
+            {"analyte": "13C5-PFPeA",    "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C5-PFHxA",    "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C4-PFHpA",    "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C8-PFOA",     "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C9-PFNA",     "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C6-PFDA",     "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C7-PFUnA",    "recovery_min": 30.0, "recovery_max": 130.0},
+            {"analyte": "13C2-PFDoA",    "recovery_min": 10.0, "recovery_max": 130.0},
+            {"analyte": "13C2-PFTeDA",   "recovery_min": 10.0, "recovery_max": 130.0},
+            {"analyte": "13C3-PFBS",     "recovery_min": 40.0, "recovery_max": 135.0},
+            {"analyte": "13C3-PFHxS",    "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C8-PFOS",     "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "13C2-4:2FTS",   "recovery_min": 40.0, "recovery_max": 200.0},
+            {"analyte": "13C2-6:2FTS",   "recovery_min": 40.0, "recovery_max": 200.0},
+            {"analyte": "13C2-8:2FTS",   "recovery_min": 40.0, "recovery_max": 300.0},
+            {"analyte": "13C8-PFOSA",    "recovery_min": 40.0, "recovery_max": 130.0},
+            {"analyte": "D3-NMeFOSA",    "recovery_min": 10.0, "recovery_max": 130.0},
+            {"analyte": "D5-NEtFOSA",    "recovery_min": 10.0, "recovery_max": 130.0},
+            {"analyte": "D3-NMeFOSAA",   "recovery_min": 40.0, "recovery_max": 170.0},
+            {"analyte": "D5-NEtFOSAA",   "recovery_min": 25.0, "recovery_max": 135.0},
+            {"analyte": "D7-NMeFOSE",    "recovery_min": 10.0, "recovery_max": 130.0},
+            {"analyte": "D9-NEtFOSE",    "recovery_min": 10.0, "recovery_max": 130.0},
+            {"analyte": "13C3-HFPO-DA",  "recovery_min": 40.0, "recovery_max": 130.0},
         ],
+        # Per-matrix-class EIS limits (Tables 6 and 8). Only compounds whose
+        # limits differ from the aqueous default above are listed here.
+        "eis_matrix_overrides": {
+            "leachate": {
+                "13C7-PFUnA":  {"recovery_min": 40.0, "recovery_max": 130.0},
+                "13C2-PFDoA":  {"recovery_min": 35.0, "recovery_max": 130.0},
+                "13C2-PFTeDA": {"recovery_min": 25.0, "recovery_max": 130.0},
+                "13C3-PFBS":   {"recovery_min": 40.0, "recovery_max": 130.0},
+                "13C2-4:2FTS": {"recovery_min": 40.0, "recovery_max": 220.0},
+                "13C2-6:2FTS": {"recovery_min": 40.0, "recovery_max": 170.0},
+                "13C2-8:2FTS": {"recovery_min": 40.0, "recovery_max": 145.0},
+                "D3-NMeFOSA":  {"recovery_min": 40.0, "recovery_max": 130.0},
+                "D5-NEtFOSA":  {"recovery_min": 35.0, "recovery_max": 130.0},
+                "D3-NMeFOSAA": {"recovery_min": 35.0, "recovery_max": 130.0},
+                "D5-NEtFOSAA": {"recovery_min": 30.0, "recovery_max": 130.0},
+                "D7-NMeFOSE":  {"recovery_min": 20.0, "recovery_max": 130.0},
+                "D9-NEtFOSE":  {"recovery_min": 20.0, "recovery_max": 130.0},
+            },
+            "solid": {
+                "13C4-PFBA":   {"recovery_min":  8.0, "recovery_max": 130.0},
+                "13C5-PFPeA":  {"recovery_min": 35.0, "recovery_max": 130.0},
+                "13C2-PFTeDA": {"recovery_min": 20.0, "recovery_max": 130.0},
+                "13C2-4:2FTS": {"recovery_min": 40.0, "recovery_max": 165.0},
+                "13C2-6:2FTS": {"recovery_min": 40.0, "recovery_max": 215.0},
+                "13C2-8:2FTS": {"recovery_min": 40.0, "recovery_max": 275.0},
+                "13C8-PFOSA":  {"recovery_min": 40.0, "recovery_max": 130.0},
+                "D3-NMeFOSAA": {"recovery_min": 40.0, "recovery_max": 135.0},
+                "D5-NEtFOSAA": {"recovery_min": 40.0, "recovery_max": 150.0},
+                "D7-NMeFOSE":  {"recovery_min": 20.0, "recovery_max": 130.0},
+                "D9-NEtFOSE":  {"recovery_min": 15.0, "recovery_max": 130.0},
+            },
+            "tissue": {
+                "13C4-PFBA":   {"recovery_min":  5.0, "recovery_max": 130.0},
+                "13C5-PFPeA":  {"recovery_min": 10.0, "recovery_max": 185.0},
+                "13C5-PFHxA":  {"recovery_min": 25.0, "recovery_max": 170.0},
+                "13C4-PFHpA":  {"recovery_min": 25.0, "recovery_max": 150.0},
+                "13C8-PFOA":   {"recovery_min": 25.0, "recovery_max": 150.0},
+                "13C9-PFNA":   {"recovery_min": 35.0, "recovery_max": 185.0},
+                "13C6-PFDA":   {"recovery_min": 30.0, "recovery_max": 150.0},
+                "13C7-PFUnA":  {"recovery_min": 30.0, "recovery_max": 180.0},
+                "13C2-PFDoA":  {"recovery_min": 35.0, "recovery_max": 180.0},
+                "13C2-PFTeDA": {"recovery_min": 20.0, "recovery_max": 160.0},
+                "13C3-PFBS":   {"recovery_min": 25.0, "recovery_max": 190.0},
+                "13C3-PFHxS":  {"recovery_min": 35.0, "recovery_max": 175.0},
+                "13C8-PFOS":   {"recovery_min": 40.0, "recovery_max": 160.0},
+                "13C2-4:2FTS": {"recovery_min": 30.0, "recovery_max": 300.0},
+                "13C2-6:2FTS": {"recovery_min": 35.0, "recovery_max": 300.0},
+                "13C2-8:2FTS": {"recovery_min": 40.0, "recovery_max": 365.0},
+                "13C8-PFOSA":  {"recovery_min": 25.0, "recovery_max": 180.0},
+                "D3-NMeFOSA":  {"recovery_min":  5.0, "recovery_max": 130.0},
+                "D5-NEtFOSA":  {"recovery_min":  5.0, "recovery_max": 130.0},
+                "D3-NMeFOSAA": {"recovery_min": 30.0, "recovery_max": 250.0},
+                "D5-NEtFOSAA": {"recovery_min": 30.0, "recovery_max": 235.0},
+                "D7-NMeFOSE":  {"recovery_min":  5.0, "recovery_max": 160.0},
+                "D9-NEtFOSE":  {"recovery_min":  5.0, "recovery_max": 130.0},
+                "13C3-HFPO-DA":{"recovery_min": 20.0, "recovery_max": 185.0},
+            },
+            "biosolid": {
+                "13C4-PFBA":   {"recovery_min":  5.0, "recovery_max": 130.0},
+                "13C5-PFPeA":  {"recovery_min": 35.0, "recovery_max": 130.0},
+                "13C9-PFNA":   {"recovery_min": 40.0, "recovery_max": 145.0},
+                "13C2-PFTeDA": {"recovery_min": 10.0, "recovery_max": 160.0},
+                "13C3-PFBS":   {"recovery_min": 40.0, "recovery_max": 150.0},
+                "13C3-PFHxS":  {"recovery_min": 40.0, "recovery_max": 140.0},
+                "13C2-4:2FTS": {"recovery_min": 40.0, "recovery_max": 300.0},
+                "13C2-6:2FTS": {"recovery_min": 40.0, "recovery_max": 300.0},
+                "13C2-8:2FTS": {"recovery_min": 40.0, "recovery_max": 300.0},
+                "13C8-PFOSA":  {"recovery_min": 20.0, "recovery_max": 140.0},
+                "D3-NMeFOSA":  {"recovery_min": 20.0, "recovery_max": 130.0},
+                "D5-NEtFOSA":  {"recovery_min": 20.0, "recovery_max": 130.0},
+                "D3-NMeFOSAA": {"recovery_min": 30.0, "recovery_max": 150.0},
+                "D5-NEtFOSAA": {"recovery_min": 20.0, "recovery_max": 140.0},
+                "D7-NMeFOSE":  {"recovery_min": 25.0, "recovery_max": 130.0},
+                "D9-NEtFOSE":  {"recovery_min": 20.0, "recovery_max": 130.0},
+            },
+        },
         "matrix_factors": [],
         "surrogate_map": [],
         "surrogate_is": "",
         "per_analyte": [],
         "salt_adjustment_factors": [],
         "isomer_summation": [
-            {"linear": "lr-PFOS",  "branched": "br-PFOS",  "reported": "PFOS",  "enabled": True},
-            {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
+            {"linear": "lr-PFOA",      "branched": "br-PFOA",      "reported": "PFOA",      "enabled": True},
+            {"linear": "lr-PFNA",      "branched": "br-PFNA",      "reported": "PFNA",      "enabled": True},
+            {"linear": "lr-PFOS",      "branched": "br-PFOS",      "reported": "PFOS",      "enabled": True},
+            {"linear": "lr-PFHxS",     "branched": "br-PFHxS",     "reported": "PFHxS",     "enabled": True},
+            {"linear": "lr-NEtFOSAA",  "branched": "br-NEtFOSAA",  "reported": "NEtFOSAA",  "enabled": True},
+            {"linear": "lr-NMeFOSAA",  "branched": "br-NMeFOSAA",  "reported": "NMeFOSAA",  "enabled": True},
         ],
         # ── Relational data model (Round 9) ──────────────────────────────────
         "supported_matrices": list(_EPA1633A_MATRICES),
-        # EPA 1633A has 40 analytes; seeded from FDA 32-analyte set pending confirmation
-        "master_analyte_set": list(_FDA_MASTER_ANALYTE_KEYWORDS),
+        # EPA 1633A: 40 analytes per EPA 820-R-24-007 Table 1, December 2024
+        "master_analyte_set": list(_EPA1633A_ANALYTE_KEYWORDS),
         "analyte_matrix_inclusion": _all_included_matrix(
-            _FDA_MASTER_ANALYTE_KEYWORDS, _EPA1633A_MATRICES
+            _EPA1633A_ANALYTE_KEYWORDS, _EPA1633A_MATRICES
         ),
         "unit_map": dict(_EPA1633A_UNIT_MAP),
-        "spike_levels": {
-            "LFB":  [],
-            "LFSM": [],
-        },
+        "spike_levels": _per_matrix_spike_levels(_EPA1633A_MATRICES),
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -758,6 +935,7 @@ def get_profile(portal, method_id):
             for key, default_val in dflt.items():
                 if key not in saved:
                     saved[key] = copy.deepcopy(default_val)
+        _migrate_spike_levels(saved, dflt)
         return saved
     except (ValueError, TypeError):
         logger.warning("Corrupt profile JSON for %s; returning default", method_id)
@@ -800,7 +978,15 @@ def export_profiles_to_file(portal, path=None):
         all_profiles[mid] = copy.deepcopy(dflt)
     for method_id, raw in store.items():
         try:
-            all_profiles[method_id] = json.loads(raw)
+            profile = json.loads(raw)
+            dflt = DEFAULT_PROFILES.get(method_id, {})
+            # Back-fill new default keys absent from the stored profile
+            for key, default_val in dflt.items():
+                if key not in profile:
+                    profile[key] = copy.deepcopy(default_val)
+            # Apply shape-migration so exported file always has new-format spike_levels
+            _migrate_spike_levels(profile, dflt)
+            all_profiles[method_id] = profile
         except (ValueError, TypeError):
             pass
 

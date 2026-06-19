@@ -2,23 +2,20 @@
 
 ---
 
-## Q-014  Spike level concentrations (LFB and LFSM) — all three methods
+## Q-014  Spike level concentrations (LFB and LFSM) — per matrix, all three methods
 
-- **Question:** The Method Profile now has a `spike_levels` section for LFB and
-  LFSM injections (editable via the Method Profile UI in Site Setup). The
-  pipeline resolves spike concentrations from this profile using the level label
-  encoded in the injection name (e.g. `"; LFSM High"` → looks up `"High"` →
-  returns the configured ppt). Until these values are entered, LFSM/LFSMD checks
-  remain PENDING rather than auto-evaluated.
-  - What are the available spike levels and their concentrations (ppt) for:
-    - FDA 32-PFAS LFB / LFSM?
-    - EPA 537.1 LFB / LFSM (ng/L)?
-    - EPA 1633A LFB / LFSM (units per matrix)?
-  - Typical format: Low / Mid / High with one concentration per label.
-  - Once answered, enter via Method Profile UI → `spike_levels` field. No code
-    change needed.
-- **Status:** open — spike amounts must come from the lab's SOP / method validation.
-- **Raised:** 2026-06-18
+- **Question:** The Method Profile `spike_levels` section is now per-matrix
+  (each matrix in the method has its own LFB/LFSM concentration table). The
+  lab confirmed spike concentrations vary by matrix when backcalculating to
+  sample size. The UI shows one section per matrix (from the method's
+  `supported_matrices`), each with LFB and LFSM sub-tables for Low/Mid/High.
+  - What are the spike concentrations (ppt) for each level × matrix combination?
+    - FDA 32-PFAS: Aquatic Tissue, Meat / Muscle, Eggs, Fish / Seafood, Milk, Animal Feed
+    - EPA 537.1: Drinking Water, Groundwater, Surface Water
+    - EPA 1633A: Groundwater, Drinking Water, Surface Water, Wastewater, Landfill Leachate, Sediment, Soil, Aquatic Tissue, Biosolid
+  - Once answered, enter via Method Profile UI → Spike Levels section.
+- **Status:** open — spike concentrations must be entered by the lab. UI is ready.
+- **Raised:** 2026-06-18 / restructured to per-matrix 2026-06-19 / 1633A matrices corrected 2026-06-19
 
 ## Q-013  FDA_32PFAS Milk unit — ng/kg or ng/mL?
 
@@ -98,12 +95,25 @@
 
 ---
 
-## Q-007  MRM transitions for additional linear/branched isomers
+## Q-007  MRM transitions for linear/branched isomers — export compound names
 
-- **Confirmed pairs (2026-06-18):** NEtFOSAA (lr+br→NEtFOSAA), NMeFOSAA (lr+br→NMeFOSAA), PFOA (lr+br→PFOA), PFNA (lr+br→PFNA).
-- **Still needed per pair** before implementation: compound name EXACTLY as MassLynx exports it, quantifier MRM transition (precursor > product, negative mode), qualifier MRM(s) if any, which method(s).
-- **Status:** open — confirmed analyte list; blocked on lab MRM data.
-- **Raised:** 2026-06-13
+- **Confirmed pairs:** PFOA, PFNA, PFOS, PFHxS (FDA + 537.1 + 1633A), plus NEtFOSAA
+  and NMeFOSAA (1633A only). All six pairs are now wired in `isomer_summation` in
+  each method profile.
+- **MRM transitions from EPA 1633A Table 10** (verified 2026-06-19, negative ESI):
+  - PFOS branched/linear isomers: 499→80 (quant), 499→99 (qual), ratio 2.3
+  - PFHxS branched/linear: 399→80 (quant), 399→99 (qual), ratio 1.9
+  - PFOA branched/linear: 413→369 (quant), 413→169 (qual), ratio 3.0
+  - PFNA branched/linear: 463→419 (quant), 463→219 (qual), ratio 4.9
+  - NMeFOSAA branched/linear: 570→419 (quant), 570→483 (qual), ratio 2.0
+  - NEtFOSAA branched/linear: 584→419 (quant), 584→526 (qual), ratio 1.2
+  (Same MRM transition for lr- and br- peaks; they differ by chromatographic RT only.)
+- **Still needed:** The EXACT compound names as MassLynx exports them for the lr-/br-
+  peaks (e.g. "lr-PFOS" vs "Linear-PFOS" vs "PFOS-Linear"). The pipeline matches on
+  `compounds.get("lr-PFOS")` — if MassLynx uses a different spelling, recovery checks
+  will silently miss the peak.
+- **Status:** open — MRM values confirmed from EPA method; blocked on lab MassLynx export names.
+- **Raised:** 2026-06-13 / updated 2026-06-19
 
 ---
 
@@ -121,16 +131,22 @@
 
 ---
 
-## Q-004  EPA 1633A per-analyte EIS/OPR limits — VERIFY
+## Q-004  EPA 1633A EIS/OPR limits — implemented from official PDF
 
-- **Question:** EPA 1633A Tables 6 and 8 carry authoritative per-analyte,
-  per-matrix EIS recovery limits (some as low as 5%, some to 365% depending
-  on matrix).  The defaults in `method_profile_store.py` use the common
-  40–130% / 20–150% windows as placeholders.  Before using 1633A in
-  production, every EIS override in the `eis_overrides` table must be
-  verified against your purchased copy of the method.
-- **Status:** open — flagged with `"verify_against_method": true` in defaults
-- **Raised:** 2026-06-11
+- **Source:** EPA 1633A, December 2024 (EPA 820-R-24-007), Tables 6 and 8.
+  Fetched from EPA website 2026-06-18.
+- **Implemented (2026-06-19):**
+  - `eis_overrides` in `method_profile_store.py` now contains all 24 EIS compounds
+    with actual Table 6 aqueous limits (not placeholders). Ranges match the method
+    exactly, including low-recovery compounds (¹³C₄-PFBA 5–130%, ¹³C₇-PFUnA 30–130%,
+    FTS compounds up to 300%).
+  - `eis_matrix_overrides` dict added with per-matrix-class limits for leachate,
+    solid, tissue, and biosolid (Tables 6 col 2 and Table 8 cols 1–3).
+  - Pipeline `EPA1633AProfile.qc_rules()` now selects EIS limits by matrix class
+    derived from the batch matrix name at runtime.
+  - `verify_against_method` flag removed (data is now verified from the official PDF).
+- **Status:** closed — EIS limits implemented from EPA 820-R-24-007.
+- **Raised:** 2026-06-11 / closed 2026-06-19
 
 ---
 
@@ -163,12 +179,15 @@
 
 ## Q-001  Surrogate IS name normalisation (abbreviated vs. full names)
 
-- **Question:** `pfas_pipeline/method_profiles.py` FDA_NATIVE_SURROGATE_MAP
-  uses abbreviated surrogate names (e.g., "M3PFBA", "M8PFOA") while
-  `pfas_pipeline/constants.py` INTERNAL_STANDARDS uses full names
-  ("13C3-PFBA", "13C8-PFOA").  These must match what the instrument software
-  exports for the IS response check to function correctly.  Which naming
-  convention does the Waters MassLynx export use?  This determines which
-  names to use in the Method Profile surrogate_map.
-- **Status:** open — affects the surrogate_map defaults in FDA_32PFAS profile
+- **Confirmed (2026-06-19):** Waters MassLynx exports compound names using
+  the **13C prefix format** (e.g. `13C8-PFOS`, `13C3-PFBA`, `13C4-PFOA`).
+  The M-prefix keywords (M8PFOS, M3PFBA, M4PFOA) are internal SENAITE
+  keywords only and are never seen in MassLynx output.
+  The pipeline's `get_is_list()` already returns `_FDA_IS_DISPLAY_NAMES`
+  which uses 13C names — correct as-is.
+  The `internal_standards.csv` has `Keyword=M-prefix, Title=13C-name`; the
+  pipeline uses the Title column for all IS compound lookups.
+  The surrogate_map in the Method Profile UI should store 13C display names
+  (e.g. `13C8-PFOS`) as the surrogate_is field values.
+- **Status:** closed — 2026-06-19
 - **Raised:** 2026-06-11

@@ -20,3 +20,9 @@ M2-4:2FTS,"13C2,D4-4:2FTS",4:2FTS,surrogate,M4PFOA,PFAS - Internal Standards
 M2-6:2FTS,"13C2,D4-6:2FTS",6:2FTS,surrogate,M4PFOA,PFAS - Internal Standards
 M2-8:2FTS,"13C2,D4-8:2FTS",8:2FTS,surrogate,M4PFOA,PFAS - Internal Standards
 M2-10:2FTS,"13C2,D4-10:2FTS",10:2FTS,surrogate,M4PFOA,PFAS - Internal Standards
+MD3NMeFOSA,D3-NMeFOSA,NMeFOSA,surrogate,M4PFOA,PFAS - Internal Standards
+MD5NEtFOSA,D5-NEtFOSA,NEtFOSA,surrogate,M4PFOA,PFAS - Internal Standards
+MD3NMeFOSAA,D3-NMeFOSAA,NMeFOSAA,surrogate,M4PFOA,PFAS - Internal Standards
+MD5NEtFOSAA,D5-NEtFOSAA,NEtFOSAA,surrogate,M4PFOA,PFAS - Internal Standards
+MD7NMeFOSE,D7-NMeFOSE,NMeFOSE,surrogate,M4PFOA,PFAS - Internal Standards
+MD9NEtFOSE,D9-NEtFOSE,NEtFOSE,surrogate,M4PFOA,PFAS - Internal Standards

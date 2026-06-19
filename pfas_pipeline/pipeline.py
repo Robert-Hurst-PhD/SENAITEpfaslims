@@ -45,6 +45,7 @@ from .method_profiles import (
     get_analyte_list as _get_analytes,
     get_non_iso_set as _get_non_iso_set,
     get_included_display_analytes as _get_included_analytes,
+    get_isomer_summation as _get_isomer_summation,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
       - one row per analyte × environmental sample
       - qualifiers: N.D. / < LOD / BLoQ / N.C. / SUR  matching real output
         like '8.39 (BLoQ)', '0.0537 (BLoQ; N.C.)', '10.6 (BLoQ; SUR)'
+      - isomer pairs (lr-/br-) are summed and reported under the reported name
     """
     summary: list[SummaryResult] = []
 
@@ -87,39 +89,111 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     _analytes = _get_included_analytes(_method, _matrix) if _matrix else _get_analytes(_method)
     _non_iso = _get_non_iso_set(_method)
 
+    # Build isomer lookup tables from method profile.
+    # by_linear: analyte IS the linear name (e.g. "lr-PFOS" in _analytes)
+    # by_reported: analyte IS the reported name (e.g. "PFOA" in _analytes)
+    _isomer_pairs = _get_isomer_summation(_method)
+    _isomer_by_linear: dict[str, dict] = {}
+    _isomer_by_reported: dict[str, dict] = {}
+    for _pair in _isomer_pairs:
+        lin, rep = _pair.get("linear", ""), _pair.get("reported", "")
+        if lin:
+            _isomer_by_linear[lin] = _pair
+        if rep and rep != lin:
+            _isomer_by_reported[rep] = _pair
+
+    def _sum_isomer_pair(pair, compounds, sample_name):
+        """Return (result, qualifier, flags) for an lr+br isomer pair."""
+        lin_row = compounds.get(pair["linear"])
+        br_row  = compounds.get(pair["branched"])
+        rep     = pair["reported"]
+
+        # Fallback: if instrument exported the reported name instead of lr-/br- peaks
+        if lin_row is None and br_row is None:
+            direct = compounds.get(rep)
+            if direct is not None:
+                lin_row = direct  # treat as single-peak source
+
+        if lin_row is None and br_row is None:
+            return None, QUALIFIER_ND, []
+
+        total = 0.0
+        blank_total = 0.0
+        reporting_limit = None
+        linked_is = None
+
+        for irow in (lin_row, br_row):
+            if irow is None:
+                continue
+            conc = irow.measured_conc or irow.calculated_conc
+            if conc is None:
+                continue
+            total += conc
+            blank = mb_conc.get(irow.compound_name)
+            if blank is not None:
+                blank_total += blank
+            # Both isomers carry the same analyte RL; capture from either
+            if reporting_limit is None and irow.reporting_limit is not None:
+                reporting_limit = irow.reporting_limit
+            if irow.linked_is:
+                linked_is = irow.linked_is
+
+        if total == 0.0:
+            return None, QUALIFIER_ND, []
+
+        # < LOD: summed blank ≥ summed sample
+        if blank_total > 0.0 and blank_total >= total:
+            return None, QUALIFIER_LOD, []
+
+        flags_out: list[str] = []
+        # BLoQ: the SUMMED result is below the reporting limit
+        qualifier_out = (QUALIFIER_BLOQ
+                         if reporting_limit is not None and total < reporting_limit
+                         else "")
+        if rep in _non_iso:
+            flags_out.append(QUALIFIER_NC)
+        if linked_is and (linked_is, sample_name) in sur_injections:
+            flags_out.append("SUR")
+        return total, qualifier_out, flags_out
+
     for sample_name, compounds in by_sample.items():
         for analyte in _analytes:
-            row = compounds.get(analyte)
             flags: list[str] = []
             qualifier = ""
             result = None
 
-            if row is None or (row.measured_conc is None
-                               and row.calculated_conc is None):
-                qualifier = QUALIFIER_ND
+            # Check whether this analyte is part of an isomer summation pair
+            iso_pair = _isomer_by_linear.get(analyte) or _isomer_by_reported.get(analyte)
+            if iso_pair:
+                result, qualifier, flags = _sum_isomer_pair(
+                    iso_pair, compounds, sample_name)
+                reported_name = iso_pair["reported"]
             else:
-                conc = row.measured_conc or row.calculated_conc
-                blank = mb_conc.get(analyte)
+                reported_name = analyte
+                row = compounds.get(analyte)
 
-                # < LOD rule: method blank ≥ sample
-                if blank is not None and conc is not None and blank >= conc:
-                    qualifier = QUALIFIER_LOD
+                if row is None or (row.measured_conc is None
+                                   and row.calculated_conc is None):
+                    qualifier = QUALIFIER_ND
                 else:
-                    result = conc
-                    # BLoQ: below reporting limit
-                    if (row.reporting_limit is not None and conc is not None
-                            and conc < row.reporting_limit):
-                        qualifier = QUALIFIER_BLOQ
-                    # N.C. for non-isotopically linked analytes
-                    if analyte in _non_iso:
-                        flags.append(QUALIFIER_NC)
-                    # SUR if any linked IS was flagged on this injection
-                    linked_is = row.linked_is
-                    if linked_is and (linked_is, sample_name) in sur_injections:
-                        flags.append("SUR")
+                    conc = row.measured_conc or row.calculated_conc
+                    blank = mb_conc.get(analyte)
+
+                    if blank is not None and conc is not None and blank >= conc:
+                        qualifier = QUALIFIER_LOD
+                    else:
+                        result = conc
+                        if (row.reporting_limit is not None and conc is not None
+                                and conc < row.reporting_limit):
+                            qualifier = QUALIFIER_BLOQ
+                        if analyte in _non_iso:
+                            flags.append(QUALIFIER_NC)
+                        linked_is = row.linked_is
+                        if linked_is and (linked_is, sample_name) in sur_injections:
+                            flags.append("SUR")
 
             summary.append(SummaryResult(
-                analyte=analyte,
+                analyte=reported_name,
                 sample_injection=sample_name,
                 result_ppt=result if qualifier != QUALIFIER_LOD else None,
                 qualifier=qualifier,

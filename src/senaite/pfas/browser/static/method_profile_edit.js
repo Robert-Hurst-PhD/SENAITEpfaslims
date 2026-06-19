@@ -27,6 +27,19 @@
     document.getElementById(hiddenId).value = JSON.stringify(tableToJson(tbodyId, fieldMap), null, 2);
   }
 
+  var MF_FIELDS = [{key:'matrix',type:'text'},{key:'factor',type:'number'}];
+  function addMatrixFactorRow(matrix, factor) {
+    var tbody = document.getElementById('matrixFactorsBody');
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="text" data-field="matrix" value="' + _esc(matrix||'') + '" placeholder="e.g. milk" /></td>' +
+      '<td><input type="number" data-field="factor" step="0.0001" min="0" value="' + (factor!=null?factor:'') + '" placeholder="1.0" /></td>' +
+      '<td><button type="button" class="del-btn" onclick="this.closest(\'tr\').remove();syncMatrixFactorsJson()">&#215;</button></td>';
+    tbody.appendChild(tr);
+    tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncMatrixFactorsJson); i.addEventListener('input',syncMatrixFactorsJson); });
+  }
+  function syncMatrixFactorsJson() { syncJson('matrixFactorsBody','matrix_factors_json',MF_FIELDS); }
+
   var SA_FIELDS = [{key:'analyte',type:'text'},{key:'factor',type:'number'},{key:'source',type:'text'}];
   function addSaltRow(analyte, factor, source) {
     var tbody = document.getElementById('saltAdjBody');
@@ -77,6 +90,105 @@
     tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncIsomerJson); i.addEventListener('input',syncIsomerJson); });
   }
   function syncIsomerJson() { syncJson('isomerBody','isomer_summation_json',IS_FIELDS); }
+
+  /* ── Spike Levels — per matrix ──────────────────── */
+
+  function _matId(matrix) {
+    return matrix.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
+  function buildSpikeMatrixSections() {
+    var container = document.getElementById('spikeLevelsContainer');
+    if (!container) return;
+
+    var gridData = {};
+    try { gridData = JSON.parse((document.getElementById('ami_grid_data') || {value:'{}'}).value || '{}'); }
+    catch(e) {}
+    var matrices = gridData.matrices || [];
+
+    var sl = {};
+    try { sl = JSON.parse((document.getElementById('spike_levels_json') || {value:'{}'}).value || '{}'); }
+    catch(e) {}
+
+    container.innerHTML = '';
+    matrices.forEach(function(matrix) {
+      var matData = sl[matrix] || {LFB: [], LFSM: []};
+      var matId = _matId(matrix);
+      var section = document.createElement('div');
+      section.className = 'spike-matrix-section';
+      section.setAttribute('data-matrix', matrix);
+      section.innerHTML =
+        '<div class="spike-matrix-hdr">' + _esc(matrix) + '</div>' +
+        '<div style="padding:10px 12px">' +
+        '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:220px">' +
+            '<div style="font-weight:700;font-size:12px;margin-bottom:6px">LFB</div>' +
+            '<table class="listing" style="width:100%"><thead><tr>' +
+              '<th style="width:45%">Level</th><th style="width:40%">ppt</th><th style="width:36px"></th>' +
+            '</tr></thead><tbody id="spikeLFBBody_' + matId + '"></tbody></table>' +
+            '<button type="button" class="btn-add-row" style="margin-top:4px"' +
+              ' onclick="addSpikeLevelRow(' + JSON.stringify(matrix) + ',\'LFB\')">+ Add level</button>' +
+          '</div>' +
+          '<div style="flex:1;min-width:220px">' +
+            '<div style="font-weight:700;font-size:12px;margin-bottom:6px">LFSM / LFSMD</div>' +
+            '<table class="listing" style="width:100%"><thead><tr>' +
+              '<th style="width:45%">Level</th><th style="width:40%">ppt</th><th style="width:36px"></th>' +
+            '</tr></thead><tbody id="spikeLFSMBody_' + matId + '"></tbody></table>' +
+            '<button type="button" class="btn-add-row" style="margin-top:4px"' +
+              ' onclick="addSpikeLevelRow(' + JSON.stringify(matrix) + ',\'LFSM\')">+ Add level</button>' +
+          '</div>' +
+        '</div></div>';
+      container.appendChild(section);
+      (matData.LFB  || []).forEach(function(r) { addSpikeLevelRow(matrix, 'LFB',  r.label, r.ppt); });
+      (matData.LFSM || []).forEach(function(r) { addSpikeLevelRow(matrix, 'LFSM', r.label, r.ppt); });
+    });
+  }
+
+  function addSpikeLevelRow(matrix, qcType, label, ppt) {
+    var matId   = _matId(matrix);
+    var tbodyId = (qcType === 'LFB' ? 'spikeLFBBody_' : 'spikeLFSMBody_') + matId;
+    var tbody   = document.getElementById(tbodyId);
+    if (!tbody) return;
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input type="text" data-spike-matrix="' + _esc(matrix) + '" data-spike-qc="' + qcType + '" data-spike-field="label"' +
+        ' value="' + _esc(label || '') + '" placeholder="Low" style="width:95%" /></td>' +
+      '<td><input type="number" data-spike-matrix="' + _esc(matrix) + '" data-spike-qc="' + qcType + '" data-spike-field="ppt"' +
+        ' value="' + (ppt != null ? ppt : '') + '" step="any" placeholder="ppt" style="width:95%" /></td>' +
+      '<td><button type="button" class="del-btn"' +
+        ' onclick="this.closest(\'tr\').remove();syncSpikeLevelsJson()">&#215;</button></td>';
+    tbody.appendChild(tr);
+    tr.querySelectorAll('input').forEach(function(i) {
+      i.addEventListener('change', syncSpikeLevelsJson);
+      i.addEventListener('input',  syncSpikeLevelsJson);
+    });
+  }
+
+  function syncSpikeLevelsJson() {
+    var result = {};
+    document.querySelectorAll('#spikeLevelsContainer .spike-matrix-section').forEach(function(section) {
+      var matrix = section.getAttribute('data-matrix');
+      if (!matrix) return;
+      var matId = _matId(matrix);
+      result[matrix] = {LFB: [], LFSM: []};
+      ['LFB', 'LFSM'].forEach(function(qc) {
+        var tbodyId = (qc === 'LFB' ? 'spikeLFBBody_' : 'spikeLFSMBody_') + matId;
+        var tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        tbody.querySelectorAll('tr').forEach(function(tr) {
+          var lbl   = tr.querySelector('[data-spike-field="label"]');
+          var pptEl = tr.querySelector('[data-spike-field="ppt"]');
+          var labelVal = lbl   ? lbl.value.trim()   : '';
+          var pptVal   = pptEl && pptEl.value.trim() !== '' ? parseFloat(pptEl.value) : null;
+          if (labelVal) {
+            result[matrix][qc].push({label: labelVal, ppt: isNaN(pptVal) ? null : pptVal});
+          }
+        });
+      });
+    });
+    var el = document.getElementById('spike_levels_json');
+    if (el) el.value = JSON.stringify(result);
+  }
 
   /* ── Extraction Stages ─────────────────────────── */
   var _stageSeq = 0;
@@ -378,203 +490,56 @@
     if (el) el.value = JSON.stringify(tiers);
   }
 
-  /* ── Surrogate IS-lane grid ───────────────────────────────────── */
+  /* ── Surrogate Map — simple analyte → IS table ───────────────── */
 
-  var _surDragAnalyte = null;
-  var _surDragSrc     = null;
+  function buildSurrogateMapTable() {
+    var tbody = document.getElementById('surMapBody');
+    if (!tbody) return;
+    var d = {};
+    try { d = JSON.parse((document.getElementById('surrogate_is_data') || {value:'{}'}).value || '{}'); }
+    catch(e) { return; }
+    var analytes = d.analytes      || [];
+    var labels   = d.analyte_labels || {};
+    var surr     = d.surrogates    || [];
+    var map      = d.map           || {};
 
-  function buildSurrogateGrid() {
-    var el = document.getElementById('surrogateGridContainer');
-    if (!el) return;
-
-    var d;
-    try { d = JSON.parse(document.getElementById('surrogate_is_data').value || '{}'); }
-    catch(e) { el.textContent = 'Error loading surrogate data.'; return; }
-
-    var analytes    = d.analytes    || [];
-    var surrogates  = d.surrogates  || [];
-    var injIsList   = d.injection_is || [];
-    var currentMap  = d.map         || {};
-    var chain       = d.chain       || {};
-
+    tbody.innerHTML = '';
     if (!analytes.length) {
-      el.innerHTML = '<em style="color:var(--s-secondary);font-size:12px">No analytes configured.</em>';
+      tbody.innerHTML = '<tr><td colspan="2" style="color:var(--s-secondary);font-size:12px;padding:8px">No analytes configured.</td></tr>';
       return;
     }
 
-    var _injIsRows = injIsList.slice();
-
-    function assignedTo(kwSur) {
-      return analytes.filter(function(a) { return currentMap[a] === kwSur; });
-    }
-    function unassigned() {
-      return analytes.filter(function(a) { return !currentMap[a]; });
-    }
-
-    function chipHtml(analyte, inPool) {
-      return '<span class="sur-chip' + (inPool ? '' : '') + '" draggable="true"' +
-        ' data-analyte="' + _esc(analyte) + '">' +
-        _esc(analyte) +
-        '<button type="button" class="sur-chip-rm" title="Remove" onclick="surChipRemove(this)">&times;</button>' +
-        '</span>';
-    }
-
-    var ua = unassigned();
-    var html = '<div class="sur-unassigned" id="surUnassigned"' +
-      ' ondragover="surDragOver(event)" ondrop="surDrop(event,null)">' +
-      '<div class="sur-unassigned-label">Unassigned (' + ua.length + ')</div>' +
-      '<div class="sur-chip-pool">';
-    ua.forEach(function(a) { html += chipHtml(a, true); });
-    html += '</div></div>';
-
-    html += '<div class="sur-grid" id="surLanesContainer">';
-    surrogates.forEach(function(row) {
-      var kw = row[0], name = row[1];
-      var assigned = assignedTo(kw);
-      var chainVal = chain[kw] || '';
-      var selOpts = '<option value="">— None —</option>';
-      _injIsRows.forEach(function(ir) {
-        selOpts += '<option value="' + _esc(ir[0]) + '"' +
-          (ir[0] === chainVal ? ' selected' : '') + '>' +
-          _esc(ir[0]) + ' (' + _esc(ir[1]) + ')</option>';
-      });
-      html += '<div class="sur-lane" data-sur-kw="' + _esc(kw) + '">' +
-        '<div class="sur-lane-hdr">' +
-          '<div class="sur-lane-name">' + _esc(kw) + '</div>' +
-          '<div class="sur-lane-label">' + _esc(name) + '</div>' +
-          '<select class="sur-chain-sel" data-sur-kw="' + _esc(kw) + '"' +
-            ' title="Quantified by (injection IS)" onchange="syncSurrogateJson()">' +
-            selOpts +
-          '</select>' +
-        '</div>' +
-        '<div class="sur-lane-body" data-sur-kw="' + _esc(kw) + '"' +
-          ' ondragover="surDragOver(event)" ondrop="surDrop(event,' + JSON.stringify(kw) + ')">';
-      assigned.forEach(function(a) { html += chipHtml(a, false); });
-      html += '</div></div>';
+    var baseSurOpts = '<option value="">— None —</option>';
+    surr.forEach(function(s) {
+      baseSurOpts += '<option value="' + _esc(s[0]) + '">' + _esc(s[1]) + '</option>';
     });
-    html += '</div>';
 
-    el.innerHTML = html;
-
-    _surRewireChips(el);
-    syncSurrogateJson();
-  }
-
-  function _surRewireChips(container) {
-    (container || document).querySelectorAll('.sur-chip').forEach(function(chip) {
-      chip.addEventListener('dragstart', function(e) {
-        _surDragAnalyte = chip.getAttribute('data-analyte');
-        _surDragSrc = chip.closest('[data-sur-kw]') || chip.closest('#surUnassigned');
-        chip.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-      });
-      chip.addEventListener('dragend', function() {
-        chip.classList.remove('dragging');
-        _surDragAnalyte = null;
-        _surDragSrc = null;
-      });
+    analytes.forEach(function(kw) {
+      var label   = labels[kw] || kw;
+      var current = map[kw] || '';
+      var opts = baseSurOpts.replace('value="' + _esc(current) + '"',
+                                     'value="' + _esc(current) + '" selected');
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="pa-name">' + _esc(label) + '</td>' +
+        '<td><select class="sur-map-sel" data-analyte="' + _esc(kw) + '"' +
+          ' onchange="syncSurrogateMapJson()">' + opts + '</select></td>';
+      tbody.appendChild(tr);
     });
+    syncSurrogateMapJson();
   }
 
-  function surDragOver(e) {
-    e.preventDefault();
-    e.currentTarget.classList.add('drag-over');
-    e.dataTransfer.dropEffect = 'move';
-  }
-
-  document.addEventListener('dragleave', function(e) {
-    var t = e.target;
-    if (t && (t.classList.contains('sur-lane-body') || t.id === 'surUnassigned')) {
-      t.classList.remove('drag-over');
-    }
-  });
-
-  function surDrop(e, surKw) {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-over');
-    if (!_surDragAnalyte) return;
-
-    var existing = document.querySelector('.sur-chip[data-analyte="' + _surDragAnalyte + '"]');
-    if (existing) existing.remove();
-
-    var targetBody;
-    if (surKw) {
-      targetBody = document.querySelector('.sur-lane-body[data-sur-kw="' + surKw + '"]');
-    } else {
-      targetBody = document.querySelector('#surUnassigned .sur-chip-pool');
-    }
-    if (targetBody) {
-      var chipEl = document.createElement('span');
-      chipEl.className = 'sur-chip';
-      chipEl.setAttribute('draggable', 'true');
-      chipEl.setAttribute('data-analyte', _surDragAnalyte);
-      chipEl.innerHTML = _esc(_surDragAnalyte) +
-        '<button type="button" class="sur-chip-rm" title="Remove" onclick="surChipRemove(this)">&times;</button>';
-      targetBody.appendChild(chipEl);
-      _surRewireChips(targetBody);
-    }
-
-    _surUpdateUnassignedCount();
-    syncSurrogateJson();
-  }
-
-  function surChipRemove(btn) {
-    var chip = btn.closest('.sur-chip');
-    if (!chip) return;
-    var analyte = chip.getAttribute('data-analyte');
-    chip.remove();
-
-    var pool = document.querySelector('#surUnassigned .sur-chip-pool');
-    if (pool) {
-      var chipEl = document.createElement('span');
-      chipEl.className = 'sur-chip';
-      chipEl.setAttribute('draggable', 'true');
-      chipEl.setAttribute('data-analyte', analyte);
-      chipEl.innerHTML = _esc(analyte) +
-        '<button type="button" class="sur-chip-rm" title="Remove" onclick="surChipRemove(this)">&times;</button>';
-      pool.appendChild(chipEl);
-      _surRewireChips(pool);
-    }
-
-    _surUpdateUnassignedCount();
-    syncSurrogateJson();
-  }
-
-  function _surUpdateUnassignedCount() {
-    var pool = document.querySelector('#surUnassigned .sur-chip-pool');
-    var label = document.querySelector('#surUnassigned .sur-unassigned-label');
-    if (pool && label) {
-      label.textContent = 'Unassigned (' + pool.querySelectorAll('.sur-chip').length + ')';
-    }
-  }
-
-  function syncSurrogateJson() {
-    var map = [];
-    document.querySelectorAll('#surLanesContainer .sur-lane').forEach(function(lane) {
-      var surKw = lane.getAttribute('data-sur-kw');
-      lane.querySelectorAll('.sur-chip').forEach(function(chip) {
-        map.push({analyte: chip.getAttribute('data-analyte'), surrogate_is: surKw});
-      });
+  function syncSurrogateMapJson() {
+    var result = [];
+    document.querySelectorAll('#surMapBody .sur-map-sel').forEach(function(sel) {
+      var analyte = sel.getAttribute('data-analyte');
+      if (analyte) result.push({analyte: analyte, surrogate_is: sel.value});
     });
-    var smEl = document.getElementById('surrogate_map_json');
-    if (smEl) smEl.value = JSON.stringify(map);
-
-    var chain = {};
-    document.querySelectorAll('.sur-chain-sel').forEach(function(sel) {
-      var kw = sel.getAttribute('data-sur-kw');
-      if (kw && sel.value) chain[kw] = sel.value;
-    });
-    var scEl = document.getElementById('surrogate_is_chain_json');
-    if (scEl) scEl.value = JSON.stringify(chain);
+    var el = document.getElementById('surrogate_map_json');
+    if (el) el.value = JSON.stringify(result);
   }
 
   /* ── Per-Analyte Assignments table ───────────────────────────── */
-
-  var PA_TIERS = [
-    {v:1, label:'Tier 1 — Key analyte'},
-    {v:2, label:'Tier 2 — Standard'},
-    {v:3, label:'Tier 3 — No labeled IS'},
-  ];
 
   function buildPerAnalyteTable() {
     var tbody = document.getElementById('perAnalyteBody');
@@ -583,31 +548,18 @@
     var rows = [];
     try { rows = JSON.parse(jsonEl.value || '[]'); } catch(e) { return; }
     tbody.innerHTML = '';
-    rows.forEach(function(row, i) {
-      var tierOpts = PA_TIERS.map(function(t) {
-        return '<option value="' + t.v + '"' + (row.recovery_tier === t.v ? ' selected' : '') +
-               '>' + t.label + '</option>';
-      }).join('');
-      var tierClass = row.recovery_tier === 1 ? 'pa-tier-1' : (row.recovery_tier === 3 ? 'pa-tier-3' : '');
+    rows.forEach(function(row) {
       var tr = document.createElement('tr');
-      if (tierClass) tr.className = tierClass;
+      tr.setAttribute('data-analyte', row.analyte || '');
       tr.innerHTML =
         '<td class="pa-name">' + _esc(row.analyte || '') + '</td>' +
-        '<td><input type="text" class="pa-inp" data-row="' + i + '" data-field="surrogate"' +
-          ' value="' + _esc(row.surrogate || '') + '" placeholder="M3PFBA"' +
-          ' oninput="syncPerAnalyteJson()" /></td>' +
         '<td style="text-align:center">' +
-          '<input type="checkbox" class="pa-cb" data-row="' + i + '" data-field="no_labeled_std"' +
+          '<input type="checkbox" class="pa-cb" data-field="no_labeled_std"' +
           (row.no_labeled_std ? ' checked' : '') + ' onchange="syncPerAnalyteJson()" /></td>' +
-        '<td style="text-align:center">' +
-          '<input type="checkbox" class="pa-cb" data-row="' + i + '" data-field="is_key_analyte"' +
-          (row.is_key_analyte ? ' checked' : '') + ' onchange="syncPerAnalyteJson()" /></td>' +
-        '<td><select class="pa-sel" data-row="' + i + '" data-field="recovery_tier"' +
-          ' onchange="syncPerAnalyteJson()">' + tierOpts + '</select></td>' +
-        '<td><input type="text" class="pa-inp pa-mono" data-row="' + i + '" data-field="confirm_ion_mz"' +
-          ' value="' + _esc(row.confirm_ion_mz || '') + '" placeholder="213.04>18.99"' +
+        '<td><input type="text" class="pa-inp pa-mono" data-field="confirm_ion_mz"' +
+          ' value="' + _esc(row.confirm_ion_mz || '') + '" placeholder="413.04>369.00"' +
           ' oninput="syncPerAnalyteJson()" /></td>' +
-        '<td><input type="text" class="pa-inp" data-row="' + i + '" data-field="notes"' +
+        '<td><input type="text" class="pa-inp" data-field="notes"' +
           ' value="' + _esc(row.notes || '') + '"' +
           ' oninput="syncPerAnalyteJson()" /></td>';
       tbody.appendChild(tr);
@@ -617,24 +569,19 @@
   function syncPerAnalyteJson() {
     var jsonEl = document.getElementById('per_analyte_json');
     if (!jsonEl) return;
-    var rows = [];
-    try { rows = JSON.parse(jsonEl.value || '[]'); } catch(e) { return; }
-    document.querySelectorAll('#perAnalyteBody .pa-inp').forEach(function(inp) {
-      var i = parseInt(inp.getAttribute('data-row'), 10);
-      var f = inp.getAttribute('data-field');
-      if (rows[i] !== undefined) rows[i][f] = inp.value;
+    var result = [];
+    document.querySelectorAll('#perAnalyteBody tr[data-analyte]').forEach(function(tr) {
+      var noIs      = tr.querySelector('[data-field="no_labeled_std"]');
+      var confirmIon = tr.querySelector('[data-field="confirm_ion_mz"]');
+      var notes     = tr.querySelector('[data-field="notes"]');
+      result.push({
+        analyte:        tr.getAttribute('data-analyte'),
+        no_labeled_std: noIs      ? noIs.checked       : false,
+        confirm_ion_mz: confirmIon ? confirmIon.value.trim() : '',
+        notes:          notes     ? notes.value.trim() : '',
+      });
     });
-    document.querySelectorAll('#perAnalyteBody .pa-cb').forEach(function(cb) {
-      var i = parseInt(cb.getAttribute('data-row'), 10);
-      var f = cb.getAttribute('data-field');
-      if (rows[i] !== undefined) rows[i][f] = cb.checked;
-    });
-    document.querySelectorAll('#perAnalyteBody .pa-sel').forEach(function(sel) {
-      var i = parseInt(sel.getAttribute('data-row'), 10);
-      var f = sel.getAttribute('data-field');
-      if (rows[i] !== undefined) rows[i][f] = parseInt(sel.value, 10);
-    });
-    jsonEl.value = JSON.stringify(rows);
+    jsonEl.value = JSON.stringify(result);
   }
 
   /* ── Analyte × Matrix Inclusion grid ─────────────────────────── */
@@ -734,6 +681,10 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     try {
+      var mf = JSON.parse(document.getElementById('matrix_factors_json').value || '[]');
+      mf.forEach(function(r) { addMatrixFactorRow(r.matrix, r.factor); });
+    } catch(e) {}
+    try {
       var sa = JSON.parse(document.getElementById('salt_adjustment_factors_json').value || '[]');
       sa.forEach(function(r) { addSaltRow(r.analyte, r.factor, r.source || ''); });
     } catch(e) {}
@@ -753,13 +704,14 @@
       }
     } catch(e) {}
     buildRecoveryTiersGrid();
-    buildSurrogateGrid();
     buildAMIGrid();
+    buildSpikeMatrixSections();
+    buildSurrogateMapTable();
     buildPerAnalyteTable();
   });
 
   document.querySelector('form').addEventListener('submit', function() {
-    syncSaltJson(); syncIsomerJson(); syncStageJson(); syncEisJson();
-    syncRecoveryTiersJson(); syncSurrogateJson(); syncAMIJson();
-    syncPerAnalyteJson();
+    syncMatrixFactorsJson(); syncSaltJson(); syncIsomerJson(); syncSpikeLevelsJson();
+    syncStageJson(); syncEisJson(); syncRecoveryTiersJson();
+    syncSurrogateMapJson(); syncAMIJson(); syncPerAnalyteJson();
   });

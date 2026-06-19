@@ -140,9 +140,8 @@ class PFASMethodProfileEditView(BrowserView):
     def recovery_tiers_json(self):
         return json.dumps(self.profile().get("recovery_tiers", []), indent=2)
 
-    def matrix_factor(self):
-        """Single integer matrix adjustment factor for this method (default 1)."""
-        return int(self.profile().get("matrix_factor", 1))
+    def matrix_factors_json(self):
+        return json.dumps(self.profile().get("matrix_factors", []), indent=2)
 
     def surrogate_map_json(self):
         return json.dumps(self.profile().get("surrogate_map", []), indent=2)
@@ -165,7 +164,7 @@ class PFASMethodProfileEditView(BrowserView):
         return json.dumps(self.profile().get("isomer_summation", []), indent=2)
 
     def spike_levels_json(self):
-        return json.dumps(self.profile().get("spike_levels", {"LFB": [], "LFSM": []}), indent=2)
+        return json.dumps(self.profile().get("spike_levels", {}), indent=2)
 
     def extraction_stages_json(self):
         stages = self.profile().get("extraction_stages", [])
@@ -199,24 +198,21 @@ class PFASMethodProfileEditView(BrowserView):
     # ── Surrogate IS lane data ────────────────────────────────────────────────
 
     def surrogate_is_data(self):
-        """JSON payload for the JS surrogate IS-lane grid builder."""
-        from senaite.pfas.analyte_reference import get_surrogates, get_injection_is_list
+        """JSON payload for the JS surrogate map table (analyte → labeled IS)."""
+        from senaite.pfas.analyte_reference import get_surrogates, NATIVE_ANALYTES
+        kw_to_display = {row[0]: row[1] for row in NATIVE_ANALYTES}
         profile = self.profile()
         sur_map = profile.get("surrogate_map", [])
         map_dict = {}
         for row in sur_map:
             map_dict[row.get("analyte", "")] = row.get("surrogate_is", "")
+        keywords = profile.get("master_analyte_set", [])
         return json.dumps({
-            "analytes":     profile.get("master_analyte_set", []),
-            "surrogates":   get_surrogates(),
-            "injection_is": get_injection_is_list(),
-            "map":          map_dict,
-            "chain":        profile.get("surrogate_is_chain", {}),
+            "analytes":       keywords,
+            "analyte_labels": {kw: kw_to_display.get(kw, kw) for kw in keywords},
+            "surrogates":     get_surrogates(),
+            "map":            map_dict,
         })
-
-    def surrogate_is_chain_json(self):
-        """JSON of the current surrogate → injection IS chain dict."""
-        return json.dumps(self.profile().get("surrogate_is_chain", {}))
 
     def display_name(self):
         return self.profile().get("display_name", self.method_id())
@@ -326,17 +322,12 @@ class PFASMethodProfileEditView(BrowserView):
         # Complex JSON sections (textareas)
         profile["recovery_tiers"] = _json_field(
             "recovery_tiers_json", profile.get("recovery_tiers", []))
-        try:
-            profile["matrix_factor"] = int(f.get("matrix_factor", 1) or 1)
-        except (ValueError, TypeError):
-            profile["matrix_factor"] = 1
-        profile["surrogate_map"]   = _json_field(
-            "surrogate_map_json",   profile.get("surrogate_map", []))
-        raw_chain = f.get("surrogate_is_chain_json", "").strip()
-        if raw_chain:
-            profile["surrogate_is_chain"] = json.loads(raw_chain)
-        profile["per_analyte"]     = _json_field(
-            "per_analyte_json",     profile.get("per_analyte", []))
+        profile["matrix_factors"] = _json_field(
+            "matrix_factors_json", profile.get("matrix_factors", []))
+        profile["surrogate_map"]  = _json_field(
+            "surrogate_map_json",  profile.get("surrogate_map", []))
+        profile["per_analyte"]    = _json_field(
+            "per_analyte_json",    profile.get("per_analyte", []))
 
         raw_eis = f.get("eis_overrides_json", "").strip()
         if raw_eis:
