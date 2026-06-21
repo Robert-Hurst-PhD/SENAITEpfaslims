@@ -68,36 +68,28 @@ class PFASMacrosView(BrowserView):
                 'active': view_name in path_info,
             }
 
-        if 'LabManager' in roles or 'Manager' in roles:
-            return [
-                sec('QC Management'),
-                itm('@@pfas-qc-management', 'Overview', u'⌂'),
-                itm('@@pfas-method-profiles', 'Method Profiles', u'▶'),
-                itm('@@pfas-qc-type-grid', 'QC Type Grid', u'▣'),
-                itm('@@pfas-qc-rules', 'QC Rules', u'◆'),
-                itm('@@pfas-control-chart', 'Control Charts', u'▤'),
-                sec('Setup'),
-                itm('@@pfas-method-wizard', 'Method Wizard', u'✶'),
-                itm('@@pfas-setup-references', 'Setup Refs', u'↺'),
-                sec('Reporting'),
-                itm('@@pfas-egad-config', 'EGAD Config', u'▼'),
-                itm('@@pfas-egad-batches', 'Batch EDDs', u'⬇'),
-            ]
-        if 'Analyst' in roles or 'Verifier' in roles:
-            return [
-                sec('Data Review'),
-                itm('@@pfas-sample-status', 'Batch Status', u'▶'),
-                itm('@@pfas-control-chart', 'Control Charts', u'▤'),
-                itm('@@pfas-calibrations', 'Calibrations', u'◇'),
-            ]
-        if 'LabClerk' in roles:
-            return [
-                sec('Bench'),
-                itm('@@pfas-reagents', 'Reagents', u'▶'),
-                itm('@@pfas-logbook-admin', 'Logbooks', u'▷'),
-                itm('@@pfas-extraction-guide', 'Extraction Guide', u'▷'),
-            ]
-        return [
-            sec('Tools'),
-            itm('@@pfas-track', 'Sample Tracker', u'▶'),
-        ]
+        is_manager = 'LabManager' in roles or 'Manager' in roles
+        is_analyst = 'Analyst' in roles or 'Verifier' in roles
+        is_clerk   = 'LabClerk' in roles
+
+        items = [sec('PFAS Tools')]
+
+        if is_manager or is_analyst:
+            items.append(itm('@@pfas-method-profiles', 'Method Profiles', u'·'))
+        if is_manager or is_analyst:
+            items.append(itm('@@pfas-control-chart',   'Control Charts',  u'·'))
+        if is_manager or is_analyst:
+            items.append(itm('@@pfas-qc-rules',        'QC Rules',        u'·'))
+        if is_manager or is_analyst:
+            items.append(itm('@@pfas-calibrations',    'Calibrations',    u'·'))
+        if is_manager or is_analyst or is_clerk:
+            items.append(itm('@@pfas-sample-status',   'Batch Status',    u'·'))
+        if is_manager:
+            items.append(itm('@@pfas-import-studio',   'Import Studio',   u'·'))
+        if is_manager or is_clerk:
+            items.append(itm('@@pfas-reagents',        'Reagent Inventory', u'·'))
+        if is_manager:
+            items.append(itm('@@pfas-egad-batches',    'EGAD EDD',        u'·'))
+        items.append(    itm('@@pfas-track',           'Sample Tracker',  u'·'))
+
+        return items

@@ -5,6 +5,49 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-21  Phase 2 — Wireframe redesign (Tier 1 nav + Tier 2 tabs)
+
+**Source of truth:** Opus-generated wireframe establishes:
+- Single "PFAS TOOLS" section, flat nav list (no multi-section grouping)
+- No overview landing page — nav items go directly to tools
+- `@@pfas-home` for managers → `@@pfas-method-profiles` (not `@@pfas-qc-management`)
+- Method Profile edit uses tab strip (7 tabs), not collapsible accordions
+- Pinned action bar (Save / Cancel) always visible below tabs
+
+**Tier 1 — Nav structure:**
+- `get_nav_items()` rewritten: single "PFAS Tools" section, flat role-filtered
+  item list. Manager/LabManager sees 9 tools; Analyst/Verifier sees subset;
+  LabClerk sees Batch Status + Reagent Inventory + Sample Tracker.
+- `PFASWorkspaceHomeView` updated: Manager → `@@pfas-method-profiles`
+- `PFASQCManagementView` replaced with a simple redirect to `@@pfas-method-profiles`
+
+**Tier 2 — Method Profile Edit tabs:**
+- `method_profile_edit.pt` rewritten: `<details>` collapsibles replaced by
+  `<div class="tab-pane">` wrappers, grouped into 7 tabs via the `tabs` slot.
+- Save & Export + Cancel moved from inline `.save-bar` to `action-bar` slot;
+  button uses `form="profile-form"` HTML5 attribute to submit the form.
+- `form` element given `id="profile-form"`.
+- Tab groupings:
+  - **Analyte × Matrix**: Method Info + A×M Inclusion + Per-Analyte Assignments + Isomer Summation
+  - **Surrogate Map**: Surrogate Map
+  - **Recovery Tiers**: Recovery Tiers + Spike Levels + Salt Factors + Matrix Factors
+  - **EIS Limits**: EIS Recovery Overrides (pane always present; content conditional on `show_eis_overrides()`)
+  - **Calibration**: Calibration + Chromatographic Confirmation
+  - **CCV**: CCV + Duplicate/LFSMD RPD
+  - **SI Response**: IS Response + Extraction Stages
+- Client-side JS `pfasTabSwitch()` inline in content slot; hash-based tab
+  persistence (`#pane-ami` etc.). All hidden inputs stay inside `<form>` —
+  only visibility toggled via `.active` class.
+- `header-title` changed from "Edit — {display_name}" to just `{display_name}`.
+
+**Files changed:**
+- `browser/pfas_macros.py` — `get_nav_items()` rewritten (flat single-section list)
+- `browser/workspace_home.py` — redirect target updated; `PFASQCManagementView` simplified
+- `browser/templates/method_profile_edit.pt` — full rewrite (tabs, action-bar)
+- `DECISIONS.md` — this entry
+
+---
+
 ## 2026-06-21  Phase 2 — Decision #4 (workspace launcher URL) + Decision #5 (first workspace)
 
 - **Decision #4 — Workspace launcher URL:** `@@pfas-home` registered at the
