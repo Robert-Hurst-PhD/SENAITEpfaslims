@@ -5,6 +5,45 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-21  Phase 2 — Decision #4 (workspace launcher URL) + Decision #5 (first workspace)
+
+- **Decision #4 — Workspace launcher URL:** `@@pfas-home` registered at the
+  portal root. Reads the current user's SENAITE role and redirects to their
+  default workspace. Does not override any SENAITE native URL. Linked from the
+  existing SENAITE dashboard tile (`senaite.pfas.dashboard.tiles` viewlet).
+
+- **Decision #5 — First workspace to build in panel frame:** QC Management.
+  Rationale: all five sub-views already exist
+  (`@@pfas-method-profiles`, `@@pfas-qc-type-grid`, `@@pfas-qc-rules`,
+  `@@pfas-control-chart`, `@@pfas-method-wizard`); the current default
+  left-panel nav already approximates it; LabManager/QAO is the primary
+  power-user role that configures everything else.
+
+- **Role routing in `@@pfas-home`:**
+  - LabManager / Manager → `@@pfas-qc-management`
+  - Analyst / Verifier → `@@pfas-sample-status` (placeholder until Data Review
+    workspace is built)
+  - LabClerk → `@@pfas-reagents` (placeholder until Bench workspace is built)
+  - Client / default → `@@pfas-track`
+
+- **Left-panel nav:** Default slot in `pfas_macros.pt` replaced with a TAL
+  loop over `context/@@pfas-macros/get_nav_items` — returns role-scoped items.
+  The `left-panel` METAL slot remains overrideable by individual workspace pages.
+  Uses `context/@@pfas-macros` (explicit traversal) to avoid binding to the
+  calling view's `view` variable under Chameleon METAL expansion.
+
+- **Files changed:**
+  - `browser/pfas_macros.py` — added `get_nav_items()` method
+  - `browser/templates/pfas_macros.pt` — replaced hardcoded nav; added
+    workspace card CSS (`.pfas-ws-grid`, `.pfas-ws-card`)
+  - `browser/workspace_home.py` — NEW: `PFASWorkspaceHomeView` (redirect) +
+    `PFASQCManagementView` (landing page)
+  - `browser/templates/pfas_qc_management.pt` — NEW: QC Management landing
+  - `browser/configure.zcml` — registered `pfas-home` + `pfas-qc-management`
+  - `browser/pfas_nav.py` — added `@@pfas-home` entry to dashboard tiles
+
+---
+
 ## 2026-06-21  Migration Unit 5 — Tracking Store: no migration (confirmed)
 
 - **Decision:** Leave `tracking_store.py` on portal annotations. No Dexterity

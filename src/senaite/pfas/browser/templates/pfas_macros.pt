@@ -8,7 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title metal:define-slot="title">PFAS Tool</title>
   <style>
-    /* ── SENAITE palette tokens (senaite.core 2.6 Bootstrap 4 base) */
+    /* ── SENAITE palette tokens (senaite.core 2.6 Bootstrap 4 base) ─────── */
     :root {
       --s-primary:      #428aaf;
       --s-primary-dk:   #387493;
@@ -25,75 +25,304 @@
       --s-danger:       #dc3545;
       --s-warning:      #fd7e14;
       --s-focus-ring:   rgba(66,138,175,.25);
+
+      --pfas-rail-bg:      #1e2329;
+      --pfas-rail-border:  rgba(255,255,255,.10);
+      --pfas-rail-item:    rgba(255,255,255,.60);
+      --pfas-rail-hover:   rgba(255,255,255,.90);
+      --pfas-rail-active-bg: rgba(66,138,175,.18);
+      --pfas-panel-width:  220px;
+      --pfas-rail-width:   48px;
+      --pfas-header-h:     52px;
     }
 
-    /* ── Reset */
+    /* ── Reset ───────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           font-size: 14px; background: var(--s-light); color: var(--s-body); }
 
-    /* ── Page chrome ─────────────────────────────────────────────────────── */
-    .page-header {
-      background: var(--s-dark); color: #fff;
-      padding: 14px 24px;
-      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    /* ── App shell layout ────────────────────────────────────────────────── */
+    body.pfas-app {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      background: var(--s-light);
+      color: var(--s-body);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
     }
-    .page-header h1 { font-size: 18px; font-weight: 600; flex: 1; min-width: 0; }
-    .page-header a  {
-      color: rgba(255,255,255,.65); font-size: 12px;
-      text-decoration: none; white-space: nowrap;
-    }
-    .page-header a:hover { color: #fff; text-decoration: underline; }
-    .page-header .back-link::before { content: "\2190  "; } /* ← */
 
-    /* Context badge — monospace pill in the header */
+    /* ── Top header bar ──────────────────────────────────────────────────── */
+    .pfas-header {
+      flex: 0 0 var(--pfas-header-h);
+      height: var(--pfas-header-h);
+      background: var(--s-dark);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px 0 0;
+      z-index: 50;
+    }
+    .pfas-header-toggle {
+      flex: 0 0 var(--pfas-rail-width);
+      height: var(--pfas-header-h);
+      background: none;
+      border: none;
+      border-right: 1px solid var(--pfas-rail-border);
+      color: rgba(255,255,255,.65);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color .12s, background .12s;
+    }
+    .pfas-header-toggle:hover { color: #fff; background: rgba(255,255,255,.06); }
+    .pfas-header-title {
+      flex: 1;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pfas-header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .pfas-header-right a {
+      color: rgba(255,255,255,.65);
+      font-size: 12px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .pfas-header-right a:hover { color: #fff; text-decoration: underline; }
+    .pfas-header-right .back-link::before { content: "\2190  "; }
+
+    /* Context badge */
     .header-badge {
-      font-family: monospace; font-size: 13px;
+      font-family: monospace;
+      font-size: 12px;
       background: rgba(255,255,255,.15);
-      padding: 3px 10px; border-radius: 4px;
+      padding: 3px 9px;
+      border-radius: 4px;
     }
-    /* Small inline meta text */
-    .header-meta {
-      font-size: 12px; color: rgba(255,255,255,.70);
-    }
+    .header-meta { font-size: 12px; color: rgba(255,255,255,.70); }
     .header-meta code {
       background: rgba(255,255,255,.12);
-      padding: 1px 5px; border-radius: 3px; font-size: 11px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 11px;
     }
 
-    /* ── Content container */
-    .page-body { max-width: 1100px; margin: 0 auto; padding: 20px; }
-    .page-body-narrow { max-width: 900px; margin: 0 auto; padding: 20px; }
+    /* ── Shell: left panel + main ────────────────────────────────────────── */
+    .pfas-shell {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      min-height: 0;
+    }
 
-    /* ── Flash messages */
+    /* ── Left panel ──────────────────────────────────────────────────────── */
+    .pfas-left-panel {
+      flex: 0 0 var(--pfas-panel-width);
+      width: var(--pfas-panel-width);
+      background: var(--pfas-rail-bg);
+      border-right: 1px solid var(--pfas-rail-border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: flex-basis .2s ease, width .2s ease;
+      position: relative;
+    }
+    .pfas-shell.panel-collapsed .pfas-left-panel {
+      flex-basis: var(--pfas-rail-width);
+      width: var(--pfas-rail-width);
+    }
+
+    /* Scrollable item list */
+    .pfas-panel-items {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-top: 8px;
+    }
+
+    /* Section headings */
+    .pfas-panel-section {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: rgba(255,255,255,.30);
+      padding: 14px 14px 4px 14px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .pfas-shell.panel-collapsed .pfas-panel-section { opacity: 0; height: 0; padding: 0; }
+
+    /* Nav items */
+    .pfas-panel-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      color: var(--pfas-rail-item);
+      text-decoration: none;
+      font-size: 13px;
+      border-left: 3px solid transparent;
+      overflow: hidden;
+      white-space: nowrap;
+      transition: color .1s, background .1s;
+      cursor: pointer;
+    }
+    .pfas-panel-item:hover {
+      color: var(--pfas-rail-hover);
+      background: rgba(255,255,255,.05);
+      text-decoration: none;
+    }
+    .pfas-panel-item.active {
+      color: #fff;
+      border-left-color: var(--s-primary);
+      background: var(--pfas-rail-active-bg);
+    }
+
+    /* Icon — always visible; 20px fixed width */
+    .pfas-panel-icon {
+      flex: 0 0 20px;
+      width: 20px;
+      text-align: center;
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    /* Label — hidden when panel collapsed */
+    .pfas-panel-label {
+      transition: opacity .15s;
+      overflow: hidden;
+    }
+    .pfas-shell.panel-collapsed .pfas-panel-label { opacity: 0; pointer-events: none; }
+
+    /* Collapse handle at panel bottom */
+    .pfas-rail-toggle {
+      flex: 0 0 36px;
+      height: 36px;
+      background: none;
+      border: none;
+      border-top: 1px solid var(--pfas-rail-border);
+      color: rgba(255,255,255,.35);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 14px;
+      transition: color .1s;
+    }
+    .pfas-rail-toggle:hover { color: rgba(255,255,255,.75); }
+    .pfas-rail-toggle .pfas-rail-arrow { display: inline-block; transition: transform .2s; }
+    .pfas-shell.panel-collapsed .pfas-rail-toggle .pfas-rail-arrow { transform: rotate(180deg); }
+
+    /* ── Main area ───────────────────────────────────────────────────────── */
+    .pfas-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── Top tabs strip ──────────────────────────────────────────────────── */
+    .pfas-tabs-wrap {
+      flex: 0 0 auto;
+    }
+    .pfas-tabs {
+      background: var(--s-bg);
+      border-bottom: 2px solid var(--s-border);
+      padding: 0 20px;
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+    }
+    .pfas-tab {
+      display: inline-block;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--s-secondary);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: color .1s;
+    }
+    .pfas-tab:hover { color: var(--s-body); text-decoration: none; }
+    .pfas-tab.active { color: var(--s-primary); border-bottom-color: var(--s-primary); }
+
+    /* ── Stable content area (scrollable) ────────────────────────────────── */
+    .pfas-content-area {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--s-light);
+      min-height: 0;
+    }
+
+    /* ── Pinned action bar ────────────────────────────────────────────────── */
+    .pfas-action-bar-wrap { flex: 0 0 auto; }
+    .pfas-action-bar {
+      background: var(--s-bg);
+      border-top: 2px solid var(--s-primary);
+      padding: 12px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      box-shadow: 0 -2px 8px rgba(0,0,0,.08);
+    }
+
+    /* ── Flash messages ──────────────────────────────────────────────────── */
     .alert { padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-weight: 600; }
     .alert-success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
     .alert-error   { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
     .alert-info    { background: var(--s-primary-lt); border: 1px solid #bee5eb; color: #0c5460; }
 
-    /* ── Section cards (collapsible <details> or plain .pfas-card) */
+    /* ── Content containers ──────────────────────────────────────────────── */
+    .page-body        { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .page-body-narrow { max-width: 900px;  margin: 0 auto; padding: 20px; }
+
+    /* ── Cards ───────────────────────────────────────────────────────────── */
     details, .pfas-card {
-      background: var(--s-bg); border-radius: 6px; margin-bottom: 14px;
+      background: var(--s-bg);
+      border-radius: 6px;
+      margin-bottom: 14px;
       border: 1px solid var(--s-border);
       box-shadow: 0 1px 3px rgba(0,0,0,.06);
     }
-    details[open], .pfas-card { box-shadow: 0 2px 6px rgba(0,0,0,.1); }
+    details[open], .pfas-card { box-shadow: 0 2px 6px rgba(0,0,0,.10); }
     summary, .pfas-card-head {
-      padding: 11px 16px; cursor: pointer;
-      font-size: 14px; font-weight: 600;
-      background: var(--s-light); border-radius: 6px; color: var(--s-body);
-      list-style: none; display: flex; align-items: center; gap: 8px;
+      padding: 11px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      background: var(--s-light);
+      border-radius: 6px;
+      color: var(--s-body);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     details[open] summary { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); }
-    .pfas-card-head { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border);
-                      cursor: default; }
+    .pfas-card-head { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); cursor: default; }
     summary::-webkit-details-marker { display: none; }
-    summary::before { content: "\25B6"; font-size: 10px; transition: transform .15s;
-                      color: var(--s-secondary); }
+    summary::before { content: "\25B6"; font-size: 10px; transition: transform .15s; color: var(--s-secondary); }
     details[open] summary::before { transform: rotate(90deg); }
     .section-body, .pfas-card-body { padding: 16px; }
 
-    /* ── Field layout */
+    /* ── Field layout ────────────────────────────────────────────────────── */
     .field-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -101,77 +330,139 @@
     }
     .field-row { display: flex; flex-direction: column; }
     .field-row label {
-      font-size: 11px; color: var(--s-secondary); margin-bottom: 4px;
-      font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+      font-size: 11px;
+      color: var(--s-secondary);
+      margin-bottom: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
     }
     .field-row input[type=number],
     .field-row input[type=text],
-    .field-row select {
-      padding: 7px 9px; border: 1px solid var(--s-input-border);
-      border-radius: 4px; font-size: 13px;
-      background: #fafafa; color: var(--s-input-text); width: 100%;
+    .field-row input[type=date],
+    .field-row select,
+    .field-row textarea {
+      padding: 7px 9px;
+      border: 1px solid var(--s-input-border);
+      border-radius: 4px;
+      font-size: 13px;
+      background: #fafafa;
+      color: var(--s-input-text);
+      width: 100%;
     }
-    .field-row input:focus, .field-row select:focus {
-      outline: none; border-color: var(--s-primary);
+    .field-row input:focus, .field-row select:focus, .field-row textarea:focus {
+      outline: none;
+      border-color: var(--s-primary);
       box-shadow: 0 0 0 3px var(--s-focus-ring);
     }
     .field-row .hint { font-size: 10px; color: var(--s-secondary); margin-top: 3px; }
     .field-row-wide { grid-column: 1 / -1; }
 
-    /* ── Checkboxes */
+    /* ── Checkboxes ──────────────────────────────────────────────────────── */
     .check-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
-    .check-row label { font-size: 13px; color: var(--s-body); font-weight: normal;
-                       text-transform: none; letter-spacing: normal; }
+    .check-row label {
+      font-size: 13px; color: var(--s-body); font-weight: normal;
+      text-transform: none; letter-spacing: normal;
+    }
     .check-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
 
-    /* ── Toggle switch (CSS-only pill) */
-    .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px;
-                     cursor: pointer; }
+    /* ── Toggle switch ───────────────────────────────────────────────────── */
+    .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer; }
     .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
-    .toggle-track { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-                    background: var(--s-input-border); border-radius: 20px;
-                    transition: background .15s; }
-    .toggle-track::before { content: ""; position: absolute; width: 14px; height: 14px;
-                             left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
-                             transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+    .toggle-track {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--s-input-border); border-radius: 20px; transition: background .15s;
+    }
+    .toggle-track::before {
+      content: ""; position: absolute; width: 14px; height: 14px;
+      left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+      transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    }
     .toggle-switch input:checked + .toggle-track { background: var(--s-primary); }
     .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
 
-    /* ── Tables */
+    /* ── Tables ──────────────────────────────────────────────────────────── */
     .pfas-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .pfas-table th {
-      background: var(--s-light); color: var(--s-secondary);
-      font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .04em; padding: 8px 12px;
-      border-bottom: 2px solid var(--s-border); text-align: left;
+      background: var(--s-light);
+      color: var(--s-secondary);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      padding: 8px 12px;
+      border-bottom: 2px solid var(--s-border);
+      text-align: left;
     }
     .pfas-table td { padding: 8px 12px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
     .pfas-table tr:last-child td { border-bottom: none; }
     .pfas-table tbody tr:hover td { background: var(--s-primary-lt); }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-    /* ── Buttons */
-    .btn { display: inline-block; padding: 8px 20px; border-radius: 4px;
-           font-size: 13px; font-weight: 600; cursor: pointer;
-           border: none; text-decoration: none; }
+    /* ── Workspace landing grid ──────────────────────────────────────────── */
+    .pfas-ws-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+      padding: 24px;
+    }
+    .pfas-ws-card {
+      background: var(--s-bg);
+      border: 1px solid var(--s-border);
+      border-radius: 8px;
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-decoration: none;
+      color: var(--s-body);
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      transition: box-shadow .15s, border-color .15s;
+    }
+    .pfas-ws-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,.12);
+      border-color: var(--s-primary);
+      text-decoration: none;
+      color: var(--s-body);
+    }
+    .pfas-ws-card-icon { font-size: 22px; color: var(--s-primary); line-height: 1; }
+    .pfas-ws-card-title { font-size: 15px; font-weight: 600; }
+    .pfas-ws-card-desc  { font-size: 12px; color: var(--s-secondary); line-height: 1.4; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-block; padding: 8px 20px; border-radius: 4px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      border: none; text-decoration: none;
+    }
     .btn-primary { background: var(--s-primary); color: #fff; }
     .btn-primary:hover { background: var(--s-primary-dk); text-decoration: none; color: #fff; }
-    .btn-secondary { background: transparent; color: var(--s-secondary);
-                     border: 1px solid var(--s-border); }
+    .btn-secondary {
+      background: transparent; color: var(--s-secondary);
+      border: 1px solid var(--s-border);
+    }
     .btn-secondary:hover { background: var(--s-light); text-decoration: none; }
     .btn-danger  { background: var(--s-danger); color: #fff; }
     .btn-danger:hover { opacity: .85; }
-    .btn-link { background: none; border: none; color: var(--s-primary);
-                padding: 0; cursor: pointer; font-size: 13px; text-decoration: underline; }
+    .btn-link {
+      background: none; border: none; color: var(--s-primary);
+      padding: 0; cursor: pointer; font-size: 13px; text-decoration: underline;
+    }
 
-    /* ── Sticky action bar */
+    /* ── Legacy save-bar (inside content slot — stays sticky in scroll area) */
     .save-bar {
-      position: sticky; bottom: 0; background: var(--s-bg);
+      position: sticky;
+      bottom: 0;
+      background: var(--s-bg);
       border-top: 2px solid var(--s-primary);
-      padding: 12px 20px; display: flex; gap: 12px; align-items: center;
+      padding: 12px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
       box-shadow: 0 -2px 8px rgba(0,0,0,.08);
     }
 
-    /* ── Mono badges / tags */
+    /* ── Mono badges ─────────────────────────────────────────────────────── */
     .mono-badge {
       font-family: monospace; font-size: 12px; color: var(--s-primary);
       background: var(--s-primary-lt); padding: 2px 7px; border-radius: 3px;
@@ -184,7 +475,7 @@
     .status-warn { background: #fff3cd; color: #856404; }
     .status-fail { background: #f8d7da; color: #721c24; }
 
-    /* ── Logbook breadcrumb */
+    /* ── Logbook breadcrumb ──────────────────────────────────────────────── */
     .lb-breadcrumb {
       display: flex; align-items: center; gap: 6px;
       font-size: 11px; color: var(--s-secondary);
@@ -195,7 +486,7 @@
     .lb-breadcrumb .lb-bc-sep { opacity: .5; }
     .lb-breadcrumb strong { color: var(--s-body); }
 
-    /* ── Print preview button */
+    /* ── Print preview button ────────────────────────────────────────────── */
     .btn-print-preview {
       padding: 9px 18px; background: #f8f9fa; color: var(--s-secondary);
       border: 1px solid var(--s-border); border-radius: 7px;
@@ -203,14 +494,69 @@
     }
     .btn-print-preview:hover { background: #e9ecef; }
 
-    /* ── @media print: render logbooks cleanly */
+    /* ── Mobile (≤768px) ─────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .pfas-header { padding: 0 10px 0 0; }
+      .pfas-header-title { font-size: 14px; }
+
+      /* On mobile the panel floats as an overlay */
+      .pfas-left-panel {
+        position: absolute;
+        top: 0; left: 0; bottom: 0;
+        z-index: 100;
+        transform: translateX(-100%);
+        transition: transform .2s ease;
+        box-shadow: none;
+      }
+      /* Override collapsed for mobile — collapsed = hidden via transform */
+      .pfas-left-panel,
+      .pfas-shell.panel-collapsed .pfas-left-panel {
+        flex-basis: var(--pfas-panel-width) !important;
+        width: var(--pfas-panel-width) !important;
+      }
+      .pfas-shell.panel-open .pfas-left-panel {
+        transform: translateX(0);
+        box-shadow: 4px 0 16px rgba(0,0,0,.35);
+      }
+      /* Backdrop for mobile overlay */
+      .pfas-panel-backdrop {
+        display: none;
+        position: absolute; inset: 0;
+        background: rgba(0,0,0,.45);
+        z-index: 99;
+      }
+      .pfas-shell.panel-open .pfas-panel-backdrop { display: block; }
+
+      /* Content area: full width even when panel "open" (it overlays) */
+      .pfas-shell { position: relative; }
+
+      /* Tables: horizontal scroll */
+      .table-wrap .pfas-table td,
+      .table-wrap .pfas-table th { white-space: nowrap; }
+      .table-wrap .pfas-table td.col-wrap { white-space: normal; max-width: 200px; }
+      .hide-mobile { display: none !important; }
+
+      /* Field grids → single column */
+      .field-grid { grid-template-columns: 1fr !important; }
+
+      /* Body padding */
+      .page-body, .page-body-narrow { padding: 10px 12px; }
+
+      /* Tabs: scrollable */
+      .pfas-tabs { padding: 0 12px; }
+      .pfas-tab { padding: 9px 12px; font-size: 12px; }
+    }
+
+    /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
-      .page-header { display: none !important; }
+      .pfas-header { display: none !important; }
+      .pfas-left-panel { display: none !important; }
+      .pfas-tabs-wrap { display: none !important; }
+      .pfas-action-bar-wrap { display: none !important; }
       .lb-breadcrumb { display: none !important; }
       .btn-save, .btn-dl, .btn-print-preview, .btn-add-row,
       .btn-del-row, .form-actions, #add-sample-btn { display: none !important; }
-      .alert-ok, .alert-error, .inj-builder-note { display: none !important; }
-      #inv-overlay { display: none !important; }
+      .pfas-content-area { overflow: visible !important; }
       input[type="text"], input[type="number"], input[type="date"],
       select, textarea {
         border: none !important; background: transparent !important;
@@ -219,23 +565,138 @@
       table { page-break-inside: auto; }
       tr { page-break-inside: avoid; }
       .lb-section h3 { border-bottom: 1px solid #999 !important; }
-      body { font-size: 11px; }
+      body { font-size: 11px; overflow: visible !important; height: auto !important; }
     }
   </style>
   <tal:head-extra metal:define-slot="head-extra" />
 </head>
-<body>
+<body class="pfas-app">
 
-<div class="page-header">
-  <h1><tal:t metal:define-slot="header-title">PFAS Tool</tal:t></h1>
-  <tal:r metal:define-slot="header-right" />
-</div>
-
-<tal:body metal:define-slot="content">
-  <div class="page-body">
-    <p>No content.</p>
+<!-- ── Top header bar ──────────────────────────────────────────────────────── -->
+<header class="pfas-header">
+  <button class="pfas-header-toggle" id="pfas-header-toggle"
+          onclick="pfasTogglePanel()" type="button" aria-label="Toggle navigation">
+    &#9776;
+  </button>
+  <div class="pfas-header-title">
+    <tal:t metal:define-slot="header-title">PFAS Tool</tal:t>
   </div>
-</tal:body>
+  <div class="pfas-header-right">
+    <tal:r metal:define-slot="header-right" />
+  </div>
+</header>
+
+<!-- ── Shell ───────────────────────────────────────────────────────────────── -->
+<div class="pfas-shell" id="pfas-shell">
+
+  <!-- Mobile backdrop -->
+  <div class="pfas-panel-backdrop" id="pfas-panel-backdrop"
+       onclick="pfasClosePanel()"></div>
+
+  <!-- Left panel -->
+  <nav class="pfas-left-panel" id="pfas-left-panel" aria-label="PFAS navigation">
+    <div class="pfas-panel-items">
+      <tal:nav metal:define-slot="left-panel">
+
+        <!-- Role-scoped nav — PFASMacrosView.get_nav_items().
+             Use context/@@pfas-macros (not 'view') so Chameleon METAL
+             macro expansion always resolves to PFASMacrosView, not the
+             calling page's view. -->
+        <tal:block tal:repeat="item context/@@pfas-macros/get_nav_items">
+          <p class="pfas-panel-section"
+             tal:condition="python:item['type'] == 'section'"
+             tal:content="item/title">Section</p>
+          <a tal:condition="python:item['type'] == 'item'"
+             tal:attributes="href item/url;
+                             class python:'pfas-panel-item active' if item.get('active') else 'pfas-panel-item'">
+            <span class="pfas-panel-icon" tal:content="item/icon">i</span>
+            <span class="pfas-panel-label" tal:content="item/label">Label</span>
+          </a>
+        </tal:block>
+
+      </tal:nav>
+    </div>
+
+    <!-- Collapse handle -->
+    <button class="pfas-rail-toggle" onclick="pfasTogglePanel()" type="button"
+            title="Collapse panel">
+      <span class="pfas-rail-arrow">&#8249;</span>
+    </button>
+  </nav>
+
+  <!-- Main: tabs + content + action bar -->
+  <div class="pfas-main">
+
+    <!-- Top tabs -->
+    <div class="pfas-tabs-wrap">
+      <tal:tabs metal:define-slot="tabs">
+        <!-- Default: no tabs; the wrap is present but takes no visual space -->
+      </tal:tabs>
+    </div>
+
+    <!-- Stable content area -->
+    <div class="pfas-content-area" id="pfas-content-area">
+      <tal:body metal:define-slot="content">
+        <div class="page-body">
+          <p>No content.</p>
+        </div>
+      </tal:body>
+    </div>
+
+    <!-- Pinned action bar (outside scroll area — always visible) -->
+    <div class="pfas-action-bar-wrap">
+      <tal:ab metal:define-slot="action-bar">
+        <!-- Default: empty; forms fill this slot with a .pfas-action-bar div -->
+      </tal:ab>
+    </div>
+
+  </div><!-- /pfas-main -->
+</div><!-- /pfas-shell -->
+
+<!-- Backward-compat JS slots (placed before </body> so scripts can reference DOM) -->
+<tal:body-extra metal:define-slot="body-extra" />
+<tal:scripts metal:define-slot="scripts" />
+
+<script>
+(function () {
+  var STORAGE_KEY = 'pfas_panel_collapsed';
+  var isMobile = function () { return window.innerWidth <= 768; };
+
+  function getShell() { return document.getElementById('pfas-shell'); }
+
+  window.pfasTogglePanel = function () {
+    var shell = getShell();
+    if (!shell) return;
+    if (isMobile()) {
+      shell.classList.toggle('panel-open');
+    } else {
+      var collapsed = shell.classList.toggle('panel-collapsed');
+      try { sessionStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0'); } catch (e) {}
+    }
+  };
+
+  window.pfasClosePanel = function () {
+    var shell = getShell();
+    if (shell) shell.classList.remove('panel-open');
+  };
+
+  /* Restore desktop collapse state */
+  (function () {
+    if (isMobile()) return;
+    try {
+      if (sessionStorage.getItem(STORAGE_KEY) === '1') {
+        var shell = getShell();
+        if (shell) shell.classList.add('panel-collapsed');
+      }
+    } catch (e) {}
+  })();
+
+  /* Close mobile panel on Escape */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') window.pfasClosePanel();
+  });
+})();
+</script>
 
 </body>
 </html>

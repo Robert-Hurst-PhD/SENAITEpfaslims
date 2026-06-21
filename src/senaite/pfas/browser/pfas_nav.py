@@ -23,6 +23,13 @@ class PFASDashboardTilesViewlet(ViewletBase):
 
     TILES = [
         {
+            'id':    'pfas-home',
+            'title': 'PFAS Workspace',
+            'desc':  'Role-aware workspace launcher — opens your default workspace',
+            'view':  '@@pfas-home',
+            'icon':  'fa-th-large',
+        },
+        {
             'id':    'batch-status',
             'title': 'Batch Status',
             'desc':  'Five-stage progress for every active worksheet',

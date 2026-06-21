@@ -89,6 +89,15 @@
       permission="senaite.core.permissions.ManageBika"
       />
 
+  <!-- PFAS QC Type Grid — method × QC type toggle matrix -->
+  <browser:page
+      name="pfas-qc-type-grid"
+      for="*"
+      class=".qc_grid.PFASQCTypeGridView"
+      template="templates/qc_grid.pt"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
   <!-- PFAS Method Profile list — Manager/LabManager only -->
   <browser:page
       name="pfas-method-profiles"
@@ -221,6 +230,22 @@
   <subscriber
       for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
       handler=".egad_publish.on_after_transition"
+      />
+
+  <!-- Role-aware workspace launcher — redirects to the user's default workspace -->
+  <browser:page
+      name="pfas-home"
+      for="*"
+      class=".workspace_home.PFASWorkspaceHomeView"
+      permission="zope2.View"
+      />
+
+  <!-- QC Management workspace landing page (LabManager/QAO default) -->
+  <browser:page
+      name="pfas-qc-management"
+      for="*"
+      class=".workspace_home.PFASQCManagementView"
+      permission="zope2.View"
       />
 
   <!-- Logbook definition manager (portal-level) -->

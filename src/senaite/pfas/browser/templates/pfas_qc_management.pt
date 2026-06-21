@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <metal:fill fill-slot="title">QC Management — PFAS LIMS</metal:fill>
+
+  <metal:fill fill-slot="header-title">QC Management</metal:fill>
+
+  <metal:fill fill-slot="content">
+    <div class="pfas-ws-grid" tal:define="sections view/sections">
+      <a class="pfas-ws-card"
+         tal:repeat="s sections"
+         tal:attributes="href s/url">
+        <span class="pfas-ws-card-icon" tal:content="s/icon">i</span>
+        <span class="pfas-ws-card-title" tal:content="s/title">Title</span>
+        <span class="pfas-ws-card-desc"  tal:content="s/desc">Description</span>
+      </a>
+    </div>
+  </metal:fill>
+
+</html>
