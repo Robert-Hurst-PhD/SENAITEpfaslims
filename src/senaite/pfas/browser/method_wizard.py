@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-PFAS New-Method Wizard -- association-driven, 9-step flow.
+PFAS New-Method Wizard -- association-driven, 10-step flow.
 
 Each step provides inline selection/association rather than just linking
 to SENAITE admin pages.  State is persisted in ZODB portal annotations
@@ -36,7 +36,7 @@ logger = logging.getLogger("senaite.pfas.browser.method_wizard")
 
 WIZARD_SESSIONS_KEY = u"senaite.pfas.wizard_sessions"
 METHOD_ASSOC_KEY = u"senaite.pfas.method_associations"
-NUM_STEPS = 9
+NUM_STEPS = 10
 
 # (num, id, title, explain, depends)
 STEP_META = [
@@ -63,37 +63,46 @@ STEP_META = [
      "Associate Sample Types / Matrices",
      "Select the Sample Types (matrices) this method analyzes: Drinking "
      "Water, Fish Tissue, Soil, Serum, etc.  This association is used in "
-     "Step 6 to prompt you to create the appropriate Analysis Specifications.",
+     "Step 7 to prompt you to create the appropriate Analysis Specifications.",
      "Method (Step 1)"),
-    (5, "profile",
-     "Method Profile (QC Criteria)",
-     "Review and customize the QC acceptance criteria for this method: "
-     "recovery limits, CCV frequency, calibration r-squared minimum, and "
-     "ion-ratio tolerance.  A default profile is pre-loaded -- review and "
-     "save your values before your first run.",
-     "Method (Step 1)"),
-    (6, "specs",
+    (5, "qctypes",
+     "Associate QC Types",
+     "Select which QC sample types from the PFAS QC Type Pool apply to "
+     "this method.  Each selected type will require acceptance criteria to "
+     "be defined in the Method Profile (Step 6).  No fallbacks — only "
+     "associated types will be evaluated during a batch run.",
+     "Sample Types (Step 4)"),
+    (6, "profile",
+     "Method Profile",
+     "Review and configure the extraction parameters, instrument verification "
+     "criteria, and QC acceptance windows for this method.  Instrument "
+     "Verification covers calibration, CCV, IS response, and confirmation. "
+     "QC Acceptance defines tiered recovery and RPD limits for each QC type "
+     "associated in Step 5.",
+     "QC Types (Step 5)"),
+    (7, "specs",
      "Analysis Specifications (Per Matrix)",
      "Confirm that Analysis Specifications exist for each sample type you "
      "selected in Step 4.  Specs define the reportable range and regulatory "
      "action levels (e.g. PFOA in Drinking Water: MRL 4 ng/L, limit 70 ng/L). "
      "A spec must exist for every matrix you report.",
      "Analytes (Step 3) + Sample Types (Step 4)"),
-    (7, "storage",
+    (8, "storage",
      "Storage Locations & Sample Containers",
      "Select the storage locations and sample containers associated with "
      "samples analyzed by this method.  Stored in the wizard record so "
      "analysts can quickly identify where to hold samples and which "
      "containers to expect on receipt.",
      None),
-    (8, "qcrules",
-     "QC Rule Toggles",
-     "Enable or disable individual QC checks for this method: signal/noise "
-     "minimum, ion-ratio tolerance, calibration r-squared, CCV frequency, "
-     "blank contamination check, and more.  Defaults are pre-loaded from "
-     "the Method Profile -- review before your first batch.",
-     "Method Profile (Step 5)"),
-    (9, "instruments",
+    (9, "ivrules",
+     "Instrument Verification Rules",
+     "Enable or disable individual instrument verification checks for this "
+     "method: calibration r-squared, CCV frequency and recovery window, "
+     "IS response drift, ion-ratio tolerance, RRT/RT confirmation tolerance, "
+     "and S/N thresholds.  Defaults are pre-loaded from the Method Profile "
+     "— review before your first batch.",
+     "Method Profile (Step 6)"),
+    (10, "instruments",
      "Link Instruments",
      "Select which laboratory instruments are certified to run this method. "
      "The wizard links each instrument to the Method so SENAITE can track "
@@ -168,6 +177,51 @@ def _get_by_uid(context, uid):
 
 
 # ---------------------------------------------------------------------------
+# QC Type Pool helpers
+# ---------------------------------------------------------------------------
+
+def _get_pfas_ref_defs(context):
+    """
+    Return all ReferenceDefinitions that have pfas_qc_code set.
+    Each entry: {uid, title, qc_code, category, acceptance_schema}.
+    """
+    catalog = getToolByName(context, "senaite_catalog_setup")
+    result = []
+    for brain in catalog({"portal_type": "ReferenceDefinition",
+                           "sort_on": "sortable_title"}):
+        try:
+            obj = brain.getObject()
+            code = ""
+            try:
+                code = obj.getPfas_qc_code() or ""
+            except AttributeError:
+                try:
+                    f = obj.getField("pfas_qc_code")
+                    code = f.get(obj) if f else ""
+                except Exception:
+                    pass
+            if not code:
+                continue
+            category = ""
+            schema = ""
+            try:
+                category = obj.getPfas_category() or ""
+                schema = obj.getPfas_acceptance_schema() or ""
+            except AttributeError:
+                pass
+            result.append({
+                "uid":               obj.UID(),
+                "title":             obj.Title(),
+                "qc_code":           code,
+                "category":          category,
+                "acceptance_schema": schema,
+            })
+        except Exception:
+            pass
+    return result
+
+
+# ---------------------------------------------------------------------------
 # View
 # ---------------------------------------------------------------------------
 
@@ -185,13 +239,15 @@ class PFASMethodWizardView(BrowserView):
         if rq.method == "POST" and action == "new":
             return self._start_new()
 
+        if rq.method == "POST" and action == "delete_session":
+            return self._delete_session(rq.form.get("wid", ""))
+
         wid = rq.form.get("wid", "")
         step = self._parse_step()
 
         if rq.method == "POST" and wid:
             return self._handle_post(wid, step)
 
-        # If wid given but no step, redirect to next incomplete step
         if wid and "step" not in rq.form:
             sess = _load_session(self._portal(), wid)
             next_step = self._next_pending_step(sess)
@@ -251,7 +307,6 @@ class PFASMethodWizardView(BrowserView):
         return _load_session(self._portal(), wid)
 
     def step_meta(self, num=None):
-        """Return STEP_META tuple for current (or given) step number."""
         n = num if num is not None else self.current_step()
         for meta in STEP_META:
             if meta[0] == n:
@@ -270,7 +325,6 @@ class PFASMethodWizardView(BrowserView):
     # -- Landing page ----------------------------------------------------
 
     def existing_sessions(self):
-        """Return in-progress wizard sessions for the landing page."""
         portal = self._portal()
         store = _get_sessions_store(portal)
         result = []
@@ -296,10 +350,17 @@ class PFASMethodWizardView(BrowserView):
         _save_session(self._portal(), wid, {"completed_steps": []})
         return self._redirect(self._step_url(wid, 1))
 
+    def _delete_session(self, wid):
+        if wid:
+            portal = self._portal()
+            store = _get_sessions_store(portal)
+            if wid in store:
+                del store[wid]
+        return self._redirect(self.context.absolute_url() + "/@@pfas-method-wizard")
+
     # -- Stepper sidebar -------------------------------------------------
 
     def steps_summary(self):
-        """Return list of step dicts for the stepper sidebar."""
         wid = self.wid()
         sess = self.session()
         current = self.current_step()
@@ -321,17 +382,20 @@ class PFASMethodWizardView(BrowserView):
         if num in done:
             return "done"
         if num == 5:
-            # profile step: check if profile exists
+            if sess.get("step5", {}).get("qc_type_codes"):
+                return "done"
+        if num == 6:
             mid = sess.get("method_id")
             if mid:
-                from senaite.pfas.method_profile_store import get_profile, DEFAULT_PROFILES
+                from senaite.pfas.method_profile_store import (
+                    get_profile, DEFAULT_PROFILES)
                 portal = self._portal()
                 p = get_profile(portal, mid)
                 if p and not p.get("_seeded"):
                     return "done"
                 if mid in DEFAULT_PROFILES:
                     return "defaults"
-        if num == 8:
+        if num == 9:
             return "defaults"
         return "pending"
 
@@ -345,10 +409,10 @@ class PFASMethodWizardView(BrowserView):
     # -- Step 1: Method identity -----------------------------------------
 
     def existing_methods(self):
-        """List all existing SENAITE Method objects."""
         catalog = getToolByName(self.context, "senaite_catalog_setup")
         result = []
-        for brain in catalog({"portal_type": "Method", "sort_on": "sortable_title"}):
+        for brain in catalog({"portal_type": "Method",
+                               "sort_on": "sortable_title"}):
             try:
                 obj = brain.getObject()
                 result.append({
@@ -372,11 +436,13 @@ class PFASMethodWizardView(BrowserView):
             if obj is None:
                 return self._redirect_step(wid, 1, error="Method+not+found")
             sess["method_uid"] = existing_uid
-            sess["method_id"] = getattr(obj, "getMethodID", lambda: "")() or existing_uid
+            sess["method_id"] = (getattr(obj, "getMethodID", lambda: "")()
+                                 or existing_uid)
             sess["step1"] = {
                 "title": obj.Title(),
                 "method_id": sess["method_id"],
-                "description": obj.Description() if hasattr(obj, "Description") else "",
+                "description": (obj.Description()
+                                if hasattr(obj, "Description") else ""),
             }
         else:
             title = f.get("new_method_title", "").strip()
@@ -392,7 +458,6 @@ class PFASMethodWizardView(BrowserView):
             if method_folder is None:
                 return self._redirect_step(wid, 1, error="No+methods+folder")
 
-            # Get-or-create the Method
             existing = [o for o in method_folder.objectValues()
                         if o.Title() == title]
             if existing:
@@ -400,14 +465,17 @@ class PFASMethodWizardView(BrowserView):
             else:
                 try:
                     if _HAS_BIKA_API:
-                        obj = bika_api.create(method_folder, "Method", title=title)
+                        obj = bika_api.create(method_folder, "Method",
+                                              title=title)
                     else:
-                        method_folder.invokeFactory("Method", id=mid, title=title)
+                        method_folder.invokeFactory("Method", id=mid,
+                                                   title=title)
                         obj = method_folder[mid]
                 except Exception as exc:
                     logger.exception("Failed to create Method")
-                    return self._redirect_step(wid, 1,
-                                               error="Create+failed:+" + str(exc)[:40])
+                    return self._redirect_step(
+                        wid, 1,
+                        error="Create+failed:+" + str(exc)[:40])
                 try:
                     if hasattr(obj, "setMethodID"):
                         obj.setMethodID(mid)
@@ -419,7 +487,8 @@ class PFASMethodWizardView(BrowserView):
 
             sess["method_uid"] = obj.UID()
             sess["method_id"] = mid
-            sess["step1"] = {"title": title, "method_id": mid, "description": desc}
+            sess["step1"] = {"title": title, "method_id": mid,
+                             "description": desc}
 
         self._mark_done(sess, 1)
         return self._advance(wid, sess, 2)
@@ -448,10 +517,10 @@ class PFASMethodWizardView(BrowserView):
     # -- Step 3: Associate analysis services -----------------------------
 
     def all_services(self):
-        """Return all AnalysisService objects with is_linked flag."""
         sess = self.session()
         method_uid = sess.get("method_uid", "")
-        method_obj = _get_by_uid(self.context, method_uid) if method_uid else None
+        method_obj = (_get_by_uid(self.context, method_uid)
+                      if method_uid else None)
 
         linked_uids = set()
         if method_obj and hasattr(method_obj, "getAnalysisServices"):
@@ -461,7 +530,6 @@ class PFASMethodWizardView(BrowserView):
             except Exception:
                 pass
 
-        # Also check from the service side
         catalog = getToolByName(self.context, "senaite_catalog_setup")
         result = []
         for brain in catalog({"portal_type": "AnalysisService",
@@ -473,7 +541,6 @@ class PFASMethodWizardView(BrowserView):
                 if hasattr(obj, "getCategory") and obj.getCategory():
                     cat = obj.getCategory().Title()
 
-                # Also check service-side methods
                 is_linked = uid in linked_uids
                 if not is_linked and hasattr(obj, "getMethods"):
                     try:
@@ -492,7 +559,6 @@ class PFASMethodWizardView(BrowserView):
                 })
             except Exception:
                 pass
-        # Sort by category then title
         result.sort(key=lambda x: (x["category"], x["title"]))
         return result
 
@@ -505,12 +571,14 @@ class PFASMethodWizardView(BrowserView):
             selected_uids = [selected_uids]
 
         method_uid = sess.get("method_uid", "")
-        method_obj = _get_by_uid(self.context, method_uid) if method_uid else None
+        method_obj = (_get_by_uid(self.context, method_uid)
+                      if method_uid else None)
 
         if method_obj:
             for uid in selected_uids:
                 svc = _get_by_uid(self.context, uid)
-                if svc and hasattr(svc, "getMethods") and hasattr(svc, "setMethods"):
+                if (svc and hasattr(svc, "getMethods")
+                        and hasattr(svc, "setMethods")):
                     try:
                         existing = list(svc.getMethods() or [])
                         existing_uids = [m.UID() for m in existing]
@@ -519,7 +587,8 @@ class PFASMethodWizardView(BrowserView):
                             svc.setMethods(existing)
                             svc.reindexObject()
                     except Exception as exc:
-                        logger.warning("setMethods failed for %s: %s", uid, exc)
+                        logger.warning("setMethods failed for %s: %s",
+                                       uid, exc)
 
         sess["step3"] = {"service_uids": selected_uids}
         self._mark_done(sess, 3)
@@ -541,7 +610,57 @@ class PFASMethodWizardView(BrowserView):
         self._mark_done(sess, 4)
         return self._advance(wid, sess, 5)
 
-    # -- Step 5: Method Profile ------------------------------------------
+    # -- Step 5: Associate QC Types --------------------------------------
+
+    def pfas_qc_types(self):
+        """Return all PFAS QC types from the pool, with is_selected flag."""
+        sess = self.session()
+        selected_codes = set(sess.get("step5", {}).get("qc_type_codes", []))
+        pool = _get_pfas_ref_defs(self.context)
+        for entry in pool:
+            entry["is_selected"] = entry["qc_code"] in selected_codes
+        return pool
+
+    def step5_data(self):
+        return self.session().get("step5", {})
+
+    def _handle_step5(self, wid, sess):
+        selected_codes = self.request.form.get("qc_type_code", [])
+        if isinstance(selected_codes, str):
+            selected_codes = [selected_codes]
+
+        if not selected_codes:
+            return self._redirect_step(wid, 5,
+                                       error="Select+at+least+one+QC+type")
+
+        pool = _get_pfas_ref_defs(self.context)
+        selected_uids = [e["uid"] for e in pool
+                         if e["qc_code"] in selected_codes]
+
+        sess["step5"] = {
+            "qc_type_codes": selected_codes,
+            "qc_type_uids":  selected_uids,
+        }
+        self._mark_done(sess, 5)
+
+        # Persist associated QC types into the method profile store so
+        # Step 6 (Method Profile) knows which acceptance sections to show.
+        mid = sess.get("method_id")
+        if mid:
+            try:
+                from senaite.pfas.method_profile_store import (
+                    get_profile, save_profile)
+                portal = self._portal()
+                profile = get_profile(portal, mid) or {}
+                profile["associated_qc_types"] = selected_codes
+                save_profile(portal, mid, profile)
+            except Exception as exc:
+                logger.warning(
+                    "step5: could not persist associated_qc_types: %s", exc)
+
+        return self._advance(wid, sess, 6)
+
+    # -- Step 6: Method Profile ------------------------------------------
 
     def profile_status_label(self):
         sess = self.session()
@@ -563,21 +682,18 @@ class PFASMethodWizardView(BrowserView):
         return "{0}/@@pfas-method-profile-edit?method_id={1}".format(
             self.context.absolute_url(), mid)
 
-    def _handle_step5(self, wid, sess):
-        # User clicked "Confirmed" -- just mark done and advance
-        self._mark_done(sess, 5)
-        return self._advance(wid, sess, 6)
+    def _handle_step6(self, wid, sess):
+        self._mark_done(sess, 6)
+        return self._advance(wid, sess, 7)
 
-    # -- Step 6: Analysis Specifications ---------------------------------
+    # -- Step 7: Analysis Specifications ---------------------------------
 
     def sample_types_spec_status(self):
-        """For each sample type in step4, show whether Analysis Specs exist."""
         sess = self.session()
         stype_uids = sess.get("step4", {}).get("sampletype_uids", [])
         if not stype_uids:
             return []
 
-        # Find all AnalysisSpecs
         catalog = getToolByName(self.context, "senaite_catalog_setup")
         spec_brains = catalog({"portal_type": "AnalysisSpec"})
         spec_stype_uids = set()
@@ -601,16 +717,17 @@ class PFASMethodWizardView(BrowserView):
                 "title": stype.Title() if hasattr(stype, "Title") else uid,
                 "has_spec": has_spec,
                 "status_label": "Spec exists" if has_spec else "No spec yet",
-                "create_url": "{0}/bika_setup/bika_analysisspecs/createObject?type_name=AnalysisSpec".format(
-                    portal_url),
+                "create_url": (
+                    "{0}/bika_setup/bika_analysisspecs/"
+                    "createObject?type_name=AnalysisSpec".format(portal_url)),
             })
         return result
 
-    def _handle_step6(self, wid, sess):
-        self._mark_done(sess, 6)
-        return self._advance(wid, sess, 7)
+    def _handle_step7(self, wid, sess):
+        self._mark_done(sess, 7)
+        return self._advance(wid, sess, 8)
 
-    # -- Step 7: Storage & containers ------------------------------------
+    # -- Step 8: Storage & containers ------------------------------------
 
     def storage_locations(self):
         return _query_setup(self.context, "StorageLocation")
@@ -618,29 +735,29 @@ class PFASMethodWizardView(BrowserView):
     def containers(self):
         return _query_setup(self.context, "SampleContainer")
 
-    def step7_selected_storage(self):
-        return self.session().get("step7", {}).get("storage_uids", [])
+    def step8_selected_storage(self):
+        return self.session().get("step8", {}).get("storage_uids", [])
 
-    def step7_selected_containers(self):
-        return self.session().get("step7", {}).get("container_uids", [])
+    def step8_selected_containers(self):
+        return self.session().get("step8", {}).get("container_uids", [])
 
-    def _handle_step7(self, wid, sess):
+    def _handle_step8(self, wid, sess):
         storage_uids = self.request.form.get("storage_uid", [])
         container_uids = self.request.form.get("container_uid", [])
         if isinstance(storage_uids, str):
             storage_uids = [storage_uids]
         if isinstance(container_uids, str):
             container_uids = [container_uids]
-        sess["step7"] = {
+        sess["step8"] = {
             "storage_uids": storage_uids,
             "container_uids": container_uids,
         }
-        self._mark_done(sess, 7)
-        return self._advance(wid, sess, 8)
+        self._mark_done(sess, 8)
+        return self._advance(wid, sess, 9)
 
-    # -- Step 8: QC Rule Toggles (link) ----------------------------------
+    # -- Step 9: Instrument Verification Rules (link) --------------------
 
-    def qcrules_url(self):
+    def ivrules_url(self):
         sess = self.session()
         mid = sess.get("method_id", "")
         url = "{0}/@@pfas-qc-rules".format(self.context.absolute_url())
@@ -648,17 +765,17 @@ class PFASMethodWizardView(BrowserView):
             url += "?method=" + mid
         return url
 
-    def _handle_step8(self, wid, sess):
-        self._mark_done(sess, 8)
-        return self._advance(wid, sess, 9)
+    def _handle_step9(self, wid, sess):
+        self._mark_done(sess, 9)
+        return self._advance(wid, sess, 10)
 
-    # -- Step 9: Instruments ---------------------------------------------
+    # -- Step 10: Instruments --------------------------------------------
 
     def instruments(self):
-        """Return all Instruments with is_linked flag."""
         sess = self.session()
         method_uid = sess.get("method_uid", "")
-        method_obj = _get_by_uid(self.context, method_uid) if method_uid else None
+        method_obj = (_get_by_uid(self.context, method_uid)
+                      if method_uid else None)
 
         linked_uids = set()
         if method_obj and hasattr(method_obj, "getInstruments"):
@@ -684,18 +801,20 @@ class PFASMethodWizardView(BrowserView):
                 pass
         return result
 
-    def _handle_step9(self, wid, sess):
+    def _handle_step10(self, wid, sess):
         selected_uids = self.request.form.get("instrument_uid", [])
         if isinstance(selected_uids, str):
             selected_uids = [selected_uids]
 
         method_uid = sess.get("method_uid", "")
-        method_obj = _get_by_uid(self.context, method_uid) if method_uid else None
+        method_obj = (_get_by_uid(self.context, method_uid)
+                      if method_uid else None)
 
         if method_obj:
             for uid in selected_uids:
                 instr = _get_by_uid(self.context, uid)
-                if instr and hasattr(instr, "getMethods") and hasattr(instr, "setMethods"):
+                if (instr and hasattr(instr, "getMethods")
+                        and hasattr(instr, "setMethods")):
                     try:
                         existing = list(instr.getMethods() or [])
                         existing_uids = [m.UID() for m in existing]
@@ -704,23 +823,23 @@ class PFASMethodWizardView(BrowserView):
                             instr.setMethods(existing)
                             instr.reindexObject()
                     except Exception as exc:
-                        logger.warning("setMethods on instrument failed: %s", exc)
+                        logger.warning(
+                            "setMethods on instrument failed: %s", exc)
 
-        sess["step9"] = {"instrument_uids": selected_uids}
-        self._mark_done(sess, 9)
+        sess["step10"] = {"instrument_uids": selected_uids}
+        self._mark_done(sess, 10)
 
-        # Persist method associations for other views
         self._persist_associations(sess)
-
         _save_session(self._portal(), wid, sess)
-        ok_url = "{0}/@@pfas-method-wizard?wid={1}&step=9&ok=Wizard+complete".format(
-            self.context.absolute_url(), wid)
+
+        ok_url = ("{0}/@@pfas-method-wizard?wid={1}&step=10"
+                  "&ok=Wizard+complete".format(
+                      self.context.absolute_url(), wid))
         return self._redirect(ok_url)
 
     # -- Association persistence -----------------------------------------
 
     def _persist_associations(self, sess):
-        """Store method associations in portal annotations for other views."""
         mid = sess.get("method_id")
         if not mid:
             return
@@ -730,14 +849,16 @@ class PFASMethodWizardView(BrowserView):
             ann[METHOD_ASSOC_KEY] = PersistentMapping()
         store = ann[METHOD_ASSOC_KEY]
         data = {
-            "method_uid": sess.get("method_uid", ""),
-            "dept_uid": sess.get("step2", {}).get("dept_uid", ""),
-            "category_uid": sess.get("step2", {}).get("category_uid", ""),
-            "service_uids": sess.get("step3", {}).get("service_uids", []),
+            "method_uid":      sess.get("method_uid", ""),
+            "dept_uid":        sess.get("step2", {}).get("dept_uid", ""),
+            "category_uid":    sess.get("step2", {}).get("category_uid", ""),
+            "service_uids":    sess.get("step3", {}).get("service_uids", []),
             "sampletype_uids": sess.get("step4", {}).get("sampletype_uids", []),
-            "storage_uids": sess.get("step7", {}).get("storage_uids", []),
-            "container_uids": sess.get("step7", {}).get("container_uids", []),
-            "instrument_uids": sess.get("step9", {}).get("instrument_uids", []),
+            "qc_type_codes":   sess.get("step5", {}).get("qc_type_codes", []),
+            "qc_type_uids":    sess.get("step5", {}).get("qc_type_uids", []),
+            "storage_uids":    sess.get("step8", {}).get("storage_uids", []),
+            "container_uids":  sess.get("step8", {}).get("container_uids", []),
+            "instrument_uids": sess.get("step10", {}).get("instrument_uids", []),
         }
         store[mid] = json.dumps(data)
 
@@ -748,15 +869,16 @@ class PFASMethodWizardView(BrowserView):
         sess = _load_session(portal, wid)
 
         handlers = {
-            1: self._handle_step1,
-            2: self._handle_step2,
-            3: self._handle_step3,
-            4: self._handle_step4,
-            5: self._handle_step5,
-            6: self._handle_step6,
-            7: self._handle_step7,
-            8: self._handle_step8,
-            9: self._handle_step9,
+            1:  self._handle_step1,
+            2:  self._handle_step2,
+            3:  self._handle_step3,
+            4:  self._handle_step4,
+            5:  self._handle_step5,
+            6:  self._handle_step6,
+            7:  self._handle_step7,
+            8:  self._handle_step8,
+            9:  self._handle_step9,
+            10: self._handle_step10,
         }
         handler = handlers.get(step)
         if handler is None:

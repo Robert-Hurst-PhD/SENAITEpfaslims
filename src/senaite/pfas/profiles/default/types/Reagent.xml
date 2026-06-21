@@ -1,16 +1,27 @@
 <?xml version="1.0"?>
 <object name="Reagent" meta_type="Dexterity FTI">
   <property name="title">Reagent</property>
-  <property name="description">A barcode-scanned reagent or standard lot</property>
-  <property name="icon_expr">string:${portal_url}/senaite_theme/icon/reagent</property>
+  <property name="description">A barcode-scanned reagent or standard lot (PFAS lab inventory)</property>
+  <property name="icon_expr">string:${portal_url}/senaite_theme/icon/supplier</property>
   <property name="factory">Reagent</property>
   <property name="add_view_expr">string:${folder_url}/++add++Reagent</property>
   <property name="schema">senaite.pfas.content.reagent.IReagent</property>
   <property name="klass">senaite.pfas.content.reagent.Reagent</property>
   <property name="behaviors">
+    <!-- Standard Plone Dexterity behaviors -->
     <element value="plone.dublincore"/>
     <element value="plone.namefromtitle"/>
+    <!-- SENAITE integration: UID-based references and catalog indexing.
+         IAutoGenerateID is intentionally excluded — Reagent uses UUID hex IDs
+         so the SENAITE sequence generator must not overwrite them on add. -->
+    <element value="plone.app.referenceablebehavior.referenceable.IReferenceable"/>
+    <element value="bika.lims.interfaces.IMultiCatalogBehavior"/>
   </property>
+  <!-- global_allow=True required: plone.app.contenttypes ISelectableConstrainTypes
+       is not available in this SENAITE environment, so IConstrainTypes on the
+       standard Folder cannot be overridden to permit non-globally-addable types.
+       The pfas_reagents folder provides logical scope; access is controlled via
+       the @@pfas-reagents view, not Plone's generic Add button. -->
   <property name="global_allow">True</property>
-  <property name="filter_content_types">True</property>
+  <property name="filter_content_types">False</property>
 </object>

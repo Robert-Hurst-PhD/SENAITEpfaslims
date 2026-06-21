@@ -24,6 +24,9 @@
 <body>
   <tal:t metal:fill-slot="header-title">PFAS Method Profiles</tal:t>
   <tal:r metal:fill-slot="header-right">
+    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@pfas-qc-type-grid">
+      QC Type Grid
+    </a>
     <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-control-chart">
       Control Charts
     </a>
@@ -42,12 +45,13 @@
       the normal SENAITE views.
     </p>
 
+    <div class="table-wrap">
     <table class="pfas-table" style="border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
       <thead>
         <tr>
           <th>Method ID</th>
           <th>Display Name</th>
-          <th>Description</th>
+          <th class="hide-mobile">Description</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -58,7 +62,7 @@
             <span class="method-id" tal:content="m/method_id">FDA_32PFAS</span>
           </td>
           <td tal:content="m/display_name">FDA 32-PFAS in Food</td>
-          <td>
+          <td class="hide-mobile">
             <div class="desc" tal:content="m/description">...</div>
           </td>
           <td>
@@ -74,6 +78,7 @@
         </tr>
       </tbody>
     </table>
+    </div><!-- /table-wrap -->
 
   </div>
   </div><!-- /content slot -->

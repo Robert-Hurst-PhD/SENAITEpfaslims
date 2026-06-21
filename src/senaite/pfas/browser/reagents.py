@@ -5,8 +5,9 @@ PFAS Reagent Inventory (@@pfas-reagents).
 ISO 17025 / MLAB reagent tracking: catalog number, lot number, expiry,
 storage location, and status for every chemical used in the lab.
 
-Each catalog number may have many records (one per received lot).
-Records are keyed by UUID in ZODB portal annotations.
+Reagents are stored as first-class SENAITE Dexterity content objects in
+portal/pfas_reagents/, indexed in senaite_catalog_setup, and participating
+in the global audit trail.  Each lot is one Reagent object keyed by UUID.
 
 Barcode scanning and OCR text recognition run entirely in the browser
 (ZXing-js + Tesseract.js); no server-side scanner is needed.
@@ -21,15 +22,11 @@ import re
 import uuid
 from datetime import date, datetime, timedelta
 
-from persistent.mapping import PersistentMapping
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
-from zope.annotation.interfaces import IAnnotations
 
 logger = logging.getLogger("senaite.pfas.browser.reagents")
-
-REAGENTS_KEY = u"senaite.pfas.reagents"
 
 # Reagent status values
 STATUS_ACTIVE     = "active"
@@ -103,65 +100,162 @@ def _is_expired(rec):
         return False
 
 
-# ── Store helpers ─────────────────────────────────────────────────────────────
+# ── Content-object store helpers ──────────────────────────────────────────────
 
-def _get_store(portal):
-    ann = IAnnotations(portal)
-    if REAGENTS_KEY not in ann:
-        ann[REAGENTS_KEY] = PersistentMapping()
-    return ann[REAGENTS_KEY]
+def _get_reagents_folder(portal):
+    """Return the pfas_reagents Folder content object.
 
-
-def _save_reagent(portal, data):
-    """Upsert a reagent record.  Assigns a UUID if one is absent."""
-    store = _get_store(portal)
-    uid = data.get("uid") or uuid.uuid4().hex
-    data["uid"] = uid
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    data.setdefault("created", now)
-    data["updated"] = now
-    # Auto-compute expiry when no manufacturer date is given and opened_date is set
-    if not data.get("expiry_date") and data.get("opened_date"):
-        data["expiry_date"] = _auto_expiry_from_open(
-            data.get("name", ""), data["opened_date"]
+    Raises RuntimeError if not found — caller should handle gracefully.
+    """
+    folder = portal.get("pfas_reagents")
+    if folder is None:
+        raise RuntimeError(
+            "pfas_reagents folder not found. Reinstall senaite.pfas to create it."
         )
-    # Auto-update status to expired
-    if data.get("status") not in (STATUS_EXHAUSTED, STATUS_QUARANTINE):
-        if _is_expired(data):
-            data["status"] = STATUS_EXPIRED
-    store[uid] = json.dumps(data)
-    return uid
+    return folder
 
 
-def _get_reagent(portal, uid):
-    store = _get_store(portal)
-    raw = store.get(uid)
-    if not raw:
+def _date_to_str(d):
+    """Format a datetime.date (or None) as an ISO string."""
+    if not d:
+        return u""
+    try:
+        return d.strftime("%Y-%m-%d")
+    except AttributeError:
+        return unicode(d)[:10] if d else u""
+
+
+def _str_to_date(s):
+    """Parse an ISO date string to datetime.date, or return None."""
+    if not s:
         return None
     try:
-        return json.loads(raw)
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return None
 
 
+def _obj_to_dict(obj):
+    """Convert a Reagent content object to the dict format the template expects."""
+    return {
+        "uid":                obj.getId(),
+        "name":               obj.title or u"",
+        "category":           obj.category or u"",
+        "supplier":           obj.supplier or u"",
+        "cat_number":         obj.cat_number or u"",
+        "lot_number":         obj.lot_number or u"",
+        "received_date":      _date_to_str(obj.received_date),
+        "manufacturer_expiry":_date_to_str(obj.manufacturer_expiry),
+        "expiry_date":        _date_to_str(obj.expiry_date),
+        "opened_date":        _date_to_str(obj.opened_date),
+        "storage_location":   obj.storage_location or u"",
+        "barcode":            obj.barcode or u"",
+        "quantity":           obj.quantity or u"",
+        "unit":               obj.unit or u"",
+        "scan_count":         obj.scan_count or 0,
+        "status":             obj.status or STATUS_ACTIVE,
+        "notes":              obj.notes or u"",
+    }
+
+
+def _populate_obj(obj, data):
+    """Write form/dict data onto a Reagent content object.
+
+    Performs auto-expiry computation and status auto-update, matching the
+    original annotation-store behaviour.
+    """
+    obj.title = data.get("name") or u""
+    obj.category = data.get("category") or u""
+    obj.supplier = data.get("supplier") or u""
+    obj.cat_number = data.get("cat_number") or u""
+    obj.lot_number = data.get("lot_number") or u""
+    obj.storage_location = data.get("storage_location") or u""
+    obj.barcode = data.get("barcode") or u""
+    obj.quantity = data.get("quantity") or u""
+    obj.unit = data.get("unit") or u""
+    obj.notes = data.get("notes") or u""
+    obj.scan_count = int(data.get("scan_count") or 0)
+    obj.status = data.get("status") or STATUS_ACTIVE
+
+    # Date fields: accept both ISO strings (from forms) and datetime.date objects
+    for field_name in ("received_date", "expiry_date", "manufacturer_expiry", "opened_date"):
+        raw = data.get(field_name)
+        if isinstance(raw, (str, bytes)):
+            setattr(obj, field_name, _str_to_date(raw))
+        else:
+            setattr(obj, field_name, raw)
+
+    # Auto-compute expiry from opened_date when not supplied
+    if not obj.expiry_date and not obj.manufacturer_expiry and obj.opened_date:
+        computed = _auto_expiry_from_open(obj.title, _date_to_str(obj.opened_date))
+        obj.expiry_date = _str_to_date(computed)
+
+    # Auto-update to expired
+    if obj.status not in (STATUS_EXHAUSTED, STATUS_QUARANTINE):
+        if _is_expired(_obj_to_dict(obj)):
+            obj.status = STATUS_EXPIRED
+
+
+def _save_reagent(portal, data):
+    """Upsert a Reagent content object.  Returns the object's Zope id (uid)."""
+    folder = _get_reagents_folder(portal)
+    uid = (data.get("uid") or u"").strip() or None
+
+    if uid and uid in folder:
+        obj = folder[uid]
+    else:
+        uid = uid or uuid.uuid4().hex
+        name = data.get("name") or u"Reagent"
+        folder.invokeFactory("Reagent", id=uid, title=name)
+        obj = folder[uid]
+
+    _populate_obj(obj, data)
+    try:
+        obj.reindexObject()
+    except Exception:
+        pass
+    return uid
+
+
+def _get_reagent(portal, uid):
+    """Return a reagent dict by uid, or None if not found."""
+    try:
+        folder = _get_reagents_folder(portal)
+    except RuntimeError:
+        return None
+    obj = folder.get(uid)
+    if obj is None:
+        return None
+    return _obj_to_dict(obj)
+
+
 def _delete_reagent(portal, uid):
-    store = _get_store(portal)
-    if uid in store:
-        del store[uid]
+    """Delete a Reagent content object.  Returns True if deleted."""
+    try:
+        folder = _get_reagents_folder(portal)
+    except RuntimeError:
+        return False
+    if uid in folder:
+        folder.manage_delObjects([uid])
         return True
     return False
 
 
 def _list_reagents(portal, q="", status_filter="", category_filter=""):
     """Return filtered, sorted list of reagent dicts."""
-    store = _get_store(portal)
+    try:
+        folder = _get_reagents_folder(portal)
+    except RuntimeError:
+        return []
+
     q_lower = (q or "").lower().strip()
     results = []
-    for uid, raw in store.items():
-        try:
-            d = json.loads(raw)
-        except (ValueError, TypeError):
+
+    for obj in folder.objectValues():
+        if obj.portal_type != "Reagent":
             continue
+        d = _obj_to_dict(obj)
+
         if status_filter and d.get("status") != status_filter:
             continue
         if category_filter and d.get("category") != category_filter:
@@ -175,10 +269,13 @@ def _list_reagents(portal, q="", status_filter="", category_filter=""):
             ]).lower()
             if q_lower not in searchable:
                 continue
-        # Live expiry check
+
+        # Live expiry display — transient only; real write happens on next save
         if d.get("status") == STATUS_ACTIVE and _is_expired(d):
             d["status"] = STATUS_EXPIRED
+
         results.append(d)
+
     results.sort(key=lambda x: (x.get("name") or "").lower())
     return results
 

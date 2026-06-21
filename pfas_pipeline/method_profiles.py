@@ -161,67 +161,61 @@ _FDA_IS_DISPLAY_NAMES = [
 
 _DEFAULT_PROFILE_CACHE = {
     "FDA_32PFAS": {
-        "recovery_tiers": [
-            {
-                "tier": 1,
-                "key_analytes": [
-                    "PFOS", "PFOA", "PFHxS", "PFNA",
-                    "lr-PFOS", "br-PFOS", "lr-PFHxS", "br-PFHxS",
-                ],
-                "tight_matrices": [
-                    "egg", "eggs", "meat", "muscle", "beef", "pork",
-                    "poultry", "deer", "seafood", "fish", "shellfish",
-                ],
-                "recovery_min": 80.0,
-                "recovery_max": 120.0,
-                "rsd_max": 20.0,
+        "instrument_verification": {
+            "calibration": {
+                "r2_min": 0.990,
+                "force_origin": False,
+                "point_pct_dev_max": None,
+                "low_point_pct_dev_max": None,
             },
-            {
-                "tier": 2,
-                "recovery_min": 65.0,
-                "recovery_max": 135.0,
-                "rsd_max": 25.0,
+            "ccv": {
+                "frequency": 6,
+                "recovery_min": 70.0,
+                "recovery_max": 130.0,
+                "low_level_min": None,
+                "low_level_max": None,
             },
-            {
-                "tier": 3,
-                "no_std_analytes": [
-                    "9Cl-PF3ONS", "11Cl-PF3OUdS", "PFDoS", "PFDS",
-                    "PFNS", "PFODA", "PFPeS", "PFTrDA", "PFTrDS", "PFUnDS",
-                ],
-                "recovery_min": 40.0,
-                "recovery_max": 140.0,
-                "rsd_max": 30.0,
+            "is_response": {
+                "vs_ical_avg_min": 50.0,
+                "vs_ical_avg_max": 150.0,
+                "vs_last_ccv_min": None,
+                "vs_last_ccv_max": None,
             },
-        ],
-        "ccv": {
-            "frequency": 6,
-            "recovery_min": 70.0,
-            "recovery_max": 130.0,
-            "low_level_min": None,
-            "low_level_max": None,
+            "confirmation": {
+                "ion_ratio_tol_pct": 30.0,
+                "rrt_tol_pct": 1.0,
+                "rt_tol_abs_min": None,
+                "sn_quan_min": 3.0,
+                "sn_confirm_min": 3.0,
+            },
+            "sequence": {
+                "cal_at_start": True,
+                "ccv_frequency": 6,
+                "blank_at_start": True,
+                "blank_at_end": True,
+            },
         },
-        "calibration": {
-            # FDA method document specifies 0.990; stored profile may use 0.995
-            # (lab SOP legacy) — see QUESTIONS.md Q-005.
-            "r2_min": 0.990,
-            "force_origin": False,
-            "point_pct_dev_max": None,
-            "low_point_pct_dev_max": None,
+        "qc_acceptance": {
+            "MB":    {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
+            "LRB":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
+            "LCS":   {"tiers": [
+                {"name": "tier1_key_tight",  "analyte_group": "key",    "matrix_scope": "tight", "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0},
+                {"name": "tier2_linked",     "analyte_group": "linked", "matrix_scope": "all",   "recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0},
+                {"name": "tier3_no_std",     "analyte_group": "no_std", "matrix_scope": "all",   "recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0},
+            ]},
+            "LFSM":  {"tiers": [
+                {"name": "tier1_key_tight",  "analyte_group": "key",    "matrix_scope": "tight", "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0},
+                {"name": "tier2_linked",     "analyte_group": "linked", "matrix_scope": "all",   "recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0},
+                {"name": "tier3_no_std",     "analyte_group": "no_std", "matrix_scope": "all",   "recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0},
+            ]},
+            "LFSMD": {"tiers": [
+                {"name": "tier1_key_tight",  "analyte_group": "key",    "matrix_scope": "tight", "recovery_min": 80.0, "recovery_max": 120.0, "rpd_max": 20.0},
+                {"name": "tier2_linked",     "analyte_group": "linked", "matrix_scope": "all",   "recovery_min": 65.0, "recovery_max": 135.0, "rpd_max": 25.0},
+                {"name": "tier3_no_std",     "analyte_group": "no_std", "matrix_scope": "all",   "recovery_min": 40.0, "recovery_max": 140.0, "rpd_max": 30.0},
+            ]},
+            "Dup":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "rpd_max": 20.0}]},
         },
-        "confirmation": {
-            "ion_ratio_tol_pct": 30.0,
-            "rrt_tol_pct": 1.0,
-            "rt_tol_abs_min": None,
-            "sn_quan_min": 3.0,
-            "sn_confirm_min": 3.0,
-        },
-        "is": {
-            "vs_ical_avg_min": 50.0,
-            "vs_ical_avg_max": 150.0,
-            "vs_last_ccv_min": None,
-            "vs_last_ccv_max": None,
-        },
-        "duplicate": {"rpd_max": 20.0},
+        "associated_qc_types": ["MB", "LRB", "LCS", "LFSM", "LFSMD", "Dup"],
         "matrix_factors": [
             {"matrix": "muscle",      "factor": 0.5},
             {"matrix": "meat",        "factor": 0.5},
@@ -239,60 +233,98 @@ _DEFAULT_PROFILE_CACHE = {
         ],
     },
     "EPA_537_1": {
-        "recovery_tiers": [
-            {
-                "tier": 1,
-                "description": "Low-level LFB (at or below MRL)",
-                "recovery_min": 50.0,
-                "recovery_max": 150.0,
-                "rsd_max": None,
+        "instrument_verification": {
+            "calibration": {
+                "r2_min": 0.990,
+                "force_origin": True,
+                "point_pct_dev_max": 30.0,
+                "low_point_pct_dev_max": 50.0,
             },
-            {
-                "tier": 2,
-                "description": "Mid/high LFB and LFSM",
+            "ccv": {
+                "frequency": 10,
                 "recovery_min": 70.0,
                 "recovery_max": 130.0,
-                "rsd_max": None,
+                "low_level_min": 50.0,
+                "low_level_max": 150.0,
             },
-        ],
-        "ccv": {
-            "frequency": 10,
-            "recovery_min": 70.0,
-            "recovery_max": 130.0,
-            "low_level_min": 50.0,
-            "low_level_max": 150.0,
+            "is_response": {
+                "vs_ical_avg_min": 50.0,
+                "vs_ical_avg_max": 150.0,
+                "vs_last_ccv_min": 70.0,
+                "vs_last_ccv_max": 140.0,
+            },
+            "confirmation": {
+                "ion_ratio_tol_pct": None,
+                "rrt_tol_pct": None,
+                "rt_tol_abs_min": 0.05,
+                "sn_quan_min": 3.0,
+                "sn_confirm_min": None,
+            },
+            "sequence": {
+                "cal_at_start": True,
+                "ccv_frequency": 10,
+                "blank_at_start": True,
+                "blank_at_end": True,
+            },
         },
-        "calibration": {
-            "r2_min": 0.990,
-            "force_origin": True,
-            "point_pct_dev_max": 30.0,
-            "low_point_pct_dev_max": 50.0,
+        "qc_acceptance": {
+            "MB":    {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
+            "LRB":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
+            "LFB":   {"tiers": [
+                {"name": "low_level", "analyte_group": "all", "matrix_scope": "all", "recovery_min": 50.0, "recovery_max": 150.0, "rsd_max": None},
+                {"name": "mid_high",  "analyte_group": "all", "matrix_scope": "all", "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None},
+            ]},
+            "LFSM":  {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None}]},
+            "LFSMD": {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "recovery_min": 70.0, "recovery_max": 130.0, "rpd_max": 30.0}]},
+            "Dup":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "rpd_max": 30.0}]},
         },
-        "confirmation": {
-            "ion_ratio_tol_pct": None,
-            "rrt_tol_pct": None,
-            "rt_tol_abs_min": 0.05,
-            "sn_quan_min": 3.0,
-            "sn_confirm_min": None,
-        },
-        "is": {
-            "vs_ical_avg_min": 50.0,
-            "vs_ical_avg_max": 150.0,
-            "vs_last_ccv_min": 70.0,
-            "vs_last_ccv_max": 140.0,
-        },
-        "duplicate": {"rpd_max": 30.0},
+        "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
         "matrix_factors": [],
     },
     "EPA_1633A": {
-        "recovery_tiers": [
-            {
-                "tier": 1,
-                "recovery_min": 40.0,
-                "recovery_max": 130.0,
-                "rsd_max": None,
+        "instrument_verification": {
+            "calibration": {
+                "r2_min": 0.990,
+                "force_origin": False,
+                "point_pct_dev_max": 30.0,
+                "low_point_pct_dev_max": 50.0,
             },
-        ],
+            "ccv": {
+                "frequency": 10,
+                "recovery_min": 70.0,
+                "recovery_max": 130.0,
+                "low_level_min": None,
+                "low_level_max": None,
+            },
+            "is_response": {
+                "vs_ical_avg_min": 50.0,
+                "vs_ical_avg_max": 150.0,
+                "vs_last_ccv_min": None,
+                "vs_last_ccv_max": None,
+            },
+            "confirmation": {
+                "ion_ratio_tol_pct": 50.0,
+                "rrt_tol_pct": None,
+                "rt_tol_abs_min": None,
+                "sn_quan_min": 3.0,
+                "sn_confirm_min": 1.0,
+            },
+            "sequence": {
+                "cal_at_start": True,
+                "ccv_frequency": 10,
+                "blank_at_start": True,
+                "blank_at_end": True,
+            },
+        },
+        "qc_acceptance": {
+            "MB":    {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
+            "LRB":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
+            "LFB":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "verify_against_method": True, "recovery_min": 40.0, "recovery_max": 130.0}]},
+            "LFSM":  {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "verify_against_method": True, "recovery_min": 40.0, "recovery_max": 130.0}]},
+            "LFSMD": {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "recovery_min": 40.0, "recovery_max": 130.0, "rpd_max": 30.0}]},
+            "Dup":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "rpd_max": 30.0}]},
+        },
+        "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
         "eis_overrides": {
             "M2-4:2FTS":    {"recovery_min": 20.0, "recovery_max": 150.0},
             "M2-6:2FTS":    {"recovery_min": 20.0, "recovery_max": 150.0},
@@ -301,33 +333,6 @@ _DEFAULT_PROFILE_CACHE = {
             "d5-NEtFOSAA":  {"recovery_min": 20.0, "recovery_max": 150.0},
             "M8FOSA":       {"recovery_min": 20.0, "recovery_max": 150.0},
         },
-        "ccv": {
-            "frequency": 10,
-            "recovery_min": 70.0,
-            "recovery_max": 130.0,
-            "low_level_min": None,
-            "low_level_max": None,
-        },
-        "calibration": {
-            "r2_min": 0.990,
-            "force_origin": False,
-            "point_pct_dev_max": 30.0,
-            "low_point_pct_dev_max": 50.0,
-        },
-        "confirmation": {
-            "ion_ratio_tol_pct": 50.0,
-            "rrt_tol_pct": None,
-            "rt_tol_abs_min": None,
-            "sn_quan_min": 3.0,
-            "sn_confirm_min": 1.0,
-        },
-        "is": {
-            "vs_ical_avg_min": 50.0,
-            "vs_ical_avg_max": 150.0,
-            "vs_last_ccv_min": None,
-            "vs_last_ccv_max": None,
-        },
-        "duplicate": {"rpd_max": 30.0},
         "matrix_factors": [],
     },
 }
@@ -386,18 +391,76 @@ def reload_from_profiles(profiles_path=None):
 # Helper: resolve recovery tier from profile data
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _resolve_fda_tier(analyte, matrix, profile_data):
+def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM"):
     """
-    Resolve recovery tier for an FDA analyte × matrix combination from
-    the profile's recovery_tiers list.  Returns a QCRule.
+    Resolve recovery tier for an FDA analyte × matrix combination.
 
-    Tier resolution order:
-      1. Tier 3: analyte in no_std_analytes list → 40–140% + RSDr≤30%
-      2. Tier 1: analyte in key_analytes AND matrix contains a tight-matrix term
-      3. Tier 2: everything else
+    Reads from qc_acceptance.{qc_type}.tiers (new structure).
+    Falls back to legacy recovery_tiers list for profiles not yet migrated.
+
+    Tier resolution (new structure):
+      analyte_group="no_std"  → tier3 window
+      analyte_group="key" + matrix_scope="tight" → tier1 window if matrix matches
+      analyte_group="linked"  → tier2 window (default)
     """
-    tiers = profile_data.get("recovery_tiers", [])
+    qa = profile_data.get("qc_acceptance", {})
+    qc_entry = qa.get(qc_type)
+    if qc_entry is None or not qc_entry.get("enabled", True):
+        return None
+    tiers = qc_entry.get("tiers", [])
 
+    # New structure: tiers have analyte_group and matrix_scope keys
+    if tiers and "analyte_group" in tiers[0]:
+        _FDA_NO_STD = {
+            "9Cl-PF3ONS", "11Cl-PF3OUdS", "PFDoS", "PFDS",
+            "PFNS", "PFODA", "PFPeS", "PFTrDA", "PFTrDS", "PFUnDS",
+        }
+        _FDA_KEY = {
+            "PFOS", "PFOA", "PFHxS", "PFNA",
+            "lr-PFOS", "br-PFOS", "lr-PFHxS", "br-PFHxS",
+        }
+        _FDA_TIGHT = {
+            "egg", "eggs", "meat", "muscle", "beef", "pork",
+            "poultry", "deer", "seafood", "fish", "shellfish",
+        }
+        m = matrix.lower().strip()
+        is_no_std = analyte in _FDA_NO_STD
+        is_key = analyte in _FDA_KEY
+        is_tight = any(t in m for t in _FDA_TIGHT)
+
+        for tier in tiers:
+            ag = tier.get("analyte_group", "all")
+            ms = tier.get("matrix_scope", "all")
+            if ag == "no_std" and is_no_std:
+                return QCRule(
+                    tier.get("recovery_min", 40.0),
+                    tier.get("recovery_max", 140.0),
+                    rsd_max=tier.get("rsd_max", 30.0),
+                    rpd_max=tier.get("rpd_max"),
+                    notes="No matched labeled standard (Table 10-1 footnote a)",
+                )
+            if ag == "key" and ms == "tight" and is_key and is_tight:
+                return QCRule(
+                    tier.get("recovery_min", 80.0),
+                    tier.get("recovery_max", 120.0),
+                    rsd_max=tier.get("rsd_max", 20.0),
+                    rpd_max=tier.get("rpd_max"),
+                    notes="PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood (Table 10-1 tier 1)",
+                )
+        # Fall through to the "linked" / default tier
+        for tier in tiers:
+            ag = tier.get("analyte_group", "all")
+            if ag in ("linked", "all"):
+                return QCRule(
+                    tier.get("recovery_min", 65.0),
+                    tier.get("recovery_max", 135.0),
+                    rsd_max=tier.get("rsd_max", 25.0),
+                    rpd_max=tier.get("rpd_max"),
+                    notes="Table 10-1 tier 2 (other matrices / other analytes)",
+                )
+        return QCRule(65.0, 135.0, rsd_max=25.0)
+
+    # Legacy structure: tiers have numeric "tier" key
     tier3_analytes = set()
     tier1_analytes = set()
     tight_matrices = set()
@@ -405,7 +468,8 @@ def _resolve_fda_tier(analyte, matrix, profile_data):
     t2 = {"recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0}
     t3 = {"recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0}
 
-    for tier in tiers:
+    legacy_tiers = profile_data.get("recovery_tiers", [])
+    for tier in legacy_tiers:
         n = tier.get("tier")
         if n == 1:
             tier1_analytes = set(tier.get("key_analytes", []))
@@ -418,27 +482,17 @@ def _resolve_fda_tier(analyte, matrix, profile_data):
             t3 = tier
 
     m = matrix.lower().strip()
-
     if analyte in tier3_analytes:
-        return QCRule(
-            t3.get("recovery_min", 40.0),
-            t3.get("recovery_max", 140.0),
-            rsd_max=t3.get("rsd_max", 30.0),
-            notes="No matched labeled standard (Table 10-1 footnote a)",
-        )
+        return QCRule(t3.get("recovery_min", 40.0), t3.get("recovery_max", 140.0),
+                      rsd_max=t3.get("rsd_max", 30.0),
+                      notes="No matched labeled standard (Table 10-1 footnote a)")
     if analyte in tier1_analytes and any(t in m for t in tight_matrices):
-        return QCRule(
-            t1.get("recovery_min", 80.0),
-            t1.get("recovery_max", 120.0),
-            rsd_max=t1.get("rsd_max", 20.0),
-            notes="PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood (Table 10-1 tier 1)",
-        )
-    return QCRule(
-        t2.get("recovery_min", 65.0),
-        t2.get("recovery_max", 135.0),
-        rsd_max=t2.get("rsd_max", 25.0),
-        notes="Table 10-1 tier 2 (other matrices / other analytes)",
-    )
+        return QCRule(t1.get("recovery_min", 80.0), t1.get("recovery_max", 120.0),
+                      rsd_max=t1.get("rsd_max", 20.0),
+                      notes="PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood (Table 10-1 tier 1)")
+    return QCRule(t2.get("recovery_min", 65.0), t2.get("recovery_max", 135.0),
+                  rsd_max=t2.get("rsd_max", 25.0),
+                  notes="Table 10-1 tier 2 (other matrices / other analytes)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -474,6 +528,38 @@ class MethodProfile:
     def _profile_data(self):
         return _profile_data_cache.get(self.method_id, {})
 
+    def _iv(self):
+        """Return instrument_verification block, with old-key fallback."""
+        p = self._profile_data()
+        iv = p.get("instrument_verification")
+        if iv is not None:
+            return iv
+        # Backward compat: old profiles have flat keys at top level
+        return p
+
+    def qc_acceptance_rule(self, qc_code, analyte="", matrix=""):
+        """
+        Return a QCRule for a specific QC type from qc_acceptance.
+        Returns None when the QC type is not associated or is disabled.
+        """
+        qa = self._profile_data().get("qc_acceptance", {})
+        entry = qa.get(qc_code)
+        if entry is None or not entry.get("enabled", True):
+            return None
+        tiers = entry.get("tiers", [])
+        if not tiers:
+            return None
+        # Return the first (most specific) matching tier; callers that need
+        # full tiered resolution should call qc_rules() with the analyte+matrix.
+        t = tiers[0]
+        return QCRule(
+            recovery_min=t.get("recovery_min"),
+            recovery_max=t.get("recovery_max"),
+            rsd_max=t.get("rsd_max"),
+            rpd_max=t.get("rpd_max"),
+            verify_against_method=bool(t.get("verify_against_method", False)),
+        )
+
     def resolve_spike_ppt(self, qc_type, level_label, matrix=None):
         """Return configured spike ppt for qc_type+level+matrix, or None if not set.
 
@@ -507,24 +593,19 @@ class FDA32PFASProfile(MethodProfile):
                    "2023.003; LC-MS/MS isotope dilution")
 
     def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
-        profile = self._profile_data()
-
         if qc_type in ("SUR", "surrogate"):
             return QCRule(50.0, 150.0,
                           notes="Surrogate recovery is guidance only "
                                 "(FDA §2024.10.1(5))",
                           is_guidance_only=True)
-
         if qc_type in ("Dup", "duplicate"):
-            rpd = profile.get("duplicate", {}).get("rpd_max", 20.0)
-            return QCRule(rpd_max=rpd,
-                          notes="Regulatory duplicate %diff < 20% "
-                                "(FDA §2024.10.3)")
-
-        return _resolve_fda_tier(analyte, matrix, profile)
+            return _resolve_fda_tier(analyte, matrix,
+                                     self._profile_data(), qc_type="Dup")
+        return _resolve_fda_tier(analyte, matrix,
+                                 self._profile_data(), qc_type=qc_type)
 
     def calibration_rule(self, analyte=""):
-        cal = self._profile_data().get("calibration", {})
+        cal = self._iv().get("calibration", {})
         fit = ("mean_response_factor"
                if analyte.startswith(("M", "13C")) else "linear")
         return CalibrationRule(
@@ -537,7 +618,7 @@ class FDA32PFASProfile(MethodProfile):
         )
 
     def ccv_rule(self):
-        ccv = self._profile_data().get("ccv", {})
+        ccv = self._iv().get("ccv", {})
         return CCVRule(
             recovery_min=float(ccv.get("recovery_min", 70.0)),
             recovery_max=float(ccv.get("recovery_max", 130.0)),
@@ -547,7 +628,7 @@ class FDA32PFASProfile(MethodProfile):
         )
 
     def is_rule(self):
-        is_ = self._profile_data().get("is", {})
+        is_ = self._iv().get("is_response") or self._iv().get("is", {})
         return ISRule(
             vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),
             vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),
@@ -557,7 +638,7 @@ class FDA32PFASProfile(MethodProfile):
         )
 
     def confirmation_rule(self):
-        conf = self._profile_data().get("confirmation", {})
+        conf = self._iv().get("confirmation", {})
         return ConfirmationRule(
             ion_ratio_tol_pct=conf.get("ion_ratio_tol_pct", 30.0),
             rrt_tol_pct=conf.get("rrt_tol_pct", 1.0),
@@ -572,11 +653,13 @@ class FDA32PFASProfile(MethodProfile):
         )
 
     def sequence_rule(self):
-        ccv = self._profile_data().get("ccv", {})
+        seq = self._iv().get("sequence", {})
+        ccv = self._iv().get("ccv", {})
         return SequenceRule(
             opens_with_solvent_blank=True,
             blank_after_curve=True,
-            ccv_frequency=int(ccv.get("frequency", 6)),
+            ccv_frequency=int(seq.get("ccv_frequency",
+                                      ccv.get("frequency", 6))),
             closing_ccv=True,
         )
 
@@ -597,35 +680,33 @@ class EPA537Profile(MethodProfile):
     description = "EPA 537.1 PFAS in drinking water (EPA/600/R-20/006)"
 
     def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
-        profile = self._profile_data()
-        tiers = profile.get("recovery_tiers", [])
-        # Default to mid/high tier limits if no tiers loaded
-        lo, hi = 70.0, 130.0
-        lo_low, hi_low = 50.0, 150.0
-        for tier in tiers:
-            if tier.get("tier") == 2:
-                lo = float(tier.get("recovery_min", 70.0))
-                hi = float(tier.get("recovery_max", 130.0))
-            elif tier.get("tier") == 1:
-                lo_low = float(tier.get("recovery_min", 50.0))
-                hi_low = float(tier.get("recovery_max", 150.0))
-
+        qa = self._profile_data().get("qc_acceptance", {})
         if qc_type in ("SUR", "surrogate"):
-            return QCRule(lo, hi, notes="§9.3.5 surrogates 70–130%")
-        if qc_type in ("LFB", "LCS"):
-            return QCRule(lo, hi,
-                          notes="Mid/high LFB 70–130%; use 50–150% when "
-                                "fortified at/below MRL (§9.3.3)")
-        if qc_type in ("Dup", "duplicate", "LFSMD"):
-            rpd = profile.get("duplicate", {}).get("rpd_max", 30.0)
-            return QCRule(lo, hi, rpd_max=rpd,
-                          notes="LFSMD: recoveries 70–130%, RPD ≤30% "
-                                "(lab-typical; method defers to §9.3.6)")
-        return QCRule(lo, hi,
-                      notes="LFSM 70–130% (50–150% near MRL) §9.3.6")
+            return QCRule(70.0, 130.0, notes="§9.3.5 surrogates 70–130%")
+        entry = qa.get(qc_type)
+        if entry is None or not entry.get("enabled", True):
+            return None
+        tiers = entry.get("tiers", [])
+        if not tiers:
+            # Legacy fallback
+            lo, hi = 70.0, 130.0
+            legacy = self._profile_data().get("recovery_tiers", [])
+            for t in legacy:
+                if t.get("tier") == 2:
+                    lo = float(t.get("recovery_min", 70.0))
+                    hi = float(t.get("recovery_max", 130.0))
+            return QCRule(lo, hi)
+        t = tiers[0]
+        return QCRule(
+            recovery_min=t.get("recovery_min"),
+            recovery_max=t.get("recovery_max"),
+            rsd_max=t.get("rsd_max"),
+            rpd_max=t.get("rpd_max"),
+            notes=t.get("description", ""),
+        )
 
     def calibration_rule(self, analyte=""):
-        cal = self._profile_data().get("calibration", {})
+        cal = self._iv().get("calibration", {})
         return CalibrationRule(
             r2_min=float(cal.get("r2_min", 0.990)),
             point_pct_dev_max=cal.get("point_pct_dev_max", 30.0),
@@ -634,7 +715,7 @@ class EPA537Profile(MethodProfile):
         )
 
     def ccv_rule(self):
-        ccv = self._profile_data().get("ccv", {})
+        ccv = self._iv().get("ccv", {})
         return CCVRule(
             recovery_min=float(ccv.get("recovery_min", 70.0)),
             recovery_max=float(ccv.get("recovery_max", 130.0)),
@@ -644,7 +725,7 @@ class EPA537Profile(MethodProfile):
         )
 
     def is_rule(self):
-        is_ = self._profile_data().get("is", {})
+        is_ = self._iv().get("is_response") or self._iv().get("is", {})
         return ISRule(
             vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),
             vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),
@@ -655,7 +736,7 @@ class EPA537Profile(MethodProfile):
         )
 
     def confirmation_rule(self):
-        conf = self._profile_data().get("confirmation", {})
+        conf = self._iv().get("confirmation", {})
         return ConfirmationRule(
             rt_tol_abs_min=conf.get("rt_tol_abs_min", 0.05),
             notes="RT within ±0.05 min of expected; "
@@ -663,9 +744,11 @@ class EPA537Profile(MethodProfile):
         )
 
     def sequence_rule(self):
-        ccv = self._profile_data().get("ccv", {})
+        seq = self._iv().get("sequence", {})
+        ccv = self._iv().get("ccv", {})
         return SequenceRule(
-            ccv_frequency=int(ccv.get("frequency", 10)),
+            ccv_frequency=int(seq.get("ccv_frequency",
+                                      ccv.get("frequency", 10))),
             closing_ccv=True,
         )
 
@@ -695,22 +778,19 @@ class EPA1633AProfile(MethodProfile):
 
     def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
         profile = self._profile_data()
-        tiers = profile.get("recovery_tiers", [])
         eis_overrides = profile.get("eis_overrides", {})
         eis_matrix = profile.get("eis_matrix_overrides", {})
 
-        default_lo, default_hi = 40.0, 130.0
-        for tier in tiers:
-            if tier.get("tier") == 1:
-                default_lo = float(tier.get("recovery_min", 40.0))
-                default_hi = float(tier.get("recovery_max", 130.0))
-
+        # EIS/NIS surrogate recovery — still per-analyte × matrix
         if qc_type in ("EIS", "SUR", "surrogate"):
-            # Aqueous default from eis_overrides
+            qa = profile.get("qc_acceptance", {})
+            lfsm_entry = qa.get("LFSM", {})
+            t = (lfsm_entry.get("tiers") or [{}])[0]
+            default_lo = float(t.get("recovery_min", 40.0))
+            default_hi = float(t.get("recovery_max", 130.0))
             override = eis_overrides.get(analyte, {})
             lo = float(override.get("recovery_min", default_lo))
             hi = float(override.get("recovery_max", default_hi))
-            # Apply matrix-class-specific override when available (Tables 6/8)
             if matrix:
                 mat_class = _1633a_matrix_class(matrix)
                 if mat_class != "aqueous":
@@ -721,19 +801,29 @@ class EPA1633AProfile(MethodProfile):
             return QCRule(lo, hi,
                           notes="EIS limits per-analyte x matrix class "
                                 "(1633A Tables 6/8, EPA 820-R-24-007)")
-        if qc_type in ("OPR", "LCS", "LFB"):
+
+        qa = profile.get("qc_acceptance", {})
+        # OPR (ongoing precision & recovery) maps to LFB code in the pool
+        mapped = "LFB" if qc_type in ("OPR", "IPR") else qc_type
+        entry = qa.get(mapped)
+        if entry is None or not entry.get("enabled", True):
+            return None
+        tiers = entry.get("tiers", [])
+        if not tiers:
             return QCRule(70.0, 130.0, verify_against_method=True,
-                          notes="OPR/IPR limits are per-analyte "
-                                "(1633A Table 5 et seq.) — verify")
-        if qc_type in ("Dup", "duplicate", "LFSMD", "MSD"):
-            rpd = profile.get("duplicate", {}).get("rpd_max", 30.0)
-            return QCRule(rpd_max=rpd,
-                          notes="Lab duplicate/MSD RPD typical ≤30%")
-        return QCRule(70.0, 130.0, verify_against_method=True,
-                      notes="MS recovery per-analyte (1633A) — verify")
+                          notes="MS recovery per-analyte (1633A) — verify")
+        t = tiers[0]
+        return QCRule(
+            recovery_min=t.get("recovery_min"),
+            recovery_max=t.get("recovery_max"),
+            rsd_max=t.get("rsd_max"),
+            rpd_max=t.get("rpd_max"),
+            verify_against_method=bool(t.get("verify_against_method", False)),
+            notes=t.get("description", "1633A per-analyte (verify against method)"),
+        )
 
     def calibration_rule(self, analyte=""):
-        cal = self._profile_data().get("calibration", {})
+        cal = self._iv().get("calibration", {})
         return CalibrationRule(
             r2_min=float(cal.get("r2_min", 0.990)),
             point_pct_dev_max=cal.get("point_pct_dev_max", 30.0),
@@ -743,7 +833,7 @@ class EPA1633AProfile(MethodProfile):
         )
 
     def ccv_rule(self):
-        ccv = self._profile_data().get("ccv", {})
+        ccv = self._iv().get("ccv", {})
         return CCVRule(
             recovery_min=float(ccv.get("recovery_min", 70.0)),
             recovery_max=float(ccv.get("recovery_max", 130.0)),
@@ -751,7 +841,7 @@ class EPA1633AProfile(MethodProfile):
         )
 
     def is_rule(self):
-        is_ = self._profile_data().get("is", {})
+        is_ = self._iv().get("is_response") or self._iv().get("is", {})
         return ISRule(
             vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),
             vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),
@@ -759,7 +849,7 @@ class EPA1633AProfile(MethodProfile):
         )
 
     def confirmation_rule(self):
-        conf = self._profile_data().get("confirmation", {})
+        conf = self._iv().get("confirmation", {})
         return ConfirmationRule(
             ion_ratio_tol_pct=conf.get("ion_ratio_tol_pct", 50.0),
             sn_min_quant=conf.get("sn_quan_min", 3.0),
@@ -768,9 +858,11 @@ class EPA1633AProfile(MethodProfile):
         )
 
     def sequence_rule(self):
-        ccv = self._profile_data().get("ccv", {})
+        seq = self._iv().get("sequence", {})
+        ccv = self._iv().get("ccv", {})
         return SequenceRule(
-            ccv_frequency=int(ccv.get("frequency", 10)),
+            ccv_frequency=int(seq.get("ccv_frequency",
+                                      ccv.get("frequency", 10))),
             closing_ccv=True,
         )
 

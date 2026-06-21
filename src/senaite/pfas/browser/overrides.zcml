@@ -16,4 +16,23 @@
       layer="senaite.pfas.interfaces.ISenaitePFASLayer"
       />
 
+  <!--
+    Override senaite.sidebar viewlet manager from senaite.core.
+
+    ISenaitePFASLayer > ISenaiteCore in adapter specificity, so Zope selects
+    PFASSidebarManager on all PFAS-layer requests without needing includeOverrides.
+
+    Upgrade note: if senaite.core changes SidebarViewletManager.available()
+    signature, check sidebar.py PFASSidebarManager.
+
+    Provides: senaite.core.browser.viewlets.interfaces.ISidebar
+  -->
+  <browser:viewletManager
+      name="senaite.sidebar"
+      provides="senaite.core.browser.viewlets.interfaces.ISidebar"
+      permission="zope2.View"
+      class="senaite.pfas.browser.sidebar.PFASSidebarManager"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
 </configure>

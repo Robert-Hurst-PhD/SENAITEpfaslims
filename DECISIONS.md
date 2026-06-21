@@ -1267,3 +1267,32 @@ in reverse-chronological order (newest first).
   callers in `browser/logbooks.py` and `setuphandlers.py` continue to work.
 
 - **Status:** implemented
+
+---
+
+## 2026-06-21  Phase 2 — Sidebar architecture (Phase 0 decisions confirmed)
+
+**Decision: Single persistent accordion sidebar on ALL pages (core + PFAS)**
+Confirmed answers:
+1. CONFIGURATION sub-links use `@@lims-setup#group-id` anchors.
+2. Option B — remove PFAS dark sidebar simultaneously in Phase 1; PFAS workspace
+   pages call `context/@@pfas-sidebar` from within `pfas_macros.pt` so both
+   core and PFAS pages use the same sidebar HTML.
+3. Samples URL = `{portal}/@@samples`.
+
+**Override mechanism:** Register `PFASSidebarManager` (subclass of
+`SidebarViewletManager`) on `ISenaitePFASLayer` in `overrides.zcml`. Layer
+specificity selects our manager over core's on `ISenaiteCore`. The manager's
+`render()` wraps `@@pfas-sidebar` inner HTML in `<nav id="sidebar" class="bg-light">`.
+`@@pfas-sidebar` is a BrowserView that renders the accordion groups. On PFAS
+workspace pages (`pfas_macros.pt`), the left-panel slot calls
+`context/@@pfas-sidebar` directly (main_template is bypassed for PFAS pages).
+
+**Core templates wrapped (upgrade-fragility notes):**
+- `SidebarViewletManager.render()` and `available()` — document changes on
+  senaite.core upgrade.
+- No core Python files edited; only a layer-specific viewlet manager registered.
+
+**Phase 1 build sequence:** (1) `sidebar.py` + `pfas_sidebar.pt`, (2) register
+in ZCML, (3) update `pfas_macros.pt` to call `@@pfas-sidebar` and remove dark
+panel CSS, (4) verify on both core page and a PFAS workspace page.

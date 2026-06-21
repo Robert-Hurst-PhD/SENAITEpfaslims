@@ -20,6 +20,15 @@
       permission="zope2.Public"
       />
 
+  <!-- Unified accordion sidebar — used by PFASSidebarManager (core pages)
+       and called directly from pfas_macros.pt (PFAS workspace pages). -->
+  <browser:page
+      name="pfas-sidebar"
+      for="*"
+      class=".sidebar.PFASSidebarView"
+      permission="zope2.View"
+      />
+
   <!-- PFAS dashboard tiles viewlet — REMOVED (Round 6).
        PFAS tools are now integrated directly into @@lims-setup groups via
        VirtualTile entries in lims_setup.py SETUP_GROUPS.  The dark bottom

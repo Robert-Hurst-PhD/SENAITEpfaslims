@@ -84,11 +84,10 @@ class PFASControlChartView(BrowserView):
         return self.request.form.get("method", "")
 
     def selected_qc_type(self):
-        return self.request.get("qc_type", "")
+        return self.request.form.get("qc_type", "")
 
     def selected_chart_type_override(self):
-        """Return user-chosen chart type override: 'levey_jennings', 'threshold', or '' (auto)."""
-        return self.request.get("chart_type_override", "")
+        return self.request.form.get("chart_type_override", "")
 
     def selected_analyte(self):
         return self.request.get("analyte", "")

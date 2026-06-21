@@ -29,13 +29,28 @@ class PFASMacrosView(BrowserView):
     """Exposes pfas_macros.pt macros for use by other PFAS page templates."""
 
     _template = ViewPageTemplateFile("templates/pfas_macros.pt")
+    _sidebar_template = ViewPageTemplateFile("templates/pfas_sidebar.pt")
 
     @property
     def macros(self):
         return self._template.macros
 
     def portal_url(self):
-        return self.context.portal_url.getPortalObject().absolute_url()
+        return getToolByName(self.context, 'portal_url').getPortalObject().absolute_url()
+
+    def current_path(self):
+        return self.request.get('PATH_INFO', '')
+
+    def render_sidebar(self):
+        """Return the unified sidebar HTML fragment.
+
+        Called from pfas_macros.pt via context/@@pfas-macros/render_sidebar.
+        Renders the sidebar template with view=PFASMacrosView (so
+        view/portal_url and view/current_path are available). Called as a
+        method, not as a top-level response, so Plone's transform pipeline
+        does not wrap the output in <!DOCTYPE html>.
+        """
+        return self._sidebar_template()
 
     def get_nav_items(self):
         """Return role-scoped left-panel nav items.

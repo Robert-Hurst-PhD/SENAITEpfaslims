@@ -75,18 +75,26 @@
                        border-radius: 4px; padding: 6px 10px; display: inline-block; }
 
     .empty-state { text-align: center; color: var(--s-secondary); padding: 48px 0; font-size: 13px; }
+
+    /* ── Mobile ─────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .batch-body { padding: 10px 12px; }
+      .batch-header { padding: 8px 12px; }
+      /* Stepper: smaller dots, hide labels, show only current */
+      .step-dot { width: 22px; height: 22px; font-size: 10px; }
+      .step-label { font-size: 9px; }
+      .step:not(:last-child)::after { top: 11px; }
+      /* Meta info: smaller gaps */
+      .batch-meta { gap: 12px; }
+      /* Extraction info: wrap */
+      .extraction-info { display: block; font-size: 10px; }
+    }
   </style>
   </tal:styles>
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">PFAS Batch Status</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-method-profiles">
-      Method Profiles
-    </a>
-    <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-control-chart">
-      Control Charts
-    </a>
     <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-track">
       Client Tracker
     </a>
@@ -167,6 +175,29 @@
               </tal:sid>
             </div>
           </details>
+
+          <!-- Stage-specific action links -->
+          <div class="batch-actions" tal:condition="python: b['stage'] in (4, 5)"
+               style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+            <tal:stage4 tal:condition="python: b['stage'] == 4">
+              <a class="btn-sm"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-control-chart?method=${b/method}"
+                 style="display:inline-block; padding:4px 10px; font-size:11px;
+                        font-weight:600; border-radius:4px; text-decoration:none;
+                        background:var(--s-primary-lt); color:var(--s-primary);">
+                Charts &#8594;
+              </a>
+            </tal:stage4>
+            <tal:stage5 tal:condition="python: b['stage'] == 5">
+              <a class="btn-sm"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-egad-batches?batch_id=${b/batch_id}"
+                 style="display:inline-block; padding:4px 10px; font-size:11px;
+                        font-weight:600; border-radius:4px; text-decoration:none;
+                        background:#d4edda; color:#155724;">
+                Export EDD &#8594;
+              </a>
+            </tal:stage5>
+          </div>
 
         </div>
       </div>

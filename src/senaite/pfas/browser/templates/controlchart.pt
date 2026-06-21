@@ -97,6 +97,32 @@
     .history-banner { background: var(--s-primary-lt); border: 1px solid var(--s-primary);
                       border-radius: 4px; padding: 8px 14px; margin-bottom: 14px;
                       font-size: 12px; color: var(--s-primary); }
+
+    /* ── Mobile: collapsible sidebar ───────────────────────────────── */
+    .sidebar-toggle {
+      display: none; width: 100%; padding: 10px 16px;
+      background: var(--s-primary); color: #fff; border: none;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      text-align: left;
+    }
+    .sidebar-toggle::after { content: " \25BC"; font-size: 10px; float: right; }
+    .sidebar-toggle.open::after { content: " \25B2"; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; min-height: auto; }
+      .sidebar {
+        width: 100%; max-height: 0; overflow: hidden;
+        border-right: none; border-bottom: 1px solid var(--s-border);
+        padding: 0; transition: max-height .25s ease, padding .25s ease;
+      }
+      .sidebar.mobile-open { max-height: 700px; padding: 14px; }
+      .sidebar-toggle { display: block; }
+      .main { padding: 10px 12px; }
+      .chart-container { height: 220px; }
+      .stats-bar { gap: 8px; }
+      .stat-box { min-width: 70px; padding: 6px 10px; }
+      .stat-value { font-size: 15px; }
+    }
   </style>
   </tal:extras>
 </head>
@@ -110,10 +136,20 @@
   </tal:r>
 
   <div metal:fill-slot="content">
+
+  <!-- Mobile-only filter toggle -->
+  <button class="sidebar-toggle" id="sidebarToggle"
+          onclick="(function(btn){
+            var s=document.getElementById('chartSidebar');
+            s.classList.toggle('mobile-open');
+            btn.classList.toggle('open');
+            btn.childNodes[0].nodeValue = s.classList.contains('mobile-open') ? 'Hide Filters ' : 'Show Filters ';
+          })(this)">Show Filters </button>
+
   <div class="layout">
 
     <!-- ── Sidebar ────────────────────────────────────────────────────── -->
-    <nav class="sidebar">
+    <nav class="sidebar" id="chartSidebar">
       <form class="filter-form" method="GET" action="" id="filterForm"
             tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
 
@@ -225,9 +261,12 @@
           <span tal:content="row/qc_type">CCV</span>
           <span>
             <span tal:content="row/n">0</span>
-            <span tal:condition="python:int(row.get('failures',0))>0"
-                  class="fail-count"
-                  tal:content="string: (${row/failures})"></span>
+            <tal:fail tal:condition="python:int(row.get('failures',0))>0">
+              <a class="fail-count"
+                 tal:attributes="href string:?qc_type=${row/qc_type}&amp;show_failures=1;
+                                 title string:Click to filter to ${row/failures} failing ${row/qc_type} results"
+                 tal:content="string: (${row/failures})"></a>
+            </tal:fail>
           </span>
         </div>
       </tal:summary>

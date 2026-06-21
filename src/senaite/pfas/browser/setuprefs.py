@@ -7,6 +7,11 @@ Creates or updates one SENAITE ReferenceDefinition per QC type,
 with per-analyte expected values, ranges, and error tolerances
 derived from the QC rules store.
 
+Also stamps each definition with the three PFAS pool metadata fields
+(pfas_qc_code, pfas_category, pfas_acceptance_schema) added by the
+schema extender, so the Reference Definitions area in SENAITE Setup
+acts as the live QC Type Pool.
+
 Requires Manager role.
 Python 2.7-compatible (runs inside Zope/Plone).
 """
@@ -19,34 +24,55 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 logger = logging.getLogger("senaite.pfas.browser.setuprefs")
 
-# ── QC type definitions ───────────────────────────────────────────────────────
-# For each shortcode: display label, whether it is a blank sample, and how to
-# derive the ReferenceResults entries (result/min/max/error expressed as % or
-# absolute concentration).
+# ── QC type pool definitions ─────────────────────────────────────────────────
 #
-# Reference Values semantics in SENAITE:
-#   result  — expected/nominal value (e.g. 100 for % recovery, or spike ng/mL)
-#   min     — minimum acceptable result
-#   max     — maximum acceptable result
-#   error   — ± percentage tolerance (applied to result; raises softer alert)
+# code: (title, is_blank, ref_strategy, category, acceptance_schema)
 #
-# For blank types we set Blank=True so SENAITE flags any positive detection.
-# Recovery types use result=100 (%) with min/max from rules.
-# Calibration checks use error=<pct_deviation_max>.
+#   ref_strategy      — how to build the SENAITE ReferenceResults entries
+#   category          — blank | extraction | instrument
+#   acceptance_schema — parameter schema used in Method Profile QC Acceptance
+#                       blank_threshold | recovery_tiered | tiered_recovery_rpd
+#                       rpd_tiered | instrument_cal | instrument_ccv
 #
 QC_REF_SPEC = {
-    # code: (title, is_blank, ref_strategy)
-    # ref_strategy: 'blank' | 'recovery' | 'recovery_key' | 'cal_dev' | 'rpd'
-    "MB":    ("PFAS Method Blank",                    True,  "blank"),
-    "LRB":   ("PFAS Lab Reagent Blank",               True,  "blank"),
-    "MxB":   ("PFAS Matrix Blank",                    True,  "blank"),
-    "CAL":   ("PFAS Calibration Standard",            False, "cal_dev"),
-    "ICV":   ("PFAS Initial Calibration Verification",False, "cal_dev_tight"),
-    "CCV":   ("PFAS Continuing Calibration Verification", False, "cal_dev_tight"),
-    "LCS":   ("PFAS Laboratory Control Sample",       False, "recovery"),
-    "LFSM":  ("PFAS Lab Fortified Sample Matrix",     False, "recovery"),
-    "LFSMD": ("PFAS LFSM Duplicate",                  False, "recovery_dup"),
-    "Dup":   ("PFAS Sample Duplicate",                False, "rpd"),
+    # ── Blank QC types ──────────────────────────────────────────────────────
+    "MB":    ("PFAS Method Blank",
+              True,  "blank",
+              "blank", "blank_threshold"),
+    "LRB":   ("PFAS Lab Reagent Blank",
+              True,  "blank",
+              "blank", "blank_threshold"),
+    "MxB":   ("PFAS Matrix Blank",
+              True,  "blank",
+              "blank", "blank_threshold"),
+
+    # ── Calibration / instrument verification ────────────────────────────────
+    "CAL":   ("PFAS Calibration Standard",
+              False, "cal_dev",
+              "instrument", "instrument_cal"),
+    "ICV":   ("PFAS Initial Calibration Verification",
+              False, "cal_dev_tight",
+              "instrument", "instrument_cal"),
+    "CCV":   ("PFAS Continuing Calibration Verification",
+              False, "cal_dev_tight",
+              "instrument", "instrument_ccv"),
+
+    # ── Extraction / matrix QC types ────────────────────────────────────────
+    "LFB":   ("PFAS Laboratory Fortified Blank",
+              False, "recovery",
+              "extraction", "recovery_tiered"),
+    "LCS":   ("PFAS Laboratory Control Sample",
+              False, "recovery",
+              "extraction", "recovery_tiered"),
+    "LFSM":  ("PFAS Lab Fortified Sample Matrix",
+              False, "recovery",
+              "extraction", "recovery_tiered"),
+    "LFSMD": ("PFAS LFSM Duplicate",
+              False, "recovery_dup",
+              "extraction", "tiered_recovery_rpd"),
+    "Dup":   ("PFAS Sample Duplicate",
+              False, "rpd",
+              "extraction", "rpd_tiered"),
 }
 
 
@@ -77,6 +103,30 @@ def _get_or_create_ref_def(folder, title, is_blank=False):
     return obj, True
 
 
+def _stamp_pfas_fields(obj, qc_code, category, acceptance_schema):
+    """
+    Write pfas_qc_code / pfas_category / pfas_acceptance_schema onto a
+    ReferenceDefinition using the schema-extender field mutators.
+    Silently skips if the field isn't present (extender not yet loaded).
+    """
+    for attr, value in (
+        ("pfas_qc_code", qc_code),
+        ("pfas_category", category),
+        ("pfas_acceptance_schema", acceptance_schema),
+    ):
+        setter = "set" + attr[0].upper() + attr[1:]
+        try:
+            getattr(obj, setter)(value)
+        except AttributeError:
+            try:
+                obj.getField(attr).set(obj, value)
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.warning("_stamp_pfas_fields: %s.%s = %r failed: %s",
+                           obj.Title(), attr, value, exc)
+
+
 def _build_reference_results(qc_code, rules, analyte_uids):
     """
     Build the list of ReferenceResults dicts for one QC type.
@@ -85,23 +135,20 @@ def _build_reference_results(qc_code, rules, analyte_uids):
                         "max": str, "error": str} dicts.
     """
     from senaite.pfas.analytes import KEY_ANALYTES
-    g = rules.get("global", {})
     qt = rules.get("qc_types", {}).get(qc_code, {})
-    strategy = QC_REF_SPEC.get(qc_code, ("", False, "blank"))[2]
+    strategy = QC_REF_SPEC.get(qc_code, ("", False, "blank", "", ""))[2]
 
     records = []
     for uid, keyword in analyte_uids:
         is_key = keyword in KEY_ANALYTES
 
         if strategy == "blank":
-            # Blank: expected result = 0, flag anything > 0
-            rec = {"uid": uid, "result": "0", "min": "0", "max": "0", "error": "100"}
+            rec = {"uid": uid, "result": "0", "min": "0",
+                   "max": "0", "error": "100"}
 
         elif strategy in ("cal_dev", "cal_dev_tight"):
-            pct = (qt.get("pct_deviation_max") or
-                   g.get("cal_pct_deviation_tight" if strategy == "cal_dev_tight"
-                         else "cal_pct_deviation_default", 25.0))
-            # Expressed as % deviation from nominal; result=100 means 100% of nominal
+            default_pct = 20.0 if strategy == "cal_dev_tight" else 25.0
+            pct = qt.get("pct_deviation_max") or default_pct
             rec = {
                 "uid": uid,
                 "result": "100",
@@ -113,7 +160,6 @@ def _build_reference_results(qc_code, rules, analyte_uids):
         elif strategy in ("recovery", "recovery_dup"):
             lo = qt.get("recovery_min", 40.0)
             hi = qt.get("recovery_max", 140.0)
-            # Key analytes can have tighter windows defined in the rules
             if is_key:
                 lo = qt.get("recovery_min_key_matrix", lo)
                 hi = qt.get("recovery_max_key_matrix", hi)
@@ -128,10 +174,10 @@ def _build_reference_results(qc_code, rules, analyte_uids):
             }
 
         elif strategy == "rpd":
-            rpd = qt.get("rpd_max") or g.get("rpd_max", 30.0)
+            rpd = qt.get("rpd_max") or 30.0
             rec = {
                 "uid": uid,
-                "result": "0",    # target RPD = 0
+                "result": "0",
                 "min": "0",
                 "max": str(round(rpd, 2)),
                 "error": str(round(rpd, 2)),
@@ -147,7 +193,7 @@ def _build_reference_results(qc_code, rules, analyte_uids):
 class PFASSetupRefsView(BrowserView):
     """
     Manager browser view that creates/refreshes SENAITE ReferenceDefinitions
-    for all PFAS QC types.
+    for all PFAS QC types and stamps them with PFAS pool metadata fields.
 
     GET  — display preview of what will be created/updated.
     POST — execute the setup (idempotent; safe to run repeatedly).
@@ -171,17 +217,16 @@ class PFASSetupRefsView(BrowserView):
     def qc_type_specs(self):
         """Return list of dicts for the preview table."""
         rules = self._rules()
-        g = rules.get("global", {})
         rows = []
-        for code, (title, is_blank, strategy) in sorted(QC_REF_SPEC.items()):
+        for code, spec in sorted(QC_REF_SPEC.items()):
+            title, is_blank, strategy, category, acceptance_schema = spec
             qt = rules.get("qc_types", {}).get(code, {})
             if strategy == "blank":
                 spec_desc = "Blank — flag any detection above zero"
             elif strategy in ("cal_dev", "cal_dev_tight"):
-                pct = (qt.get("pct_deviation_max") or
-                       g.get("cal_pct_deviation_tight" if strategy == "cal_dev_tight"
-                             else "cal_pct_deviation_default", 25.0))
-                spec_desc = "{} +/- {}%  deviation from nominal".format(100, pct)
+                default_pct = 20.0 if strategy == "cal_dev_tight" else 25.0
+                pct = qt.get("pct_deviation_max") or default_pct
+                spec_desc = "{} +/- {}% deviation from nominal".format(100, pct)
             elif strategy in ("recovery", "recovery_dup"):
                 lo = qt.get("recovery_min", 40.0)
                 hi = qt.get("recovery_max", 140.0)
@@ -191,17 +236,19 @@ class PFASSetupRefsView(BrowserView):
                     qt.get("recovery_max_key_matrix", hi),
                 )
             elif strategy == "rpd":
-                rpd = qt.get("rpd_max") or g.get("rpd_max", 30.0)
+                rpd = qt.get("rpd_max") or 30.0
                 spec_desc = "RPD <= {}%".format(rpd)
             else:
                 spec_desc = "—"
 
             rows.append({
-                "code":     code,
-                "title":    title,
-                "is_blank": is_blank,
-                "strategy": strategy,
-                "spec":     spec_desc,
+                "code":              code,
+                "title":             title,
+                "is_blank":          is_blank,
+                "category":          category,
+                "acceptance_schema": acceptance_schema,
+                "strategy":          strategy,
+                "spec":              spec_desc,
             })
         return rows
 
@@ -211,7 +258,6 @@ class PFASSetupRefsView(BrowserView):
     def existing_ref_defs(self):
         """Return list of existing PFAS ReferenceDefinition titles."""
         try:
-            from bika.lims.api import get_tool
             folder = self.context.bika_setup.bika_referencedefinitions
             return [obj.Title() for obj in folder.objectValues()
                     if "PFAS" in (obj.Title() or "")]
@@ -232,14 +278,9 @@ class PFASSetupRefsView(BrowserView):
         return get_rules()
 
     def _get_analyte_uids(self):
-        """
-        Return list of (uid, keyword) pairs for all PFAS AnalysisServices.
-        Looks up by Keyword so it's resilient to title changes.
-        """
+        """Return list of (uid, keyword) pairs for all PFAS AnalysisServices."""
         try:
             from bika.lims import api
-            portal = self.context.portal_url.getPortalObject()
-            # SENAITE 2.x renamed bika_setup_catalog → senaite_catalog_setup
             try:
                 catalog = api.get_tool("senaite_catalog_setup")
             except Exception:
@@ -261,8 +302,8 @@ class PFASSetupRefsView(BrowserView):
 
         if not analyte_uids:
             self.request.response.setStatus(400)
-            return "No AnalysisServices found — run the GenericSetup profile first " \
-                   "to create PFAS analysis services."
+            return ("No AnalysisServices found — run the GenericSetup profile "
+                    "first to create PFAS analysis services.")
 
         try:
             portal = self.context.portal_url.getPortalObject()
@@ -273,12 +314,15 @@ class PFASSetupRefsView(BrowserView):
 
         created, updated = [], []
 
-        for code, (title, is_blank, _strategy) in sorted(QC_REF_SPEC.items()):
+        for code, spec in sorted(QC_REF_SPEC.items()):
+            title, is_blank, _strategy, category, acceptance_schema = spec
             try:
-                obj, is_new = _get_or_create_ref_def(folder, title, is_blank=is_blank)
+                obj, is_new = _get_or_create_ref_def(folder, title,
+                                                     is_blank=is_blank)
                 records = _build_reference_results(code, rules, analyte_uids)
                 obj.setReferenceResults(records)
                 obj.setBlank(is_blank)
+                _stamp_pfas_fields(obj, code, category, acceptance_schema)
                 try:
                     obj.reindexObject()
                 except Exception:
@@ -292,13 +336,10 @@ class PFASSetupRefsView(BrowserView):
             except Exception as e:
                 logger.error("Failed for %s: %s", code, e)
 
-        n_analytes = len(analyte_uids)
-        msg = "Created: {}  Updated: {}  ({} analytes each)".format(
-            len(created), len(updated), n_analytes
-        )
+        logger.info("pfas-setup-references: created=%d updated=%d analytes=%d",
+                    len(created), len(updated), len(analyte_uids))
         url = "{}/@@pfas-setup-references?created={}".format(
             self.context.absolute_url(),
             "{}_created_{}_updated".format(len(created), len(updated)),
         )
         self.request.response.redirect(url)
-        return msg

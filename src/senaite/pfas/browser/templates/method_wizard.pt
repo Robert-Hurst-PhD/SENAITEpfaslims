@@ -182,9 +182,21 @@
             <p class="meta">
               <span tal:content="sess/steps_done">0</span> of 9 steps completed
             </p>
-            <a class="btn-secondary" tal:attributes="href sess/url">
-              Resume &#8594;
-            </a>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <a class="btn-secondary" tal:attributes="href sess/url">
+                Resume &#8594;
+              </a>
+              <form method="post" style="display:inline;"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-method-wizard">
+                <input type="hidden" name="action" value="delete_session" />
+                <input type="hidden" name="wid" tal:attributes="value sess/wid" />
+                <button type="submit" class="btn-secondary"
+                        style="color:var(--s-danger);border-color:var(--s-danger);"
+                        onclick="return confirm('Delete this wizard session? This cannot be undone.')">
+                  Delete
+                </button>
+              </form>
+            </div>
           </div>
         </tal:each>
       </tal:sessions>
@@ -477,6 +489,15 @@
                   The editor opens in a new tab. Save your changes there, then
                   return here and click "Confirmed" below.
                 </p>
+                <p style="font-size:12px; margin-top:12px;">
+                  Once your profile is saved, review which QC types are active
+                  for this method in the QC Type Grid:
+                </p>
+                <a class="btn-secondary"
+                   target="_blank"
+                   tal:attributes="href string:${base}/@@pfas-qc-type-grid">
+                  Open QC Type Grid &#8594;
+                </a>
                 <form method="post"
                       tal:attributes="action string:${base}/@@pfas-method-wizard">
                   <input type="hidden" name="wid"  tal:attributes="value wid" />

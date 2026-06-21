@@ -14,7 +14,7 @@ Fields (NATIVE_ANALYTES tuple, 9 elements):
   [1] name           — display name as it appears on instrument export & report
   [2] cas            — CAS Registry Number ("" or PLACEHOLDER if unverified)
   [3] full_name      — IUPAC-ish full chemical name
-  [4] klass          — PFCA | PFSA | FTS | FOSA | PFECA | Cl-PFAES | other
+  [4] klass          — PFCA | PFSA | FTS | FOSA | PFECA | Cl-PFAES | FTCA | other
   [5] chain          — perfluorocarbon chain length (approx, for sort order)
   [6] surrogate_is   — the labeled IS keyword that quantifies this native (FDA §9-1)
   [7] no_labeled     — True if no commercially matched labeled standard (N.C. tier)
@@ -23,7 +23,7 @@ Fields (NATIVE_ANALYTES tuple, 9 elements):
                        br-PFHxS). FDA Table 10-1 Tier 1 analytes in tight matrices.
 """
 
-# ── 34 native target analytes ────────────────────────────────────────────────
+# ── 47 native target analytes ────────────────────────────────────────────────
 NATIVE_ANALYTES = [
     # keyword,        name,           cas,          full_name, class, chain, surrogate_is, no_labeled, is_key
     ("PFBA",   "PFBA",   "375-22-4",   "Perfluorobutanoic acid",                          "PFCA",    4,  "M3PFBA",           False, False),
@@ -60,9 +60,23 @@ NATIVE_ANALYTES = [
     ("DONA",   "DONA",   "919005-14-4","4,8-dioxa-3H-perfluorononanoic acid (ADONA)",     "PFECA",   7,  "",                 True,  False),
     ("9ClPF3ONS","9Cl-PF3ONS","756426-58-1","9-chlorohexadecafluoro-3-oxanonane-1-sulfonic acid (F-53B major)","Cl-PFAES",8,"",True,False),
     ("11ClPF3OUdS","11Cl-PF3OUdS","763051-92-9","11-chloroeicosafluoro-3-oxaundecane-1-sulfonic acid (F-53B minor)","Cl-PFAES",10,"",True,False),
+    # ── EPA 1633A-specific analytes (FOSA precursors / novel PFAS / FTCAs) ──────
+    ("NMeFOSA",  "NMeFOSA",  "31506-32-8",  "N-methylperfluorooctanesulfonamide",            "FOSA",  8,  "MD3NMeFOSA",  False, False),
+    ("NEtFOSA",  "NEtFOSA",  "4151-50-2",   "N-ethylperfluorooctanesulfonamide",             "FOSA",  8,  "MD5NEtFOSA",  False, False),
+    ("NMeFOSAA", "NMeFOSAA", "2355-31-9",   "N-methylperfluorooctanesulfonamidoacetic acid",  "FOSA",  8,  "MD3NMeFOSAA", False, False),
+    ("NEtFOSAA", "NEtFOSAA", "2991-50-6",   "N-ethylperfluorooctanesulfonamidoacetic acid",   "FOSA",  8,  "MD5NEtFOSAA", False, False),
+    ("NMeFOSE",  "NMeFOSE",  "24448-09-7",  "N-methylperfluorooctanesulfonamidoethanol",      "FOSA",  8,  "MD7NMeFOSE",  False, False),
+    ("NEtFOSE",  "NEtFOSE",  "1691-99-2",   "N-ethylperfluorooctanesulfonamidoethanol",       "FOSA",  8,  "MD9NEtFOSE",  False, False),
+    ("PFMPA",    "PFMPA",    "377-73-1",    "Perfluoro-3-methoxypropanoic acid",              "PFECA", 3,  "",            True,  False),
+    ("PFMBA",    "PFMBA",    "863090-85-5", "Perfluoro-4-methoxybutanoic acid",               "PFECA", 4,  "",            True,  False),
+    ("NFDHA",    "NFDHA",    "151772-58-6", "Perfluoro-3,6-dioxaoctanoic acid",               "PFECA", 6,  "",            True,  False),
+    ("PFEESA",   "PFEESA",   "113507-82-7", "Perfluoroethyl ether sulfonic acid",             "PFECA", 4,  "",            True,  False),
+    ("3:3FTCA",  "3:3FTCA",  "356-02-5",    "3:3 fluorotelomer carboxylic acid",              "FTCA",  3,  "",            True,  False),
+    ("5:3FTCA",  "5:3FTCA",  "914637-49-3", "5:3 fluorotelomer carboxylic acid",              "FTCA",  5,  "",            True,  False),
+    ("7:3FTCA",  "7:3FTCA",  "812-70-4",    "7:3 fluorotelomer carboxylic acid",              "FTCA",  7,  "",            True,  False),
 ]
 
-# ── 21 isotopically-labeled internal standards / surrogates ──────────────────
+# ── 27 isotopically-labeled internal standards / surrogates ──────────────────
 # quant_is: surrogates quantify against M4PFOA (FDA Table 9-1, mean RF).
 INTERNAL_STANDARDS = [
     # keyword,          name,                 labeled_analog_of, role
@@ -87,6 +101,13 @@ INTERNAL_STANDARDS = [
     ("M2-6:2FTS","13C2,D4-6:2FTS",     "6:2FTS", "surrogate"),
     ("M2-8:2FTS","13C2,D4-8:2FTS",     "8:2FTS", "surrogate"),
     ("M2-10:2FTS","13C2,D4-10:2FTS",   "10:2FTS","surrogate"),
+    # ── EPA 1633A FOSA-surrogate IS ──────────────────────────────────────────
+    ("MD3NMeFOSA",  "D3-NMeFOSA",  "NMeFOSA",  "surrogate"),
+    ("MD5NEtFOSA",  "D5-NEtFOSA",  "NEtFOSA",  "surrogate"),
+    ("MD3NMeFOSAA", "D3-NMeFOSAA", "NMeFOSAA", "surrogate"),
+    ("MD5NEtFOSAA", "D5-NEtFOSAA", "NEtFOSAA", "surrogate"),
+    ("MD7NMeFOSE",  "D7-NMeFOSE",  "NMeFOSE",  "surrogate"),
+    ("MD9NEtFOSE",  "D9-NEtFOSE",  "NEtFOSE",  "surrogate"),
 ]
 
 # ── Methods (each a SENAITE Method object) ───────────────────────────────────
@@ -233,3 +254,64 @@ def _build_compound_name_to_keyword():
 
 
 COMPOUND_NAME_TO_KEYWORD = _build_compound_name_to_keyword()
+
+
+# ── SENAITE AnalysisService pfas_role helpers ────────────────────────────────
+# Extension fields added by archetypes.schemaextender do not generate
+# automatic accessor methods (getPfas_role is never created).  Use these
+# helpers wherever pfas_role must be read or written on a service object.
+
+def get_pfas_role(svc_obj):
+    """Return pfas_role value from an AnalysisService, or '' if not set."""
+    try:
+        field = svc_obj.Schema().get("pfas_role")
+        if field is not None:
+            return field.get(svc_obj) or ""
+    except Exception:
+        pass
+    return svc_obj.__dict__.get("pfas_role", "")
+
+
+def set_pfas_role(svc_obj, role):
+    """Set pfas_role on an AnalysisService via the schema field."""
+    try:
+        field = svc_obj.Schema().get("pfas_role")
+        if field is not None:
+            field.set(svc_obj, role)
+            return True
+    except Exception:
+        pass
+    try:
+        svc_obj.__dict__["pfas_role"] = role
+        return True
+    except Exception:
+        return False
+
+
+def get_method_is_services(method_id, portal=None):
+    """
+    Return list of (keyword, title, role) for all IS/surrogate services
+    associated with the given method_id.
+
+    Derives membership by looking at which native analytes in NATIVE_ANALYTES
+    have the given method in their Method association, then collecting their
+    surrogate_is keywords plus the injection IS.
+
+    If portal is supplied, cross-checks against actual SENAITE AnalysisService
+    objects to confirm they exist.  Otherwise returns from NATIVE_ANALYTES only.
+    """
+    # Collect surrogate keywords used by this method's native analytes
+    used_surrogates = set()
+    for row in NATIVE_ANALYTES:
+        if row[6]:  # has surrogate_is
+            used_surrogates.add(row[6])
+
+    # Build IS list: used surrogates + injection_is
+    injection_is = {row[0] for row in INTERNAL_STANDARDS if row[3] == "injection_is"}
+    wanted = used_surrogates | injection_is
+
+    result = []
+    for row in INTERNAL_STANDARDS:
+        if row[0] in wanted:
+            result.append({"keyword": row[0], "title": row[1], "role": row[3]})
+    return result

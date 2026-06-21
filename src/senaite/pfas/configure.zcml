@@ -31,4 +31,7 @@
   <!-- Custom content types defined by this add-on -->
   <include file="content.zcml" />
 
+  <!-- Archetypes schema extenders (ReferenceDefinition PFAS QC fields) -->
+  <include package=".extenders" />
+
 </configure>

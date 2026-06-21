@@ -93,8 +93,29 @@
 
   /* ── Spike Levels — per matrix ──────────────────── */
 
+  // QC types that carry spike concentration values.
+  // LFSMD shares the same concentration table as LFSM.
+  var SPIKE_QC_TYPES = ['LFB', 'LCS', 'LFSM'];
+  var SPIKE_QC_LABELS = {LFB: 'LFB', LCS: 'LCS', LFSM: 'LFSM / LFSMD'};
+
   function _matId(matrix) {
     return matrix.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
+  function _spikeBodyId(matrix, qcType) {
+    return 'spikeBody_' + _matId(matrix) + '_' + qcType;
+  }
+
+  function _activeSpikeQcTypes() {
+    // Return the intersection of SPIKE_QC_TYPES with the method's associated_qc_types.
+    var assoc = [];
+    try { assoc = JSON.parse((document.getElementById('associated_qc_types_json') || {value:'[]'}).value || '[]'); }
+    catch(e) {}
+    // LFSMD association → show LFSM spike table (they share levels)
+    if (assoc.indexOf('LFSMD') !== -1 && assoc.indexOf('LFSM') === -1) {
+      assoc = assoc.concat(['LFSM']);
+    }
+    return SPIKE_QC_TYPES.filter(function(q) { return assoc.indexOf(q) !== -1; });
   }
 
   function buildSpikeMatrixSections() {
@@ -110,50 +131,56 @@
     try { sl = JSON.parse((document.getElementById('spike_levels_json') || {value:'{}'}).value || '{}'); }
     catch(e) {}
 
+    var activeQcTypes = _activeSpikeQcTypes();
+
     container.innerHTML = '';
     matrices.forEach(function(matrix) {
-      var matData = sl[matrix] || {LFB: [], LFSM: []};
+      var matData = sl[matrix] || {};
       var matId = _matId(matrix);
       var section = document.createElement('div');
       section.className = 'spike-matrix-section';
       section.setAttribute('data-matrix', matrix);
+
+      var tablesHtml = activeQcTypes.map(function(qcType) {
+        var bodyId = _spikeBodyId(matrix, qcType);
+        return '<div style="flex:1;min-width:220px">' +
+          '<div style="font-weight:700;font-size:12px;margin-bottom:6px">' +
+            _esc(SPIKE_QC_LABELS[qcType] || qcType) + '</div>' +
+          '<table class="listing" style="width:100%"><thead><tr>' +
+            '<th style="width:45%">Level</th><th style="width:40%">ppt</th><th style="width:36px"></th>' +
+          '</tr></thead><tbody id="' + bodyId + '"></tbody></table>' +
+          '<button type="button" class="btn-add-row" style="margin-top:4px"' +
+            ' onclick="addSpikeLevelRow(' + JSON.stringify(matrix) + ',' + JSON.stringify(qcType) + ')">+ Add level</button>' +
+          '</div>';
+      }).join('');
+
       section.innerHTML =
         '<div class="spike-matrix-hdr">' + _esc(matrix) + '</div>' +
         '<div style="padding:10px 12px">' +
-        '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
-          '<div style="flex:1;min-width:220px">' +
-            '<div style="font-weight:700;font-size:12px;margin-bottom:6px">LFB</div>' +
-            '<table class="listing" style="width:100%"><thead><tr>' +
-              '<th style="width:45%">Level</th><th style="width:40%">ppt</th><th style="width:36px"></th>' +
-            '</tr></thead><tbody id="spikeLFBBody_' + matId + '"></tbody></table>' +
-            '<button type="button" class="btn-add-row" style="margin-top:4px"' +
-              ' onclick="addSpikeLevelRow(' + JSON.stringify(matrix) + ',\'LFB\')">+ Add level</button>' +
+          '<div style="display:flex;gap:24px;flex-wrap:wrap">' +
+            tablesHtml +
           '</div>' +
-          '<div style="flex:1;min-width:220px">' +
-            '<div style="font-weight:700;font-size:12px;margin-bottom:6px">LFSM / LFSMD</div>' +
-            '<table class="listing" style="width:100%"><thead><tr>' +
-              '<th style="width:45%">Level</th><th style="width:40%">ppt</th><th style="width:36px"></th>' +
-            '</tr></thead><tbody id="spikeLFSMBody_' + matId + '"></tbody></table>' +
-            '<button type="button" class="btn-add-row" style="margin-top:4px"' +
-              ' onclick="addSpikeLevelRow(' + JSON.stringify(matrix) + ',\'LFSM\')">+ Add level</button>' +
-          '</div>' +
-        '</div></div>';
+        '</div>';
+
       container.appendChild(section);
-      (matData.LFB  || []).forEach(function(r) { addSpikeLevelRow(matrix, 'LFB',  r.label, r.ppt); });
-      (matData.LFSM || []).forEach(function(r) { addSpikeLevelRow(matrix, 'LFSM', r.label, r.ppt); });
+
+      activeQcTypes.forEach(function(qcType) {
+        (matData[qcType] || []).forEach(function(r) {
+          addSpikeLevelRow(matrix, qcType, r.label, r.ppt);
+        });
+      });
     });
   }
 
   function addSpikeLevelRow(matrix, qcType, label, ppt) {
-    var matId   = _matId(matrix);
-    var tbodyId = (qcType === 'LFB' ? 'spikeLFBBody_' : 'spikeLFSMBody_') + matId;
+    var tbodyId = _spikeBodyId(matrix, qcType);
     var tbody   = document.getElementById(tbodyId);
     if (!tbody) return;
     var tr = document.createElement('tr');
     tr.innerHTML =
-      '<td><input type="text" data-spike-matrix="' + _esc(matrix) + '" data-spike-qc="' + qcType + '" data-spike-field="label"' +
+      '<td><input type="text" data-spike-matrix="' + _esc(matrix) + '" data-spike-qc="' + _esc(qcType) + '" data-spike-field="label"' +
         ' value="' + _esc(label || '') + '" placeholder="Low" style="width:95%" /></td>' +
-      '<td><input type="number" data-spike-matrix="' + _esc(matrix) + '" data-spike-qc="' + qcType + '" data-spike-field="ppt"' +
+      '<td><input type="number" data-spike-matrix="' + _esc(matrix) + '" data-spike-qc="' + _esc(qcType) + '" data-spike-field="ppt"' +
         ' value="' + (ppt != null ? ppt : '') + '" step="any" placeholder="ppt" style="width:95%" /></td>' +
       '<td><button type="button" class="del-btn"' +
         ' onclick="this.closest(\'tr\').remove();syncSpikeLevelsJson()">&#215;</button></td>';
@@ -166,14 +193,14 @@
 
   function syncSpikeLevelsJson() {
     var result = {};
+    var activeQcTypes = _activeSpikeQcTypes();
     document.querySelectorAll('#spikeLevelsContainer .spike-matrix-section').forEach(function(section) {
       var matrix = section.getAttribute('data-matrix');
       if (!matrix) return;
-      var matId = _matId(matrix);
-      result[matrix] = {LFB: [], LFSM: []};
-      ['LFB', 'LFSM'].forEach(function(qc) {
-        var tbodyId = (qc === 'LFB' ? 'spikeLFBBody_' : 'spikeLFSMBody_') + matId;
-        var tbody = document.getElementById(tbodyId);
+      result[matrix] = {};
+      activeQcTypes.forEach(function(qcType) {
+        result[matrix][qcType] = [];
+        var tbody = document.getElementById(_spikeBodyId(matrix, qcType));
         if (!tbody) return;
         tbody.querySelectorAll('tr').forEach(function(tr) {
           var lbl   = tr.querySelector('[data-spike-field="label"]');
@@ -181,7 +208,7 @@
           var labelVal = lbl   ? lbl.value.trim()   : '';
           var pptVal   = pptEl && pptEl.value.trim() !== '' ? parseFloat(pptEl.value) : null;
           if (labelVal) {
-            result[matrix][qc].push({label: labelVal, ppt: isNaN(pptVal) ? null : pptVal});
+            result[matrix][qcType].push({label: labelVal, ppt: isNaN(pptVal) ? null : pptVal});
           }
         });
       });

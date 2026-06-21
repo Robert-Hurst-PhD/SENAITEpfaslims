@@ -166,6 +166,9 @@ class PFASMethodProfileEditView(BrowserView):
     def spike_levels_json(self):
         return json.dumps(self.profile().get("spike_levels", {}), indent=2)
 
+    def associated_qc_types_json(self):
+        return json.dumps(self.profile().get("associated_qc_types", []))
+
     def extraction_stages_json(self):
         stages = self.profile().get("extraction_stages", [])
         return json.dumps(sorted(stages, key=lambda s: s.get("order", 0)), indent=2)

@@ -1,0 +1,402 @@
+<nav id="sidebar" class="pfas-sidebar"
+     tal:define="purl view/portal_url;
+                 path view/current_path"
+     aria-label="Main navigation">
+
+<style id="pfas-sidebar-css">
+/* ── PFAS unified sidebar ───────────────────────────────────────────────── */
+#sidebar.pfas-sidebar {
+  min-width: 220px;
+  max-width: 220px;
+  background: #f8f9fa;
+  border-right: 1px solid #dee2e6;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: min-width .2s ease, max-width .2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Collapse via PFAS shell (workspace pages) */
+#pfas-shell.panel-collapsed #sidebar.pfas-sidebar {
+  min-width: 48px;
+  max-width: 48px;
+}
+
+/* Collapse via core SENAITE toggle (core pages) */
+#sidebar.pfas-sidebar.toggled {
+  min-width: 48px;
+  max-width: 48px;
+}
+
+/* Inner scroll container */
+.pfas-sb-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
+}
+
+/* ── Group (accordion) ─────────────────────────────────────────────────── */
+.pfas-sg-head {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 12px 5px 12px;
+  cursor: pointer;
+  text-align: left;
+  color: #6c757d;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  user-select: none;
+}
+.pfas-sg-head:hover { color: #343a40; }
+.pfas-sg-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.pfas-sg-arrow {
+  font-size: 10px;
+  transition: transform .15s;
+  display: inline-block;
+  color: #adb5bd;
+}
+.pfas-sg.sg-closed .pfas-sg-arrow { transform: rotate(-90deg); }
+
+/* Hide group label + arrow when collapsed to rail */
+#pfas-shell.panel-collapsed .pfas-sg-label,
+#pfas-shell.panel-collapsed .pfas-sg-arrow,
+#sidebar.pfas-sidebar.toggled .pfas-sg-label,
+#sidebar.pfas-sidebar.toggled .pfas-sg-arrow { opacity: 0; }
+
+/* ── Group items ──────────────────────────────────────────────────────── */
+.pfas-sg-items { overflow: hidden; }
+.pfas-sg.sg-closed .pfas-sg-items { display: none; }
+
+/* Show all items in icon-rail mode regardless of group state */
+#pfas-shell.panel-collapsed .pfas-sg-items,
+#sidebar.pfas-sidebar.toggled .pfas-sg-items { display: block; }
+
+/* ── Sidebar item ─────────────────────────────────────────────────────── */
+.pfas-si {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px 7px 16px;
+  color: #495057;
+  text-decoration: none;
+  font-size: 13px;
+  border-left: 3px solid transparent;
+  overflow: hidden;
+  transition: color .1s, background .1s;
+}
+.pfas-si:hover {
+  color: #212529;
+  background: #e9ecef;
+  text-decoration: none;
+}
+.pfas-si.si-active {
+  color: #428aaf;
+  border-left-color: #428aaf;
+  background: #e8f4f8;
+  font-weight: 600;
+}
+.pfas-si-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1;
+  color: #adb5bd;
+}
+.pfas-si.si-active .pfas-si-icon { color: #428aaf; }
+.pfas-si-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+
+/* Hide labels when collapsed to rail */
+#pfas-shell.panel-collapsed .pfas-si-label,
+#sidebar.pfas-sidebar.toggled .pfas-si-label { display: none; }
+
+/* Collapse toggle at bottom */
+.pfas-sb-foot {
+  flex: 0 0 auto;
+  border-top: 1px solid #dee2e6;
+}
+.pfas-sb-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #adb5bd;
+  font-size: 15px;
+  transition: color .1s;
+}
+.pfas-sb-collapse-btn:hover { color: #6c757d; }
+.pfas-sb-collapse-arrow { display: inline-block; transition: transform .2s; }
+#pfas-shell.panel-collapsed .pfas-sb-collapse-arrow,
+#sidebar.pfas-sidebar.toggled .pfas-sb-collapse-arrow { transform: rotate(180deg); }
+</style>
+
+  <div class="pfas-sb-scroll">
+
+    <!-- ── OPERATIONS ───────────────────────────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-operations">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-operations')">
+        <span class="pfas-sg-label">Operations</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Clients"
+           tal:attributes="href string:${purl}/clients;
+                           class python:'pfas-si si-active' if '/clients' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128101;</span>
+          <span class="pfas-si-label">Clients</span>
+        </a>
+        <a class="pfas-si" title="Samples"
+           tal:attributes="href string:${purl}/@@samples;
+                           class python:'pfas-si si-active' if '@@samples' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#9879;</span>
+          <span class="pfas-si-label">Samples</span>
+        </a>
+        <a class="pfas-si" title="Batches"
+           tal:attributes="href string:${purl}/batches;
+                           class python:'pfas-si si-active' if '/batches' in path and '@@' not in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128193;</span>
+          <span class="pfas-si-label">Batches</span>
+        </a>
+        <a class="pfas-si" title="Worksheets"
+           tal:attributes="href string:${purl}/worksheets;
+                           class python:'pfas-si si-active' if '/worksheets' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128203;</span>
+          <span class="pfas-si-label">Worksheets</span>
+        </a>
+        <a class="pfas-si" title="Sample Tracker"
+           tal:attributes="href string:${purl}/@@pfas-track;
+                           class python:'pfas-si si-active' if '@@pfas-track' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128270;</span>
+          <span class="pfas-si-label">Sample Tracker</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── QC &amp; METHODS ─────────────────────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-qc">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-qc')">
+        <span class="pfas-sg-label">QC &amp; Methods</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Method Profiles"
+           tal:attributes="href string:${purl}/@@pfas-method-profiles;
+                           class python:'pfas-si si-active' if '@@pfas-method-profile' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#9874;</span>
+          <span class="pfas-si-label">Method Profiles</span>
+        </a>
+        <a class="pfas-si" title="QC Rules"
+           tal:attributes="href string:${purl}/@@pfas-qc-rules;
+                           class python:'pfas-si si-active' if '@@pfas-qc-rules' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#9876;</span>
+          <span class="pfas-si-label">QC Rules</span>
+        </a>
+        <a class="pfas-si" title="Control Charts"
+           tal:attributes="href string:${purl}/@@pfas-control-chart;
+                           class python:'pfas-si si-active' if '@@pfas-control-chart' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128200;</span>
+          <span class="pfas-si-label">Control Charts</span>
+        </a>
+        <a class="pfas-si" title="Calibrations"
+           tal:attributes="href string:${purl}/@@pfas-calibrations;
+                           class python:'pfas-si si-active' if '@@pfas-calibrations' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128208;</span>
+          <span class="pfas-si-label">Calibrations</span>
+        </a>
+        <a class="pfas-si" title="Specifications"
+           tal:attributes="href string:${purl}/bika_setup/bika_analysisspecs;
+                           class python:'pfas-si si-active' if 'bika_analysisspecs' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#9999;</span>
+          <span class="pfas-si-label">Specifications</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── BENCH ────────────────────────────────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-bench">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-bench')">
+        <span class="pfas-sg-label">Bench</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Reagent Inventory"
+           tal:attributes="href string:${purl}/@@pfas-reagents;
+                           class python:'pfas-si si-active' if '@@pfas-reagents' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#9879;</span>
+          <span class="pfas-si-label">Reagent Inventory</span>
+        </a>
+        <a class="pfas-si" title="Logbooks"
+           tal:attributes="href string:${purl}/@@pfas-logbook-admin;
+                           class python:'pfas-si si-active' if '@@pfas-logbook' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128214;</span>
+          <span class="pfas-si-label">Logbooks</span>
+        </a>
+        <a class="pfas-si" title="Extraction Guide"
+           tal:attributes="href string:${purl}/@@pfas-extraction-guide;
+                           class python:'pfas-si si-active' if '@@pfas-extraction-guide' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128209;</span>
+          <span class="pfas-si-label">Extraction Guide</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── INSTRUMENTS &amp; IMPORT ─────────────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-instruments">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-instruments')">
+        <span class="pfas-sg-label">Instruments &amp; Import</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Instruments"
+           tal:attributes="href string:${purl}/bika_setup/bika_instruments;
+                           class python:'pfas-si si-active' if 'bika_instruments' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128290;</span>
+          <span class="pfas-si-label">Instruments</span>
+        </a>
+        <a class="pfas-si" title="Import Studio"
+           tal:attributes="href string:${purl}/@@pfas-import-studio;
+                           class python:'pfas-si si-active' if '@@pfas-import-studio' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128229;</span>
+          <span class="pfas-si-label">Import Studio</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── REPORTING ─────────────────────────────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-reporting">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-reporting')">
+        <span class="pfas-sg-label">Reporting</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="EGAD EDD"
+           tal:attributes="href string:${purl}/@@pfas-egad-batches;
+                           class python:'pfas-si si-active' if '@@pfas-egad-batches' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#128196;</span>
+          <span class="pfas-si-label">EGAD EDD</span>
+        </a>
+        <a class="pfas-si" title="EGAD Config"
+           tal:attributes="href string:${purl}/@@pfas-egad-config;
+                           class python:'pfas-si si-active' if '@@pfas-egad-config' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#9881;</span>
+          <span class="pfas-si-label">EGAD Config</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── CONFIGURATION ─────────────────────────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-config">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-config')">
+        <span class="pfas-sg-label">Configuration</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Storage &amp; Inventory"
+           tal:attributes="href string:${purl}/@@lims-setup#storage;
+                           class python:'pfas-si si-active' if '@@lims-setup' in path else 'pfas-si'">
+          <span class="pfas-si-icon">&#127970;</span>
+          <span class="pfas-si-label">Storage &amp; Inventory</span>
+        </a>
+        <a class="pfas-si" title="Instrument Setup"
+           tal:attributes="href string:${purl}/@@lims-setup#instruments">
+          <span class="pfas-si-icon">&#128290;</span>
+          <span class="pfas-si-label">Instrument Setup</span>
+        </a>
+        <a class="pfas-si" title="Method &amp; Analyte Setup"
+           tal:attributes="href string:${purl}/@@lims-setup#methods">
+          <span class="pfas-si-icon">&#9874;</span>
+          <span class="pfas-si-label">Method &amp; Analyte Setup</span>
+        </a>
+        <a class="pfas-si" title="Workflow &amp; QC"
+           tal:attributes="href string:${purl}/@@lims-setup#workflow">
+          <span class="pfas-si-icon">&#9881;</span>
+          <span class="pfas-si-label">Workflow &amp; QC</span>
+        </a>
+        <a class="pfas-si" title="Regulatory Reporting"
+           tal:attributes="href string:${purl}/@@lims-setup#regulatory">
+          <span class="pfas-si-icon">&#128196;</span>
+          <span class="pfas-si-label">Regulatory Reporting</span>
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /pfas-sb-scroll -->
+
+  <!-- Collapse toggle at bottom -->
+  <div class="pfas-sb-foot">
+    <button class="pfas-sb-collapse-btn" type="button"
+            onclick="pfasSidebarCollapseToggle()"
+            title="Collapse sidebar">
+      <span class="pfas-sb-collapse-arrow">&#8249;</span>
+    </button>
+  </div>
+
+<script>
+(function () {
+  var SB_STATE_KEY = 'pfas_sb_groups';
+
+  function restoreGroups() {
+    var raw;
+    try { raw = sessionStorage.getItem(SB_STATE_KEY); } catch (e) {}
+    if (!raw) return;
+    var closed;
+    try { closed = JSON.parse(raw); } catch (e) { return; }
+    if (!Array.isArray(closed)) return;
+    for (var i = 0; i < closed.length; i++) {
+      var el = document.getElementById(closed[i]);
+      if (el) el.classList.add('sg-closed');
+    }
+  }
+
+  function saveGroups() {
+    var closed = [];
+    document.querySelectorAll('.pfas-sg.sg-closed').forEach(function (el) {
+      if (el.id) closed.push(el.id);
+    });
+    try { sessionStorage.setItem(SB_STATE_KEY, JSON.stringify(closed)); } catch (e) {}
+  }
+
+  window.pfasSgToggle = function (groupId) {
+    var el = document.getElementById(groupId);
+    if (!el) return;
+    el.classList.toggle('sg-closed');
+    saveGroups();
+  };
+
+  /* pfasSidebarCollapseToggle: collapse the sidebar.
+     On PFAS workspace pages, toggles .panel-collapsed on #pfas-shell.
+     On core SENAITE pages (no #pfas-shell), toggles .toggled on #sidebar. */
+  window.pfasSidebarCollapseToggle = function () {
+    var shell = document.getElementById('pfas-shell');
+    if (shell) {
+      var collapsed = shell.classList.toggle('panel-collapsed');
+      try { sessionStorage.setItem('pfas_panel_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    } else {
+      var sb = document.getElementById('sidebar');
+      if (sb) sb.classList.toggle('toggled');
+    }
+  };
+
+  restoreGroups();
+})();
+</script>
+
+</nav>

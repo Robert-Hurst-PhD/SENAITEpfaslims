@@ -26,11 +26,6 @@
       --s-warning:      #fd7e14;
       --s-focus-ring:   rgba(66,138,175,.25);
 
-      --pfas-rail-bg:      #1e2329;
-      --pfas-rail-border:  rgba(255,255,255,.10);
-      --pfas-rail-item:    rgba(255,255,255,.60);
-      --pfas-rail-hover:   rgba(255,255,255,.90);
-      --pfas-rail-active-bg: rgba(66,138,175,.18);
       --pfas-panel-width:  220px;
       --pfas-rail-width:   48px;
       --pfas-header-h:     52px;
@@ -125,105 +120,12 @@
       min-height: 0;
     }
 
-    /* ── Left panel ──────────────────────────────────────────────────────── */
-    .pfas-left-panel {
-      flex: 0 0 var(--pfas-panel-width);
-      width: var(--pfas-panel-width);
-      background: var(--pfas-rail-bg);
-      border-right: 1px solid var(--pfas-rail-border);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      transition: flex-basis .2s ease, width .2s ease;
-      position: relative;
+    /* ── Left panel (now the unified #sidebar from @@pfas-sidebar) ─────── */
+    /* Sizing + collapse is handled by pfas_sidebar.pt's inline CSS.
+       We only need to make #sidebar behave as a flex child of .pfas-shell. */
+    .pfas-shell > #sidebar {
+      flex-shrink: 0;
     }
-    .pfas-shell.panel-collapsed .pfas-left-panel {
-      flex-basis: var(--pfas-rail-width);
-      width: var(--pfas-rail-width);
-    }
-
-    /* Scrollable item list */
-    .pfas-panel-items {
-      flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding-top: 8px;
-    }
-
-    /* Section headings */
-    .pfas-panel-section {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .07em;
-      color: rgba(255,255,255,.30);
-      padding: 14px 14px 4px 14px;
-      white-space: nowrap;
-      overflow: hidden;
-    }
-    .pfas-shell.panel-collapsed .pfas-panel-section { opacity: 0; height: 0; padding: 0; }
-
-    /* Nav items */
-    .pfas-panel-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 9px 14px;
-      color: var(--pfas-rail-item);
-      text-decoration: none;
-      font-size: 13px;
-      border-left: 3px solid transparent;
-      overflow: hidden;
-      white-space: nowrap;
-      transition: color .1s, background .1s;
-      cursor: pointer;
-    }
-    .pfas-panel-item:hover {
-      color: var(--pfas-rail-hover);
-      background: rgba(255,255,255,.05);
-      text-decoration: none;
-    }
-    .pfas-panel-item.active {
-      color: #fff;
-      border-left-color: var(--s-primary);
-      background: var(--pfas-rail-active-bg);
-    }
-
-    /* Icon — always visible; 20px fixed width */
-    .pfas-panel-icon {
-      flex: 0 0 20px;
-      width: 20px;
-      text-align: center;
-      font-size: 15px;
-      line-height: 1;
-    }
-
-    /* Label — hidden when panel collapsed */
-    .pfas-panel-label {
-      transition: opacity .15s;
-      overflow: hidden;
-    }
-    .pfas-shell.panel-collapsed .pfas-panel-label { opacity: 0; pointer-events: none; }
-
-    /* Collapse handle at panel bottom */
-    .pfas-rail-toggle {
-      flex: 0 0 36px;
-      height: 36px;
-      background: none;
-      border: none;
-      border-top: 1px solid var(--pfas-rail-border);
-      color: rgba(255,255,255,.35);
-      font-size: 16px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      padding: 0 14px;
-      transition: color .1s;
-    }
-    .pfas-rail-toggle:hover { color: rgba(255,255,255,.75); }
-    .pfas-rail-toggle .pfas-rail-arrow { display: inline-block; transition: transform .2s; }
-    .pfas-shell.panel-collapsed .pfas-rail-toggle .pfas-rail-arrow { transform: rotate(180deg); }
 
     /* ── Main area ───────────────────────────────────────────────────────── */
     .pfas-main {
@@ -499,24 +401,20 @@
       .pfas-header { padding: 0 10px 0 0; }
       .pfas-header-title { font-size: 14px; }
 
-      /* On mobile the panel floats as an overlay */
-      .pfas-left-panel {
+      /* On mobile the sidebar floats as an overlay */
+      .pfas-shell > #sidebar.pfas-sidebar {
         position: absolute;
         top: 0; left: 0; bottom: 0;
         z-index: 100;
         transform: translateX(-100%);
         transition: transform .2s ease;
         box-shadow: none;
+        min-width: var(--pfas-panel-width) !important;
+        max-width: var(--pfas-panel-width) !important;
       }
-      /* Override collapsed for mobile — collapsed = hidden via transform */
-      .pfas-left-panel,
-      .pfas-shell.panel-collapsed .pfas-left-panel {
-        flex-basis: var(--pfas-panel-width) !important;
-        width: var(--pfas-panel-width) !important;
-      }
-      .pfas-shell.panel-open .pfas-left-panel {
+      .pfas-shell.panel-open > #sidebar.pfas-sidebar {
         transform: translateX(0);
-        box-shadow: 4px 0 16px rgba(0,0,0,.35);
+        box-shadow: 4px 0 16px rgba(0,0,0,.20);
       }
       /* Backdrop for mobile overlay */
       .pfas-panel-backdrop {
@@ -550,7 +448,7 @@
     /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
       .pfas-header { display: none !important; }
-      .pfas-left-panel { display: none !important; }
+      #sidebar.pfas-sidebar { display: none !important; }
       .pfas-tabs-wrap { display: none !important; }
       .pfas-action-bar-wrap { display: none !important; }
       .lb-breadcrumb { display: none !important; }
@@ -593,36 +491,11 @@
   <div class="pfas-panel-backdrop" id="pfas-panel-backdrop"
        onclick="pfasClosePanel()"></div>
 
-  <!-- Left panel -->
-  <nav class="pfas-left-panel" id="pfas-left-panel" aria-label="PFAS navigation">
-    <div class="pfas-panel-items">
-      <tal:nav metal:define-slot="left-panel">
-
-        <!-- Role-scoped nav — PFASMacrosView.get_nav_items().
-             Use context/@@pfas-macros (not 'view') so Chameleon METAL
-             macro expansion always resolves to PFASMacrosView, not the
-             calling page's view. -->
-        <tal:block tal:repeat="item context/@@pfas-macros/get_nav_items">
-          <p class="pfas-panel-section"
-             tal:condition="python:item['type'] == 'section'"
-             tal:content="item/title">Section</p>
-          <a tal:condition="python:item['type'] == 'item'"
-             tal:attributes="href item/url;
-                             class python:'pfas-panel-item active' if item.get('active') else 'pfas-panel-item'">
-            <span class="pfas-panel-icon" tal:content="item/icon">i</span>
-            <span class="pfas-panel-label" tal:content="item/label">Label</span>
-          </a>
-        </tal:block>
-
-      </tal:nav>
-    </div>
-
-    <!-- Collapse handle -->
-    <button class="pfas-rail-toggle" onclick="pfasTogglePanel()" type="button"
-            title="Collapse panel">
-      <span class="pfas-rail-arrow">&#8249;</span>
-    </button>
-  </nav>
+  <!-- Unified sidebar — rendered via PFASMacrosView.render_sidebar() to avoid
+       the <!DOCTYPE html> envelope that Plone adds to top-level BrowserView
+       responses. PFASMacrosView._sidebar_template() is called as a method,
+       not as a request handler, so the transform pipeline is bypassed. -->
+  <tal:sb tal:replace="structure context/@@pfas-macros/render_sidebar" />
 
   <!-- Main: tabs + content + action bar -->
   <div class="pfas-main">

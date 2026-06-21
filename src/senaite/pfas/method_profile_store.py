@@ -234,82 +234,103 @@ DEFAULT_PROFILES = {
             "USDA/FDA 32-PFAS in Food v10 (5/5/26) + AOAC SMPR 2023.003; "
             "LC-MS/MS isotope dilution"
         ),
-        "calibration": {
-            # 0.995 matches the legacy CRITERIA default (preserves current behaviour).
-            # The FDA method document specifies 0.990 — see QUESTIONS.md Q-005.
-            "r2_min": 0.995,
-            "force_origin": False,
-            "point_pct_dev_max": 20.0,
-            "low_point_pct_dev_max": None,
-        },
-        "ccv": {
-            "frequency": 6,
-            "recovery_min": 70.0,
-            "recovery_max": 130.0,
-            "low_level_min": None,
-            "low_level_max": None,
-        },
-        "is": {
-            "vs_ical_avg_min": 50.0,
-            "vs_ical_avg_max": 150.0,
-            "vs_last_ccv_min": None,
-            "vs_last_ccv_max": None,
-            "notes": "Lab SOP screen; FDA method sets no numeric IS-area limit",
-        },
-        "confirmation": {
-            "rrt_tol_pct": 1.0,
-            "rt_tol_abs_min": None,
-            "ion_ratio_tol_pct": 30.0,
-            "sn_quan_min": 3.0,
-            "sn_confirm_min": 3.0,
-            "require_confirm_ion_check": True,
-        },
-        "duplicate": {
-            "rpd_max": 20.0,
-        },
-        "recovery_tiers": [
-            {
-                "tier": 1,
-                "description": (
-                    "Key analytes (PFOS/PFOA/PFHxS/PFNA + isomers) in tight "
-                    "matrices (eggs/meat/seafood)"
-                ),
-                "key_analytes": [
-                    "PFOS", "PFOA", "PFHxS", "PFNA",
-                    "lr-PFOS", "br-PFOS", "lr-PFHxS", "br-PFHxS",
-                ],
-                "tight_matrices": [
-                    "egg", "eggs", "meat", "muscle", "beef", "pork",
-                    "poultry", "deer", "seafood", "fish", "shellfish",
-                ],
-                "recovery_min": 80.0,
-                "recovery_max": 120.0,
-                "rsd_max": 20.0,
+        "instrument_verification": {
+            "calibration": {
+                # 0.995 matches legacy default; FDA method specifies 0.990 (QUESTIONS Q-005)
+                "r2_min": 0.995,
+                "force_origin": False,
+                "point_pct_dev_max": 20.0,
+                "low_point_pct_dev_max": None,
             },
-            {
-                "tier": 2,
-                "description": (
-                    "Isotopically linked analytes (all not in Tier 1 or 3), "
-                    "or key analytes in non-tight matrices"
-                ),
-                "key_analytes": [],
-                "tight_matrices": [],
-                "recovery_min": 65.0,
-                "recovery_max": 135.0,
-                "rsd_max": 25.0,
+            "ccv": {
+                "frequency": 6,
+                "recovery_min": 70.0,
+                "recovery_max": 130.0,
+                "low_level_min": None,
+                "low_level_max": None,
             },
-            {
-                "tier": 3,
-                "description": "No labeled standard (Table 10-1 footnote a)",
-                "no_std_analytes": [
-                    "9Cl-PF3ONS", "11Cl-PF3OUdS", "PFDoS", "PFDS",
-                    "PFNS", "PFODA", "PFPeS", "PFTrDA", "PFTrDS", "PFUnDS",
+            "is_response": {
+                "vs_ical_avg_min": 50.0,
+                "vs_ical_avg_max": 150.0,
+                "vs_last_ccv_min": None,
+                "vs_last_ccv_max": None,
+                "notes": "Lab SOP screen; FDA method sets no numeric IS-area limit",
+            },
+            "confirmation": {
+                "rrt_tol_pct": 1.0,
+                "rt_tol_abs_min": None,
+                "ion_ratio_tol_pct": 30.0,
+                "sn_quan_min": 3.0,
+                "sn_confirm_min": 3.0,
+                "require_confirm_ion_check": True,
+            },
+            "sequence": {
+                "cal_at_start": True,
+                "ccv_frequency": 6,
+                "blank_at_start": True,
+                "blank_at_end": True,
+            },
+        },
+        "qc_acceptance": {
+            "MB": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "max_conc_x_rl": 1.0}],
+            },
+            "LRB": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "max_conc_x_rl": 1.0}],
+            },
+            "LCS": {
+                "enabled": True,
+                "tiers": [
+                    {"name": "tier1_key_tight", "analyte_group": "key",
+                     "matrix_scope": "tight",
+                     "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0},
+                    {"name": "tier2_linked", "analyte_group": "linked",
+                     "matrix_scope": "all",
+                     "recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0},
+                    {"name": "tier3_no_std", "analyte_group": "no_std",
+                     "matrix_scope": "all",
+                     "recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0},
                 ],
-                "recovery_min": 40.0,
-                "recovery_max": 140.0,
-                "rsd_max": 30.0,
             },
-        ],
+            "LFSM": {
+                "enabled": True,
+                "tiers": [
+                    {"name": "tier1_key_tight", "analyte_group": "key",
+                     "matrix_scope": "tight",
+                     "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0},
+                    {"name": "tier2_linked", "analyte_group": "linked",
+                     "matrix_scope": "all",
+                     "recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0},
+                    {"name": "tier3_no_std", "analyte_group": "no_std",
+                     "matrix_scope": "all",
+                     "recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0},
+                ],
+            },
+            "LFSMD": {
+                "enabled": True,
+                "tiers": [
+                    {"name": "tier1_key_tight", "analyte_group": "key",
+                     "matrix_scope": "tight",
+                     "recovery_min": 80.0, "recovery_max": 120.0, "rpd_max": 20.0},
+                    {"name": "tier2_linked", "analyte_group": "linked",
+                     "matrix_scope": "all",
+                     "recovery_min": 65.0, "recovery_max": 135.0, "rpd_max": 25.0},
+                    {"name": "tier3_no_std", "analyte_group": "no_std",
+                     "matrix_scope": "all",
+                     "recovery_min": 40.0, "recovery_max": 140.0, "rpd_max": 30.0},
+                ],
+            },
+            "Dup": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "rpd_max": 20.0}],
+            },
+        },
+        "associated_qc_types": ["MB", "LRB", "LCS", "LFSM", "LFSMD", "Dup"],
         "matrix_factors": [
             {"matrix": "muscle",      "factor": 0.5},
             {"matrix": "meat",        "factor": 0.5},
@@ -376,7 +397,9 @@ DEFAULT_PROFILES = {
             "M2-10:2FTS":"M4PFOA",
         },
         "per_analyte": _fda_per_analyte(),
-        "salt_adjustment_factors": [],
+        "extraction_corrections": {
+            "salt_factors": [],
+        },
         "isomer_summation": [
             {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
             {"linear": "lr-PFNA",  "branched": "br-PFNA",  "reported": "PFNA",  "enabled": True},
@@ -488,58 +511,94 @@ DEFAULT_PROFILES = {
         "method_id": "EPA_537_1",
         "display_name": "EPA 537.1 Drinking Water",
         "description": "EPA 537.1 PFAS in drinking water (EPA/600/R-20/006)",
-        "calibration": {
-            "r2_min": 0.990,
-            "force_origin": True,
-            "point_pct_dev_max": 30.0,
-            "low_point_pct_dev_max": 50.0,
-        },
-        "ccv": {
-            "frequency": 10,
-            "recovery_min": 70.0,
-            "recovery_max": 130.0,
-            "low_level_min": 50.0,
-            "low_level_max": 150.0,
-        },
-        "is": {
-            "vs_ical_avg_min": 50.0,
-            "vs_ical_avg_max": 150.0,
-            "vs_last_ccv_min": 70.0,
-            "vs_last_ccv_max": 140.0,
-            "notes": "Both ICAL avg AND last CCV conditions must hold (§9.3.4)",
-        },
-        "confirmation": {
-            "rrt_tol_pct": None,
-            "rt_tol_abs_min": 0.05,
-            "ion_ratio_tol_pct": None,
-            "sn_quan_min": 3.0,
-            "sn_confirm_min": None,
-            "require_confirm_ion_check": False,
-        },
-        "duplicate": {
-            "rpd_max": 30.0,
-        },
-        "recovery_tiers": [
-            {
-                "tier": 1,
-                "description": "Low-level LFB (at or below MRL): 50-150%",
-                "recovery_min": 50.0,
-                "recovery_max": 150.0,
-                "rsd_max": None,
+        "instrument_verification": {
+            "calibration": {
+                "r2_min": 0.990,
+                "force_origin": True,
+                "point_pct_dev_max": 30.0,
+                "low_point_pct_dev_max": 50.0,
             },
-            {
-                "tier": 2,
-                "description": "Mid/high LFB and LFSM: 70-130%",
+            "ccv": {
+                "frequency": 10,
                 "recovery_min": 70.0,
                 "recovery_max": 130.0,
-                "rsd_max": None,
+                "low_level_min": 50.0,
+                "low_level_max": 150.0,
             },
-        ],
+            "is_response": {
+                "vs_ical_avg_min": 50.0,
+                "vs_ical_avg_max": 150.0,
+                "vs_last_ccv_min": 70.0,
+                "vs_last_ccv_max": 140.0,
+                "notes": "Both ICAL avg AND last CCV conditions must hold (§9.3.4)",
+            },
+            "confirmation": {
+                "rrt_tol_pct": None,
+                "rt_tol_abs_min": 0.05,
+                "ion_ratio_tol_pct": None,
+                "sn_quan_min": 3.0,
+                "sn_confirm_min": None,
+                "require_confirm_ion_check": False,
+            },
+            "sequence": {
+                "cal_at_start": True,
+                "ccv_frequency": 10,
+                "blank_at_start": True,
+                "blank_at_end": True,
+            },
+        },
+        "qc_acceptance": {
+            "MB": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "max_conc_x_rl": 1.0}],
+            },
+            "LRB": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "max_conc_x_rl": 1.0}],
+            },
+            "LFB": {
+                "enabled": True,
+                "tiers": [
+                    {"name": "low_level", "analyte_group": "all",
+                     "matrix_scope": "all", "description": "At or below MRL",
+                     "recovery_min": 50.0, "recovery_max": 150.0, "rsd_max": None},
+                    {"name": "mid_high", "analyte_group": "all",
+                     "matrix_scope": "all", "description": "Above MRL",
+                     "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None},
+                ],
+            },
+            "LFSM": {
+                "enabled": True,
+                "tiers": [
+                    {"name": "default", "analyte_group": "all",
+                     "matrix_scope": "all",
+                     "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None},
+                ],
+            },
+            "LFSMD": {
+                "enabled": True,
+                "tiers": [
+                    {"name": "default", "analyte_group": "all",
+                     "matrix_scope": "all",
+                     "recovery_min": 70.0, "recovery_max": 130.0, "rpd_max": 30.0},
+                ],
+            },
+            "Dup": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "rpd_max": 30.0}],
+            },
+        },
+        "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
         "matrix_factors": [],
         "surrogate_map": [],
         "surrogate_is": "",
         "per_analyte": [],
-        "salt_adjustment_factors": [],
+        "extraction_corrections": {
+            "salt_factors": [],
+        },
         "isomer_summation": [
             {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
             {"linear": "lr-PFNA",  "branched": "br-PFNA",  "reported": "PFNA",  "enabled": True},
@@ -647,50 +706,85 @@ DEFAULT_PROFILES = {
             "(Jan 2024 / 2024 update). EIS limits per-analyte and per-matrix "
             "(Tables 6/8) — VERIFY against method before production use."
         ),
-        "calibration": {
-            "r2_min": 0.990,
-            "force_origin": False,
-            "point_pct_dev_max": 30.0,
-            "low_point_pct_dev_max": 50.0,
-        },
-        "ccv": {
-            "frequency": 10,
-            "recovery_min": 70.0,
-            "recovery_max": 130.0,
-            "low_level_min": None,
-            "low_level_max": None,
-        },
-        "is": {
-            "vs_ical_avg_min": 50.0,
-            "vs_ical_avg_max": 150.0,
-            "vs_last_ccv_min": None,
-            "vs_last_ccv_max": None,
-            "notes": "NIS screen; EIS uses per-analyte limits (see eis_overrides)",
-        },
-        "confirmation": {
-            "rrt_tol_pct": None,
-            "rt_tol_abs_min": None,
-            "ion_ratio_tol_pct": 50.0,
-            "sn_quan_min": 3.0,
-            "sn_confirm_min": 1.0,
-            "require_confirm_ion_check": True,
-        },
-        "duplicate": {
-            "rpd_max": 30.0,
-        },
-        "recovery_tiers": [
-            {
-                "tier": 1,
-                "description": (
-                    "EIS/NIS default aqueous window — VERIFY against "
-                    "1633A Tables 6/8 for per-analyte limits"
-                ),
-                "recovery_min": 40.0,
-                "recovery_max": 130.0,
-                "rsd_max": None,
-                "verify_against_method": True,
+        "instrument_verification": {
+            "calibration": {
+                "r2_min": 0.990,
+                "force_origin": False,
+                "point_pct_dev_max": 30.0,
+                "low_point_pct_dev_max": 50.0,
             },
-        ],
+            "ccv": {
+                "frequency": 10,
+                "recovery_min": 70.0,
+                "recovery_max": 130.0,
+                "low_level_min": None,
+                "low_level_max": None,
+            },
+            "is_response": {
+                "vs_ical_avg_min": 50.0,
+                "vs_ical_avg_max": 150.0,
+                "vs_last_ccv_min": None,
+                "vs_last_ccv_max": None,
+                "notes": "NIS screen; EIS uses per-analyte limits (see eis_overrides)",
+            },
+            "confirmation": {
+                "rrt_tol_pct": None,
+                "rt_tol_abs_min": None,
+                "ion_ratio_tol_pct": 50.0,
+                "sn_quan_min": 3.0,
+                "sn_confirm_min": 1.0,
+                "require_confirm_ion_check": True,
+            },
+            "sequence": {
+                "cal_at_start": True,
+                "ccv_frequency": 10,
+                "blank_at_start": True,
+                "blank_at_end": True,
+            },
+        },
+        "qc_acceptance": {
+            "MB": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "max_conc_x_rl": 1.0}],
+            },
+            "LRB": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "max_conc_x_rl": 1.0}],
+            },
+            "LFB": {
+                "enabled": True,
+                "tiers": [
+                    # EIS/NIS default aqueous window — VERIFY against 1633A Tables 6/8
+                    {"name": "default", "analyte_group": "all",
+                     "matrix_scope": "all", "verify_against_method": True,
+                     "recovery_min": 40.0, "recovery_max": 130.0, "rsd_max": None},
+                ],
+            },
+            "LFSM": {
+                "enabled": True,
+                "tiers": [
+                    {"name": "default", "analyte_group": "all",
+                     "matrix_scope": "all", "verify_against_method": True,
+                     "recovery_min": 40.0, "recovery_max": 130.0, "rsd_max": None},
+                ],
+            },
+            "LFSMD": {
+                "enabled": True,
+                "tiers": [
+                    {"name": "default", "analyte_group": "all",
+                     "matrix_scope": "all",
+                     "recovery_min": 40.0, "recovery_max": 130.0, "rpd_max": 30.0},
+                ],
+            },
+            "Dup": {
+                "enabled": True,
+                "tiers": [{"name": "default", "analyte_group": "all",
+                           "matrix_scope": "all", "rpd_max": 30.0}],
+            },
+        },
+        "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
         # EIS recovery limits — from EPA 1633A (December 2024, EPA 820-R-24-007)
         # eis_overrides: per-analyte aqueous defaults (Table 6, non-leachate column).
         # eis_matrix_overrides: per-analyte limits by matrix class from Tables 6 and 8.
@@ -804,7 +898,9 @@ DEFAULT_PROFILES = {
         "surrogate_map": [],
         "surrogate_is": "",
         "per_analyte": [],
-        "salt_adjustment_factors": [],
+        "extraction_corrections": {
+            "salt_factors": [],
+        },
         "isomer_summation": [
             {"linear": "lr-PFOA",      "branched": "br-PFOA",      "reported": "PFOA",      "enabled": True},
             {"linear": "lr-PFNA",      "branched": "br-PFNA",      "reported": "PFNA",      "enabled": True},
@@ -899,16 +995,26 @@ DEFAULT_PROFILES = {
 }
 
 
-# ── ZODB annotation store ──────────────────────────────────────────────────────
+# ── ZODB annotation store + Dexterity content path ────────────────────────────
 
 def get_profile_store(portal):
-    """Return the PersistentMapping {method_id: json_string} for this portal."""
+    """Return the PersistentMapping {method_id: json_string} for this portal.
+
+    Preserved for backward compatibility: migrate_profile_structure.py imports
+    this directly.  In the Dexterity path the mapping may be empty or absent;
+    use get_profile() / save_profile() for all live read/write.
+    """
     from zope.annotation.interfaces import IAnnotations
     from persistent.mapping import PersistentMapping
     annotations = IAnnotations(portal)
     if PFAS_METHOD_PROFILES_KEY not in annotations:
         annotations[PFAS_METHOD_PROFILES_KEY] = PersistentMapping()
     return annotations[PFAS_METHOD_PROFILES_KEY]
+
+
+def _get_profiles_folder(portal):
+    """Return pfas_method_profiles Folder at portal root, or None (pre-migration)."""
+    return portal.get("pfas_method_profiles")
 
 
 def get_profile(portal, method_id):
@@ -921,6 +1027,31 @@ def get_profile(portal, method_id):
     fields added to DEFAULT_PROFILES (e.g. extraction_stages) appear in existing
     saved profiles without requiring a manual re-save.
     """
+    folder = _get_profiles_folder(portal)
+    if folder is not None:
+        if method_id in folder:
+            obj = folder[method_id]
+            raw = getattr(obj, "profile_json", None)
+            if raw:
+                try:
+                    saved = json.loads(raw)
+                    dflt = DEFAULT_PROFILES.get(method_id)
+                    if dflt:
+                        for key, default_val in dflt.items():
+                            if key not in saved:
+                                saved[key] = copy.deepcopy(default_val)
+                    _migrate_spike_levels(saved, dflt)
+                    return saved
+                except (ValueError, TypeError):
+                    logger.warning("Corrupt profile JSON for %s in Dexterity; returning default",
+                                   method_id)
+        # Folder exists but method_id absent (or JSON corrupt): fall through to default.
+        dflt = DEFAULT_PROFILES.get(method_id)
+        if dflt is None:
+            return {"method_id": method_id}
+        return copy.deepcopy(dflt)
+
+    # Annotation fallback (pre-migration / fresh install)
     store = get_profile_store(portal)
     raw = store.get(method_id)
     if raw is None:
@@ -946,19 +1077,45 @@ def save_profile(portal, method_id, data):
     """
     Persist data (dict) for method_id.  Replaces the entire entry atomically.
     Also exports /data/qc/method_profiles.json for the pipeline worker.
+
+    Create-on-demand: if method_id has no Dexterity object yet (e.g. wizard
+    creating a new method), invokeFactory is called automatically.
     """
-    store = get_profile_store(portal)
-    store[method_id] = json.dumps(data)
+    folder = _get_profiles_folder(portal)
+    if folder is not None:
+        if method_id not in folder:
+            display_name = data.get("display_name") or method_id
+            try:
+                folder.invokeFactory("MethodProfile", id=method_id, title=display_name)
+            except Exception as exc:
+                logger.error("save_profile: cannot create MethodProfile %s: %s",
+                             method_id, exc)
+                raise
+        obj = folder[method_id]
+        obj.title = data.get("display_name") or method_id
+        obj.profile_json = json.dumps(data)
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+    else:
+        # Annotation fallback (pre-migration)
+        store = get_profile_store(portal)
+        store[method_id] = json.dumps(data)
+
     try:
         export_profiles_to_file(portal)
     except Exception as exc:
         logger.warning(
-            "Profile %s saved to ZODB but file export failed: %s", method_id, exc
+            "Profile %s saved but file export failed: %s", method_id, exc
         )
 
 
 def list_method_ids(portal):
     """Return method IDs that have been explicitly saved (beyond defaults)."""
+    folder = _get_profiles_folder(portal)
+    if folder is not None:
+        return list(folder.objectIds())
     store = get_profile_store(portal)
     return list(store.keys())
 
@@ -971,24 +1128,45 @@ def export_profiles_to_file(portal, path=None):
     """
     if path is None:
         path = PROFILES_EXPORT_PATH
-    store = get_profile_store(portal)
 
     all_profiles = {}
     for mid, dflt in DEFAULT_PROFILES.items():
         all_profiles[mid] = copy.deepcopy(dflt)
-    for method_id, raw in store.items():
-        try:
-            profile = json.loads(raw)
-            dflt = DEFAULT_PROFILES.get(method_id, {})
-            # Back-fill new default keys absent from the stored profile
-            for key, default_val in dflt.items():
-                if key not in profile:
-                    profile[key] = copy.deepcopy(default_val)
-            # Apply shape-migration so exported file always has new-format spike_levels
-            _migrate_spike_levels(profile, dflt)
-            all_profiles[method_id] = profile
-        except (ValueError, TypeError):
-            pass
+
+    folder = _get_profiles_folder(portal)
+    if folder is not None:
+        # Dexterity path
+        for method_id in folder.objectIds():
+            obj = folder[method_id]
+            raw = getattr(obj, "profile_json", None)
+            if not raw:
+                continue
+            try:
+                profile = json.loads(raw)
+                dflt = DEFAULT_PROFILES.get(method_id, {})
+                for key, default_val in dflt.items():
+                    if key not in profile:
+                        profile[key] = copy.deepcopy(default_val)
+                _migrate_spike_levels(profile, dflt)
+                all_profiles[method_id] = profile
+            except (ValueError, TypeError):
+                pass
+    else:
+        # Annotation fallback
+        store = get_profile_store(portal)
+        for method_id, raw in store.items():
+            try:
+                profile = json.loads(raw)
+                dflt = DEFAULT_PROFILES.get(method_id, {})
+                # Back-fill new default keys absent from the stored profile
+                for key, default_val in dflt.items():
+                    if key not in profile:
+                        profile[key] = copy.deepcopy(default_val)
+                # Apply shape-migration so exported file always has new-format spike_levels
+                _migrate_spike_levels(profile, dflt)
+                all_profiles[method_id] = profile
+            except (ValueError, TypeError):
+                pass
 
     # Augment each exported profile with derived fields the pipeline expects.
     for profile in all_profiles.values():
@@ -1041,19 +1219,51 @@ def get_included_analytes(portal, method_id, matrix):
 
 def seed_default_profiles(portal):
     """
-    Seed defaults into ZODB.  Idempotent — never overwrites customised profiles.
+    Seed defaults into ZODB or Dexterity.  Idempotent — never overwrites customised profiles.
     Called from setup_handler on install/re-install.
+
+    Ordering: on a fresh install, setup_handler runs before post_install creates
+    the Dexterity folder, so seeding writes to the annotation store.  post_install
+    then migrates those annotations into Dexterity objects.  On re-install with
+    the folder already present, this seeds any missing objects directly into the
+    folder.
     """
-    store = get_profile_store(portal)
-    seeded = 0
-    for method_id, data in DEFAULT_PROFILES.items():
-        if method_id not in store:
-            seeded_data = dict(data)
-            seeded_data["_seeded"] = True  # cleared when a user saves their own values
-            store[method_id] = json.dumps(seeded_data)
-            seeded += 1
-    if seeded:
-        logger.info("Seeded %d default method profiles into ZODB", seeded)
+    folder = _get_profiles_folder(portal)
+    if folder is not None:
+        # Dexterity path: seed any missing profile objects into the folder.
+        seeded = 0
+        for method_id, data in DEFAULT_PROFILES.items():
+            if method_id not in folder:
+                display_name = data.get("display_name") or method_id
+                try:
+                    folder.invokeFactory("MethodProfile", id=method_id, title=display_name)
+                    obj = folder[method_id]
+                    obj.title = display_name
+                    seeded_data = dict(data)
+                    seeded_data["_seeded"] = True
+                    obj.profile_json = json.dumps(seeded_data)
+                    try:
+                        obj.reindexObject()
+                    except Exception:
+                        pass
+                    seeded += 1
+                except Exception as exc:
+                    logger.warning("Cannot seed MethodProfile %s: %s", method_id, exc)
+        if seeded:
+            logger.info("Seeded %d default method profiles into pfas_method_profiles/", seeded)
+    else:
+        # Annotation fallback (pre-migration / fresh install).
+        store = get_profile_store(portal)
+        seeded = 0
+        for method_id, data in DEFAULT_PROFILES.items():
+            if method_id not in store:
+                seeded_data = dict(data)
+                seeded_data["_seeded"] = True  # cleared when a user saves their own values
+                store[method_id] = json.dumps(seeded_data)
+                seeded += 1
+        if seeded:
+            logger.info("Seeded %d default method profiles into ZODB", seeded)
+
     try:
         export_profiles_to_file(portal)
     except Exception as exc:

@@ -1,0 +1,22 @@
+<configure xmlns="http://namespaces.zope.org/zope"
+           i18n_domain="senaite.pfas">
+
+  <!-- Add PFAS QC pool fields (pfas_qc_code, pfas_category,
+       pfas_acceptance_schema) to every ReferenceDefinition edit form. -->
+  <adapter
+      factory=".referencedefinition.ReferenceDefinitionExtender"
+      provides="archetypes.schemaextender.interfaces.ISchemaExtender"
+      for="bika.lims.content.referencedefinition.ReferenceDefinition"
+      />
+
+  <!-- Add pfas_role identity field (analyte / surrogate / injection_is)
+       to every AnalysisService edit form.  This is the single source of
+       truth for the IS/surrogate/analyte distinction used by profiles,
+       the wizard, and the pipeline worker. -->
+  <adapter
+      factory=".analysisservice.AnalysisServiceExtender"
+      provides="archetypes.schemaextender.interfaces.ISchemaExtender"
+      for="bika.lims.content.analysisservice.AnalysisService"
+      />
+
+</configure>

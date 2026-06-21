@@ -1,0 +1,124 @@
+<metal:block use-macro="context/@@pfas-macros/macros/page">
+<metal:fill fill-slot="title">QC Type Grid</metal:fill>
+<metal:fill fill-slot="content">
+
+<div class="pfas-panel">
+  <div class="pfas-panel-header">
+    <h2>QC Type Grid</h2>
+    <p style="color:var(--s-secondary);font-size:13px;margin:0;">
+      Enable or disable QC sample types per analytical method.
+      Checked = QC type is associated with that method and its acceptance
+      criteria appear in the Method Profile.
+      Unchecked = QC type removed from the method (no placeholder entries left).
+    </p>
+  </div>
+
+  <form method="post"
+        tal:attributes="action string:${context/absolute_url}/@@pfas-qc-type-grid">
+    <input type="hidden" name="action" value="save_grid" />
+
+    <div class="table-wrap" style="margin-top:16px;">
+      <table class="pfas-table" style="min-width:700px;">
+        <thead>
+          <tr>
+            <th style="min-width:160px;">Method</th>
+            <tal:cols tal:repeat="col view/qc_columns">
+              <th style="text-align:center; min-width:90px; font-size:12px;"
+                  tal:content="col/code">MB</th>
+            </tal:cols>
+          </tr>
+          <tr style="font-size:11px; color:var(--s-secondary);">
+            <td></td>
+            <tal:cols tal:repeat="col view/qc_columns">
+              <td style="text-align:center; padding:2px 4px;"
+                  tal:content="col/label">Method Blank</td>
+            </tal:cols>
+          </tr>
+        </thead>
+        <tbody>
+          <tal:rows tal:define="state view/grid_state">
+            <tal:method tal:repeat="m view/grid_methods">
+              <tr>
+                <td style="font-weight:600; padding:8px 12px;"
+                    tal:content="m/label">FDA 32-PFAS</td>
+                <tal:cols tal:repeat="col view/qc_columns">
+                  <td style="text-align:center; padding:8px 4px;">
+                    <tal:block tal:define="mid python:m['id'];
+                                           code python:col['code'];
+                                           checked python:state.get(mid,{}).get(code, False)">
+                      <input type="checkbox"
+                             style="width:16px;height:16px;cursor:pointer;"
+                             tal:attributes="name python:'qc_enabled_%s_%s' % (mid, code);
+                                             checked python:'checked' if checked else None;
+                                             value string:1" />
+                    </tal:block>
+                  </td>
+                </tal:cols>
+              </tr>
+              <!-- Per-spike-level RPD row — LFSMD only (Dup is unfortified, flat RPD) -->
+              <tr style="background:var(--s-bg-light, #f8f9fa); font-size:12px;">
+                <td style="padding:4px 12px 8px 28px; color:var(--s-secondary);">
+                  LFSMD spike level RPD
+                </td>
+                <tal:rpd_cols tal:repeat="col view/qc_columns">
+                  <td style="padding:4px 2px 8px;">
+                    <tal:block tal:condition="python:col['criterion'] == 'rpd' and col['code'] == 'LFSMD'"
+                               tal:define="mid python:m['id'];
+                                           code python:col['code'];
+                                           tiers python:view.rpd_tiers(mid, code)">
+                      <div style="display:flex; flex-direction:column; gap:2px; align-items:center;">
+                        <tal:level tal:repeat="level view/spike_levels">
+                          <tal:block tal:define="existing python:[t.get('rpd_max','') for t in tiers if t.get('spike_level') == level];
+                                                  val python:existing[0] if existing else ''">
+                            <label style="font-size:10px; color:var(--s-secondary);"
+                                   tal:content="level">Low</label>
+                            <input type="number" step="0.1" min="0" max="100"
+                                   style="width:56px; font-size:11px; text-align:center;"
+                                   tal:attributes="name python:'rpd__%s__%s_%s' % (mid, code, level);
+                                                   value python:val;
+                                                   placeholder string:%" />
+                          </tal:block>
+                        </tal:level>
+                      </div>
+                    </tal:block>
+                    <tal:block tal:condition="python:not (col['criterion'] == 'rpd' and col['code'] == 'LFSMD')">
+                      <!-- blank cell for non-LFSMD or non-RPD columns -->
+                    </tal:block>
+                  </td>
+                </tal:rpd_cols>
+              </tr>
+            </tal:method>
+          </tal:rows>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:20px; display:flex; gap:12px; align-items:center;">
+      <button class="btn-primary" type="submit">Save Grid</button>
+      <a class="btn-secondary"
+         tal:attributes="href string:${context/absolute_url}/@@pfas-method-profiles">
+        &#8592; Back to Method Profiles
+      </a>
+    </div>
+  </form>
+
+  <!-- Column legend -->
+  <div style="margin-top:24px; border-top:1px solid #e0e0e0; padding-top:16px;">
+    <h4 style="font-size:13px; margin-bottom:8px;">Column Legend</h4>
+    <dl style="display:grid; grid-template-columns:auto 1fr; gap:4px 16px; font-size:12px;">
+      <tal:cols tal:repeat="col view/qc_columns">
+        <dt style="font-weight:600;" tal:content="col/code">MB</dt>
+        <dd style="margin:0;" tal:content="col/label">Method Blank</dd>
+      </tal:cols>
+    </dl>
+    <p style="font-size:11px; color:var(--s-secondary); margin-top:8px;">
+      LFSMD spike level RPD: enter per-level maximum RPD (%) for each spike concentration.
+      Dup (Field Duplicate, unfortified) uses a flat RPD limit set in the Method Profile editor.
+      Canonical spike levels (Low / Mid / High ppt) are configured per matrix
+      in the Method Profile.
+    </p>
+  </div>
+</div>
+
+</metal:fill>
+</metal:block>
