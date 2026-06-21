@@ -5,6 +5,259 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-21  Migration Unit 5 — Tracking Store: no migration (confirmed)
+
+- **Decision:** Leave `tracking_store.py` on portal annotations. No Dexterity
+  content type, no catalog registration, no schema change.
+
+- **Rationale:** The tracking store is a bidirectional runtime index
+  (`tracking_number ↔ ar_uid`) — not configurable content. It has none of
+  the properties that justified Units 1–4: no audit trail needed (assignment
+  is automatic on AR receive), no ACL needed (the public tracker view reads
+  it), no catalog search needed (all access is by exact key lookup). Wrapping
+  each `(tracking_number, ar_uid)` pair in a Dexterity object would add
+  catalog overhead to what is currently an O(1) `PersistentMapping` lookup.
+
+- **Alternative considered:** Re-home the tracking number as an attribute on
+  the AR itself + catalog index (Option C). This is the single-source-of-truth-
+  pure answer, but it requires a data-model change, a migration of existing
+  annotation data onto AR objects, a new catalog index, and touching the receive
+  subscriber and both browser views. Not justified by a current forcing function.
+
+- **`PF-YYMMDD-XXXX` is not a duplicate:** `instance.getId()` in the receive
+  subscriber is the SENAITE-internal Plone ID (e.g., `H-2024-001234`).
+  The tracking number is a separate client-facing identifier stored only in
+  the annotation index — there is no overlap to consolidate.
+
+- **Closes migration series:** Units 1–5 are the complete set of annotation
+  stores in `senaite.pfas`. Unit 5 required no code change. The migration
+  series is done.
+
+- **Files changed:** None.
+
+---
+
+## 2026-06-21  Migration Unit 4 — EGADConfig Dexterity singleton
+
+- **Scope:** `egad_store.py` CRUD migrated from a six-key `PersistentMapping`
+  in portal annotations (`PFAS_EGAD_KEY`) to one `EGADConfig` Dexterity singleton
+  object at `portal/pfas_egad_config/egad_config`.
+
+- **Strategy (confirmed):** Singleton blob — one `EGADConfig` object for the entire
+  lab; six `schema.Text()` fields (`lab_json`, `method_egad_json`, `analyte_cas_json`,
+  `qualifier_map_json`, `qc_type_map_json`, `lookups_json`), one per config section.
+  No field decomposition.  Per-client settings (`get/save_client_egad`,
+  `is_egad_enabled`) remain on Client object annotations — unchanged and untouched.
+
+- **No file bridge:** `analyte_cas.json` is mentioned only in a docstring.
+  All callers (`egad_builder.py`, `egad_config.py`, `egad_publish.py`) are in-process
+  via the public API.  No file export calls added to `save_*` functions.
+
+- **Files changed:**
+  - `content/egad_config.py` — NEW: `IEGADConfig` schema (6 Text fields) + `EGADConfig(Item)` class
+  - `profiles/default/types/EGADConfig.xml` — NEW: Dexterity FTI
+  - `profiles/default/types.xml` — added `EGADConfig` entry
+  - `content.zcml` — added `<allow attributes>` for all 6 blob fields
+  - `egad_store.py` — ZODB section rewritten (lines 215–end):
+    - Kept `_get_store`, `_load`, `_save` for annotation fallback
+    - Added `_get_egad_singleton(portal)` private helper (returns Dexterity object or None)
+    - All `get_X` / `save_X` pairs: Dexterity-first + annotation fallback
+    - Back-fill logic (new keys from `DEFAULT_*`) preserved inside each `get_X`
+    - `refresh_lookups_from_xlsx` unchanged (transparent: calls rewired `get/save_lookups`)
+    - Per-client trio (`get_client_egad`, `save_client_egad`, `is_egad_enabled`) unchanged
+    - `seed_defaults` rewired: seeds Dexterity object when present, annotation store as fallback
+    - `DEFAULT_ANALYTE_CAS`, `DEFAULT_QC_TYPE_MAP`, `DEFAULT_LOOKUPS` stay module-level
+  - `setuphandlers.py` — `setup_egad_config_catalog(portal)` +
+    `migrate_egad_config_from_annotations(portal)` added; both wired into `post_install()`
+  - `DECISIONS.md` — this entry
+
+- **Migration constraints honoured:**
+  1. Verbatim copy: each annotation sub-key raw JSON string copied directly to the blob
+     field — no deserialise/reserialise.  Preserves all user edits exactly.
+  2. Any sub-key absent from the annotation store is seeded from `DEFAULT_*` (fresh install).
+  3. Idempotent: if `pfas_egad_config/egad_config` already exists, migration returns `(0, 1)`.
+  4. `seed_defaults` continues to be called from `setup_handler`; on a fresh install it seeds
+     the annotation store first, then `post_install` migrates it to Dexterity.
+
+- **Flag (not in scope):** `analyte_cas` maps analytes globally (all methods share one
+  table); CLAUDE.md §3 places CAS codes under Method.  Noted as a single-source-of-truth
+  question; re-homing it is a separate architecture decision, not part of this storage migration.
+
+- **Verification (run after container restart + profile reapply):**
+  1. `post_install` log: "EGADConfig registered in senaite_catalog_setup",
+     "EGADConfig migration: 1 migrated, 0 already present"
+  2. `portal.pfas_egad_config["egad_config"]` exists
+  3. `json.loads(portal.pfas_egad_config["egad_config"].analyte_cas_json)` is a dict
+     with ~35 keys (one per PFAS analyte keyword)
+  4. EGAD Config UI (`@@pfas-egad-config`) renders with existing lab settings intact
+  5. Edit a CAS code and save → re-read `analyte_cas_json` from Dexterity object confirms
+     the value changed; annotations store may still hold the old value (that is correct)
+  6. Object existence is the discriminating test — the config page renders even with an
+     empty annotation store because `get_X()` falls back to `DEFAULT_*`
+
+---
+
+## 2026-06-21  Migration Unit 3 — MethodProfile Dexterity content
+
+- **Scope:** `method_profile_store.py` CRUD migrated from `PersistentMapping`
+  in portal annotations to `MethodProfile` Dexterity objects in
+  `portal/pfas_method_profiles/`.
+
+- **Strategy (User Decision 2 — confirmed):** Blob — one `MethodProfile`
+  Dexterity object per method_id; full JSON stored in a single
+  `profile_json = schema.Text()` field.  No field decomposition.
+
+- **Files changed:**
+  - `content/method_profile.py` — NEW: `IMethodProfile` schema + `MethodProfile(Item)` class
+  - `profiles/default/types/MethodProfile.xml` — NEW: Dexterity FTI
+  - `profiles/default/types.xml` — added `MethodProfile` entry
+  - `method_profile_store.py` — rewritten ZODB section (lines 998–end):
+    - Added `_get_profiles_folder(portal)` private helper
+    - `get_profile()` / `save_profile()` / `list_method_ids()` / `export_profiles_to_file()` /
+      `seed_default_profiles()` all Dexterity-first with annotation fallback
+    - `get_profile_store()` retained for backward compatibility
+      (`migrate_profile_structure.py` imports it)
+    - `DEFAULT_PROFILES`, `PFAS_METHOD_PROFILES_KEY`, and all helper functions
+      (lines 1–997) unchanged
+  - `setuphandlers.py` — added `setup_method_profiles_catalog(portal)` +
+    `migrate_method_profiles_from_annotations(portal)`; wired both into `post_install()`
+
+- **Migration constraints honoured:**
+  1. Verbatim JSON copy in migration — raw annotation string assigned directly
+     to `obj.profile_json`; NOT routed through `get_profile()`.  Preserves
+     `_seeded` flags and any manager edits.
+  2. `save_profile()` create-on-demand: if the Dexterity object does not exist
+     yet (e.g. wizard creating a novel method_id), `invokeFactory` is called.
+  3. File bridge preserved: `export_profiles_to_file()` reads from Dexterity
+     folder (if present) or annotation store, and always writes
+     `PROFILES_EXPORT_PATH` atomically.
+  4. Back-fill logic (`get_profile()`) and `_migrate_spike_levels()` preserved.
+  5. `migrate_profile_structure.py` is a one-time migration script that
+     directly accesses `get_profile_store()` (the annotation mapping).  After
+     this migration it reads an empty store and is a no-op.  If it ever needs
+     re-running, update it to use `save_profile()` instead.
+
+- **Ordering:** `setup_handler` calls `seed_default_profiles()` before
+  `post_install` creates the folder.  Fresh install: seeds annotation store →
+  `post_install` migrates to Dexterity.  Re-install: folder present → seeds
+  missing objects directly into folder; migration is idempotent.
+
+- **Verification (run after container restart + profile reapply):**
+  1. `post_install` log: "MethodProfile registered in senaite_catalog_setup",
+     "MethodProfile migration: N migrated, 0 already present"
+  2. `len(portal.pfas_method_profiles.objectIds()) == 3`
+     (FDA_32PFAS, EPA_537_1, EPA_1633A)
+  3. `portal.pfas_method_profiles["FDA_32PFAS"].profile_json` is non-empty JSON
+  4. `@@pfas-method-profiles` renders with 3 profile rows
+  5. Edit a profile value and save → `/data/qc/method_profiles.json` updated;
+     diff before/after shows only the edited field changed
+  6. Object count check is the discriminating test — fallback path means page
+     renders correctly even with zero objects (do not use page render as proof)
+
+## 2026-06-21  Integration gaps B, D, E wired
+
+- **Gap B (Wizard step 5 → QC Type Grid):** Added "Open QC Type Grid →" link to
+  wizard step 5 (`method_wizard.pt`), shown after the Method Profile Editor link.
+  Both links open in a new tab; user clicks "Profile Confirmed" to advance.
+
+- **Gap D (Batch Status Stage 5 → Export EDD):** Added conditional "Export EDD →"
+  button to Stage 5 batch cards in `sample_status.pt`, linking to
+  `@@pfas-egad-batches?batch_id=${b/batch_id}`.
+
+- **Gap E (Batch Status Stage 4 → Charts):** Added conditional "Charts →" button
+  to Stage 4 batch cards in `sample_status.pt`, linking to
+  `@@pfas-control-chart?method=${b/method}`.
+
+- **Gap C (EGAD Config "Generate Test EDD") deferred:** `@@pfas-egad-export`
+  requires a real `batch_id`; a test/preview-without-batch path doesn't exist.
+  Will address when a backend endpoint for dry-run EDD generation is added.
+
+- **Status:** confirmed — `method_wizard.pt`, `sample_status.pt` updated;
+  verified 200 on both pages with no TAL errors.
+
+## 2026-06-20  Migration Unit 1 — Reagent catalog wire-up
+
+- **Architecture (Option A confirmed):** PFAS data becomes first-class SENAITE
+  content. No fork of senaite.core. Reagent and all future PFAS types are
+  Dexterity content objects indexed in `senaite_catalog_setup`, participating in
+  the audit trail and permission model.
+
+- **Reagent identifier strategy:** The canonical CRUD identifier for Reagent is
+  the **Zope object ID** (UUID hex, e.g. `"a3f1c..."`) stored as `obj.getId()`.
+  `IReferenceable` provides a second SENAITE UID for cross-content references
+  (`api.get_uid(obj)`), but forms, URLs, barcode lookup, and logbook records use
+  the object ID.  Rationale: migration requires keeping old annotation UUIDs
+  intact for logbook referential integrity; URL/form CRUD on object ID is
+  simpler and avoids catalog round-trips.  Future types that have no migration
+  legacy (PFASMethodProfile, SurrogateMap, QCRuleSet) MAY use `IAutoGenerateID`
+  for user-friendly LIMS IDs — that is a per-type decision.
+
+- **`IAutoGenerateID` excluded from Reagent.xml:** SENAITE's ID generator fires
+  on `IObjectAddedEvent` and would overwrite our explicit UUID hex IDs with a
+  sequence like `RD-00001`, breaking the migration.  All other SENAITE behaviors
+  (`IReferenceable`, `IMultiCatalogBehavior`) are retained.
+
+- **`set_catalogs` called programmatically (not via catalog.xml):** Called from
+  `post_install` via `setup_reagents_catalog()`.  This writes to
+  `portal_registry["catalog_mappings"]` at install time.  A `catalog.xml` step
+  would also work but is unnecessary given the runtime API.
+
+- **Write-on-read expiry:** `_list_reagents` mutates the transient dict only
+  (display-time expiry promotion to STATUS_EXPIRED); the persistent write
+  happens only on the next explicit save.  This avoids ZODB conflicts and
+  plone.protect friction on GET requests.
+
+- **`quantity` and `unit` fields:** Added to `IReagent` schema as `TextLine`
+  fields; they exist in the legacy annotation store and the `reagents.pt`
+  template reads and renders them.  Added to `content.zcml` allow attributes
+  and to `_obj_to_dict` / `_populate_obj`.
+
+- **Status:** implemented — `content/reagent.py`, `profiles/default/types/Reagent.xml`,
+  `content.zcml`, `setuphandlers.py` (new `setup_reagents_catalog` +
+  `migrate_reagents_from_annotations` functions), `browser/reagents.py` (CRUD
+  switched from annotation JSON to content objects).  Not yet verified in running
+  SENAITE — see verification checklist below.
+
+  **Verification checklist (run after container restart + profile reapply):**
+  1. `post_install` log lines visible: "Reagent registered in senaite_catalog_setup", "migrated=N"
+  2. `pfas_reagents/<uuid>` objects exist with `obj.getId() == old_annotation_uid`
+  3. `senaite_catalog_setup(portal_type="Reagent")` returns results
+  4. `@@pfas-reagents` renders with existing reagent rows intact
+  5. Add/edit/delete a reagent → changes persist via content objects
+
+## 2026-06-20  Panel shell — Phase 1 complete (Decision #1 executed)
+
+- **Decision #1 executed:** Subnav strip (`.pfas-subnav`) removed.  Replaced by
+  §6 panel shell in `pfas_macros.pt`: header bar + collapsible left panel +
+  tabbed content area + pinned action bar.
+- New slots: `left-panel`, `tabs`, `action-bar`.  Old slots preserved: `title`,
+  `head-extra`, `header-title`, `header-right`, `content`, `body-extra`,
+  `scripts`.
+- **Status:** implemented — `browser/templates/pfas_macros.pt` rewritten.
+  Not yet browser-verified (requires container restart).
+
+## 2026-06-20  QC type grid, per-spike RPD, analyte reference expansion
+
+- **Decision:** QC type selection is managed via `@@pfas-qc-type-grid` — a methods × QC types checkbox matrix.  Checking/unchecking a cell creates/removes the corresponding `qc_acceptance` key in the method profile.  No `enabled: False` placeholders remain; key presence = enabled.
+- **Decision:** Per-spike-level RPD criteria are modelled as an optional `spike_level` field on existing `qc_acceptance` tiers (values: "Low" / "Mid" / "High" / null = all levels).  Tiers without `spike_level` apply to all spike levels.  Resolution is `(analyte_group, matrix_scope, spike_level)`.
+- **Decision:** Spike level tables in the Method Profile editor are driven by `associated_qc_types`; LCS is now included alongside LFB/LFSM as a spike-level-aware QC type.  LFSMD shares the LFSM spike level table.
+- **Decision:** `analyte_reference.py` expanded from 34 native + 21 IS to 47 native + 27 IS.  The 13 new natives and 6 new IS are EPA 1633A-specific (FOSA precursors, PFECA novel compounds, FTCAs, FOSA-surrogate IS).  New class "FTCA" added to taxonomy.
+- **Status:** confirmed — implemented in `analyte_reference.py`, `method_profile_store.py`, `qc/rules.py` (`enabled` fix in pfas_pipeline/method_profiles.py), `browser/qc_grid.py`, `browser/templates/qc_grid.pt`, `browser/configure.zcml`, `browser/static/method_profile_edit.js`.
+
+## 2026-06-19  pfas_role field on AnalysisService
+
+- **Decision:** Add `pfas_role` schema-extender field (`analyte` / `surrogate` / `injection_is`) to every SENAITE AnalysisService.  This is the single authoritative source for the IS/surrogate/analyte distinction.  All derivations of IS lists, surrogate maps, and analyte panels must read this field — not category names, not private per-profile copies.
+- **Decision:** Method Profile IS list = services linked to the method whose `pfas_role` is `surrogate` or `injection_is`.  Surrogate map = derived from `analyte_reference.NATIVE_ANALYTES[].surrogate_is` keyed to surrogate services.  Neither is stored as a separate copy in the profile.
+- **Decision:** `is_key_analyte` and `no_labeled_std` (used by FDA tier resolution) remain in `analyte_reference.py` for now; they are service-level identity properties that could later be added as extender fields, but scope is deferred until the lab requests UI control over them.
+- **Status:** confirmed — implemented in `extenders/analysisservice.py`, `extenders/configure.zcml`, `setuphandlers.py`, `migrations/stamp_pfas_roles.py`.
+
+## 2026-06-19  Architecture consolidation — one profile store, no globals
+
+- **Decision (Option A):** One profile object per method contains `instrument_verification` + `qc_acceptance` + `extraction_corrections`.  `qc/rules.py` is scoped to instrument-only (toggle/engine-check registry; no limits, no global fallbacks).  Global fallback layer removed — every criterion must be explicitly defined per method.
+- **Decision:** QC acceptance keys in the profile exist only for QC types actually associated via wizard Step 5.  No `enabled: False` placeholder keys.  The wizard association creates the key; removing the association removes the key.
+- **Decision:** `per_analyte` block removed from Method Profile — derivable from `analyte_reference.py` and `surrogate_map`.
+- **Status:** confirmed — implemented across prior sessions.
+
 ## 2026-06-19  Q-001 — MassLynx IS naming confirmed as 13C prefix
 
 - **Decision:** Waters MassLynx exports IS/surrogate compound names using the **13C prefix** format (e.g. `13C8-PFOS`, `13C3-PFBA`, `13C4-PFOA`). The M-prefix identifiers (M8PFOS, M3PFBA) are internal SENAITE keywords only. The pipeline's `get_is_list()` already returns `_FDA_IS_DISPLAY_NAMES` in 13C format — no code change required.
@@ -815,3 +1068,120 @@ in reverse-chronological order (newest first).
 - **Status:** confirmed
 - **Context:** Core requirement of Round 9. Hardcoded thresholds are the #1 defect
   per CLAUDE.md §0. This decision applies to ALL methods, not just FDA 32-PFAS.
+
+---
+
+## 2026-06-20  Integration architecture — Option A confirmed
+
+- **Decision — Option A (deep integration, add-on stays as add-on):** PFAS components
+  become first-class SENAITE citizens via SENAITE's own extension mechanisms (Dexterity
+  content types + catalog registration + audit behaviors + workflow guards). We do NOT fork
+  `senaite.core` source. Rationale: CLAUDE.md §1 Rule 2 ("Build ON the existing
+  architecture"); forking would require manual merge of every upstream SENAITE security
+  patch forever. The "one unified database" goal is achieved by migrating PFAS data from
+  portal annotations and flat files into proper SENAITE content objects indexed in
+  `senaite_catalog_setup` and participating in the audit trail.
+- **Finding:** Existing Dexterity types (`Reagent`, `EnvironmentalReading`) are NOT
+  currently catalog-indexed — no `catalog.xml` in GenericSetup profile, no SENAITE
+  audit behaviors. The Dexterity class exists but `reagents.py` stores data in
+  `IAnnotations(portal)["senaite.pfas.reagents"]`, bypassing the content type entirely.
+  Same pattern holds for ALL PFAS data stores. This confirms the migration scope.
+- **Migration Unit 1 (approved):** Wire the existing `Reagent` Dexterity type into
+  SENAITE's infrastructure as a proof-of-pattern: add SENAITE catalog behaviors, register
+  in `catalog.xml`, migrate existing annotation records to actual content objects, update
+  `reagents.py` to CRUD Dexterity content objects. Verify Reagent appears in SENAITE
+  search and audit log before extending pattern to `PFASMethodProfile` etc.
+- **Status:** confirmed — architectural direction approved; Migration Unit 1 approved;
+  panel shell built simultaneously (see panel shell decision below)
+
+## 2026-06-20  Panel layout — Phase 1 panel shell built (Decision #1 executed)
+
+- **Decision #1 (executed):** Subnav strip (`.pfas-subnav`, the horizontal 6-link nav
+  below the header in `pfas_macros.pt`) removed and superseded by a persistent left
+  panel. Confirmed by user: "yes delete it & superseded with the left panel."
+- **Panel shell:** `pfas_macros.pt` rebuilt with §6 layout:
+  - `.pfas-header` (52px, dark) — hamburger toggle + title + header-right slot
+  - `.pfas-left-panel` (220px dark sidebar) — collapses to 48px icon rail on
+    `panel-collapsed` class; mobile uses overlay with backdrop
+  - `.pfas-main` — flex column containing tabs + content + action bar
+  - `.pfas-tabs-wrap` — new `tabs` slot; default renders nothing (no visible bar)
+  - `.pfas-content-area` — `flex: 1; overflow-y: auto` — the stable scrollable area
+  - `.pfas-action-bar-wrap` — new `action-bar` slot; outside scroll area, always pinned
+- **New slots defined:** `left-panel`, `tabs`, `action-bar` (all default to empty/hidden)
+- **Backward compat preserved:** All existing slots (`header-title`, `header-right`,
+  `head-extra`, `content`) remain with unchanged names. Existing pages still render
+  correctly; their `.save-bar` elements continue to work as sticky inside the scroll area.
+  New pages should use `action-bar` slot for pinned save/cancel.
+- **Default left-panel:** Six existing PFAS tools as nav items (in three section groups:
+  QC & Method, Workflow, Reporting). These will be overridden per workspace in Phase 2+.
+- **JavaScript:** `pfasTogglePanel()` handles desktop collapse (sessionStorage persisted)
+  and mobile overlay open/close. Escape key closes mobile panel. Inline, no external deps.
+- **Upgrade fragility:** None — `pfas_macros.pt` is a PFAS-owned template; no SENAITE
+  core template is overridden by this change.
+- **Status:** confirmed and implemented
+
+## 2026-06-20  Architecture cleanup — confirmed decisions executed
+
+- **Decision (E) — Delete `src/senaite/pfas/qc/engine.py`:**  
+  File was Python 3 (dataclasses, f-strings, union type syntax) and cannot run inside
+  Plone (Python 2.7). Nothing imported it at runtime. Deleted. `qc/__init__.py`
+  cleaned up to not reference it. Active engine is `pfas_pipeline/qc_engine.py`.
+  Status: **executed**
+
+- **Decision (F) — Remove `global` block from `qc/rules.py`:**  
+  `DEFAULT_RULES["global"]` (11 instrument criteria keys) removed. `LiveCriteria`
+  class removed (its only consumer was `qc/engine.py` now deleted). `QCRulesStore.get_global()`
+  removed. `setuprefs.py` updated to use `qc_types["CAL"/"ICV"]["pct_deviation_max"]` 
+  and hardcoded defaults (20.0 tight / 25.0 default) instead of global lookups.
+  `calibrations.py` reads of `rules.get("global", {})` now silently return `{}` and
+  fall through to hardcoded defaults — behaviorally unchanged; method-aware fix deferred.
+  Status: **executed**
+
+- **Decision (G) — Dup spike-level RPD removed:**  
+  Field Duplicate (Dup) is unfortified — no spike concentration concept applies.
+  `qc_grid.py _apply_rpd_tiers()` now only processes `("LFSMD",)`, not `("LFSMD", "Dup")`.
+  Template `qc_grid.pt` spike-level row condition changed from `col['criterion'] == 'rpd'`
+  to `col['criterion'] == 'rpd' and col['code'] == 'LFSMD'`. Label updated.
+  Status: **executed**
+
+- **Decision (H) — `enabled` flags removed from pipeline bootstrap cache:**  
+  `_DEFAULT_PROFILE_CACHE` in `pfas_pipeline/method_profiles.py` cleaned: all `"enabled": True`
+  keys removed, all `"enabled": False` entries (LFB/FDA, LCS/537.1, LCS/1633A) removed
+  (absence = disabled, consistent with ZODB model). Logic code retains `.get("enabled", True)`
+  backward-compat for any existing JSON with old keys.
+  Status: **executed**
+
+- **Decision (I) — PFTrDS and PFUnDS CAS numbers assigned:**  
+  PFTrDS: CAS 791-563-89-8 → stored as `791563898`, PARAMETER_NAME `PFTRDS_A`.
+  PFUnDS: CAS 749-786-16-1 → stored as `749786161`, PARAMETER_NAME `PFUNDS_A`;
+  note: verify against Maine EGAD CAS_LUP before EDD submission.
+  `egad_store.py DEFAULT_ANALYTE_CAS` updated; `get_analyte_cas()` auto-fills empty
+  entries from updated defaults on next read. Lab must click Save CAS Mapping to persist.
+  Status: **executed** (pending lab Save CAS Mapping click)
+
+## 2026-06-21  Migration Unit 2 — LogbookDef Dexterity content type
+
+- **Decision:** Migrate logbook definitions from `IAnnotations(portal)["senaite.pfas.logbook_defs"]`
+  (a JSON-encoded list) into `LogbookDef` Dexterity content objects living in
+  `portal/pfas_logbook_defs/`.  Each definition becomes one `LogbookDef` object
+  whose Zope id is the slug (e.g. "250", "custom-abc123").
+
+- **Rationale:** Same as Reagent (Migration Unit 1): first-class content participates
+  in the SENAITE audit log, inherits role/permission model, and is indexed in
+  `senaite_catalog_setup`.  Ordering is preserved via a `sort_order` Int field;
+  built-in slugs (250–253) cannot be deleted by the CRUD layer.
+
+- **Files changed:**
+  - `content/logbook_def.py` — `ILogbookDef` schema + `LogbookDef` class (new)
+  - `profiles/default/types/LogbookDef.xml` — Dexterity FTI (new)
+  - `profiles/default/types.xml` — added LogbookDef entry
+  - `logbook_store.py` — CRUD rewritten to use Dexterity objects; falls back to
+    annotation store transparently until `pfas_logbook_defs/` folder is created
+  - `setuphandlers.py` — `setup_logbook_defs_catalog()` and
+    `migrate_logbook_defs_from_annotations()` added; called from `post_install()`
+
+- **Public API unchanged:** `get_logbook_defs`, `get_active_logbook_defs`,
+  `save_logbook_defs`, `seed_defaults`, `is_builtin` — same signatures; all
+  callers in `browser/logbooks.py` and `setuphandlers.py` continue to work.
+
+- **Status:** implemented

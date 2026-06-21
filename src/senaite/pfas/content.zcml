@@ -6,15 +6,32 @@
        methods, so use <allow attributes> rather than <require interface>
        to avoid "security declaration for nonexistent method" warnings. -->
   <class class=".content.reagent.Reagent">
-    <allow attributes="catalog_number lot_number manufacturer expiry_date
-                        date_opened reagent_class barcode storage_location
-                        scan_count" />
+    <allow attributes="category supplier cat_number lot_number received_date
+                        manufacturer_expiry expiry_date opened_date
+                        storage_location barcode quantity unit
+                        scan_count status notes" />
   </class>
 
   <!-- EnvironmentalReading (RPi temperature/humidity) -->
   <class class=".content.envreading.EnvironmentalReading">
     <allow attributes="location sensor_id temperature_c humidity_pct
                         reading_time nist_verified out_of_range" />
+  </class>
+
+  <!-- LogbookDef (logbook form definition) -->
+  <class class=".content.logbook_def.LogbookDef">
+    <allow attributes="form_num builtin active sort_order table_columns" />
+  </class>
+
+  <!-- MethodProfile (QC method configuration, JSON blob) -->
+  <class class=".content.method_profile.MethodProfile">
+    <allow attributes="profile_json" />
+  </class>
+
+  <!-- EGADConfig (singleton EGAD configuration, six JSON blobs) -->
+  <class class=".content.egad_config.EGADConfig">
+    <allow attributes="lab_json method_egad_json analyte_cas_json
+                        qualifier_map_json qc_type_map_json lookups_json" />
   </class>
 
 </configure>

@@ -109,11 +109,9 @@ DEFAULT_ANALYTE_CAS = {
     "br-PFOS":     {"cas_no": "DEP18025",   "parameter_name": "PFOS_A_BR",         "override_note": "branched isomer"},
     "PFNS":        {"cas_no": "68259121",   "parameter_name": "PFNS_A",             "override_note": ""},
     "PFDS":        {"cas_no": "335773",     "parameter_name": "PFDS_A",             "override_note": ""},
-    # PFUnDS: real CAS 749786-16-1 not in EGAD CAS_LUP — manual entry required
-    "PFUnDS":      {"cas_no": "",           "parameter_name": "",                   "override_note": "CAS 749786-16-1 not in Maine EGAD CAS_LUP — enter DEP code when available"},
+    "PFUnDS":      {"cas_no": "749786161",   "parameter_name": "PFUNDS_A",           "override_note": "CAS 749-786-16-1; verify against Maine EGAD CAS_LUP before EDD submission"},
     "PFDoS":       {"cas_no": "79780395",   "parameter_name": "PFDOS_A",            "override_note": ""},
-    # PFTrDS: CAS is PLACEHOLDER — blocking error until real CAS is assigned
-    "PFTrDS":      {"cas_no": "",           "parameter_name": "",                   "override_note": "PLACEHOLDER — real CAS unknown; BLOCKING until assigned"},
+    "PFTrDS":      {"cas_no": "791563898",   "parameter_name": "PFTRDS_A",           "override_note": "CAS 791-563-89-8"},
 }
 
 # ── Default qualifier mapping ─────────────────────────────────────────────────
@@ -238,12 +236,33 @@ def _save(store, key, data):
     store[key] = json.dumps(data)
 
 
+def _get_egad_singleton(portal):
+    """Return the EGADConfig Dexterity object, or None if not yet migrated."""
+    folder = portal.get("pfas_egad_config")
+    if folder is None:
+        return None
+    return folder.get("egad_config")
+
+
 # ── Lab-global config ─────────────────────────────────────────────────────────
 
 def get_lab_config(portal):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        raw = getattr(obj, "lab_json", None)
+        if raw:
+            try:
+                saved = json.loads(raw)
+                for k, v in DEFAULT_LAB.items():
+                    if k not in saved:
+                        saved[k] = v
+                return saved
+            except (ValueError, TypeError):
+                logger.warning("Corrupt EGAD lab_json in Dexterity; using default")
+        return copy.deepcopy(DEFAULT_LAB)
+    # Annotation fallback
     store = _get_store(portal)
     saved = _load(store, "lab", DEFAULT_LAB)
-    # Back-fill any new keys added to DEFAULT_LAB after initial save
     for k, v in DEFAULT_LAB.items():
         if k not in saved:
             saved[k] = v
@@ -251,6 +270,14 @@ def get_lab_config(portal):
 
 
 def save_lab_config(portal, data):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        obj.lab_json = json.dumps(data)
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+        return
     store = _get_store(portal)
     _save(store, "lab", data)
 
@@ -258,6 +285,24 @@ def save_lab_config(portal, data):
 # ── Method EGAD settings ──────────────────────────────────────────────────────
 
 def get_method_egad(portal):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        raw = getattr(obj, "method_egad_json", None)
+        if raw:
+            try:
+                saved = json.loads(raw)
+                for mid, defaults in DEFAULT_METHOD_EGAD.items():
+                    if mid not in saved:
+                        saved[mid] = copy.deepcopy(defaults)
+                    else:
+                        for k, v in defaults.items():
+                            if k not in saved[mid]:
+                                saved[mid][k] = v
+                return saved
+            except (ValueError, TypeError):
+                logger.warning("Corrupt EGAD method_egad_json in Dexterity; using default")
+        return copy.deepcopy(DEFAULT_METHOD_EGAD)
+    # Annotation fallback
     store = _get_store(portal)
     saved = _load(store, "method_egad", DEFAULT_METHOD_EGAD)
     for mid, defaults in DEFAULT_METHOD_EGAD.items():
@@ -271,6 +316,14 @@ def get_method_egad(portal):
 
 
 def save_method_egad(portal, data):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        obj.method_egad_json = json.dumps(data)
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+        return
     store = _get_store(portal)
     _save(store, "method_egad", data)
 
@@ -278,15 +331,51 @@ def save_method_egad(portal, data):
 # ── Analyte CAS mapping ───────────────────────────────────────────────────────
 
 def get_analyte_cas(portal):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        raw = getattr(obj, "analyte_cas_json", None)
+        if raw:
+            try:
+                saved = json.loads(raw)
+                for kw, defaults in DEFAULT_ANALYTE_CAS.items():
+                    if kw not in saved:
+                        saved[kw] = copy.deepcopy(defaults)
+                    elif not saved[kw].get("cas_no") and defaults.get("cas_no"):
+                        # Fill in cas_no if previously blank and now has a default
+                        saved[kw]["cas_no"] = defaults["cas_no"]
+                        if not saved[kw].get("parameter_name") and defaults.get("parameter_name"):
+                            saved[kw]["parameter_name"] = defaults["parameter_name"]
+                        if not saved[kw].get("override_note") and defaults.get("override_note"):
+                            saved[kw]["override_note"] = defaults["override_note"]
+                return saved
+            except (ValueError, TypeError):
+                logger.warning("Corrupt EGAD analyte_cas_json in Dexterity; using default")
+        return copy.deepcopy(DEFAULT_ANALYTE_CAS)
+    # Annotation fallback
     store = _get_store(portal)
     saved = _load(store, "analyte_cas", DEFAULT_ANALYTE_CAS)
     for kw, defaults in DEFAULT_ANALYTE_CAS.items():
         if kw not in saved:
             saved[kw] = copy.deepcopy(defaults)
+        elif not saved[kw].get("cas_no") and defaults.get("cas_no"):
+            # Fill in cas_no if previously blank and now has a default
+            saved[kw]["cas_no"] = defaults["cas_no"]
+            if not saved[kw].get("parameter_name") and defaults.get("parameter_name"):
+                saved[kw]["parameter_name"] = defaults["parameter_name"]
+            if not saved[kw].get("override_note") and defaults.get("override_note"):
+                saved[kw]["override_note"] = defaults["override_note"]
     return saved
 
 
 def save_analyte_cas(portal, data):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        obj.analyte_cas_json = json.dumps(data)
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+        return
     store = _get_store(portal)
     _save(store, "analyte_cas", data)
 
@@ -294,11 +383,29 @@ def save_analyte_cas(portal, data):
 # ── Qualifier mapping ─────────────────────────────────────────────────────────
 
 def get_qualifier_map(portal):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        raw = getattr(obj, "qualifier_map_json", None)
+        if raw:
+            try:
+                return json.loads(raw)
+            except (ValueError, TypeError):
+                logger.warning("Corrupt EGAD qualifier_map_json in Dexterity; using default")
+        return copy.deepcopy(DEFAULT_QUALIFIER_MAP)
+    # Annotation fallback
     store = _get_store(portal)
     return _load(store, "qualifier_map", DEFAULT_QUALIFIER_MAP)
 
 
 def save_qualifier_map(portal, data):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        obj.qualifier_map_json = json.dumps(data)
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+        return
     store = _get_store(portal)
     _save(store, "qualifier_map", data)
 
@@ -312,11 +419,29 @@ def get_qualifier_dict(portal):
 # ── QC type mapping ───────────────────────────────────────────────────────────
 
 def get_qc_type_map(portal):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        raw = getattr(obj, "qc_type_map_json", None)
+        if raw:
+            try:
+                return json.loads(raw)
+            except (ValueError, TypeError):
+                logger.warning("Corrupt EGAD qc_type_map_json in Dexterity; using default")
+        return copy.deepcopy(DEFAULT_QC_TYPE_MAP)
+    # Annotation fallback
     store = _get_store(portal)
     return _load(store, "qc_type_map", DEFAULT_QC_TYPE_MAP)
 
 
 def save_qc_type_map(portal, data):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        obj.qc_type_map_json = json.dumps(data)
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+        return
     store = _get_store(portal)
     _save(store, "qc_type_map", data)
 
@@ -330,6 +455,20 @@ def get_qc_type_dict(portal):
 # ── Refreshable lookups ───────────────────────────────────────────────────────
 
 def get_lookups(portal):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        raw = getattr(obj, "lookups_json", None)
+        if raw:
+            try:
+                saved = json.loads(raw)
+                for k, v in DEFAULT_LOOKUPS.items():
+                    if k not in saved:
+                        saved[k] = v
+                return saved
+            except (ValueError, TypeError):
+                logger.warning("Corrupt EGAD lookups_json in Dexterity; using default")
+        return copy.deepcopy(DEFAULT_LOOKUPS)
+    # Annotation fallback
     store = _get_store(portal)
     saved = _load(store, "lookups", DEFAULT_LOOKUPS)
     for k, v in DEFAULT_LOOKUPS.items():
@@ -339,6 +478,14 @@ def get_lookups(portal):
 
 
 def save_lookups(portal, data):
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        obj.lookups_json = json.dumps(data)
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+        return
     store = _get_store(portal)
     _save(store, "lookups", data)
 
@@ -471,7 +618,27 @@ def is_egad_enabled(client_obj):
 # ── Seed on install ───────────────────────────────────────────────────────────
 
 def seed_defaults(portal):
-    """Seed all default config into ZODB.  Idempotent — never overwrites saved."""
+    """Seed all default config.  Idempotent — never overwrites saved data."""
+    obj = _get_egad_singleton(portal)
+    if obj is not None:
+        # Seed into Dexterity object — only write fields that are currently empty
+        for attr, default in [
+            ("lab_json",           DEFAULT_LAB),
+            ("method_egad_json",   DEFAULT_METHOD_EGAD),
+            ("analyte_cas_json",   DEFAULT_ANALYTE_CAS),
+            ("qualifier_map_json", DEFAULT_QUALIFIER_MAP),
+            ("qc_type_map_json",   DEFAULT_QC_TYPE_MAP),
+            ("lookups_json",       DEFAULT_LOOKUPS),
+        ]:
+            if not getattr(obj, attr, None):
+                setattr(obj, attr, json.dumps(default))
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+        logger.info("Seeded EGAD defaults into Dexterity EGADConfig object")
+        return
+    # Annotation fallback (pre-migration / fresh install without migration run)
     store = _get_store(portal)
     seeded = []
     for key, default in [
