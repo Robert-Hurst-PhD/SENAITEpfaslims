@@ -266,6 +266,47 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
 .pfas-sb-collapse-arrow { display: inline-block; transition: transform .2s; }
 #pfas-shell.panel-collapsed .pfas-sb-collapse-arrow,
 #sidebar.pfas-sidebar.toggled .pfas-sb-collapse-arrow { transform: rotate(180deg); }
+
+/* ── Mobile (core SENAITE pages, ≤768px) ─────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Sidebar becomes a fixed full-height drawer — taken out of document flow */
+  body:not(.pfas-app) #sidebar.pfas-sidebar {
+    position: fixed;
+    top: 52px; left: 0; bottom: 0;
+    z-index: 1000;
+    transform: translateX(-100%);
+    box-shadow: none;
+    transition: transform .22s ease;
+    min-width: 260px !important;
+    max-width: 260px !important;
+    overflow-y: auto;
+  }
+  body:not(.pfas-app) #sidebar.pfas-sidebar.mobile-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,.35);
+  }
+  /* Full-page backdrop behind open drawer */
+  #pfas-mobile-backdrop {
+    display: none;
+    position: fixed;
+    top: 52px; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 999;
+    cursor: pointer;
+  }
+  #pfas-mobile-backdrop.active { display: block; }
+  /* Hide the collapse-to-rail footer button on mobile — replaced by open/close */
+  body:not(.pfas-app) .pfas-sb-foot { display: none; }
+  /* Make the toolbar toggle visible on mobile */
+  body:not(.pfas-app) .pfas-core-toggle { display: inline-flex !important; }
+  /* Core page content: remove any left margin that assumed a sidebar */
+  body:not(.pfas-app) .container-fluid,
+  body:not(.pfas-app) #content-wrapper,
+  body:not(.pfas-app) #content { margin-left: 0 !important; padding-left: 8px !important; }
+  /* Scrollable content on core pages */
+  body:not(.pfas-app) .pat-structure,
+  body:not(.pfas-app) .container { overflow-x: auto; }
+}
 </style>
 
 <!-- ── SVG icon sprite (Lucide, MIT) ─────────────────────────────────────── -->
@@ -842,17 +883,42 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     saveGroups();
   };
 
-  /* pfasSidebarCollapseToggle: collapse the sidebar.
-     On PFAS workspace pages, toggles .panel-collapsed on #pfas-shell.
-     On core SENAITE pages (no #pfas-shell), toggles .toggled on #sidebar. */
+  var _isMobile = function () { return window.innerWidth <= 768; };
+
+  window.pfasCloseMobileSidebar = function () {
+    var sb = document.getElementById('sidebar');
+    if (sb) sb.classList.remove('mobile-open');
+    var bd = document.getElementById('pfas-mobile-backdrop');
+    if (bd) bd.classList.remove('active');
+  };
+
+  /* pfasSidebarCollapseToggle: open/close or collapse the sidebar.
+     PFAS pages:  mobile = panel-open overlay on #pfas-shell;
+                  desktop = panel-collapsed icon rail.
+     Core pages:  mobile = mobile-open slide-in drawer on #sidebar;
+                  desktop = toggled icon rail on #sidebar. */
   window.pfasSidebarCollapseToggle = function () {
     var shell = document.getElementById('pfas-shell');
     if (shell) {
-      var collapsed = shell.classList.toggle('panel-collapsed');
-      try { sessionStorage.setItem('pfas_panel_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+      /* PFAS workspace page — handled by pfas_macros.pt pfasTogglePanel */
+      if (typeof window.pfasTogglePanel === 'function') {
+        window.pfasTogglePanel();
+      } else {
+        var collapsed = shell.classList.toggle('panel-collapsed');
+        try { sessionStorage.setItem('pfas_panel_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+      }
     } else {
+      /* Core SENAITE page */
       var sb = document.getElementById('sidebar');
-      if (sb) sb.classList.toggle('toggled');
+      if (!sb) return;
+      if (_isMobile()) {
+        var isOpen = sb.classList.toggle('mobile-open');
+        var bd = document.getElementById('pfas-mobile-backdrop');
+        if (bd) bd.classList.toggle('active', isOpen);
+      } else {
+        var collapsed = sb.classList.toggle('toggled');
+        try { sessionStorage.setItem('pfas_panel_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+      }
     }
   };
 
@@ -901,16 +967,51 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     btn.className = 'pfas-core-toggle';
     btn.setAttribute('onclick', 'pfasSidebarCollapseToggle()');
     btn.setAttribute('title', 'Toggle navigation');
-    /* Use innerHTML so the browser interprets &#9776; as the hamburger glyph.
-       textContent would output the literal string when Chameleon entity-encodes
-       the ☰ character during template rendering. */
     btn.innerHTML = '&#9776;';
     nav.insertBefore(btn, brand);
   }
 
+  function injectBackdrop() {
+    if (document.getElementById('pfas-mobile-backdrop')) return;
+    var bd = document.createElement('div');
+    bd.id = 'pfas-mobile-backdrop';
+    bd.setAttribute('onclick', 'pfasCloseMobileSidebar()');
+    bd.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(bd);
+  }
+
+  function wireNavLinks() {
+    /* Auto-close the sidebar when a nav link is tapped on mobile */
+    var links = document.querySelectorAll('#sidebar .pfas-si');
+    for (var i = 0; i < links.length; i++) {
+      links[i].addEventListener('click', function () {
+        if (_isMobile()) { pfasCloseMobileSidebar(); }
+      });
+    }
+  }
+
+  /* Restore desktop icon-rail state on core pages */
+  function restoreRailState() {
+    if (_isMobile()) return;
+    try {
+      if (sessionStorage.getItem('pfas_panel_collapsed') === '1') {
+        var sb = document.getElementById('sidebar');
+        if (sb) sb.classList.add('toggled');
+      }
+    } catch (e) {}
+  }
+
+  /* Close mobile drawer on Escape */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { pfasCloseMobileSidebar(); }
+  });
+
   function init() {
     applyModuleName();
     injectSidebarToggle();
+    injectBackdrop();
+    wireNavLinks();
+    restoreRailState();
   }
 
   if (document.readyState === 'loading') {
