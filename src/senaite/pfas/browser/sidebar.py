@@ -1,10 +1,22 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, print_function, unicode_literals
 
+from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.core.browser.viewlets.sidebar import SidebarViewletManager
+
+
+def _get_user_roles(context):
+    """Return a list of the current user's roles in the portal context."""
+    portal = getToolByName(context, 'portal_url').getPortalObject()
+    user = getSecurityManager().getUser()
+    try:
+        roles = list(user.getRolesInContext(portal))
+    except Exception:
+        roles = list(user.getRoles())
+    return roles
 
 
 class PFASSidebarView(BrowserView):
@@ -35,6 +47,9 @@ class PFASSidebarView(BrowserView):
     def current_path(self):
         return self.request.get('PATH_INFO', '')
 
+    def user_roles(self):
+        return _get_user_roles(self.context)
+
 
 class PFASSidebarManager(SidebarViewletManager):
     """Site-wide accordion sidebar — overrides core SidebarViewletManager
@@ -54,6 +69,9 @@ class PFASSidebarManager(SidebarViewletManager):
 
     def current_path(self):
         return self.request.get('PATH_INFO', '')
+
+    def user_roles(self):
+        return _get_user_roles(self.context)
 
     def render(self):
         if not self.available():

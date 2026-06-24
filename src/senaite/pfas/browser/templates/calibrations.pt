@@ -4,106 +4,157 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">PFAS Calibration Review</title>
+  <title metal:fill-slot="title">Calibration Review</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
-    /* ── Calibration-specific styles ──────────────────────────────────── */
-    .page-body { max-width: 1280px; }
+  .cal-page { max-width:1400px; }
 
-    .stat-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-    .stat-box { background: var(--s-bg); border-radius: 6px; padding: 12px 18px;
-                border: 1px solid var(--s-border);
-                box-shadow: 0 1px 3px rgba(0,0,0,.06); min-width: 100px; text-align: center; }
-    .stat-box .sv { font-size: 22px; font-weight: 700; color: var(--s-dark); }
-    .stat-box .sl { font-size: 10px; color: var(--s-secondary); text-transform: uppercase;
-                    letter-spacing: .05em; margin-top: 2px; }
-    .stat-box.good  .sv { color: var(--s-success); }
-    .stat-box.warn  .sv { color: var(--s-warning); }
-    .stat-box.info  .sv { color: var(--s-primary); }
+  /* Stats row */
+  .stat-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .stat-box { background:var(--s-bg); border-radius:6px; padding:10px 16px;
+              border:1px solid var(--s-border);
+              box-shadow:0 1px 3px rgba(0,0,0,.06); min-width:80px; text-align:center; }
+  .stat-box .sv { font-size:20px; font-weight:700; color:var(--s-dark); }
+  .stat-box .sl { font-size:10px; color:var(--s-secondary); text-transform:uppercase;
+                  letter-spacing:.05em; margin-top:2px; }
+  .stat-box.good .sv { color:var(--s-success); }
+  .stat-box.warn .sv { color:var(--s-warning); }
 
-    .filter-bar { background: var(--s-bg); border-radius: 6px;
-                  border: 1px solid var(--s-border);
-                  box-shadow: 0 1px 3px rgba(0,0,0,.06);
-                  padding: 14px 18px; margin-bottom: 18px;
-                  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
-    .filter-bar label { font-size: 11px; color: var(--s-secondary); font-weight: 700;
-                        text-transform: uppercase; display: block; margin-bottom: 3px; }
-    .filter-bar select, .filter-bar input[type=number] {
-      padding: 6px 10px; border: 1px solid var(--s-input-border); border-radius: 4px;
-      font-size: 13px; background: #fafafa; color: var(--s-input-text); }
+  /* Filter bar */
+  .filter-bar { background:var(--s-bg); border-radius:6px;
+                border:1px solid var(--s-border);
+                padding:10px 14px; margin-bottom:14px;
+                display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+  .filter-bar label { font-size:10px; color:var(--s-secondary); font-weight:700;
+                      text-transform:uppercase; display:block; margin-bottom:2px; }
+  .filter-bar select, .filter-bar input[type=number] {
+    padding:5px 8px; border:1px solid var(--s-input-border); border-radius:4px;
+    font-size:13px; background:#fafafa; color:var(--s-input-text); }
 
-    .cal-card { background: var(--s-bg); border-radius: 6px;
-                border: 1px solid var(--s-border);
-                box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 14px; overflow: hidden; }
-    .cal-head { padding: 10px 16px; display: flex; align-items: center;
-                gap: 10px; cursor: pointer; background: var(--s-light);
-                border-bottom: 1px solid var(--s-border); }
-    .cal-head h3 { flex: 1; font-size: 13px; font-weight: 700; color: var(--s-body); }
-    .cal-body { padding: 14px 16px; }
-    .cal-card.collapsed .cal-body { display: none; }
+  /* Run-date pills */
+  .run-pills { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .run-pill { padding:5px 14px; border-radius:20px; border:1px solid var(--s-border);
+              font-size:12px; font-weight:600; cursor:pointer; background:var(--s-bg);
+              color:var(--s-body); transition:all .15s; }
+  .run-pill:hover { border-color:var(--s-primary); color:var(--s-primary); }
+  .run-pill.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
 
-    .badge { font-size: 10px; padding: 2px 8px; border-radius: 10px;
-             font-weight: 700; text-transform: uppercase; }
-    .badge-pending  { background: #fff3cd; color: #856404; }
-    .badge-approved { background: #d4edda; color: #155724; }
-    .badge-rejected { background: #f8d7da; color: #721c24; }
-    .badge-r2-ok    { background: var(--s-primary-lt); color: var(--s-primary); }
-    .badge-r2-fail  { background: #f8d7da; color: #721c24; }
+  /* Run section */
+  .run-section { margin-bottom:28px; }
+  .run-header { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+                padding:10px 0; border-bottom:2px solid var(--s-border);
+                margin-bottom:14px; }
+  .run-header h3 { margin:0; font-size:15px; font-weight:700; flex:1; }
+  .run-header .run-meta { font-size:12px; color:var(--s-secondary); }
+  .pass-badge { padding:3px 12px; border-radius:12px; font-size:12px; font-weight:700;
+                white-space:nowrap; }
+  .pass-ok   { background:var(--s-primary-lt); color:var(--s-primary); }
+  .pass-fail { background:#f8d7da; color:#721c24; }
 
-    .meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-                 gap: 8px 16px; margin-bottom: 12px; }
-    .meta-item { font-size: 12px; }
-    .meta-item .mk { color: var(--s-secondary); font-weight: 700; text-transform: uppercase;
-                     font-size: 10px; letter-spacing: .04em; }
-    .meta-item .mv { color: var(--s-body); margin-top: 1px; }
+  /* Analyte card grid */
+  .analyte-grid { display:grid;
+                  grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));
+                  gap:14px; margin-bottom:14px; }
+  .analyte-card { background:var(--s-bg); border:1px solid var(--s-border);
+                  border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,.07);
+                  overflow:hidden; }
+  .card-head { padding:10px 14px 8px; border-bottom:1px solid var(--s-border);
+               display:flex; align-items:center; gap:8px; }
+  .card-head .analyte-name { font-size:14px; font-weight:700; flex:1; color:var(--s-dark); }
+  .r2-badge { padding:2px 10px; border-radius:10px; font-size:11px; font-weight:700; }
+  .r2-ok   { background:var(--s-primary-lt); color:var(--s-primary); }
+  .r2-fail { background:#f8d7da; color:#721c24; }
+  .badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; }
+  .badge-pending  { background:#fff3cd; color:#856404; }
+  .badge-approved { background:#d4edda; color:#155724; }
+  .badge-rejected { background:#f8d7da; color:#721c24; }
 
-    .level-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-    .level-table th { background: var(--s-light); padding: 5px 10px; text-align: left;
-                      font-size: 11px; color: var(--s-secondary); text-transform: uppercase;
-                      font-weight: 700; letter-spacing: .04em;
-                      border-bottom: 2px solid var(--s-border); }
-    .level-table td { padding: 5px 10px; border-bottom: 1px solid var(--s-border); }
-    .level-table tr:last-child td { border-bottom: none; }
-    .lv-pass { color: var(--s-success); font-weight: 700; }
-    .lv-fail { color: var(--s-danger); font-weight: 700; }
+  /* Controls strip */
+  .card-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+                   padding:6px 14px; background:#f8f9fa;
+                   border-bottom:1px solid var(--s-border); }
+  .card-controls label { font-size:10px; color:var(--s-secondary); font-weight:700;
+                         text-transform:uppercase; }
+  .card-controls select { font-size:11px; padding:3px 6px;
+                          border:1px solid var(--s-input-border); border-radius:3px;
+                          background:#fff; color:var(--s-input-text); }
+  .save-ovr { font-size:11px; padding:3px 10px; border:none; border-radius:3px;
+              cursor:pointer; background:var(--s-primary); color:#fff; }
+  .save-ovr:hover { opacity:.85; }
 
-    .approve-form { display: flex; gap: 10px; align-items: flex-end; margin-top: 12px;
-                    padding-top: 12px; border-top: 1px solid var(--s-border); flex-wrap: wrap; }
-    .approve-form label { font-size: 11px; color: var(--s-secondary); font-weight: 700;
-                          text-transform: uppercase; display: block; margin-bottom: 3px; }
-    .approve-form select, .approve-form input[type=text] {
-      padding: 6px 8px; border: 1px solid var(--s-input-border); border-radius: 4px;
-      font-size: 13px; color: var(--s-input-text); }
-    .approve-form input[type=text] { min-width: 220px; }
-    .btn-approve { background: var(--s-success); color: #fff; border: none; border-radius: 4px;
-                   padding: 8px 18px; cursor: pointer; font-size: 13px; font-weight: 600; }
-    .btn-approve:hover { background: #218838; }
+  /* Plots */
+  .card-plots { padding:10px 12px; }
+  .plot-section { margin-bottom:10px; }
+  .plot-label { font-size:10px; font-weight:700; color:var(--s-secondary);
+                text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+  .plot-canvas-wrap { position:relative; height:170px; }
+  .plot-canvas-wrap.plot-sm { height:110px; }
+  .plot-empty { height:80px; display:flex; align-items:center; justify-content:center;
+                font-size:11px; color:var(--s-secondary); font-style:italic; }
 
-    .empty-state { text-align: center; padding: 48px; color: var(--s-secondary); }
-    .empty-state .ei { font-size: 36px; margin-bottom: 8px; }
-    .save-banner { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px;
-                   padding: 10px 16px; margin-bottom: 16px; color: #155724; font-weight: 600; }
+  .eq-line { font-size:11px; color:var(--s-secondary); font-family:monospace;
+             padding:4px 14px 8px; overflow:hidden; text-overflow:ellipsis;
+             white-space:nowrap; }
+
+  /* Response-ratio info icon */
+  .rr-info { color:var(--s-secondary); cursor:help; font-size:9px;
+             margin-left:3px; border:1px solid var(--s-border);
+             border-radius:50%; padding:0 3px; font-style:normal; }
+
+  /* CCB blank chips */
+  .ccb-chips { display:flex; gap:6px; flex-wrap:wrap;
+               padding:3px 12px 6px; }
+  .ccb-chip { padding:2px 10px; border-radius:12px; font-size:11px; font-weight:600; }
+  .ccb-chip.pass { background:#d4edda; color:#155724; }
+  .ccb-chip.fail { background:#f8d7da; color:#721c24; }
+
+  /* Point-detail modal */
+  .cal-detail-modal { position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,.48); z-index:9999;
+    display:none; align-items:center; justify-content:center; }
+  .cal-detail-modal.open { display:flex; }
+  .cal-detail-box { background:#fff; border-radius:10px; padding:22px 24px;
+    max-width:400px; width:92%; box-shadow:0 8px 32px rgba(0,0,0,.22); }
+  .cal-detail-box h4 { margin:0 0 14px; font-size:14px; display:flex;
+    align-items:center; gap:8px; }
+  .cal-detail-close { margin-left:auto; background:none; border:none;
+    cursor:pointer; font-size:20px; color:#666; line-height:1; }
+  .cal-detail-table { width:100%; border-collapse:collapse; }
+  .cal-detail-table td { padding:4px 0; font-size:12px; }
+  .cal-detail-table td:first-child { font-weight:600; color:#666;
+    padding-right:14px; white-space:nowrap; width:42%; }
+
+  /* Approve bar */
+  .approve-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+                 padding:10px 14px; background:var(--s-bg);
+                 border:1px solid var(--s-border); border-radius:6px; margin-top:4px; }
+  .approve-bar .approve-label { font-size:12px; font-weight:600; flex:1; }
+  .btn-approve-run { background:var(--s-success); color:#fff; border:none;
+                     border-radius:4px; padding:7px 18px; cursor:pointer;
+                     font-size:13px; font-weight:600; }
+  .btn-approve-run:hover { opacity:.85; }
+
+  .save-banner { background:#d4edda; border:1px solid #c3e6cb; border-radius:4px;
+                 padding:8px 14px; margin-bottom:12px; color:#155724; font-weight:600; }
+  .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
+  .pf-path { font-size:11px; color:var(--s-secondary); margin-top:12px; }
   </style>
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">PFAS Calibration Review</tal:t>
+  <tal:t metal:fill-slot="header-title">Calibration Review</tal:t>
   <tal:r metal:fill-slot="header-right">
     <span class="header-meta">
-      Calibration curve review &bull;
-      R&sup2; minimum: <strong tal:content="view/r2_minimum">0.995</strong> &bull;
-      Max % deviation: <strong tal:content="view/cal_pct_max">20</strong>%
+      R&sup2; min <strong tal:content="view/r2_minimum">0.995</strong>
+      &bull; Max dev <strong tal:content="view/cal_pct_max">20</strong>%
     </span>
-    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@lims-setup">
-      Site Setup
-    </a>
   </tal:r>
 
   <div metal:fill-slot="content">
-  <div class="page-body">
+  <div class="cal-page page-body">
 
     <div class="save-banner" tal:condition="view/save_message">
-      Calibration status updated.
+      <tal:sm tal:replace="python:'Run approved.' if 'approved' in view.save_message() else 'Calibration updated.'">Updated.</tal:sm>
     </div>
 
     <!-- Summary stats -->
@@ -129,15 +180,11 @@
           <div class="sv" tal:content="stats/rejected">0</div>
           <div class="sl">Rejected</div>
         </div>
-        <div class="stat-box info">
-          <div class="sv" tal:content="stats/avg_r2">&#8212;</div>
-          <div class="sl">Avg R&sup2;</div>
-        </div>
       </div>
     </tal:stats>
 
     <!-- Filter bar -->
-    <form method="GET" action="" class="filter-bar"
+    <form method="GET" class="filter-bar"
           tal:attributes="action string:${context/absolute_url}/@@pfas-calibrations">
       <div>
         <label>Analyte</label>
@@ -146,26 +193,6 @@
           <tal:opts tal:repeat="a view/analytes">
             <option tal:content="a"
                     tal:attributes="value a; selected python:a == view.selected_analyte()">PFOA</option>
-          </tal:opts>
-        </select>
-      </div>
-      <div>
-        <label>Analyst</label>
-        <select name="analyst">
-          <option value="">&#8212; All &#8212;</option>
-          <tal:opts tal:repeat="a view/analysts">
-            <option tal:content="a"
-                    tal:attributes="value a; selected python:a == (view.selected_analyst() or '')">&#8212;</option>
-          </tal:opts>
-        </select>
-      </div>
-      <div>
-        <label>Instrument</label>
-        <select name="instrument_id">
-          <option value="">&#8212; All &#8212;</option>
-          <tal:opts tal:repeat="i view/instruments">
-            <option tal:content="i"
-                    tal:attributes="value i; selected python:i == (view.selected_instrument() or '')">&#8212;</option>
           </tal:opts>
         </select>
       </div>
@@ -185,168 +212,789 @@
         <label>Show last</label>
         <input type="number" name="limit" min="1" max="300"
                tal:attributes="value view/selected_limit"
-               style="width:80px" />
+               style="width:72px" />
       </div>
       <button type="submit" class="btn btn-primary">Apply</button>
     </form>
 
-    <!-- Calibration cards -->
-    <tal:cals tal:define="cals view/calibrations">
-      <div class="empty-state" tal:condition="not:cals">
-        <div class="ei">&#9654;</div>
-        <p>No calibration records found.</p>
-        <p style="font-size:11px;margin-top:6px">
-          Import an instrument data file to populate calibrations.
-        </p>
-      </div>
+    <!-- Run-date pills -->
+    <tal:rdates tal:define="run_dates view/run_dates; sel_rd view/selected_run_date">
+    <div class="run-pills" tal:condition="run_dates">
+      <span tal:attributes="class python:'run-pill active' if not sel_rd else 'run-pill'"
+            onclick="filterRun('')">All runs</span>
+      <tal:rp tal:repeat="rd run_dates">
+        <tal:rpill tal:define="rd_json python:rd; is_active python:rd == sel_rd">
+          <span tal:attributes="class python:'run-pill active' if is_active else 'run-pill';
+                                onclick string:filterRun('${rd_json}')"
+                tal:content="rd">2026-06-08</span>
+        </tal:rpill>
+      </tal:rp>
+    </div>
+    </tal:rdates>
 
-      <tal:cal tal:repeat="cal cals">
-        <tal:define tal:define="cal_id cal/id">
-        <div class="cal-card" tal:attributes="id string:cal-${cal_id}">
-          <div class="cal-head"
-               tal:attributes="onclick string:toggleCard('cal-${cal_id}')">
-            <h3>
-              <span tal:replace="cal/analyte">PFOA</span>
-              &mdash;
-              <span tal:replace="cal/run_date">2026-01-01</span>
-              &nbsp;
-              <span class="badge badge-r2-ok"  tal:condition="cal/r2_ok">R&sup2; OK</span>
-              <span class="badge badge-r2-fail" tal:condition="not:cal/r2_ok">R&sup2; LOW</span>
-            </h3>
-            <span tal:attributes="class python:'badge badge-' + cal['status']"
-                  tal:content="cal/status">pending</span>
-          </div>
+    <!-- Card area: populated from embedded JSON by JS -->
+    <div id="cal-runs-area"></div>
 
-          <div class="cal-body">
-            <div class="meta-grid">
-              <div class="meta-item">
-                <div class="mk">Batch</div>
-                <div class="mv" tal:content="cal/batch_id">&#8212;</div>
-              </div>
-              <div class="meta-item">
-                <div class="mk">Analyst</div>
-                <div class="mv" tal:content="cal/analyst">&#8212;</div>
-              </div>
-              <div class="meta-item">
-                <div class="mk">Instrument</div>
-                <div class="mv" tal:content="cal/instrument_id">&#8212;</div>
-              </div>
-              <div class="meta-item">
-                <div class="mk">Method</div>
-                <div class="mv" tal:content="cal/method">&#8212;</div>
-              </div>
-              <div class="meta-item">
-                <div class="mk">Fit Type</div>
-                <div class="mv" tal:content="cal/fit_type">&#8212;</div>
-              </div>
-              <div class="meta-item">
-                <div class="mk">Weighting</div>
-                <div class="mv" tal:content="cal/weight_type">&#8212;</div>
-              </div>
-              <div class="meta-item">
-                <div class="mk">R&sup2;</div>
-                <div class="mv" tal:content="cal/r2">&#8212;</div>
-              </div>
-              <div class="meta-item">
-                <div class="mk">Levels (n)</div>
-                <div class="mv" tal:content="cal/n_levels">&#8212;</div>
-              </div>
-              <div class="meta-item">
-                <div class="mk">Range</div>
-                <div class="mv">
-                  <tal:rng tal:condition="cal/min_level">
-                    <span tal:replace="cal/min_level">0</span>
-                    &ndash;
-                    <span tal:replace="cal/max_level">0</span>
-                    ng/mL
-                  </tal:rng>
-                  <span tal:condition="not:cal/min_level">&#8212;</span>
-                </div>
-              </div>
-              <div class="meta-item" style="grid-column: 1 / -1">
-                <div class="mk">Equation</div>
-                <div class="mv" style="font-family:monospace" tal:content="cal/equation">&#8212;</div>
-              </div>
-              <div class="meta-item" style="grid-column: 1 / -1"
-                   tal:condition="cal/notes">
-                <div class="mk">Notes</div>
-                <div class="mv" tal:content="cal/notes">&#8212;</div>
-              </div>
-            </div>
-
-            <tal:levels tal:define="levels python:view.calibration_levels(cal['id'])">
-              <div tal:condition="levels" style="overflow-x:auto">
-                <table class="level-table">
-                  <thead>
-                    <tr>
-                      <th>Level</th><th>Expected (ng/mL)</th>
-                      <th>Calculated (ng/mL)</th><th>% Deviation</th><th>Pass?</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tal:lv tal:repeat="lv levels">
-                      <tr>
-                        <td tal:content="lv/level">1</td>
-                        <td tal:content="lv/expected">&#8212;</td>
-                        <td tal:content="lv/calculated">&#8212;</td>
-                        <td>
-                          <span tal:condition="python:lv['pct_deviation'] is not None"
-                                tal:attributes="class python:'lv-pass' if lv['passed'] else 'lv-fail'"
-                                tal:content="python:'{:+.2f}%'.format(lv['pct_deviation'])">0%</span>
-                          <span tal:condition="python:lv['pct_deviation'] is None">&#8212;</span>
-                        </td>
-                        <td tal:attributes="class python:'lv-pass' if lv['passed'] else 'lv-fail'"
-                            tal:content="python:'Pass' if lv['passed'] else 'FAIL'">&#8212;</td>
-                      </tr>
-                    </tal:lv>
-                  </tbody>
-                </table>
-              </div>
-              <p tal:condition="not:levels" style="color:var(--s-secondary);font-size:11px;margin-top:4px">
-                No per-level data recorded.
-              </p>
-            </tal:levels>
-
-            <form method="POST" class="approve-form"
-                  tal:condition="view/is_manager"
-                  tal:attributes="action string:${context/absolute_url}/@@pfas-calibrations">
-              <input type="hidden" name="calibration_id" tal:attributes="value cal/id" />
-              <div>
-                <label>Update Status</label>
-                <select name="new_status">
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </div>
-              <div>
-                <label>Notes</label>
-                <input type="text" name="notes" placeholder="Optional reviewer note"
-                       tal:attributes="value cal/notes" />
-              </div>
-              <button type="submit" class="btn-approve">Update</button>
-            </form>
-
-          </div>
-        </div>
-        </tal:define>
-      </tal:cal>
-    </tal:cals>
+    <p class="pf-path">
+      /data/qc/pfas_qc_results.db &rarr; calibrations + calibration_levels + qc_results
+    </p>
 
   </div>
 
+  <!-- Embed run data as JSON -->
+  <tal:rjson tal:define="runs_json view/calibration_runs_json; limits_json view/qc_limits_json">
   <script>
-  function toggleCard(id) {
-    var el = document.getElementById(id);
-    if (el) el.classList.toggle('collapsed');
-  }
-  (function() {
-    var cards = document.querySelectorAll('.cal-card');
-    if (cards.length > 5) {
-      cards.forEach(function(c, i) { if (i > 0) c.classList.add('collapsed'); });
-    }
-  })();
+  var CAL_RUNS  = <tal:x tal:replace="runs_json">[]</tal:x>;
+  var CAL_URL   = '<tal:u tal:replace="context/absolute_url">.</tal:u>/@@pfas-calibrations';
+  var R2_MIN    = <tal:x tal:replace="view/r2_minimum">0.995</tal:x>;
+  var PCT_MAX   = <tal:x tal:replace="view/cal_pct_max">20</tal:x>;
+  var QC_LIMITS = <tal:x tal:replace="limits_json">{"CAL":{"max":25,"warn":25},"ICV":{"max":20,"warn":20},"CCV":{"max":20,"warn":10},"CCB":{"max":20,"warn":20}}</tal:x>;
+  var IS_MGR    = <tal:x tal:replace="python:'true' if view.is_manager() else 'false'">false</tal:x>;
   </script>
+  </tal:rjson>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script>
+  //<![CDATA[
+  // ── Weighted regression helpers ───────────────────────────────────────────
+  function wt(x, wtype) {
+    if (wtype === '1/x')  return x > 0 ? 1/x     : 1;
+    if (wtype === '1/x2') return x > 0 ? 1/(x*x) : 1;
+    return 1;
+  }
+
+  function fitLinear(pts, wtype, forceOrigin) {
+    if (!pts || pts.length === 0) return function(x){ return x; };
+    var xs=[], ys=[], ws=[];
+    pts.forEach(function(p){ xs.push(p.x); ys.push(p.y); ws.push(wt(p.x, wtype)); });
+    if (forceOrigin) {
+      var num=0, den=0;
+      for (var i=0; i<xs.length; i++) { num+=ws[i]*xs[i]*ys[i]; den+=ws[i]*xs[i]*xs[i]; }
+      var slope = den > 0 ? num/den : 0;
+      return function(x){ return slope*x; };
+    }
+    var sw=0, swx=0, swy=0, swxx=0, swxy=0;
+    for (var j=0; j<xs.length; j++) {
+      sw+=ws[j]; swx+=ws[j]*xs[j]; swy+=ws[j]*ys[j];
+      swxx+=ws[j]*xs[j]*xs[j]; swxy+=ws[j]*xs[j]*ys[j];
+    }
+    var denom = sw*swxx - swx*swx;
+    if (Math.abs(denom) < 1e-30) return function(x){ return x; };
+    var b = (sw*swxy - swx*swy)/denom;
+    var a = (swy - b*swx)/sw;
+    return function(x){ return a + b*x; };
+  }
+
+  function fitQuad(pts, wtype) {
+    if (!pts || pts.length < 3) return fitLinear(pts, wtype, false);
+    var n=pts.length, s=[0,0,0,0,0], t=[0,0,0];
+    pts.forEach(function(p){
+      var w=wt(p.x,wtype), x=p.x, y=p.y;
+      s[0]+=w; s[1]+=w*x; s[2]+=w*x*x; s[3]+=w*x*x*x; s[4]+=w*x*x*x*x;
+      t[0]+=w*y; t[1]+=w*x*y; t[2]+=w*x*x*y;
+    });
+    var A=[[s[0],s[1],s[2]],[s[1],s[2],s[3]],[s[2],s[3],s[4]]];
+    var det=A[0][0]*(A[1][1]*A[2][2]-A[1][2]*A[2][1])
+           -A[0][1]*(A[1][0]*A[2][2]-A[1][2]*A[2][0])
+           +A[0][2]*(A[1][0]*A[2][1]-A[1][1]*A[2][0]);
+    if (Math.abs(det) < 1e-30) return fitLinear(pts, wtype, false);
+    var cr=function(col){
+      var M=A.map(function(r){ return r.slice(); });
+      for(var i=0;i<3;i++) M[i][col]=t[i];
+      return (M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1])
+             -M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0])
+             +M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]))/det;
+    };
+    var c=cr(0), b=cr(1), a=cr(2);
+    return function(x){ return a*x*x+b*x+c; };
+  }
+
+  function fitAvgRF(pts) {
+    var rfs=pts.filter(function(p){return p.x>0;}).map(function(p){return p.y/p.x;});
+    var rf=rfs.length>0 ? rfs.reduce(function(a,b){return a+b;},0)/rfs.length : 1;
+    return function(x){ return rf*x; };
+  }
+
+  function computeFn(pts, fitType, wtype, origin) {
+    if (!pts || pts.length===0) return null;
+    var ft=(fitType||'Linear').toLowerCase().replace(' ','');
+    var force = origin==='force';
+    if (origin==='include') pts = [{x:0,y:0}].concat(pts);
+    if (ft==='quadratic')  return fitQuad(pts, wtype);
+    if (ft==='averagerf'||ft==='avg_rf') return fitAvgRF(pts);
+    return fitLinear(pts, wtype, force);
+  }
+
+  function computeR2(pts, fn) {
+    if (!pts||pts.length<2||!fn) return null;
+    var ym=pts.reduce(function(s,p){return s+p.y;},0)/pts.length;
+    var ss_tot=pts.reduce(function(s,p){return s+(p.y-ym)*(p.y-ym);},0);
+    var ss_res=pts.reduce(function(s,p){return s+(p.y-fn(p.x))*(p.y-fn(p.x));},0);
+    return ss_tot>0 ? 1-ss_res/ss_tot : 1;
+  }
+
+  // ── Chart colours — derived from site CSS tokens so they track the theme ───
+  var _css = getComputedStyle(document.documentElement);
+  function _tok(n){ return (_css.getPropertyValue(n)||'').trim(); }
+  function _rgba(cssVar, a){
+    var h = _tok(cssVar).replace('#','');
+    if (!h||h.length<6) return 'rgba(128,128,128,'+a+')';
+    return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')';
+  }
+  var cOK   = _rgba('--s-success',   0.85);
+  var cFail = _rgba('--s-danger',    0.85);
+  var cLine = _rgba('--s-primary',   0.85);
+  var cIdeal= _rgba('--s-secondary', 0.40);
+
+  // ── Chart registry ────────────────────────────────────────────────────────
+  var _ch = {};
+  function destroyCard(uid) {
+    ['c1','c2','c3'].forEach(function(k){
+      var key=uid+k; if(_ch[key]){_ch[key].destroy();delete _ch[key];}
+    });
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function _fmtCoeff(v, first) {
+    var s = v.toExponential(4);
+    if (first) return s;
+    return v < 0 ? ' − '+Math.abs(v).toExponential(4) : ' + '+s;
+  }
+  function formatEquation(fn, fitType) {
+    if (!fn) return '';
+    var ft = (fitType||'').toLowerCase().replace(/\s/g,'');
+    if (ft==='averagerf'||ft==='avg_rf') {
+      return 'y = '+fn(1).toExponential(4)+' × x  (Avg RF)';
+    }
+    if (ft==='quadratic') {
+      var c0 = fn(0), c1 = (fn(1)-fn(-1))/2, c2 = (fn(1)+fn(-1)-2*fn(0))/2;
+      return 'y = '+c2.toExponential(3)+'x\u00B2'+_fmtCoeff(c1,false)+'x'+_fmtCoeff(c0,false);
+    }
+    var slope = fn(1)-fn(0), intercept = fn(0);
+    return 'y = '+slope.toExponential(4)+'x'+_fmtCoeff(intercept,false);
+  }
+
+  function showPointDetail(cal, point, ptType) {
+    var modal = document.getElementById('pfas-cal-modal');
+    var titleEl = document.getElementById('pfas-modal-title');
+    var tbody   = document.querySelector('#pfas-modal-table tbody');
+    if (!modal||!titleEl||!tbody) return;
+    titleEl.childNodes[0].textContent = 'Point Detail — '+cal.analyte+' ';
+    var rows;
+    if (ptType==='CAL') {
+      rows = [
+        ['Analyte',      cal.analyte],
+        ['Level',        'L'+(point.level||'?')],
+        ['Expected',     (point.expected||'?')+' ng/mL'],
+        ['Response Ratio', point.response_ratio!=null ? point.response_ratio.toExponential(4) : 'N/A'],
+        ['Back-calc',    point.calculated!=null ? point.calculated.toFixed(3)+' ng/mL' : 'N/A'],
+        ['% Deviation',  point.pct_deviation!=null ? (point.pct_deviation>0?'+':'')+point.pct_deviation.toFixed(2)+'%' : 'N/A'],
+        ['Result',       point.passed ? '✓ Pass' : '✗ Fail'],
+        ['Run date',     cal.run_date],
+        ['Batch',        cal.batch_id||'—'],
+      ];
+    } else {
+      rows = [
+        ['Analyte',      cal.analyte],
+        ['QC Type',      point.qc_type],
+        ['Expected',     (point.expected_value||'?')+' ng/mL'],
+        ['Measured',     (point.value!=null?parseFloat(point.value).toFixed(3):'?')+' ng/mL'],
+        ['Response Ratio', point.response_ratio!=null ? point.response_ratio.toExponential(4) : 'N/A'],
+        ['% Deviation',  point.pct_dev!=null ? (point.pct_dev>0?'+':'')+point.pct_dev.toFixed(2)+'%' : 'N/A'],
+        ['Result',       point.passed ? '✓ Pass' : '✗ Fail'],
+        ['Run date',     cal.run_date],
+        ['Batch',        cal.batch_id||'—'],
+      ];
+    }
+    tbody.innerHTML = rows.map(function(r){
+      return '<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>';
+    }).join('');
+    modal.classList.add('open');
+  }
+
+  // ── Zone-background inline plugin (draws pass/warn/fail bands on bar charts) ─
+  var zoneBgPlugin = {
+    id: 'zoneBg',
+    beforeDraw: function(chart) {
+      var opts = (chart.options.plugins||{}).zoneBg;
+      if (!opts||!opts.limit) return;
+      var ys = chart.scales.y, xs = chart.scales.x;
+      if (!ys||!xs) return;
+      var ctx = chart.ctx;
+      var L = xs.left, R = xs.right;
+      var top = chart.chartArea.top, bot = chart.chartArea.bottom;
+      var limPx  = ys.getPixelForValue(opts.limit);
+      var limNPx = ys.getPixelForValue(-opts.limit);
+      var warnPx = opts.warn ? ys.getPixelForValue(opts.warn)  : limPx;
+      var warnNPx= opts.warn ? ys.getPixelForValue(-opts.warn) : limNPx;
+      ctx.save();
+      // fail zone (beyond ±limit)
+      ctx.fillStyle = _rgba('--s-danger',  0.07);
+      if (limPx > top) ctx.fillRect(L, top, R-L, Math.min(limPx, bot)-top);
+      if (limNPx < bot) ctx.fillRect(L, Math.max(limNPx, top), R-L, bot-Math.max(limNPx, top));
+      // warn zone (between ±warn and ±limit)
+      if (opts.warn && opts.warn < opts.limit) {
+        ctx.fillStyle = _rgba('--s-warning', 0.08);
+        ctx.fillRect(L, Math.max(limPx, top), R-L, warnPx-Math.max(limPx, top));
+        ctx.fillRect(L, Math.max(warnNPx, top), R-L, Math.min(limNPx, bot)-Math.max(warnNPx, top));
+      }
+      // pass zone (between ±warn)
+      ctx.fillStyle = _rgba('--s-success', 0.06);
+      ctx.fillRect(L, warnPx, R-L, warnNPx-warnPx);
+      ctx.restore();
+    }
+  };
+
+  // ── Plot 1: response ratio (or calculated) vs expected concentration ───────
+  function drawPlot1(uid, cal, fitType, wtype, origin) {
+    var canvas = document.getElementById(uid+'_p1');
+    if (!canvas) return;
+    var lvs = cal.levels || [];
+
+    var useResp = lvs.some(function(l){ return l.response_ratio != null; });
+    var pts = lvs.filter(function(l){
+      return l.expected != null && (useResp ? l.response_ratio != null : l.calculated != null);
+    }).map(function(l){
+      return {x:l.expected, y:useResp?l.response_ratio:l.calculated,
+              passed:l.passed, _lv:l};
+    });
+
+    if (pts.length === 0) {
+      canvas.parentNode.innerHTML = '<div class="plot-empty">No calibration level data</div>';
+      return;
+    }
+
+    var fn = computeFn(pts.map(function(p){return{x:p.x,y:p.y};}), fitType, wtype, origin);
+    if (!fn) return;
+    var r2c = computeR2(pts.map(function(p){return{x:p.x,y:p.y};}), fn);
+
+    // Update R\u00B2 badge
+    var r2el = document.getElementById(uid+'_r2');
+    if (r2el && r2c !== null) {
+      r2el.textContent = 'R\u00B2 ' + r2c.toFixed(4);
+      r2el.className = 'r2-badge ' + (r2c >= R2_MIN ? 'r2-ok' : 'r2-fail');
+    }
+    // Update equation line
+    var eqEl = document.getElementById(uid+'_eq');
+    if (eqEl) eqEl.textContent = formatEquation(fn, fitType);
+
+    var xmax = Math.max.apply(null, pts.map(function(p){return p.x;}));
+    var nLine = 40;
+    var linePts = [];
+    for (var i=0; i<=nLine; i++) {
+      var xv = xmax*i/nLine;
+      linePts.push({x:xv, y:fn(xv)});
+    }
+    var idealPts = useResp ? null : [{x:0,y:0},{x:xmax,y:xmax}];
+    var yLabel = useResp ? 'Response Ratio (analyte/IS peak area)' : 'Calculated (ng/mL)';
+    var dotFill   = pts.map(function(p){ return p.passed ? cOK : cFail; });
+    var dotBorder = pts.map(function(p){ return p.passed ? _rgba('--s-success',1) : _rgba('--s-danger',1); });
+    var datasets = [
+      {label:'Cal Standard', data:pts.map(function(p){return{x:p.x,y:p.y};}),
+       type:'scatter',
+       pointStyle:'rectRot', pointRadius:4, pointHoverRadius:6,
+       pointBackgroundColor:dotFill, pointBorderColor:dotBorder, pointBorderWidth:1.5},
+      {label:'Fit', data:linePts, type:'line', borderColor:cLine, borderWidth:2,
+       pointRadius:0, tension:0, fill:false},
+    ];
+    if (idealPts) datasets.push(
+      {label:'y = x', data:idealPts, type:'line', borderColor:cIdeal, borderWidth:1,
+       borderDash:[5,4], pointRadius:0, tension:0, fill:false}
+    );
+
+    var _lvs = lvs;
+    var _cal = cal;
+    var key = uid+'c1';
+    if (_ch[key]) _ch[key].destroy();
+    _ch[key] = new Chart(canvas, {
+      type:'scatter',
+      data:{datasets:datasets},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        onClick: function(evt, elems) {
+          if (elems && elems.length > 0 && elems[0].datasetIndex===0) {
+            showPointDetail(_cal, _lvs[elems[0].index], 'CAL');
+          }
+        },
+        plugins:{
+          legend:{display:true, position:'top',
+                  labels:{boxWidth:9, font:{size:9}, usePointStyle:true}},
+          tooltip:{callbacks:{label:function(ctx){
+            if (ctx.datasetIndex===0) {
+              var lv = _lvs[ctx.dataIndex] || {};
+              var lines = ['L'+(lv.level||'?')+' — '+lv.expected+' ng/mL'];
+              if (lv.response_ratio != null)
+                lines.push('RR: '+lv.response_ratio.toExponential(3));
+              else if (lv.calculated != null)
+                lines.push('Calc: '+lv.calculated.toFixed(3)+' ng/mL');
+              if (lv.pct_deviation != null)
+                lines.push('%Dev: '+(lv.pct_deviation>0?'+':'')+lv.pct_deviation.toFixed(1)+'%');
+              lines.push(lv.passed ? '✓ Pass' : '✗ Fail (click for detail)');
+              return lines;
+            }
+            return '';
+          }}}
+        },
+        scales:{
+          x:{title:{display:true, text:'Expected concentration (ng/mL)', font:{size:9}},
+             ticks:{font:{size:9}}, min:0},
+          y:{title:{display:true, text:yLabel, font:{size:9}},
+             ticks:{font:{size:9}}, min:0}
+        }
+      }
+    });
+  }
+
+  // ── Shared helper: draw a limit-line dataset pair (±) on a bar chart ────────
+  function limitLineDatasets(n, limitVal, warnVal, labelPrefix) {
+    var pos  = [], neg  = [], wpos = [], wneg = [];
+    for (var i=0; i<n; i++) {
+      pos.push(limitVal); neg.push(-limitVal);
+      if (warnVal && warnVal < limitVal) { wpos.push(warnVal); wneg.push(-warnVal); }
+    }
+    var ds = [
+      {label: '+'+(limitVal)+'% limit', data:pos,  type:'line', borderColor:_rgba('--s-danger',0.75),
+       borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false},
+      {label: '-'+(limitVal)+'% limit', data:neg,  type:'line', borderColor:_rgba('--s-danger',0.75),
+       borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false},
+    ];
+    if (warnVal && warnVal < limitVal) {
+      ds.push({label: '+'+(warnVal)+'% warn', data:wpos, type:'line',
+               borderColor:_rgba('--s-warning',0.65), borderWidth:1, borderDash:[3,3],
+               pointRadius:0, fill:false});
+      ds.push({label: '-'+(warnVal)+'% warn', data:wneg, type:'line',
+               borderColor:_rgba('--s-warning',0.65), borderWidth:1, borderDash:[3,3],
+               pointRadius:0, fill:false});
+    }
+    return ds;
+  }
+
+  // ── Plot 2: % deviation per calibration level ─────────────────────────────
+  function drawPlot2(uid, cal) {
+    var canvas = document.getElementById(uid+'_p2');
+    if (!canvas) return;
+    var lvs = (cal.levels||[]).filter(function(l){ return l.pct_deviation != null; });
+    if (lvs.length === 0) {
+      canvas.parentNode.innerHTML = '<div class="plot-empty">No % deviation data</div>';
+      return;
+    }
+    var labels = lvs.map(function(l){ return 'L'+l.level; });
+    var devs   = lvs.map(function(l){ return l.pct_deviation; });
+    var colors = lvs.map(function(l){ return l.passed ? cOK : cFail; });
+    var calLim  = (QC_LIMITS.CAL || {}).max  || PCT_MAX;
+    var calWarn = (QC_LIMITS.CAL || {}).warn;
+
+    // Y scale: data range with some padding, always showing full ±limit
+    var absDevs = devs.filter(function(v){return v!=null;}).map(Math.abs);
+    var dMax = absDevs.length > 0 ? Math.max.apply(null, absDevs) : 0;
+    var yMax = Math.max(dMax * 1.3, calLim * 1.1);
+
+    var _lvs2 = lvs;
+    var _cal2 = cal;
+    var key = uid+'c2';
+    if (_ch[key]) _ch[key].destroy();
+    _ch[key] = new Chart(canvas, {
+      type:'bar',
+      data:{labels:labels, datasets:[
+        {label:'Cal Level', data:devs, backgroundColor:colors, borderWidth:0, borderRadius:2}
+      ]},
+      plugins:[zoneBgPlugin],
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        onClick: function(evt, elems) {
+          if (elems && elems.length > 0 && elems[0].datasetIndex===0) {
+            showPointDetail(_cal2, _lvs2[elems[0].index], 'CAL');
+          }
+        },
+        plugins:{
+          zoneBg:{ limit:calLim, warn:(calWarn&&calWarn<calLim?calWarn:null) },
+          legend:{display:false},
+          tooltip:{callbacks:{label:function(ctx){
+            if (ctx.datasetIndex===0){
+              var lv = _lvs2[ctx.dataIndex]||{};
+              var dev = ctx.parsed.y;
+              return [
+                'L'+(lv.level||'?')+' — '+(lv.expected||'?')+' ng/mL',
+                '%Dev: '+(dev>0?'+':'')+dev.toFixed(2)+'%',
+                lv.passed ? '✓ Pass' : '✗ Fail (click for detail)',
+              ];
+            }
+            return '';
+          }}}
+        },
+        scales:{
+          x:{ticks:{font:{size:9}},
+             grid:{display:false}},
+          y:{title:{display:true, text:'% Deviation', font:{size:9}},
+             ticks:{font:{size:9}},
+             min:-yMax, max:yMax}
+        }
+      }
+    });
+  }
+
+  // ── Plot 3: % deviation of ICV/CCV; CCB shown as pass/fail chips ───────────
+  function drawPlot3(uid, cal) {
+    var canvas = document.getElementById(uid+'_p3');
+    if (!canvas) return;
+
+    // CCB: blank sample — show as pass/fail chips (% deviation from zero is undefined)
+    var ccbRows = (cal.qc||[]).filter(function(r){ return r.qc_type==='CCB'; });
+    var chipWrap = document.getElementById(uid+'_ccb');
+    // Store refs for chip onclick (use indexed lookup to avoid JSON quoting issues)
+    window['_calRef_'+uid]  = cal;
+    window['_ccbRef_'+uid]  = ccbRows;
+    if (chipWrap) {
+      if (ccbRows.length > 0) {
+        chipWrap.innerHTML = ccbRows.map(function(r, i) {
+          var cls = r.passed ? 'ccb-chip pass' : 'ccb-chip fail';
+          var val = r.value!=null ? parseFloat(r.value).toFixed(4) : '—';
+          return '<span class="'+cls+'" title="Click for detail" style="cursor:pointer" '
+            +"onclick=\"showPointDetail(window['_calRef_"+uid+"'],window['_ccbRef_"+uid+"']["+i+"],'QC')\">"
+            +'CCB'+(i>0?' '+(i+1):'')+': '+val+' ng/mL '+(r.passed?'✓':'✗')
+            +'</span>';
+        }).join('');
+        chipWrap.style.display = 'flex';
+      } else {
+        chipWrap.style.display = 'none';
+      }
+    }
+
+    // ICV/CCV: % deviation from expected
+    var qcRows = (cal.qc||[]).filter(function(r){
+      return r.qc_type==='ICV'||r.qc_type==='CCV';
+    });
+    if (qcRows.length === 0) {
+      var p3w = document.getElementById(uid+'_p3w');
+      if (p3w) p3w.innerHTML = '<div class="plot-empty">No ICV/CCV data for this run</div>';
+      return;
+    }
+
+    var counts = {};
+    var labels=[], devs=[], barColors=[], _qcRows=qcRows;
+    qcRows.forEach(function(r){
+      var qt = r.qc_type||'?';
+      counts[qt] = (counts[qt]||0)+1;
+      var lbl = qt+(counts[qt]>1?' '+counts[qt]:'');
+      var expStr = r.expected_value!=null ? ' ('+parseFloat(r.expected_value).toFixed(1)+')' : '';
+      labels.push(lbl+expStr);
+      devs.push(r.pct_dev!=null ? r.pct_dev : null);
+      barColors.push(r.passed ? cOK : cFail);
+    });
+
+    var icvLim  = (QC_LIMITS.ICV||{}).max  || 20;
+    var ccvLim  = (QC_LIMITS.CCV||{}).max  || 20;
+    var ccvWarn = (QC_LIMITS.CCV||{}).warn;
+    var limMax  = Math.max(icvLim, ccvLim);
+    var absDevs = devs.filter(function(v){return v!=null;}).map(Math.abs);
+    var dMax = absDevs.length > 0 ? Math.max.apply(null, absDevs) : 0;
+    var yMax = Math.max(dMax * 1.3, limMax * 1.1);
+
+    var _cal3 = cal;
+    var key = uid+'c3';
+    if (_ch[key]) _ch[key].destroy();
+    _ch[key] = new Chart(canvas, {
+      type:'bar',
+      data:{labels:labels, datasets:[
+        {label:'Check Standard', data:devs,
+         backgroundColor:barColors, borderWidth:0, borderRadius:2}
+      ]},
+      plugins:[zoneBgPlugin],
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        onClick: function(evt, elems) {
+          if (elems && elems.length > 0 && elems[0].datasetIndex===0) {
+            showPointDetail(_cal3, _qcRows[elems[0].index], 'QC');
+          }
+        },
+        plugins:{
+          zoneBg:{ limit:limMax, warn:(ccvWarn&&ccvWarn<limMax?ccvWarn:null) },
+          legend:{display:false},
+          tooltip:{callbacks:{label:function(ctx){
+            if (ctx.datasetIndex===0){
+              var r = _qcRows[ctx.dataIndex]||{};
+              var dev = ctx.parsed.y;
+              var lines = [
+                r.qc_type+' — '+(r.expected_value!=null?r.expected_value:'?')+' ng/mL',
+                '%Dev: '+(dev>0?'+':'')+dev.toFixed(2)+'%',
+              ];
+              if (r.response_ratio!=null)
+                lines.push('RR: '+r.response_ratio.toExponential(3));
+              lines.push(r.passed ? '✓ Pass' : '✗ Fail (click for detail)');
+              return lines;
+            }
+            return '';
+          }}}
+        },
+        scales:{
+          x:{ticks:{font:{size:9}}, grid:{display:false}},
+          y:{title:{display:true, text:'% Deviation', font:{size:9}},
+             ticks:{font:{size:9}},
+             min:-yMax, max:yMax}
+        }
+      }
+    });
+  }
+
+  function renderCard(cal) {
+    drawPlot1(cal._uid, cal,
+              cal.fit_type_override||cal.fit_type||'Linear',
+              cal.weight_override||cal.weight_type||'',
+              cal.origin_override||'exclude');
+    drawPlot2(cal._uid, cal);
+    drawPlot3(cal._uid, cal);
+  }
+
+  function cardHTML(cal) {
+    var uid = 'c'+cal.id;
+    cal._uid = uid;
+    var r2disp = cal.r2 != null ? 'R\u00B2 '+cal.r2.toFixed(4) : 'R\u00B2 —';
+    var r2cls  = cal.r2_ok ? 'r2-ok' : 'r2-fail';
+    var sttcls = 'badge badge-'+(cal.status||'pending');
+    var eqText = cal.fit_type_override
+      ? (cal.fit_type_override+(cal.weight_override?' / '+cal.weight_override:'')
+         +' (orig: '+cal.equation+')')
+      : (cal.equation||'');
+
+    var approvedBadge = cal.approved_by
+      ? '<span class="badge badge-approved">Approved</span>'
+      : '<span class="badge badge-pending">Pending</span>';
+
+    var ctrlHtml = '';
+    if (IS_MGR) {
+      var fitOpts = ['Linear','Quadratic','Average RF'].map(function(f){
+        var s=(cal.fit_type_override||cal.fit_type||'Linear')===f?' selected':'';
+        return '<option value="'+f+'"'+s+'>'+f+'</option>';
+      }).join('');
+      var wtOpts = ['','1/x','1/x2'].map(function(w){
+        var l=w||'None'; var s=(cal.weight_override||cal.weight_type||'')===w?' selected':'';
+        return '<option value="'+w+'"'+s+'>'+l+'</option>';
+      }).join('');
+      var origOpts = ['exclude','include','force'].map(function(o){
+        var s=(cal.origin_override||'exclude')===o?' selected':'';
+        return '<option value="'+o+'"'+s+'>Origin: '+o+'</option>';
+      }).join('');
+      ctrlHtml = '<div class="card-controls">'
+        +'<label>Fit</label><select id="'+uid+'_ft" onchange="refit(\''+uid+'\')">'+fitOpts+'</select>'
+        +'<label>Weight</label><select id="'+uid+'_wt" onchange="refit(\''+uid+'\')">'+wtOpts+'</select>'
+        +'<select id="'+uid+'_ori" onchange="refit(\''+uid+'\')">'+origOpts+'</select>'
+        +'<button class="save-ovr" onclick="saveOverride('+cal.id+',\''+uid+'\')">Save</button>'
+        +'</div>';
+    }
+
+    return [
+      '<div class="analyte-card" id="'+uid+'">',
+      '  <div class="card-head">',
+      '    <span class="analyte-name">'+cal.analyte+'</span>',
+      '    <span class="r2-badge '+r2cls+'" id="'+uid+'_r2">'+r2disp+'</span>',
+      '    '+approvedBadge,
+      '  </div>',
+      ctrlHtml,
+      '  <div class="card-plots">',
+      '    <div class="plot-section">',
+      '      <div class="plot-label">',
+      '        Calibration curve (response vs concentration)',
+      '        <i class="rr-info" title="Response Ratio = Analyte peak area ÷ Internal Standard peak area. The calibration curve fits RR vs expected concentration.">?</i>',
+      '      </div>',
+      '      <div class="plot-canvas-wrap"><canvas id="'+uid+'_p1"></canvas></div>',
+      '    </div>',
+      '    <div class="plot-section">',
+      '      <div class="plot-label">Calibration level % deviation</div>',
+      '      <div class="plot-canvas-wrap plot-sm" id="'+uid+'_p2w"><canvas id="'+uid+'_p2"></canvas></div>',
+      '    </div>',
+      '    <div class="plot-section">',
+      '      <div class="plot-label">Instrument checks — % deviation (ICV / CCV)</div>',
+      '      <div class="plot-canvas-wrap plot-sm" id="'+uid+'_p3w"><canvas id="'+uid+'_p3"></canvas></div>',
+      '      <div class="ccb-chips" id="'+uid+'_ccb" style="display:none"></div>',
+      '    </div>',
+      '  </div>',
+      '  <div class="eq-line" id="'+uid+'_eq" title="Computed equation">'+eqText+'</div>',
+      '</div>',
+    ].join('\n');
+  }
+
+  function renderRun(run) {
+    var n  = run.analytes.length;
+    var np = run.analytes.filter(function(a){return a.r2_ok;}).length;
+    var allApproved = run.analytes.every(function(a){return a.approved_by;});
+    var anyApproved = run.analytes.some(function(a){return a.approved_by;});
+    var meta = [run.instrument_id, run.analyst, run.method].filter(Boolean).join(' • ');
+    var passBadge = '<span class="pass-badge '+(np===n?'pass-ok':'pass-fail')+'">'+np+'/'+n+' R\u00B2</span>';
+
+    var approveBar = '';
+    if (IS_MGR) {
+      if (allApproved) {
+        approveBar = '<div class="approve-bar"><span class="approve-label">Run '+run.run_date+'</span>'
+                    +'<span style="color:var(--s-success);font-size:12px;font-weight:700">✓ All analytes approved</span></div>';
+      } else {
+        approveBar = '<form class="approve-bar" method="POST" action="'+CAL_URL+'">'
+                    +'<input type="hidden" name="action" value="approve_run">'
+                    +'<input type="hidden" name="run_date" value="'+run.run_date+'">'
+                    +(run.analytes[0]&&run.analytes[0].method ? '<input type="hidden" name="method" value="'+run.analytes[0].method+'">' : '')
+                    +'<span class="approve-label">Approve run '+run.run_date+'</span>'
+                    +(anyApproved ? '<span style="font-size:11px;color:var(--s-warning)">Partial approval</span>' : '')
+                    +'<button type="submit" class="btn-approve-run"'
+                    +' onclick="return confirm(\'Approve all '+n+' analytes in run '+run.run_date+'?\')">Approve run (✓ '+n+')</button>'
+                    +'</form>';
+      }
+    }
+
+    var runsHTML = [
+      '<div class="run-section" id="run-'+run.run_date.replace(/-/g,'')+'">',
+      '<div class="run-header">',
+      '  <h3>'+run.run_date+(run.run_time?' <span style="font-weight:400;color:var(--s-secondary);font-size:13px">@ '+run.run_time+'</span>':'')+'</h3>',
+      (meta ? '<span class="run-meta">'+meta+'</span>' : ''),
+      passBadge,
+      '</div>',
+      '<div class="analyte-grid">',
+      run.analytes.map(cardHTML).join('\n'),
+      '</div>',
+      approveBar,
+      '</div>',
+    ].join('\n');
+    return runsHTML;
+  }
+
+  function renderAll(runs) {
+    var area = document.getElementById('cal-runs-area');
+    if (!runs||runs.length===0) {
+      area.innerHTML = '<div class="empty-state"><p style="font-size:28px">▶</p>'
+                      +'<p>No calibration records found.</p>'
+                      +'<p style="font-size:11px">Import instrument data to populate calibrations.</p></div>';
+      return;
+    }
+    area.innerHTML = runs.map(renderRun).join('\n');
+    setTimeout(function(){
+      runs.forEach(function(run){ run.analytes.forEach(renderCard); });
+    }, 0);
+  }
+
+  function filterRun(rd) {
+    var url = new URL(window.location.href);
+    if (rd) url.searchParams.set('run_date', rd);
+    else url.searchParams.delete('run_date');
+    window.location.href = url.toString();
+  }
+
+  function refit(uid) {
+    var calId = parseInt(uid.replace('c',''), 10);
+    var cal = null;
+    for (var ri=0; ri<CAL_RUNS.length&&!cal; ri++)
+      for (var ci=0; ci<CAL_RUNS[ri].analytes.length&&!cal; ci++)
+        if (CAL_RUNS[ri].analytes[ci].id===calId) cal=CAL_RUNS[ri].analytes[ci];
+    if (!cal) return;
+    var ftEl  = document.getElementById(uid+'_ft');
+    var wtEl  = document.getElementById(uid+'_wt');
+    var oriEl = document.getElementById(uid+'_ori');
+    var ft  = ftEl  ? ftEl.value  : (cal.fit_type   || 'Linear');
+    var wtp = wtEl  ? wtEl.value  : (cal.weight_type || '');
+    var ori = oriEl ? oriEl.value : 'exclude';
+    // Redraw Plot 1 with new fit
+    drawPlot1(uid, cal, ft, wtp, ori);
+
+    // Recompute Plot 2 % deviations using back-calculation from the new fit
+    // (only if response_ratio data is available; otherwise show stored values)
+    var lvs = cal.levels || [];
+    var useResp = lvs.some(function(l){ return l.response_ratio != null; });
+    // pts2 defined here so it's also accessible for the Plot 3 QC refit below
+    var pts2 = lvs.filter(function(l){
+      return l.expected != null && l.response_ratio != null;
+    }).map(function(l){ return {x:l.expected, y:l.response_ratio}; });
+    if (useResp) {
+      var fn2 = computeFn(pts2.slice(), ft, wtp, ori);
+      var xMax2 = pts2.length > 0 ? Math.max.apply(null, pts2.map(function(p){return p.x;})) : 10;
+      var updLvs = lvs.map(function(l) {
+        if (l.response_ratio == null || l.expected == null || l.expected === 0) return l;
+        var xBack = backCalcBisect(fn2, l.response_ratio, xMax2);
+        var pctDev = xBack != null
+          ? Math.round((xBack - l.expected) / l.expected * 10000) / 100
+          : l.pct_deviation;
+        return {level:l.level, expected:l.expected, calculated:l.calculated,
+                response_ratio:l.response_ratio,
+                pct_deviation:pctDev,
+                passed: pctDev != null ? Math.abs(pctDev) <= PCT_MAX : l.passed};
+      });
+      drawPlot2(uid, {levels: updLvs});
+    } else {
+      drawPlot2(uid, cal);
+    }
+
+    // Recompute Plot 3 (ICV/CCV) deviations from response_ratio using new fit
+    var icvccvWithRR = (cal.qc||[]).filter(function(r){
+      return (r.qc_type==='ICV'||r.qc_type==='CCV') && r.response_ratio != null && r.expected_value;
+    });
+    if (icvccvWithRR.length > 0 && useResp) {
+      var fn3 = computeFn(pts2.slice(), ft, wtp, ori);
+      var xMax3 = pts2.length > 0 ? Math.max.apply(null, pts2.map(function(p){return p.x;})) : 10;
+      var limMax3 = Math.max((QC_LIMITS.ICV||{}).max||20, (QC_LIMITS.CCV||{}).max||20);
+      var updQC = (cal.qc||[]).map(function(r) {
+        if ((r.qc_type!=='ICV'&&r.qc_type!=='CCV') || r.response_ratio==null || !r.expected_value) return r;
+        var xBack = backCalcBisect(fn3, r.response_ratio, xMax3);
+        var pctDev = xBack != null
+          ? Math.round((xBack - r.expected_value) / r.expected_value * 10000) / 100
+          : r.pct_dev;
+        return {qc_type:r.qc_type, qc_level:r.qc_level, value:r.value,
+                expected_value:r.expected_value, pct_dev:pctDev,
+                response_ratio:r.response_ratio, flag:r.flag,
+                passed: pctDev != null ? Math.abs(pctDev) <= limMax3 : r.passed};
+      });
+      drawPlot3(uid, {qc: updQC});
+    } else {
+      drawPlot3(uid, cal);
+    }
+  }
+
+  // Numerical bisection to invert a monotonically increasing calibration curve fn(x)=y
+  function backCalcBisect(fn, y, xMax) {
+    if (!fn) return null;
+    var lo = 0, hi = xMax * 2;
+    // Extend upper bound if the curve hasn't reached y yet
+    for (var ext=0; ext<5 && fn(hi)<y; ext++) hi *= 3;
+    if (fn(lo) > y) return null;  // y is below fn(0) — out of range
+    for (var i=0; i<60; i++) {
+      var mid = (lo+hi)/2;
+      if (fn(mid) < y) lo = mid; else hi = mid;
+    }
+    var result = (lo+hi)/2;
+    return (result >= 0) ? result : null;
+  }
+
+  function saveOverride(calId, uid) {
+    var ft  = (document.getElementById(uid+'_ft') ||{}).value||'';
+    var wtp = (document.getElementById(uid+'_wt') ||{}).value||'';
+    var ori = (document.getElementById(uid+'_ori')||{}).value||'';
+    var fd = new FormData();
+    fd.append('action','override');
+    fd.append('calibration_id',calId);
+    fd.append('fit_type_override',ft);
+    fd.append('weight_override',wtp);
+    fd.append('origin_override',ori);
+    fetch(CAL_URL,{method:'POST',body:fd})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if (d.ok) {
+          var el=document.getElementById(uid);
+          if(el){el.style.outline='2px solid var(--s-success)';
+                 setTimeout(function(){el.style.outline='';},1200);}
+        }
+      }).catch(function(e){console.error('saveOverride:',e);});
+  }
+
+  renderAll(CAL_RUNS);
+  //]]>
+  </script>
+
+  <!-- Point-detail modal (shared, populated by JS) -->
+  <div id="pfas-cal-modal" class="cal-detail-modal"
+       onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="cal-detail-box">
+      <h4 id="pfas-modal-title">Point Detail
+        <button class="cal-detail-close"
+                onclick="document.getElementById('pfas-cal-modal').classList.remove('open')">&times;</button>
+      </h4>
+      <table class="cal-detail-table" id="pfas-modal-table"><tbody></tbody></table>
+    </div>
+  </div>
 
   </div><!-- /content slot -->
 </body>

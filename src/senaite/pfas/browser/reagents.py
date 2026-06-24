@@ -18,9 +18,14 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import date, datetime, timedelta
+
+from zope.annotation.interfaces import IAnnotations
+from zope.event import notify
+from zope.lifecycleevent import ObjectModifiedEvent
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
@@ -42,6 +47,10 @@ ALL_STATUSES = [
     (STATUS_EXPIRED,    "Expired"),
     (STATUS_QUARANTINE, "Quarantine"),
 ]
+
+# ── Lab settings / archive ────────────────────────────────────────────────────
+_LAB_SETTINGS_KEY = u"senaite.pfas.lab_settings"
+_ANN_ARCHIVED_KEY = u"senaite.pfas.reagent.archived"
 
 # Reagent categories (ISO 17025-friendly)
 REAGENT_CATEGORIES = [
@@ -115,6 +124,71 @@ def _get_reagents_folder(portal):
     return folder
 
 
+def _get_lab_settings(portal):
+    ann = IAnnotations(portal)
+    raw = ann.get(_LAB_SETTINGS_KEY)
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+
+
+def _save_lab_settings(portal, settings):
+    ann = IAnnotations(portal)
+    ann[_LAB_SETTINGS_KEY] = json.dumps(settings)
+
+
+def _is_production_mode(portal):
+    """True when SENAITE global audit log is enabled (the lab's production gate)."""
+    try:
+        from bika.lims import api as bika_api
+        setup = bika_api.get_senaite_setup()
+        return bool(setup.getEnableGlobalAuditlog())
+    except Exception:
+        return False
+
+
+def _get_production_since(portal):
+    """Return datetime when audit was first enabled, or None."""
+    s = _get_lab_settings(portal)
+    ts = s.get("production_since")
+    if ts:
+        try:
+            return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S")
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def _maybe_record_production_since(portal):
+    """On first request where audit is enabled, record the timestamp."""
+    if not _is_production_mode(portal):
+        return
+    s = _get_lab_settings(portal)
+    if s.get("production_since"):
+        return
+    s["production_since"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    _save_lab_settings(portal, s)
+
+
+def _is_test_reagent_by_time(obj, prod_since):
+    """True if this reagent was created before production mode was activated."""
+    if prod_since is None:
+        return True
+    try:
+        from DateTime import DateTime  # noqa: F401 — import just to confirm it exists
+        created = obj.created()
+        cd = datetime(
+            created.year(), created.month(), created.day(),
+            created.hour(), created.minute(), int(created.second()),
+        )
+        return cd < prod_since
+    except Exception:
+        return False
+
+
 def _date_to_str(d):
     """Format a datetime.date (or None) as an ISO string."""
     if not d:
@@ -137,7 +211,7 @@ def _str_to_date(s):
 
 def _obj_to_dict(obj):
     """Convert a Reagent content object to the dict format the template expects."""
-    return {
+    d = {
         "uid":                obj.getId(),
         "name":               obj.title or u"",
         "category":           obj.category or u"",
@@ -155,7 +229,25 @@ def _obj_to_dict(obj):
         "scan_count":         obj.scan_count or 0,
         "status":             obj.status or STATUS_ACTIVE,
         "notes":              obj.notes or u"",
+        "is_test":            False,  # overwritten by _list_reagents
     }
+    ann = IAnnotations(obj)
+    arch_raw = ann.get(_ANN_ARCHIVED_KEY)
+    if arch_raw:
+        try:
+            arch = json.loads(arch_raw)
+            d["is_archived"] = True
+            d["archived_by"] = arch.get("archived_by", u"")
+            d["archived_at"] = arch.get("archived_at", u"")
+        except (ValueError, TypeError):
+            d["is_archived"] = True
+            d["archived_by"] = u""
+            d["archived_at"] = u""
+    else:
+        d["is_archived"] = False
+        d["archived_by"] = u""
+        d["archived_at"] = u""
+    return d
 
 
 def _populate_obj(obj, data):
@@ -214,6 +306,10 @@ def _save_reagent(portal, data):
         obj.reindexObject()
     except Exception:
         pass
+    try:
+        notify(ObjectModifiedEvent(obj))
+    except Exception:
+        pass
     return uid
 
 
@@ -229,6 +325,102 @@ def _get_reagent(portal, uid):
     return _obj_to_dict(obj)
 
 
+COA_DIR = os.environ.get("PFAS_COA_DIR", "/data/coa")
+_COA_ANN_KEY  = u"senaite.pfas.reagent.coa"
+_SCAN_LOG_KEY = u"senaite.pfas.reagent.scan_log"
+
+
+def _get_coa_meta(portal, uid):
+    """Return CoA metadata dict for a reagent uid, or {}."""
+    try:
+        folder = _get_reagents_folder(portal)
+        obj = folder.get(uid)
+        if obj is None:
+            return {}
+        ann = IAnnotations(obj)
+        raw = ann.get(_COA_ANN_KEY)
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_coa(portal, uid, file_data, filename, content_type, uploaded_by):
+    """Write CoA file to disk and store metadata in annotations.
+
+    file_data : bytes
+    Returns True on success.
+    """
+    try:
+        if not os.path.isdir(COA_DIR):
+            os.makedirs(COA_DIR)
+        ext = os.path.splitext(filename)[1] if filename else ".pdf"
+        dest = os.path.join(COA_DIR, "{}{}" .format(uid, ext))
+        with open(dest, "wb") as fh:
+            fh.write(file_data)
+        folder = _get_reagents_folder(portal)
+        obj = folder.get(uid)
+        if obj is not None:
+            ann = IAnnotations(obj)
+            ann[_COA_ANN_KEY] = json.dumps({
+                "filename":     filename,
+                "content_type": content_type,
+                "uploaded_by":  uploaded_by,
+                "uploaded_date":date.today().strftime("%Y-%m-%d"),
+                "path":         dest,
+            })
+            try:
+                obj.reindexObject()
+            except Exception:
+                pass
+        return True
+    except Exception as exc:
+        logger.error("_save_coa %s: %s", uid, exc)
+        return False
+
+
+def _get_scan_log(portal, uid):
+    """Return list of scan log entry dicts for a reagent uid (newest last)."""
+    try:
+        folder = _get_reagents_folder(portal)
+        obj = folder.get(uid)
+        if obj is None:
+            return []
+        ann = IAnnotations(obj)
+        raw = ann.get(_SCAN_LOG_KEY)
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return []
+
+
+def _append_scan_log(portal, uid, entry, max_entries=500):
+    """Append a scan log entry dict and increment scan_count on the Reagent object."""
+    try:
+        folder = _get_reagents_folder(portal)
+        obj = folder.get(uid)
+        if obj is None:
+            return False
+        ann = IAnnotations(obj)
+        raw = ann.get(_SCAN_LOG_KEY)
+        log = json.loads(raw) if raw else []
+        log.append(entry)
+        if len(log) > max_entries:
+            log = log[-max_entries:]
+        ann[_SCAN_LOG_KEY] = json.dumps(log)
+        obj.scan_count = (obj.scan_count or 0) + 1
+        try:
+            obj.reindexObject()
+        except Exception:
+            pass
+        return True
+    except Exception as exc:
+        logger.error("_append_scan_log %s: %s", uid, exc)
+        return False
+
+
 def _delete_reagent(portal, uid):
     """Delete a Reagent content object.  Returns True if deleted."""
     try:
@@ -241,7 +433,65 @@ def _delete_reagent(portal, uid):
     return False
 
 
-def _list_reagents(portal, q="", status_filter="", category_filter=""):
+def _archive_reagent(portal, uid, archived_by):
+    """Soft-delete: mark a reagent archived via annotation. Returns True on success."""
+    try:
+        folder = _get_reagents_folder(portal)
+    except RuntimeError:
+        return False
+    obj = folder.get(uid)
+    if obj is None:
+        return False
+    ann = IAnnotations(obj)
+    ann[_ANN_ARCHIVED_KEY] = json.dumps({
+        "archived_by": archived_by,
+        "archived_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+    try:
+        obj.reindexObject()
+    except Exception:
+        pass
+    return True
+
+
+def _restore_reagent(portal, uid):
+    """Remove archive annotation, restoring the reagent to the active list."""
+    try:
+        folder = _get_reagents_folder(portal)
+    except RuntimeError:
+        return False
+    obj = folder.get(uid)
+    if obj is None:
+        return False
+    ann = IAnnotations(obj)
+    if _ANN_ARCHIVED_KEY in ann:
+        del ann[_ANN_ARCHIVED_KEY]
+    try:
+        obj.reindexObject()
+    except Exception:
+        pass
+    return True
+
+
+def _purge_test_reagents(portal):
+    """Hard-delete all reagents created before production_since. Returns count."""
+    try:
+        folder = _get_reagents_folder(portal)
+    except RuntimeError:
+        return 0
+    prod_since = _get_production_since(portal)
+    to_delete = []
+    for obj in folder.objectValues():
+        if obj.portal_type != "Reagent":
+            continue
+        if _is_test_reagent_by_time(obj, prod_since):
+            to_delete.append(obj.getId())
+    if to_delete:
+        folder.manage_delObjects(to_delete)
+    return len(to_delete)
+
+
+def _list_reagents(portal, q="", status_filter="", category_filter="", show_archived=False):
     """Return filtered, sorted list of reagent dicts."""
     try:
         folder = _get_reagents_folder(portal)
@@ -249,12 +499,17 @@ def _list_reagents(portal, q="", status_filter="", category_filter=""):
         return []
 
     q_lower = (q or "").lower().strip()
+    prod_since = _get_production_since(portal)
     results = []
 
     for obj in folder.objectValues():
         if obj.portal_type != "Reagent":
             continue
         d = _obj_to_dict(obj)
+
+        # Archive filter: skip archived rows unless explicitly requested
+        if d.get("is_archived") and not show_archived:
+            continue
 
         if status_filter and d.get("status") != status_filter:
             continue
@@ -274,6 +529,7 @@ def _list_reagents(portal, q="", status_filter="", category_filter=""):
         if d.get("status") == STATUS_ACTIVE and _is_expired(d):
             d["status"] = STATUS_EXPIRED
 
+        d["is_test"] = _is_test_reagent_by_time(obj, prod_since)
         results.append(d)
 
     results.sort(key=lambda x: (x.get("name") or "").lower())
@@ -314,9 +570,19 @@ class PFASReagentsView(BrowserView):
     template = ViewPageTemplateFile("templates/reagents.pt")
 
     def __call__(self):
+        try:
+            _maybe_record_production_since(self._portal())
+        except Exception:
+            pass
         action = self.request.form.get("action", "")
         if action == "lookup_json":
             return self._handle_lookup_json()
+        if action == "barcode_lookup":
+            return self._handle_barcode_lookup()
+        if action == "suppliers_json":
+            return self._handle_suppliers_json()
+        if action == "reagent_suggestions":
+            return self._handle_reagent_suggestions_json()
         if self.request.method == "POST":
             try:
                 from plone.protect.interfaces import IDisableCSRFProtection
@@ -332,6 +598,16 @@ class PFASReagentsView(BrowserView):
                 return self._handle_status_change()
             if action == "delete":
                 return self._handle_delete()
+            if action == "restore":
+                return self._handle_restore_reagent()
+            if action == "purge_test":
+                return self._handle_purge_test_reagents()
+            if action == "upload_coa":
+                return self._handle_coa_upload()
+            if action == "log_scan":
+                return self._handle_log_scan()
+        if action == "coa":
+            return self._serve_coa()
         return self.template()
 
     # ── Helpers ──────────────────────────────────────────────────────────────
@@ -374,11 +650,38 @@ class PFASReagentsView(BrowserView):
 
     # ── Template data ─────────────────────────────────────────────────────────
 
+    def is_production_mode(self):
+        return _is_production_mode(self._portal())
+
+    def show_archived(self):
+        return self.request.form.get("show_archived", "") == "1"
+
+    def test_reagent_count(self):
+        """Count of reagents created before production mode was activated."""
+        prod_since = _get_production_since(self._portal())
+        if prod_since is None:
+            return 0
+        try:
+            folder = _get_reagents_folder(self._portal())
+        except RuntimeError:
+            return 0
+        cnt = 0
+        for obj in folder.objectValues():
+            if obj.portal_type != "Reagent":
+                continue
+            ann = IAnnotations(obj)
+            if ann.get(_ANN_ARCHIVED_KEY):
+                continue  # already archived, don't double-count
+            if _is_test_reagent_by_time(obj, prod_since):
+                cnt += 1
+        return cnt
+
     def reagents(self):
         return _list_reagents(
             self._portal(),
             q=self.q(),
             status_filter=self.status_filter(),
+            show_archived=self.show_archived(),
         )
 
     def all_statuses(self):
@@ -480,9 +783,189 @@ class PFASReagentsView(BrowserView):
 
     def _handle_delete(self):
         uid = self.request.form.get("uid", "").strip()
-        if _delete_reagent(self._portal(), uid):
-            return self._redirect("{0}?ok=Reagent+deleted".format(self._self_url()))
-        return self._redirect("{0}?error=Not+found".format(self._self_url()))
+        portal = self._portal()
+        if _is_production_mode(portal):
+            from AccessControl import getSecurityManager
+            try:
+                user = getSecurityManager().getUser().getUserName()
+            except Exception:
+                user = u"unknown"
+            if _archive_reagent(portal, uid, user):
+                return self._redirect("{0}?ok=Reagent+archived".format(self._self_url()))
+            return self._redirect("{0}?error=Reagent+not+found".format(self._self_url()))
+        else:
+            if _delete_reagent(portal, uid):
+                return self._redirect("{0}?ok=Reagent+deleted".format(self._self_url()))
+            return self._redirect("{0}?error=Reagent+not+found".format(self._self_url()))
+
+    def _handle_restore_reagent(self):
+        uid = self.request.form.get("uid", "").strip()
+        if _restore_reagent(self._portal(), uid):
+            return self._redirect("{0}?ok=Reagent+restored".format(self._self_url()))
+        return self._redirect("{0}?error=Reagent+not+found".format(self._self_url()))
+
+    def _handle_purge_test_reagents(self):
+        self.request.response.setHeader("Content-Type", "application/json")
+        count = _purge_test_reagents(self._portal())
+        return json.dumps({"ok": True, "purged": count})
+
+    def _handle_reagent_suggestions_json(self):
+        """Deduplicated name+supplier+cat combos for autofill (non-test, non-archived)."""
+        self.request.response.setHeader("Content-Type", "application/json")
+        if not _is_production_mode(self._portal()):
+            return json.dumps({"suggestions": []})
+        try:
+            folder = _get_reagents_folder(self._portal())
+        except RuntimeError:
+            return json.dumps({"suggestions": []})
+        prod_since = _get_production_since(self._portal())
+        seen = {}
+        for obj in folder.objectValues():
+            if obj.portal_type != "Reagent":
+                continue
+            if _is_test_reagent_by_time(obj, prod_since):
+                continue
+            ann = IAnnotations(obj)
+            if ann.get(_ANN_ARCHIVED_KEY):
+                continue
+            name = (obj.title or u"").strip()
+            if not name:
+                continue
+            supplier = (obj.supplier or u"").strip()
+            key = u"{}||{}".format(name.lower(), supplier.lower())
+            if key not in seen:
+                seen[key] = {
+                    "name":             name,
+                    "supplier":         supplier,
+                    "cat_number":       (obj.cat_number or u"").strip(),
+                    "category":         (obj.category or u"").strip(),
+                    "storage_location": (obj.storage_location or u"").strip(),
+                }
+        suggestions = sorted(seen.values(), key=lambda x: x["name"].lower())
+        return json.dumps({"suggestions": suggestions})
+
+    def coa_meta(self, uid):
+        """Return CoA metadata dict for display in the template."""
+        return _get_coa_meta(self._portal(), uid)
+
+    def _handle_coa_upload(self):
+        uid = self.request.form.get("uid", "").strip()
+        upload = self.request.form.get("coa_file")
+        if not uid or not upload:
+            return self._redirect("{0}?error=Missing+file+or+uid".format(self._self_url()))
+        try:
+            file_data = upload.read()
+            filename = getattr(upload, "filename", "coa.pdf")
+            content_type = getattr(upload, "headers", {}).get(
+                "content-type", "application/pdf")
+        except Exception as exc:
+            return self._redirect("{0}?error=Upload+failed%3A+{1}".format(
+                self._self_url(), str(exc).replace(" ", "+")))
+
+        from AccessControl import getSecurityManager
+        try:
+            user = getSecurityManager().getUser().getUserName()
+        except Exception:
+            user = "unknown"
+
+        ok = _save_coa(self._portal(), uid, file_data, filename, content_type, user)
+        if ok:
+            return self._redirect("{0}?ok=CoA+uploaded".format(self._self_url()))
+        return self._redirect("{0}?error=CoA+save+failed".format(self._self_url()))
+
+    def _serve_coa(self):
+        """Serve the stored CoA file for a given reagent uid."""
+        uid = self.request.form.get("uid", "").strip()
+        meta = _get_coa_meta(self._portal(), uid)
+        path = meta.get("path", "")
+        if not path or not os.path.exists(path):
+            self.request.response.setStatus(404)
+            return "CoA not found"
+        ct = meta.get("content_type", "application/pdf")
+        fn = meta.get("filename", "coa.pdf")
+        self.request.response.setHeader("Content-Type", ct)
+        self.request.response.setHeader(
+            "Content-Disposition",
+            'inline; filename="{}"'.format(fn)
+        )
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    def scan_log_count(self, uid):
+        """Return the current scan_count integer for a reagent uid."""
+        try:
+            folder = _get_reagents_folder(self._portal())
+            obj = folder.get(uid)
+            if obj is None:
+                return 0
+            return obj.scan_count or 0
+        except Exception:
+            return 0
+
+    def _handle_barcode_lookup(self):
+        """Exact-match lookup of a scanned value against barcode, lot_number, cat_number."""
+        scanned = self.request.form.get("barcode", "").strip()
+        self.request.response.setHeader("Content-Type", "application/json")
+        if not scanned:
+            return json.dumps({"match": None})
+        try:
+            folder = _get_reagents_folder(self._portal())
+        except RuntimeError:
+            return json.dumps({"match": None})
+        for obj in folder.objectValues():
+            if obj.portal_type != "Reagent":
+                continue
+            barcode = (obj.barcode    or "").strip()
+            lot     = (obj.lot_number or "").strip()
+            cat     = (obj.cat_number or "").strip()
+            if scanned in (barcode, lot, cat):
+                d = _obj_to_dict(obj)
+                coa = _get_coa_meta(self._portal(), d["uid"])
+                d["has_coa"] = bool(coa)
+                return json.dumps({"match": d})
+        return json.dumps({"match": None})
+
+    def _handle_log_scan(self):
+        """Append a scan log entry and increment scan_count. Returns JSON."""
+        self.request.response.setHeader("Content-Type", "application/json")
+        uid           = self.request.form.get("uid", "").strip()
+        scanned_value = self.request.form.get("scanned_value", "").strip()
+        notes         = self.request.form.get("notes", "").strip()
+        if not uid:
+            return json.dumps({"ok": False, "error": "Missing uid"})
+        from AccessControl import getSecurityManager
+        try:
+            user = getSecurityManager().getUser().getUserName()
+        except Exception:
+            user = "unknown"
+        entry = {
+            "timestamp":     datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "scanned_by":    user,
+            "scanned_value": scanned_value,
+            "notes":         notes,
+        }
+        ok = _append_scan_log(self._portal(), uid, entry)
+        if ok:
+            rec = _get_reagent(self._portal(), uid)
+            count = rec.get("scan_count", 0) if rec else 0
+            return json.dumps({"ok": True, "count": count})
+        return json.dumps({"ok": False, "error": "Reagent not found or save failed"})
+
+    def _handle_suppliers_json(self):
+        """Return sorted list of distinct supplier names from existing reagents."""
+        self.request.response.setHeader("Content-Type", "application/json")
+        try:
+            folder = _get_reagents_folder(self._portal())
+        except RuntimeError:
+            return json.dumps({"suppliers": []})
+        seen = set()
+        for obj in folder.objectValues():
+            if obj.portal_type != "Reagent":
+                continue
+            s = (obj.supplier or "").strip()
+            if s:
+                seen.add(s)
+        return json.dumps({"suppliers": sorted(seen)})
 
     def _handle_lookup_json(self):
         """JSON endpoint for logbook reagent lookup (no auth check — same as other views)."""

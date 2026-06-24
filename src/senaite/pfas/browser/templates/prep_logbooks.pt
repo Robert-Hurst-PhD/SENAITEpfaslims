@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Preparation Logbooks</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .lb-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .lb-table th { background:var(--s-light); padding:8px 12px; text-align:left;
+                   font-size:11px; color:var(--s-secondary); text-transform:uppercase;
+                   font-weight:700; letter-spacing:.04em; }
+    .lb-table td { padding:9px 12px; border-top:1px solid var(--s-border); vertical-align:middle; }
+    .lb-table tr:hover td { background:var(--s-primary-lt); }
+
+    .rev-list { list-style:none; margin:0; padding:0; }
+    .rev-list li { display:flex; align-items:center; gap:10px; padding:4px 0;
+                   border-bottom:1px solid var(--s-border); }
+    .rev-list li:last-child { border-bottom:none; }
+
+    .badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700;
+             text-transform:uppercase; }
+    .badge-draft    { background:#e2e3e5; color:#495057; }
+    .badge-active   { background:#d4edda; color:#155724; }
+    .badge-archived { background:#f8d7da; color:#721c24; }
+
+    .expiry-chip { font-size:11px; color:var(--s-secondary); background:var(--s-light);
+                   padding:2px 8px; border-radius:10px; white-space:nowrap; }
+
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
+                     z-index:1000; align-items:center; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal-box { background:#fff; border-radius:10px; padding:24px; width:90%;
+                 max-width:680px; max-height:92vh; overflow-y:auto;
+                 box-shadow:0 8px 32px rgba(0,0,0,.25); }
+    .modal-box h2 { font-size:16px; font-weight:700; margin:0 0 18px;
+                    padding-bottom:8px; border-bottom:2px solid var(--s-border); }
+    .form-row  { display:flex; gap:14px; margin-bottom:14px; flex-wrap:wrap; }
+    .form-field { display:flex; flex-direction:column; flex:1 1 200px; }
+    .form-field.full { flex:1 1 100%; }
+    .form-field label { font-size:11px; font-weight:700; color:var(--s-secondary);
+                        text-transform:uppercase; margin-bottom:3px; }
+    .form-field input, .form-field select, .form-field textarea {
+      padding:7px 10px; border:1px solid var(--s-input-border); border-radius:5px;
+      font-size:13px; color:var(--s-body); }
+    .form-field textarea { min-height:80px; resize:vertical; }
+    .analyte-editor { width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+    .analyte-editor th { background:var(--s-light); padding:5px 8px; text-align:left;
+                         font-size:11px; text-transform:uppercase; font-weight:700; }
+    .analyte-editor td { padding:3px 4px; border-bottom:1px solid var(--s-border); }
+    .analyte-editor input { width:100%; padding:4px 6px; border:1px solid var(--s-input-border);
+                            border-radius:3px; font-size:12px; }
+    .btn-add-row { font-size:11px; padding:3px 10px; background:var(--s-primary-lt);
+                   color:var(--s-primary); border:1px solid var(--s-primary);
+                   border-radius:4px; cursor:pointer; margin-top:4px; }
+
+    .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
+    .msg-ok    { background:#d4edda; border:1px solid #c3e6cb; border-radius:4px;
+                 padding:10px 14px; margin-bottom:14px; color:#155724; font-weight:600; }
+    .msg-error { background:#f8d7da; border:1px solid #f5c6cb; border-radius:4px;
+                 padding:10px 14px; margin-bottom:14px; color:#721c24; font-weight:600; }
+
+    .revision-panel { margin-top:6px; padding:8px 12px; background:#f8f9fa;
+                      border-radius:6px; font-size:12px; }
+    .revision-panel summary { cursor:pointer; font-weight:700; font-size:12px;
+                               color:var(--s-primary); }
+    .btn-warn   { background:#fff3cd; border:1px solid #ffc107; color:#856404; }
+    .btn-warn:hover { background:#ffc107; color:#fff; }
+    .btn-danger { background:#f8d7da; border:1px solid #dc3545; color:#842029; }
+    .btn-danger:hover { background:#dc3545; color:#fff; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Preparation Logbooks</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <span class="role-badge">LabManager</span>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" style="max-width:1100px">
+
+    <div class="msg-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg">ok</div>
+    <div class="msg-error" tal:condition="view/error_msg" tal:content="view/error_msg">err</div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <p style="color:var(--s-secondary);font-size:13px;margin:0">
+        Each logbook describes a preparation procedure with versioned revisions.
+        A prepared standard links to one revision. Issuing a new revision creates a draft copy.
+      </p>
+      <button class="btn btn-primary" onclick="openModal()">+ New Logbook</button>
+    </div>
+
+    <tal:fams tal:define="fams view/logbook_families">
+
+      <div class="empty-state" tal:condition="not:fams">
+        <p style="font-size:28px">&#128209;</p>
+        <p>No preparation logbooks defined yet.</p>
+        <button class="btn btn-primary" onclick="openModal()" style="margin-top:12px">
+          Create First Logbook
+        </button>
+      </div>
+
+      <div class="table-wrap" tal:condition="fams">
+        <table class="lb-table">
+          <thead>
+            <tr>
+              <th>Logbook Name</th>
+              <th>Type</th>
+              <th style="text-align:center">Current Rev</th>
+              <th>Default Expiry</th>
+              <th>Status</th>
+              <th>Revisions</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tal:rows tal:repeat="fam fams">
+              <tr>
+                <td style="font-weight:700" tal:content="fam/title">Logbook Name</td>
+                <td style="font-size:12px;color:var(--s-secondary)" tal:content="fam/standard_type">—</td>
+                <td style="text-align:center">
+                  <strong tal:content="fam/revision">1</strong>
+                </td>
+                <td>
+                  <span class="expiry-chip"
+                        tal:content="python:'{} days'.format(fam['default_expiry_days'])">365 days</span>
+                </td>
+                <td>
+                  <span tal:attributes="class python:'badge badge-' + fam['status']"
+                        tal:content="fam/status">draft</span>
+                </td>
+                <td>
+                  <details class="revision-panel">
+                    <summary tal:content="python:'Rev {} history'.format(fam['revision'])">History</summary>
+                    <ul class="rev-list" style="margin-top:8px">
+                      <tal:revs tal:repeat="rev python:view.all_revisions(fam['logbook_slug'])">
+                        <li>
+                          <span>Rev <strong tal:content="rev/revision">1</strong></span>
+                          <span tal:attributes="class python:'badge badge-' + rev['status']"
+                                tal:content="rev/status">draft</span>
+                          <span style="font-size:11px;color:var(--s-secondary)"
+                                tal:content="python:rev['archived_date'] or ''">—</span>
+                          <form method="POST" style="display:inline"
+                                tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                            <input type="hidden" name="action" value="activate" />
+                            <input type="hidden" name="uid" tal:attributes="value rev/uid" />
+                            <button type="submit" class="btn-sm"
+                                    tal:condition="python:rev['status'] != 'active'">Activate</button>
+                          </form>
+                          <!-- Archive: shown for non-archived revisions -->
+                          <form method="POST" style="display:inline"
+                                tal:condition="python:rev['status'] != 'archived'"
+                                tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                            <input type="hidden" name="action" value="archive" />
+                            <input type="hidden" name="uid" tal:attributes="value rev/uid" />
+                            <button type="submit" class="btn-sm btn-warn"
+                                    onclick="return confirm('Archive this revision? It will no longer be active.')">Archive</button>
+                          </form>
+                          <!-- Delete: only for draft revisions that are not builtin -->
+                          <form method="POST" style="display:inline"
+                                tal:condition="python:rev['status'] == 'draft' and not rev.get('builtin', False)"
+                                tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                            <input type="hidden" name="action" value="delete" />
+                            <input type="hidden" name="uid" tal:attributes="value rev/uid" />
+                            <button type="submit" class="btn-sm btn-danger"
+                                    onclick="return confirm('Permanently delete this draft revision? This cannot be undone.')">Delete</button>
+                          </form>
+                          <tal:ebtn tal:define="rev_json python:__import__('json').dumps(rev)">
+                          <button class="btn-sm"
+                                  tal:attributes="onclick string:editLogbook(${rev_json})"
+                                  >Edit</button>
+                          </tal:ebtn>
+                        </li>
+                      </tal:revs>
+                    </ul>
+                  </details>
+                </td>
+                <td>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <tal:ebtn tal:define="fam_json python:__import__('json').dumps(fam)">
+                    <button class="btn-sm"
+                            tal:attributes="onclick string:editLogbook(${fam_json})"
+                            >Edit</button>
+                    </tal:ebtn>
+                    <form method="POST" style="display:inline"
+                          tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                      <input type="hidden" name="action" value="new_revision" />
+                      <input type="hidden" name="uid" tal:attributes="value fam/uid" />
+                      <button type="submit" class="btn-sm">New Revision</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            </tal:rows>
+          </tbody>
+        </table>
+      </div>
+
+    </tal:fams>
+
+    <!-- ── Add/Edit modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="lbModal">
+      <div class="modal-box">
+        <h2 id="modalTitle">New Preparation Logbook</h2>
+        <form method="POST"
+              tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+          <input type="hidden" name="action" value="add" id="formAction" />
+          <input type="hidden" name="uid" id="editUid" value="" />
+          <input type="hidden" name="logbook_slug" id="lbSlug" value="" />
+          <input type="hidden" name="revision" id="lbRevision" value="1" />
+          <input type="hidden" name="active" id="activeHidden" value="on" />
+
+          <div class="form-row">
+            <div class="form-field" style="flex:2 1 300px">
+              <label>Logbook Name *</label>
+              <input type="text" name="title" id="lbTitle" required placeholder="e.g. Native Stock Standard Preparation" />
+            </div>
+            <div class="form-field">
+              <label>Standard Type</label>
+              <select name="standard_type" id="lbType">
+                <option value="">— Select —</option>
+                <tal:opts tal:repeat="t view/standard_types">
+                  <option tal:content="t" tal:attributes="value t">type</option>
+                </tal:opts>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Method Slug</label>
+              <input type="text" name="method_slug" id="lbMethodSlug"
+                     placeholder="e.g. fda-32-pfas" />
+            </div>
+            <div class="form-field">
+              <label>Logbook Code (FM-ENV-xxx)</label>
+              <input type="text" name="logbook_code" id="lbCode"
+                     placeholder="e.g. FM-ENV-250" />
+            </div>
+            <div class="form-field" style="flex:0 0 80px">
+              <label>Sort Order</label>
+              <input type="number" name="sort_order" id="lbSortOrder"
+                     value="100" min="0" max="999" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Default Expiry (days)</label>
+              <input type="number" name="default_expiry_days" id="lbExpiry"
+                     value="365" min="1" max="3650" />
+            </div>
+            <div class="form-field">
+              <label>Status</label>
+              <select name="status" id="lbStatus">
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <div class="form-field" style="flex:0 0 auto; justify-content:flex-end; padding-top:20px">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                <!-- no name= here; activeHidden is synced by serializeForm() -->
+                <input type="checkbox" id="lbActive" />
+                Show in Batch Index
+              </label>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Field Schema (JSON)</label>
+              <textarea name="field_schema_json" id="lbFieldSchema" rows="8"
+                        style="font-family:monospace;font-size:11px;"
+                        placeholder='[
+  {"name":"prepared_by","label":"Prepared By","type":"text","required":true,"correctable":true,"width":"lg"},
+  {"name":"prepared_date","label":"Date Prepared","type":"date","correctable":true,"width":"md"},
+  {"name":"notes","label":"Notes","type":"textarea","correctable":true},
+  {"name":"items","label":"Items","type":"table","columns":[
+    {"name":"name","label":"Name","type":"text"},
+    {"name":"lot","label":"Lot #","type":"text"}
+  ],"default_rows":[]}
+]'></textarea>
+              <span style="font-size:10px;color:var(--s-secondary);margin-top:3px">
+                Field types: text, date, number, textarea, lot_ref (+ lot_type), reagent_ref, checkbox, table (+ columns + default_rows).
+                Add &quot;correctable&quot;: true for GLP correction support.
+              </span>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Description</label>
+              <textarea name="description" id="lbDesc" rows="2"
+                        placeholder="What this logbook prepares..."></textarea>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Procedure (step-by-step)</label>
+              <textarea name="procedure" id="lbProc" rows="5"
+                        placeholder="1. Weigh ...&#10;2. Dissolve in ..."></textarea>
+            </div>
+          </div>
+
+          <div class="form-field full" style="margin-bottom:14px">
+            <label>Analyte Template (default concentrations for this logbook)</label>
+            <table class="analyte-editor" id="analyteTable">
+              <thead>
+                <tr><th>Analyte</th><th>Concentration</th><th>Unit</th><th></th></tr>
+              </thead>
+              <tbody id="analyteBody"></tbody>
+            </table>
+            <button type="button" class="btn-add-row" onclick="addAnalyteRow()">+ Add Analyte</button>
+            <input type="hidden" name="analyte_template_json" id="analyteJson" value="[]" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Notes</label>
+              <textarea name="notes" id="lbNotes" rows="2"></textarea>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+            <button type="button" class="btn-sm" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" onclick="serializeForm()">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="pane-footer">
+      <span>Versioned preparation procedures linked to prepared standards and internal certificates</span>
+      <span class="pf-path">/pfas_prep_logbooks (ZODB)</span>
+    </div>
+
+  </div>
+
+  <script>
+  function openModal(data) {
+    var modal = document.getElementById('lbModal');
+    if (!data) {
+      document.getElementById('modalTitle').textContent = 'New Preparation Logbook';
+      document.getElementById('formAction').value = 'add';
+      document.getElementById('editUid').value = '';
+      document.getElementById('lbSlug').value = '';
+      document.getElementById('lbRevision').value = '1';
+      document.getElementById('lbTitle').value = '';
+      document.getElementById('lbType').value = '';
+      document.getElementById('lbExpiry').value = '365';
+      document.getElementById('lbStatus').value = 'draft';
+      document.getElementById('lbDesc').value = '';
+      document.getElementById('lbProc').value = '';
+      document.getElementById('lbNotes').value = '';
+      document.getElementById('lbMethodSlug').value = '';
+      document.getElementById('lbCode').value = '';
+      document.getElementById('lbSortOrder').value = '100';
+      document.getElementById('lbFieldSchema').value = '';
+      document.getElementById('lbActive').checked = true;
+      clearAnalyteRows();
+    }
+    modal.classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('lbModal').classList.remove('open');
+  }
+  function editLogbook(data) {
+    if (typeof data === 'string') { try { data = JSON.parse(data); } catch(e) { return; } }
+    document.getElementById('modalTitle').textContent = 'Edit Logbook';
+    document.getElementById('formAction').value = 'edit';
+    document.getElementById('editUid').value = data.uid || '';
+    document.getElementById('lbSlug').value = data.logbook_slug || '';
+    document.getElementById('lbRevision').value = data.revision || 1;
+    document.getElementById('lbTitle').value = data.title || '';
+    document.getElementById('lbType').value = data.standard_type || '';
+    document.getElementById('lbExpiry').value = data.default_expiry_days || 365;
+    document.getElementById('lbStatus').value = data.status || 'draft';
+    document.getElementById('lbDesc').value = data.description || '';
+    document.getElementById('lbProc').value = data.procedure || '';
+    document.getElementById('lbNotes').value = data.notes || '';
+    document.getElementById('lbMethodSlug').value = data.method_slug || '';
+    document.getElementById('lbCode').value = data.logbook_code || '';
+    document.getElementById('lbSortOrder').value = data.sort_order != null ? data.sort_order : 100;
+    document.getElementById('lbFieldSchema').value = (data.field_schema_json && data.field_schema_json !== '[]')
+      ? (function() { try { return JSON.stringify(JSON.parse(data.field_schema_json), null, 2); } catch(e) { return data.field_schema_json; } })()
+      : '';
+    document.getElementById('lbActive').checked = data.active !== false;
+    var tmpl = [];
+    try { tmpl = JSON.parse(data.analyte_template_json || '[]'); } catch(e) {}
+    clearAnalyteRows();
+    tmpl.forEach(function(row) { addAnalyteRow(row.analyte, row.concentration, row.unit); });
+    document.getElementById('lbModal').classList.add('open');
+  }
+  function clearAnalyteRows() {
+    document.getElementById('analyteBody').innerHTML = '';
+  }
+  function addAnalyteRow(analyte, conc, unit) {
+    var tbody = document.getElementById('analyteBody');
+    var tr = document.createElement('tr');
+    var T='\x3ctd\x3e', ET='\x3c/td\x3e', I='\x3cinput type="text" ';
+    tr.innerHTML = T+I+'class="a-name" value="'+(analyte||'')+'" placeholder="PFOA" /\x3e'+ET
+      + T+I+'class="a-conc" value="'+(conc||'')+'" placeholder="100" /\x3e'+ET
+      + T+I+'class="a-unit" value="'+(unit||'')+'" placeholder="ng/mL" /\x3e'+ET
+      + T+'\x3cbutton type="button" onclick="this.closest(\'tr\').remove()" style="color:#dc3545;background:none;border:none;cursor:pointer"\x3e×\x3c/button\x3e'+ET;
+    tbody.appendChild(tr);
+  }
+  function serializeForm() {
+    serializeAnalytes();
+    document.getElementById('activeHidden').value =
+      document.getElementById('lbActive').checked ? 'on' : 'off';
+  }
+
+  function serializeAnalytes() {
+    var rows = document.querySelectorAll('#analyteBody tr');
+    var data = [];
+    rows.forEach(function(tr) {
+      var a = tr.querySelector('.a-name').value.trim();
+      var c = tr.querySelector('.a-conc').value.trim();
+      var u = tr.querySelector('.a-unit').value.trim();
+      if (a) data.push({analyte: a, concentration: c, unit: u});
+    });
+    document.getElementById('analyteJson').value = JSON.stringify(data);
+  }
+  document.getElementById('lbModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+  </script>
+
+  </div><!-- /content slot -->
+</body>
+</html>

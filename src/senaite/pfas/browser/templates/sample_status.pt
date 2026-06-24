@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">PFAS Batch Status</title>
+  <title metal:fill-slot="title">Batch Status</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     /* ── Batch status page-specific ────────────────────────────────────── */
@@ -93,7 +93,7 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">PFAS Batch Status</tal:t>
+  <tal:t metal:fill-slot="header-title">Batch Status</tal:t>
   <tal:r metal:fill-slot="header-right">
     <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-track">
       Client Tracker

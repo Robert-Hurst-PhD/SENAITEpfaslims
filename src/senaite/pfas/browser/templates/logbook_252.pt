@@ -101,15 +101,27 @@
               </tal:opts>
             </select>
           </div>
-          <div class="lb-field">
-            <label>Analyst</label>
+          <div class="lb-field corr-field" data-field="analyst">
+            <label>Analyst <button class="btn-correct" type="button" onclick="toggleCorrect('analyst')">correct</button></label>
             <input class="lb-input lb-input-lg" type="text" name="analyst"
                    tal:attributes="value python:view.data().get('analyst','')" />
+            <div class="corr-panel" id="cp-analyst">
+              <label>Original: <span id="co-analyst" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="text" id="cn-analyst" name="_newval_analyst" style="width:160px;" /></label>
+              <label>Initials: <input type="text" id="cb-analyst" name="_corr_by_analyst" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('analyst')">&#215;</button>
+            </div>
           </div>
-          <div class="lb-field">
-            <label>Extraction Date</label>
+          <div class="lb-field corr-field" data-field="extraction_date">
+            <label>Extraction Date <button class="btn-correct" type="button" onclick="toggleCorrect('extraction_date')">correct</button></label>
             <input class="lb-input lb-input-md" type="date" name="extraction_date"
                    tal:attributes="value python:view.data().get('extraction_date','')" />
+            <div class="corr-panel" id="cp-extraction_date">
+              <label>Original: <span id="co-extraction_date" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="date" id="cn-extraction_date" name="_newval_extraction_date" /></label>
+              <label>Initials: <input type="text" id="cb-extraction_date" name="_corr_by_extraction_date" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('extraction_date')">&#215;</button>
+            </div>
           </div>
         </div>
       </div>
@@ -180,23 +192,46 @@
       <!-- Notes -->
       <div class="lb-section">
         <h3>Notes</h3>
-        <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:13px; border:1px solid var(--s-input-border); border-radius:6px;"
-                  tal:content="python:view.data().get('notes','')"></textarea>
+        <div class="corr-field" data-field="notes">
+          <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:13px; border:1px solid var(--s-input-border); border-radius:6px;"
+                    tal:content="python:view.data().get('notes','')"></textarea>
+          <div style="margin-top:4px;">
+            <button class="btn-correct" type="button" onclick="toggleCorrect('notes')">correct notes</button>
+          </div>
+          <div class="corr-panel" id="cp-notes">
+            <label>Original: <span id="co-notes" style="text-decoration:line-through;color:#999;font-weight:normal;max-width:300px;display:inline-block;"></span></label>
+            <label>Correction: <input type="text" id="cn-notes" name="_newval_notes" style="width:220px;" /></label>
+            <label>Initials: <input type="text" id="cb-notes" name="_corr_by_notes" class="corr-initials" placeholder="JS" /></label>
+            <button type="button" class="corr-cancel" onclick="toggleCorrect('notes')">&#215;</button>
+          </div>
+        </div>
       </div>
 
       <!-- Sign-off -->
       <div class="lb-section">
         <h3>Sign-off</h3>
         <div class="sig-block">
-          <div class="sig-field">
-            <label>Reviewed By</label>
+          <div class="sig-field corr-field" data-field="reviewed_by">
+            <label>Reviewed By <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_by')">correct</button></label>
             <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
                    tal:attributes="value python:view.data().get('reviewed_by','')" />
+            <div class="corr-panel" id="cp-reviewed_by">
+              <label>Original: <span id="co-reviewed_by" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="text" id="cn-reviewed_by" name="_newval_reviewed_by" style="width:160px;" /></label>
+              <label>Initials: <input type="text" id="cb-reviewed_by" name="_corr_by_reviewed_by" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('reviewed_by')">&#215;</button>
+            </div>
           </div>
-          <div class="sig-field">
-            <label>Date Reviewed</label>
+          <div class="sig-field corr-field" data-field="reviewed_date">
+            <label>Date Reviewed <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_date')">correct</button></label>
             <input class="lb-input lb-input-md" type="date" name="reviewed_date"
                    tal:attributes="value python:view.data().get('reviewed_date','')" />
+            <div class="corr-panel" id="cp-reviewed_date">
+              <label>Original: <span id="co-reviewed_date" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="date" id="cn-reviewed_date" name="_newval_reviewed_date" /></label>
+              <label>Initials: <input type="text" id="cb-reviewed_date" name="_corr_by_reviewed_date" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('reviewed_date')">&#215;</button>
+            </div>
           </div>
         </div>
       </div>
@@ -359,6 +394,7 @@
     renderReagents();
     renderStandards();
     renderMaterials();
+    initCorrections(SAVED);
   });
   </script>
   </div><!-- /content slot -->

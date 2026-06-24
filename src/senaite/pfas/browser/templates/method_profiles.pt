@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">PFAS Method Profiles</title>
+  <title metal:fill-slot="title">Method Profiles</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     /* ── Method profiles page-specific ────────────────────────────────── */
@@ -22,17 +22,9 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">PFAS Method Profiles</tal:t>
+  <tal:t metal:fill-slot="header-title">Method Profiles</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@pfas-qc-type-grid">
-      QC Type Grid
-    </a>
-    <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-control-chart">
-      Control Charts
-    </a>
-    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@lims-setup">
-      Site Setup
-    </a>
+    <span class="role-badge">LabManager</span>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -80,6 +72,10 @@
     </table>
     </div><!-- /table-wrap -->
 
+  <div class="pane-footer">
+    <span>Per-method QC limits applied by the calibration engine at analysis time</span>
+    <span class="pf-path">/data/qc/method_profiles.json</span>
+  </div>
   </div>
   </div><!-- /content slot -->
 </body>

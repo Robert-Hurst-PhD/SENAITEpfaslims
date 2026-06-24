@@ -305,4 +305,95 @@
       permission="zope2.View"
       />
 
+  <!-- Dynamic logbook renderer (PrepLogbookDef field_schema_json driven) -->
+  <browser:page
+      name="pfas-logbook-dynamic"
+      for="*"
+      class=".logbooks.PFASDynamicLogbookView"
+      permission="zope2.View"
+      />
+
+  <!-- AJAX: Prepared Standard lot autocomplete (lot_ref fields) -->
+  <browser:page
+      name="pfas-lot-autocomplete"
+      for="*"
+      class=".logbooks.PFASLotAutocompleteView"
+      permission="zope2.View"
+      />
+
+  <!-- AJAX: Reagent inventory autocomplete (reagent_ref fields) -->
+  <browser:page
+      name="pfas-reagent-autocomplete"
+      for="*"
+      class=".logbooks.PFASReagentAutocompleteView"
+      permission="zope2.View"
+      />
+
+  <!-- Prep logbook definitions -->
+  <browser:page
+      name="pfas-prep-logbooks"
+      for="*"
+      class=".prep_logbooks.PFASPrepLogbooksView"
+      permission="zope2.View"
+      />
+
+  <!-- Prepared standards inventory -->
+  <browser:page
+      name="pfas-prep-standards"
+      for="*"
+      class=".prepared_standards.PFASPrepStandardsView"
+      permission="zope2.View"
+      />
+
+  <!-- ── Facility QC (ISO 17025 daily verifications) ──────────────────── -->
+  <browser:page
+      name="pfas-facility-qc"
+      for="*"
+      class=".facility_qc.PFASFacilityDashboardView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-facility-units"
+      for="*"
+      class=".facility_qc.PFASFacilityUnitsView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-temperature-log"
+      for="*"
+      class=".facility_qc.PFASTemperatureLogView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-balance-log"
+      for="*"
+      class=".facility_qc.PFASBalanceLogView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-water-log"
+      for="*"
+      class=".facility_qc.PFASWaterLogView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-waste-log"
+      for="*"
+      class=".facility_qc.PFASWasteLogView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-eyewash-log"
+      for="*"
+      class=".facility_qc.PFASEyeWashLogView"
+      permission="zope2.View"
+      />
+  <!-- Unauthenticated RPi ingest endpoint — API key validated in the view -->
+  <browser:page
+      name="pfas-sensor-ingest"
+      for="*"
+      class=".facility_qc.PFASSensorIngestView"
+      permission="zope2.Public"
+      />
+
 </configure>

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Facility QC — Daily Checklist</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .fqc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+                gap:14px; margin-top:18px; }
+    .fqc-card { background:var(--s-bg); border:1px solid var(--s-border);
+                border-radius:8px; padding:14px 16px;
+                box-shadow:0 1px 4px rgba(0,0,0,.06); }
+    .fqc-card-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .fqc-icon { font-size:18px; color:var(--s-primary); width:24px; text-align:center; }
+    .fqc-name { font-weight:600; font-size:13px; color:var(--s-body); flex:1; }
+    .fqc-loc  { font-size:11px; color:var(--s-secondary); }
+    .fqc-reading { font-size:22px; font-weight:700; margin:4px 0; color:var(--s-body); }
+    .fqc-reading small { font-size:13px; font-weight:400; color:var(--s-secondary); }
+    .fqc-meta { font-size:11px; color:var(--s-secondary); margin-bottom:6px; }
+    .fqc-badge { display:inline-block; padding:3px 10px; border-radius:10px;
+                 font-size:11px; font-weight:700; text-transform:uppercase; }
+    .fqc-ok          { background:#d4edda; color:#155724; }
+    .fqc-fail        { background:#f8d7da; color:#721c24; }
+    .fqc-warn        { background:#fff3cd; color:#856404; }
+    .fqc-pending     { background:var(--s-light); color:var(--s-secondary); }
+    .fqc-action { margin-top:8px; }
+    .fqc-action a { font-size:11px; color:var(--s-primary); text-decoration:none; }
+    .fqc-action a:hover { text-decoration:underline; }
+    .fqc-section-head { font-size:11px; font-weight:700; text-transform:uppercase;
+                        letter-spacing:.06em; color:var(--s-secondary);
+                        margin:22px 0 8px; border-bottom:1px solid var(--s-border);
+                        padding-bottom:5px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="
+    summary  view/summary;
+    purl     view/portal_url;
+  ">
+
+  <h1 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--s-body)">
+    Facility QC — Daily Checklist
+  </h1>
+  <p style="font-size:12px;color:var(--s-secondary);margin:0 0 18px">
+    ISO 17025 daily instrument and environmental verifications.
+    <a tal:attributes="href string:${purl}/@@pfas-facility-units"
+       style="color:var(--s-primary)">Manage units &rarr;</a>
+  </p>
+
+  <tal:no-units tal:condition="python:not summary">
+    <div style="padding:32px;text-align:center;color:var(--s-secondary);
+                border:1px dashed var(--s-border);border-radius:8px;">
+      No active facility units configured.
+      <a tal:attributes="href string:${purl}/@@pfas-facility-units"
+         style="color:var(--s-primary)">Add units &rarr;</a>
+    </div>
+  </tal:no-units>
+
+  <tal:groups tal:condition="python:bool(summary)">
+
+    <!-- Temperature units -->
+    <tal:temp-units tal:define="
+      temp_units python:[u for u in summary if u['unit_type'] in ('refrigerator','freezer','room_sensor')]">
+      <tal:show tal:condition="python:bool(temp_units)">
+        <div class="fqc-section-head">Temperature &amp; Humidity</div>
+        <div class="fqc-grid">
+          <tal:each tal:repeat="unit temp_units">
+            <div class="fqc-card">
+              <div class="fqc-card-head">
+                <span class="fqc-icon"><i tal:attributes="class python:view.unit_icon(unit['unit_type'])"></i></span>
+                <div>
+                  <div class="fqc-name" tal:content="unit/name">Unit</div>
+                  <div class="fqc-loc" tal:content="python:unit.get('location','')"></div>
+                </div>
+              </div>
+              <tal:reading tal:define="r python:unit.get('last_reading')">
+                <tal:has-reading tal:condition="r">
+                  <div class="fqc-reading">
+                    <tal:t tal:condition="python:r.get('temperature') is not None">
+                      <tal:v tal:replace="python:'{:.1f}'.format(r['temperature'])"/>
+                      <small>&deg;C</small>
+                    </tal:t>
+                    <tal:h tal:condition="python:r.get('humidity') is not None">
+                      &nbsp;
+                      <tal:v tal:replace="python:'{:.0f}'.format(r['humidity'])"/>
+                      <small>% RH</small>
+                    </tal:h>
+                  </div>
+                  <div class="fqc-meta">
+                    Range:
+                    <tal:mn tal:replace="python:unit.get('temp_min','—')"/>–<tal:mx tal:replace="python:unit.get('temp_max','—')"/>&deg;C
+                    &bull; Last: <tal:ts tal:replace="python:r['ts'][:16].replace('T',' ')"/>
+                  </div>
+                </tal:has-reading>
+                <tal:no-reading tal:condition="python:not r">
+                  <div class="fqc-reading" style="font-size:14px;color:var(--s-secondary)">No data yet</div>
+                </tal:no-reading>
+              </tal:reading>
+              <span tal:attributes="class python:'fqc-badge '+view.status_class(unit['status'])"
+                    tal:content="python:view.status_label(unit['status'])"></span>
+              <div class="fqc-action">
+                <a tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}">
+                  View chart / temperature study &rarr;
+                </a>
+              </div>
+            </div>
+          </tal:each>
+        </div>
+      </tal:show>
+    </tal:temp-units>
+
+    <!-- Balance units -->
+    <tal:bal-units tal:define="
+      bal_units python:[u for u in summary if u['unit_type'] in ('balance_analytical','balance_prep')]">
+      <tal:show tal:condition="python:bool(bal_units)">
+        <div class="fqc-section-head">Balances</div>
+        <div class="fqc-grid">
+          <tal:each tal:repeat="unit bal_units">
+            <div class="fqc-card">
+              <div class="fqc-card-head">
+                <span class="fqc-icon"><i tal:attributes="class python:view.unit_icon(unit['unit_type'])"></i></span>
+                <div>
+                  <div class="fqc-name" tal:content="unit/name">Balance</div>
+                  <div class="fqc-loc" tal:content="python:unit.get('location','')"></div>
+                </div>
+              </div>
+              <tal:bv tal:define="bv python:unit.get('last_balance')">
+                <tal:has tal:condition="bv">
+                  <div class="fqc-meta">
+                    Verified by <tal:op tal:replace="python:bv['operator']"/> at
+                    <tal:d tal:replace="python:bv['verified_date']"/>
+                  </div>
+                </tal:has>
+                <tal:none tal:condition="python:not bv">
+                  <div class="fqc-meta" style="color:var(--s-secondary)">Not verified today</div>
+                </tal:none>
+              </tal:bv>
+              <span tal:attributes="class python:'fqc-badge '+view.status_class(unit['status'])"
+                    tal:content="python:view.status_label(unit['status'])"></span>
+              <div class="fqc-action">
+                <a tal:attributes="href string:${purl}/@@pfas-balance-log?unit_id=${unit/id}">
+                  Enter verification &rarr;
+                </a>
+              </div>
+            </div>
+          </tal:each>
+        </div>
+      </tal:show>
+    </tal:bal-units>
+
+    <!-- Water / Waste / Eye wash -->
+    <tal:other-units tal:define="
+      other_units python:[u for u in summary if u['unit_type'] in ('water_system','eyewash')]">
+      <tal:show tal:condition="python:bool(other_units)">
+        <div class="fqc-section-head">Other Daily Checks</div>
+        <div class="fqc-grid">
+          <tal:each tal:repeat="unit other_units">
+            <div class="fqc-card">
+              <div class="fqc-card-head">
+                <span class="fqc-icon"><i tal:attributes="class python:view.unit_icon(unit['unit_type'])"></i></span>
+                <div>
+                  <div class="fqc-name" tal:content="unit/name">Unit</div>
+                  <div class="fqc-loc" tal:content="python:unit.get('location','')"></div>
+                </div>
+              </div>
+              <span tal:attributes="class python:'fqc-badge '+view.status_class(unit['status'])"
+                    tal:content="python:view.status_label(unit['status'])"></span>
+              <div class="fqc-action">
+                <a tal:condition="python:unit['unit_type']=='water_system'"
+                   tal:attributes="href string:${purl}/@@pfas-water-log">
+                  Enter reading &rarr;
+                </a>
+                <a tal:condition="python:unit['unit_type']=='eyewash'"
+                   tal:attributes="href string:${purl}/@@pfas-eyewash-log?unit_id=${unit/id}">
+                  Enter check &rarr;
+                </a>
+              </div>
+            </div>
+          </tal:each>
+          <!-- Waste log shortcut -->
+          <div class="fqc-card">
+            <div class="fqc-card-head">
+              <span class="fqc-icon"><i class="fas fa-trash-alt"></i></span>
+              <div>
+                <div class="fqc-name">Waste Containers (SAA)</div>
+              </div>
+            </div>
+            <div class="fqc-action">
+              <a tal:attributes="href string:${purl}/@@pfas-waste-log">Enter log &rarr;</a>
+            </div>
+          </div>
+        </div>
+      </tal:show>
+    </tal:other-units>
+
+  </tal:groups>
+  </tal:def>
+</metal:content>
+</body>
+</html>

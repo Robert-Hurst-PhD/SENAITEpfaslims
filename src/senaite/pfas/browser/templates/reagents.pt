@@ -93,7 +93,7 @@
     .cam-modal-box { background:#111; color:#fff; border-radius:12px; padding:20px;
                      width:90%; max-width:520px; }
     .cam-modal-box h2 { font-size:15px; font-weight:700; margin:0 0 14px; color:#fff; }
-    #cam-video, #ocr-video { width:100%; border-radius:8px; margin-bottom:12px; background:#000; }
+    #cam-video { width:100%; border-radius:8px; margin-bottom:12px; background:#000; }
     .cam-result { font-size:13px; padding:10px; background:#1a1a2e;
                   border-radius:6px; min-height:40px; word-break:break-all; }
     .cam-result strong { color:#00ff88; }
@@ -120,6 +120,115 @@
                    padding:10px 16px; border-radius:8px; margin-bottom:16px; font-size:13px; }
     .section-title { font-size:16px; font-weight:700; color:var(--s-dark);
                      margin:0 0 16px; padding-bottom:8px; border-bottom:2px solid var(--s-border); }
+
+    /* ── CoA helper modal ───────────────────────────── */
+    .coa-tabs { display:flex; gap:0; margin-bottom:16px; border-bottom:2px solid var(--s-border); }
+    .coa-tab { padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer;
+               border:none; background:none; color:var(--s-secondary);
+               border-bottom:3px solid transparent; margin-bottom:-2px; }
+    .coa-tab.active { color:var(--s-primary); border-bottom-color:var(--s-primary); }
+    .coa-panel { display:none; }
+    .coa-panel.active { display:block; }
+    .coa-copy-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .coa-copy-label { font-size:12px; font-weight:600; color:var(--s-dark); width:64px; flex-shrink:0; }
+    .coa-copy-value { flex:1; font-family:monospace; font-size:13px; padding:5px 9px;
+                      background:#f8f9fa; border:1px solid var(--s-border); border-radius:5px;
+                      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .btn-copy { padding:4px 10px; font-size:11px; border-radius:5px; cursor:pointer;
+                border:1px solid var(--s-border); background:#fff; white-space:nowrap; }
+    .btn-copy.copied { background:#d4edda; border-color:#c3e6cb; color:#155724; }
+    .coa-supplier-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+    .coa-supplier-btn { flex:1 1 200px; padding:9px 12px; border-radius:7px; font-size:12px;
+                        font-weight:600; cursor:pointer; text-decoration:none; text-align:center;
+                        display:block; border:1px solid var(--s-border); background:#fff;
+                        color:var(--s-dark); }
+    .coa-supplier-btn:hover { background:#f0f0f0; text-decoration:none; }
+    .coa-note { font-size:11px; color:var(--s-secondary); margin-top:14px;
+                line-height:1.6; padding:10px; background:#f8f9fa; border-radius:6px; }
+    .coa-upload-area label.upload-label { display:inline-flex; align-items:center; gap:8px;
+                                          padding:9px 18px; border-radius:7px;
+                                          background:var(--s-primary); color:#fff;
+                                          font-size:13px; font-weight:600; cursor:pointer; }
+    .coa-upload-area label.upload-label:hover { opacity:.9; }
+
+    /* ── Scan match / log panel ─────────────────────── */
+    .scan-match-card { background:#1a2a1a; border:1px solid #2a4a2a; border-radius:8px;
+                       padding:14px; margin-bottom:12px; }
+    .scan-match-label { font-size:11px; color:#8aaa8a; margin-bottom:4px; }
+    .scan-match-name  { font-size:15px; font-weight:700; color:#00ff88; margin-bottom:10px; }
+    .scan-match-row   { display:flex; gap:12px; flex-wrap:wrap; }
+    .scan-match-item  { flex:1 1 100px; }
+    .scan-match-key   { font-size:10px; color:#888; }
+    .scan-match-val   { font-size:12px; color:#ccc; font-family:monospace; }
+    .scan-log-label   { font-size:11px; color:#aaa; margin-bottom:4px; }
+    .scan-log-textarea { width:100%; box-sizing:border-box; padding:7px 10px;
+                         font-size:12px; background:#222; color:#fff;
+                         border:1px solid #555; border-radius:6px;
+                         resize:vertical; min-height:50px; }
+    .scan-count-badge { display:inline-block; font-size:10px; padding:1px 6px;
+                        background:#e8e8ff; color:#5555bb; border-radius:8px; }
+
+    /* ── OCR extracted fields ───────────────────────── */
+    .ocr-fields    { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:0; }
+    .ocr-field     { flex:1 1 120px; background:#1a1a2e; border:1px solid #333;
+                     border-radius:5px; padding:6px 8px; }
+    .ocr-field-key { display:block; font-size:10px; color:#888; margin-bottom:2px; }
+    .ocr-field-val { display:block; font-size:12px; color:#666; font-family:monospace;
+                     word-break:break-all; }
+    .ocr-field-val.found { color:#00ff88; font-weight:700; }
+
+    /* Code chip strip */
+    .ocr-chips-wrap { margin-top:10px; }
+    .ocr-chips-label { font-size:10px; color:#888; margin-bottom:5px; }
+    .ocr-chips     { display:flex; flex-wrap:wrap; gap:4px; }
+    .ocr-chip      { display:inline-block; padding:3px 8px; font-size:11px;
+                     font-family:monospace; background:#1a1a3a; color:#aaaaff;
+                     border:1px solid #3333aa; border-radius:4px; cursor:pointer;
+                     transition:background 0.15s; }
+    .ocr-chip:hover { background:#2a2a5a; color:#fff; border-color:#6666cc; }
+
+    /* ── Mode banner ───────────────────────────────────── */
+    .mode-banner { display:flex; align-items:center; gap:12px; padding:10px 16px;
+                   border-radius:8px; margin-bottom:16px; font-size:13px; }
+    .mode-banner a { font-weight:700; text-decoration:none; margin-left:auto; }
+    .mode-test    { background:#fff3cd; border:1px solid #ffc107; color:#856404; }
+    .mode-test a  { color:#856404; }
+    .mode-prod    { background:#d4edda; border:1px solid #c3e6cb; color:#155724; }
+    .mode-prod a  { color:#155724; }
+
+    /* ── Test badge on reagent rows ─────────────────── */
+    .badge-test { display:inline-block; font-size:9px; padding:1px 5px;
+                  background:#e2e3e5; color:#6c757d; border-radius:8px;
+                  margin-left:4px; vertical-align:middle; }
+    /* ── Archived row ───────────────────────────────── */
+    tr.rg-archived td { opacity:0.55; }
+    .badge-archived { display:inline-block; font-size:9px; padding:1px 5px;
+                      background:#ccc; color:#555; border-radius:8px; margin-left:4px;
+                      vertical-align:middle; }
+
+    /* ── Autofill dropdown ──────────────────────────── */
+    .af-wrap { position:relative; }
+    .af-dropdown { display:none; position:absolute; left:0; right:0; top:100%;
+                   background:#fff; border:1px solid var(--s-border);
+                   border-radius:0 0 7px 7px; box-shadow:0 4px 12px rgba(0,0,0,.12);
+                   max-height:220px; overflow-y:auto; z-index:2000; }
+    .af-dropdown.open { display:block; }
+    .af-item { padding:8px 12px; font-size:12px; cursor:pointer; border-bottom:1px solid #f0f0f0; }
+    .af-item:last-child { border-bottom:none; }
+    .af-item:hover { background:#f0f4ff; }
+    .af-item-name { font-weight:600; color:var(--s-dark); }
+    .af-item-meta { font-size:11px; color:var(--s-secondary); margin-top:2px; }
+
+    /* ── Unified scan modal tabs ─────────────────────── */
+    .scan-tabs { display:flex; border-bottom:1px solid #444; margin:8px 0 0; }
+    .scan-tab  { flex:1; padding:8px; font-size:12px; font-weight:600; cursor:pointer;
+                 border:none; background:none; color:#888;
+                 border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .scan-tab.active { color:#00ff88; border-bottom-color:#00ff88; }
+    .scan-tab-pane { display:none; padding-top:10px; }
+    .scan-tab-pane.active { display:block; }
+    .cam-lookup-input { flex:1; padding:6px 8px; font-size:12px; background:#222;
+                        color:#fff; border:1px solid #555; border-radius:5px; }
   </style>
   </tal:styles>
 </head>
@@ -136,6 +245,27 @@
 
     <div tal:condition="view/ok_msg"    class="alert-ok"    tal:content="view/ok_msg"></div>
     <div tal:condition="view/error_msg" class="alert-error" tal:content="view/error_msg"></div>
+
+    <!-- ─── Production / Test mode banner ───────────────────── -->
+    <tal:mode tal:define="prod view/is_production_mode; tc view/test_reagent_count">
+      <div tal:condition="not:prod" class="mode-banner mode-test">
+        <strong>Test Mode</strong> &#8212;
+        Audit log disabled. Deletions are permanent and autofill is inactive.
+        <a tal:attributes="href string:${view/portal_url}/bika_setup/auditlog">
+          Enable Audit Log &#8599;
+        </a>
+      </div>
+      <div tal:condition="python:prod and tc > 0" class="mode-banner mode-prod">
+        <strong>Production Mode</strong> &#10003;
+        Audit active. Deletions are archived.
+        <span style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+          <span tal:content="tc">0</span>
+          test entr<tal:s tal:replace="python:'y' if tc == 1 else 'ies'"></tal:s> from setup remain.
+          <button type="button" class="btn-sm btn-danger"
+                  onclick="purgeTestReagents(this)">Purge test entries</button>
+        </span>
+      </div>
+    </tal:mode>
 
     <!-- ─── Summary cards ──────────────────────────────────── -->
     <div class="rg-summary">
@@ -171,9 +301,17 @@
         <button type="submit" class="btn-sm">Filter</button>
         <a tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
            class="btn-sm" style="text-decoration:none;">Clear</a>
+        <tal:arc tal:condition="view/is_production_mode">
+          <a tal:condition="not:view/show_archived"
+             tal:attributes="href string:${view/portal_url}/@@pfas-reagents?show_archived=1"
+             class="btn-sm" style="text-decoration:none;">Show Archived</a>
+          <a tal:condition="view/show_archived"
+             tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
+             class="btn-sm" style="text-decoration:none;background:#e2e3e5;">Hide Archived</a>
+        </tal:arc>
       </form>
-      <button type="button" class="btn-scan" onclick="openScanModal()">&#128247; Scan Barcode</button>
-      <button type="button" class="btn-ocr"  onclick="openOCRModal()">&#128065; OCR Label</button>
+      <button type="button" class="btn-scan" onclick="openScanModal('barcode')">&#128247; Scan Barcode</button>
+      <button type="button" class="btn-ocr"  onclick="openScanModal('ocr')">&#128065; OCR Label</button>
       <button type="button" class="btn-primary" onclick="openAddForm()">+ Add Reagent</button>
     </div>
 
@@ -194,11 +332,22 @@
       </thead>
       <tbody>
         <tal:rows tal:repeat="rg view/reagents">
-        <tr>
+        <tr tal:attributes="class python:'rg-archived' if rg.get('is_archived') else None">
           <td>
             <div class="rg-name" tal:content="python:rg.get('name','')"></div>
             <div style="font-size:11px;color:var(--s-secondary);"
                  tal:content="python:rg.get('category','')"></div>
+            <tal:sc tal:define="sc python:rg.get('scan_count',0)">
+              <span class="scan-count-badge"
+                    tal:attributes="id python:'scan-badge-' + rg.get('uid','');
+                                    style python:None if sc else 'display:none'"
+                    tal:content="python:('{0} scan'.format(sc) if sc==1 else '{0} scans'.format(sc))">
+              </span>
+            </tal:sc>
+            <span tal:condition="python:rg.get('is_test')"
+                  class="badge-test">test</span>
+            <span tal:condition="python:rg.get('is_archived')"
+                  class="badge-archived">archived</span>
           </td>
           <td class="rg-cat" tal:content="python:rg.get('cat_number','')"></td>
           <td class="rg-lot" tal:content="python:rg.get('lot_number','')"></td>
@@ -227,16 +376,75 @@
                 <button class="btn-sm" type="submit">Mark Opened</button>
               </form>
             </tal:open>
-            <form method="post" style="display:inline;"
-                  tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-              <input type="hidden" name="action" value="delete" />
-              <input type="hidden" name="uid"
-                     tal:attributes="value python:rg.get('uid','')" />
-              <button class="btn-sm btn-danger" type="submit"
-                      onclick="return confirm('Delete this reagent record?')">
-                Del
-              </button>
-            </form>
+            <!-- CoA upload/view -->
+            <tal:coa tal:define="coa python:view.coa_meta(rg.get('uid',''))">
+              <tal:has tal:condition="coa">
+                <a class="btn-sm"
+                   target="_blank"
+                   tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${python:rg.get('uid','')}">
+                  CoA
+                </a>
+                <button class="btn-sm open-coa-modal"
+                        title="Replace CoA"
+                        tal:attributes="data-uid python:rg.get('uid','');
+                                        data-name python:rg.get('name','');
+                                        data-cat python:rg.get('cat_number','');
+                                        data-lot python:rg.get('lot_number','');
+                                        data-tab string:upload">
+                  &#8593;
+                </button>
+              </tal:has>
+              <tal:none tal:condition="not:coa">
+                <button class="btn-sm open-coa-modal"
+                        tal:attributes="data-uid python:rg.get('uid','');
+                                        data-name python:rg.get('name','');
+                                        data-cat python:rg.get('cat_number','');
+                                        data-lot python:rg.get('lot_number','');
+                                        data-tab string:find">
+                  + CoA
+                </button>
+              </tal:none>
+            </tal:coa>
+            <!-- Production mode: Archive / Restore -->
+            <tal:prod_del tal:condition="view/is_production_mode">
+              <tal:not_arch tal:condition="not:python:rg.get('is_archived')">
+                <form method="post" style="display:inline;"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+                  <input type="hidden" name="action" value="delete" />
+                  <input type="hidden" name="uid"
+                         tal:attributes="value python:rg.get('uid','')" />
+                  <button class="btn-sm btn-danger" type="submit"
+                          onclick="return confirm('Archive this reagent? It can be restored later.')">
+                    Archive
+                  </button>
+                </form>
+              </tal:not_arch>
+              <tal:arch tal:condition="python:rg.get('is_archived')">
+                <form method="post" style="display:inline;"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+                  <input type="hidden" name="action" value="restore" />
+                  <input type="hidden" name="uid"
+                         tal:attributes="value python:rg.get('uid','')" />
+                  <button class="btn-sm" type="submit"
+                          style="color:#1a7a3a;border-color:#1a7a3a;">Restore</button>
+                </form>
+                <small style="font-size:10px;color:#888;display:block;margin-top:2px;"
+                       tal:content="python:rg.get('archived_at','')[:10]"></small>
+              </tal:arch>
+            </tal:prod_del>
+            <!-- Test mode: permanent delete -->
+            <tal:test_del tal:condition="not:view/is_production_mode">
+              <form method="post" style="display:inline;"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+                <input type="hidden" name="action" value="delete" />
+                <input type="hidden" name="uid"
+                       tal:attributes="value python:rg.get('uid','')" />
+                <button class="btn-sm btn-danger" type="submit"
+                        onclick="return confirm('Delete this reagent record?')">
+                  Del
+                </button>
+              </form>
+            </tal:test_del>
           </td>
         </tr>
         </tal:rows>
@@ -247,6 +455,87 @@
         </tr>
       </tbody>
     </table>
+
+    <!-- ════════════════════════════════════════════════════
+         CoA Helper Modal
+         ════════════════════════════════════════════════════ -->
+    <div class="modal-overlay" id="coa-modal">
+      <div class="modal-box" style="max-width:500px;">
+        <h2 id="coa-modal-title">CoA</h2>
+
+        <div class="coa-tabs">
+          <button class="coa-tab active" onclick="switchCoaTab('find')">Find on Supplier Site</button>
+          <button class="coa-tab"        onclick="switchCoaTab('upload')">Upload File</button>
+        </div>
+
+        <!-- Find panel -->
+        <div class="coa-panel active" id="coa-panel-find">
+          <p style="font-size:13px;color:var(--s-secondary);margin-bottom:14px;">
+            Copy these values into the supplier's CoA search form, then download
+            the PDF and return here to upload it.
+          </p>
+          <div class="coa-copy-row">
+            <span class="coa-copy-label">Cat. No.</span>
+            <span class="coa-copy-value" id="coa-cat-val">—</span>
+            <button class="btn-copy" onclick="copyCoaField('coa-cat-val', this)">Copy</button>
+          </div>
+          <div class="coa-copy-row">
+            <span class="coa-copy-label">Lot No.</span>
+            <span class="coa-copy-value" id="coa-lot-val">—</span>
+            <button class="btn-copy" onclick="copyCoaField('coa-lot-val', this)">Copy</button>
+          </div>
+          <div class="coa-supplier-grid">
+            <a class="coa-supplier-btn" target="_blank" rel="noopener"
+               href="https://www.sigmaaldrich.com/US/en/documents-search?tab=coa">
+              Sigma-Aldrich / MilliporeSigma &#8599;
+            </a>
+            <a class="coa-supplier-btn" target="_blank" rel="noopener"
+               href="https://www.fishersci.com/search/documents?type=certificates">
+              Thermo Fisher / Fisher Scientific &#8599;
+            </a>
+            <a class="coa-supplier-btn" target="_blank" rel="noopener"
+               href="https://us.vwr.com/store/productDocuments">
+              VWR / Avantor &#8599;
+            </a>
+          </div>
+          <div class="coa-note">
+            <strong>Batch downloads:</strong> use the <code>scripts/fetch_coa.py</code>
+            workstation script to automate CoA retrieval with a real browser
+            (bypasses supplier bot-detection). Run it from your workstation,
+            not the server.
+          </div>
+        </div>
+
+        <!-- Upload panel -->
+        <div class="coa-panel" id="coa-panel-upload">
+          <div class="coa-upload-area" style="margin-top:8px;">
+            <p style="font-size:13px;color:var(--s-secondary);margin-bottom:14px;">
+              Select the CoA PDF or image to attach to this reagent.
+              An existing CoA will be replaced.
+            </p>
+            <form method="post" enctype="multipart/form-data" id="coa-upload-form"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+              <input type="hidden" name="action" value="upload_coa" />
+              <input type="hidden" name="uid" id="coa-uid-input" value="" />
+              <label class="upload-label" for="coa-file-input">
+                <i class="fas fa-file-upload"></i> Choose File
+              </label>
+              <span id="coa-file-name"
+                    style="margin-left:10px;font-size:12px;color:var(--s-secondary);">
+                No file selected
+              </span>
+              <input type="file" id="coa-file-input" name="coa_file"
+                     accept=".pdf,.png,.jpg,.jpeg" style="display:none"
+                     onchange="document.getElementById('coa-file-name').textContent=this.files[0].name; document.getElementById('coa-upload-form').submit();" />
+            </form>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn-sm" onclick="closeCoaModal()">Close</button>
+        </div>
+      </div>
+    </div>
 
     <!-- ════════════════════════════════════════════════════
          Add / Edit Modal
@@ -263,8 +552,14 @@
           <div class="form-row">
             <div class="form-field full">
               <label>Reagent Name <span style="color:#dc3545">*</span></label>
-              <input type="text" name="name" id="f-name" required="required"
-                     placeholder="e.g. Methanol, LC-MS Grade" />
+              <div class="af-wrap">
+                <input type="text" name="name" id="f-name" required="required"
+                       placeholder="e.g. Methanol, LC-MS Grade"
+                       oninput="filterSuggestions(this.value)"
+                       onblur="hideSuggestionsDelayed()"
+                       autocomplete="off" />
+                <div id="af-dropdown" class="af-dropdown"></div>
+              </div>
             </div>
           </div>
 
@@ -382,59 +677,141 @@
     </div>
 
     <!-- ════════════════════════════════════════════════════
-         Barcode Scan Modal (ZXing-js webcam)
+         Unified Scan Label Modal (Barcode + OCR, shared camera)
          ════════════════════════════════════════════════════ -->
     <div class="modal-overlay" id="scan-modal">
       <div class="modal-box cam-modal-box">
-        <h2>&#128247; Barcode Scanner</h2>
+        <h2>&#128247; Scan Label</h2>
 
-        <select class="cam-device-sel" id="scan-device-sel"
-                onchange="startScanner(this.value)"></select>
+        <!-- Phase 1: shared camera + tabs -->
+        <div id="scan-camera-panel">
+          <select class="cam-device-sel" id="scan-device-sel"
+                  onchange="switchScanDevice(this.value)"></select>
 
-        <video id="cam-video" autoplay="autoplay" playsinline="playsinline"
-               muted="muted" style="max-height:280px; object-fit:cover;"></video>
+          <video id="cam-video" autoplay="autoplay" playsinline="playsinline"
+                 muted="muted" style="max-height:240px; object-fit:cover;"></video>
+          <canvas id="ocr-canvas" style="display:none;"></canvas>
 
-        <div class="cam-result" id="scan-result">
-          <span style="color:#aaa;">Point the camera at a barcode...</span>
+          <div class="scan-tabs">
+            <button class="scan-tab active" onclick="switchScanTab('barcode')">Barcode</button>
+            <button class="scan-tab"        onclick="switchScanTab('ocr')">OCR Text</button>
+          </div>
+
+          <!-- Barcode pane -->
+          <div class="scan-tab-pane active" id="scan-pane-barcode">
+            <div class="cam-result" id="scan-result">
+              <span style="color:#aaa;">Point the camera at a barcode...</span>
+            </div>
+            <p style="font-size:11px;color:#aaa;margin-top:6px;">
+              Supports CODE128, CODE39, QR, EAN, DataMatrix and more.
+              USB barcode scanners also work — just click the Lot # field and scan.
+            </p>
+            <div class="cam-btn-row">
+              <button class="btn-use-result" id="scan-use-btn" disabled="disabled"
+                      onclick="useScanResult()">Use This Result</button>
+              <button class="btn-cancel-cam" onclick="closeScanner()">Cancel</button>
+            </div>
+          </div>
+
+          <!-- OCR pane -->
+          <div class="scan-tab-pane" id="scan-pane-ocr">
+            <div class="cam-btn-row" style="margin-bottom:8px;">
+              <button id="ocr-capture-btn" onclick="captureOCR()"
+                      style="background:#20c997;color:#fff;">
+                Capture &#38; Read Text
+              </button>
+              <button class="btn-cancel-cam" onclick="closeScanner()">Cancel</button>
+            </div>
+            <div id="ocr-status" style="font-size:11px;color:#aaa;min-height:16px;">
+              Aim at the label, then press Capture.
+            </div>
+            <div class="cam-result" id="ocr-result"
+                 style="white-space:pre-wrap; font-size:10px; min-height:36px;
+                        max-height:70px; overflow-y:auto; margin-top:6px;"></div>
+            <!-- Parsed fields shown after OCR -->
+            <div id="ocr-extracted" style="display:none; margin-top:10px;">
+              <div style="font-size:11px;color:#8aaa8a;font-weight:600;margin-bottom:6px;">
+                Extracted from label:
+              </div>
+              <div class="ocr-fields">
+                <div class="ocr-field">
+                  <span class="ocr-field-key">Lot #</span>
+                  <span class="ocr-field-val" id="ocr-ext-lot">&#8212;</span>
+                </div>
+                <div class="ocr-field">
+                  <span class="ocr-field-key">Cat #</span>
+                  <span class="ocr-field-val" id="ocr-ext-cat">&#8212;</span>
+                </div>
+                <div class="ocr-field">
+                  <span class="ocr-field-key">Supplier</span>
+                  <span class="ocr-field-val" id="ocr-ext-supplier">&#8212;</span>
+                </div>
+              </div>
+            </div>
+            <!-- Code chips (any product-code-shaped token found on label) -->
+            <div id="ocr-chips-wrap" class="ocr-chips-wrap" style="display:none;">
+              <div class="ocr-chips-label">
+                Other codes on label &#8212; tap to use as Cat #:
+              </div>
+              <div class="ocr-chips" id="ocr-chips"></div>
+            </div>
+
+            <!-- Lookup row -->
+            <div style="margin-top:10px;">
+              <div style="font-size:11px;color:#aaa;margin-bottom:4px;">
+                Look-up value (auto-filled from lot # &#8212; edit if needed):
+              </div>
+              <div style="display:flex;gap:6px;">
+                <input type="text" id="ocr-lookup-input" class="cam-lookup-input"
+                       placeholder="Lot # or cat # to search&#8230;" />
+                <button onclick="useOCRLookup()"
+                        style="background:#00ff88;color:#000;border:none;border-radius:6px;
+                               padding:6px 12px;font-size:12px;font-weight:600;
+                               cursor:pointer;white-space:nowrap;">Look Up</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <p style="font-size:11px;color:#aaa;margin-top:6px;">
-          Supports CODE128, CODE39, QR, EAN, DataMatrix and more.
-          USB barcode scanners also work — just click the Lot # field and scan.
-        </p>
-        <div class="cam-btn-row">
-          <button class="btn-use-result" id="scan-use-btn" disabled="disabled"
-                  onclick="useScanResult()">Use This Result</button>
-          <button class="btn-cancel-cam" onclick="closeScanner()">Cancel</button>
+
+        <!-- Phase 2: reagent found in inventory — log the scan -->
+        <div id="scan-match-panel" style="display:none;">
+          <div class="scan-match-card">
+            <div class="scan-match-label">&#10003; Reagent Found</div>
+            <div class="scan-match-name" id="scan-match-name"></div>
+            <div class="scan-match-row">
+              <div class="scan-match-item">
+                <div class="scan-match-key">Lot</div>
+                <div class="scan-match-val" id="scan-match-lot"></div>
+              </div>
+              <div class="scan-match-item">
+                <div class="scan-match-key">Cat</div>
+                <div class="scan-match-val" id="scan-match-cat"></div>
+              </div>
+              <div class="scan-match-item">
+                <div class="scan-match-key">Status</div>
+                <div class="scan-match-val" id="scan-match-status"></div>
+              </div>
+              <div class="scan-match-item">
+                <div class="scan-match-key">Expires</div>
+                <div class="scan-match-val" id="scan-match-expiry"></div>
+              </div>
+            </div>
+          </div>
+          <div class="scan-log-label">Notes (optional)</div>
+          <textarea class="scan-log-textarea" id="scan-notes" rows="2"
+                    placeholder="e.g. opened for extraction batch EB-2026-041"></textarea>
+          <div class="cam-btn-row" style="margin-top:12px;">
+            <button class="btn-use-result"
+                    onclick="logAndClose()">Log &#38; Close</button>
+            <button style="background:#1a1a3a;color:#aaaaff;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;padding:8px;"
+                    onclick="logAndContinue()">Log &#38; Scan Next</button>
+            <button class="btn-cancel-cam"
+                    onclick="backToCamera()">Back</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- ════════════════════════════════════════════════════
-         OCR Modal (Tesseract.js webcam capture)
-         ════════════════════════════════════════════════════ -->
-    <div class="modal-overlay" id="ocr-modal">
-      <div class="modal-box cam-modal-box">
-        <h2>&#128065; OCR Label Reader</h2>
-
-        <select class="cam-device-sel" id="ocr-device-sel"
-                onchange="startOCR(this.value)"></select>
-
-        <video id="ocr-video" autoplay="autoplay" playsinline="playsinline"
-               muted="muted" style="max-height:280px; object-fit:cover;"></video>
-        <canvas id="ocr-canvas" style="display:none;"></canvas>
-
-        <div id="ocr-status">Ready — press Capture to extract text from the label.</div>
-        <div class="cam-result" id="ocr-result" style="white-space:pre-wrap;"></div>
-
-        <div class="cam-btn-row">
-          <button id="ocr-capture-btn" onclick="captureOCR()">Capture &amp; Read Text</button>
-          <button class="btn-cancel-cam" onclick="closeOCR()">Close</button>
-        </div>
-        <p style="font-size:10px;color:#666;margin-top:8px;">
-          Tip: copy relevant text (lot, catalog, expiry) from the result above and paste into the form.
-        </p>
-      </div>
-    </div>
 
   </div>
 
@@ -444,12 +821,100 @@
   function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
   /* ── Add / Edit form ────────────────────────────────────────────── */
-  var EDIT_DATA = <tal:d tal:replace="structure view/edit_data_json" />;
+  var _SELF_URL  = '<tal:x tal:replace="string:${view/portal_url}/@@pfas-reagents" />';
+  var EDIT_DATA  = <tal:d tal:replace="structure view/edit_data_json" />;
+  var _PROD_MODE = <tal:p tal:replace="python:'true' if view.is_production_mode() else 'false'" />;
+
+  /* ── Autofill suggestions ──────────────────────────────────────── */
+  var _afSuggestions = null;  // null = not loaded; [] = loaded but empty
+
+  function loadSuggestions(cb) {
+    if (!_PROD_MODE) { if (cb) cb([]); return; }
+    if (_afSuggestions !== null) { if (cb) cb(_afSuggestions); return; }
+    fetch(_SELF_URL + '?action=reagent_suggestions')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        _afSuggestions = d.suggestions || [];
+        if (cb) cb(_afSuggestions);
+      })
+      .catch(function() { _afSuggestions = []; if (cb) cb([]); });
+  }
+
+  function filterSuggestions(val) {
+    var dd = document.getElementById('af-dropdown');
+    if (!_PROD_MODE || !val || val.length < 2) { dd.classList.remove('open'); return; }
+    loadSuggestions(function(sug) {
+      var q = val.toLowerCase();
+      var hits = sug.filter(function(s) {
+        return s.name.toLowerCase().indexOf(q) !== -1 ||
+               s.supplier.toLowerCase().indexOf(q) !== -1;
+      }).slice(0, 8);
+      if (!hits.length) { dd.classList.remove('open'); return; }
+      dd.innerHTML = '';
+      hits.forEach(function(rec) {
+        var item = document.createElement('div');
+        item.className = 'af-item';
+        item.innerHTML =
+          '<div class="af-item-name">' + _esc(rec.name) + '</div>' +
+          '<div class="af-item-meta">' +
+            _esc(rec.supplier || '') +
+            (rec.cat_number ? ' &middot; ' + _esc(rec.cat_number) : '') +
+            (rec.category   ? ' &middot; ' + _esc(rec.category)   : '') +
+          '</div>';
+        item.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          applySuggestion(rec);
+        });
+        dd.appendChild(item);
+      });
+      dd.classList.add('open');
+    });
+  }
+
+  function applySuggestion(rec) {
+    function sf(id, val) { var el = document.getElementById(id); if (el && val) el.value = val; }
+    sf('f-name',     rec.name);
+    sf('f-supplier', rec.supplier);
+    sf('f-cat',      rec.cat_number);
+    sf('f-category', rec.category);
+    sf('f-location', rec.storage_location);
+    document.getElementById('af-dropdown').classList.remove('open');
+  }
+
+  function hideSuggestionsDelayed() {
+    setTimeout(function() {
+      var dd = document.getElementById('af-dropdown');
+      if (dd) dd.classList.remove('open');
+    }, 180);
+  }
+
+  function _esc(s) {
+    return (s || '').replace(/\x26/g,'&amp;').replace(/\x3c/g,'&lt;').replace(/\x3e/g,'&gt;');
+  }
+
+  /* ── Purge test reagents ───────────────────────────────────────── */
+  function purgeTestReagents(btn) {
+    if (!confirm('Permanently delete all test-mode reagents? This cannot be undone.')) return;
+    if (btn) btn.disabled = true;
+    fetch(_SELF_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'action=purge_test'
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.ok) {
+          alert('Purged ' + d.purged + ' test entr' + (d.purged === 1 ? 'y' : 'ies') + '.');
+          window.location.reload();
+        }
+      })
+      .catch(function() { if (btn) btn.disabled = false; });
+  }
 
   function openAddForm() {
     document.getElementById('modal-title').textContent = 'Add Reagent';
     document.getElementById('form-action').value = 'add';
     clearForm();
+    if (_PROD_MODE) loadSuggestions(function(){}); // warm cache
     openModal('rg-modal');
   }
 
@@ -528,13 +993,27 @@
   function openScanModal(target) {
     _scanTarget = target || 'lot';
     startScannerInit();
+    switchScanTab(target === 'ocr' ? 'ocr' : 'barcode');
     openModal('scan-modal');
   }
 
+  function switchScanTab(tab) {
+    document.querySelectorAll('.scan-tab').forEach(function(t, i) {
+      t.classList.toggle('active', (tab === 'ocr') ? (i === 1) : (i === 0));
+    });
+    document.getElementById('scan-pane-barcode').classList.toggle('active', tab !== 'ocr');
+    document.getElementById('scan-pane-ocr').classList.toggle('active',    tab === 'ocr');
+  }
+
+  function switchScanDevice(deviceId) {
+    startScanner(deviceId);
+  }
+
   /* ── ZXing-js barcode scanner ───────────────────────────────────── */
-  var _codeReader = null;
-  var _scanResult = null;
-  var _scanStream  = null;
+  var _codeReader     = null;
+  var _scanResult     = null;
+  var _scanStream     = null;
+  var _matchedReagent = null;
 
   function startScannerInit() {
     var result = document.getElementById('scan-result');
@@ -581,52 +1060,296 @@
 
   function closeScanner() {
     if (_codeReader) { try { _codeReader.reset(); } catch(e){} _codeReader = null; }
+    backToCamera();
     closeModal('scan-modal');
   }
 
   function useScanResult() {
     if (!_scanResult) return;
-    if (_scanTarget === 'lot') {
-      var el = document.getElementById('f-lot');
-      if (el) { el.value = _scanResult; openAddForm(); }
+    fetch(_SELF_URL + '?action=barcode_lookup&barcode=' + encodeURIComponent(_scanResult))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.match) {
+          showScanMatchPanel(data.match);
+        } else {
+          closeScanner();
+          openAddForm();
+          _applyOCRToForm(_scanResult);
+        }
+      })
+      .catch(function() {
+        closeScanner();
+        openAddForm();
+        _applyOCRToForm(_scanResult);
+      });
+  }
+
+  function _applyOCRToForm(scanValue) {
+    function sf(id, val) { var el = document.getElementById(id); if (el && val) el.value = val; }
+    /* Lot: prefer extracted lot, then fall back to whatever was scanned */
+    sf('f-lot',      _ocrExtracted.lot      || scanValue);
+    sf('f-cat',      _ocrExtracted.cat);
+    sf('f-supplier', _ocrExtracted.supplier);
+    /* Reset extracted state so a barcode scan doesn't carry OCR data forward */
+    _ocrExtracted = { lot: '', cat: '', supplier: '', supplierConf: 0 };
+  }
+
+  function showScanMatchPanel(reagent) {
+    _matchedReagent = reagent;
+    document.getElementById('scan-match-name').textContent   = reagent.name        || '';
+    document.getElementById('scan-match-lot').textContent    = reagent.lot_number  || '—';
+    document.getElementById('scan-match-cat').textContent    = reagent.cat_number  || '—';
+    document.getElementById('scan-match-status').textContent = reagent.status      || '';
+    document.getElementById('scan-match-expiry').textContent =
+      reagent.expiry_date || reagent.manufacturer_expiry || '—';
+    document.getElementById('scan-notes').value = '';
+    document.getElementById('scan-camera-panel').style.display = 'none';
+    document.getElementById('scan-match-panel').style.display  = '';
+  }
+
+  function backToCamera() {
+    _matchedReagent = null;
+    document.getElementById('scan-match-panel').style.display  = 'none';
+    document.getElementById('scan-camera-panel').style.display = '';
+  }
+
+  function submitScanLog(callback) {
+    if (!_matchedReagent) { if (callback) callback(); return; }
+    var notes  = (document.getElementById('scan-notes').value || '').trim();
+    var params = 'action=log_scan'
+      + '&uid='           + encodeURIComponent(_matchedReagent.uid)
+      + '&scanned_value=' + encodeURIComponent(_scanResult || '')
+      + '&notes='         + encodeURIComponent(notes);
+    fetch(_SELF_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: params
+    }).then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) { updateScanCountBadge(_matchedReagent.uid, data.count); }
+        if (callback) callback();
+      })
+      .catch(function() { if (callback) callback(); });
+  }
+
+  function logAndClose() {
+    submitScanLog(function() { backToCamera(); closeScanner(); });
+  }
+
+  function logAndContinue() {
+    submitScanLog(function() { backToCamera(); });
+  }
+
+  function updateScanCountBadge(uid, count) {
+    var el = document.getElementById('scan-badge-' + uid);
+    if (!el) return;
+    el.textContent = count + (count === 1 ? ' scan' : ' scans');
+    el.style.display = count > 0 ? '' : 'none';
+  }
+
+  /* ── OCR label parser ──────────────────────────────────────────── */
+
+  var _ocrExtracted   = { lot: '', cat: '', supplier: '', supplierConf: 0 };
+  var _knownSuppliers = [];
+
+  /* Common lot-number label patterns (case-insensitive) */
+  var _LOT_PATS = [
+    /\bLot(?:\s*(?:No\.?|Number|#))?\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/]{2,})/i,
+    /\bL\/N\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/]{2,})/i,
+    /\bBatch(?:\s*(?:No\.?|Number|#))?\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/]{2,})/i,
+    /\bControl\s+No\.?\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/]{2,})/i,
+  ];
+
+  /* Common catalog-number label patterns */
+  var _CAT_PATS = [
+    /\bCat\.?\s*(?:alog(?:ue)?)?\s*(?:No\.?|Number|#)?\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/\.]{2,})/i,
+    /\bProduct\s+(?:No\.?|Number|#|Code)\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/\.]{2,})/i,
+    /\bItem\s+(?:No\.?|Number|#)\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/\.]{2,})/i,
+    /\bPart\s+(?:No\.?|Number|#)\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/\.]{2,})/i,
+    /\bP\/N\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/\.]{2,})/i,
+    /\bREF\s*[:.#\-]?\s*([A-Z0-9][A-Z0-9_\-\/\.]{2,})/i,
+  ];
+
+  /*
+   * Vendor aliases: terms = substrings found on physical labels (lowercased)
+   * catPat = regex for this vendor's catalog number FORMAT (no keyword needed)
+   * Applied when keyword-based extraction fails; finds bare cat#s on label.
+   */
+  var _VENDOR_ALIASES = [
+    { canonical: 'Sigma-Aldrich',
+      catPat: /\b([A-Z]\d{4,6}[A-Z]?(?:-\d+[A-Z]{0,3})?|\d{5,6}(?:-\d+[A-Z]{0,3})?)\b/,
+      terms: ['sigma-aldrich','sigma aldrich','milliporesigma','supelco','merck kgaa','sigmaaldrich'] },
+
+    { canonical: 'Thermo Fisher Scientific',
+      catPat: /\b([A-Z]{1,3}\d{4,6}[A-Z]?(?:[\-\.]\d+[A-Z]{0,3})?)\b/,
+      terms: ['thermo fisher','thermo scientific','fisher scientific','fisher chemical',
+              'acros organics','alfa aesar','pierce','invitrogen'] },
+
+    { canonical: 'VWR',
+      catPat: /\b(\d{5}-\d{3})\b/,
+      terms: ['vwr international','vwr','avantor performance','avantor'] },
+
+    { canonical: 'Agilent Technologies',
+      catPat: /\b(\d{4}-\d{4,5})\b/,
+      terms: ['agilent technologies','agilent'] },
+
+    { canonical: 'Waters',
+      catPat: /\b(WAT\d{5,6})\b/,
+      terms: ['waters corporation','waters'] },
+
+    { canonical: 'Honeywell',
+      catPat: /\b(\d{6}|[A-Z]{2,4}\d{4,6}(?:-\d+[A-Z]?)?)\b/,
+      terms: ['honeywell','burdick & jackson','burdick and jackson','riedel-de haen'] },
+
+    { canonical: 'Cerilliant',
+      catPat: /\b([A-Z]-\d{3}(?:-\d+[A-Z]+)?)\b/,
+      terms: ['cerilliant'] },
+
+    { canonical: 'Cayman Chemical',
+      catPat: /\b(\d{5,8})\b/,
+      terms: ['cayman chemical','cayman'] },
+
+    { canonical: 'Restek',
+      catPat: /\b(\d{5,8})\b/,
+      terms: ['restek corporation','restek corp','restek'] },
+
+    { canonical: 'Wellington Laboratories',
+      catPat: /\b([A-Z]{2,8}-[A-Z0-9]{2,8})\b/,
+      terms: ['wellington lab','wellington laboratories','wellington'] },
+
+    { canonical: 'SPEX CertiPrep',
+      catPat: /\b([A-Z]{2,6}-\d+[A-Z]+-\d+)\b/,
+      terms: ['spex certiprep','spex certip','spex'] },
+
+    { canonical: 'Absolute Standards',
+      catPat: /\b([A-Z]{2,5}-\d{3,5}[A-Z]?(?:-\d+)?)\b/,
+      terms: ['absolute standards'] },
+
+    { canonical: 'AccuStandard',
+      catPat: /\b([A-Z]{2,5}-[A-Z]{0,3}\d{3,5}[A-Z]?(?:-\d+[A-Z]+)?)\b/,
+      terms: ['accustandard'] },
+
+    { canonical: 'Biotage',
+      catPat: /\b(\d{3}-\d{4}-?[A-Z]?)\b/,
+      terms: ['biotage'] },
+
+    { canonical: 'UCT',
+      catPat: /\b([A-Z]{3,6}\d{3,6}(?:-[A-Z0-9]+)?)\b/,
+      terms: ['united chemical technologies','uct inc','uct,'] },
+
+    { canonical: 'Phenomenex',
+      catPat: /\b([A-Z0-9]{2,5}-\d{4}-?[A-Z0-9]*)\b/,
+      terms: ['phenomenex'] },
+  ];
+
+  /* Tokens that look like volume/purity specs — excluded from chip list */
+  var _CHIP_EXCLUDE_PAT = /^\d+(?:ML|L|G|MG|UG|NG|MOL|MMOL|PPM|PPB|PCT|%|MM)?$/i;
+  /* Common non-code words sometimes OCR'd in all-caps */
+  var _CHIP_STOPWORDS = {'GRADE':1,'HPLC':1,'LCMS':1,'PURITY':1,'SIGMA':1,'FISHER':1,
+                         'FLUKA':1,'CHROMASOLV':1,'OPTIMA':1,'TRACE':1,'METAL':1,
+                         'BASIS':1,'WEIGHT':1,'VOLUME':1,'LIQUID':1,'SOLID':1};
+
+  function _extractFirst(text, patterns) {
+    for (var i = 0; i < patterns.length; i++) {
+      var m = text.match(patterns[i]);
+      if (m && m[1]) return m[1].trim();
     }
-    closeScanner();
+    return '';
   }
 
-  /* ── Tesseract.js OCR ───────────────────────────────────────────── */
-  var _ocrReader = null;
-  var _ocrStream = null;
-
-  function startOCR(deviceId) {
-    var video = document.getElementById('ocr-video');
-    if (_ocrStream) { _ocrStream.getTracks().forEach(function(t){ t.stop(); }); }
-    navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId } } : true })
-      .then(function(stream) {
-        _ocrStream = stream;
-        video.srcObject = stream;
-      }).catch(function(err) {
-        document.getElementById('ocr-status').textContent = 'Camera error: ' + err;
-      });
-  }
-
-  function openOCRModal() {
-    openModal('ocr-modal');
-    navigator.mediaDevices.enumerateDevices().then(function(devs) {
-      var sel = document.getElementById('ocr-device-sel');
-      sel.innerHTML = '';
-      var cams = devs.filter(function(d){ return d.kind === 'videoinput'; });
-      cams.forEach(function(d, i) {
-        var opt = document.createElement('option');
-        opt.value = d.deviceId;
-        opt.textContent = d.label || ('Camera ' + (i+1));
-        sel.appendChild(opt);
-      });
-      if (cams.length) startOCR(cams[0].deviceId);
+  /* Returns { name, conf, catPat } or null */
+  function _matchSupplier(text, dbSuppliers) {
+    var tl = text.toLowerCase();
+    for (var i = 0; i < _VENDOR_ALIASES.length; i++) {
+      var entry = _VENDOR_ALIASES[i];
+      for (var j = 0; j < entry.terms.length; j++) {
+        if (tl.indexOf(entry.terms[j]) !== -1) {
+          return { name: entry.canonical, conf: 95, catPat: entry.catPat };
+        }
+      }
+    }
+    /* Word-overlap fuzzy match against DB suppliers */
+    var best = null, bestScore = 0;
+    dbSuppliers.forEach(function(name) {
+      var nl = name.toLowerCase();
+      if (tl.indexOf(nl) !== -1) { if (100 > bestScore) { best = name; bestScore = 100; } return; }
+      var words = nl.split(/[\s\-\/&,\.]+/).filter(function(w){ return w.length > 2; });
+      if (!words.length) return;
+      var hits  = words.filter(function(w){ return tl.indexOf(w) !== -1; });
+      var score = Math.round(100 * hits.length / words.length);
+      if (score > bestScore) { best = name; bestScore = score; }
     });
+    return (bestScore >= 50 && best) ? { name: best, conf: bestScore, catPat: null } : null;
   }
 
+  /*
+   * Extract tappable code chips: alphanumeric tokens that look like product codes
+   * but are not the lot# or cat# already extracted.
+   */
+  function _extractChips(text, lotVal, catVal) {
+    var seen = {}, chips = [];
+    var exclude = {};
+    if (lotVal) exclude[lotVal.toUpperCase()] = 1;
+    if (catVal) exclude[catVal.toUpperCase()] = 1;
+
+    /* Match tokens: letter+digit mix, 4-20 chars, may contain - _ / . */
+    var re = /\b([A-Z0-9][A-Z0-9_\-\/\.]{3,19})\b/gi;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+      var tok = m[1];
+      var tokU = tok.toUpperCase();
+      if (seen[tokU]) continue;
+      seen[tokU] = 1;
+      if (exclude[tokU]) continue;
+      if (_CHIP_EXCLUDE_PAT.test(tok)) continue;
+      if (_CHIP_STOPWORDS[tokU]) continue;
+      /* Must contain at least one digit AND one letter */
+      if (!/\d/.test(tok) || !/[A-Z]/i.test(tok)) continue;
+      chips.push(tok);
+    }
+    return chips.slice(0, 12); /* cap at 12 chips to avoid clutter */
+  }
+
+  function _parseLabel(text) {
+    var lot = _extractFirst(text, _LOT_PATS);
+    var cat = _extractFirst(text, _CAT_PATS);
+    var sup = _matchSupplier(text, _knownSuppliers);
+
+    /* If no keyword-based cat# found but supplier is identified,
+       try that vendor's format-specific pattern as a fallback.
+       We search the whole text; if the lot# value also matches,
+       skip it and take the next hit. */
+    if (!cat && sup && sup.catPat) {
+      var re = new RegExp(sup.catPat.source, sup.catPat.flags || 'i');
+      var m;
+      while ((m = re.exec(text)) !== null) {
+        var cand = m[1].trim();
+        if (cand && cand !== lot) { cat = cand; break; }
+      }
+    }
+
+    var chips = _extractChips(text, lot, cat);
+
+    return {
+      lot:          lot,
+      cat:          cat,
+      supplier:     sup ? sup.name : '',
+      supplierConf: sup ? sup.conf : 0,
+      chips:        chips,
+    };
+  }
+
+  function _setOCRField(id, val) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.textContent = val || '—';
+      el.className   = 'ocr-field-val' + (val ? ' found' : '');
+    }
+  }
+
+  /* Tesseract OCR — shared cam-video, lazy supplier fetch */
   function captureOCR() {
-    var video  = document.getElementById('ocr-video');
+    var video  = document.getElementById('cam-video');
     var canvas = document.getElementById('ocr-canvas');
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -636,36 +1359,118 @@
       document.getElementById('ocr-status').textContent = 'Tesseract.js not loaded. Check network.';
       return;
     }
-    document.getElementById('ocr-status').textContent = 'Recognising text...';
+    document.getElementById('ocr-status').textContent  = 'Recognising text…';
     document.getElementById('ocr-result').textContent  = '';
+    document.getElementById('ocr-lookup-input').value  = '';
+    document.getElementById('ocr-extracted').style.display   = 'none';
+    document.getElementById('ocr-chips-wrap').style.display  = 'none';
 
-    Tesseract.recognize(canvas, 'eng', { logger: function(m) {
-      if (m.status === 'recognizing text') {
-        document.getElementById('ocr-status').textContent =
-          'Recognising... ' + Math.round((m.progress||0)*100) + '%';
-      }
-    }}).then(function(r) {
-      var text = r.data ? r.data.text : (r.text || '');
-      document.getElementById('ocr-result').textContent = text.trim() || '(no text found)';
-      document.getElementById('ocr-status').textContent = 'Done. Copy the relevant text into the form.';
-    }).catch(function(err) {
-      document.getElementById('ocr-status').textContent = 'OCR error: ' + err;
-    });
+    var runOCR = function() {
+      Tesseract.recognize(canvas, 'eng', { logger: function(m) {
+        if (m.status === 'recognizing text') {
+          document.getElementById('ocr-status').textContent =
+            'Recognising… ' + Math.round((m.progress||0)*100) + '%';
+        }
+      }}).then(function(r) {
+        var text = (r.data ? r.data.text : (r.text || '')).trim() || '(no text found)';
+        document.getElementById('ocr-result').textContent = text;
+
+        if (text === '(no text found)') {
+          _ocrExtracted = { lot: '', cat: '', supplier: '', supplierConf: 0 };
+          document.getElementById('ocr-status').textContent =
+            'No text found. Try adjusting focus or lighting.';
+          return;
+        }
+
+        var parsed = _parseLabel(text);
+        _ocrExtracted = parsed;
+
+        _setOCRField('ocr-ext-lot',      parsed.lot);
+        _setOCRField('ocr-ext-cat',      parsed.cat);
+        _setOCRField('ocr-ext-supplier',
+          parsed.supplier
+            ? (parsed.supplier + (parsed.supplierConf < 100 ? ' (' + parsed.supplierConf + '%)' : ''))
+            : '');
+        document.getElementById('ocr-extracted').style.display = '';
+
+        /* Code chip strip (B) */
+        var chipsWrap = document.getElementById('ocr-chips-wrap');
+        var chipsEl   = document.getElementById('ocr-chips');
+        if (parsed.chips && parsed.chips.length) {
+          chipsEl.innerHTML = '';
+          parsed.chips.forEach(function(tok) {
+            var btn = document.createElement('button');
+            btn.className   = 'ocr-chip';
+            btn.textContent = tok;
+            btn.onclick     = function() { useCodeChip(tok); };
+            chipsEl.appendChild(btn);
+          });
+          chipsWrap.style.display = '';
+        } else {
+          chipsWrap.style.display = 'none';
+        }
+
+        /* Cross-reference lot# against existing inventory (C):
+           if lot# was found but cat# was NOT, silently look up
+           the lot# — if a prior reagent exists, pull its cat#. */
+        var lookup = parsed.lot || parsed.cat || '';
+        document.getElementById('ocr-lookup-input').value = lookup;
+
+        if (parsed.lot && !parsed.cat) {
+          fetch(_SELF_URL + '?action=barcode_lookup&barcode=' + encodeURIComponent(parsed.lot))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (d.match && d.match.cat_number) {
+                _ocrExtracted.cat = d.match.cat_number;
+                _setOCRField('ocr-ext-cat', d.match.cat_number);
+              }
+            })
+            .catch(function() {});
+        }
+
+        document.getElementById('ocr-status').textContent = lookup
+          ? 'Extracted — click Look Up to search, or tap a chip to use as Cat #.'
+          : 'Done — codes not auto-detected. Tap a chip below or type a value to look up.';
+
+      }).catch(function(err) {
+        document.getElementById('ocr-status').textContent = 'OCR error: ' + err;
+      });
+    };
+
+    /* Fetch supplier list on first OCR use */
+    if (_knownSuppliers.length === 0) {
+      fetch(_SELF_URL + '?action=suppliers_json')
+        .then(function(r) { return r.json(); })
+        .then(function(d) { _knownSuppliers = d.suppliers || []; runOCR(); })
+        .catch(function() { runOCR(); });
+    } else {
+      runOCR();
+    }
   }
 
-  function closeOCR() {
-    if (_ocrStream) { _ocrStream.getTracks().forEach(function(t){ t.stop(); }); _ocrStream = null; }
-    closeModal('ocr-modal');
+  function useOCRLookup() {
+    var val = (document.getElementById('ocr-lookup-input').value || '').trim();
+    if (!val) return;
+    _scanResult = val;
+    useScanResult();
+  }
+
+  /* Tap a chip → fill the cat# extracted field + lookup input + trigger lookup */
+  function useCodeChip(tok) {
+    _ocrExtracted.cat = tok;
+    _setOCRField('ocr-ext-cat', tok);
+    document.getElementById('ocr-lookup-input').value = tok;
+    _scanResult = tok;
+    useScanResult();
   }
 
   /* ── Close modals on overlay click ─────────────────────────────── */
-  ['rg-modal','scan-modal','ocr-modal'].forEach(function(id) {
+  ['rg-modal','scan-modal'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', function(e) {
       if (e.target === el) {
         if (id === 'scan-modal') closeScanner();
-        else if (id === 'ocr-modal') closeOCR();
         else closeModal(id);
       }
     });
@@ -681,7 +1486,63 @@
     });
     /* Pre-fill edit if edit_uid was set via URL */
     if (EDIT_DATA) { openEditForm(EDIT_DATA); }
+
+    /* ── CoA modal ─────────────────────────────────── */
+    document.querySelectorAll('.open-coa-modal').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var uid  = this.getAttribute('data-uid')  || '';
+        var name = this.getAttribute('data-name') || '';
+        var cat  = this.getAttribute('data-cat')  || '';
+        var lot  = this.getAttribute('data-lot')  || '';
+        var tab  = this.getAttribute('data-tab')  || 'find';
+        openCoaModal(uid, name, cat, lot, tab);
+      });
+    });
   });
+
+  function openCoaModal(uid, name, cat, lot, tab) {
+    document.getElementById('coa-modal-title').textContent =
+      'CoA — ' + (name || uid);
+    document.getElementById('coa-uid-input').value = uid;
+    document.getElementById('coa-cat-val').textContent = cat || '—';
+    document.getElementById('coa-lot-val').textContent = lot || '—';
+    document.getElementById('coa-file-name').textContent = 'No file selected';
+    switchCoaTab(tab || 'find');
+    document.getElementById('coa-modal').classList.add('open');
+  }
+  function closeCoaModal() {
+    document.getElementById('coa-modal').classList.remove('open');
+  }
+  function switchCoaTab(tab) {
+    var tabs   = document.querySelectorAll('.coa-tab');
+    var panels = document.querySelectorAll('.coa-panel');
+    var names  = ['find', 'upload'];
+    tabs.forEach(function(t, i)   { t.classList.toggle('active', names[i] === tab); });
+    panels.forEach(function(p, i) { p.classList.toggle('active', names[i] === tab); });
+  }
+  function copyCoaField(id, btn) {
+    var text = document.getElementById(id).textContent.trim();
+    if (!text || text === '—') return;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function() { flashCopied(btn); });
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); flashCopied(btn); } catch(e) {}
+      document.body.removeChild(ta);
+    }
+  }
+  function flashCopied(btn) {
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(function() {
+      btn.textContent = orig;
+      btn.classList.remove('copied');
+    }, 1500);
+  }
   </script>
 
   <!-- Load ZXing and Tesseract.js from CDN.

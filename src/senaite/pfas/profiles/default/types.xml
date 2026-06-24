@@ -5,4 +5,6 @@
   <object name="LogbookDef" meta_type="Dexterity FTI"/>
   <object name="MethodProfile" meta_type="Dexterity FTI"/>
   <object name="EGADConfig" meta_type="Dexterity FTI"/>
+  <object name="PrepLogbookDef" meta_type="Dexterity FTI"/>
+  <object name="PreparedStandard" meta_type="Dexterity FTI"/>
 </object>

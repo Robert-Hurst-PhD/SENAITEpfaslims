@@ -2,16 +2,13 @@
 <metal:fill fill-slot="title">QC Type Grid</metal:fill>
 <metal:fill fill-slot="content">
 
-<div class="pfas-panel">
-  <div class="pfas-panel-header">
-    <h2>QC Type Grid</h2>
-    <p style="color:var(--s-secondary);font-size:13px;margin:0;">
-      Enable or disable QC sample types per analytical method.
-      Checked = QC type is associated with that method and its acceptance
-      criteria appear in the Method Profile.
-      Unchecked = QC type removed from the method (no placeholder entries left).
-    </p>
-  </div>
+<div class="page-body">
+  <p style="color:var(--s-secondary);font-size:13px;margin:0 0 16px;">
+    Enable or disable QC sample types per analytical method.
+    Checked = QC type is associated with that method and its acceptance
+    criteria appear in the Method Profile.
+    Unchecked = QC type removed from the method (no placeholder entries left).
+  </p>
 
   <form method="post"
         tal:attributes="action string:${context/absolute_url}/@@pfas-qc-type-grid">
@@ -103,7 +100,7 @@
   </form>
 
   <!-- Column legend -->
-  <div style="margin-top:24px; border-top:1px solid #e0e0e0; padding-top:16px;">
+  <div style="margin-top:24px; border-top:1px solid var(--s-border); padding-top:16px;">
     <h4 style="font-size:13px; margin-bottom:8px;">Column Legend</h4>
     <dl style="display:grid; grid-template-columns:auto 1fr; gap:4px 16px; font-size:12px;">
       <tal:cols tal:repeat="col view/qc_columns">
@@ -117,6 +114,9 @@
       Canonical spike levels (Low / Mid / High ppt) are configured per matrix
       in the Method Profile.
     </p>
+  </div>
+  <div class="pane-footer">
+    <span class="pf-path">/data/qc/method_profiles.json</span>
   </div>
 </div>
 

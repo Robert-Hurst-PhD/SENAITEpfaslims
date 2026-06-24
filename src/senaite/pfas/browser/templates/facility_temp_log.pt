@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Temperature Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .temp-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+    .temp-nav a { padding:5px 14px; border-radius:16px; font-size:12px; font-weight:600;
+                  text-decoration:none; background:var(--s-light);
+                  border:1px solid var(--s-border); color:var(--s-body); }
+    .temp-nav a.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
+    .chart-wrap { background:var(--s-bg); border:1px solid var(--s-border);
+                  border-radius:8px; padding:16px; margin-bottom:18px; }
+    .chart-canvas-wrap { position:relative; height:300px; }
+    .day-filter { display:flex; gap:8px; align-items:center; margin-bottom:14px;
+                  font-size:12px; }
+    .day-filter a { padding:3px 10px; border-radius:10px; font-size:11px; font-weight:600;
+                    text-decoration:none; background:var(--s-light);
+                    border:1px solid var(--s-border); color:var(--s-body); }
+    .day-filter a.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
+    .study-section { background:var(--s-bg); border:1px solid var(--s-border);
+                     border-radius:8px; padding:16px; margin-bottom:18px; }
+    .study-section h3 { font-size:13px; font-weight:700; color:var(--s-body); margin:0 0 12px; }
+    .study-row { display:flex; gap:12px; flex-wrap:wrap; align-items:center;
+                 padding:8px 0; border-bottom:1px solid var(--s-border); font-size:12px; }
+    .study-row:last-child { border-bottom:none; }
+    .study-badge { padding:2px 10px; border-radius:10px; font-size:11px; font-weight:700; }
+    .study-pass { background:#d4edda; color:#155724; }
+    .study-fail { background:#f8d7da; color:#721c24; }
+    .study-pending { background:var(--s-light); color:var(--s-secondary); }
+    .point-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
+                  margin-top:12px; }
+    .point-cell { border:1px solid var(--s-border); border-radius:6px;
+                  padding:10px; background:var(--s-light); font-size:11px; }
+    .point-cell label { display:block; font-weight:600; color:var(--s-secondary);
+                        margin-bottom:4px; }
+    .point-cell input { width:100%; box-sizing:border-box; padding:4px 6px;
+                        font-size:12px; border:1px solid var(--s-input-border);
+                        border-radius:4px; }
+    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
+    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld input, .fld select, .fld textarea {
+      padding:6px 8px; font-size:13px; border:1px solid var(--s-input-border);
+      border-radius:4px; color:var(--s-input-text); }
+    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .fld-row .fld { flex:1; min-width:140px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="
+    unit       view/unit;
+    purl       view/portal_url;
+    days       view/days;
+    units_nav  view/units_for_nav;
+  ">
+
+  <h1 style="font-size:18px;font-weight:700;margin:0 0 14px;color:var(--s-body)">
+    Temperature Log
+  </h1>
+
+  <!-- Unit navigation -->
+  <div class="temp-nav">
+    <tal:each tal:repeat="u units_nav">
+      <a tal:attributes="
+           href string:${purl}/@@pfas-temperature-log?unit_id=${u/id};
+           class python:'active' if unit and unit['id']==u['id'] else ''"
+         tal:content="u/name">Unit</a>
+    </tal:each>
+  </div>
+
+  <tal:no-unit tal:condition="python:not unit">
+    <div style="padding:24px;text-align:center;color:var(--s-secondary);
+                border:1px dashed var(--s-border);border-radius:8px;">
+      Select a unit above, or
+      <a tal:attributes="href string:${purl}/@@pfas-facility-units"
+         style="color:var(--s-primary)">configure temperature units</a>.
+    </div>
+  </tal:no-unit>
+
+  <tal:has-unit tal:condition="unit">
+
+    <!-- Chart -->
+    <div class="chart-wrap">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <strong style="font-size:13px" tal:content="unit/name">Unit</strong>
+        <div class="day-filter">
+          Show:
+          <tal:each tal:repeat="d python:[7,14,30,90]">
+            <a tal:attributes="
+                 href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;days=${d};
+                 class python:'active' if days==d else ''"
+               tal:content="string:${d}d">7d</a>
+          </tal:each>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="tempChart"></canvas>
+      </div>
+      <div style="font-size:11px;color:var(--s-secondary);margin-top:6px;">
+        Acceptance range:
+        <tal:mn tal:replace="python:unit.get('temp_min','—')"/>–<tal:mx tal:replace="python:unit.get('temp_max','—')"/>&deg;C
+        <tal:h tal:condition="python:unit.get('humidity_min') is not None">
+          &bull; Humidity:
+          <tal:hn tal:replace="python:unit.get('humidity_min','—')"/>–<tal:hx tal:replace="python:unit.get('humidity_max','—')"/>% RH
+        </tal:h>
+      </div>
+    </div>
+
+    <!-- Temperature studies -->
+    <div class="study-section">
+      <h3>Quarterly Temperature Studies (NIST Verification)</h3>
+      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
+        Five time-point readings over a day compared against a NIST-traceable reference thermometer.
+        Required at unit installation and every quarter thereafter.
+      </p>
+
+      <!-- Existing studies -->
+      <tal:each tal:repeat="s view/studies">
+        <div class="study-row">
+          <strong style="min-width:90px" tal:content="s/study_date"></strong>
+          <span tal:content="string:NIST: ${s/nist_serial}"></span>
+          <span style="color:var(--s-secondary)" tal:content="string:Tol: ±${s/tolerance}°C"></span>
+          <span tal:content="s/operator"></span>
+          <span tal:attributes="class python:'study-badge study-'+s['status']"
+                tal:content="python:s['status'].upper()"></span>
+          <a tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}"
+             style="font-size:11px;color:var(--s-primary);margin-left:auto">
+            Enter / view data &rarr;
+          </a>
+        </div>
+      </tal:each>
+      <tal:none tal:condition="python:not view.studies()">
+        <p style="font-size:12px;color:var(--s-secondary)">No studies recorded yet.</p>
+      </tal:none>
+
+      <!-- Study detail -->
+      <tal:detail tal:define="det view/study_detail" tal:condition="det">
+        <div style="margin-top:16px;padding:14px;background:var(--s-light);
+                    border-radius:6px;border:1px solid var(--s-border);">
+          <strong style="font-size:12px">
+            Study <tal:d tal:replace="python:det['study']['study_date']"/> —
+            NIST <tal:s tal:replace="python:det['study']['nist_serial']"/>
+            (tol ±<tal:t tal:replace="python:det['study']['tolerance']"/>&deg;C)
+          </strong>
+          <div class="point-grid" style="margin-top:10px;">
+            <tal:each tal:repeat="pt python:det['points']">
+              <div class="point-cell">
+                <label>Point <tal:n tal:replace="pt/time_point"/></label>
+                <div tal:condition="python:pt.get('sensor_reading') is not None"
+                     style="margin-bottom:4px;">
+                  Sensor: <strong tal:content="python:'{:.2f}'.format(pt['sensor_reading'])"/>&deg;C<br/>
+                  NIST: <strong tal:content="python:'{:.2f}'.format(pt['nist_reading'])"/>&deg;C<br/>
+                  Dev: <span tal:attributes="style python:'color:var(--s-danger)' if pt.get('passed')==0 else 'color:var(--s-success)'"
+                             tal:content="python:('+' if pt['deviation']>=0 else '')+'{:.3f}'.format(pt['deviation'])"></span>&deg;C
+                </div>
+                <form method="POST"
+                      tal:attributes="action string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${det/study/id}">
+                  <input type="hidden" name="action" value="save_point"/>
+                  <input type="hidden" name="study_id"
+                         tal:attributes="value python:det['study']['id']"/>
+                  <input type="hidden" name="time_point"
+                         tal:attributes="value pt/time_point"/>
+                  <input type="text" name="recorded_at" placeholder="HH:MM"
+                         tal:attributes="value python:pt.get('recorded_at','')[:16] if pt.get('recorded_at') else ''"
+                         style="width:60px;margin-bottom:3px"/>
+                  <input type="number" step="0.01" name="sensor_reading" placeholder="Sensor °C"
+                         tal:attributes="value python:pt.get('sensor_reading','')"/>
+                  <input type="number" step="0.01" name="nist_reading" placeholder="NIST °C"
+                         tal:attributes="value python:pt.get('nist_reading','')"/>
+                  <button type="submit"
+                          style="margin-top:4px;width:100%;padding:3px;font-size:11px;
+                                 background:var(--s-primary);color:#fff;border:none;border-radius:3px;cursor:pointer">
+                    Save
+                  </button>
+                </form>
+              </div>
+            </tal:each>
+          </div>
+        </div>
+      </tal:detail>
+
+      <!-- New study form -->
+      <details style="margin-top:14px;">
+        <summary style="font-size:12px;font-weight:600;cursor:pointer;color:var(--s-primary)">
+          + New Temperature Study
+        </summary>
+        <form method="POST" style="margin-top:12px;"
+              tal:attributes="action string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}">
+          <input type="hidden" name="action" value="add_study"/>
+          <input type="hidden" name="unit_id" tal:attributes="value unit/id"/>
+          <div class="fld-row">
+            <div class="fld"><label>Study Date</label>
+              <input type="date" name="study_date"/></div>
+            <div class="fld"><label>Operator Initials</label>
+              <input type="text" name="operator" maxlength="10"/></div>
+            <div class="fld"><label>NIST Thermometer Serial</label>
+              <input type="text" name="nist_serial"/></div>
+            <div class="fld"><label>NIST Cert Date</label>
+              <input type="date" name="nist_cert_date"/></div>
+            <div class="fld"><label>Tolerance (&deg;C)</label>
+              <input type="number" step="0.1" name="tolerance"
+                     tal:attributes="value python:unit.get('study_tolerance',1.0)"/></div>
+          </div>
+          <div class="fld"><label>Notes</label>
+            <textarea name="notes" rows="2" style="resize:vertical"></textarea></div>
+          <button type="submit"
+                  style="padding:6px 18px;background:var(--s-primary);color:#fff;
+                         border:none;border-radius:4px;cursor:pointer;font-size:13px">
+            Create Study
+          </button>
+        </form>
+      </details>
+    </div>
+
+  </tal:has-unit>
+  </tal:def>
+</metal:content>
+
+<tal:scripts metal:fill-slot="scripts">
+<script tal:condition="view/unit"
+        tal:define="rjson view/readings_json; ujson view/unit_json">
+  <tal:v tal:replace="structure string:var _readings = ${rjson};"/>
+  <tal:v tal:replace="structure string:var _unit = ${ujson};"/>
+</script>
+<script tal:condition="view/unit">
+//<![CDATA[
+(function(){
+  var canvas = document.getElementById('tempChart');
+  if (!canvas || !_readings || !_readings.length) {
+    if (canvas) canvas.parentNode.innerHTML = '<div style="padding:24px;text-align:center;color:#6c757d">No readings in this period.</div>';
+    return;
+  }
+
+  var _css = getComputedStyle(document.documentElement);
+  function tok(n){ return (_css.getPropertyValue(n)||'').trim(); }
+  function rgba(v,a){ var h=v.replace('#',''); return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')'; }
+
+  var tempData = [], humData = [], hasHum = false;
+  _readings.forEach(function(r){
+    if (r.temperature != null)
+      tempData.push({x: r.ts.replace('T',' '), y: r.temperature,
+                     in_range: r.in_range, humidity: r.humidity});
+    if (r.humidity != null) hasHum = true;
+  });
+
+  var ptColors = tempData.map(function(p){
+    return p.in_range ? rgba(tok('--s-success'),0.9) : rgba(tok('--s-danger'),0.9);
+  });
+
+  var datasets = [{
+    label: 'Temperature (°C)',
+    data: tempData.map(function(p){ return {x:p.x, y:p.y}; }),
+    type: 'scatter',
+    pointRadius: 3,
+    pointHoverRadius: 5,
+    pointBackgroundColor: ptColors,
+    pointBorderColor: ptColors,
+    showLine: true,
+    borderColor: rgba(tok('--s-primary'),0.6),
+    borderWidth: 1,
+    tension: 0,
+    fill: false,
+    yAxisID: 'yTemp',
+  }];
+
+  if (hasHum) {
+    var humData2 = _readings.filter(function(r){ return r.humidity!=null; })
+                            .map(function(r){ return {x:r.ts.replace('T',' '), y:r.humidity}; });
+    datasets.push({
+      label: 'Humidity (%RH)',
+      data: humData2,
+      type: 'scatter',
+      pointRadius: 2,
+      showLine: true,
+      borderColor: rgba(tok('--s-warning'),0.7),
+      borderWidth: 1,
+      backgroundColor: rgba(tok('--s-warning'),0.3),
+      fill: false,
+      yAxisID: 'yHum',
+    });
+  }
+
+  // Limit lines
+  var tMin = _unit.temp_min, tMax = _unit.temp_max;
+  var xs = tempData.map(function(p){return p.x;});
+  if (tMin != null) datasets.push({
+    label: 'Min '+tMin+'°C', type:'line',
+    data: [{x:xs[0],y:tMin},{x:xs[xs.length-1],y:tMin}],
+    borderColor: rgba(tok('--s-danger'),0.6), borderWidth:1.5,
+    borderDash:[5,4], pointRadius:0, fill:false, yAxisID:'yTemp'
+  });
+  if (tMax != null) datasets.push({
+    label: 'Max '+tMax+'°C', type:'line',
+    data: [{x:xs[0],y:tMax},{x:xs[xs.length-1],y:tMax}],
+    borderColor: rgba(tok('--s-danger'),0.6), borderWidth:1.5,
+    borderDash:[5,4], pointRadius:0, fill:false, yAxisID:'yTemp'
+  });
+
+  var scales = {
+    x: { type:'category', ticks:{maxTicksLimit:10, font:{size:10}},
+         grid:{color:rgba(tok('--s-border'),1)} },
+    yTemp: { position:'left', title:{display:true,text:'°C',font:{size:10}},
+             ticks:{font:{size:10}}, grid:{color:rgba(tok('--s-border'),1)} },
+  };
+  if (hasHum) scales.yHum = {
+    position:'right', title:{display:true,text:'% RH',font:{size:10}},
+    ticks:{font:{size:10}}, grid:{display:false}
+  };
+
+  new Chart(canvas, {
+    type: 'scatter',
+    data: {datasets: datasets},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {display:true, position:'top', labels:{boxWidth:9,font:{size:10}}},
+        tooltip: {callbacks:{label:function(ctx){
+          var d = tempData[ctx.dataIndex] || {};
+          var lines = ['Temp: '+ctx.parsed.y.toFixed(2)+'°C'];
+          if (d.humidity!=null) lines.push('RH: '+d.humidity.toFixed(1)+'%');
+          return lines;
+        }}}
+      },
+      scales: scales,
+    }
+  });
+})();
+//]]>
+</script>
+</tal:scripts>
+</body>
+</html>

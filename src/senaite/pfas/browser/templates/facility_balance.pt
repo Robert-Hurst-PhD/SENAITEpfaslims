@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Balance Verification Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .bal-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+    .bal-nav a { padding:5px 14px; border-radius:16px; font-size:12px; font-weight:600;
+                 text-decoration:none; background:var(--s-light);
+                 border:1px solid var(--s-border); color:var(--s-body); }
+    .bal-nav a.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
+    .form-card { background:var(--s-bg); border:1px solid var(--s-border);
+                 border-radius:8px; padding:16px; margin-bottom:18px; }
+    .form-card h3 { font-size:13px; font-weight:700; margin:0 0 12px; color:var(--s-body); }
+    .wp-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .wp-table th { background:var(--s-light); padding:7px 10px; text-align:left;
+                   font-size:11px; font-weight:700; color:var(--s-secondary);
+                   border-bottom:2px solid var(--s-border); }
+    .wp-table td { padding:8px 10px; border-bottom:1px solid var(--s-border);
+                   vertical-align:middle; }
+    .wp-table input[type=number] { width:120px; padding:5px 7px;
+                                    border:1px solid var(--s-input-border);
+                                    border-radius:4px; font-size:13px; }
+    .dev-cell { font-weight:600; }
+    .dev-pass { color:var(--s-success); }
+    .dev-fail { color:var(--s-danger); }
+    .history-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .history-table th { background:var(--s-light); padding:6px 10px;
+                        font-size:11px; font-weight:700; color:var(--s-secondary);
+                        border-bottom:2px solid var(--s-border); text-align:left; }
+    .history-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
+    .p-ok { background:#d4edda; color:#155724; padding:2px 9px;
+             border-radius:8px; font-size:10px; font-weight:700; }
+    .p-fail { background:#f8d7da; color:#721c24; padding:2px 9px;
+               border-radius:8px; font-size:10px; font-weight:700; }
+    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
+    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld input { padding:6px 8px; font-size:13px; border:1px solid var(--s-input-border);
+                 border-radius:4px; }
+    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .fld-row .fld { flex:1; min-width:120px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="
+    unit     view/unit;
+    purl     view/portal_url;
+    bal_units view/balance_units;
+  ">
+
+  <h1 style="font-size:18px;font-weight:700;margin:0 0 14px;color:var(--s-body)">
+    Balance Verification Log
+  </h1>
+
+  <div class="bal-nav">
+    <tal:each tal:repeat="u bal_units">
+      <a tal:attributes="
+           href string:${purl}/@@pfas-balance-log?unit_id=${u/id};
+           class python:'active' if unit and unit['id']==u['id'] else ''"
+         tal:content="u/name">Balance</a>
+    </tal:each>
+  </div>
+
+  <tal:no-unit tal:condition="python:not unit">
+    <div style="padding:24px;text-align:center;color:var(--s-secondary);
+                border:1px dashed var(--s-border);border-radius:8px;">
+      Select a balance above or
+      <a tal:attributes="href string:${purl}/@@pfas-facility-units"
+         style="color:var(--s-primary)">configure balance units</a>.
+    </div>
+  </tal:no-unit>
+
+  <tal:has-unit tal:condition="unit">
+    <!-- Entry form -->
+    <div class="form-card">
+      <h3>New Verification — <tal:n tal:replace="unit/name"/></h3>
+      <form method="POST" id="balForm"
+            tal:attributes="action string:${purl}/@@pfas-balance-log">
+        <input type="hidden" name="unit_id" tal:attributes="value unit/id"/>
+        <div class="fld-row">
+          <div class="fld"><label>Date *</label>
+            <input type="date" name="verified_date" id="vDate" required/></div>
+          <div class="fld"><label>Operator Initials *</label>
+            <input type="text" name="operator" maxlength="10" required/></div>
+          <div class="fld" style="flex:2"><label>Notes</label>
+            <input type="text" name="notes"/></div>
+        </div>
+
+        <table class="wp-table">
+          <tr>
+            <th>Nominal</th>
+            <th>Tolerance (g)</th>
+            <th>Actual Reading (g)</th>
+            <th>Deviation</th>
+            <th>Pass?</th>
+          </tr>
+          <tal:each tal:repeat="wp view/weight_points" tal:define="i repeat/wp/index">
+            <tr>
+              <td><strong tal:content="python:wp[1]">10 mg</strong></td>
+              <td style="color:var(--s-secondary)">
+                ±<tal:t tal:replace="python:wp[2]"/>g
+              </td>
+              <td>
+                <input type="number" step="any"
+                       tal:attributes="name string:actual_${i};
+                                       id string:act_${i};
+                                       onchange string:calcDev(this,${i})"/>
+              </td>
+              <td class="dev-cell" tal:attributes="id string:dev_${i}">—</td>
+              <td tal:attributes="id string:pass_${i}">—</td>
+            </tr>
+          </tal:each>
+        </table>
+
+        <div style="margin-top:14px;">
+          <button type="submit"
+                  style="padding:7px 22px;background:var(--s-primary);color:#fff;
+                         border:none;border-radius:4px;cursor:pointer;font-weight:600;font-size:13px">
+            Save Verification
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- History -->
+    <div class="form-card">
+      <h3>Verification History</h3>
+      <tal:no-hist tal:condition="python:not view.history()">
+        <p style="color:var(--s-secondary);font-size:12px">No verifications recorded yet.</p>
+      </tal:no-hist>
+      <tal:each tal:repeat="v view/history" tal:condition="python:bool(view.history())">
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <strong style="font-size:12px" tal:content="v/verified_date"></strong>
+            <span style="font-size:12px;color:var(--s-secondary)"
+                  tal:content="string:by ${v/operator}"></span>
+            <span tal:attributes="class python:'p-ok' if v['passed'] else 'p-fail'"
+                  tal:content="python:'PASS' if v['passed'] else 'FAIL'"></span>
+            <span style="font-size:11px;color:var(--s-secondary)"
+                  tal:content="python:v.get('notes','')"></span>
+          </div>
+          <table class="history-table">
+            <tr><th>Nominal</th><th>Actual (g)</th><th>Deviation (g)</th><th>Tol (g)</th><th>Result</th></tr>
+            <tal:each tal:repeat="pt python:v.get('points',[])">
+              <tr>
+                <td tal:content="pt/label"></td>
+                <td tal:content="python:'{:.6g}'.format(pt['actual_g']) if pt.get('actual_g') is not None else '—'"></td>
+                <td tal:attributes="style python:'color:var(--s-danger)' if pt.get('passed')==0 else 'color:var(--s-success)'"
+                    tal:content="python:('+' if pt['deviation_g']>=0 else '')+'{:.6g}'.format(pt['deviation_g']) if pt.get('deviation_g') is not None else '—'"></td>
+                <td tal:content="python:'±{}'.format(pt['tolerance_g']) if pt.get('tolerance_g') is not None else '—'"></td>
+                <td><span tal:attributes="class python:'p-ok' if pt.get('passed') else 'p-fail'"
+                          tal:content="python:'Pass' if pt.get('passed') else 'Fail'"></span></td>
+              </tr>
+            </tal:each>
+          </table>
+        </div>
+      </tal:each>
+    </div>
+
+  </tal:has-unit>
+  </tal:def>
+</metal:content>
+
+<tal:scripts metal:fill-slot="scripts">
+<script tal:condition="view/unit"
+        tal:define="wps_json python:__import__('json').dumps(view.weight_points()).replace('&amp;','\\u0026').replace('<','\\u003c').replace('>','\\u003e')">
+  <tal:v tal:replace="structure string:var _WP = ${wps_json};"/>
+</script>
+<script tal:condition="view/unit">
+//<![CDATA[
+// Set today's date
+document.getElementById('vDate').valueAsDate = new Date();
+
+function calcDev(input, idx) {
+  var wp = _WP[idx];
+  if (!wp) return;
+  var nominal = wp[0], tol = wp[2];
+  var actual = parseFloat(input.value);
+  if (isNaN(actual)) {
+    document.getElementById('dev_'+idx).textContent = '—';
+    document.getElementById('pass_'+idx).textContent = '—';
+    return;
+  }
+  var dev = actual - nominal;
+  var pass = Math.abs(dev) <= tol;
+  var devCell = document.getElementById('dev_'+idx);
+  var passCell = document.getElementById('pass_'+idx);
+  devCell.textContent = (dev >= 0 ? '+' : '') + dev.toFixed(6) + ' g';
+  devCell.className = 'dev-cell ' + (pass ? 'dev-pass' : 'dev-fail');
+  passCell.innerHTML = pass
+    ? '<span class="p-ok">Pass</span>'
+    : '<span class="p-fail">Fail</span>';
+}
+//]]>
+</script>
+</tal:scripts>
+</body>
+</html>

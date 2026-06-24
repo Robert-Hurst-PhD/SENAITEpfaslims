@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Prepared Standards</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .ps-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
+    .ps-toolbar input[type=text] { flex:1; min-width:180px; max-width:320px;
+      padding:7px 12px; font-size:13px; border:1px solid var(--s-input-border); border-radius:6px; }
+    .ps-toolbar select { padding:7px 10px; font-size:13px;
+      border:1px solid var(--s-input-border); border-radius:6px; }
+
+    .ps-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .ps-table th { background:var(--s-light); padding:8px 12px; text-align:left;
+                   font-size:11px; text-transform:uppercase; font-weight:700;
+                   letter-spacing:.04em; color:var(--s-secondary); }
+    .ps-table td { padding:9px 12px; border-top:1px solid var(--s-border); vertical-align:middle; }
+    .ps-table tr:hover td { background:var(--s-primary-lt); }
+
+    .exp-expired { color:var(--s-danger); font-weight:700; }
+    .exp-warning { color:#856404; font-weight:700; }
+
+    .badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700;
+             text-transform:uppercase; }
+    .badge-active    { background:#d4edda; color:#155724; }
+    .badge-exhausted { background:#e2e3e5; color:#495057; }
+    .badge-expired   { background:#f8d7da; color:#721c24; }
+
+    .logbook-ref { font-family:monospace; font-size:11px; color:var(--s-primary);
+                   background:var(--s-primary-lt); padding:2px 6px; border-radius:3px; }
+
+    /* Modal */
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
+                     z-index:1000; align-items:center; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal-box { background:#fff; border-radius:10px; padding:24px; width:90%;
+                 max-width:780px; max-height:94vh; overflow-y:auto;
+                 box-shadow:0 8px 32px rgba(0,0,0,.25); }
+    .modal-box h2 { font-size:16px; font-weight:700; margin:0 0 18px;
+                    padding-bottom:8px; border-bottom:2px solid var(--s-border); }
+    .modal-tabs { display:flex; gap:0; border-bottom:2px solid var(--s-border); margin-bottom:18px; }
+    .modal-tab { padding:8px 18px; font-size:13px; font-weight:600; cursor:pointer;
+                 border:none; background:none; color:var(--s-secondary); border-bottom:3px solid transparent;
+                 margin-bottom:-2px; }
+    .modal-tab.active { color:var(--s-primary); border-bottom-color:var(--s-primary); }
+    .modal-pane { display:none; }
+    .modal-pane.active { display:block; }
+    .form-row  { display:flex; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+    .form-field { display:flex; flex-direction:column; flex:1 1 180px; }
+    .form-field.full { flex:1 1 100%; }
+    .form-field label { font-size:11px; font-weight:700; color:var(--s-secondary);
+                        text-transform:uppercase; margin-bottom:3px; }
+    .form-field input, .form-field select, .form-field textarea {
+      padding:7px 10px; border:1px solid var(--s-input-border); border-radius:5px;
+      font-size:13px; color:var(--s-body); }
+    .form-field textarea { min-height:64px; resize:vertical; }
+    .form-hint { font-size:11px; color:var(--s-secondary); margin-top:2px; }
+
+    /* Analyte / parent reagent editor tables */
+    .mini-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:4px; }
+    .mini-table th { background:var(--s-light); padding:5px 8px; text-align:left;
+                     font-size:11px; text-transform:uppercase; font-weight:700; }
+    .mini-table td { padding:3px 4px; border-bottom:1px solid var(--s-border); }
+    .mini-table input { width:100%; padding:4px 6px; border:1px solid var(--s-input-border);
+                        border-radius:3px; font-size:12px; }
+    .btn-add-row { font-size:11px; padding:3px 10px; background:var(--s-primary-lt);
+                   color:var(--s-primary); border:1px solid var(--s-primary);
+                   border-radius:4px; cursor:pointer; margin-top:5px; }
+
+    /* Reagent lookup */
+    .reagent-lookup { position:relative; }
+    .lookup-results { position:absolute; top:100%; left:0; right:0; background:#fff;
+                      border:1px solid var(--s-border); border-radius:0 0 6px 6px;
+                      max-height:200px; overflow-y:auto; z-index:100;
+                      box-shadow:0 4px 12px rgba(0,0,0,.1); display:none; }
+    .lookup-item { padding:8px 12px; cursor:pointer; font-size:12px;
+                   border-bottom:1px solid var(--s-border); }
+    .lookup-item:hover { background:var(--s-primary-lt); }
+    .lookup-item .lot { color:var(--s-secondary); font-family:monospace; font-size:11px; }
+
+    .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
+    .msg-ok    { background:#d4edda; border:1px solid #c3e6cb; border-radius:4px;
+                 padding:10px 14px; margin-bottom:14px; color:#155724; font-weight:600; }
+    .msg-error { background:#f8d7da; border:1px solid #f5c6cb; border-radius:4px;
+                 padding:10px 14px; margin-bottom:14px; color:#721c24; font-weight:600; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Prepared Standards &amp; Reagents</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <span class="role-badge">LabManager</span>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" style="max-width:1200px">
+
+    <div class="msg-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg">ok</div>
+    <div class="msg-error" tal:condition="view/error_msg" tal:content="view/error_msg">err</div>
+
+    <!-- Filter / search toolbar -->
+    <form method="GET" class="ps-toolbar"
+          tal:attributes="action string:${context/absolute_url}/@@pfas-prep-standards">
+      <input type="text" name="q" placeholder="Search name, lot, logbook..."
+             tal:attributes="value python:request.form.get('q','')" />
+      <select name="status">
+        <option value="">— All Status —</option>
+        <option value="active"    tal:attributes="selected python:request.form.get('status')=='active'">Active</option>
+        <option value="exhausted" tal:attributes="selected python:request.form.get('status')=='exhausted'">Exhausted</option>
+        <option value="expired"   tal:attributes="selected python:request.form.get('status')=='expired'">Expired</option>
+      </select>
+      <select name="type">
+        <option value="">— All Types —</option>
+        <tal:opts tal:repeat="t view/standard_types">
+          <option tal:content="t" tal:attributes="value t; selected python:request.form.get('type')==t">type</option>
+        </tal:opts>
+      </select>
+      <button type="submit" class="btn btn-primary">Filter</button>
+      <button type="button" class="btn btn-primary" onclick="openModal()" style="margin-left:auto">
+        + New Prepared Standard
+      </button>
+    </form>
+
+    <tal:stds tal:define="stds view/prepared_standards">
+
+      <div class="empty-state" tal:condition="not:stds">
+        <p style="font-size:28px">&#129514;</p>
+        <p>No prepared standards recorded yet.</p>
+        <button class="btn btn-primary" onclick="openModal()" style="margin-top:12px">
+          Record First Standard
+        </button>
+      </div>
+
+      <div class="table-wrap" tal:condition="stds">
+        <table class="ps-table">
+          <thead>
+            <tr>
+              <th>Name / Lot</th>
+              <th>Type</th>
+              <th>Prep Logbook</th>
+              <th>Prepared By</th>
+              <th>Prepared Date</th>
+              <th>Expiry</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tal:rows tal:repeat="std stds">
+              <tr>
+                <td>
+                  <div style="font-weight:700" tal:content="std/title">Name</div>
+                  <div style="font-family:monospace;font-size:11px;color:var(--s-secondary)"
+                       tal:content="std/lot_number">LOT</div>
+                </td>
+                <td style="font-size:12px;color:var(--s-secondary)" tal:content="std/standard_type">—</td>
+                <td>
+                  <span class="logbook-ref" tal:condition="std/logbook_slug">
+                    <tal:x tal:replace="std/logbook_title">Logbook</tal:x>
+                    rev <tal:x tal:replace="std/logbook_revision">1</tal:x>
+                  </span>
+                </td>
+                <td tal:content="std/prepared_by">—</td>
+                <td tal:content="std/prepared_date">—</td>
+                <td tal:attributes="class python:view.expiry_class(std)"
+                    tal:content="std/expiry_date">—</td>
+                <td>
+                  <span tal:attributes="class python:'badge badge-' + std['status']"
+                        tal:content="std/status">active</span>
+                </td>
+                <td>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button class="btn-sm"
+                            tal:attributes="onclick string:editStandard(${python:__import__('json').dumps(std)})"
+                            >Edit</button>
+                    <a class="btn-sm"
+                       target="_blank"
+                       tal:attributes="href string:${context/absolute_url}/@@pfas-prep-standards?action=cert&amp;uid=${std/uid}"
+                       >Certificate</a>
+                  </div>
+                </td>
+              </tr>
+            </tal:rows>
+          </tbody>
+        </table>
+      </div>
+
+    </tal:stds>
+
+    <!-- ── Create/Edit modal ─────────────────────────────────────────── -->
+    <div class="modal-overlay" id="psModal">
+      <div class="modal-box">
+        <h2 id="psModalTitle">New Prepared Standard</h2>
+
+        <!-- Tab bar -->
+        <div class="modal-tabs">
+          <button type="button" class="modal-tab active" onclick="switchTab('tabBasic',this)">Details</button>
+          <button type="button" class="modal-tab" onclick="switchTab('tabParents',this)">Parent Reagents</button>
+          <button type="button" class="modal-tab" onclick="switchTab('tabAnalytes',this)">Analyte Concentrations</button>
+        </div>
+
+        <form method="POST"
+              tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
+          <input type="hidden" name="action" value="add" id="psFormAction" />
+          <input type="hidden" name="uid" id="psUid" value="" />
+          <input type="hidden" name="parent_reagents_json" id="parentJson" value="[]" />
+          <input type="hidden" name="analyte_concentrations_json" id="analyteJson" value="[]" />
+
+          <!-- Tab 1: Basic details -->
+          <div class="modal-pane active" id="tabBasic">
+            <div class="form-row">
+              <div class="form-field" style="flex:2 1 280px">
+                <label>Standard Name *</label>
+                <input type="text" name="title" id="psTitle" required
+                       placeholder="e.g. Native Mix 100 ng/mL" />
+              </div>
+              <div class="form-field">
+                <label>In-House Lot # *</label>
+                <input type="text" name="lot_number" id="psLot" required
+                       placeholder="2026-06-22-001" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Standard Type</label>
+                <select name="standard_type" id="psType">
+                  <option value="">— Select —</option>
+                  <tal:opts tal:repeat="t view/standard_types">
+                    <option tal:content="t" tal:attributes="value t">type</option>
+                  </tal:opts>
+                </select>
+              </div>
+              <div class="form-field">
+                <label>Prep Logbook</label>
+                <select name="logbook_slug" id="psLogbookSlug" onchange="onLogbookChange(this)">
+                  <option value="">— None —</option>
+                  <tal:lbs tal:repeat="lb view/prep_logbooks">
+                    <option tal:attributes="value lb/logbook_slug;
+                                            data-revision lb/revision;
+                                            data-title lb/title;
+                                            data-expiry lb/default_expiry_days"
+                            tal:content="python:'{} (Rev {})'.format(lb['title'], lb['revision'])">Logbook</option>
+                  </tal:lbs>
+                </select>
+              </div>
+              <input type="hidden" name="logbook_revision" id="psLogbookRevision" value="" />
+              <input type="hidden" name="logbook_title" id="psLogbookTitle" value="" />
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Prepared By</label>
+                <input type="text" name="prepared_by" id="psPrepBy" />
+              </div>
+              <div class="form-field">
+                <label>Date Prepared</label>
+                <input type="date" name="prepared_date" id="psPrepDate"
+                       onchange="autoExpiry()" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field">
+                <label>Expiry Date</label>
+                <input type="date" name="expiry_date" id="psExpiry" />
+                <span class="form-hint">Auto-filled from logbook default. Adjust if needed.</span>
+              </div>
+              <div class="form-field">
+                <label>Volume / Amount Prepared</label>
+                <input type="text" name="volume_prepared" id="psVol" placeholder="e.g. 10 mL" />
+              </div>
+              <div class="form-field">
+                <label>Storage Location</label>
+                <input type="text" name="storage_location" id="psStorage" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field full">
+                <label>Expiry Justification (required if not default)</label>
+                <input type="text" name="expiry_notes" id="psExpiryNotes"
+                       placeholder="e.g. Extended per supervisor review — see audit trail" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-field full">
+                <label>Notes</label>
+                <textarea name="notes" id="psNotes" rows="2"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 2: Parent reagents (parentage) -->
+          <div class="modal-pane" id="tabParents">
+            <p style="font-size:12px;color:var(--s-secondary);margin-bottom:12px">
+              Record the procured reagents consumed to prepare this standard.
+              Search your inventory and add each reagent used.
+            </p>
+            <div class="reagent-lookup">
+              <input type="text" id="reagentSearch" placeholder="Search reagent inventory..."
+                     style="width:100%;padding:8px 12px;font-size:13px;border:1px solid var(--s-input-border);border-radius:6px;margin-bottom:4px"
+                     oninput="lookupReagent(this.value)" autocomplete="off" />
+              <div class="lookup-results" id="lookupResults"></div>
+            </div>
+            <table class="mini-table" id="parentsTable" style="margin-top:10px">
+              <thead>
+                <tr>
+                  <th>Reagent Name</th><th>Supplier</th><th>Lot #</th>
+                  <th>Qty Used</th><th>Unit</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="parentsBody"></tbody>
+            </table>
+          </div>
+
+          <!-- Tab 3: Analyte concentrations -->
+          <div class="modal-pane" id="tabAnalytes">
+            <p style="font-size:12px;color:var(--s-secondary);margin-bottom:12px">
+              Record the final analyte concentrations in this standard.
+              These are printed on the internal certificate.
+            </p>
+            <table class="mini-table" id="analytesTable">
+              <thead>
+                <tr><th>Analyte</th><th>Concentration</th><th>Unit</th><th></th></tr>
+              </thead>
+              <tbody id="analytesBody"></tbody>
+            </table>
+            <button type="button" class="btn-add-row" onclick="addAnalyteRow()">+ Add Analyte</button>
+          </div>
+
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;
+                      padding-top:12px;border-top:1px solid var(--s-border)">
+            <button type="button" class="btn-sm" onclick="closePsModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" onclick="serializeAll()">Save &amp; Generate Certificate</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="pane-footer">
+      <span>In-house prepared standards with full preparation parentage and auto-generated internal certificates</span>
+      <span class="pf-path">/pfas_prepared_standards (ZODB) &bull; /data/coa/certs/ (certificates)</span>
+    </div>
+
+  </div>
+
+  <script>
+  var LOOKUP_URL = '/@@pfas-reagents?action=lookup_json&q=';
+  var currentLogbookExpiry = 365;
+
+  /* ── Tab switching ────────────────────────────────────────────────── */
+  function switchTab(id, btn) {
+    document.querySelectorAll('.modal-pane').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelectorAll('.modal-tab').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById(id).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  /* ── Modal open/close ─────────────────────────────────────────────── */
+  function openModal() {
+    document.getElementById('psFormAction').value = 'add';
+    document.getElementById('psUid').value = '';
+    document.getElementById('psTitle').value = '';
+    document.getElementById('psLot').value = '';
+    document.getElementById('psType').value = '';
+    document.getElementById('psLogbookSlug').value = '';
+    document.getElementById('psLogbookRevision').value = '';
+    document.getElementById('psLogbookTitle').value = '';
+    document.getElementById('psPrepBy').value = '';
+    document.getElementById('psPrepDate').value = '';
+    document.getElementById('psExpiry').value = '';
+    document.getElementById('psExpiryNotes').value = '';
+    document.getElementById('psVol').value = '';
+    document.getElementById('psStorage').value = '';
+    document.getElementById('psNotes').value = '';
+    document.getElementById('parentsBody').innerHTML = '';
+    document.getElementById('analytesBody').innerHTML = '';
+    switchTab('tabBasic', document.querySelector('.modal-tab'));
+    document.getElementById('psModal').classList.add('open');
+  }
+  function closePsModal() { document.getElementById('psModal').classList.remove('open'); }
+  document.getElementById('psModal').addEventListener('click', function(e) {
+    if (e.target === this) closePsModal();
+  });
+
+  function editStandard(data) {
+    if (typeof data === 'string') { try { data = JSON.parse(data); } catch(e) { return; } }
+    document.getElementById('psFormAction').value = 'edit';
+    document.getElementById('psUid').value = data.uid || '';
+    document.getElementById('psTitle').value = data.title || '';
+    document.getElementById('psLot').value = data.lot_number || '';
+    document.getElementById('psType').value = data.standard_type || '';
+    document.getElementById('psLogbookSlug').value = data.logbook_slug || '';
+    document.getElementById('psLogbookRevision').value = data.logbook_revision || '';
+    document.getElementById('psLogbookTitle').value = data.logbook_title || '';
+    document.getElementById('psPrepBy').value = data.prepared_by || '';
+    document.getElementById('psPrepDate').value = data.prepared_date || '';
+    document.getElementById('psExpiry').value = data.expiry_date || '';
+    document.getElementById('psExpiryNotes').value = data.expiry_notes || '';
+    document.getElementById('psVol').value = data.volume_prepared || '';
+    document.getElementById('psStorage').value = data.storage_location || '';
+    document.getElementById('psNotes').value = data.notes || '';
+    /* Parent reagents */
+    document.getElementById('parentsBody').innerHTML = '';
+    (data.parent_reagents || []).forEach(function(p) {
+      addParentRow(p.name, p.supplier, p.lot, p.qty, p.unit, p.uid);
+    });
+    /* Analytes */
+    document.getElementById('analytesBody').innerHTML = '';
+    (data.analyte_concentrations || []).forEach(function(a) {
+      addAnalyteRow(a.analyte, a.concentration, a.unit);
+    });
+    switchTab('tabBasic', document.querySelector('.modal-tab'));
+    document.getElementById('psModal').classList.add('open');
+  }
+
+  /* ── Logbook selection ─────────────────────────────────────────────── */
+  function onLogbookChange(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    var rev = opt.getAttribute('data-revision') || '';
+    var title = opt.getAttribute('data-title') || '';
+    var expiry = parseInt(opt.getAttribute('data-expiry') || '365');
+    document.getElementById('psLogbookRevision').value = rev;
+    document.getElementById('psLogbookTitle').value = title;
+    currentLogbookExpiry = expiry;
+    autoExpiry();
+    /* Load analyte template for this logbook */
+    if (rev) {
+      /* Analytes from logbook template could be loaded via AJAX, but for now
+         just note the logbook reference — user fills concentrations manually */
+    }
+  }
+
+  function autoExpiry() {
+    var pd = document.getElementById('psPrepDate').value;
+    if (!pd) return;
+    var d = new Date(pd);
+    d.setDate(d.getDate() + currentLogbookExpiry);
+    var iso = d.toISOString().slice(0,10);
+    document.getElementById('psExpiry').value = iso;
+  }
+
+  /* ── Reagent lookup ────────────────────────────────────────────────── */
+  var _lookupTimer = null;
+  function lookupReagent(q) {
+    clearTimeout(_lookupTimer);
+    if (!q.trim()) { document.getElementById('lookupResults').style.display='none'; return; }
+    _lookupTimer = setTimeout(function() {
+      fetch(LOOKUP_URL + encodeURIComponent(q))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var box = document.getElementById('lookupResults');
+          var items = data.items || [];
+          if (!items.length) { box.style.display='none'; return; }
+          var O='\x3e', C='\x3c\x2f', L='\x3c';
+          box.innerHTML = items.map(function(it) {
+            return L+'div class="lookup-item" onclick="selectReagent('+JSON.stringify(it)+')">'+O
+              + L+'strong'+O + escHtml(it.name) + C+'strong'+O
+              + ' '+L+'span class="lot"'+O+'Lot: '+escHtml(it.lot_number)+C+'span'+O
+              + ' — ' + escHtml(it.supplier)
+              + C+'div'+O;
+          }).join('');
+          box.style.display = 'block';
+        });
+    }, 280);
+  }
+  function selectReagent(it) {
+    addParentRow(it.name, it.supplier, it.lot_number, '', '', it.uid);
+    document.getElementById('reagentSearch').value = '';
+    document.getElementById('lookupResults').style.display = 'none';
+  }
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.reagent-lookup')) {
+      document.getElementById('lookupResults').style.display = 'none';
+    }
+  });
+
+  /* ── Parent reagent rows ──────────────────────────────────────────── */
+  function addParentRow(name, supplier, lot, qty, unit, uid) {
+    var tbody = document.getElementById('parentsBody');
+    var tr = document.createElement('tr');
+    tr.setAttribute('data-uid', uid || '');
+    var T='\x3ctd\x3e', ET='\x3c/td\x3e', INP='\x3cinput type="text" ';
+    tr.innerHTML = T+INP+'class="p-name" value="'+escHtml(name||'')+'" /\x3e'+ET
+      + T+INP+'class="p-sup" value="'+escHtml(supplier||'')+'" /\x3e'+ET
+      + T+INP+'class="p-lot" value="'+escHtml(lot||'')+'" /\x3e'+ET
+      + T+INP+'class="p-qty" style="width:72px" value="'+escHtml(qty||'')+'" placeholder="5" /\x3e'+ET
+      + T+INP+'class="p-unit" style="width:60px" value="'+escHtml(unit||'')+'" placeholder="mL" /\x3e'+ET
+      + T+'\x3cbutton type="button" onclick="this.closest(\'tr\').remove()" style="color:#dc3545;background:none;border:none;cursor:pointer"\x3e×\x3c/button\x3e'+ET;
+    tbody.appendChild(tr);
+  }
+
+  /* ── Analyte rows ─────────────────────────────────────────────────── */
+  function addAnalyteRow(analyte, conc, unit) {
+    var tbody = document.getElementById('analytesBody');
+    var tr = document.createElement('tr');
+    var T2='\x3ctd\x3e', ET2='\x3c/td\x3e', I2='\x3cinput type="text" ';
+    tr.innerHTML = T2+I2+'class="a-name" value="'+escHtml(analyte||'')+'" placeholder="PFOA" /\x3e'+ET2
+      + T2+I2+'class="a-conc" value="'+escHtml(conc||'')+'" placeholder="100" /\x3e'+ET2
+      + T2+I2+'class="a-unit" value="'+escHtml(unit||'')+'" placeholder="ng/mL" /\x3e'+ET2
+      + '\x3ctd\x3e\x3cbutton type="button" onclick="this.closest(\'tr\').remove()" style="color:#dc3545;background:none;border:none;cursor:pointer"\x3e×\x3c/button\x3e\x3c/td\x3e';
+    tbody.appendChild(tr);
+  }
+
+  /* ── Serialize before submit ──────────────────────────────────────── */
+  function serializeAll() {
+    /* Parents */
+    var parents = [];
+    document.querySelectorAll('#parentsBody tr').forEach(function(tr) {
+      var n = tr.querySelector('.p-name').value.trim();
+      if (n) parents.push({
+        uid:      tr.getAttribute('data-uid') || '',
+        name:     n,
+        supplier: tr.querySelector('.p-sup').value.trim(),
+        lot:      tr.querySelector('.p-lot').value.trim(),
+        qty:      tr.querySelector('.p-qty').value.trim(),
+        unit:     tr.querySelector('.p-unit').value.trim(),
+      });
+    });
+    document.getElementById('parentJson').value = JSON.stringify(parents);
+    /* Analytes */
+    var analytes = [];
+    document.querySelectorAll('#analytesBody tr').forEach(function(tr) {
+      var a = tr.querySelector('.a-name').value.trim();
+      if (a) analytes.push({
+        analyte: a,
+        concentration: tr.querySelector('.a-conc').value.trim(),
+        unit: tr.querySelector('.a-unit').value.trim(),
+      });
+    });
+    document.getElementById('analyteJson').value = JSON.stringify(analytes);
+  }
+
+  function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/\x3c/g,'&lt;').replace(/\x3e/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  </script>
+
+  </div><!-- /content slot -->
+</body>
+</html>

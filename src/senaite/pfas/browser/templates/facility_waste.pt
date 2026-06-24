@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Waste Container Log (SAA)</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .log-form { background:var(--s-bg); border:1px solid var(--s-border);
+                border-radius:8px; padding:16px; margin-bottom:18px; }
+    .log-form h3 { font-size:13px; font-weight:700; margin:0 0 12px; color:var(--s-body); }
+    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
+    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld input, .fld select { padding:6px 8px; font-size:13px;
+                               border:1px solid var(--s-input-border);
+                               border-radius:4px; color:var(--s-input-text); }
+    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .fld-row .fld { flex:1; min-width:120px; }
+    .log-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .log-table th { background:var(--s-light); padding:7px 10px; font-size:11px;
+                    font-weight:700; color:var(--s-secondary);
+                    border-bottom:2px solid var(--s-border); text-align:left; }
+    .log-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
+    .cond-ok     { color:var(--s-success); font-weight:600; }
+    .cond-needs  { color:var(--s-danger);  font-weight:600; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="purl view/portal_url">
+
+  <h1 style="font-size:18px;font-weight:700;margin:0 0 18px;color:var(--s-body)">
+    Waste Container Log (SAA)
+  </h1>
+
+  <div class="log-form">
+    <h3>New Entry</h3>
+    <form method="POST" tal:attributes="action string:${purl}/@@pfas-waste-log">
+      <div class="fld-row">
+        <div class="fld"><label>Date *</label>
+          <input type="date" name="log_date" id="wstDate" required/></div>
+        <div class="fld"><label>Time</label>
+          <input type="time" name="log_time" id="wstTime"/></div>
+        <div class="fld"><label>Operator Initials *</label>
+          <input type="text" name="operator" maxlength="10" required/></div>
+        <div class="fld"><label>Container</label>
+          <select name="unit_id">
+            <option value="">— General SAA —</option>
+            <tal:each tal:repeat="u view/waste_units">
+              <option tal:attributes="value u/id" tal:content="u/name"></option>
+            </tal:each>
+          </select>
+        </div>
+        <div class="fld"><label>Condition *</label>
+          <select name="condition" required>
+            <option value="acceptable">Acceptable</option>
+            <option value="needs_emptying">Needs Emptying</option>
+            <option value="emptied">Emptied to Main Container</option>
+          </select>
+        </div>
+      </div>
+      <div class="fld-row">
+        <div class="fld" style="flex:3"><label>Notes</label>
+          <input type="text" name="notes"/></div>
+      </div>
+      <button type="submit"
+              style="padding:7px 22px;background:var(--s-primary);color:#fff;
+                     border:none;border-radius:4px;cursor:pointer;font-weight:600">
+        Log Entry
+      </button>
+    </form>
+  </div>
+
+  <div class="log-form">
+    <h3>Recent Log</h3>
+    <tal:none tal:condition="python:not view.logs()">
+      <p style="color:var(--s-secondary);font-size:12px">No entries yet.</p>
+    </tal:none>
+    <table class="log-table" tal:condition="python:bool(view.logs())">
+      <tr>
+        <th>Date</th><th>Time</th><th>Container</th>
+        <th>Operator</th><th>Condition</th><th>Notes</th>
+      </tr>
+      <tal:each tal:repeat="r view/logs">
+        <tr>
+          <td tal:content="r/log_date"></td>
+          <td tal:content="r/log_time"></td>
+          <td tal:content="python:r.get('unit_name') or 'General SAA'"></td>
+          <td tal:content="r/operator"></td>
+          <td tal:attributes="class python:'cond-ok' if r['condition']=='acceptable' else 'cond-needs'"
+              tal:content="python:r['condition'].replace('_',' ').title()"></td>
+          <td style="color:var(--s-secondary)" tal:content="python:r.get('notes','')"></td>
+        </tr>
+      </tal:each>
+    </table>
+  </div>
+
+  </tal:def>
+</metal:content>
+<tal:scripts metal:fill-slot="scripts">
+<script>
+//<![CDATA[
+(function(){
+  var d = new Date();
+  var dd = document.getElementById('wstDate');
+  var dt = document.getElementById('wstTime');
+  if (dd) dd.valueAsDate = d;
+  if (dt) dt.value = ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+})();
+//]]>
+</script>
+</tal:scripts>
+</body>
+</html>

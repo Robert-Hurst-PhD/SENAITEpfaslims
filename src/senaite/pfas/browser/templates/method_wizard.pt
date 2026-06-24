@@ -142,7 +142,7 @@
   <tal:r metal:fill-slot="header-right">
     <a class="header-meta"
        tal:attributes="href string:${view/portal_url}/@@lims-setup">
-      &#8592; PFAS Setup
+      &#8592; Setup
     </a>
   </tal:r>
 

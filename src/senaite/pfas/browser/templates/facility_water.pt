@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Type 1 Water QC Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .log-form { background:var(--s-bg); border:1px solid var(--s-border);
+                border-radius:8px; padding:16px; margin-bottom:18px; }
+    .log-form h3 { font-size:13px; font-weight:700; margin:0 0 12px; color:var(--s-body); }
+    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
+    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld input { padding:6px 8px; font-size:13px; border:1px solid var(--s-input-border);
+                 border-radius:4px; color:var(--s-input-text); }
+    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .fld-row .fld { flex:1; min-width:120px; }
+    .log-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .log-table th { background:var(--s-light); padding:7px 10px; font-size:11px;
+                    font-weight:700; color:var(--s-secondary); border-bottom:2px solid var(--s-border); text-align:left; }
+    .log-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
+    .p-ok  { background:#d4edda; color:#155724; padding:2px 9px; border-radius:8px;
+              font-size:10px; font-weight:700; }
+    .p-fail { background:#f8d7da; color:#721c24; padding:2px 9px; border-radius:8px;
+               font-size:10px; font-weight:700; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="purl view/portal_url; defs view/defaults">
+
+  <h1 style="font-size:18px;font-weight:700;margin:0 0 18px;color:var(--s-body)">
+    Type 1 Water QC Log
+  </h1>
+
+  <div class="log-form">
+    <h3>New Entry</h3>
+    <form method="POST" tal:attributes="action string:${purl}/@@pfas-water-log">
+      <div class="fld-row">
+        <div class="fld"><label>Date *</label>
+          <input type="date" name="log_date" id="wDate" required/></div>
+        <div class="fld"><label>Time</label>
+          <input type="time" name="log_time" id="wTime"/></div>
+        <div class="fld"><label>Operator Initials *</label>
+          <input type="text" name="operator" maxlength="10" required/></div>
+      </div>
+      <div class="fld-row">
+        <div class="fld">
+          <label>Conductivity (&mu;S/cm)
+            <small style="color:var(--s-secondary)">
+              max <tal:m tal:replace="python:defs['conductivity_max']"/>
+            </small>
+          </label>
+          <input type="number" step="0.01" name="conductivity" required/>
+        </div>
+        <div class="fld">
+          <label>TOC (ppb)
+            <small style="color:var(--s-secondary)">
+              max <tal:m tal:replace="python:defs['toc_max']"/>
+            </small>
+          </label>
+          <input type="number" step="1" name="toc" required/>
+        </div>
+        <div class="fld"><label>Conductivity Max (&mu;S/cm)</label>
+          <input type="number" step="0.1" name="conductivity_max"
+                 tal:attributes="value python:defs['conductivity_max']"/></div>
+        <div class="fld"><label>TOC Max (ppb)</label>
+          <input type="number" step="1" name="toc_max"
+                 tal:attributes="value python:defs['toc_max']"/></div>
+      </div>
+      <div class="fld-row">
+        <div class="fld" style="flex:3"><label>Notes</label>
+          <input type="text" name="notes"/></div>
+      </div>
+      <button type="submit"
+              style="padding:7px 22px;background:var(--s-primary);color:#fff;
+                     border:none;border-radius:4px;cursor:pointer;font-weight:600">
+        Save Entry
+      </button>
+    </form>
+  </div>
+
+  <div class="log-form">
+    <h3>Recent Log</h3>
+    <tal:none tal:condition="python:not view.logs()">
+      <p style="color:var(--s-secondary);font-size:12px">No entries yet.</p>
+    </tal:none>
+    <table class="log-table" tal:condition="python:bool(view.logs())">
+      <tr>
+        <th>Date</th><th>Time</th><th>Operator</th>
+        <th>Conductivity (&mu;S/cm)</th><th>TOC (ppb)</th><th>Result</th><th>Notes</th>
+      </tr>
+      <tal:each tal:repeat="r view/logs">
+        <tr>
+          <td tal:content="r/log_date"></td>
+          <td tal:content="r/log_time"></td>
+          <td tal:content="r/operator"></td>
+          <td tal:attributes="style python:'color:var(--s-danger)' if r.get('conductivity') and r['conductivity']>r['conductivity_max'] else ''"
+              tal:content="python:'{:.2f}'.format(r['conductivity']) if r.get('conductivity') is not None else '—'"></td>
+          <td tal:attributes="style python:'color:var(--s-danger)' if r.get('toc') and r['toc']>r['toc_max'] else ''"
+              tal:content="python:'{:.0f}'.format(r['toc']) if r.get('toc') is not None else '—'"></td>
+          <td><span tal:attributes="class python:'p-ok' if r['passed'] else 'p-fail'"
+                    tal:content="python:'Pass' if r['passed'] else 'Fail'"></span></td>
+          <td style="color:var(--s-secondary)" tal:content="python:r.get('notes','')"></td>
+        </tr>
+      </tal:each>
+    </table>
+  </div>
+
+  </tal:def>
+</metal:content>
+<tal:scripts metal:fill-slot="scripts">
+<script>
+//<![CDATA[
+(function(){
+  var d = new Date();
+  var dd = document.getElementById('wDate');
+  var dt = document.getElementById('wTime');
+  if (dd) dd.valueAsDate = d;
+  if (dt) dt.value = ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+})();
+//]]>
+</script>
+</tal:scripts>
+</body>
+</html>

@@ -4,13 +4,17 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">PFAS QC Rule Configuration</title>
+  <title metal:fill-slot="title">QC Rule Configuration</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     /* ── QC Rules page-specific ────────────────────────────────────────── */
     .save-banner { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px;
                    padding: 10px 16px; margin-bottom: 16px; color: #155724; font-weight: 600; }
 
+    .tab-pane         { display: none; }
+    .tab-pane.active  { display: block; }
+
+    /* QC-type collapsible cards (within the QC Types tab pane) */
     .section { background: var(--s-bg); border-radius: 6px;
                border: 1px solid var(--s-border);
                box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 18px; overflow: hidden; }
@@ -33,14 +37,7 @@
                   white-space: nowrap; }
     .field-readonly { font-size: 13px; color: var(--s-secondary); padding: 6px 0; }
 
-    .btn-save  { background: var(--s-primary); color: #fff; border: none; border-radius: 4px;
-                 padding: 8px 24px; cursor: pointer; font-size: 14px; font-weight: 600; }
-    .btn-save:hover { background: var(--s-primary-dk); }
-    .btn-reset { background: var(--s-bg); color: var(--s-secondary);
-                 border: 1px solid var(--s-input-border);
-                 border-radius: 4px; padding: 8px 16px; cursor: pointer; font-size: 13px; }
-    .btn-reset:hover { background: var(--s-light); }
-    .path-info { font-size: 11px; color: var(--s-secondary); }
+.path-info { font-size: 11px; color: var(--s-secondary); }
     .path-info code { background: var(--s-light); padding: 1px 5px; border-radius: 3px; }
 
     .json-editor { width: 100%; height: 400px; font-family: monospace; font-size: 12px;
@@ -131,104 +128,110 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">PFAS QC Rule Configuration</tal:t>
+  <tal:t metal:fill-slot="header-title">QC Rule Configuration</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <span class="header-meta">
-      Manager-only &bull; Rules stored at
-      <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
-    </span>
-    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@lims-setup">
-      Site Setup
-    </a>
+    <span class="role-badge">LabManager</span>
   </tal:r>
+
+  <div metal:fill-slot="tabs">
+    <div class="pfas-tabs" id="qc-rules-tabs">
+      <a class="pfas-tab" data-pane="pane-global" href="#pane-global"
+         onclick="qcTabSwitch('pane-global'); return false;">Global Criteria</a>
+      <a class="pfas-tab" data-pane="pane-qctypes" href="#pane-qctypes"
+         onclick="qcTabSwitch('pane-qctypes'); return false;">QC Types</a>
+      <a class="pfas-tab" data-pane="pane-matrix" href="#pane-matrix"
+         onclick="qcTabSwitch('pane-matrix'); return false;">Matrix Factors</a>
+      <a class="pfas-tab" data-pane="pane-toggles" href="#pane-toggles"
+         onclick="qcTabSwitch('pane-toggles'); return false;">Rule Toggles</a>
+      <a class="pfas-tab" data-pane="pane-limits" href="#pane-limits"
+         onclick="qcTabSwitch('pane-limits'); return false;">Method Limits</a>
+      <a class="pfas-tab" data-pane="pane-json" href="#pane-json"
+         onclick="qcTabSwitch('pane-json'); return false;">JSON</a>
+    </div>
+  </div>
 
   <div metal:fill-slot="content">
 
   <!-- Floating context menu (populated by JS on right-click) -->
   <div id="pfas-ctx-menu" role="menu"></div>
 
-  <div class="page-body">
-
-    <div class="save-banner" tal:condition="view/save_message">
-      Rules saved successfully.
-    </div>
+  <div class="save-banner" tal:condition="view/save_message">
+    Rules saved successfully.
+  </div>
 
     <form id="rulesForm" method="POST" action=""
           tal:attributes="action string:${context/absolute_url}/@@pfas-qc-rules">
 
-      <!-- Global criteria -->
-      <div class="section" id="sec-global">
-        <div class="section-head" onclick="toggleSection('sec-global')">
-          <h2>Global Instrument Criteria</h2>
-          <span class="section-meta">Calibration, IS response, RT tolerance, S/N, RPD</span>
-        </div>
-        <div class="section-body">
-          <div class="field-grid">
-            <tal:gfields tal:repeat="item view/global_fields">
-              <div class="field-row">
-                <label tal:content="item/label">Calibration r&#178; Minimum</label>
-                <div class="field-with-unit">
-                  <input type="number" step="any"
-                         tal:attributes="name string:global.${item/key}; value item/value" />
-                  <span class="unit-label" tal:condition="item/unit" tal:content="item/unit">%</span>
-                </div>
+      <!-- ── GLOBAL CRITERIA ─────────────────────────────────────────────── -->
+      <div class="tab-pane active" id="pane-global">
+        <div class="field-grid">
+          <tal:gfields tal:repeat="item view/global_fields">
+            <div class="field-row">
+              <label tal:content="item/label">Calibration r&#178; Minimum</label>
+              <div class="field-with-unit">
+                <input type="number" step="any"
+                       tal:attributes="name string:global.${item/key}; value item/value" />
+                <span class="unit-label" tal:condition="item/unit" tal:content="item/unit">%</span>
               </div>
-            </tal:gfields>
-          </div>
+            </div>
+          </tal:gfields>
+        </div>
+        <div class="pane-footer">
+          <span>Global instrument pass/fail thresholds applied to all methods</span>
+          <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
         </div>
       </div>
 
-      <!-- Per QC-type sections -->
-      <tal:qcsections tal:repeat="qtype view/qc_types">
-        <div class="section" tal:attributes="id string:sec-${qtype}">
-          <div class="section-head"
-               tal:attributes="onclick string:toggleSection('sec-${qtype}')">
-            <h2 tal:content="python:'{} — {}'.format(qtype, view.qc_label(qtype))">CCV</h2>
-            <span tal:attributes="class python:'chart-badge badge-threshold' if view.chart_type(qtype)=='threshold' else 'chart-badge badge-lj'"
-                  tal:content="python:'Threshold chart' if view.chart_type(qtype)=='threshold' else 'Levey-Jennings'">LJ</span>
-          </div>
-          <div class="section-body">
-            <div class="field-grid">
-              <tal:fields tal:repeat="item python:view.qc_type_fields(qtype)">
-                <tal:skip tal:condition="python:item['key'] not in ('label', 'chart_type', 'note')">
-                  <div class="field-row">
-                    <label tal:content="item/label">Max % Deviation</label>
-                    <div class="field-with-unit">
-                      <input type="number" step="any"
-                             tal:condition="python:isinstance(item['value'], (int, float))"
-                             tal:attributes="name string:qc_types.${qtype}.${item/key}; value item/value" />
-                      <input type="text"
-                             tal:condition="python:not isinstance(item['value'], (int, float)) and item['value'] is not None"
-                             tal:attributes="name string:qc_types.${qtype}.${item/key}; value item/value" />
-                      <span class="field-readonly"
-                            tal:condition="python:item['value'] is None">(per-analyte Reporting Limit)</span>
-                      <span class="unit-label"
-                            tal:condition="python:item['unit'] and item['value'] is not None"
-                            tal:content="item/unit">%</span>
+      <!-- ── QC TYPES ────────────────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-qctypes">
+        <tal:qcsections tal:repeat="qtype view/qc_types">
+          <div class="section" tal:attributes="id string:sec-${qtype}">
+            <div class="section-head"
+                 tal:attributes="onclick string:toggleSection('sec-${qtype}')">
+              <h2 tal:content="python:'{} — {}'.format(qtype, view.qc_label(qtype))">CCV</h2>
+              <span tal:attributes="class python:'chart-badge badge-threshold' if view.chart_type(qtype)=='threshold' else 'chart-badge badge-lj'"
+                    tal:content="python:'Threshold chart' if view.chart_type(qtype)=='threshold' else 'Levey-Jennings'">LJ</span>
+            </div>
+            <div class="section-body">
+              <div class="field-grid">
+                <tal:fields tal:repeat="item python:view.qc_type_fields(qtype)">
+                  <tal:skip tal:condition="python:item['key'] not in ('label', 'chart_type', 'note')">
+                    <div class="field-row">
+                      <label tal:content="item/label">Max % Deviation</label>
+                      <div class="field-with-unit">
+                        <input type="number" step="any"
+                               tal:condition="python:isinstance(item['value'], (int, float))"
+                               tal:attributes="name string:qc_types.${qtype}.${item/key}; value item/value" />
+                        <input type="text"
+                               tal:condition="python:not isinstance(item['value'], (int, float)) and item['value'] is not None"
+                               tal:attributes="name string:qc_types.${qtype}.${item/key}; value item/value" />
+                        <span class="field-readonly"
+                              tal:condition="python:item['value'] is None">(per-analyte Reporting Limit)</span>
+                        <span class="unit-label"
+                              tal:condition="python:item['unit'] and item['value'] is not None"
+                              tal:content="item/unit">%</span>
+                      </div>
                     </div>
-                  </div>
-                </tal:skip>
-                <tal:show tal:condition="python:item['key'] == 'note'">
-                  <div class="field-row" style="grid-column:1/-1">
-                    <label>Note</label>
-                    <span class="field-readonly" tal:content="item/value">-</span>
-                  </div>
-                </tal:show>
-              </tal:fields>
+                  </tal:skip>
+                  <tal:show tal:condition="python:item['key'] == 'note'">
+                    <div class="field-row" style="grid-column:1/-1">
+                      <label>Note</label>
+                      <span class="field-readonly" tal:content="item/value">-</span>
+                    </div>
+                  </tal:show>
+                </tal:fields>
+              </div>
             </div>
           </div>
+        </tal:qcsections>
+        <div class="pane-footer">
+          <span>Per-QC-type acceptance limits (Levey-Jennings or threshold)</span>
+          <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
         </div>
-      </tal:qcsections>
+      </div>
 
-      <!-- Matrix Adjustment Factors -->
-      <div class="section" id="sec-salt">
-        <div class="section-head" onclick="toggleSection('sec-salt')">
-          <h2>Matrix Adjustment Factors</h2>
-          <span class="section-meta">
-            Instrument concentration &#8594; reported concentration (volume/mass correction)
-          </span>
-        </div>
-        <div class="section-body">
+      <!-- ── MATRIX FACTORS ─────────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-matrix">
           <p class="form-note">
             <strong>Formula:</strong>
             C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor<br/>
@@ -267,16 +270,14 @@
               </div>
             </div>
           </tal:srows>
+        <div class="pane-footer">
+          <span>Salt/matrix correction factors; C&#8209;reported = C&#8209;instrument &#215; factor</span>
+          <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
         </div>
       </div>
 
-      <!-- Rule Toggle Grid -->
-      <div class="section" id="sec-toggles">
-        <div class="section-head" onclick="toggleSection('sec-toggles')">
-          <h2>Rule Toggle Grid</h2>
-          <span class="section-meta">Enable or disable each QC rule per method</span>
-        </div>
-        <div class="section-body">
+      <!-- ── RULE TOGGLES ───────────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-toggles">
           <p class="form-note">
             Toggle a rule off to exclude it from automated engine evaluation for that method.
             Rules marked <em>UI only</em> affect whether the check appears in the analyst
@@ -312,19 +313,16 @@
               </tal:rows>
             </tbody>
           </table>
+        <div class="pane-footer">
+          <span>Enable/disable each QC rule per method; disabled rules skip engine evaluation</span>
+          <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
         </div>
       </div>
 
-      <!-- Method-Specific Limits -->
-      <div class="section" id="sec-method-limits">
-        <div class="section-head" onclick="toggleSection('sec-method-limits')">
-          <h2>Method-Specific Limits</h2>
-          <span class="section-meta">
-            Override rule parameters per method. Leave unchanged to inherit from Global Criteria.
-            Highlighted border = active override.
-          </span>
-        </div>
-        <div class="section-body">
+      <!-- ── METHOD LIMITS ─────────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-limits">
+          <p class="form-note">Override rule parameters per method. Leave unchanged to inherit from Global Criteria.
+            Highlighted border = active override.</p>
           <div class="method-tabs" id="methodTabBar">
             <tal:tabs tal:repeat="sec view/method_limit_sections">
               <div class="method-tab"
@@ -369,49 +367,59 @@
               </tal:groups>
             </div>
           </tal:panels>
+        <div class="pane-footer">
+          <span>Per-method overrides of global limits; highlighted border = active override</span>
+          <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
         </div>
       </div>
 
-      <!-- Raw JSON fallback -->
-      <div class="section" id="sec-json">
-        <div class="section-head" onclick="toggleSection('sec-json')">
-          <h2>Raw JSON Editor</h2>
-          <span class="section-meta">Advanced: edit full rules document directly</span>
-        </div>
-        <div class="section-body" style="display:none" id="sec-json-body">
+      <!-- ── RAW JSON ───────────────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-json">
+          <p class="form-note">Advanced: edit the full QC rules document as raw JSON, then click Apply to populate the form.</p>
           <textarea id="rawJson" class="json-editor"
                     tal:content="view/rules_json"></textarea>
           <button type="button" onclick="applyJson()"
                   style="margin-top:8px;padding:6px 14px;cursor:pointer">
             Apply JSON to form
           </button>
+        <div class="pane-footer">
+          <span>Full rules document — edit directly then Apply to populate form fields</span>
+          <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
         </div>
       </div>
 
       <input type="hidden" id="rules_json" name="rules_json" value="" />
-
-      <div class="save-bar">
-        <button type="submit" class="btn btn-primary" onclick="return prepareSubmit()">
-          Save Rules
-        </button>
-        <button type="button" class="btn btn-secondary"
-                onclick="if(confirm('Reset to factory defaults?')) resetDefaults()">
-          Reset to Defaults
-        </button>
-        <span class="path-info">
-          Saved to <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
-        </span>
-      </div>
     </form>
 
   <script>
+  /* ── Top-tab switching (Global/QC Types/Matrix/Toggles/Limits/JSON) ── */
+  function qcTabSwitch(paneId) {
+    document.querySelectorAll('#rulesForm .tab-pane').forEach(function(p) {
+      p.classList.remove('active');
+    });
+    document.querySelectorAll('#qc-rules-tabs .pfas-tab').forEach(function(t) {
+      t.classList.remove('active');
+    });
+    var pane = document.getElementById(paneId);
+    if (pane) pane.classList.add('active');
+    var tab = document.querySelector('#qc-rules-tabs [data-pane="' + paneId + '"]');
+    if (tab) tab.classList.add('active');
+    try {
+      history.replaceState(null, '', location.pathname + location.search + '#' + paneId);
+    } catch(e) {}
+  }
+
+  /* Restore tab from URL hash or default to first tab */
+  (function() {
+    var hash = location.hash.replace('#', '');
+    var validPanes = ['pane-global','pane-qctypes','pane-matrix','pane-toggles','pane-limits','pane-json'];
+    var target = validPanes.indexOf(hash) >= 0 ? hash : 'pane-global';
+    qcTabSwitch(target);
+  })();
+
   function toggleSection(id) {
     var el = document.getElementById(id);
     if (el) el.classList.toggle('collapsed');
-    if (id === 'sec-json') {
-      var body = document.getElementById('sec-json-body');
-      if (body) body.style.display = body.style.display === 'none' ? '' : 'none';
-    }
   }
 
   (function() {
@@ -730,7 +738,20 @@
   }); /* end DOMContentLoaded */
   </script>
 
-  </div><!-- /page-body -->
   </div><!-- /content slot -->
+
+  <tal:ab metal:fill-slot="action-bar">
+    <div class="pfas-action-bar">
+      <button type="submit" form="rulesForm" class="btn btn-primary"
+              onclick="return prepareSubmit()">Save Rules</button>
+      <button type="button" class="btn btn-secondary"
+              onclick="if(confirm('Reset to factory defaults?')) resetDefaults()">
+        Reset to Defaults
+      </button>
+      <span class="path-info">
+        Saved to <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
+      </span>
+    </div>
+  </tal:ab>
 </body>
 </html>

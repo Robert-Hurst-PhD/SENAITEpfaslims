@@ -5,6 +5,181 @@ in reverse-chronological order (newest first).
 
 ---
 
+## 2026-06-22 — Calibration page redesign
+
+**Status:** Confirmed
+
+**D22 — Calibration page uses per-analyte card layout with 3 stacked Chart.js plots.**
+Each run date produces a section with one card per analyte. Cards contain:
+- Plot 1: Response ratio (Y) vs expected concentration (X) + regression line; falls back
+  to calculated vs expected when response_ratio is not yet stored (pre-migration batches).
+- Plot 2: % deviation per calibration level (bar chart, ±acceptance lines).
+- Plot 3: ICV/CCV/CCB instrument check values overlaid on calibration curve axis —
+  shows where check standards fall relative to the fit line.
+
+**D23 — Fit type overrides stored to SQLite `calibrations` table.**
+Reviewer changes (fit_type_override, weight_override, origin_override) written back to
+`calibrations` row via AJAX POST (action=override). Stored alongside original pipeline values.
+Original values preserved; override is additive, not destructive. Future pipeline re-import
+of the same batch can use stored override. Approved_by + approved_at set on run-level approve.
+
+**D24 — Run-level approval: one Approve button per run date group, all analytes together.**
+Confirmed design (user confirmed "approval should be dependent on the calibration as a whole
+for all of the analyte not on a by analyte basis"). Stores approved_by + approved_at on all
+calibration rows for that run_date.
+
+**D25 — response_ratio stored per calibration level and per QC result.**
+New columns added via `_MIGRATION_STMTS` (idempotent ALTER TABLE):
+- `calibration_levels.response_ratio REAL`
+- `qc_results.expected_value REAL`
+- `qc_results.response_ratio REAL`
+Pipeline importer should populate response_ratio from InstrumentRow.response_ratio
+and expected_value from InstrumentRow.expected_conc when writing QC check results.
+Existing rows without response_ratio fall back to calculated concentration on Plot 1.
+
+**D26 — Three calibration plots per analyte card (user clarification).**
+1. Response vs expected concentration (the actual calibration curve + regression fit).
+2. % deviation of all calibration levels from expected (bar chart).
+3. Instrument checks (ICV/CCV/CCB) overlaid on calibration curve axes to show tracking.
+Concentration units used throughout (not raw responses where avoidable), per user preference.
+
+---
+
+## 2026-06-22 — Audit log integration across all modules
+
+**Status:** Confirmed
+
+**D13 — Fire `notify(ObjectModifiedEvent(obj))` after every Dexterity content save.**
+SENAITE's auditlog subscriber for Dexterity listens for `IObjectModifiedEvent`; our CRUD views were
+calling `reindexObject()` without firing this event so edits were invisible to the audit log.
+Fix applied to `reagents.py` (`_save_reagent`), `prepared_standards.py` (`_save`),
+`prep_logbooks.py` (`_save` and `_archive_slug`). Verified: edit produces a second snapshot with
+`action=edit` and correct field values. Import: `zope.lifecycleevent.ObjectModifiedEvent` (available in this env).
+Note: the initial `IObjectAddedEvent` snapshot captures near-empty fields (fires before `_populate_obj`);
+the subsequent `IObjectModifiedEvent` captures the real data.
+
+**D14 — Logbook execution data (IAnnotations on Batch): force `take_snapshot(batch)` on each save (B1).**
+Logbook rows are JSON blobs in `IAnnotations(batch)` — invisible to `SuperModel.to_dict()`.
+Converting entries to Dexterity content is disproportionate (B2). Instead, call `take_snapshot(batch)`
+from `bika.lims.api.snapshot` after every `_save_logbook()` call. Records who touched the batch's logbook
+data and when; the diff shows Batch schema fields, not row diffs. Accepted as sufficient — the
+PrepLogbookDef audit already shows which template was in use.
+
+**D15 — PrepLogbookDefs: existing draft/active/archived versioning IS the audit trail (C2). No soft-delete.**
+PrepLogbookDefs already use a slug+revision model where archiving a revision is permanent and revision
+history is browsable. This is richer than the reagent soft-delete pattern and is the right model for
+documents and procedures. Hard delete is structurally prevented by the version model.
+
+**D16 — Method profiles (portal annotation store): pending decision.**
+Method profiles live in `IAnnotations(portal)["senaite.pfas.method_profiles"]` — no content object, so
+SENAITE cannot snapshot them. Options: A1 (convert to Dexterity content) or A2 (internal version history
+list in annotation store). Deferred — to be decided before the Method & Analyte Setup workspace is built.
+
+---
+
+## 2026-06-22 — Archive system + production mode gate (reagent inventory)
+
+**Status:** Confirmed
+
+**D8 — Production mode = SENAITE global audit log (`getEnableGlobalAuditlog()`), not a parallel flag.**
+User said "make that dependent on the global auditing being toggled on." Confirmed that `senaite.core 2.6.0`
+has a real `bika_setup.getEnableGlobalAuditlog()` field. Gate is read from this; not duplicated.
+
+**D9 — Soft-delete via IAnnotations (`senaite.pfas.reagent.archived`) when in production mode; hard delete in test mode.**
+`_ANN_ARCHIVED_KEY` stores `{archived_by, archived_at}` JSON. `_restore_reagent()` deletes the annotation.
+Archived rows hidden by default; "Show Archived" toggle reveals them in the toolbar (production mode only).
+
+**D10 — Test reagents identified by creation timestamp vs. `production_since`.**
+First request where `getEnableGlobalAuditlog()` is True stamps `production_since` in
+`IAnnotations(portal)["senaite.pfas.lab_settings"]`. Any reagent with `obj.created() < production_since`
+is "test." This correctly identifies ALL pre-production reagents without needing per-reagent annotation.
+
+**D11 — Test reagent purge is manual (UI button), not automatic on audit enable.**
+CLAUDE.md §1.1: "If a person in the lab might ever want to change a value, it lives in the UI."
+Automatic deletion on a toggle is too destructive. Banner in production mode shows count + "Purge test entries" button.
+
+**D12 — Autofill suggestions are non-test, non-archived reagents (production mode only).**
+`reagent_suggestions` GET endpoint returns deduplicated `{name, supplier, cat_number, category, storage_location}`
+for autofill. Returns `[]` when audit is off. Fills all fields except lot_number (lot is unique per bottle).
+
+---
+
+## 2026-06-22 — Reagent scanner: per-reagent scan log (Phase 1 — inventory page)
+
+**Status:** Confirmed
+
+**D5 — Scan log is per-reagent (IAnnotations), not a batch logbook entry.**
+The `barcode_lookup` endpoint does exact-match lookup on `barcode`, `lot_number`,
+and `cat_number` fields. On match: a `log_scan` POST appends a timestamped entry
+(`timestamp`, `scanned_by`, `scanned_value`, `notes`) to `IAnnotations` key
+`senaite.pfas.reagent.scan_log` and increments `scan_count` on the object.
+On no match: scanner modal pre-fills the lot# field and opens the Add Reagent
+form (existing behaviour unchanged).
+
+**Why not a batch logbook entry?** The user confirmed context-specific behaviour:
+"if it's a reagent scanned during reagent preparation then it should scan for
+the existing inventories." The prep/extraction-logbook integration is Phase 2
+(to be built when logbook views receive scanner widgets). The per-reagent log
+is an independent, always-available audit trail that does not require a batch
+context.
+
+**Scan count badge:** `scan_count` (existing integer field on Reagent, previously
+unused) is now incremented on every `log_scan` call and displayed as a small
+badge under the reagent name in the inventory table. JS `updateScanCountBadge()`
+updates the badge live after each scan without a page reload.
+
+**Note — barcode field not in Add form:** The `barcode` field is stored on Reagent
+objects and returned by `barcode_lookup`, but the Add/Edit form does not yet
+have a barcode input field. Barcode-field lookup will be a no-op until a form
+field is added (Phase 2 improvement).
+
+**Files changed:**
+- `browser/reagents.py` — `_SCAN_LOG_KEY`, `_get_scan_log()`, `_append_scan_log()`,
+  `scan_log_count()`, `_handle_barcode_lookup()`, `_handle_log_scan()`; routing
+  in `__call__`
+- `browser/templates/reagents.pt` — scan modal split into Phase-1 camera panel
+  and Phase-2 match panel; scan count badge in table; JS `useScanResult()`,
+  `showScanMatchPanel()`, `logAndClose()`, `logAndContinue()`, `submitScanLog()`,
+  `backToCamera()`, `updateScanCountBadge()`; `_SELF_URL` injected via TAL
+- `DECISIONS.md` — this entry
+
+---
+
+## 2026-06-22 — Prepared Standards & Reagent CoA system
+
+**Status:** Confirmed
+
+**D1 — Separate PreparedStandard content type** (not extending Reagent).
+`Reagent` stays for procured lots. New `PreparedStandard` Dexterity type
+stored in `/pfas_prepared_standards/`. Separate view `@@pfas-prep-standards`.
+
+**D2 — Prep logbook is a separate revisionable entity.** `PrepLogbookDef`
+content type stored in `/pfas_prep_logbooks/`. Each revision = new object with
+same `logbook_slug` and incremented `revision` int. Only one revision per
+slug is "active". A prepared standard records `logbook_slug` + `revision` at
+time of preparation. Issuing a new revision archives the current one and can
+spawn a new associated `PreparedStandard`. Each `PreparedStandard` stores
+analyte concentrations (per-analyte table) in annotations as JSON.
+
+**D3 — CoA: manual upload only.** Stored on filesystem at
+`/data/coa/{reagent_uid}.{ext}`. Annotation on Reagent stores metadata
+(filename, content_type, uploaded_by, uploaded_date). No scraper in first build.
+
+**D4 — Expiry: configurable per logbook, default 1 year.** `PrepLogbookDef`
+carries `default_expiry_days` (default 365). The prep form auto-fills
+`expiry_date = prepared_date + default_expiry_days` but the user can change it.
+Extension of expiry on existing `PreparedStandard` allowed only with a note
+(stored in `expiry_notes`). For procured `Reagent`, existing 7-day mobile-phase
+/ 1-year-on-open logic is UNCHANGED.
+
+**Filesystem layout:**
+```
+/data/coa/       — CoA files for procured reagents ({uid}.pdf etc.)
+/data/coa/certs/ — Internal certificates for prepared standards ({uid}.html)
+```
+
+---
+
 ## 2026-06-21  Phase 2 — Wireframe redesign (Tier 1 nav + Tier 2 tabs)
 
 **Source of truth:** Opus-generated wireframe establishes:
@@ -1296,3 +1471,114 @@ workspace pages (`pfas_macros.pt`), the left-panel slot calls
 **Phase 1 build sequence:** (1) `sidebar.py` + `pfas_sidebar.pt`, (2) register
 in ZCML, (3) update `pfas_macros.pt` to call `@@pfas-sidebar` and remove dark
 panel CSS, (4) verify on both core page and a PFAS workspace page.
+
+---
+
+## 2026-06-22  CoA fetching strategy
+
+**Decision: D3 superseded — hybrid UI-helper + workstation automation script**
+
+Original D3 ("Manual upload only") is superseded. Two-part approach:
+
+1. **In-SENAITE UI helper** (`+CoA` modal): opens a modal with the reagent's cat#
+   and lot# as one-click copy fields plus direct links to each supplier's CoA
+   search page. No server-side HTTP. User finds/downloads in their browser and
+   uploads via the modal's Upload tab.
+
+2. **Standalone workstation script** (`scripts/fetch_coa.py`, Python 3 +
+   Playwright): automates a real Chromium browser from an admin workstation to
+   fill in supplier CoA search forms and download PDFs, then POST them to
+   SENAITE via the existing `@@pfas-reagents?action=upload_coa` endpoint.
+
+**Why no server-side scraper:** Both Sigma-Aldrich and Fisher Scientific block
+server/datacenter IPs at the network level and use Akamai Bot Manager JS
+challenges. Simple urllib2 gets timeouts (Sigma) or 403+JS-challenge (Fisher).
+A real browser running from a workstation passes naturally.
+
+**Why not official API keys yet:** Both suppliers offer authenticated REST APIs
+(`developer.sigmaaldrich.com`, `connect.thermofisher.com`). When the lab
+registers and receives keys, they go in env vars `SIGMA_API_KEY` /
+`FISHER_API_KEY`; the `fetch_coa.py` script has stubs for these paths.
+
+**Blocking concern flagged (CLAUDE.md §7):** If/when server-side HTTP fetch is
+added (after API key), the call happens inline in a Zope request thread (no
+Python 3 out-of-process worker available in the container). This blocks the
+worker thread for up to the HTTP timeout. Mitigate with a short timeout (10 s)
+and async-style error handling.
+
+---
+
+## D17 — PrepLogbookDef absorbs the logbook registry (2026-06-22)
+
+**Decision:** PrepLogbookDef is the single source of truth for BOTH the
+field schema AND the batch logbook index (ordering, active/inactive, form
+codes, builtin flag). The parallel LogbookDef content type (`pfas_logbook_defs/`)
+is retired. logbook_store.py is now a thin adapter over PrepLogbookDef.
+
+**Fields added to IPrepLogbookDef:** `method_slug`, `logbook_code`,
+`field_schema_json`, `sort_order`, `active` (Bool — shows in batch index),
+`builtin` (Bool — built-ins cannot be deleted).
+
+**Context:** Two parallel registries (LogbookDef + PrepLogbookDef) created a
+two-registry collision. User confirmed "PrepLogbookDef absorbs everything."
+
+---
+
+## D18 — field_schema_json field types (2026-06-22)
+
+**Decision:** Dynamic logbook renderer supports these field types in
+`field_schema_json`:
+
+| type | Renders as |
+|------|-----------|
+| `text` | `<input type="text">` |
+| `date` | `<input type="date">` |
+| `number` | `<input type="number">` |
+| `textarea` | `<textarea>` |
+| `lot_ref` | text + autocomplete from PreparedStandards (filtered by `lot_type`) |
+| `reagent_ref` | text + autocomplete from Reagent Inventory |
+| `checkbox` | `<input type="checkbox">` |
+| `table` | add/remove rows; each column typed; `default_rows` pre-populates |
+
+Add `"correctable": true` to any field for GLP correction support
+(uses existing `_apply_field_corrections` logic unchanged).
+
+---
+
+## D19 — Dynamic renderer routes via field_schema_json presence (2026-06-22)
+
+**Decision:** `PFASLogbookIndexView.logbooks()` checks whether the
+PrepLogbookDef for a slug has a non-empty `field_schema_json`. If yes,
+routes to `@@pfas-logbook-dynamic?slug=<slug>`. If no (and builtin),
+falls back to hardcoded `@@pfas-logbook-<slug>`. Custom logbooks without
+a schema go to `@@pfas-logbook-custom?slug=<slug>`.
+
+This means the four built-in logbooks (250/251/252/253) will begin routing
+to the dynamic renderer as soon as `seed_builtin_logbook_defs()` runs and
+populates their field_schema_json. The hardcoded PT views are kept as a
+fallback until the dynamic renderer is browser-verified for all four.
+
+---
+
+## D20 — FM-ENV-251 side-effect preserved in dynamic renderer (2026-06-22)
+
+**Decision:** `PFASDynamicLogbookView._handle_post()` special-cases
+`slug == "251"` to call `_export_cal_to_file(batch, data)` after save,
+preserving the pipeline injection builder hook. The CSV download
+(`@@pfas-logbook-251` + `?action=download_csv`) remains accessible via the
+hardcoded view for backward compatibility until the dynamic renderer has an
+equivalent export button.
+
+---
+
+## D21 — Active vs. Status on PrepLogbookDef (2026-06-22)
+
+**Decision:** Two distinct boolean concerns are tracked separately:
+- `status` (draft/active/archived) — tracks SOP revision lifecycle for the
+  logbook TEMPLATE. "active" = current approved revision.
+- `active` (Bool field) — controls whether this logbook SLUG appears in the
+  batch logbook index. These are independent: a lab manager can hide a logbook
+  from batches (`active=False`) without archiving its SOP revision.
+
+`get_active_logbook_defs()` filters by `d.get("active", True)`; it does NOT
+filter by `status`.

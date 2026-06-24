@@ -102,17 +102,26 @@ _SCHEMA = [
 #              calculated = expected * (1 + pct_deviation/100)
 #              passed = abs(pct_deviation) <= 20.0
 
-def _levels(expected_list, deviations):
-    """Build levels list from expected concentrations and % deviations."""
+import random as _random
+_random.seed(42)  # reproducible synthetic noise
+
+def _levels(expected_list, deviations, slope=0.004, intercept=0.00005):
+    """Build levels list from expected concentrations and % deviations.
+    slope/intercept define a synthetic linear calibration for response_ratio.
+    """
     result = []
     for i, (exp, dev) in enumerate(zip(expected_list, deviations)):
         calc = exp * (1.0 + dev / 100.0)
+        # Realistic response_ratio: slope*expected + intercept + small noise
+        noise = _random.gauss(0, slope * exp * abs(dev) * 0.01)
+        rr = slope * exp + intercept + noise
         result.append({
-            "level":         i + 1,
-            "expected":      exp,
-            "calculated":    round(calc, 4),
-            "pct_deviation": round(dev, 2),
-            "passed":        abs(dev) <= 20.0,
+            "level":          i + 1,
+            "expected":       exp,
+            "calculated":     round(calc, 4),
+            "pct_deviation":  round(dev, 2),
+            "passed":         abs(dev) <= 20.0,
+            "response_ratio": round(max(rr, 0.0), 8),
         })
     return result
 
@@ -225,9 +234,26 @@ def _connect(path):
     return conn
 
 
+_MIGRATIONS = [
+    "ALTER TABLE calibrations ADD COLUMN approved_by      TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibrations ADD COLUMN approved_at      TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibrations ADD COLUMN fit_type_override  TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibrations ADD COLUMN weight_override    TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibrations ADD COLUMN origin_override    TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibration_levels ADD COLUMN response_ratio REAL",
+    "ALTER TABLE qc_results ADD COLUMN expected_value REAL",
+    "ALTER TABLE qc_results ADD COLUMN response_ratio REAL",
+]
+
+
 def ensure_schema(conn):
     for stmt in _SCHEMA:
         conn.execute(stmt)
+    for stmt in _MIGRATIONS:
+        try:
+            conn.execute(stmt)
+        except Exception:
+            pass  # column already exists
     conn.commit()
 
 
@@ -266,25 +292,76 @@ def seed(conn):
             conn.execute(
                 "INSERT INTO calibration_levels "
                 "(calibration_id,level,expected,calculated,"
-                " pct_deviation,passed) VALUES (?,?,?,?,?,?)",
+                " pct_deviation,passed,response_ratio) VALUES (?,?,?,?,?,?,?)",
                 (cal_id, lv["level"], lv["expected"], lv["calculated"],
-                 lv["pct_deviation"], int(lv["passed"])),
+                 lv["pct_deviation"], int(lv["passed"]),
+                 lv.get("response_ratio")),
             )
         inserted += 1
 
     conn.commit()
+
+    # Seed synthetic QC check results (ICV/CCV/CCB) linked to the same batches
+    _seed_qc_checks(conn, now)
+
     return inserted, skipped
 
 
+def _seed_qc_checks(conn, now):
+    """Seed ICV/CCV/CCB results using the QCResultStore qc_results schema."""
+    # Uses store schema columns: qc_level, value, units, flag, passed, result_status,
+    #   reanalysis_reason, expected_value, response_ratio
+    for rec in SYNTHETIC_RECORDS:
+        (batch_id, run_date, analyte, method, analyst, instrument_id,
+         r2, fit_type, weight_type, min_level, max_level, status, notes, levels) = rec
+        slope = 0.004
+        intercept = 0.00005
+        icv_exp = round((min_level + max_level) * 0.1, 3)
+        ccv_exp = round((min_level + max_level) * 0.5, 3)
+        for (qtype, qexp, qdv) in [
+            ("ICV", icv_exp, _random.gauss(3.0, 3.0)),
+            ("CCV", ccv_exp, _random.gauss(2.5, 4.0)),
+            ("CCB", 0.0,     _random.gauss(0.5, 1.0)),
+        ]:
+            exists = conn.execute(
+                "SELECT id FROM qc_results "
+                "WHERE batch_id=? AND analyte=? AND qc_type=? AND result_status='active'",
+                (batch_id, analyte, qtype),
+            ).fetchone()
+            if exists:
+                continue
+            qval = qexp * (1.0 + qdv / 100.0) if qexp > 0 else abs(_random.gauss(0, 0.01 * (min_level or 1)))
+            qrr  = slope * qexp + intercept + _random.gauss(0, 0.0001) if qexp > 0 else None
+            passed = abs(qdv) <= 20.0 if qexp > 0 else True
+            conn.execute(
+                "INSERT INTO qc_results "
+                "(batch_id,run_date,analyte,qc_type,qc_level,"
+                " method,analyst,instrument_id,"
+                " value,units,flag,passed,result_status,parent_result_id,"
+                " reanalysis_reason,created_at,expected_value,response_ratio) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (batch_id, run_date, analyte, qtype, 'synth',
+                 method, analyst, instrument_id,
+                 round(qval, 5), 'ng/mL', '',
+                 int(passed), 'active', None,
+                 '', now,
+                 qexp if qexp > 0 else None,
+                 round(qrr, 8) if qrr is not None else None),
+            )
+    conn.commit()
+
+
 def purge(conn):
-    """Remove all SYNTHETIC_ calibration records and their level rows."""
-    # Delete levels first (foreign key cascade not guaranteed without PRAGMA)
+    """Remove all SYNTHETIC_ calibration records, level rows, and QC checks."""
     conn.execute(
         "DELETE FROM calibration_levels WHERE calibration_id IN "
         "(SELECT id FROM calibrations WHERE batch_id LIKE 'SYNTHETIC_%')"
     )
     cur = conn.execute(
         "DELETE FROM calibrations WHERE batch_id LIKE 'SYNTHETIC_%'"
+    )
+    conn.execute(
+        "DELETE FROM qc_results WHERE batch_id LIKE 'SYNTHETIC_%'"
     )
     conn.commit()
     return cur.rowcount

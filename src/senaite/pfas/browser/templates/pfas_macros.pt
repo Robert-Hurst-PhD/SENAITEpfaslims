@@ -6,7 +6,64 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title metal:define-slot="title">PFAS Tool</title>
+  <title metal:define-slot="title">LIMS Tool</title>
+  <!-- Font Awesome 5 Solid — font face + icon glyphs used by the PFAS sidebar.
+       senaite.core.css is not loaded on PFAS workspace pages (they bypass
+       Plone's main_template), so we inline the @font-face, the .fas base
+       rule, and the content codes for every icon used in the sidebar here. -->
+  <style>
+    @font-face {
+      font-family: 'Font Awesome 5 Free';
+      font-style: normal;
+      font-weight: 900;
+      font-display: block;
+      src: url('/senaite/++plone++senaite.core.static/fonts/fa-solid-900.woff2') format('woff2'),
+           url('/senaite/++plone++senaite.core.static/fonts/fa-solid-900.woff') format('woff');
+    }
+    .fas {
+      font-family: 'Font Awesome 5 Free';
+      font-weight: 900;
+      display: inline-block;
+      font-style: normal;
+      font-variant: normal;
+      text-rendering: auto;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1;
+    }
+    /* Sidebar icon glyphs (extracted from senaite.core.css FA5 bundle) */
+    .fa-book:before{content:"\f02d"}
+    .fa-book-open:before{content:"\f518"}
+    .fa-building:before{content:"\f1ad"}
+    .fa-chart-line:before{content:"\f201"}
+    .fa-clipboard-list:before{content:"\f46d"}
+    .fa-code-branch:before{content:"\f126"}
+    .fa-cog:before{content:"\f013"}
+    .fa-cogs:before{content:"\f085"}
+    .fa-comments:before{content:"\f086"}
+    .fa-file-alt:before{content:"\f15c"}
+    .fa-file-export:before{content:"\f56e"}
+    .fa-file-upload:before{content:"\f574"}
+    .fa-flask:before{content:"\f0c3"}
+    .fa-globe:before{content:"\f0ac"}
+    .fa-hashtag:before{content:"\f292"}
+    .fa-layer-group:before{content:"\f5fd"}
+    .fa-map-marker-alt:before{content:"\f3c5"}
+    .fa-microscope:before{content:"\f610"}
+    .fa-search:before{content:"\f002"}
+    .fa-sign-out-alt:before{content:"\f2f5"}
+    .fa-sliders-h:before{content:"\f1de"}
+    .fa-tasks:before{content:"\f0ae"}
+    .fa-th:before{content:"\f00a"}
+    .fa-times:before{content:"\f00d"}
+    .fa-toggle-on:before{content:"\f205"}
+    .fa-tools:before{content:"\f7d9"}
+    .fa-user-cog:before{content:"\f4fe"}
+    .fa-vial:before{content:"\f492"}
+    .fa-vials:before{content:"\f493"}
+    .fa-warehouse:before{content:"\f494"}
+    .fa-wrench:before{content:"\f0ad"}
+  </style>
   <style>
     /* ── SENAITE palette tokens (senaite.core 2.6 Bootstrap 4 base) ─────── */
     :root {
@@ -84,7 +141,7 @@
     .pfas-header-right {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 2px;
       flex-shrink: 0;
     }
     .pfas-header-right a {
@@ -168,9 +225,46 @@
     .pfas-content-area {
       flex: 1;
       overflow-y: auto;
-      overflow-x: hidden;
+      overflow-x: auto;
       background: var(--s-light);
       min-height: 0;
+    }
+
+    /* ── Pane footer — storage path + role note ─────────────────────────── */
+    .pane-footer {
+      margin-top: 28px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--s-border);
+      background: var(--s-bg);
+      border-radius: 0 0 6px 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      font-size: 11px;
+      color: var(--s-secondary);
+    }
+    .pane-footer .pf-role {
+      background: var(--s-primary-lt);
+      color: var(--s-primary);
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .pane-footer .pf-path { font-family: monospace; font-size: 11px; }
+
+    /* ── Role badge in header-right ─────────────────────────────────────── */
+    .role-badge {
+      font-size: 11px;
+      font-weight: 700;
+      background: rgba(255,255,255,.15);
+      color: rgba(255,255,255,.90);
+      padding: 2px 9px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
     }
 
     /* ── Pinned action bar ────────────────────────────────────────────────── */
@@ -398,10 +492,14 @@
 
     /* ── Mobile (≤768px) ─────────────────────────────────────────────────── */
     @media (max-width: 768px) {
-      .pfas-header { padding: 0 10px 0 0; }
-      .pfas-header-title { font-size: 14px; }
+      /* Header: compact — hide plain back-links, keep role badge + context nav */
+      .pfas-header { padding: 0 8px 0 0; min-height: 44px; }
+      .pfas-header-title { font-size: 13px; }
+      .pfas-header-right { gap: 6px; }
+      .pfas-header-right .back-link { display: none; }
+      .pfas-header-right .header-meta { display: none; }
 
-      /* On mobile the sidebar floats as an overlay */
+      /* Sidebar floats as an overlay on mobile */
       .pfas-shell > #sidebar.pfas-sidebar {
         position: absolute;
         top: 0; left: 0; bottom: 0;
@@ -416,7 +514,6 @@
         transform: translateX(0);
         box-shadow: 4px 0 16px rgba(0,0,0,.20);
       }
-      /* Backdrop for mobile overlay */
       .pfas-panel-backdrop {
         display: none;
         position: absolute; inset: 0;
@@ -424,25 +521,35 @@
         z-index: 99;
       }
       .pfas-shell.panel-open .pfas-panel-backdrop { display: block; }
-
-      /* Content area: full width even when panel "open" (it overlays) */
       .pfas-shell { position: relative; }
 
-      /* Tables: horizontal scroll */
+      /* Content: let it scroll horizontally rather than clip */
+      .pfas-content-area { overflow-x: auto; }
+
+      /* Tables: contained scroll */
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
       .table-wrap .pfas-table td,
       .table-wrap .pfas-table th { white-space: nowrap; }
-      .table-wrap .pfas-table td.col-wrap { white-space: normal; max-width: 200px; }
+      .table-wrap .pfas-table td.col-wrap { white-space: normal; max-width: 180px; }
+      .pfas-table { min-width: 480px; }
       .hide-mobile { display: none !important; }
 
       /* Field grids → single column */
       .field-grid { grid-template-columns: 1fr !important; }
 
-      /* Body padding */
-      .page-body, .page-body-narrow { padding: 10px 12px; }
+      /* Reduce body padding */
+      .page-body, .page-body-narrow { padding: 10px 10px; }
+      .page-body { max-width: 100% !important; }
 
-      /* Tabs: scrollable */
-      .pfas-tabs { padding: 0 12px; }
-      .pfas-tab { padding: 9px 12px; font-size: 12px; }
+      /* Tabs: scrollable, compact */
+      .pfas-tabs { padding: 0 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .pfas-tab { padding: 8px 10px; font-size: 12px; }
+
+      /* Pane footer: stack vertically */
+      .pane-footer { flex-direction: column; align-items: flex-start; gap: 6px; }
+
+      /* Stat bars: 2-up grid */
+      .stat-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     }
 
     /* ── Print ───────────────────────────────────────────────────────────── */
@@ -465,6 +572,82 @@
       .lb-section h3 { border-bottom: 1px solid #999 !important; }
       body { font-size: 11px; overflow: visible !important; height: auto !important; }
     }
+
+    /* ── GLP field correction model (logbooks) ── */
+    .btn-correct { background: none; border: none; color: #bbb; font-size: 10px;
+                   cursor: pointer; padding: 0 3px; text-decoration: underline;
+                   font-weight: normal; margin-left: 5px; vertical-align: middle; }
+    .btn-correct:hover { color: var(--s-dark); }
+    .corr-existing { display: flex; align-items: baseline; gap: 6px;
+                     flex-wrap: wrap; font-size: 12px; margin-bottom: 3px; }
+    .corr-struck { text-decoration: line-through; color: #999; }
+    .corr-arrow { color: #999; font-size: 11px; }
+    .corr-meta { font-size: 10px; color: #856404; background: #fff8e1;
+                 border: 1px solid #ffe082; border-radius: 3px;
+                 padding: 1px 5px; white-space: nowrap; }
+    .corr-panel { display: none; margin-top: 5px; padding: 7px 10px;
+                  background: #fff8e1; border: 1px solid #ffc107;
+                  border-radius: 6px; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .corr-panel.open { display: flex; }
+    .corr-panel label { font-size: 11px; color: #856404; font-weight: 600;
+                        white-space: nowrap; margin: 0; }
+    .corr-panel input { padding: 4px 8px; font-size: 12px;
+                        border: 1px solid #ffc107; border-radius: 4px; background: #fff; }
+    .corr-initials { width: 52px !important; }
+    .corr-cancel { background: none; border: none; cursor: pointer;
+                   color: #856404; font-size: 15px; line-height: 1; padding: 0 3px; }
+    @media print {
+      .btn-correct, .corr-panel { display: none !important; }
+      .has-correction > input, .has-correction > textarea,
+      .has-correction > select { display: none !important; }
+    }
+
+    /* ── Persistent header toolbar actions ───────────────────────────── */
+    .pfas-hdr-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0; padding: 0 6px;
+      color: rgba(255,255,255,.65); border-radius: 4px;
+      text-decoration: none; transition: color .12s, background .12s;
+    }
+    .pfas-hdr-btn i.fas { font-size: 19px; }
+    .pfas-hdr-btn:hover {
+      color: #fff; background: rgba(255,255,255,.1); text-decoration: none;
+    }
+    .pfas-hdr-userbtn i.fas { font-size: 19px; }
+    .pfas-hdr-user { position: relative; flex-shrink: 0; }
+    .pfas-hdr-userbtn {
+      display: flex; align-items: center; gap: 2px;
+      background: none; border: none; padding: 4px 6px; border-radius: 4px;
+      color: rgba(255,255,255,.75); cursor: pointer; font-size: 15px;
+      font-family: inherit; transition: color .12s, background .12s;
+    }
+    .pfas-hdr-userbtn:hover { color: #fff; background: rgba(255,255,255,.1); }
+    /* Bootstrap-identical caret for dropdown buttons */
+    .pfas-hdr-userbtn::after {
+      display: inline-block; margin-left: 2px; vertical-align: .255em;
+      content: ""; border-top: .3em solid; border-right: .3em solid transparent;
+      border-bottom: 0; border-left: .3em solid transparent;
+    }
+    .pfas-hdr-userdrop {
+      display: none; position: absolute; right: 0; top: calc(100% + 6px);
+      background: #2d3236; border: 1px solid rgba(255,255,255,.12);
+      border-radius: 6px; min-width: 160px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.35); z-index: 500; overflow: hidden;
+    }
+    .pfas-hdr-userdrop.open { display: block; }
+    .pfas-hdr-useritem {
+      display: flex; align-items: center; gap: 9px;
+      padding: 9px 14px; color: rgba(255,255,255,.82);
+      text-decoration: none; font-size: 13px;
+      transition: background .1s, color .1s;
+    }
+    .pfas-hdr-useritem:hover {
+      background: rgba(255,255,255,.08); color: #fff; text-decoration: none;
+    }
+    .pfas-hdr-logout { color: rgba(220,80,80,.85); }
+    .pfas-hdr-logout:hover { color: #ff6b6b; }
+    .pfas-hdr-user-sep { border-top: 1px solid rgba(255,255,255,.1); margin: 3px 0; }
+    @media (max-width: 768px) { .pfas-hdr-userbtn span { display: none; } }
   </style>
   <tal:head-extra metal:define-slot="head-extra" />
 </head>
@@ -477,10 +660,80 @@
     &#9776;
   </button>
   <div class="pfas-header-title">
-    <tal:t metal:define-slot="header-title">PFAS Tool</tal:t>
+    <tal:t metal:define-slot="header-title">LIMS Tool</tal:t>
   </div>
   <div class="pfas-header-right">
     <tal:r metal:define-slot="header-right" />
+
+    <!-- ── Persistent toolbar actions (always present on PFAS pages) ── -->
+    <tal:acts tal:define="
+        purl    python:context.portal_url();
+        is_anon python:context.portal_membership.isAnonymousUser();
+        uname   python:'' if is_anon else (context.portal_membership.getAuthenticatedMember().getId() or '');
+        roles   python:[] if is_anon else list(context.portal_membership.getAuthenticatedMember().getRolesInContext(context));
+        is_mgr  python:'LabManager' in roles or 'Manager' in roles;
+        ptabs   python:[{'url': purl+'/clients','title':'Clients'},{'url': purl+'/samples','title':'Samples'},{'url': purl+'/batches','title':'Batches'},{'url': purl+'/worksheets','title':'Worksheets'},{'url': purl+'/reports','title':'Reports'}]">
+
+      <!-- Global sections (apps grid) — same icon as core: fas fa-th -->
+      <div class="pfas-hdr-user" id="pfas-hdr-apps" tal:condition="uname">
+        <button class="pfas-hdr-userbtn" type="button"
+                onclick="pfasAppsMenuToggle(event)" title="Global sections">
+          <i class="fas fa-th"></i>
+        </button>
+        <div class="pfas-hdr-userdrop" id="pfas-appsdrop">
+          <tal:tabs tal:repeat="tab ptabs">
+            <a class="pfas-hdr-useritem"
+               tal:attributes="href tab/url"
+               tal:content="tab/title">Tab</a>
+          </tal:tabs>
+        </div>
+      </div>
+
+      <!-- Language selector (globe) — same icon as core: fas fa-globe -->
+      <div class="pfas-hdr-user" id="pfas-hdr-lang" tal:condition="uname">
+        <button class="pfas-hdr-userbtn" type="button"
+                onclick="pfasLangMenuToggle(event)" title="Language">
+          <i class="fas fa-globe"></i>
+        </button>
+        <div class="pfas-hdr-userdrop" id="pfas-langdrop">
+          <a class="pfas-hdr-useritem" tal:attributes="href string:${purl}">English</a>
+        </div>
+      </div>
+
+      <!-- Spotlight search — same icon as core: fas fa-search -->
+      <a class="pfas-hdr-btn" title="Search (Ctrl+Space)"
+         tal:condition="uname"
+         tal:attributes="href string:${purl}/@@spotlight">
+        <i class="fas fa-search"></i>
+      </a>
+
+      <!-- LIMS Setup cog — same icon as core: fas fa-cog -->
+      <a class="pfas-hdr-btn" title="LIMS Setup"
+         tal:condition="is_mgr"
+         tal:attributes="href string:${purl}/@@lims-setup">
+        <i class="fas fa-cog"></i>
+      </a>
+
+      <!-- User/personal bar — same pattern as core: name + dropdown -->
+      <div class="pfas-hdr-user" id="pfas-hdr-user" tal:condition="uname">
+        <button class="pfas-hdr-userbtn" type="button"
+                onclick="pfasUserMenuToggle(event)">
+          <span tal:content="uname">User</span>
+        </button>
+        <div class="pfas-hdr-userdrop" id="pfas-userdrop">
+          <a class="pfas-hdr-useritem"
+             tal:attributes="href string:${purl}/@@personal-information">
+            <i class="fas fa-user-cog"></i> My Profile
+          </a>
+          <div class="pfas-hdr-user-sep"></div>
+          <a class="pfas-hdr-useritem pfas-hdr-logout"
+             tal:attributes="href string:${purl}/logout">
+            <i class="fas fa-sign-out-alt"></i> Sign Out
+          </a>
+        </div>
+      </div>
+
+    </tal:acts>
   </div>
 </header>
 
@@ -566,10 +819,108 @@
 
   /* Close mobile panel on Escape */
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') window.pfasClosePanel();
+    if (e.key === 'Escape') {
+      window.pfasClosePanel();
+      ['pfas-userdrop', 'pfas-appsdrop', 'pfas-langdrop'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.remove('open');
+      });
+    }
   });
 })();
+
+/* ── Header dropdowns (apps grid, language, user menu) ── */
+var _hdrDrops = [
+  { btn: 'pfas-hdr-apps', drop: 'pfas-appsdrop' },
+  { btn: 'pfas-hdr-lang', drop: 'pfas-langdrop' },
+  { btn: 'pfas-hdr-user', drop: 'pfas-userdrop' }
+];
+
+function _closeAllHdrDrops(except) {
+  _hdrDrops.forEach(function (d) {
+    if (d.btn === except) return;
+    var el = document.getElementById(d.drop);
+    if (el) el.classList.remove('open');
+  });
+}
+
+window.pfasAppsMenuToggle = function (e) {
+  if (e) e.stopPropagation();
+  _closeAllHdrDrops('pfas-hdr-apps');
+  var drop = document.getElementById('pfas-appsdrop');
+  if (drop) drop.classList.toggle('open');
+};
+window.pfasLangMenuToggle = function (e) {
+  if (e) e.stopPropagation();
+  _closeAllHdrDrops('pfas-hdr-lang');
+  var drop = document.getElementById('pfas-langdrop');
+  if (drop) drop.classList.toggle('open');
+};
+window.pfasUserMenuToggle = function (e) {
+  if (e) e.stopPropagation();
+  _closeAllHdrDrops('pfas-hdr-user');
+  var drop = document.getElementById('pfas-userdrop');
+  if (drop) drop.classList.toggle('open');
+};
+document.addEventListener('click', function () { _closeAllHdrDrops(null); });
 </script>
 
+
+<script>
+/* ── GLP field correction UI (logbooks) ── */
+window.initCorrections = function (savedData) {
+  var corr = (savedData && savedData._corrections) || {};
+  Object.keys(corr).forEach(function (fname) {
+    var c = corr[fname];
+    var wrap = document.querySelector('.corr-field[data-field="' + fname + '"]');
+    if (!wrap) return;
+    wrap.classList.add('has-correction');
+    var badge = document.createElement('div');
+    badge.className = 'corr-existing';
+    var curVal = (savedData[fname] != null ? savedData[fname] : '').toString();
+    badge.innerHTML =
+      '<span class="corr-struck">' + _cEsc(c.original) + '</span>' +
+      '<span class="corr-arrow">&#8594;</span>' +
+      '<strong>' + _cEsc(curVal) + '</strong>' +
+      ' <span class="corr-meta">' + _cEsc(c.corrected_by) +
+      ' · ' + _cEsc(c.corrected_at) + '</span>';
+    var firstInp = wrap.querySelector('input, textarea, select');
+    if (firstInp) wrap.insertBefore(badge, firstInp);
+    else wrap.appendChild(badge);
+  });
+};
+
+window.toggleCorrect = function (fname) {
+  var panel = document.getElementById('cp-' + fname);
+  if (!panel) return;
+  var isOpen = panel.classList.contains('open');
+  var mainInp = wrap_inp(fname);
+  if (isOpen) {
+    panel.classList.remove('open');
+    var byInp = document.getElementById('cb-' + fname);
+    if (byInp) byInp.value = '';
+    var nvInp = document.getElementById('cn-' + fname);
+    if (nvInp) nvInp.value = '';
+    if (mainInp) mainInp.disabled = false;
+  } else {
+    panel.classList.add('open');
+    var origSpan = document.getElementById('co-' + fname);
+    if (origSpan && mainInp) origSpan.textContent = mainInp.value || '(empty)';
+    if (mainInp) mainInp.disabled = true;
+    var nvInp = document.getElementById('cn-' + fname);
+    if (nvInp) { nvInp.value = ''; nvInp.focus(); }
+  }
+};
+
+function wrap_inp(fname) {
+  var w = document.querySelector('.corr-field[data-field="' + fname + '"]');
+  return w ? (w.querySelector('input:not([type=hidden]), textarea, select') || null) : null;
+}
+
+function _cEsc(s) {
+  return (s == null ? '' : String(s))
+    .replace(/\x26/g, '&amp;').replace(/\x3c/g, '&lt;').replace(/\x3e/g, '&gt;');
+}
+</script>
 </body>
 </html>

@@ -3,7 +3,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 
-  <metal:fill fill-slot="title">QC Management — PFAS LIMS</metal:fill>
+  <metal:fill fill-slot="title">QC Management</metal:fill>
 
   <metal:fill fill-slot="header-title">QC Management</metal:fill>
 

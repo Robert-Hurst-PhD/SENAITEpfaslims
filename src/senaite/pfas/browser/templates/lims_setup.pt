@@ -83,12 +83,23 @@
       </style>
     </metal:block>
 
-    <div metal:fill-slot="prefs_configlet_main" id="lims-controlpanel">
+    <div metal:fill-slot="prefs_configlet_main" id="lims-controlpanel"
+         tal:define="sect view/current_section; purl view/portal_url">
+
+      <!-- Back link + section heading in filtered mode -->
+      <tal:filtered tal:condition="sect">
+        <div style="margin-bottom:14px">
+          <a tal:attributes="href string:${purl}/@@lims-setup"
+             style="font-size:12px;color:#6c757d;text-decoration:none">
+            &#8592; All Configuration
+          </a>
+        </div>
+      </tal:filtered>
 
       <div id="setupview" class="row">
 
-        <!-- Search box (same id as original — filter JS targets #searchbox) -->
-        <div class="col-sm-12 mb-3">
+        <!-- Search box only shown in the full (unfiltered) view -->
+        <div class="col-sm-12 mb-3" tal:condition="python:not sect">
           <input id="searchbox"
                  autofocus
                  type="text"
@@ -100,8 +111,10 @@
         <!-- ── Grouped setup items ───────────────────────────────────────── -->
         <tal:groups tal:repeat="group view/grouped_setup_items">
 
-          <!-- Group heading (full-width row break + label) -->
+          <!-- Group heading — only shown in the full view (filtered view has back link) -->
           <div class="col-12 pfas-group-heading"
+               tal:condition="python:not sect"
+               tal:attributes="id group/id"
                tal:content="group/title">Group</div>
 
           <!-- Rich tile — same structure for both core items and PFAS tools -->
@@ -123,8 +136,7 @@
                   Setup Item Title
                 </div>
 
-                <!-- Description — from _CORE_DESCRIPTIONS for core items,
-                     from VirtualTile.Description() for PFAS tools -->
+                <!-- Description -->
                 <div class="rich-tile-desc"
                      tal:content="python:view.get_description(item)">
                   Description

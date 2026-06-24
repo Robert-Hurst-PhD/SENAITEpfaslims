@@ -24,6 +24,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import json
 import logging
 import os
+from datetime import date
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
@@ -33,6 +34,42 @@ from zope.annotation.interfaces import IAnnotations
 logger = logging.getLogger("senaite.pfas.browser.logbooks")
 
 _KEY_PREFIX = u"senaite.pfas.logbook."
+
+# Fields that support the GLP strike-through correction model (text/date/number only; not table rows)
+_CORR_FIELDS_250 = ["prepared_by", "prepared_date", "ammonium_acetate_weight_g",
+                     "balance_sn", "notes", "reviewed_by", "reviewed_date"]
+_CORR_FIELDS_251 = ["prepared_by", "prepared_date", "pds_a_lot", "pds_b_lot",
+                     "analyte_pds_lot", "analyte_spike_lot", "cal_a_lot",
+                     "icv_conc_ng_ml", "ccv_conc_ng_ml", "diluent_is_conc",
+                     "notes", "reviewed_by", "reviewed_date"]
+_CORR_FIELDS_252 = ["analyst", "extraction_date", "notes", "reviewed_by", "reviewed_date"]
+_CORR_FIELDS_253 = ["analyst", "processing_date", "balance_sn", "notes"]
+
+
+def _apply_field_corrections(form, existing, fields, data):
+    """
+    Process GLP correction submissions.
+
+    When `_corr_by_FNAME` is present in the form, the field is being corrected:
+      - `_newval_FNAME`  = the corrected value (submitted instead of the disabled main input)
+      - `_corr_by_FNAME` = initials of the person making the correction
+    The original value is taken from `existing` and stored in `_corrections[FNAME]`.
+
+    For non-corrected fields the caller already populated `data[fname]` from the
+    normal form field; this function only overrides fields being corrected.
+    """
+    corrections = dict(existing.get("_corrections") or {})
+    for fname in fields:
+        corr_by = (form.get("_corr_by_" + fname) or u"").strip()
+        if corr_by:
+            new_val = (form.get("_newval_" + fname) or u"").strip()
+            corrections[fname] = {
+                u"original":     existing.get(fname, u""),
+                u"corrected_by": corr_by,
+                u"corrected_at": date.today().strftime("%Y-%m-%d"),
+            }
+            data[fname] = new_val
+    data[u"_corrections"] = corrections
 BATCHES_EXPORT_ROOT = os.environ.get("PFAS_BATCHES_PATH", "/data/qc/batches")
 
 # Default cal points for FDA 32-PFAS (ng/mL)
@@ -69,6 +106,11 @@ def _save_logbook(batch, form_num, data):
     key = _KEY_PREFIX + str(form_num)
     ann = IAnnotations(batch)
     ann[key] = json.dumps(data)
+    try:
+        from bika.lims.api.snapshot import take_snapshot
+        take_snapshot(batch)
+    except Exception:
+        pass
 
 
 def _batch_uid(batch):
@@ -158,22 +200,34 @@ class PFASLogbookIndexView(_LogbookBase):
         portal = getToolByName(self.context, "portal_url").getPortalObject()
         defs = get_active_logbook_defs(portal)
         base = self.batch_url()
-        portal_url = self.portal_url()
         rows = []
         for d in defs:
             slug = d["slug"]
             form_num = d.get("form_num", slug)
             title = d.get("title", slug)
             builtin = d.get("builtin", False)
-            if builtin:
+
+            # Route to dynamic renderer when a field schema is defined
+            schema_raw = d.get("field_schema_json") or "[]"
+            has_schema = False
+            try:
+                parsed = json.loads(schema_raw)
+                has_schema = bool(parsed)
+            except (ValueError, TypeError):
+                pass
+
+            if has_schema:
+                url = "{0}/@@pfas-logbook-dynamic?slug={1}".format(base, slug)
+            elif builtin:
                 url = "{0}/@@pfas-logbook-{1}".format(base, slug)
             else:
                 url = "{0}/@@pfas-logbook-custom?slug={1}".format(base, slug)
+
             filled = bool(_get_logbook(self.context, slug))
             rows.append({
-                "num":   form_num,
-                "title": "{0}: {1}".format(form_num, title),
-                "url":   url,
+                "num":    form_num,
+                "title":  "{0}: {1}".format(form_num, title),
+                "url":    url,
                 "filled": filled,
             })
         return rows
@@ -213,6 +267,7 @@ class PFASLogbook250View(_LogbookBase):
         except (ValueError, TypeError):
             chemicals = []
 
+        existing = _get_logbook(self.context, 250)
         data = {
             "prepared_by":              f.get("prepared_by", ""),
             "prepared_date":            f.get("prepared_date", ""),
@@ -224,6 +279,7 @@ class PFASLogbook250View(_LogbookBase):
             "balance_sn":               f.get("balance_sn", ""),
             "notes":                    f.get("notes", ""),
         }
+        _apply_field_corrections(f, existing, _CORR_FIELDS_250, data)
         _save_logbook(self.context, 250, data)
         return self._redirect_self("Solvent+Reagent+Prep+Log+saved")
 
@@ -263,6 +319,7 @@ class PFASLogbook251View(_LogbookBase):
         except (ValueError, TypeError):
             cal_points = []
 
+        existing = _get_logbook(self.context, 251)
         data = {
             "method":           f.get("method", "FDA_32PFAS"),
             "prepared_by":      f.get("prepared_by", ""),
@@ -280,6 +337,7 @@ class PFASLogbook251View(_LogbookBase):
             "diluent_is_conc":  f.get("diluent_is_conc", "1.0"),
             "notes":            f.get("notes", ""),
         }
+        _apply_field_corrections(f, existing, _CORR_FIELDS_251, data)
         _save_logbook(self.context, 251, data)
         _export_cal_to_file(self.context, data)
         return self._redirect_self("Calibration+Curve+Prep+Log+saved")
@@ -340,6 +398,7 @@ class PFASLogbook252View(_LogbookBase):
             except (ValueError, TypeError):
                 return self._redirect_error("Invalid+JSON+in+" + key)
 
+        existing = _get_logbook(self.context, 252)
         data = {
             "method":           f.get("method", ""),
             "analyst":          f.get("analyst", ""),
@@ -354,6 +413,7 @@ class PFASLogbook252View(_LogbookBase):
             "needle_cleaned":   f.get("needle_cleaned") == "yes",
             "notes":            f.get("notes", ""),
         }
+        _apply_field_corrections(f, existing, _CORR_FIELDS_252, data)
         _save_logbook(self.context, 252, data)
         return self._redirect_self("Extraction+Log+saved")
 
@@ -378,6 +438,7 @@ class PFASLogbook253View(_LogbookBase):
 
     def _handle_post(self):
         f = self.request.form
+        existing = _get_logbook(self.context, 253)
         data = {
             "analyst":          f.get("analyst", ""),
             "processing_date":  f.get("processing_date", ""),
@@ -388,6 +449,7 @@ class PFASLogbook253View(_LogbookBase):
                 f.get("processing_materials_json", "[]")),
             "notes":            f.get("notes", ""),
         }
+        _apply_field_corrections(f, existing, _CORR_FIELDS_253, data)
         _save_logbook(self.context, 253, data)
         return self._redirect_self("Sample+Processing+Log+saved")
 
@@ -503,6 +565,250 @@ class PFASLogbookAdminView(BrowserView):
 
 
 # ── Generic custom logbook (batch-level) ──────────────────────────────────────
+
+# ── Dynamic schema helpers ────────────────────────────────────────────────────
+
+def _parse_schema(defn):
+    """Parse field_schema_json from a PrepLogbookDef dict or object.  Returns []."""
+    if isinstance(defn, dict):
+        raw = defn.get("field_schema_json") or u"[]"
+    else:
+        raw = getattr(defn, "field_schema_json", None) or u"[]"
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return parsed
+    except (ValueError, TypeError):
+        pass
+    return []
+
+
+def _correctable_fields(schema_fields):
+    """Return list of field names with correctable=True (excludes table/checkbox)."""
+    return [
+        f["name"] for f in schema_fields
+        if f.get("correctable")
+        and f.get("type") not in ("table", "checkbox")
+        and f.get("name")
+    ]
+
+
+def _extract_data_from_schema(form, schema_fields):
+    """Build data dict from POST form data based on the field schema."""
+    data = {}
+    for field in schema_fields:
+        fname = field.get("name")
+        if not fname:
+            continue
+        ftype = field.get("type", "text")
+        if ftype == "table":
+            raw = form.get(fname + "_json", "[]")
+            try:
+                data[fname] = json.loads(raw)
+            except (ValueError, TypeError):
+                data[fname] = []
+        elif ftype == "checkbox":
+            data[fname] = form.get(fname) == "yes"
+        else:
+            data[fname] = form.get(fname, "") or ""
+    return data
+
+
+def _date_str_obj(obj, field):
+    """Safe date → YYYY-MM-DD string from a content object attribute."""
+    val = getattr(obj, field, None)
+    if not val:
+        return u""
+    try:
+        return val.strftime("%Y-%m-%d")
+    except AttributeError:
+        return str(val)[:10]
+
+
+# ── Dynamic logbook renderer ──────────────────────────────────────────────────
+
+class PFASDynamicLogbookView(_LogbookBase):
+    """
+    @@pfas-logbook-dynamic?slug=<slug>
+
+    Renders a logbook form from a PrepLogbookDef's field_schema_json.
+    All field types (text, date, number, textarea, lot_ref, reagent_ref,
+    checkbox, table) are supported.  GLP corrections use the same
+    _apply_field_corrections() as the hardcoded views.
+    """
+
+    _VIEW_NAME = "@@pfas-logbook-dynamic"
+    template = ViewPageTemplateFile("templates/logbook_dynamic.pt")
+
+    def __call__(self):
+        if self.request.method == "POST":
+            return self._handle_post()
+        return self.template()
+
+    def slug(self):
+        return self.request.get("slug", "")
+
+    def _slug(self):
+        return self.slug()
+
+    def _redirect_self(self, msg=""):
+        url = "{0}/@@pfas-logbook-dynamic?slug={1}".format(
+            self.batch_url(), self._slug())
+        if msg:
+            url += "&ok=" + msg.replace(" ", "+")
+        return self._redirect(url)
+
+    def _logbook_def(self):
+        """Return PrepLogbookDef dict for this slug (active revision preferred)."""
+        from senaite.pfas.browser.prep_logbooks import _list
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        slug = self._slug()
+        defs = _list(portal, slug=slug, status_filter="active")
+        if not defs:
+            defs = _list(portal, slug=slug)
+        return defs[0] if defs else {}
+
+    def logbook_def(self):
+        return self._logbook_def()
+
+    def field_schema(self):
+        """Parsed list of field definition dicts."""
+        return _parse_schema(self._logbook_def())
+
+    def field_schema_json(self):
+        return json.dumps(self.field_schema())
+
+    def logbook_title(self):
+        d = self._logbook_def()
+        code = d.get("logbook_code") or d.get("logbook_slug") or self._slug()
+        title = d.get("title") or self._slug()
+        if code and code != title:
+            return u"{0}: {1}".format(code, title)
+        return title
+
+    def logbook_code(self):
+        d = self._logbook_def()
+        return d.get("logbook_code") or self._slug()
+
+    def data(self):
+        return _get_logbook(self.context, self._slug())
+
+    def data_json(self):
+        return json.dumps(self.data())
+
+    def _handle_post(self):
+        f = self.request.form
+        slug = self._slug()
+        schema_fields = self.field_schema()
+        existing = self.data()
+
+        data = _extract_data_from_schema(f, schema_fields)
+        correctable = _correctable_fields(schema_fields)
+        _apply_field_corrections(f, existing, correctable, data)
+        _save_logbook(self.context, slug, data)
+
+        # FM-ENV-251 special: export cal data for pipeline injection builder
+        if slug == "251":
+            _export_cal_to_file(self.context, data)
+
+        return self._redirect_self("Saved")
+
+
+# ── AJAX: Prepared Standard lot autocomplete ──────────────────────────────────
+
+class PFASLotAutocompleteView(BrowserView):
+    """
+    @@pfas-lot-autocomplete?type=Calibration+Standard&q=PDS
+
+    Returns JSON list of PreparedStandard lots matching the query.
+    Used by lot_ref fields in the dynamic logbook renderer.
+    """
+
+    def __call__(self):
+        self.request.response.setHeader("Content-Type", "application/json")
+        try:
+            from plone.protect.interfaces import IDisableCSRFProtection
+            from zope.interface import alsoProvides
+            alsoProvides(self.request, IDisableCSRFProtection)
+        except ImportError:
+            pass
+
+        q = (self.request.get("q") or u"").lower().strip()
+        lot_type = (self.request.get("type") or u"").strip()
+
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        folder = portal.get("pfas_prepared_standards")
+        if not folder:
+            return json.dumps([])
+
+        results = []
+        for obj in folder.objectValues():
+            if obj.portal_type != "PreparedStandard":
+                continue
+            obj_type = (getattr(obj, "standard_type", "") or "").strip()
+            if lot_type and obj_type != lot_type:
+                continue
+            obj_status = (getattr(obj, "status", "active") or "active").lower()
+            if obj_status == "expired":
+                continue
+            lot_num = getattr(obj, "lot_number", "") or ""
+            title = getattr(obj, "title", "") or lot_num
+            if q and q not in lot_num.lower() and q not in title.lower():
+                continue
+            results.append({
+                "lot_number":    lot_num,
+                "title":         title,
+                "standard_type": obj_type,
+                "expiry_date":   _date_str_obj(obj, "expiry_date"),
+                "status":        obj_status,
+            })
+        results.sort(key=lambda x: x["lot_number"])
+        return json.dumps(results[:50])
+
+
+# ── AJAX: Reagent inventory autocomplete ──────────────────────────────────────
+
+class PFASReagentAutocompleteView(BrowserView):
+    """
+    @@pfas-reagent-autocomplete?q=methanol
+
+    Returns JSON list of active Reagent records matching the query.
+    Used by reagent_ref fields in the dynamic logbook renderer.
+    """
+
+    def __call__(self):
+        self.request.response.setHeader("Content-Type", "application/json")
+        try:
+            from plone.protect.interfaces import IDisableCSRFProtection
+            from zope.interface import alsoProvides
+            alsoProvides(self.request, IDisableCSRFProtection)
+        except ImportError:
+            pass
+
+        q = (self.request.get("q") or u"").lower().strip()
+
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        folder = portal.get("pfas_reagents")
+        if not folder:
+            return json.dumps([])
+
+        results = []
+        for obj in folder.objectValues():
+            if obj.portal_type != "Reagent":
+                continue
+            name = getattr(obj, "title", "") or ""
+            lot = getattr(obj, "lot_number", "") or ""
+            if q and q not in name.lower() and q not in lot.lower():
+                continue
+            results.append({
+                "name":       name,
+                "lot_number": lot,
+                "supplier":   getattr(obj, "supplier", "") or "",
+                "status":     (getattr(obj, "status", "active") or "active"),
+            })
+        results.sort(key=lambda x: x["name"])
+        return json.dumps(results[:50])
+
 
 class PFASLogbookCustomView(_LogbookBase):
     """

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Facility Units Registry</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .units-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .units-table th { background:var(--s-light); padding:7px 10px; text-align:left;
+                      font-weight:700; color:var(--s-secondary); border-bottom:2px solid var(--s-border); }
+    .units-table td { padding:8px 10px; border-bottom:1px solid var(--s-border); vertical-align:middle; }
+    .units-table tr:last-child td { border-bottom:none; }
+    .units-table tr.inactive td { color:var(--s-secondary); text-decoration:line-through; }
+    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
+    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld input, .fld select, .fld textarea {
+      padding:6px 8px; font-size:13px; border:1px solid var(--s-input-border);
+      border-radius:4px; color:var(--s-input-text); }
+    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .fld-row .fld { flex:1; min-width:140px; }
+    .form-card { background:var(--s-bg); border:1px solid var(--s-border);
+                 border-radius:8px; padding:16px; margin-bottom:18px; }
+    .form-card h3 { font-size:13px; font-weight:700; margin:0 0 12px; color:var(--s-body); }
+    .weight-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+    .weight-table th { background:var(--s-light); padding:6px 8px;
+                       border-bottom:1px solid var(--s-border); font-weight:600; }
+    .weight-table td { padding:5px 8px; border-bottom:1px solid var(--s-border); }
+    .weight-table input { width:90px; padding:3px 6px; border:1px solid var(--s-input-border);
+                          border-radius:3px; font-size:12px; }
+    .api-card { background:var(--s-light); border:1px solid var(--s-border);
+                border-radius:8px; padding:14px 16px; margin-bottom:18px; }
+    .inactive-badge { background:#f8d7da; color:#721c24; padding:1px 8px;
+                      border-radius:8px; font-size:10px; font-weight:700; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="purl view/portal_url">
+
+  <h1 style="font-size:18px;font-weight:700;margin:0 0 18px;color:var(--s-body)">
+    Facility Units Registry
+  </h1>
+
+  <!-- API key -->
+  <div class="api-card">
+    <strong style="font-size:12px;color:var(--s-body)">Sensor Ingest API Key</strong>
+    <p style="font-size:11px;color:var(--s-secondary);margin:4px 0 10px">
+      Set on the Raspberry Pi in <code>/etc/pfas_sensor.conf</code> as
+      <code>api_key = ...</code>. The Pi sends this in every POST request.
+    </p>
+    <form method="POST" tal:attributes="action string:${purl}/@@pfas-facility-units"
+          style="display:flex;gap:8px;align-items:center;">
+      <input type="hidden" name="action" value="save_api_key"/>
+      <input type="text" name="api_key" style="width:380px;padding:6px 8px;font-size:12px;
+             font-family:monospace;border:1px solid var(--s-input-border);border-radius:4px;"
+             tal:attributes="value view/api_key" placeholder="paste generated key here"/>
+      <button type="submit"
+              style="padding:6px 14px;background:var(--s-primary);color:#fff;
+                     border:none;border-radius:4px;cursor:pointer;font-size:12px">Save</button>
+    </form>
+  </div>
+
+  <!-- Existing units -->
+  <div class="form-card">
+    <h3>Registered Units</h3>
+    <tal:no-units tal:condition="python:not view.units()">
+      <p style="color:var(--s-secondary);font-size:12px">No units yet.</p>
+    </tal:no-units>
+    <table class="units-table" tal:condition="python:bool(view.units())">
+      <tr>
+        <th>Name</th><th>Type</th><th>Location</th><th>Serial</th>
+        <th>Sensor ID</th><th>Range</th><th>Status</th><th></th>
+      </tr>
+      <tal:each tal:repeat="u view/units">
+        <tr tal:attributes="class python:'inactive' if not u.get('active') else ''">
+          <td tal:content="u/name"></td>
+          <td tal:content="python:dict(view.unit_types()).get(u['unit_type'],u['unit_type'])"></td>
+          <td tal:content="python:u.get('location','')"></td>
+          <td tal:content="python:u.get('serial_number','')"></td>
+          <td><code tal:content="python:u.get('sensor_id','—')"></code></td>
+          <td tal:content="python:(str(u['temp_min'])+' – '+str(u['temp_max'])+'°C') if u.get('temp_min') is not None else '—'"></td>
+          <td>
+            <span tal:condition="python:not u.get('active')" class="inactive-badge">Inactive</span>
+          </td>
+          <td>
+            <a style="font-size:11px;color:var(--s-primary);cursor:pointer;text-decoration:none"
+               tal:attributes="onclick string:editUnit('${u/id}')">Edit</a>
+            &nbsp;
+            <form method="POST" style="display:inline"
+                  tal:attributes="action string:${purl}/@@pfas-facility-units"
+                  onsubmit="return confirm('Deactivate this unit?')">
+              <input type="hidden" name="action" value="delete"/>
+              <input type="hidden" name="unit_id" tal:attributes="value u/id"/>
+              <button type="submit" tal:condition="python:u.get('active')"
+                      style="font-size:11px;color:var(--s-danger);background:none;
+                             border:none;cursor:pointer;padding:0">Deactivate</button>
+            </form>
+          </td>
+        </tr>
+      </tal:each>
+    </table>
+  </div>
+
+  <!-- Add / edit form -->
+  <div class="form-card" id="unit-form">
+    <h3>Add / Edit Unit</h3>
+    <form method="POST" tal:attributes="action string:${purl}/@@pfas-facility-units"
+          id="unitForm">
+      <input type="hidden" name="action" value="save"/>
+      <input type="hidden" name="unit_id" id="f_unit_id" value=""/>
+      <div class="fld-row">
+        <div class="fld" style="flex:2"><label>Name *</label>
+          <input type="text" name="name" id="f_name" required/></div>
+        <div class="fld" style="flex:1"><label>Type *</label>
+          <select name="unit_type" id="f_unit_type" onchange="onTypeChange(this.value)" required>
+            <option value="">— select —</option>
+            <tal:each tal:repeat="t view/unit_types">
+              <option tal:attributes="value python:t[0]" tal:content="python:t[1]"></option>
+            </tal:each>
+          </select>
+        </div>
+        <div class="fld" style="flex:1"><label>Location</label>
+          <input type="text" name="location" id="f_location"/></div>
+        <div class="fld" style="flex:1"><label>Serial Number</label>
+          <input type="text" name="serial_number" id="f_serial"/></div>
+      </div>
+
+      <!-- Temp/humidity fields (shown for temp unit types) -->
+      <div id="temp-fields" style="display:none">
+        <div class="fld-row">
+          <div class="fld"><label>Sensor ID (RPi sensor_id)</label>
+            <input type="text" name="sensor_id" id="f_sensor_id"
+                   placeholder="e.g. fridge-01"/></div>
+          <div class="fld"><label>Min Temp (&deg;C)</label>
+            <input type="number" step="0.1" name="temp_min" id="f_temp_min"/></div>
+          <div class="fld"><label>Max Temp (&deg;C)</label>
+            <input type="number" step="0.1" name="temp_max" id="f_temp_max"/></div>
+          <div class="fld"><label>Study Tolerance (&deg;C)</label>
+            <input type="number" step="0.1" name="study_tolerance" id="f_study_tol" value="1.0"/></div>
+        </div>
+      </div>
+
+      <!-- Humidity fields (room sensor only) -->
+      <div id="hum-fields" style="display:none">
+        <div class="fld-row">
+          <div class="fld"><label>Min Humidity (% RH)</label>
+            <input type="number" step="1" name="humidity_min" id="f_hum_min"/></div>
+          <div class="fld"><label>Max Humidity (% RH)</label>
+            <input type="number" step="1" name="humidity_max" id="f_hum_max"/></div>
+        </div>
+      </div>
+
+      <!-- Eye wash temp range -->
+      <div id="eyewash-fields" style="display:none">
+        <div class="fld-row">
+          <div class="fld"><label>Min Flush Temp (&deg;C)</label>
+            <input type="number" step="0.5" name="temp_min" value="15"/></div>
+          <div class="fld"><label>Max Flush Temp (&deg;C)</label>
+            <input type="number" step="0.5" name="temp_max" value="25"/></div>
+          <div class="fld"><label>Sensor ID (optional)</label>
+            <input type="text" name="sensor_id" id="f_ew_sensor_id"/></div>
+        </div>
+      </div>
+
+      <!-- Water system limits -->
+      <div id="water-fields" style="display:none">
+        <div class="fld-row">
+          <div class="fld"><label>Max Conductivity (&mu;S/cm)</label>
+            <input type="number" step="0.1" name="conductivity_max" value="1.0"/></div>
+          <div class="fld"><label>Max TOC (ppb)</label>
+            <input type="number" step="1" name="toc_max" value="500"/></div>
+        </div>
+      </div>
+
+      <!-- Balance weight points -->
+      <div id="balance-fields" style="display:none">
+        <p style="font-size:11px;color:var(--s-secondary);margin:0 0 6px">
+          Configure nominal weights and acceptance tolerances for this balance.
+        </p>
+        <table class="weight-table" id="weightTable">
+          <tr><th>Nominal</th><th>Label</th><th>Tolerance (g)</th></tr>
+        </table>
+      </div>
+
+      <div class="fld" style="margin-top:4px"><label>Notes</label>
+        <textarea name="notes" id="f_notes" rows="2" style="resize:vertical"></textarea>
+      </div>
+
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <button type="submit"
+                style="padding:7px 20px;background:var(--s-primary);color:#fff;
+                       border:none;border-radius:4px;cursor:pointer;font-weight:600">
+          Save Unit
+        </button>
+        <button type="button" onclick="resetForm()"
+                style="padding:7px 16px;background:var(--s-light);color:var(--s-body);
+                       border:1px solid var(--s-border);border-radius:4px;cursor:pointer">
+          Clear
+        </button>
+      </div>
+    </form>
+  </div>
+
+  </tal:def>
+</metal:content>
+
+<tal:scripts metal:fill-slot="scripts">
+<script tal:define="bdj view/balance_defaults_json">
+  <tal:v tal:replace="structure string:var _BALANCE_DEFAULTS = ${bdj};"/>
+</script>
+<script>
+//<![CDATA[
+function onTypeChange(t) {
+  document.getElementById('temp-fields').style.display =
+    ['refrigerator','freezer','room_sensor'].indexOf(t) >= 0 ? '' : 'none';
+  document.getElementById('hum-fields').style.display =
+    t === 'room_sensor' ? '' : 'none';
+  document.getElementById('eyewash-fields').style.display =
+    t === 'eyewash' ? '' : 'none';
+  document.getElementById('water-fields').style.display =
+    t === 'water_system' ? '' : 'none';
+  var isBal = t === 'balance_analytical' || t === 'balance_prep';
+  document.getElementById('balance-fields').style.display = isBal ? '' : 'none';
+  if (isBal) buildWeightTable(t, []);
+}
+
+function buildWeightTable(type, existing) {
+  var defaults = _BALANCE_DEFAULTS[type] || [];
+  var tbody = document.getElementById('weightTable');
+  tbody.innerHTML = '<tr><th>Nominal</th><th>Label</th><th>Tolerance (g)</th></tr>';
+  defaults.forEach(function(d, i) {
+    var ex = existing[i] || {};
+    var nom = ex[0] != null ? ex[0] : d[0];
+    var lbl = ex[1] || d[1];
+    var tol = ex[2] != null ? ex[2] : d[2];
+    var row = document.createElement('tr');
+    row.innerHTML =
+      '<td><input type="number" step="any" name="wp_nominal_'+i+'" value="'+nom+'"/></td>'+
+      '<td><input type="text" name="wp_label_'+i+'" value="'+lbl+'"/></td>'+
+      '<td><input type="number" step="any" name="wp_tolerance_'+i+'" value="'+tol+'"/></td>';
+    tbody.appendChild(row);
+  });
+}
+
+function editUnit(id) {
+  // Simple: reload the page with a query param to pre-fill form via JS
+  // (full server-side pre-fill would need a separate GET endpoint)
+  var units = document.querySelectorAll('[data-unit-id]');
+  // Scroll to form
+  document.getElementById('unit-form').scrollIntoView({behavior:'smooth'});
+  document.getElementById('f_unit_id').value = id;
+}
+
+function resetForm() {
+  document.getElementById('f_unit_id').value = '';
+  document.getElementById('unitForm').reset();
+  ['temp-fields','hum-fields','eyewash-fields','water-fields','balance-fields']
+    .forEach(function(id){ document.getElementById(id).style.display='none'; });
+}
+//]]>
+</script>
+</tal:scripts>
+</body>
+</html>

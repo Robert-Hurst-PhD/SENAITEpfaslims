@@ -695,6 +695,83 @@ def post_install(context):
     except Exception as exc:
         logger.error("Failed to set up EGADConfig catalog / migration: %s", exc)
 
+    # ── Prep logbook definitions catalog ──────────────────────────────────
+    try:
+        setup_prep_logbooks_catalog(portal)
+    except Exception as exc:
+        logger.error("Failed to set up PrepLogbookDef catalog: %s", exc)
+
+    # ── Seed built-in logbook definitions (250/251/252/253) ───────────────
+    try:
+        from senaite.pfas.browser.prep_logbooks import seed_builtin_logbook_defs
+        seed_builtin_logbook_defs(portal)
+        logger.info("Built-in logbook defs seeded (250/251/252/253)")
+    except Exception as exc:
+        logger.error("Failed to seed built-in logbook defs: %s", exc)
+
+    # ── Prepared standards catalog ────────────────────────────────────────
+    try:
+        setup_prepared_standards_catalog(portal)
+    except Exception as exc:
+        logger.error("Failed to set up PreparedStandard catalog: %s", exc)
+
+    # ── CoA filesystem directory ──────────────────────────────────────────
+    try:
+        _ensure_dir("/data/coa")
+        _ensure_dir("/data/coa/certs")
+    except Exception as exc:
+        logger.error("Failed to create /data/coa directories: %s", exc)
+
+
+def _ensure_dir(path):
+    """Create directory if it does not exist."""
+    import os
+    if not os.path.isdir(path):
+        os.makedirs(path)
+        logger.info("Created directory: %s", path)
+
+
+def setup_prep_logbooks_catalog(portal):
+    """Register PrepLogbookDef in setup catalog and create container folder."""
+    try:
+        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
+    except ImportError:
+        logger.warning("setup_prep_logbooks_catalog: senaite.core.catalog unavailable; skipping")
+        return None
+
+    set_catalogs("PrepLogbookDef", [SETUP_CATALOG])
+    logger.info("PrepLogbookDef registered in %s", SETUP_CATALOG)
+
+    if "pfas_prep_logbooks" not in portal:
+        from bika.lims import api as bika_api
+        bika_api.create(portal, "Folder",
+                        id="pfas_prep_logbooks",
+                        title="PFAS Preparation Logbooks")
+        logger.info("Created pfas_prep_logbooks folder")
+
+    return portal.get("pfas_prep_logbooks")
+
+
+def setup_prepared_standards_catalog(portal):
+    """Register PreparedStandard in setup catalog and create container folder."""
+    try:
+        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
+    except ImportError:
+        logger.warning("setup_prepared_standards_catalog: senaite.core.catalog unavailable; skipping")
+        return None
+
+    set_catalogs("PreparedStandard", [SETUP_CATALOG])
+    logger.info("PreparedStandard registered in %s", SETUP_CATALOG)
+
+    if "pfas_prepared_standards" not in portal:
+        from bika.lims import api as bika_api
+        bika_api.create(portal, "Folder",
+                        id="pfas_prepared_standards",
+                        title="PFAS Prepared Standards")
+        logger.info("Created pfas_prepared_standards folder")
+
+    return portal.get("pfas_prepared_standards")
+
 
 def post_uninstall(context):
     logger.info("senaite.pfas post_uninstall")

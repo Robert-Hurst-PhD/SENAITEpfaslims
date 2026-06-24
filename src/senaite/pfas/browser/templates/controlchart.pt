@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">PFAS QC Control Charts</title>
+  <title metal:fill-slot="title">QC Control Charts</title>
   <tal:extras metal:fill-slot="head-extra">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
@@ -127,12 +127,10 @@
   </tal:extras>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">PFAS QC Control Charts</tal:t>
+  <tal:t metal:fill-slot="header-title">QC Control Charts</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <span class="header-badge">Levey-Jennings + Westgard multi-rules</span>
-    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@lims-setup">
-      Site Setup
-    </a>
+    <span class="header-badge">Levey-Jennings + Westgard</span>
+    <span class="role-badge">LabManager</span>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -290,7 +288,7 @@
           <div class="no-data">
             <strong>No QC database found</strong>
             Expected at <code tal:content="view/db_path">/data/qc/pfas_qc_results.db</code>.
-            Run the PFAS batch pipeline to populate results.
+            Run the batch pipeline to populate results.
           </div>
         </div>
       </tal:nodbwarn>

@@ -130,6 +130,22 @@ _SCHEMA_STMTS = [
        WHERE result_status = 'active'""",
 ]
 
+# ALTER TABLE migrations — run once; silently ignored if column already exists.
+_MIGRATION_STMTS = [
+    # calibrations: per-run approval + fit overrides
+    "ALTER TABLE calibrations ADD COLUMN approved_by      TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibrations ADD COLUMN approved_at      TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibrations ADD COLUMN fit_type_override  TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibrations ADD COLUMN weight_override    TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE calibrations ADD COLUMN origin_override    TEXT NOT NULL DEFAULT ''",
+    # calibration_levels: raw response ratio for Plot 1 (response vs concentration)
+    "ALTER TABLE calibration_levels ADD COLUMN response_ratio REAL",
+    # qc_results: expected concentration so % deviation can be computed in the UI
+    "ALTER TABLE qc_results ADD COLUMN expected_value REAL",
+    # qc_results: response ratio for overlaying instrument checks on calibration curve
+    "ALTER TABLE qc_results ADD COLUMN response_ratio REAL",
+]
+
 
 def _now_iso():
     import datetime
@@ -186,9 +202,13 @@ class QCResultStore(object):
                 try:
                     conn.execute(stmt)
                 except sqlite3.OperationalError as e:
-                    # Ignore "already exists" errors from older schema versions
                     if "already exists" not in str(e):
                         raise
+            for stmt in _MIGRATION_STMTS:
+                try:
+                    conn.execute(stmt)
+                except sqlite3.OperationalError:
+                    pass  # column already exists — idempotent
 
     # ── Batch registration ──────────────────────────────────────────────────
 
@@ -316,8 +336,9 @@ class QCResultStore(object):
                     "INSERT INTO qc_results "
                     "(batch_id,run_date,analyte,qc_type,qc_level,method,"
                     " analyst,instrument_id,value,units,flag,passed,"
-                    " result_status,parent_result_id,reanalysis_reason,created_at) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " result_status,parent_result_id,reanalysis_reason,created_at,"
+                    " expected_value,response_ratio) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (bid,
                      r.get("run_date", ""),
                      analyte,
@@ -333,7 +354,9 @@ class QCResultStore(object):
                      "active",
                      parent_id,
                      r.get("reanalysis_reason", ""),
-                     now),
+                     now,
+                     r.get("expected_value"),
+                     r.get("response_ratio")),
                 )
                 inserted += 1
 
@@ -574,11 +597,12 @@ class QCResultStore(object):
                     conn.execute(
                         "INSERT INTO calibration_levels "
                         "(calibration_id,level,expected,calculated,"
-                        " pct_deviation,passed) VALUES (?,?,?,?,?,?)",
+                        " pct_deviation,passed,response_ratio) VALUES (?,?,?,?,?,?,?)",
                         (cal_id,
                          lv.get("level"), lv.get("expected"),
                          lv.get("calculated"), lv.get("pct_deviation"),
-                         int(bool(lv.get("passed", True)))),
+                         int(bool(lv.get("passed", True))),
+                         lv.get("response_ratio")),
                     )
         return cal_id
 
@@ -606,6 +630,89 @@ class QCResultStore(object):
                 (calibration_id,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_calibrations_for_run(self, run_date, method=None, batch_id=None):
+        """Return all calibrations for a run date, optionally filtered."""
+        sql = "SELECT * FROM calibrations WHERE run_date=?"
+        params = [run_date]
+        if method:
+            sql += " AND method=?"
+            params.append(method)
+        if batch_id:
+            sql += " AND batch_id=?"
+            params.append(batch_id)
+        sql += " ORDER BY analyte ASC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_qc_for_run(self, run_date, analyte=None, batch_id=None,
+                       qc_types=None):
+        """Return active QC results for a run date, optionally filtered."""
+        sql = ("SELECT * FROM qc_results "
+               "WHERE run_date=? AND result_status='active'")
+        params = [run_date]
+        if analyte:
+            sql += " AND analyte=?"
+            params.append(analyte)
+        if batch_id:
+            sql += " AND batch_id=?"
+            params.append(batch_id)
+        if qc_types:
+            placeholders = ",".join("?" * len(qc_types))
+            sql += " AND qc_type IN ({0})".format(placeholders)
+            params.extend(qc_types)
+        sql += " ORDER BY qc_type ASC, qc_level ASC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_run_dates(self, method=None, limit=30):
+        """Return distinct run_dates (newest first) that have calibration data."""
+        sql = "SELECT DISTINCT run_date FROM calibrations WHERE 1=1"
+        params = []
+        if method:
+            sql += " AND method=?"
+            params.append(method)
+        sql += " ORDER BY run_date DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [r[0] for r in rows]
+
+    def approve_run(self, run_date, approved_by, method=None, batch_id=None):
+        """Set approved_by + approved_at on all calibrations for a run date."""
+        import datetime
+        now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        sql = ("UPDATE calibrations SET approved_by=?, approved_at=? "
+               "WHERE run_date=?")
+        params = [approved_by, now, run_date]
+        if method:
+            sql += " AND method=?"
+            params.append(method)
+        if batch_id:
+            sql += " AND batch_id=?"
+            params.append(batch_id)
+        with self._connect() as conn:
+            conn.execute(sql, params)
+            affected = conn.execute("SELECT changes()").fetchone()[0]
+        logger.info("approve_run: approved %d calibrations for %s by %s",
+                    affected, run_date, approved_by)
+        return affected
+
+    def update_calibration_override(self, calibration_id, fit_type_override="",
+                                    weight_override="", origin_override=""):
+        """Persist reviewer-selected fit overrides on a calibration row."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE calibrations SET fit_type_override=?, "
+                "weight_override=?, origin_override=? WHERE id=?",
+                (fit_type_override, weight_override, origin_override,
+                 calibration_id),
+            )
+        logger.info("calibration %s override: fit=%s weight=%s origin=%s",
+                    calibration_id, fit_type_override, weight_override,
+                    origin_override)
 
     def get_summary(self):
         """Return per-qc_type counts and failure counts (active results only)."""

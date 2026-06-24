@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">PFAS Reference Definition Setup</title>
+  <title metal:fill-slot="title">Reference Definition Setup</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     /* ── Setup refs page-specific ─────────────────────────────────────── */
@@ -57,15 +57,9 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">PFAS Reference Definition Setup</tal:t>
+  <tal:t metal:fill-slot="header-title">Reference Definition Setup</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <span class="header-meta">
-      Manager only &bull; Creates/updates one ReferenceDefinition per QC type &bull;
-      Rules from <code tal:content="view/rules_path">/data/qc/qc_rules.json</code>
-    </span>
-    <a class="back-link" tal:attributes="href string:${context/absolute_url}/@@lims-setup">
-      Site Setup
-    </a>
+    <span class="role-badge">LabManager</span>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -83,7 +77,7 @@
     <div class="info-card">
       <h2>What this does</h2>
       <p>
-        Creates one <strong>ReferenceDefinition</strong> in SENAITE for each PFAS QC type
+        Creates one <strong>ReferenceDefinition</strong> in SENAITE for each QC type
         (MB, LRB, MxB, CAL, ICV, CCV, LCS, LFSM, LFSMD, Dup). Each definition is
         populated with per-analyte expected values, acceptance ranges, and error
         tolerances derived from the current QC rules.
@@ -93,7 +87,7 @@
         a rule simply updates the existing definitions without creating duplicates.
       </p>
       <p>
-        <strong>Prerequisite:</strong> the PFAS GenericSetup profile must have been
+        <strong>Prerequisite:</strong> the GenericSetup profile must have been
         installed first to create the AnalysisService objects.
         This view reports how many services it found.
       </p>
@@ -103,7 +97,7 @@
     </div>
 
     <div class="existing-list">
-      <h2>Existing PFAS Reference Definitions</h2>
+      <h2>Existing Reference Definitions</h2>
       <tal:ex tal:define="existing view/existing_ref_defs">
         <ul tal:condition="existing">
           <tal:it tal:repeat="t existing">
@@ -150,7 +144,7 @@
     <div class="action-bar">
       <form method="POST" action=""
             tal:attributes="action string:${context/absolute_url}/@@pfas-setup-references"
-            onsubmit="return confirm('Create/update all PFAS Reference Definitions now?')">
+            onsubmit="return confirm('Create/update all Reference Definitions now?')">
         <button type="submit" class="btn-run"
                 tal:attributes="disabled python:not view.is_manager()">
           Create / Update Reference Definitions
@@ -160,12 +154,16 @@
         Safe to run repeatedly. Analyte values are refreshed from the current QC
         rules each time. To change acceptance criteria, edit them in
         <a tal:attributes="href string:${context/absolute_url}/@@pfas-qc-rules">
-          PFAS QC Rule Configuration
+          QC Rule Configuration
         </a>
         first, then run this setup again.
       </span>
     </div>
 
+  <div class="pane-footer">
+    <span>Creates/updates SENAITE ReferenceDefinitions from QC rules</span>
+    <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
+  </div>
   </div>
   </div><!-- /content slot -->
 </body>

@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<object name="PreparedStandard" meta_type="Dexterity FTI">
+  <property name="title">Prepared Standard</property>
+  <property name="description">An in-house prepared reagent or standard with full preparation parentage and internal certificate</property>
+  <property name="icon_expr">string:${portal_url}/senaite_theme/icon/analysisprofile</property>
+  <property name="factory">PreparedStandard</property>
+  <property name="add_view_expr">string:${folder_url}/++add++PreparedStandard</property>
+  <property name="schema">senaite.pfas.content.prepared_standard.IPreparedStandard</property>
+  <property name="klass">senaite.pfas.content.prepared_standard.PreparedStandard</property>
+  <property name="behaviors">
+    <element value="plone.dublincore"/>
+    <element value="plone.namefromtitle"/>
+    <element value="plone.app.referenceablebehavior.referenceable.IReferenceable"/>
+    <element value="bika.lims.interfaces.IMultiCatalogBehavior"/>
+  </property>
+  <property name="global_allow">True</property>
+  <property name="filter_content_types">False</property>
+</object>

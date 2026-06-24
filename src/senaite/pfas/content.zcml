@@ -2,14 +2,27 @@
     xmlns="http://namespaces.zope.org/zope"
     i18n_domain="senaite.pfas">
 
-  <!-- Reagent (barcode-scanned lot) — Dexterity fields are not callable
-       methods, so use <allow attributes> rather than <require interface>
-       to avoid "security declaration for nonexistent method" warnings. -->
+  <!-- Reagent (procured lot) -->
   <class class=".content.reagent.Reagent">
     <allow attributes="category supplier cat_number lot_number received_date
                         manufacturer_expiry expiry_date opened_date
                         storage_location barcode quantity unit
                         scan_count status notes" />
+  </class>
+
+  <!-- PrepLogbookDef (versioned preparation logbook definition) -->
+  <class class=".content.prep_logbook_def.PrepLogbookDef">
+    <allow attributes="logbook_slug revision status standard_type description
+                        procedure default_expiry_days analyte_template_json
+                        archived_date notes" />
+  </class>
+
+  <!-- PreparedStandard (in-house prepared reagent or standard) -->
+  <class class=".content.prepared_standard.PreparedStandard">
+    <allow attributes="lot_number standard_type logbook_slug logbook_revision
+                        logbook_title prepared_by prepared_date expiry_date
+                        expiry_notes storage_location volume_prepared
+                        status notes" />
   </class>
 
   <!-- EnvironmentalReading (RPi temperature/humidity) -->

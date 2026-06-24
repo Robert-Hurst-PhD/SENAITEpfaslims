@@ -23,6 +23,7 @@ from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.sidebar import _get_user_roles
 
 
 class PFASMacrosView(BrowserView):
@@ -40,6 +41,21 @@ class PFASMacrosView(BrowserView):
 
     def current_path(self):
         return self.request.get('PATH_INFO', '')
+
+    def user_roles(self):
+        return _get_user_roles(self.context)
+
+    def user_name(self):
+        """Return the authenticated user's login name, or '' if anonymous."""
+        from AccessControl import getSecurityManager
+        user = getSecurityManager().getUser()
+        name = getattr(user, 'getUserName', lambda: '')()
+        return name if name and name.lower() != 'anonymous user' else ''
+
+    def is_manager_role(self):
+        """Return True if the current user is a LabManager or Manager."""
+        roles = self.user_roles()
+        return 'LabManager' in roles or 'Manager' in roles
 
     def render_sidebar(self):
         """Return the unified sidebar HTML fragment.
@@ -87,7 +103,7 @@ class PFASMacrosView(BrowserView):
         is_analyst = 'Analyst' in roles or 'Verifier' in roles
         is_clerk   = 'LabClerk' in roles
 
-        items = [sec('PFAS Tools')]
+        items = [sec('Lab Tools')]
 
         if is_manager or is_analyst:
             items.append(itm('@@pfas-method-profiles', 'Method Profiles', u'·'))

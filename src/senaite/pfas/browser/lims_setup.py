@@ -316,11 +316,16 @@ class PFASSetupView(SetupView):
 
     # -- Data ----------------------------------------------------------------
 
+    def current_section(self):
+        """Return the ?section= query parameter, or '' for the full view."""
+        return self.request.get('section', '')
+
     def grouped_setup_items(self):
         """Return groups of setup items in workflow dependency order.
 
-        Each group is a dict: { id, title, tiles }.
-        Items not belonging to any named group go into the General catch-all.
+        When ?section=<id> is present, only that group is returned.
+        Items not belonging to any named group go into the General catch-all
+        (only shown in the full, unfiltered view).
         """
         all_items = self.setupitems()
         by_id = {item.getId(): item for item in all_items}
@@ -332,8 +337,12 @@ class PFASSetupView(SetupView):
             url = '{0}/{1}'.format(base, view)
             pfas_by_id[tid] = VirtualTile(tid, title, url, desc, icon)
 
+        section = self.request.get('section', '')
+
         groups = []
         for gdef in SETUP_GROUPS:
+            if section and gdef['id'] != section:
+                continue
             tiles = []
             for item_ref in gdef["item_ids"]:
                 if isinstance(item_ref, _PFASRef):
@@ -349,16 +358,17 @@ class PFASSetupView(SetupView):
                     "tiles": tiles,
                 })
 
-        # General catch-all: remaining core items + the bika_setup root.
-        remainder = [
-            item for item in all_items
-            if item.getId() not in _GROUPED_IDS
-        ]
-        remainder.insert(0, self.setup)
-        groups.append({
-            "id":    "general",
-            "title": "General",
-            "tiles": remainder,
-        })
+        # General catch-all only shown in the full unfiltered view.
+        if not section:
+            remainder = [
+                item for item in all_items
+                if item.getId() not in _GROUPED_IDS
+            ]
+            remainder.insert(0, self.setup)
+            groups.append({
+                "id":    "general",
+                "title": "General",
+                "tiles": remainder,
+            })
 
         return groups
