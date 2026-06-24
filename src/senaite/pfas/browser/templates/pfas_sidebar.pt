@@ -276,21 +276,37 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
 
 /* ── Mobile (core SENAITE pages, ≤768px) ─────────────────────────────────── */
 @media (max-width: 768px) {
-  /* Sidebar becomes a fixed full-height drawer — taken out of document flow */
+  /* Sidebar becomes a fixed full-height drawer — taken out of document flow.
+     All key properties use !important to beat SENAITE's #sidebar rules. */
   body:not(.pfas-app) #sidebar.pfas-sidebar {
-    position: fixed;
-    top: 52px; left: 0; bottom: 0;
-    z-index: 1000;
-    transform: translateX(-100%);
-    box-shadow: none;
-    transition: transform .22s ease;
+    position: fixed !important;
+    top: 52px !important; left: 0 !important; bottom: 0 !important; right: auto !important;
+    z-index: 1000 !important;
+    transform: translateX(-100%) !important;
+    box-shadow: none !important;
+    transition: transform .22s ease !important;
     min-width: 260px !important;
     max-width: 260px !important;
-    overflow-y: auto;
+    width: 260px !important;
+    overflow: hidden !important;
+    overflow-y: auto !important;
+    white-space: normal !important;
+    background-color: #fff !important;
   }
   body:not(.pfas-app) #sidebar.pfas-sidebar.mobile-open {
-    transform: translateX(0);
-    box-shadow: 4px 0 24px rgba(0,0,0,.35);
+    transform: translateX(0) !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,.35) !important;
+  }
+  /* Main content takes full width — override SENAITE's width:calc(100% - 50px) */
+  body:not(.pfas-app) .wrapper > div,
+  body:not(.pfas-app) .wrapper div.container-fluid,
+  body:not(.pfas-app) .wrapper div.container-lg,
+  body:not(.pfas-app) .wrapper div.container-md,
+  body:not(.pfas-app) .wrapper div.container-sm,
+  body:not(.pfas-app) .wrapper div.container-xl {
+    width: 100% !important;
+    margin-left: 0 !important;
+    padding-left: 8px !important;
   }
   /* Full-page backdrop behind open drawer */
   #pfas-mobile-backdrop {
@@ -306,10 +322,6 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   body:not(.pfas-app) .pfas-sb-foot { display: none; }
   /* Make the toolbar toggle visible on mobile */
   body:not(.pfas-app) .pfas-core-toggle { display: inline-flex !important; }
-  /* Core page content: remove any left margin that assumed a sidebar */
-  body:not(.pfas-app) .container-fluid,
-  body:not(.pfas-app) #content-wrapper,
-  body:not(.pfas-app) #content { margin-left: 0 !important; padding-left: 8px !important; }
   /* Scrollable content on core pages */
   body:not(.pfas-app) .pat-structure,
   body:not(.pfas-app) .container { overflow-x: auto; }
@@ -1041,14 +1053,14 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     var links = document.querySelectorAll('#sidebar .pfas-si');
     for (var i = 0; i < links.length; i++) {
       links[i].addEventListener('click', function () {
-        if (_isMobile()) { pfasCloseMobileSidebar(); }
+        if (window.innerWidth <= 768) { pfasCloseMobileSidebar(); }
       });
     }
   }
 
   /* Restore desktop icon-rail state on core pages */
   function restoreRailState() {
-    if (_isMobile()) return;
+    if (window.innerWidth <= 768) return;
     try {
       if (sessionStorage.getItem('pfas_panel_collapsed') === '1') {
         var sb = document.getElementById('sidebar');
@@ -1062,7 +1074,20 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     if (e.key === 'Escape') { pfasCloseMobileSidebar(); }
   });
 
+  /* Fix SENAITE's initial-scale=0.8 viewport — core pages end up with two
+     <meta name="viewport"> tags and the 0.8 one wins, making everything
+     appear zoomed out on mobile. Force 1.0 by replacing all viewport metas. */
+  function fixViewport() {
+    var metas = document.querySelectorAll('meta[name="viewport"]');
+    if (metas.length <= 1) return;
+    for (var i = 1; i < metas.length; i++) {
+      metas[i].parentNode.removeChild(metas[i]);
+    }
+    metas[0].setAttribute('content', 'width=device-width, initial-scale=1.0');
+  }
+
   function init() {
+    fixViewport();
     applyModuleName();
     injectSidebarToggle();
     fixUserButton();
