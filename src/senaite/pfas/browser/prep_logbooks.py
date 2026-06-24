@@ -270,6 +270,19 @@ _BUILTIN_DEFS = [
         "revision":     1,
         "field_schema_json": u'[{"name":"analyst","label":"Analyst","type":"text","required":true,"correctable":true,"width":"lg"},{"name":"processing_date","label":"Processing Date","type":"date","required":true,"correctable":true,"width":"md"},{"name":"balance_sn","label":"Balance S/N","type":"text","correctable":true,"width":"md"},{"name":"grinder_cleaned","label":"Grinder Cleaned / Blank Passed","type":"checkbox"},{"name":"notes","label":"Notes","type":"textarea","correctable":true},{"name":"samples","label":"Samples","type":"table","columns":[{"name":"sample_id","label":"Sample ID","type":"text"},{"name":"weight_g","label":"Weight (g)","type":"number"},{"name":"notes","label":"Notes","type":"text"}],"default_rows":[]},{"name":"processing_materials","label":"Processing Materials","type":"table","columns":[{"name":"name","label":"Material","type":"text"},{"name":"lot","label":"Lot #","type":"text"},{"name":"notes","label":"Notes","type":"text"}],"default_rows":[]}]',
     },
+    # Chain of Custody — applies to all methods (no method_slug restriction)
+    {
+        "logbook_slug": "coc",
+        "logbook_code": "COC",
+        "title":        u"Chain of Custody",
+        "method_slug":  u"",
+        "sort_order":   50,
+        "status":       STATUS_ACTIVE,
+        "active":       True,
+        "builtin":      True,
+        "revision":     1,
+        "field_schema_json": u'[{"name":"client_name","label":"Client / Submitter","type":"text","required":true,"width":"lg"},{"name":"project_name","label":"Project Name","type":"text","width":"lg"},{"name":"project_number","label":"Project Number","type":"text","width":"md"},{"name":"sample_collection_date","label":"Sample Collection Date","type":"date","required":true,"width":"md"},{"name":"sampler_name","label":"Field Sampler","type":"text","width":"lg"},{"name":"sample_preservation","label":"Preservation / Holding","type":"text","width":"lg"},{"name":"containers","label":"Containers Received","type":"table","columns":[{"name":"sample_id","label":"Sample ID","type":"text"},{"name":"container_type","label":"Container","type":"text"},{"name":"volume_ml","label":"Vol (mL)","type":"number"},{"name":"temp_c","label":"Temp (°C)","type":"number"},{"name":"condition","label":"Condition","type":"text"}],"default_rows":[]},{"name":"transfers","label":"Custody Transfers","type":"table","columns":[{"name":"relinquished_by","label":"Relinquished By","type":"text"},{"name":"relinquished_at","label":"Date/Time","type":"text"},{"name":"received_by","label":"Received By","type":"text"},{"name":"received_at","label":"Date/Time","type":"text"},{"name":"method","label":"Method","type":"text"}],"default_rows":[]},{"name":"lab_received_by","label":"Received by (Lab)","type":"text","required":true,"correctable":true,"width":"lg"},{"name":"lab_received_date","label":"Date/Time Received","type":"date","required":true,"correctable":true,"width":"md"},{"name":"seals_intact","label":"Seals Intact","type":"checkbox"},{"name":"labels_legible","label":"Labels Legible","type":"checkbox"},{"name":"holding_time_ok","label":"Holding Times OK","type":"checkbox"},{"name":"condition_notes","label":"Sample Condition Notes","type":"textarea","correctable":true},{"name":"reviewed_by","label":"Reviewed By (QAO)","type":"text","correctable":true,"width":"lg"},{"name":"reviewed_date","label":"Review Date","type":"date","correctable":true,"width":"md"}]',
+    },
 ]
 
 

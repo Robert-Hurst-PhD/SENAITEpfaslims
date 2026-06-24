@@ -27,7 +27,7 @@ class PFASWorkspaceHomeView(BrowserView):
         if 'LabManager' in roles or 'Manager' in roles:
             target = '{0}/@@pfas-method-profiles'.format(base)
         elif 'Analyst' in roles or 'Verifier' in roles:
-            target = '{0}/@@pfas-sample-status'.format(base)
+            target = '{0}/@@pfas-data-review'.format(base)
         elif 'LabClerk' in roles:
             target = '{0}/@@pfas-reagents'.format(base)
         elif 'Client' in roles:
