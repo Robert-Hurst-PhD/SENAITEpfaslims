@@ -212,6 +212,13 @@ body:not(.pfas-app) #senaite-toolbar .nav-link:hover,
 body:not(.pfas-app) #senaite-toolbar .dropdown-toggle:hover {
   color: #fff !important;
 }
+/* Bootstrap's collapse toggler is redundant — we force navbar-collapse always
+   open via display:flex!important above, so hide it on all screen sizes. */
+body:not(.pfas-app) #senaite-toolbar .navbar-toggler { display: none !important; }
+
+/* Desktop: user dropdown shows text; mobile overrides show icon-only */
+body:not(.pfas-app) #navbarUserDropdown .pfas-user-icon { display: none; }
+
 /* Sidebar toggle button injected before the navbar-brand on core pages */
 body:not(.pfas-app) .pfas-core-toggle {
   background: none; border: none; border-right: 1px solid rgba(255,255,255,.1);
@@ -306,6 +313,43 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   /* Scrollable content on core pages */
   body:not(.pfas-app) .pat-structure,
   body:not(.pfas-app) .container { overflow-x: auto; }
+
+  /* ── Toolbar layout on mobile ──────────────────────────────────────────── */
+  /* Single row, never wraps */
+  body:not(.pfas-app) #senaite-toolbar {
+    flex-wrap: nowrap !important;
+    overflow: hidden;
+  }
+  /* Brand: shrinks if needed, truncates, doesn't push icons off-screen */
+  body:not(.pfas-app) .navbar-brand {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px !important;
+    margin: 0 4px !important;
+  }
+  /* Tighten icon padding on mobile to gain space */
+  body:not(.pfas-app) #senaite-toolbar .nav-link,
+  body:not(.pfas-app) #senaite-toolbar .dropdown-toggle {
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+  /* Language selector: rarely needed on mobile — accessible via desktop */
+  body:not(.pfas-app) #senaite-toolbar li.nav-item:has(i.fa-globe) {
+    display: none !important;
+  }
+  /* LIMS setup cog: reachable from the sidebar Configuration group */
+  body:not(.pfas-app) #senaite-toolbar li.nav-item:has(i.fa-cog) {
+    display: none !important;
+  }
+  /* User dropdown: show icon, hide username text to save width */
+  body:not(.pfas-app) #navbarUserDropdown .pfas-user-icon {
+    display: inline-block !important;
+  }
+  body:not(.pfas-app) #navbarUserDropdown .pfas-user-text {
+    display: none !important;
+  }
 }
 </style>
 
@@ -980,6 +1024,18 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     document.body.appendChild(bd);
   }
 
+  /* Replace plain username text with icon+text span so CSS can
+     show only the icon on narrow screens */
+  function fixUserButton() {
+    var btn = document.getElementById('navbarUserDropdown');
+    if (!btn || btn.querySelector('.pfas-user-icon')) return;
+    var text = btn.textContent.trim();
+    if (!text) return;
+    btn.innerHTML =
+      '<i class="fas fa-user-circle pfas-user-icon" aria-hidden="true"></i>' +
+      '<span class="pfas-user-text">' + text + '</span>';
+  }
+
   function wireNavLinks() {
     /* Auto-close the sidebar when a nav link is tapped on mobile */
     var links = document.querySelectorAll('#sidebar .pfas-si');
@@ -1009,6 +1065,7 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   function init() {
     applyModuleName();
     injectSidebarToggle();
+    fixUserButton();
     injectBackdrop();
     wireNavLinks();
     restoreRailState();
