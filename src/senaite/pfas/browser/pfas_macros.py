@@ -106,6 +106,8 @@ class PFASMacrosView(BrowserView):
         items = [sec('Lab Tools')]
 
         if is_manager or is_analyst:
+            items.append(itm('@@pfas-data-review',     'Data Review',     u'·'))
+        if is_manager or is_analyst:
             items.append(itm('@@pfas-method-profiles', 'Method Profiles', u'·'))
         if is_manager or is_analyst:
             items.append(itm('@@pfas-control-chart',   'Control Charts',  u'·'))
