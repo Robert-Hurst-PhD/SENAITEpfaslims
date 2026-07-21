@@ -807,8 +807,10 @@ class EPA1633AProfile(MethodProfile):
                         lo = float(mat_override.get("recovery_min", lo))
                         hi = float(mat_override.get("recovery_max", hi))
             return QCRule(lo, hi,
+                          verify_against_method=True,
                           notes="EIS limits per-analyte x matrix class "
-                                "(1633A Tables 6/8, EPA 820-R-24-007)")
+                                "(1633A Tables 6/8, EPA 820-R-24-007) — VERIFY "
+                                "against purchased method copy")
 
         qa = profile.get("qc_acceptance", {})
         # OPR (ongoing precision & recovery) maps to LFB code in the pool

@@ -2746,3 +2746,20 @@ unchecked, so a subsequent manager save preserves it.
 NOTE: only PFODA×Eggs is documented in _FDA_MATRIX_EXCLUSIONS. Other FDA
 per-matrix carve-outs from the method document (if any) are NOT yet encoded —
 that requires the FDA method doc and is a separate item, not assumed here.
+
+## D62 — 1633A EIS rules carry verify_against_method=True (2026-07-21)
+
+The pipeline module docstring and CLAUDE.md §8 both require 1633A per-analyte EIS
+limits (Tables 6/8) to be flagged for verification against the purchased method
+copy ("never fabricate a regulatory value"). The `qc_rules` EIS branch in
+`pfas_pipeline/method_profiles.py` returned its QCRule WITHOUT
+`verify_against_method=True`, contradicting its own docstring and failing the
+long-standing `tests/test_profiles.py::test_537_vs_1633`. Code was the bug (the
+test/docstring encoded the intent), not a design ambiguity.
+
+**Fix:** EIS branch now returns `verify_against_method=True`. Behaviour impact is
+annotation-only: qc_engine consults the flag ONLY after a recovery is already
+outside limits (qc_engine.py:531 returns pass BEFORE the flag is read), where it
+appends " [VERIFY limits vs method tables]" to the failure message. No change to
+pass/fail, limits, or which analytes fail. Scoped to 1633A EIS; FDA/537 rules
+unchanged (verified live: 1633A EIS True, FDA LFSM False). Test suite now 6/6.
