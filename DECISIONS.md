@@ -2722,3 +2722,27 @@ via an FDA-specific table (`_FDA_DISPLAY_TO_KW`); for 537.1/1633A it falls back 
 identity (correct for their analytes, but conservative — an unmapped differing
 name defaults to included, never dropped). Making that map method-agnostic
 (exported from NATIVE_ANALYTES) is the exact-filter follow-on.
+
+## D61 — reconcile live FDA inclusion with documented carve-out (PFODA×Eggs) (2026-07-21)
+
+The FDA method excludes PFODA from the Eggs matrix (encoded in
+`_FDA_MATRIX_EXCLUSIONS = {"PFODA": {"Eggs"}}`; the default seed applies it via
+`_fda_analyte_matrix_inclusion()`). The LIVE stored FDA profile had drifted to
+`PFODA×Eggs = True` — the panel save is authoritative and persists whatever the
+grid submitted, so a save made before the carve-out was reflected clobbered it
+back to all-True. Not a save-path bug; a one-time data drift.
+
+**Remedy:** `migrations/reconcile_fda_matrix_exclusions.py` — forces every
+DOCUMENTED carve-out cell to False in the stored inclusion, leaves every other
+cell exactly as stored, idempotent, commits only on change. This is the home for
+any future documented carve-outs (add them to _FDA_MATRIX_EXCLUSIONS, re-run).
+
+**Live-verified 2026-07-21 end-to-end:** store PFODA×Eggs False → Eggs panel 31,
+Meat 32; export JSON `PFODA: {Eggs: False, else True}`; Py3 worker
+get_included_display_analytes FDA×Eggs = 31 (PFODA excluded), Meat = 32 (PFODA
+included); profile page renders 200. Durable: the grid now renders PFODA×Eggs
+unchecked, so a subsequent manager save preserves it.
+
+NOTE: only PFODA×Eggs is documented in _FDA_MATRIX_EXCLUSIONS. Other FDA
+per-matrix carve-outs from the method document (if any) are NOT yet encoded —
+that requires the FDA method doc and is a separate item, not assumed here.
