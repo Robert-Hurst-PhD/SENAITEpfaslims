@@ -1209,7 +1209,20 @@ def export_profiles_to_file(portal, path=None):
                 pass
 
     # Augment each exported profile with derived fields the pipeline expects.
-    for profile in all_profiles.values():
+    for method_id, profile in all_profiles.items():
+        # master_analyte_set: service-derived membership (D59) so the pipeline
+        # worker — the real report/EDD consumer — reads the set from the core
+        # AnalysisService.Methods links, not the hardcoded list. Byte-identical
+        # to the stored list post-backfill; get_master_analyte_set falls back to
+        # the stored list if derivation is unavailable, so the export never
+        # regresses to an empty panel.
+        try:
+            profile["master_analyte_set"] = get_master_analyte_set(
+                portal, method_id, profile=profile)
+        except Exception as exc:
+            logger.warning("export: master_analyte_set derivation failed for "
+                           "%s, keeping stored: %s", method_id, exc)
+
         # display_analyte_set: display names in analyte order, derived from
         # per_analyte rows.  The pipeline's get_analyte_list() checks this
         # first so it does not need to fall back to a hardcoded list.

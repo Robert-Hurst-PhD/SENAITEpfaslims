@@ -53,6 +53,14 @@ def run():
     except Exception as exc:
         print("WARN: could not set security manager: {}".format(exc))
 
+    # plone.api / bika.lims.api.get_tool resolve through getSite(); a bin/instance
+    # run script has no active site, so without this the catalog lookups inside
+    # link_method_analytes / get_master_analyte_set silently return nothing and
+    # the whole backfill no-ops. (Documented gotcha.)
+    from zope.component.hooks import setSite, setHooks
+    setHooks()
+    setSite(portal)
+
     from senaite.pfas.method_bridge import link_method_analytes
     from senaite.pfas.method_profile_store import (
         get_master_analyte_set, get_profile)
@@ -80,25 +88,60 @@ def run():
         print("ERROR committing transaction: {}".format(exc))
         sys.exit(1)
 
-    # Verification: derived set must equal the stored list for every method.
-    print("\nVerification (derived vs stored master_analyte_set):")
+    # Verification. NOTE: comparing get_master_analyte_set() to the stored list
+    # is a tautology — its fallback returns the stored list too, so it passes
+    # even if the service derivation never engaged. Instead we count the ACTUAL
+    # getMethods() linkage independently and require it to be non-empty AND to
+    # equal the stored count. n == 0 means the derivation is silently falling
+    # back → FAIL loudly.
+    from senaite.pfas.method_bridge import get_core_method
+    from bika.lims import api
+    setup_cat = api.get_tool("senaite_catalog_setup")
+
+    print("\nVerification (independent getMethods() linkage count):")
     ok = True
     for mid, _added in result["methods"]:
         profile = get_profile(portal, mid)
         stored = list(profile.get("master_analyte_set", []))
+        method = get_core_method(portal, mid)
+        n = 0
+        linked_kws = set()
+        if method is not None:
+            muid = method.UID()
+            for brain in setup_cat(portal_type="AnalysisService"):
+                svc = brain.getObject()
+                rf = svc.getField("pfas_role")
+                if ((rf.get(svc) if rf is not None else "") or "") != "analyte":
+                    continue
+                try:
+                    muids = [m.UID() for m in (svc.getMethods() or [])]
+                except Exception:
+                    muids = []
+                if muid in muids:
+                    n += 1
+                    linked_kws.add(svc.getKeyword())
+        # also confirm the derived list matches stored (order + membership)
         derived = get_master_analyte_set(portal, mid, profile=profile)
-        match = derived == stored
-        ok = ok and match
-        print("  {:<12} {}  (stored={}, derived={})".format(
-            mid, "OK" if match else "MISMATCH", len(stored), len(derived)))
-        if not match:
-            print("    stored - derived: {}".format(
-                sorted(set(stored) - set(derived))))
-            print("    derived - stored: {}".format(
-                sorted(set(derived) - set(stored))))
+        good = (method is not None and n > 0 and n == len(stored)
+                and derived == stored)
+        ok = ok and good
+        print("  {:<12} {}  (linked_services={}, stored={}, derived={})".format(
+            mid, "OK" if good else "FAIL", n, len(stored), len(derived)))
+        if not good:
+            if method is None:
+                print("    -> no core Method linked (get_core_method None)")
+            elif n == 0:
+                print("    -> ZERO services linked via getMethods(): derivation "
+                      "is falling back to the stored list, NOT active")
+            else:
+                print("    stored - linked: {}".format(
+                    sorted(set(stored) - linked_kws)))
+                print("    linked - stored: {}".format(
+                    sorted(linked_kws - set(stored))))
 
-    print("\nDone. {}".format("All methods verified." if ok
-                              else "REVIEW MISMATCHES ABOVE."))
+    print("\nDone. {}".format(
+        "All methods verified (service linkage active)." if ok
+        else "VERIFICATION FAILED — review above; derivation is NOT active."))
 
 
 run()

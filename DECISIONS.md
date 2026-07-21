@@ -2658,4 +2658,28 @@ so linking only the reported natives does not orphan it.
 
 **Safety fallback:** get_master_analyte_set falls back to the stored list when no
 core Method is linked or no method-linked analyte services are found (pre-backfill
-robustness). Verified derived == stored for all three default methods.
+robustness). export_profiles_to_file also writes the derived set into
+method_profiles.json (byte-identical post-backfill) so the exported SSOT field
+reflects the service derivation.
+
+**Consumer-path note (scope boundary):** master_analyte_set is the SSOT consumed
+by spec_sync (AnalysisSpec ResultsRange), the config UI, and get_included_analytes.
+The pipeline worker's *reported* analyte list, however, comes from a SEPARATE
+representation — `display_analyte_set` (display names, derived in the export from
+`per_analyte` rows) + `analyte_matrix_inclusion` — and does NOT read
+master_analyte_set. So D59 makes the config/spec side service-derived; it does
+NOT by itself make the pipeline's reported panel service-derived. Fully unifying
+these (deriving per_analyte / display_analyte_set from services too, or collapsing
+the two representations into one) is the natural D60 follow-on and was NOT in
+D59's approved scope.
+
+**Verification note:** the migration's check counts real getMethods() linkage per
+method independently (n>0 and n==len(stored)); comparing get_master_analyte_set()
+to the stored list alone is a tautology because its fallback returns the stored
+list. The standalone migration sets setSite/setHooks (required for api.get_tool).
+
+**Live status:** code complete + offline-verified (stored lists match the CSV
+Method column; order preserved byte-identical). Actual getMethods() service
+linkage is CREATED by the backfill and is NOT yet verified live — the container
+was down and the docker-socket fix needs the user. Run the backfill + its
+self-check to confirm the derivation is active.
