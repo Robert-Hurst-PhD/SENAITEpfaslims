@@ -182,3 +182,68 @@ def link_all(portal):
         else:
             linked.append(mid)
     return {"linked": linked, "unmatched": unmatched}
+
+
+def _service_obj_map(portal):
+    """{keyword: AnalysisService object} for every core AnalysisService."""
+    out = {}
+    for b in _catalog(portal)(portal_type="AnalysisService"):
+        try:
+            o = b.getObject()
+            out[o.getKeyword()] = o
+        except Exception:
+            continue
+    return out
+
+
+def link_method_analytes(portal):
+    """D59 backfill: stamp each profile's core Method onto the AnalysisServices in
+    that profile's stored master_analyte_set, via SENAITE's native Method↔Service
+    relation (setMethods). This is the authoritative per-method analyte membership
+    that get_master_analyte_set() derives from.
+
+    The 3 default methods were seeded by setuphandlers, which stamps pfas_role but
+    never links services to Methods (only the new-method wizard does). Seed = the
+    stored profile lists, NOT analysis_services.csv's Method column (which also
+    lists br-PFHxS/br-PFOS isomer components that must not enter the reported
+    panel — see D59). Idempotent; merges with existing Methods; never removes
+    links. Returns a summary dict.
+    """
+    from senaite.pfas.method_profile_store import list_method_ids, get_profile
+
+    svc_map = _service_obj_map(portal)
+    result = {"methods": [], "links_added": 0,
+              "unmatched_methods": [], "missing_services": {}}
+
+    for mid in list_method_ids(portal):
+        profile = get_profile(portal, mid)
+        method = get_core_method(portal, mid)
+        if method is None:
+            result["unmatched_methods"].append(
+                (mid, _method_label(mid, profile)))
+            continue
+
+        method_uid = method.UID()
+        added, missing = 0, []
+        for kw in profile.get("master_analyte_set", []):
+            svc = svc_map.get(kw)
+            if svc is None:
+                missing.append(kw)
+                continue
+            if not (hasattr(svc, "getMethods") and hasattr(svc, "setMethods")):
+                continue
+            try:
+                existing = list(svc.getMethods() or [])
+                if method_uid not in [m.UID() for m in existing]:
+                    existing.append(method)
+                    svc.setMethods(existing)
+                    added += 1
+            except Exception as exc:
+                logger.warning("link_method_analytes: setMethods failed for "
+                               "%s on %s: %s", kw, mid, exc)
+        result["methods"].append((mid, added))
+        result["links_added"] += added
+        if missing:
+            result["missing_services"][mid] = missing
+
+    return result

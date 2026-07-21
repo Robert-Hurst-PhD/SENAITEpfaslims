@@ -1237,6 +1237,74 @@ def export_profiles_to_file(portal, path=None):
         raise
 
 
+def get_master_analyte_set(portal, method_id, profile=None):
+    """Return the method's native master analyte set, DERIVED from core services.
+
+    D59: the single source of truth for per-method analyte membership is the
+    native SENAITE Method↔Service relation. The set = every AnalysisService with
+    pfas_role == "analyte" whose getMethods() includes this profile's linked core
+    Method (resolved via method_bridge). Surrogates/IS are NOT natives and carry
+    their own pfas_role, so they are excluded by construction.
+
+    MEMBERSHIP is service-derived; ORDER is preserved from the stored profile's
+    master_analyte_set (deliberate method-document order — see D59), with any
+    extra method-linked native appended in NATIVE_ANALYTES (library) order.
+
+    Falls back to the stored profile list when no core Method is linked or no
+    method-linked analyte services are found (pre-backfill robustness), so the
+    system never returns an empty panel.
+    """
+    if profile is None:
+        profile = get_profile(portal, method_id)
+    stored = list(profile.get("master_analyte_set", []))
+
+    members = None
+    try:
+        from senaite.pfas.method_bridge import get_core_method
+        from bika.lims import api
+        method = get_core_method(portal, method_id)
+        if method is not None:
+            method_uid = method.UID()
+            found = set()
+            setup_cat = api.get_tool("senaite_catalog_setup")
+            for brain in setup_cat(portal_type="AnalysisService"):
+                svc = brain.getObject()
+                rf = svc.getField("pfas_role")
+                role = (rf.get(svc) if rf is not None else "") or ""
+                if role != "analyte":
+                    continue
+                if not hasattr(svc, "getMethods"):
+                    continue
+                try:
+                    svc_method_uids = [m.UID() for m in (svc.getMethods() or [])]
+                except Exception:
+                    svc_method_uids = []
+                if method_uid in svc_method_uids:
+                    found.add(svc.getKeyword())
+            if found:
+                members = found
+    except Exception as exc:
+        logger.warning("get_master_analyte_set(%s): derivation failed, "
+                       "falling back to stored list: %s", method_id, exc)
+
+    if not members:
+        return stored
+
+    # ORDER: stored sequence first (filtered to members), then any extra member
+    # appended in the analyte library's canonical order.
+    ordered = [kw for kw in stored if kw in members]
+    extra = members - set(ordered)
+    if extra:
+        try:
+            from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+            lib_order = [row[0] for row in NATIVE_ANALYTES]
+        except Exception:
+            lib_order = []
+        lib_index = dict((k, i) for i, k in enumerate(lib_order))
+        ordered.extend(sorted(extra, key=lambda k: lib_index.get(k, 10 ** 6)))
+    return ordered
+
+
 def get_included_analytes(portal, method_id, matrix):
     """Return the ordered list of analyte keywords reportable for method × matrix.
 
@@ -1246,10 +1314,11 @@ def get_included_analytes(portal, method_id, matrix):
 
     Downstream callers (surrogate map, recovery tiers, QC engine, report, EDD)
     must use this function rather than reading master_analyte_set directly so
-    that the Method × Matrix panel is always respected.
+    that the Method × Matrix panel is always respected.  The master set itself
+    is service-derived (D59, via get_master_analyte_set).
     """
     profile = get_profile(portal, method_id)
-    master = profile.get("master_analyte_set", [])
+    master = get_master_analyte_set(portal, method_id, profile=profile)
     inclusion = profile.get("analyte_matrix_inclusion", {})
     if not inclusion:
         return list(master)

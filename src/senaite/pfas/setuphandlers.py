@@ -716,6 +716,21 @@ def post_install(context):
     except Exception as exc:
         logger.error("Failed to set up EGADConfig catalog / migration: %s", exc)
 
+    # ── Native Method↔AnalysisService links (D59) ─────────────────────────
+    # Makes the per-method analyte set derivable from services (get_master_
+    # analyte_set). The default methods are seeded here, not via the wizard,
+    # so their analyte services need setMethods stamped. Idempotent.
+    try:
+        from senaite.pfas.method_bridge import link_method_analytes
+        r = link_method_analytes(portal)
+        logger.info("Method↔analyte links: %d added across %d methods",
+                    r["links_added"], len(r["methods"]))
+        if r["unmatched_methods"]:
+            logger.warning("Method↔analyte links: unmatched methods: %s",
+                           r["unmatched_methods"])
+    except Exception as exc:
+        logger.error("Failed to backfill Method↔analyte links: %s", exc)
+
     # ── Prep logbook definitions catalog ──────────────────────────────────
     try:
         setup_prep_logbooks_catalog(portal)

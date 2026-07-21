@@ -2617,3 +2617,45 @@ analyte service (new field).
 REMAINING (offered): master_analyte_set is still a hardcoded per-method list;
 fully deriving the analyte SET from the method's linked analyte services (the
 association) is the natural next step to complete "everything from services".
+
+## D59 — master_analyte_set derived from core AnalysisService.Methods (2026-07-21)
+
+Completes D58's remaining step. The per-method native analyte SET is now derived
+from the services that actually report, not a hardcoded Python list.
+
+**Source of truth (confirmed):** core SENAITE `AnalysisService.getMethods()` —
+the native Method↔Service relation the new-method wizard already maintains
+(method_wizard.py:580). The method's native set = AnalysisServices with
+`pfas_role == "analyte"` whose `getMethods()` includes the profile's linked core
+Method (resolved via method_bridge.get_core_method). No parallel add-on store.
+
+**Accessor (minimal blast radius, confirmed):** new
+`get_master_analyte_set(portal, method_id)` in method_profile_store. The canonical
+`get_included_analytes()` routes through it (its docstring already mandates all
+downstream callers use it, so surrogate map / QC / report / EDD inherit the
+derivation). Direct profile["master_analyte_set"] readers are left reading the
+stored list, which the backfill keeps identical — no behavior change today.
+
+**Membership vs order:**
+- MEMBERSHIP = service-derived (getMethods + pfas_role=analyte).
+- ORDER = preserved from the stored profile master_analyte_set sequence, then
+  any extra member appended in NATIVE_ANALYTES (analyte library) order.
+  Verified: EPA_537_1 and EPA_1633A stored order does NOT match the library
+  order (deliberate method-document table order), so ordering MUST come from the
+  stored list to avoid reported-column drift. FDA order does match the library.
+
+**Prerequisite backfill (required — default methods are unlinked):** the 3
+default seeded methods never had setMethods called (setuphandlers only stamps
+pfas_role). `migrations/backfill_method_analyte_links.py` links each core
+Method to exactly the services in that profile's stored master_analyte_set,
+idempotent, and is also called from post_install. Seed = the stored profile
+lists, NOT analysis_services.csv's Method column: the CSV additionally lists
+`br-PFHxS`/`br-PFOS` (branched isomer components summed via isomer_summation,
+never reported as independent rows — method_profile_store.py:127) which would
+silently add 2 analytes to the FDA and 1633A reported panels. Isomer summation
+is a self-contained profile config (isomer_summation), independent of getMethods,
+so linking only the reported natives does not orphan it.
+
+**Safety fallback:** get_master_analyte_set falls back to the stored list when no
+core Method is linked or no method-linked analyte services are found (pre-backfill
+robustness). Verified derived == stored for all three default methods.
