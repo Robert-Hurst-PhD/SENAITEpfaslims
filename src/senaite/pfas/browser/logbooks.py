@@ -72,18 +72,15 @@ def _apply_field_corrections(form, existing, fields, data):
     data[u"_corrections"] = corrections
 BATCHES_EXPORT_ROOT = os.environ.get("PFAS_BATCHES_PATH", "/data/qc/batches")
 
-# Default cal points for FDA 32-PFAS (ng/mL)
+# Default cal points for FDA 32-PFAS (ng/mL) — DERIVED from the single-source
+# ladder (analyte_reference.CAL_LADDERS, descending: CAL-1 = highest). Values
+# identical to the previous hardcoded list; removes the 3rd duplicated (and
+# once contradictory) copy of the FDA ladder.
+from senaite.pfas.analyte_reference import get_cal_ladder as _get_cal_ladder
+
 FDA_CAL_DEFAULTS = [
-    ("CAL-1",  "FDA-CAL-1",  20.0),
-    ("CAL-2",  "FDA-CAL-2",  10.0),
-    ("CAL-3",  "FDA-CAL-3",   5.0),
-    ("CAL-4",  "FDA-CAL-4",   2.5),
-    ("CAL-5",  "FDA-CAL-5",   1.25),
-    ("CAL-6",  "FDA-CAL-6",   0.625),
-    ("CAL-7",  "FDA-CAL-7",   0.3125),
-    ("CAL-8",  "FDA-CAL-8",   0.15625),
-    ("CAL-9",  "FDA-CAL-9",   0.078125),
-    ("CAL-10", "FDA-CAL-10",  0.0390625),
+    ("CAL-%d" % (i + 1), "FDA-CAL-%d" % (i + 1), conc)
+    for i, conc in enumerate(_get_cal_ladder("FDA_32PFAS"))
 ]
 
 # ── Annotation helpers ─────────────────────────────────────────────────────────
@@ -156,11 +153,27 @@ class _LogbookBase(BrowserView):
         return self.context.Title() if hasattr(self.context, "Title") else self.batch_id()
 
     def batch_method(self):
-        """Best-guess method ID for this batch from saved logbook data."""
+        """Return the method ID for this batch.
+
+        Priority: extraction session > logbook 251/252 annotation > SENAITE batch method.
+        """
+        try:
+            from senaite.pfas.browser.extraction_guide import _load_session
+            sess = _load_session(self.context)
+            if sess.get("method_id"):
+                return sess["method_id"]
+        except Exception:
+            pass
         for form_num in (251, 252):
             method = _get_logbook(self.context, form_num).get("method", "")
             if method:
                 return method
+        try:
+            m = self.context.getMethod()
+            if m:
+                return m.getId()
+        except Exception:
+            pass
         return ""
 
     def _redirect(self, url):
@@ -197,38 +210,107 @@ class PFASLogbookIndexView(_LogbookBase):
 
     def logbooks(self):
         from senaite.pfas.logbook_store import get_active_logbook_defs
+        from senaite.pfas.method_profile_store import get_profile
         portal = getToolByName(self.context, "portal_url").getPortalObject()
-        defs = get_active_logbook_defs(portal)
+
+        # All active defs indexed by slug
+        all_defs = {d["slug"]: d for d in get_active_logbook_defs(portal)}
+
+        # Order by the method's required_logbooks list (falls back to all defs)
+        method_id = self.batch_method()
+        required_slugs = []
+        if method_id:
+            try:
+                profile = get_profile(portal, method_id)
+                required_slugs = profile.get("required_logbooks", [])
+            except Exception:
+                pass
+
+        if required_slugs:
+            ordered_defs = [all_defs[s] for s in required_slugs if s in all_defs]
+            # Append any active logbook not in required list that already has data
+            seen = set(required_slugs)
+            for slug, d in sorted(all_defs.items(), key=lambda x: x[1].get("sort_order", 100)):
+                if slug not in seen and _get_logbook(self.context, slug):
+                    ordered_defs.append(d)
+        else:
+            ordered_defs = sorted(all_defs.values(), key=lambda d: d.get("sort_order", 100))
+
+        # Load extraction session to determine logbook 252 status
+        extraction_session = {}
+        extraction_finalized = False
+        try:
+            from senaite.pfas.browser.extraction_guide import _load_session
+            extraction_session = _load_session(self.context)
+            extraction_finalized = bool(extraction_session.get("finalized", False))
+        except Exception:
+            pass
+
         base = self.batch_url()
+        batch_uid = ""
+        try:
+            batch_uid = self.context.UID() or ""
+        except Exception:
+            pass
+
+        _BUILTIN_SUBTITLES = {
+            "250": "Balance S/N · reagent lots · ammonium acetate weight",
+            "251": "PDS lots · cal point concentrations · CCV/ICV conc · sign-off",
+            "252": "Stage-by-stage: reagent lots · equipment S/Ns · spike pedigree · deviations",
+            "253": "Sample IDs · processing date · matrix · analyst",
+        }
+
         rows = []
-        for d in defs:
+        for d in ordered_defs:
             slug = d["slug"]
             form_num = d.get("form_num", slug)
             title = d.get("title", slug)
             builtin = d.get("builtin", False)
+            is_extraction_log = (slug == "252")
 
-            # Route to dynamic renderer when a field schema is defined
-            schema_raw = d.get("field_schema_json") or "[]"
-            has_schema = False
-            try:
-                parsed = json.loads(schema_raw)
-                has_schema = bool(parsed)
-            except (ValueError, TypeError):
-                pass
-
-            if has_schema:
-                url = "{0}/@@pfas-logbook-dynamic?slug={1}".format(base, slug)
-            elif builtin:
-                url = "{0}/@@pfas-logbook-{1}".format(base, slug)
+            # Route: extraction log → guided extraction; others → standard logbook views
+            if is_extraction_log:
+                url = "{0}/@@pfas-extraction-guide?batch_uid={1}".format(
+                    self.portal_url(), batch_uid)
             else:
-                url = "{0}/@@pfas-logbook-custom?slug={1}".format(base, slug)
+                schema_raw = d.get("field_schema_json") or "[]"
+                has_schema = False
+                try:
+                    has_schema = bool(json.loads(schema_raw))
+                except (ValueError, TypeError):
+                    pass
+                if has_schema:
+                    url = "{0}/@@pfas-logbook-dynamic?slug={1}".format(base, slug)
+                elif builtin:
+                    url = "{0}/@@pfas-logbook-{1}".format(base, slug)
+                else:
+                    url = "{0}/@@pfas-logbook-custom?slug={1}".format(base, slug)
 
-            filled = bool(_get_logbook(self.context, slug))
+            # Filled: extraction log is filled if session is finalized OR annotation exists
+            if is_extraction_log:
+                filled = extraction_finalized or bool(_get_logbook(self.context, slug))
+            else:
+                filled = bool(_get_logbook(self.context, slug))
+
+            # Subtitle: built-in logbooks have fixed descriptions; custom ones derive from schema
+            subtitle = _BUILTIN_SUBTITLES.get(slug, "")
+            if not subtitle and not builtin:
+                try:
+                    fields = json.loads(d.get("field_schema_json") or "[]")
+                    labels = [f.get("label", "") for f in fields[:4] if f.get("label")]
+                    subtitle = " · ".join(labels)
+                except (ValueError, TypeError):
+                    pass
+
             rows.append({
-                "num":    form_num,
-                "title":  "{0}: {1}".format(form_num, title),
-                "url":    url,
-                "filled": filled,
+                "num":               form_num,
+                "title":             "{0}: {1}".format(form_num, title),
+                "subtitle":          subtitle,
+                "url":               url,
+                "filled":            filled,
+                "is_extraction_log": is_extraction_log,
+                "eg_finalized":      extraction_finalized if is_extraction_log else False,
+                "eg_started":        bool(extraction_session) if is_extraction_log else False,
             })
         return rows
 
@@ -381,6 +463,25 @@ class PFASLogbook252View(_LogbookBase):
     def __call__(self):
         if self.request.method == "POST":
             return self._handle_post()
+        # If the batch's method has extraction stages, redirect to the
+        # guided extraction workflow — logbook 252 IS the guided extraction.
+        try:
+            from senaite.pfas.method_profile_store import get_profile
+            portal = getToolByName(self.context, "portal_url").getPortalObject()
+            method_id = self.batch_method()
+            if method_id:
+                profile = get_profile(portal, method_id)
+                if profile.get("extraction_stages"):
+                    uid = ""
+                    try:
+                        uid = self.context.UID() or ""
+                    except Exception:
+                        pass
+                    guide_url = "{0}/@@pfas-extraction-guide?batch_uid={1}".format(
+                        self.portal_url(), uid)
+                    return self._redirect(guide_url)
+        except Exception:
+            pass
         return self.template()
 
     def data(self):
@@ -472,9 +573,8 @@ class PFASLogbookAdminView(BrowserView):
     """
     @@pfas-logbook-admin — portal-level logbook definition manager.
 
-    Allows managers to rename logbooks, change form numbers, toggle active
-    state, reorder, add new custom logbooks, and delete custom (non-built-in)
-    logbooks.
+    Tab 1-N: per-method required-logbook sequence (reads/writes method profile).
+    Final tab: Logbook Pool — global definitions (rename, add, toggle, delete).
     """
 
     template = ViewPageTemplateFile("templates/logbook_admin.pt")
@@ -500,6 +600,77 @@ class PFASLogbookAdminView(BrowserView):
     def saved(self):
         return self.request.get("saved", "")
 
+    # ── Method-aware helpers ──────────────────────────────────────────────────
+
+    def available_methods(self):
+        """Return list of {method_id, display_name} for all defined methods."""
+        from senaite.pfas.method_profile_store import DEFAULT_PROFILES
+        result = []
+        for mid, p in sorted(DEFAULT_PROFILES.items()):
+            result.append({
+                "method_id":    mid,
+                "display_name": p.get("display_name", mid),
+            })
+        return result
+
+    def method_config_json(self):
+        """
+        JSON blob consumed by the admin template JS.
+
+        {
+          "FDA_32PFAS": {
+            "required": [
+              {"slug":"250","form_num":"FM-ENV-001","title":"Solvent / Reagent Prep Log"},
+              ...
+            ],
+            "available": [...]   # pool logbooks NOT in required
+          },
+          ...
+        }
+        """
+        from senaite.pfas.logbook_store import get_logbook_defs
+        from senaite.pfas.method_profile_store import get_profile, DEFAULT_PROFILES
+        portal = self._portal()
+        all_defs = {d["slug"]: d for d in get_logbook_defs(portal)}
+
+        result = {}
+        for mid in DEFAULT_PROFILES:
+            try:
+                profile = get_profile(portal, mid)
+                req_slugs = profile.get("required_logbooks", [])
+            except Exception:
+                req_slugs = []
+
+            required = []
+            for s in req_slugs:
+                if s in all_defs:
+                    d = all_defs[s]
+                    required.append({
+                        "slug":     s,
+                        "form_num": d.get("form_num", s),
+                        "title":    d.get("title", s),
+                        "builtin":  d.get("builtin", False),
+                    })
+
+            req_set = set(req_slugs)
+            available = []
+            for s, d in sorted(all_defs.items()):
+                if s not in req_set and d.get("active", True):
+                    # Only offer logbooks with no method restriction, or matching this method
+                    method_slug = d.get("method_slug", "") or ""
+                    if not method_slug or method_slug == mid:
+                        available.append({
+                            "slug":     s,
+                            "form_num": d.get("form_num", s),
+                            "title":    d.get("title", s),
+                        })
+
+            result[mid] = {"required": required, "available": available}
+
+        return json.dumps(result)
+
+    # ── POST handlers ─────────────────────────────────────────────────────────
+
     def _handle_post(self):
         from senaite.pfas.logbook_store import get_logbook_defs, save_logbook_defs
         import uuid
@@ -509,7 +680,60 @@ class PFASLogbookAdminView(BrowserView):
         defs = get_logbook_defs(portal)
         slugs = [d["slug"] for d in defs]
 
-        if action == "rename":
+        # ── Method sequence save ──────────────────────────────────────────────
+        if action == "save_method_config":
+            method_id = self.request.form.get("method_id", "").strip()
+            raw = self.request.form.get("required_logbooks_json", "[]")
+            try:
+                req = json.loads(raw)
+                if not isinstance(req, list):
+                    req = []
+            except (ValueError, TypeError):
+                req = []
+            if method_id:
+                from senaite.pfas.method_profile_store import get_profile, save_profile
+                profile = get_profile(portal, method_id)
+                profile["required_logbooks"] = [str(s) for s in req]
+                save_profile(portal, method_id, profile)
+            self.request.response.redirect(
+                "{0}/@@pfas-logbook-admin?saved=method&tab={1}".format(
+                    self.portal_url(), method_id)
+            )
+            return ""
+
+        # ── Pool-level add with optional method scope ────────────────────────
+        elif action == "add":
+            new_title    = self.request.form.get("new_title", "").strip()
+            new_form_num = self.request.form.get("new_form_num", "").strip()
+            cols_raw     = self.request.form.get("new_columns", "").strip()
+            method_scope = self.request.form.get("new_method_scope", "").strip()
+            table_columns = [c.strip() for c in cols_raw.split(",") if c.strip()]
+            if new_title:
+                new_slug = "custom-" + uuid.uuid4().hex[:8]
+                defs.append({
+                    "slug":             new_slug,
+                    "form_num":         new_form_num or new_slug,
+                    "title":            new_title,
+                    "builtin":          False,
+                    "active":           True,
+                    "table_columns":    table_columns,
+                    "method_slug":      method_scope,
+                    "field_schema_json": "[]",
+                })
+                # If scoped to a method, also add it to that method's required list
+                if method_scope:
+                    try:
+                        from senaite.pfas.method_profile_store import get_profile, save_profile
+                        profile = get_profile(portal, method_scope)
+                        req = list(profile.get("required_logbooks", []))
+                        if new_slug not in req:
+                            req.append(new_slug)
+                        profile["required_logbooks"] = req
+                        save_profile(portal, method_scope, profile)
+                    except Exception:
+                        pass
+
+        elif action == "rename":
             new_title = self.request.form.get("title", "").strip()
             new_form_num = self.request.form.get("form_num", "").strip()
             for d in defs:
@@ -541,21 +765,13 @@ class PFASLogbookAdminView(BrowserView):
             if slug and not is_builtin(slug):
                 defs = [d for d in defs if d["slug"] != slug]
 
-        elif action == "add":
-            new_title = self.request.form.get("new_title", "").strip()
-            new_form_num = self.request.form.get("new_form_num", "").strip()
-            cols_raw = self.request.form.get("new_columns", "").strip()
-            table_columns = [c.strip() for c in cols_raw.split(",") if c.strip()]
-            if new_title:
-                new_slug = "custom-" + uuid.uuid4().hex[:8]
-                defs.append({
-                    "slug":          new_slug,
-                    "form_num":      new_form_num or new_slug,
-                    "title":         new_title,
-                    "builtin":       False,
-                    "active":        True,
-                    "table_columns": table_columns,
-                })
+        elif action == "reseed_builtins":
+            from senaite.pfas.browser.prep_logbooks import seed_builtin_logbook_defs
+            seed_builtin_logbook_defs(portal)
+            self.request.response.redirect(
+                self.portal_url() + "/@@pfas-logbook-admin?saved=reseed"
+            )
+            return ""
 
         save_logbook_defs(portal, defs)
         self.request.response.redirect(

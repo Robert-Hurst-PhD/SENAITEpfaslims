@@ -89,7 +89,7 @@ class PFASDataReviewView(BrowserView):
         """Return the Worksheet object from context or query params, or None."""
         if getattr(self.context, "portal_type", "") == "Worksheet":
             return self.context
-        cat = getToolByName(self.context, "portal_catalog")
+        cat = getToolByName(self.context, "senaite_catalog_worksheet")
         uid = (self.request.form.get("batch_uid") or "").strip()
         if uid:
             brains = cat(UID=uid, portal_type="Worksheet")
@@ -168,6 +168,31 @@ class PFASDataReviewView(BrowserView):
     def save_message_type(self):
         return self.request.form.get("msg_type", "ok")
 
+    _MSG_TEXTS = {
+        "item_checked":            u"Checklist item marked.",
+        "permission_denied":       u"Permission denied.",
+        "no_worksheet":            u"No worksheet found.",
+        "invalid_item":            u"Invalid checklist item.",
+        "coc_holding_time_fail":   u"Cannot mark CoC as reviewed: Holding Times OK is not checked. "
+                                    u"Samples received past holding time must be documented before releasing.",
+        "checklist_incomplete":    u"All checklist items must pass before submitting.",
+        "submitted_for_review":    u"Submitted for manager review.",
+        "workflow_error":          u"Workflow transition failed — check worksheet state.",
+        "wrong_state":             u"Worksheet is not in the expected state.",
+        "batch_approved":          u"Batch approved and released.",
+        "batch_rejected":          u"Batch rejected and returned for re-analysis.",
+        "report_uploaded":         u"Instrument report uploaded.",
+        "upload_error":            u"File upload failed.",
+        "path_error":              u"Download failed — file not found.",
+        "initials_required":       u"Your initials are required to sign off / correct — nothing was saved.",
+        "correction_logged":       u"Correction saved and logged (initialed + dated).",
+        "no_change":               u"New value is identical — no correction logged.",
+    }
+
+    def save_message_text(self):
+        key = self.request.form.get("msg", "")
+        return self._MSG_TEXTS.get(key, key)
+
     def portal_url(self):
         return getToolByName(self.context, "portal_url")()
 
@@ -191,6 +216,95 @@ class PFASDataReviewView(BrowserView):
     def _store(self):
         from senaite.pfas.qc.store import QCResultStore
         return QCResultStore(DEFAULT_DB_PATH)
+
+    # ── Multi-page verification (D59) ─────────────────────────────────────
+    # Each page walks results (from injection_results + qc_results) and checks
+    # them against this method's Method-Profile spec. All pages feed the QC
+    # Summary gate.
+
+    def _method_profile(self):
+        try:
+            from senaite.pfas.method_profile_store import get_profile
+            mid = self.batch_method()
+            return get_profile(self._portal(), mid) or {} if mid else {}
+        except Exception:
+            return {}
+
+    def _injection_rows(self, qc_type=None, role=None):
+        """Per-injection detail rows for this worksheet's batch."""
+        bid = self.batch_id()
+        if not bid or not self.db_available:
+            return []
+        try:
+            return self._store().get_injection_results(
+                batch_id=bid, qc_type=qc_type, role=role)
+        except Exception as exc:
+            logger.warning("_injection_rows: %s", exc)
+            return []
+
+    def sample_results_page(self):
+        """Page 1 — field-sample results per analyte, with per-injection RT /
+        ion-ratio and the QC flags that became qualifiers. Grouped by sample."""
+        rows = self._injection_rows(qc_type="Sample", role="analyte")
+        by_sample = {}
+        for r in rows:
+            sid = r.get("sample_id") or r.get("injection_name") or "?"
+            by_sample.setdefault(sid, []).append({
+                "analyte": r.get("analyte", ""),
+                "result": r.get("calc_conc"),
+                "rt": r.get("rt"),
+                "ion_ratio": r.get("ion_ratio_obs"),
+                "flag": r.get("flag") or "",
+                "passed": bool(r.get("passed", 1)),
+            })
+        out = []
+        for sid in sorted(by_sample):
+            analytes = sorted(by_sample[sid], key=lambda a: a["analyte"])
+            out.append({
+                "sample_id": sid,
+                "analytes": analytes,
+                "n_flagged": sum(0 if a["passed"] else 1 for a in analytes),
+            })
+        return out
+
+    def spike_qc_page(self):
+        """Page 2 — LFSM/LFSMD/LFB/LCS recoveries + RPD vs the method's spec
+        limits, per analyte. Reads the aggregate qc_results (value=recovery/rpd)
+        and shows the limit each was judged against."""
+        if not self.db_available:
+            return {"rows": [], "types": []}
+        ws = self._get_worksheet()
+        if ws is None:
+            return {"rows": [], "types": []}
+        summary = self._get_qc_summary(ws)          # reuse the matrix builder
+        if summary.get("error"):
+            return {"rows": [], "types": [], "error": summary.get("error")}
+        # keep only spike/recovery QC types on this page
+        spike_types = [t for t in summary.get("qc_types", [])
+                       if t in ("LFSM", "LFSMD", "LFB", "LCS", "SD")]
+        prof = self._method_profile()
+        qca = prof.get("qc_acceptance", {}) or {}
+        required = set(prof.get("associated_qc_types", []) or [])
+        rows = []
+        for row in summary.get("rows", []):
+            cells = {}
+            for t in spike_types:
+                cells[t] = row.get("cells", {}).get(t)
+            rows.append({"analyte": row.get("analyte", ""), "cells": cells})
+        # per-type spec (recovery window / rpd) + whether required every run
+        specs = {}
+        for t in spike_types:
+            cfg = qca.get(t, {}) or {}
+            tiers = cfg.get("tiers", []) or []
+            tier0 = tiers[0] if tiers else {}
+            specs[t] = {
+                "recovery_min": tier0.get("recovery_min"),
+                "recovery_max": tier0.get("recovery_max"),
+                "rpd_max": tier0.get("rpd_max"),
+                "required": t in required,
+                "enabled": bool(cfg.get("enabled", True)),
+            }
+        return {"rows": rows, "types": spike_types, "specs": specs}
 
     # ── Checklist data model ──────────────────────────────────────────────
 
@@ -380,16 +494,38 @@ class PFASDataReviewView(BrowserView):
             "url":        r.absolute_url(),
         }
 
+    def _linked_batch(self, ws):
+        """The SENAITE Batch this worksheet's CoC names (D44#5 join)."""
+        try:
+            raw = IAnnotations(ws).get(u"senaite.pfas.logbook.coc")
+            bid = (json.loads(raw).get("batch_id") or "").strip() if raw else ""
+            if bid:
+                return self._portal()["batches"].get(bid)
+        except Exception:
+            pass
+        return None
+
+    def _logbook_json(self, ws, key):
+        """Logbook data with a DUAL-READ home (D44#6): the worksheet first
+        (CLAUDE.md canonical), else the CoC-linked batch (where the logbook
+        views historically write) — so review finds the data wherever the
+        bench recorded it."""
+        for obj in (ws, self._linked_batch(ws)):
+            if obj is None:
+                continue
+            try:
+                raw = IAnnotations(obj).get(key)
+                if raw:
+                    return json.loads(raw)
+            except Exception:
+                continue
+        return {}
+
     def _build_traceability_tree(self, ws):
         portal = self._portal()
-        ann = IAnnotations(ws)
 
         def _load(key):
-            try:
-                raw = ann.get(key)
-                return json.loads(raw) if raw else {}
-            except Exception:
-                return {}
+            return self._logbook_json(ws, key)
 
         lb252 = _load(u"senaite.pfas.logbook.252")
         lb251 = _load(u"senaite.pfas.logbook.251")
@@ -655,10 +791,95 @@ class PFASDataReviewView(BrowserView):
             logger.error("get_qc_summary: %s", exc)
             return {"error": str(exc), "rows": [], "qc_types": [], "overall_pass": False}
 
-    # ── Final Data Summary (stub — columns TBD pending FDA Calculator PDF) ─
+    # ── Final Data Summary ────────────────────────────────────────────────
+
+    def qualifier_legend(self):
+        """The lab's qualifier vocabulary — read from the EGAD config store
+        (single source, editable under Reporting → EGAD Config), NOT hardcoded
+        here. Rendered as the legend under the Final Data table."""
+        try:
+            from senaite.pfas.egad_store import get_qualifier_map
+            portal = getToolByName(self.context, "portal_url").getPortalObject()
+            return get_qualifier_map(portal) or []
+        except Exception as exc:
+            logger.warning("qualifier_legend: %s", exc)
+            return []
+
+    def final_data_diagnosis(self):
+        """When the Final Data table is empty, say WHY (which link in the
+        chain has no data) instead of rendering a silent blank."""
+        ws = self._get_worksheet()
+        if not ws:
+            return u"No worksheet found for this batch."
+        try:
+            n_assigned = len(ws.getAnalyses() or [])
+        except Exception:
+            n_assigned = 0
+        if n_assigned:
+            return u""
+        ars = self._batch_ars()
+        if not ars:
+            return (u"No analyses are assigned to this worksheet and no "
+                    u"samples are linked to this batch. Assign samples/"
+                    u"analyses to the worksheet, or link samples to the batch.")
+        n_res = 0
+        for ar in ars:
+            try:
+                n_res += len([a for a in ar.getAnalyses(full_objects=True)
+                              if a.getResult()])
+            except Exception:
+                pass
+        if n_res == 0:
+            return (u"%d sample(s) found on this batch, but no results have "
+                    u"been entered/imported yet. Import instrument data or "
+                    u"enter results, then this summary will populate."
+                    % len(ars))
+        return u""
+
+    def _batch_ars(self):
+        """Samples for this worksheet when none are formally assigned.
+
+        Join chain (Worksheet ↔ Batch was a missing link in the model):
+          1. ARs assigned via the worksheet's own analyses (SENAITE-native);
+          2. the SENAITE Batch named by this worksheet's CoC (`batch_id`) —
+             the CoC accompanies the worksheet, so it carries the link;
+          3. legacy: ARs whose Batch UID equals this worksheet's UID."""
+        ws = self._get_worksheet()
+        if ws is None:
+            return []
+        try:
+            cat = getToolByName(self.context, "senaite_catalog_sample")
+        except Exception:
+            return []
+        # 2. CoC carries the batch id
+        try:
+            raw = IAnnotations(ws).get(u"senaite.pfas.logbook.coc")
+            coc = json.loads(raw) if raw else {}
+            bid = (coc.get("batch_id") or "").strip()
+            if bid:
+                portal = getToolByName(self.context,
+                                       "portal_url").getPortalObject()
+                batch = portal["batches"].get(bid)
+                if batch is not None:
+                    ars = [b.getObject() for b in cat(
+                        portal_type="AnalysisRequest",
+                        getBatchUID=batch.UID())]
+                    if ars:
+                        return ars
+        except Exception as exc:
+            logger.warning("_batch_ars coc join: %s", exc)
+        # 3. legacy join
+        try:
+            return [b.getObject() for b in cat(
+                portal_type="AnalysisRequest", getBatchUID=self.batch_uid())]
+        except Exception as exc:
+            logger.warning("_batch_ars: %s", exc)
+            return []
 
     def get_final_data(self):
-        """Return basic per-sample per-analyte results from SENAITE."""
+        """Per-sample per-analyte results. Primary source: analyses assigned
+        to the worksheet; fallback: analyses of the batch's samples (the
+        chain is often batch-linked before worksheet assignment)."""
         ws = self._get_worksheet()
         if not ws:
             return []
@@ -670,7 +891,15 @@ class PFASDataReviewView(BrowserView):
             ws_analyses = ws.getAnalyses() or []
         except Exception as exc:
             logger.error("get_final_data.getAnalyses: %s", exc)
-            return []
+            ws_analyses = []
+
+        if not ws_analyses:
+            # Fallback: batch → samples → analyses
+            for ar in self._batch_ars():
+                try:
+                    ws_analyses.extend(ar.getAnalyses(full_objects=True) or [])
+                except Exception:
+                    continue
 
         for analysis in ws_analyses:
             try:
@@ -796,29 +1025,70 @@ class PFASDataReviewView(BrowserView):
 
     # ── Recent worksheets for selector ───────────────────────────────────
 
+    def recent_worksheets_debug(self):
+        """Debug method — returns HTML string describing what the catalog query returns."""
+        lines = []
+        try:
+            cat = getToolByName(self.context, "senaite_catalog_worksheet")
+            lines.append("cat=%r ctx_type=%s" % (cat, type(self.context).__name__))
+            if cat is None:
+                lines.append("CAT IS NONE - trying portal")
+                cat = getToolByName(self._portal(), "senaite_catalog_worksheet")
+                lines.append("portal cat=%r" % cat)
+            brains = cat(portal_type="Worksheet", review_state=["open", "to_be_verified"])
+            lines.append("brains=%d" % len(brains))
+            for b in brains[:5]:
+                lines.append("  id=%s state=%s" % (b.getId, b.review_state))
+        except Exception as exc:
+            lines.append("ERROR: %s" % exc)
+        return " | ".join(lines)
+
     def recent_worksheets(self):
         """Return recent Worksheets in open/to_be_verified state for batch selector."""
-        cat = getToolByName(self.context, "portal_catalog")
         try:
+            cat = getToolByName(self.context, "senaite_catalog_worksheet")
+            if cat is None:
+                cat = getToolByName(self._portal(), "senaite_catalog_worksheet")
             brains = cat(
                 portal_type="Worksheet",
                 review_state=["open", "to_be_verified"],
-                sort_on="created",
-                sort_order="descending",
-                sort_limit=50,
             )
         except Exception as exc:
-            logger.error("recent_worksheets: %s", exc)
+            logger.error("recent_worksheets: %s", exc, exc_info=True)
             return []
         result = []
         for b in brains[:50]:
-            result.append({
-                "id":    b.getId,
-                "title": b.Title or b.getId,
-                "url":   b.getURL() + "/@@pfas-data-review",
-                "state": b.review_state,
-            })
+            try:
+                result.append({
+                    "id":    b.getId,
+                    "title": b.Title or b.getId,
+                    "url":   b.getURL() + "/@@pfas-data-review",
+                    "state": b.review_state,
+                })
+            except Exception as exc:
+                logger.error("recent_worksheets brain: %s", exc)
         return result
+
+    def active_deviations_for_worksheet(self):
+        """Return open deviations/CARs that reference the current worksheet."""
+        ws = self._get_worksheet()
+        if not ws:
+            return []
+        ws_id = ws.getId()
+        try:
+            ann = IAnnotations(self._portal())
+            raw = ann.get(u"senaite.pfas.deviations.registry")
+            if not raw:
+                return []
+            registry = json.loads(raw)
+            return [
+                d for d in registry
+                if d.get("status") != "closed"
+                and ws_id in d.get("affected_worksheets", [])
+            ]
+        except Exception as exc:
+            logger.error("active_deviations_for_worksheet: %s", exc)
+            return []
 
     # ── POST dispatch ─────────────────────────────────────────────────────
 
@@ -834,9 +1104,148 @@ class PFASDataReviewView(BrowserView):
         self.request.response.redirect(url)
         return u""
 
+    # ── Corrections (ISO 17025: traceable, initialed + dated) ─────────────
+    CORRECTIONS_KEY = u"senaite.pfas.data_review.corrections"
+    # field → (label, CoC-annotation key). Whitelist: only these are correctable.
+    CORRECTABLE_FIELDS = {
+        "sample_collection_date": (u"Sample Collection Date", "sample_collection_date"),
+        "lab_received_date":      (u"Lab Received Date",      "lab_received_date"),
+    }
+
+    def signature_for(self, initials):
+        """Signature image URL + fullname for a set of initials (staff pool) —
+        appended next to sign-offs so documents carry the person's signature."""
+        try:
+            from senaite.pfas.staff import find_by_initials
+            portal = getToolByName(self.context, "portal_url").getPortalObject()
+            return find_by_initials(portal, initials) or {}
+        except Exception:
+            return {}
+
+    def publish_url(self):
+        """senaite.impress COA (publish) view pre-loaded with this
+        worksheet's samples — the client-facing report step (core reuse)."""
+        ars = self._batch_ars()
+        if not ars:
+            return u""
+        uids = ",".join(ar.UID() for ar in ars)
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        return u"{0}/samples/publish?uids={1}".format(
+            portal.absolute_url(), uids)
+
+    def needs_assignment(self):
+        """True when this worksheet has no assigned analyses but its linked
+        batch has samples — the assign-before-submit process point (D44#4)."""
+        ws = self._get_worksheet()
+        if ws is None:
+            return False
+        try:
+            if len(ws.getAnalyses() or []):
+                return False
+        except Exception:
+            pass
+        return bool(self._batch_ars())
+
+    def corrections(self):
+        """Correction log for this worksheet (rendered in Final Review)."""
+        ws = self._get_worksheet()
+        if not ws:
+            return []
+        try:
+            raw = IAnnotations(ws).get(self.CORRECTIONS_KEY)
+            return json.loads(raw) if raw else []
+        except Exception:
+            return []
+
+    def _log_correction(self, ws, field_label, old, new, initials, reason):
+        user = getSecurityManager().getUser()
+        entry = {
+            "field":    field_label,
+            "old":      old or u"—",
+            "new":      new or u"—",
+            "user":     user.getId(),
+            "initials": initials,
+            "ts":       datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+            "reason":   reason or u"",
+        }
+        log = self.corrections()
+        log.append(entry)
+        IAnnotations(ws)[self.CORRECTIONS_KEY] = json.dumps(log)
+
+    def _handle_assign_batch_samples(self):
+        """D44#4: enforceable process order. Receives due samples and assigns
+        their UNSUBMITTED analyses to this worksheet — must happen BEFORE
+        results are submitted (SENAITE's assign guard forbids it after).
+        Runs in a real request, so workflow guards resolve."""
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error")
+        ws = self._get_worksheet()
+        if ws is None:
+            return self._redirect_with_msg("no_worksheet", "error")
+        from bika.lims import api as _bapi
+        received = assigned = skipped = 0
+        for ar in self._batch_ars():
+            try:
+                if _bapi.get_workflow_status_of(ar) == "sample_due":
+                    _bapi.do_transition_for(ar, "receive")
+                    received += 1
+            except Exception as exc:
+                logger.warning("receive %s: %s", ar.getId(), exc)
+            for an in ar.getAnalyses(full_objects=True):
+                state = _bapi.get_workflow_status_of(an)
+                if state != "unassigned":
+                    skipped += 1
+                    continue
+                try:
+                    ws.addAnalysis(an)
+                    assigned += 1
+                except Exception as exc:
+                    logger.warning("assign %s: %s", an.getKeyword(), exc)
+                    skipped += 1
+        self._audit(ws)
+        msg = (u"Assigned {0} analyses ({1} samples received; {2} skipped — "
+               u"already submitted/assigned)").format(assigned, received,
+                                                      skipped)
+        url = "{0}/@@pfas-data-review?batch_id={1}&msg={2}&msg_type={3}".format(
+            self._portal().absolute_url(), self.batch_id(),
+            msg.replace(" ", "+"), "ok" if assigned else "error")
+        self.request.response.redirect(url)
+        return u""
+
+    def _handle_correct_field(self):
+        """E-sign-style correction: whitelisted field, REQUIRED initials,
+        old→new logged, write-through to the owning CoC record."""
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error")
+        ws = self._get_worksheet()
+        if not ws:
+            return self._redirect_with_msg("no_worksheet", "error")
+        field = self.request.form.get("field", "")
+        new_value = (self.request.form.get("new_value") or "").strip()
+        initials = (self.request.form.get("initials") or "").strip()
+        reason = (self.request.form.get("reason") or "").strip()
+        if field not in self.CORRECTABLE_FIELDS:
+            return self._redirect_with_msg("invalid_item", "error", tab="coc")
+        if not initials:
+            return self._redirect_with_msg("initials_required", "error", tab="coc")
+        label, coc_key = self.CORRECTABLE_FIELDS[field]
+        ann = IAnnotations(ws)
+        raw = ann.get(u"senaite.pfas.logbook.coc")
+        data = json.loads(raw) if raw else {}
+        old_value = data.get(coc_key) or u""
+        if new_value == old_value:
+            return self._redirect_with_msg("no_change", "error", tab="coc")
+        data[coc_key] = new_value
+        ann[u"senaite.pfas.logbook.coc"] = json.dumps(data)
+        self._log_correction(ws, label, old_value, new_value, initials, reason)
+        self._audit(ws)
+        return self._redirect_with_msg("correction_logged", "ok", tab="coc")
+
     def _handle_post(self):
         action = self.request.form.get("action", "")
         dispatch = {
+            "correct_field":            self._handle_correct_field,
+            "assign_batch_samples":     self._handle_assign_batch_samples,
             "check_item":               self._handle_check_item,
             "submit_for_review":        self._handle_submit_for_review,
             "approve_release":          self._handle_approve_release,
@@ -860,12 +1269,25 @@ class PFASDataReviewView(BrowserView):
         manual_keys = {"coc", "final_data", "instrument_report"}
         if item_key not in manual_keys:
             return self._redirect_with_msg("invalid_item", "error")
+        # ISO 17025 §10: holding_time_ok must be confirmed before CoC can pass
+        if item_key == "coc":
+            coc = self.coc_summary()
+            if not coc.get("holding_time_ok"):
+                return self._redirect_with_msg("coc_holding_time_fail", "error", tab="coc")
+        # E-sign style: sign-off requires typed initials (initial + date shown
+        # in the checklist and carried into the final review).
+        initials = (self.request.form.get("initials") or "").strip()
+        if not initials:
+            return self._redirect_with_msg(
+                "initials_required", "error",
+                tab=self.request.form.get("tab", "overview"))
         user = getSecurityManager().getUser()
         now  = datetime.datetime.utcnow().isoformat()
         cl   = self._get_checklist(ws)
         item = cl["items"].get(item_key, {})
         item["checked"]    = True
         item["checked_by"] = user.getId()
+        item["initials"]   = initials
         item["checked_at"] = now
         cl["items"][item_key] = item
         self._save_checklist(ws, cl)

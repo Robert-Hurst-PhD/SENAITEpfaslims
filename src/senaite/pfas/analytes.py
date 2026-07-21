@@ -85,21 +85,20 @@ IS_MRM = {
 }
 
 # ── Calibration levels from batch ─────────────────────────────────────────────
-# Concentrations (ng/mL) extracted from sample descriptions
-CAL_LEVELS = {
-    "FDA-CAL-1":  0.039,
-    "FDA-CAL-2":  0.078,
-    "FDA-CAL-3":  0.156,
-    "FDA-CAL-4":  0.313,
-    "FDA-CAL-5":  0.625,
-    "FDA-CAL-6":  1.25,
-    "FDA-CAL-7":  2.50,
-    "FDA-CAL-8":  5.0,
-    "FDA-CAL-9":  10.0,
-    "FDA-CAL-10": 20.0,
-    "FDA-ICV":    1.25,   # Initial Calibration Verification
-    "FDA-CCV":    1.25,   # Continuing Calibration Verification
-}
+# Concentrations (ng/mL) as they appear in INSTRUMENT sample descriptions,
+# which number the ladder ASCENDING (FDA-CAL-1 = lowest = 0.039), i.e. the
+# REVERSE of the printed FM-ENV-251 logbook (CAL-1 = highest = 20). Both now
+# derive from the single-source ladder (analyte_reference.CAL_LADDERS) so the
+# VALUES can never diverge again; only the direction differs and is explicit.
+# VERIFY with the lab before wiring any consumer that matches injection names.
+from senaite.pfas.analyte_reference import get_cal_ladder as _get_cal_ladder
+
+CAL_LEVELS = dict(
+    [("FDA-CAL-%d" % (i + 1), conc)
+     for i, conc in enumerate(reversed(_get_cal_ladder("FDA_32PFAS")))] +
+    [("FDA-ICV", 1.25),   # Initial Calibration Verification
+     ("FDA-CCV", 1.25)]   # Continuing Calibration Verification
+)
 
 # ── Injection name patterns (from VBA ValidateInjectionNames) ─────────────────
 import re

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">LC-MS Run Builder</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .rb-grid { display:grid; grid-template-columns: 1fr 1fr; gap:22px; }
+    @media (max-width:900px){ .rb-grid { grid-template-columns:1fr; } }
+    .rb-card { border:1px solid var(--s-border); border-radius:10px;
+               background:var(--s-bg); padding:16px 18px; min-width:0; }
+    .rb-card h3 { font-size:14px; font-weight:700; margin:0 0 12px; }
+    .rb-row { display:flex; flex-direction:column; gap:3px; margin-bottom:12px; }
+    .rb-row label { font-size:12px; font-weight:700; }
+    .rb-row .hint { font-size:11px; color:var(--s-secondary); }
+    .rb-row input, .rb-row select, .rb-row textarea {
+      width:100%; max-width:100%; box-sizing:border-box;
+      padding:7px 10px; border:1px solid var(--s-border); border-radius:4px;
+      font-size:13px; }
+    .rb-ctx { display:flex; gap:10px 22px; flex-wrap:wrap; font-size:12px;
+              background:var(--s-light); border-radius:8px; padding:10px 14px;
+              margin-bottom:12px; }
+    .rb-ctx b { color:var(--s-body); }
+    .rb-seq { font-size:12px; width:100%; border-collapse:collapse; }
+    .rb-seq th { background:var(--s-light); color:var(--s-secondary);
+                 text-transform:uppercase; font-size:10.5px; padding:5px 10px;
+                 text-align:left; }
+    .rb-seq td { padding:4px 10px; border-bottom:1px solid var(--s-border); }
+    .rb-type-Blank    { color:var(--s-secondary); }
+    .rb-type-Standard { color:#387493; font-weight:600; }
+    .rb-type-QC       { color:#856404; font-weight:600; }
+    .rb-type-Sample   { color:#155724; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">LC-MS Run Builder</tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/ok_msg"
+         tal:content="view/ok_msg">ok</div>
+    <div class="alert alert-error" tal:condition="view/error_msg"
+         tal:content="view/error_msg">err</div>
+    <div class="alert alert-success" tal:condition="view/built">
+      Run built and saved to the batch manifest — download the worklist below.
+    </div>
+
+    <p style="font-size:13px;color:var(--s-secondary);max-width:860px;">
+      The run derives from the batch: its <strong>method</strong> selects the
+      method's own extraction logbook, which supplies the samples with their
+      per-sample <strong>matrix</strong> and <strong>spike</strong>; the CCV
+      interval comes from the method parameters. You choose the analyst and
+      confirm the sample list.
+    </p>
+
+    <form method="get" style="max-width:520px;margin-bottom:14px;">
+      <div class="rb-row">
+        <label>Batch</label>
+        <select name="batch_id" onchange="this.form.submit()">
+          <option value="">— select batch —</option>
+          <option tal:repeat="b view/batches"
+                  tal:attributes="value b/id;
+                                  selected python:b['id'] == view.selected_batch()"
+                  tal:content="b/title">B-1</option>
+        </select>
+      </div>
+    </form>
+
+    <tal:ctx tal:define="ctx view/run_context" tal:condition="ctx">
+      <div class="rb-ctx">
+        <span>Method: <b tal:content="ctx/method_id">FDA</b></span>
+        <span>Extraction logbook: <b tal:content="string:FM-ENV-${ctx/extraction_slug}">252</b>
+              <span style="color:var(--s-secondary);">(set by method)</span></span>
+        <span>CCV every <b tal:content="ctx/ccv_interval">6</b> samples
+              <span style="color:var(--s-secondary);">(method parameter)</span></span>
+        <span>Samples found: <b tal:content="ctx/n_samples">3</b></span>
+      </div>
+
+      <div class="rb-grid">
+        <!-- ── 1. Build ─────────────────────────────────────────────────── -->
+        <div class="rb-card">
+          <h3>1 · Build the run</h3>
+
+          <div class="table-wrap" tal:condition="ctx/rows">
+            <table class="rb-seq">
+              <thead><tr><th>Sample</th><th>Matrix (per sample)</th><th>Spike</th></tr></thead>
+              <tbody>
+                <tr tal:repeat="r ctx/rows">
+                  <td tal:content="r/sample_id">DW-1</td>
+                  <td tal:content="python:r['matrix'] or '—'">Eggs</td>
+                  <td tal:content="python:r['spike'] or '—'">80</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p tal:condition="not:ctx/rows"
+             style="font-size:12px;color:#856404;background:#fff3cd;border-radius:6px;padding:8px 12px;">
+            No samples found in the method's extraction logbook or linked to
+            this batch — complete the extraction log, or add sample names below.
+          </p>
+
+          <form method="post">
+            <input type="hidden" name="action" value="build"/>
+            <input type="hidden" name="batch_id"
+                   tal:attributes="value view/selected_batch"/>
+            <div class="rb-row" tal:define="staff view/staff_pool">
+              <label>Analyst (laboratory staff pool) *</label>
+              <select name="initials" required="required" tal:condition="staff">
+                <option value="">— select analyst —</option>
+                <option tal:repeat="p staff"
+                        tal:attributes="value p/initials"
+                        tal:content="string:${p/fullname} (${p/initials})">A (AB)</option>
+              </select>
+              <tal:empty tal:condition="not:staff">
+                <input type="text" name="initials" maxlength="4"
+                       placeholder="Initials" style="text-transform:uppercase;"/>
+                <span class="hint">Staff pool is empty — add Lab Contacts in
+                  <a tal:attributes="href string:${view/portal_url}/bika_setup/bika_labcontacts">SENAITE setup</a>
+                  so analysts are selectable instead of typed.</span>
+              </tal:empty>
+            </div>
+            <div class="rb-row">
+              <label>Additional sample names (optional, one per line)</label>
+              <textarea name="extra_samples" rows="3"></textarea>
+            </div>
+            <label style="font-size:12px;display:flex;gap:8px;align-items:center;margin:2px 0 14px;">
+              <input type="checkbox" name="include_cal" checked="checked"
+                     style="width:auto;"/>
+              Include calibration curve (method's single-source ladder)
+            </label>
+            <button class="btn btn-primary" type="submit">Build Run Sequence</button>
+          </form>
+        </div>
+
+        <!-- ── 2. Import instrument data ────────────────────────────────── -->
+        <div class="rb-card">
+          <h3>2 · Import instrument data</h3>
+          <p style="font-size:12px;color:var(--s-secondary);">
+            Upload the instrument's finished export. It is placed in the
+            pipeline watch directory and imported into the QC database (a
+            saved, active Import Studio mapping is required — imports refuse
+            otherwise).
+          </p>
+          <form method="post" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="upload_export"/>
+            <input type="hidden" name="batch_id"
+                   tal:attributes="value view/selected_batch"/>
+            <div class="rb-row">
+              <input type="file" name="export_file" accept=".csv,.txt,.tsv"/>
+            </div>
+            <button class="btn btn-primary" type="submit">Upload to pipeline</button>
+          </form>
+        </div>
+      </div>
+    </tal:ctx>
+
+    <!-- ── Built sequence + download ──────────────────────────────────── -->
+    <tal:man tal:define="m view/manifest" tal:condition="m">
+      <div class="rb-card" style="margin-top:22px;">
+        <h3 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <span>Built run — <span tal:content="m/batch_id">B</span></span>
+          <span style="font-weight:400;font-size:12px;color:var(--s-secondary);">
+            <span tal:content="m/built_at">ts</span> by
+            <span tal:content="m/built_by">INI</span> ·
+            <span tal:content="m/method_id">FDA</span> ·
+            CCV/<span tal:content="m/ccv_interval">6</span>
+          </span>
+          <a class="btn btn-primary" style="margin-left:auto;font-size:12px;"
+             tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?action=download_csv&batch_id=${m/batch_id}">
+            Download worklist CSV
+          </a>
+        </h3>
+        <div class="table-wrap">
+          <table class="rb-seq">
+            <thead><tr><th>Vial</th><th>Injection name</th><th>Type</th></tr></thead>
+            <tbody>
+              <tr tal:repeat="r m/rows">
+                <td tal:content="r/vial">1</td>
+                <td style="font-family:monospace;" tal:content="r/name">name</td>
+                <td><span tal:attributes="class string:rb-type-${r/type}"
+                          tal:content="r/type">QC</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </tal:man>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

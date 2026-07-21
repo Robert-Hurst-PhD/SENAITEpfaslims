@@ -476,6 +476,74 @@ def load_vendor_profile(portal, vendor_key, version):
         return None
 
 
+IMPORT_STUDIO_AUDIT_KEY = u"senaite.pfas.import_studio_audit"
+
+
+def _audit_import_studio(portal, entry):
+    """Append an audit entry for import-profile lifecycle events. Profiles are
+    annotation records (not content objects), so SENAITE snapshots don't apply;
+    this dedicated log is the audit trail, surfaced in the Import Studio UI."""
+    import datetime
+    from persistent.list import PersistentList
+    ann = IAnnotations(portal)
+    if IMPORT_STUDIO_AUDIT_KEY not in ann:
+        ann[IMPORT_STUDIO_AUDIT_KEY] = PersistentList()
+    entry = dict(entry)
+    entry["ts"] = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    ann[IMPORT_STUDIO_AUDIT_KEY].append(json.dumps(entry))
+
+
+def get_import_studio_audit(portal, limit=50):
+    ann = IAnnotations(portal)
+    raw = ann.get(IMPORT_STUDIO_AUDIT_KEY) or []
+    out = []
+    for r in list(raw)[-limit:]:
+        try:
+            out.append(json.loads(r))
+        except (ValueError, TypeError):
+            continue
+    return list(reversed(out))
+
+
+def set_vendor_profile_retired(portal, vendor_key, version, retired, user,
+                               reason=""):
+    """Retire (or reactivate) a saved import profile. Retired profiles are
+    REFUSED by the pipeline REST bridge, so imports cannot silently use a
+    withdrawn mapping. Every transition is written to the audit log."""
+    prof = load_vendor_profile(portal, vendor_key, version)
+    if prof is None:
+        return False
+    prof["retired"] = bool(retired)
+    prof["retired_by" if retired else "reactivated_by"] = user
+    save_vendor_profile(portal, vendor_key, version, prof)
+    _audit_import_studio(portal, {
+        "action": "retire" if retired else "reactivate",
+        "vendor_key": vendor_key, "version": version or "",
+        "user": user, "reason": reason or "",
+    })
+    return True
+
+
+def list_vendor_profiles(portal):
+    """All saved portal-level import profiles with retired state."""
+    store = _get_portal_store(portal, PORTAL_PROFILES_KEY)
+    out = []
+    for key in sorted(store.keys()):
+        try:
+            prof = json.loads(store[key])
+        except (ValueError, TypeError):
+            continue
+        vk, _, ver = key.partition(":")
+        out.append({
+            "key": key, "vendor_key": vk, "version": ver,
+            "vendor": prof.get("vendor", vk),
+            "n_columns": len(prof.get("map", {}) or {}),
+            "retired": bool(prof.get("retired")),
+            "notes": prof.get("notes", ""),
+        })
+    return out
+
+
 def load_vendor_template(portal, vendor_key):
     """Return the default column-map template for a vendor (UI pre-fill only)."""
     store = _get_portal_store(portal, PORTAL_TEMPLATES_KEY)
@@ -548,6 +616,12 @@ class PFASInstrumentProfileView(BrowserView):
             return json.dumps({"error": "vendor_key parameter is required"})
 
         profile = load_vendor_profile(portal, vendor_key, version)
+        if profile is not None and profile.get("retired"):
+            self.request.response.setHeader("Content-Type", "application/json")
+            return json.dumps({"error": (
+                "Import profile for {0} version {1} is RETIRED — imports are "
+                "refused. Reactivate it in Import Studio if this mapping is "
+                "still valid.".format(vendor_key, version or "(any)"))})
         if profile is not None:
             return json.dumps(profile)
 
@@ -577,6 +651,10 @@ class PFASImportStudioView(BrowserView):
         if self.request.method == "POST":
             if action == "upload":
                 return self._handle_upload()
+            if action == "retire_profile":
+                return self._handle_retire_profile(True)
+            if action == "reactivate_profile":
+                return self._handle_retire_profile(False)
             if action == "save_profile":
                 return self._handle_save_profile()
         if action == "edit_profile":
@@ -584,6 +662,24 @@ class PFASImportStudioView(BrowserView):
         return self.template()
 
     # -- Helpers -------------------------------------------------------------
+
+    def _handle_retire_profile(self, retired):
+        from AccessControl import getSecurityManager
+        f = self.request.form
+        user = getSecurityManager().getUser().getId()
+        ok = set_vendor_profile_retired(
+            self._portal(), (f.get("vendor_key") or "").strip(),
+            (f.get("version") or "").strip(), retired, user,
+            reason=(f.get("reason") or "").strip())
+        msg = ("Profile+retired" if retired else "Profile+reactivated") if ok \
+            else "Profile+not+found"
+        return self._redirect("{0}?ok={1}".format(self._self_url(), msg))
+
+    def saved_profiles(self):
+        return list_vendor_profiles(self._portal())
+
+    def studio_audit(self):
+        return get_import_studio_audit(self._portal(), limit=25)
 
     def portal_url(self):
         return getToolByName(self.context, "portal_url")()

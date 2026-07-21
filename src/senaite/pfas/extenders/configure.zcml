@@ -19,4 +19,12 @@
       for="bika.lims.content.analysisservice.AnalysisService"
       />
 
+  <!-- Add pfas_initials to LabContact (core already has the Signature image
+       field) — staff pool drives document sign-offs/signatures. -->
+  <adapter
+      factory=".labcontact.LabContactExtender"
+      provides="archetypes.schemaextender.interfaces.ISchemaExtender"
+      for="bika.lims.content.labcontact.LabContact"
+      />
+
 </configure>

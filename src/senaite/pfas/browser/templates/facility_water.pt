@@ -28,12 +28,9 @@
   </tal:styles>
 </head>
 <body>
+<tal:t metal:fill-slot="header-title">Type 1 Water QC Log</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url; defs view/defaults">
-
-  <h1 style="font-size:18px;font-weight:700;margin:0 0 18px;color:var(--s-body)">
-    Type 1 Water QC Log
-  </h1>
 
   <div class="log-form">
     <h3>New Entry</h3>

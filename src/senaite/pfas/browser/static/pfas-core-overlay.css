@@ -1,0 +1,118 @@
+/* ============================================================================
+ * pfas-core-overlay.css
+ * ----------------------------------------------------------------------------
+ * Brings core SENAITE pages (senaite.app.listing tables, buttons, alerts,
+ * status badges) into the PFAS light palette, and applies the same mobile
+ * "scroll the table sideways, don't drag the page" fix used on PFAS pages.
+ *
+ * MECHANISM: loaded site-wide via a plone.htmlhead viewlet registered on
+ * ISenaitePFASLayer (see configure.zcml).  It is a pure CSS OVERLAY — it does
+ * NOT fork any core template, so it is upgrade-safe and reversible (remove the
+ * viewlet registration and the link disappears).  It restyles existing core
+ * markup only; it never restructures the DOM.
+ *
+ * SCOPE (Round: core UI unification): Sample / Batch / Worksheet listings.
+ * Because these all render through senaite.app.listing as table.contentstable,
+ * the rules below apply to every core listing of that class — which is the
+ * intended, consistent result.
+ *
+ * Token values are duplicated from pfas_macros.pt :root here because core pages
+ * do not load the PFAS macro stylesheet.  Keep in sync with pfas_macros.pt.
+ * ========================================================================== */
+
+:root {
+  --s-primary:      #428aaf;
+  --s-primary-dk:   #387493;
+  --s-primary-lt:   #e8f4f8;
+  --s-dark:         #343a40;
+  --s-body:         #293333;
+  --s-secondary:    #6c757d;
+  --s-light:        #f8f9fa;
+  --s-bg:           #ffffff;
+  --s-border:       #dee2e6;
+}
+
+/* ── Listing tables: header + hover match PFAS .pfas-table pattern ────────── */
+table.contentstable > thead > tr > th,
+table.contentstable thead th {
+  background: var(--s-light);
+  color: var(--s-secondary);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  font-size: 11px;
+  border-bottom: 2px solid var(--s-border);
+}
+table.contentstable tbody tr:hover > td {
+  background: var(--s-primary-lt);
+}
+
+/* ── Primary buttons → PFAS teal (was Bootstrap blue) ────────────────────── */
+.btn-primary,
+button.btn-primary,
+input.btn-primary {
+  background-color: var(--s-primary);
+  border-color: var(--s-primary);
+}
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: var(--s-primary-dk);
+  border-color: var(--s-primary-dk);
+}
+.btn-outline-primary {
+  color: var(--s-primary);
+  border-color: var(--s-primary);
+}
+.btn-outline-primary:hover {
+  background-color: var(--s-primary);
+  border-color: var(--s-primary);
+}
+/* Link-coloured text/anchors used as primary affordances */
+a.text-primary, .text-primary { color: var(--s-primary) !important; }
+
+/* ── Alerts / portal messages → PFAS rounded palette ─────────────────────── */
+.alert { border-radius: 4px; }
+.alert-info,
+dl.portalMessage.info {
+  background: var(--s-primary-lt);
+  border-color: #bee5eb;
+  color: #0c5460;
+}
+
+/* ── Status badges / state labels → shared PFAS badge tokens ─────────────── */
+.contentstable .state-published,
+.contentstable .state-verified,
+.contentstable .badge-success { background: #d4edda !important; color: #155724 !important; }
+.contentstable .state-to_be_verified,
+.contentstable .state-received,
+.contentstable .badge-info { background: var(--s-primary-lt) !important; color: #0c5460 !important; }
+.contentstable .state-invalid,
+.contentstable .state-rejected,
+.contentstable .badge-danger { background: #f8d7da !important; color: #721c24 !important; }
+
+/* ── Mobile (≤768px): listing tables scroll sideways inside their own box,
+ *    instead of dragging the whole page.  Same fail-safe pattern as the PFAS
+ *    .table-wrap fix — the table becomes its own horizontal scroll container
+ *    so the page chrome (filters, toolbar, header) stays put. ────────────── */
+@media (max-width: 768px) {
+  table.contentstable {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    white-space: nowrap;
+  }
+  /* keep the generated table box intact so columns still align while scrolling */
+  table.contentstable > thead,
+  table.contentstable > tbody { display: table; width: max-content; min-width: 100%; }
+
+  /* Worksheet add toolbar (Create / Select analyst / Select template) is a
+     Bootstrap .flex-nowrap input-group that otherwise forces the page wide.
+     Let it wrap on mobile so the page chrome stops dragging. Scoped to its
+     unique container so the listing search box is unaffected. */
+  .worksheet_add_controls .input-group.flex-nowrap {
+    flex-wrap: wrap !important;
+    max-width: 100% !important;   /* the toolbar is d-inline-flex.w-auto, so it
+                                     must be width-constrained for wrap to apply */
+  }
+}

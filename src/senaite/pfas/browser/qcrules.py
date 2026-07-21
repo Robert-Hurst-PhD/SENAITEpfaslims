@@ -77,9 +77,17 @@ class PFASQCRulesView(BrowserView):
             self.request.response.setStatus(403)
             return "Forbidden: Manager role required"
 
+        # D52: QC Rules merged into the per-method Method Profile console.
+        # POST still saves (legacy/API); GET redirects to the unified console.
         if self.request.method == "POST":
             return self._handle_post()
-        return self.template()
+        try:
+            portal = self.context.portal_url.getPortalObject()
+            self.request.response.redirect(
+                portal.absolute_url() + "/@@pfas-method-profiles")
+            return u""
+        except Exception:
+            return self.template()
 
     # ── Template helpers ──────────────────────────────────────────────────────
 

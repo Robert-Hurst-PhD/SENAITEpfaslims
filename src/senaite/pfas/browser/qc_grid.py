@@ -59,11 +59,17 @@ _DEFAULT_TIERS = {
 SPIKE_LEVELS = ["Low", "Mid", "High"]
 
 # Methods shown as grid rows (order matches method_profile_store.DEFAULT_PROFILES).
-GRID_METHODS = [
-    {"id": "FDA_32PFAS", "label": "FDA 32-PFAS"},
-    {"id": "EPA_537_1",  "label": "EPA 537.1"},
-    {"id": "EPA_1633A",  "label": "EPA 1633A"},
-]
+# Method ID list single-sourced from analyte_reference.get_method_ids();
+# short labels are presentation only (see qc.rules for the same pattern).
+from senaite.pfas.analyte_reference import get_method_ids as _get_method_ids
+
+_METHOD_SHORT_LABELS = {
+    "FDA_32PFAS": "FDA 32-PFAS",
+    "EPA_537_1":  "EPA 537.1",
+    "EPA_1633A":  "EPA 1633A",
+}
+GRID_METHODS = [{"id": mid, "label": _METHOD_SHORT_LABELS.get(mid, mid)}
+                for mid in _get_method_ids()]
 
 
 class PFASQCTypeGridView(BrowserView):

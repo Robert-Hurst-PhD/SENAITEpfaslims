@@ -94,6 +94,24 @@
 </head>
 <body>
 
+<!-- Shared print header (Configuration → Print Settings) — the same template
+     as every other printable form, so CoC/receipt prints match standard forms.
+     Visible only in print (global .pfas-printhead rules come with the macro's
+     stylesheet; replicated minimally here since this page is standalone). -->
+<style>
+  .pfas-printhead { display:none; }
+  @media print {
+    .pfas-printhead { display:block !important; border-bottom:2px solid #000;
+      margin:0 0 12px; padding-bottom:8px; }
+    .pfas-ph-row { display:flex; gap:14px; align-items:center; }
+    .pfas-ph-logo { max-height:46px; }
+    .pfas-ph-name { font-size:16px; font-weight:700; color:#000; }
+    .pfas-ph-sub { font-size:10px; color:#333; }
+    .pfas-ph-date { margin-left:auto; font-size:10px; color:#333; }
+  }
+</style>
+<div metal:use-macro="context/@@pfas-macros/macros/printhead">print header</div>
+
 <div class="receipt">
 
   <!-- Header -->

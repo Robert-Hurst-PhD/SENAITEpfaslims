@@ -37,7 +37,7 @@ LOGBOOK_DEFS_KEY = u"senaite.pfas.logbook_defs"
 DEFAULT_LOGBOOK_DEFS = [
     {
         "slug":          "250",
-        "form_num":      "FM-ENV-250",
+        "form_num":      "FM-ENV-001",
         "title":         "Solvent / Reagent Prep Log",
         "builtin":       True,
         "active":        True,
@@ -47,7 +47,7 @@ DEFAULT_LOGBOOK_DEFS = [
     },
     {
         "slug":          "251",
-        "form_num":      "FM-ENV-251",
+        "form_num":      "FM-ENV-002",
         "title":         "Calibration Curve Prep Log",
         "builtin":       True,
         "active":        True,
@@ -57,7 +57,7 @@ DEFAULT_LOGBOOK_DEFS = [
     },
     {
         "slug":          "252",
-        "form_num":      "FM-ENV-252",
+        "form_num":      "FM-ENV-003",
         "title":         "Extraction Log",
         "builtin":       True,
         "active":        True,
@@ -67,7 +67,7 @@ DEFAULT_LOGBOOK_DEFS = [
     },
     {
         "slug":          "253",
-        "form_num":      "FM-ENV-253",
+        "form_num":      "FM-ENV-004",
         "title":         "Sample Processing Log",
         "builtin":       True,
         "active":        True,

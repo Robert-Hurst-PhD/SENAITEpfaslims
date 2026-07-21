@@ -1,0 +1,32 @@
+<tal:panel xmlns:tal="http://xml.zope.org/namespaces/tal">
+  <style>
+    .pfas-mlink { margin:10px 0 16px; border:1px solid #dee2e6;
+      border-left:4px solid #428aaf; border-radius:8px; background:#e8f4f8;
+      padding:12px 16px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+    .pfas-mlink-main { flex:1; min-width:220px; }
+    .pfas-mlink-label { font-size:11px; font-weight:700; letter-spacing:.05em;
+      text-transform:uppercase; color:#6c757d; }
+    .pfas-mlink-title { font-size:15px; font-weight:700; color:#293333; margin-top:2px; }
+    .pfas-mlink-id { font-family:monospace; font-size:11px; color:#428aaf; background:#fff;
+      border:1px solid #dee2e6; padding:1px 6px; border-radius:3px; margin-left:6px; }
+    .pfas-mlink-meta { font-size:12px; color:#6c757d; margin-top:3px; }
+    .pfas-mlink-btn { background:#428aaf; color:#fff; text-decoration:none; font-weight:600;
+      font-size:13px; padding:8px 16px; border-radius:5px; white-space:nowrap; }
+    .pfas-mlink-btn:hover { background:#387493; color:#fff; text-decoration:none; }
+  </style>
+  <div class="pfas-mlink">
+    <div class="pfas-mlink-main">
+      <div class="pfas-mlink-label">PFAS Method Profile</div>
+      <div class="pfas-mlink-title">
+        <span tal:content="view/profile_title">FDA 32-PFAS in Food</span>
+        <span class="pfas-mlink-id" tal:content="view/profile_id">FDA_32PFAS</span>
+      </div>
+      <div class="pfas-mlink-meta">
+        Governs <strong tal:content="view/n_services">32</strong> analytes ·
+        <strong tal:content="view/n_sampletypes">6</strong> matrices ·
+        QC recovery tiers &amp; per-analyte tolerances
+      </div>
+    </div>
+    <a class="pfas-mlink-btn" tal:attributes="href view/edit_url">Configure QC ranges &#8594;</a>
+  </div>
+</tal:panel>

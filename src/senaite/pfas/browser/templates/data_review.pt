@@ -85,8 +85,10 @@
     /* QC matrix */
     .qc-matrix-wrap { overflow-x:auto; }
     .qc-matrix { border-collapse:collapse; font-size:12px; min-width:100%; }
-    .qc-matrix th { background:var(--s-primary); color:#fff; padding:6px 10px;
-                    text-align:left; white-space:nowrap; }
+    .qc-matrix th { background:var(--s-light); color:var(--s-secondary); padding:6px 10px;
+                    text-align:left; white-space:nowrap; font-size:11px;
+                    text-transform:uppercase; letter-spacing:.04em;
+                    border-bottom:2px solid var(--s-border); }
     .qc-matrix td { padding:5px 10px; border-bottom:1px solid var(--s-border); white-space:nowrap; }
     .qc-matrix tr:hover td { background:#f8f9fa; }
     .qc-cell-ok   { background:#d4edda; color:#155724; border-radius:4px;
@@ -99,7 +101,9 @@
 
     /* final data */
     .fd-table { border-collapse:collapse; width:100%; font-size:12px; }
-    .fd-table th { background:var(--s-primary); color:#fff; padding:6px 10px; text-align:left; }
+    .fd-table th { background:var(--s-light); color:var(--s-secondary); padding:6px 10px; text-align:left;
+                   font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+                   border-bottom:2px solid var(--s-border); }
     .fd-table td { padding:5px 10px; border-bottom:1px solid var(--s-border); }
     .fd-table tr:hover td { background:#f8f9fa; }
 
@@ -185,9 +189,32 @@
     <!-- message flash -->
     <tal:msg tal:condition="view/save_message">
       <div tal:attributes="class string:dr-msg ${view/save_message_type}">
-        <tal:m tal:replace="view/save_message">msg</tal:m>
+        <tal:m tal:replace="view/save_message_text">msg</tal:m>
       </div>
     </tal:msg>
+
+    <!-- active deviation banner -->
+    <tal:dev_banner tal:define="active_devs view/active_deviations_for_worksheet">
+      <tal:has_devs tal:condition="active_devs">
+        <div style="background:#fff3cd;color:#856404;border:1px solid #ffc107;
+                    border-radius:6px;padding:10px 14px;margin-bottom:14px;
+                    font-size:13px;display:flex;align-items:flex-start;gap:10px">
+          <span style="font-size:16px;flex-shrink:0">&#9888;</span>
+          <div>
+            <strong>Active non-conformance(s) reference this worksheet</strong> — review
+            before releasing data.
+            <tal:row tal:repeat="dev active_devs">
+              <a style="display:inline-block;margin:4px 6px 0 0;padding:2px 9px;
+                        border-radius:10px;font-size:11px;font-weight:700;
+                        background:#856404;color:#fff;text-decoration:none"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}">
+                <tal:v tal:replace="dev/dev_id"/> (<tal:v tal:replace="python:dev.get('status','').replace('_',' ').title()"/>)
+              </a>
+            </tal:row>
+          </div>
+        </div>
+      </tal:has_devs>
+    </tal:dev_banner>
 
     <!-- batch header row -->
     <div class="dr-header">
@@ -216,6 +243,13 @@
         <a class="dr-tab" href="?tab=qc_summary"
            tal:attributes="class python:'dr-tab active' if at == 'qc_summary' else 'dr-tab'">
            QC Summary</a>
+        <span style="align-self:center;color:var(--s-border);padding:0 2px;">|</span>
+        <a class="dr-tab" href="?tab=samples" title="Per-sample results verification"
+           tal:attributes="class python:'dr-tab active' if at == 'samples' else 'dr-tab'">
+           Samples</a>
+        <a class="dr-tab" href="?tab=spike_qc" title="LFSM/LFSMD/LFB/LCS recovery + RPD"
+           tal:attributes="class python:'dr-tab active' if at == 'spike_qc' else 'dr-tab'">
+           Spike QC</a>
         <a class="dr-tab" href="?tab=final_data"
            tal:attributes="class python:'dr-tab active' if at == 'final_data' else 'dr-tab'">
            Final Data</a>
@@ -244,25 +278,89 @@
             <tal:meta tal:condition="item/checked_by">
               <div class="cl-card-sub">
                 Reviewed by <strong tal:content="item/checked_by">user</strong>
+                <tal:ini tal:condition="item/initials|nothing"
+                         tal:define="sig python:view.signature_for(item.get('initials'))">
+                  (<strong tal:content="item/initials">RB</strong>)
+                  <img tal:condition="sig/signature_url|nothing"
+                       tal:attributes="src sig/signature_url; alt sig/fullname;
+                                       title string:Signature — ${sig/fullname}"
+                       style="height:26px;vertical-align:middle;margin-left:6px;"/>
+                </tal:ini>
                 at <tal:t tal:replace="python:(item.get('checked_at') or '')[:16]">time</tal:t>
               </div>
             </tal:meta>
-            <!-- mark button for manual items -->
+            <!-- mark button for manual items — sign-off requires initials -->
             <tal:manual_btn tal:condition="python:not item['auto'] and not item['checked'] and view.can_act()">
-              <form method="post"
+              <form method="post" style="display:flex;gap:6px;align-items:center;margin-top:4px;"
                     tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
                 <input type="hidden" name="action" value="check_item"/>
                 <input type="hidden" name="item_key"
                        tal:attributes="value item/key"/>
                 <input type="hidden" name="tab" value="overview"/>
-                <button class="btn-action" type="submit" style="margin-top:4px;">
-                  Mark Reviewed
+                <input type="text" name="initials" required="required"
+                       placeholder="Initials" maxlength="6"
+                       style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;"/>
+                <button class="btn-action" type="submit">
+                  Sign &amp; Mark Reviewed
                 </button>
               </form>
             </tal:manual_btn>
           </div>
         </tal:cl>
       </div>
+
+      <!-- assign-before-submit process point (D44#4) -->
+      <tal:asg tal:condition="python:view.needs_assignment() and view.can_act()">
+        <div style="background:#fff3cd;border:1px solid #ffeeba;color:#856404;
+                    border-radius:8px;padding:12px 16px;margin-bottom:16px;
+                    display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+          <div style="flex:1;min-width:260px;font-size:12.5px;">
+            <strong>No analyses are assigned to this worksheet.</strong>
+            Assignment must happen <em>before</em> results are submitted —
+            afterwards SENAITE's workflow forbids it (already-submitted
+            analyses will be skipped and reviewed via the batch join instead).
+          </div>
+          <form method="post"
+                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
+            <input type="hidden" name="action" value="assign_batch_samples"/>
+            <input type="hidden" name="batch_id" tal:attributes="value view/batch_id"/>
+            <button class="btn-action" type="submit"
+                    style="background:#856404;color:#fff;border:none;">
+              Receive &amp; assign batch samples
+            </button>
+          </form>
+        </div>
+      </tal:asg>
+
+      <!-- corrections noted in the final review (initialed + dated) -->
+      <tal:ov_corr tal:define="corr view/corrections" tal:condition="corr">
+        <div class="tree-section">
+          <div class="tree-heading">Corrections on this worksheet</div>
+          <div class="dr-sig-row" tal:repeat="c corr" style="padding:3px 0;">
+            <strong tal:content="c/field">field</strong>:
+            <span style="text-decoration:line-through;color:#a33;" tal:content="c/old">old</span>
+            → <strong tal:content="c/new">new</strong>
+            — <strong tal:content="c/initials">RB</strong>
+            (<span tal:content="c/user">user</span>), <span tal:content="c/ts">date</span>
+            <tal:r tal:condition="c/reason">· <em tal:content="c/reason">reason</em></tal:r>
+          </div>
+        </div>
+      </tal:ov_corr>
+
+      <!-- client-facing report (COA) — core senaite.impress, PFAS-wired -->
+      <tal:coa tal:define="purl view/publish_url"
+               tal:condition="python:purl and view.all_items_pass()">
+        <div class="tree-section">
+          <div class="tree-heading">Client Report (COA)</div>
+          <p style="font-size:12px;color:var(--s-secondary);margin:0 0 8px;">
+            All five review gates passed — generate the client Certificate of
+            Analysis for this worksheet's samples (opens SENAITE's report
+            publisher with the samples pre-selected).
+          </p>
+          <a class="btn-approve" style="text-decoration:none;display:inline-block;"
+             tal:attributes="href purl">Generate COA →</a>
+        </div>
+      </tal:coa>
 
       <!-- submission history -->
       <tal:sinfo tal:define="si view/submission_info">
@@ -397,9 +495,69 @@
             <input type="hidden" name="action" value="check_item"/>
             <input type="hidden" name="item_key" value="coc"/>
             <input type="hidden" name="tab" value="coc"/>
+            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
             <button class="btn-action" type="submit">Mark CoC Reviewed</button>
           </form>
         </tal:coc_check_btn>
+      </div>
+
+      <!-- ── Corrections (ISO 17025: initialed + dated, old value preserved) ── -->
+      <div class="tree-section" style="margin-top:26px;">
+        <div class="tree-heading">Corrections</div>
+        <tal:corr tal:define="corr view/corrections">
+          <table class="fd-table" tal:condition="corr" style="margin-bottom:14px;">
+            <thead><tr><th>Field</th><th>Was</th><th>Corrected to</th>
+                       <th>By (initials)</th><th>Date</th><th>Reason</th></tr></thead>
+            <tbody>
+              <tr tal:repeat="c corr">
+                <td tal:content="c/field">field</td>
+                <td style="text-decoration:line-through;color:#a33;"
+                    tal:content="c/old">old</td>
+                <td style="font-weight:700;" tal:content="c/new">new</td>
+                <td tal:define="sig python:view.signature_for(c.get('initials'))">
+                    <span tal:content="c/user">user</span>
+                    (<strong tal:content="c/initials">RB</strong>)
+                    <img tal:condition="sig/signature_url|nothing"
+                         tal:attributes="src sig/signature_url; alt sig/fullname"
+                         style="height:24px;vertical-align:middle;margin-left:5px;"/></td>
+                <td tal:content="c/ts">ts</td>
+                <td tal:content="c/reason">reason</td>
+              </tr>
+            </tbody>
+          </table>
+          <p tal:condition="not:corr"
+             style="font-size:12px;color:var(--s-secondary);">No corrections recorded.</p>
+        </tal:corr>
+
+        <tal:corr_form tal:condition="view/can_act">
+          <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;"
+                tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
+            <input type="hidden" name="action" value="correct_field"/>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Field
+              <select name="field" style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;">
+                <option value="sample_collection_date">Sample Collection Date</option>
+                <option value="lab_received_date">Lab Received Date</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Corrected value
+              <input type="date" name="new_value" required="required"
+                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;"/>
+            </label>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Reason
+              <input type="text" name="reason" placeholder="e.g. transcription error"
+                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;width:200px;"/>
+            </label>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Initials *
+              <input type="text" name="initials" required="required" maxlength="6" placeholder="RB"
+                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;width:70px;text-transform:uppercase;"/>
+            </label>
+            <button class="btn-action" type="submit">Sign &amp; Correct</button>
+          </form>
+          <p style="font-size:11px;color:var(--s-secondary);margin-top:6px;">
+            Corrections never overwrite silently: the previous value, your
+            initials and the date are recorded and shown in the final review.
+          </p>
+        </tal:corr_form>
       </div>
 
     </div><!-- /coc -->
@@ -643,6 +801,109 @@
       </tal:qcs>
     </div><!-- /qc_summary -->
 
+    <!-- ══════ SAMPLES TAB (per-result verification) ═══════════════════════ -->
+    <div class="dr-tab-pane"
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'samples' else 'dr-tab-pane'">
+      <tal:s tal:define="samples view/sample_results_page">
+        <p style="font-size:12px;color:var(--s-secondary);max-width:760px;">
+          Every field-sample result per analyte, with its retention time and
+          qualifier-ion ratio, and any QC flag that becomes a reported
+          qualifier. Rows with a flag are highlighted.
+        </p>
+        <div class="tree-warn-box" tal:condition="not:samples">
+          No per-injection sample data for this worksheet yet — it is written by
+          the pipeline on import (D59). Run/import the dataset to populate it.
+        </div>
+        <tal:each tal:repeat="s samples">
+          <div class="tree-section">
+            <div class="tree-heading">
+              <span tal:content="s/sample_id">EGG-0001</span>
+              <span tal:condition="s/n_flagged"
+                    style="color:#721c24;font-size:11px;margin-left:8px;">
+                &#9888; <tal:n tal:content="s/n_flagged">1</tal:n> flagged</span>
+              <span tal:condition="not:s/n_flagged"
+                    style="color:#155724;font-size:11px;margin-left:8px;">all pass</span>
+            </div>
+            <div class="qc-matrix-wrap">
+              <table class="qc-matrix">
+                <thead><tr><th>Analyte</th><th>Result</th><th>RT (min)</th>
+                  <th>Ion ratio</th><th>Qualifier / flag</th></tr></thead>
+                <tbody>
+                  <tr tal:repeat="a s/analytes"
+                      tal:attributes="style python:'background:#fdecea' if not a['passed'] else ''">
+                    <td tal:content="a/analyte">PFOA</td>
+                    <td tal:content="python:('%.4g' % a['result']) if a['result'] is not None else '—'">0.42</td>
+                    <td tal:content="python:('%.2f' % a['rt']) if a['rt'] is not None else '—'">7.82</td>
+                    <td tal:content="python:('%.2f' % a['ion_ratio']) if a['ion_ratio'] is not None else '—'">0.98</td>
+                    <td><span tal:condition="a/flag" class="qc-cell-fail"
+                              tal:content="a/flag">(RT)</span>
+                        <span tal:condition="not:a/flag" style="color:#155724;">&#10003;</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </tal:each>
+      </tal:s>
+    </div><!-- /samples -->
+
+    <!-- ══════ SPIKE QC TAB (recovery + RPD vs spec) ═══════════════════════ -->
+    <div class="dr-tab-pane"
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'spike_qc' else 'dr-tab-pane'">
+      <tal:sq tal:define="page view/spike_qc_page">
+        <p style="font-size:12px;color:var(--s-secondary);max-width:760px;">
+          Spike QC recoveries and duplicate RPD per analyte, checked against
+          this method's acceptance windows. The spec each cell was judged
+          against is shown in the header.
+        </p>
+        <div class="tree-warn-box" tal:condition="not:page/types">
+          No spike QC results for this worksheet yet.
+        </div>
+        <div class="qc-matrix-wrap" tal:condition="page/types">
+          <table class="qc-matrix">
+            <thead>
+              <tr>
+                <th>Analyte</th>
+                <tal:th tal:repeat="t page/types">
+                  <th tal:define="sp python:page['specs'].get(t, {})">
+                    <span tal:content="t">LFSM</span>
+                    <div style="font-weight:400;font-size:10px;text-transform:none;">
+                      <tal:r tal:condition="python:sp.get('recovery_min') is not None">
+                        <tal:x tal:content="sp/recovery_min">80</tal:x>&#8211;<tal:y tal:content="sp/recovery_max">120</tal:y>%</tal:r>
+                      <tal:rp tal:condition="python:sp.get('rpd_max') is not None">
+                        RPD&#8804;<tal:z tal:content="sp/rpd_max">20</tal:z>%</tal:rp>
+                      <span tal:condition="sp/required" title="required every run"
+                            style="color:#856404;">&#9733;</span>
+                    </div>
+                  </th>
+                </tal:th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr tal:repeat="row page/rows">
+                <td tal:content="row/analyte">PFOA</td>
+                <tal:c tal:repeat="t page/types">
+                  <td tal:define="cell python:row['cells'].get(t)">
+                    <tal:has tal:condition="cell">
+                      <span tal:attributes="class python:'qc-cell-'+(cell.get('status') or 'na')"
+                            tal:content="python:cell.get('badge','')">PASS</span>
+                      <tal:v tal:condition="cell/values|nothing"
+                             tal:repeat="v cell/values">
+                        <div style="font-size:10px;color:var(--s-secondary);"
+                             tal:condition="v/recovery|nothing"
+                             tal:content="python:'%.0f%%' % v['recovery']">96%</div>
+                      </tal:v>
+                    </tal:has>
+                    <span tal:condition="not:cell" class="qc-cell-na">&#8212;</span>
+                  </td>
+                </tal:c>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </tal:sq>
+    </div><!-- /spike_qc -->
+
     <!-- ══════ FINAL DATA TAB ════════════════════════════════════════════ -->
     <div class="dr-tab-pane"
          tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'final_data' else 'dr-tab-pane'">
@@ -654,6 +915,9 @@
       </p>
 
       <tal:fd tal:define="rows view/get_final_data">
+        <!-- When empty, say WHY (which link in the chain has no data) -->
+        <div class="dr-msg error" tal:condition="python:not rows and view.final_data_diagnosis()"
+             tal:content="view/final_data_diagnosis">diagnosis</div>
         <tal:has_rows tal:condition="rows|nothing">
           <div style="overflow-x:auto;">
             <table class="fd-table">
@@ -692,6 +956,28 @@
             No results found for this worksheet.
           </p>
         </tal:no_rows>
+
+        <!-- Qualifier legend — read live from the EGAD qualifier map
+             (editable under Reporting → EGAD Config), never hardcoded here -->
+        <tal:leg tal:define="legend view/qualifier_legend" tal:condition="legend">
+          <div style="margin-top:16px;">
+            <div style="font-size:12px;font-weight:700;color:var(--s-secondary);
+                        text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">
+              Qualifier legend
+              <a tal:attributes="href string:${view/portal_url}/@@pfas-egad-config"
+                 style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px;
+                        font-size:11px;color:var(--s-primary);">edit map →</a>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11px;color:var(--s-secondary);">
+              <span tal:repeat="q legend">
+                <strong tal:content="q/our_qualifier"
+                        style="color:var(--s-body);">N.D.</strong>
+                = <tal:d tal:content="q/description">Not detected</tal:d>
+                (EGAD: <tal:c tal:content="q/egad_code">U</tal:c>)
+              </span>
+            </div>
+          </div>
+        </tal:leg>
       </tal:fd>
 
       <!-- Mark reviewed -->
@@ -703,6 +989,7 @@
             <input type="hidden" name="action" value="check_item"/>
             <input type="hidden" name="item_key" value="final_data"/>
             <input type="hidden" name="tab" value="final_data"/>
+            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
             <button class="btn-action" type="submit">Mark Final Data Reviewed</button>
           </form>
         </tal:fd_check>
@@ -797,6 +1084,7 @@
             <input type="hidden" name="action" value="check_item"/>
             <input type="hidden" name="item_key" value="instrument_report"/>
             <input type="hidden" name="tab" value="instrument_report"/>
+            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
             <button class="btn-action" type="submit">Mark Instrument Report Reviewed</button>
           </form>
         </tal:ir_check>

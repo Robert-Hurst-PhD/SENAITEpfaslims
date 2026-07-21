@@ -19,8 +19,9 @@ as a json_string:
    "analysis_lab_override": str, "per_report_override": bool}
 
 The Python 3 pipeline worker (pfas_pipeline/egad_edd.py) reads CAS data from
-the exported analyte_cas.json when available; DEFAULT_ANALYTE_CAS here is the
-authoritative source.
+the exported analyte_cas.json when available. Base analyte CAS is owned by
+analyte_reference.NATIVE_ANALYTES (single source of truth); DEFAULT_ANALYTE_CAS
+is the EGAD *overlay* built over it (Maine DEP codes, parameter names, notes).
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
@@ -73,46 +74,151 @@ DEFAULT_METHOD_EGAD = {
     },
 }
 
-# ── Seeded CAS mapping (32/34 auto-matched; PFUnDS and PFTrDS need manual entry)
-# Format: keyword → {"cas_no": str, "parameter_name": str, "override_note": str}
-# CAS_NO: digits only (no dashes) for standard CAS; DEP##### for Maine codes.
+# ── Analyte CAS: EGAD overlay over the single-source master ───────────────────
+# Base CAS is OWNED by analyte_reference.NATIVE_ANALYTES (single source of truth)
+# and DERIVED here undashed — it is NOT duplicated. This overlay carries only the
+# genuinely EGAD-specific data the master does not hold:
+#   * parameter_name — Maine EGAD parameter naming (always local)
+#   * override_note  — EGAD submission notes (always local)
+#   * cas_override   — where EGAD uses a Maine DEP##### code instead of the CAS,
+#                      or the master has no usable CAS (PLACEHOLDER/empty)
+# DEFAULT_ANALYTE_CAS is BUILT from overlay + master, preserving the exact
+# {keyword: {cas_no, parameter_name, override_note}} shape. SENAITE core's
+# AnalysisService has no CAS field in 2.6, so CAS lives here keyed by the core
+# service keyword (the join to core).
+from senaite.pfas.analyte_reference import get_cas_by_keyword as _get_cas_by_keyword
 
-DEFAULT_ANALYTE_CAS = {
-    "9ClPF3ONS":   {"cas_no": "756426581",  "parameter_name": "9CL-PF3ONS_A",      "override_note": ""},
-    "11ClPF3OUdS": {"cas_no": "763051929",  "parameter_name": "11CL-PF3OUDS_A",    "override_note": ""},
-    "FOSA":        {"cas_no": "754916",     "parameter_name": "PFOSA",              "override_note": ""},
-    "4:2FTS":      {"cas_no": "757124724",  "parameter_name": "4:2 FTS_A",          "override_note": ""},
-    "6:2FTS":      {"cas_no": "27619972",   "parameter_name": "6:2 FTS_A",          "override_note": ""},
-    "8:2FTS":      {"cas_no": "39108344",   "parameter_name": "8:2 FTS_A",          "override_note": ""},
-    "10:2FTS":     {"cas_no": "120226600",  "parameter_name": "10:2 FTS_A",         "override_note": ""},
-    "PFBA":        {"cas_no": "375224",     "parameter_name": "PFBA_A",             "override_note": ""},
-    "PFPeA":       {"cas_no": "2706903",    "parameter_name": "PFPEA_A",            "override_note": ""},
-    "PFHxA":       {"cas_no": "307244",     "parameter_name": "PFHXA_A",            "override_note": ""},
-    "PFHpA":       {"cas_no": "375859",     "parameter_name": "PFHPA_A",            "override_note": ""},
-    "PFOA":        {"cas_no": "335671",     "parameter_name": "PFOA_A",             "override_note": ""},
-    "PFNA":        {"cas_no": "375951",     "parameter_name": "PFNA_A",             "override_note": ""},
-    "PFDA":        {"cas_no": "335762",     "parameter_name": "PFDA_A",             "override_note": ""},
-    "PFUDA":       {"cas_no": "2058948",    "parameter_name": "PFUNDA_A",           "override_note": ""},
-    "PFDoA":       {"cas_no": "307551",     "parameter_name": "PFDOA_A",            "override_note": ""},
-    "PFTrDA":      {"cas_no": "72629948",   "parameter_name": "PFTRIA_A",           "override_note": ""},
-    "PFTeDA":      {"cas_no": "376067",     "parameter_name": "PFTEA_A",            "override_note": ""},
-    "PFHxDA":      {"cas_no": "67905195",   "parameter_name": "PFHXDA_A",           "override_note": ""},
-    "PFODA":       {"cas_no": "16517116",   "parameter_name": "PFODA_A",            "override_note": ""},
-    "GenX":        {"cas_no": "13252136",   "parameter_name": "HFPO-DA_A",          "override_note": ""},
-    "DONA":        {"cas_no": "919005144",  "parameter_name": "ADONA_A",            "override_note": ""},
-    "PFBS":        {"cas_no": "375735",     "parameter_name": "PFBS_A",             "override_note": ""},
-    "PFPeS":       {"cas_no": "2706914",    "parameter_name": "PFPES_A",            "override_note": ""},
-    "PFHxS":       {"cas_no": "DEP18024",   "parameter_name": "PFHXS_A_L",         "override_note": "linear isomer"},
-    "br-PFHxS":    {"cas_no": "DEP18023",   "parameter_name": "PFHXS_A_BR",        "override_note": "branched isomer"},
-    "PFHpS":       {"cas_no": "375928",     "parameter_name": "PFHPS_A",            "override_note": ""},
-    "PFOS":        {"cas_no": "DEP18026",   "parameter_name": "PFOS_A_L",          "override_note": "linear isomer"},
-    "br-PFOS":     {"cas_no": "DEP18025",   "parameter_name": "PFOS_A_BR",         "override_note": "branched isomer"},
-    "PFNS":        {"cas_no": "68259121",   "parameter_name": "PFNS_A",             "override_note": ""},
-    "PFDS":        {"cas_no": "335773",     "parameter_name": "PFDS_A",             "override_note": ""},
-    "PFUnDS":      {"cas_no": "749786161",   "parameter_name": "PFUNDS_A",           "override_note": "CAS 749-786-16-1; verify against Maine EGAD CAS_LUP before EDD submission"},
-    "PFDoS":       {"cas_no": "79780395",   "parameter_name": "PFDOS_A",            "override_note": ""},
-    "PFTrDS":      {"cas_no": "791563898",   "parameter_name": "PFTRDS_A",           "override_note": "CAS 791-563-89-8"},
+_EGAD_ANALYTE_OVERLAY = {
+    "9ClPF3ONS":   {"parameter_name": "9CL-PF3ONS_A",   "override_note": ""},
+    "11ClPF3OUdS": {"parameter_name": "11CL-PF3OUDS_A",  "override_note": ""},
+    "FOSA":        {"parameter_name": "PFOSA",           "override_note": ""},
+    "4:2FTS":      {"parameter_name": "4:2 FTS_A",       "override_note": ""},
+    "6:2FTS":      {"parameter_name": "6:2 FTS_A",       "override_note": ""},
+    "8:2FTS":      {"parameter_name": "8:2 FTS_A",       "override_note": ""},
+    "10:2FTS":     {"parameter_name": "10:2 FTS_A",      "override_note": ""},
+    "PFBA":        {"parameter_name": "PFBA_A",          "override_note": ""},
+    "PFPeA":       {"parameter_name": "PFPEA_A",         "override_note": ""},
+    "PFHxA":       {"parameter_name": "PFHXA_A",         "override_note": ""},
+    "PFHpA":       {"parameter_name": "PFHPA_A",         "override_note": ""},
+    "PFOA":        {"parameter_name": "PFOA_A",          "override_note": ""},
+    "PFNA":        {"parameter_name": "PFNA_A",          "override_note": ""},
+    "PFDA":        {"parameter_name": "PFDA_A",          "override_note": ""},
+    "PFUDA":       {"parameter_name": "PFUNDA_A",        "override_note": ""},
+    "PFDoA":       {"parameter_name": "PFDOA_A",         "override_note": ""},
+    "PFTrDA":      {"parameter_name": "PFTRIA_A",        "override_note": ""},
+    "PFTeDA":      {"parameter_name": "PFTEA_A",         "override_note": ""},
+    "PFHxDA":      {"parameter_name": "PFHXDA_A",        "override_note": ""},
+    "PFODA":       {"parameter_name": "PFODA_A",         "override_note": ""},
+    "GenX":        {"parameter_name": "HFPO-DA_A",       "override_note": ""},
+    "DONA":        {"parameter_name": "ADONA_A",         "override_note": ""},
+    "PFBS":        {"parameter_name": "PFBS_A",          "override_note": ""},
+    "PFPeS":       {"parameter_name": "PFPES_A",         "override_note": ""},
+    "PFHxS":       {"parameter_name": "PFHXS_A_L",  "override_note": "linear isomer",   "cas_override": "DEP18024"},
+    "br-PFHxS":    {"parameter_name": "PFHXS_A_BR", "override_note": "branched isomer", "cas_override": "DEP18023"},
+    "PFHpS":       {"parameter_name": "PFHPS_A",         "override_note": ""},
+    "PFOS":        {"parameter_name": "PFOS_A_L",   "override_note": "linear isomer",   "cas_override": "DEP18026"},
+    "br-PFOS":     {"parameter_name": "PFOS_A_BR",  "override_note": "branched isomer", "cas_override": "DEP18025"},
+    "PFNS":        {"parameter_name": "PFNS_A",          "override_note": ""},
+    "PFDS":        {"parameter_name": "PFDS_A",          "override_note": ""},
+    "PFUnDS":      {"parameter_name": "PFUNDS_A",        "override_note": "CAS 749-786-16-1; verify against Maine EGAD CAS_LUP before EDD submission"},
+    "PFDoS":       {"parameter_name": "PFDOS_A",         "override_note": ""},
+    "PFTrDS":      {"parameter_name": "PFTRDS_A",   "override_note": "CAS 791-563-89-8", "cas_override": "791563898"},
 }
+
+
+def _build_default_analyte_cas():
+    """Layer the EGAD overlay over the single-source master CAS (undashed),
+    preserving the {keyword: {cas_no, parameter_name, override_note}} shape."""
+    master = _get_cas_by_keyword(dashed=False)   # {keyword: undashed CAS}
+    out = {}
+    for kw, ov in _EGAD_ANALYTE_OVERLAY.items():
+        cas = ov.get("cas_override") or master.get(kw, "")
+        out[kw] = {
+            "cas_no": cas,
+            "parameter_name": ov["parameter_name"],
+            "override_note": ov["override_note"],
+        }
+    return out
+
+
+DEFAULT_ANALYTE_CAS = _build_default_analyte_cas()
+
+
+# ── EDD format profiles ───────────────────────────────────────────────────────
+# The EDD engine is no longer Maine-EGAD-only: an EDD PROFILE controls the
+# column set/order (a subset of the Maine superset the builder can emit),
+# optional column heading aliases, and the SampleType→SAMPLE_TYPE-code map.
+# "maine_egad" is the seeded base; clone it into sub-profiles (or other state
+# programs) and associate a profile per client (client cfg `edd_profile`).
+
+EDD_PROFILES_KEY = "senaite.pfas.edd_profiles"
+
+# Standard Maine EGAD sample-type codes for the obvious environmental matrices.
+# Food/feed matrices have NO Maine code — left unmapped on purpose (per-AR
+# override or profile edit; never fabricated).
+_DEFAULT_MATRIX_MAP = {
+    "Drinking Water": "DW", "Groundwater": "GW", "Surface Water": "SW",
+    "Wastewater": "WW", "Soil": "SO", "Sediment": "SE",
+    "Landfill Leachate": "LL", "Biosolid": "SO",
+}
+
+
+def _default_edd_profile():
+    from senaite.pfas.egad_builder import EDD_COLUMNS
+    return {
+        "name": "Maine EGAD (default)",
+        "base": "maine_egad",
+        "columns": list(EDD_COLUMNS),
+        "aliases": {},              # {column: replacement heading}
+        "matrix_map": dict(_DEFAULT_MATRIX_MAP),
+        "notes": "Seeded Maine DEP EGAD format. Clone to create sub-profiles "
+                 "or other state programs.",
+    }
+
+
+def get_edd_profiles(portal):
+    """{profile_id: profile-dict}; 'maine_egad' is always present."""
+    store = _get_store_generic(portal, EDD_PROFILES_KEY)
+    out = {}
+    for k in list(store.keys()):
+        try:
+            out[k] = json.loads(store[k])
+        except (ValueError, TypeError):
+            continue
+    if "maine_egad" not in out:
+        out["maine_egad"] = _default_edd_profile()
+    return out
+
+
+def save_edd_profile(portal, profile_id, data):
+    store = _get_store_generic(portal, EDD_PROFILES_KEY)
+    store[profile_id] = json.dumps(data)
+
+
+def clone_edd_profile(portal, source_id, new_id, new_name):
+    profs = get_edd_profiles(portal)
+    src = profs.get(source_id) or _default_edd_profile()
+    new = copy.deepcopy(src)
+    new["name"] = new_name or new_id
+    new["base"] = source_id
+    save_edd_profile(portal, new_id, new)
+    return new
+
+
+def get_edd_profile_for_client(portal, client_cfg):
+    """Resolve the client's EDD profile (falls back to maine_egad)."""
+    pid = (client_cfg or {}).get("edd_profile") or "maine_egad"
+    profs = get_edd_profiles(portal)
+    return pid, (profs.get(pid) or profs["maine_egad"])
+
+
+def _get_store_generic(portal, key):
+    from zope.annotation.interfaces import IAnnotations
+    from persistent.mapping import PersistentMapping
+    ann = IAnnotations(portal)
+    if key not in ann:
+        ann[key] = PersistentMapping()
+    return ann[key]
 
 # ── Default qualifier mapping ─────────────────────────────────────────────────
 
@@ -205,6 +311,7 @@ DEFAULT_CLIENT_EGAD = {
     "egad_enabled": False,
     "project_site": "",
     "default_sample_type": "GW",
+    "edd_profile": "maine_egad",   # which EDD format profile this client uses
     "analysis_lab_override": "",
     "per_report_override_default": True,
 }

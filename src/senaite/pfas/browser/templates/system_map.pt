@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">System Map</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .map-intro { color: var(--s-secondary); font-size: 13px; margin: 0 0 16px; max-width: 900px; }
+    .map-wrap {
+      border: 1px solid var(--s-border); border-radius: 10px; background: var(--s-bg);
+      padding: 14px 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    .pfas-map-svg { display: block; min-width: 900px; }
+    /* clickable bubbles */
+    .pfas-map-svg a { text-decoration: none; }
+    .pfas-map-svg .clickable { cursor: pointer; }
+    .pfas-map-svg .clickable rect { transition: stroke-width .1s, filter .1s; }
+    .pfas-map-svg a:hover .clickable rect {
+      stroke-width: 3.4; filter: brightness(0.96) drop-shadow(0 2px 4px rgba(0,0,0,.18));
+    }
+    .pfas-map-svg a:focus { outline: none; }
+    .pfas-map-svg a:focus .clickable rect { stroke-width: 3.4; }
+    .map-legend { display: flex; flex-wrap: wrap; gap: 16px 26px; margin-top: 16px; font-size: 12px; color: var(--s-secondary); }
+    .map-legend .chip { display: inline-flex; align-items: center; gap: 7px; }
+    .map-legend .sw { width: 26px; height: 13px; border-radius: 3px; border: 1px solid #adb5bd; display: inline-block; }
+    .map-hint { font-size: 12px; color: var(--s-secondary); margin-top: 6px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">System Map</tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" style="max-width:1180px;">
+
+    <p class="map-intro">
+      A live map of how each role’s workspace connects through the add-on to core
+      SENAITE and out to the sample report. <strong>Click any highlighted bubble</strong>
+      to jump straight to that screen to make an edit.
+    </p>
+
+    <div class="map-wrap" tal:content="structure view/map_svg">SVG</div>
+
+    <div class="map-legend">
+      <span class="chip"><span class="sw" style="background:#e8f0fe;border-color:#3b6fb0"></span>User entry point (role workspace)</span>
+      <span class="chip"><span class="sw" style="background:#cbe6d3;border-color:#2e7d32"></span>★ Single-source master data</span>
+      <span class="chip"><span class="sw" style="background:#d7ecf3;border-color:#387493"></span>Add-on module / store</span>
+      <span class="chip"><span class="sw" style="background:#fff8e1;border-color:#c9a227"></span>★ spec_sync bridge to core</span>
+      <span class="chip"><span class="sw" style="background:#eceff1;border-color:#607d8b"></span>Core SENAITE service</span>
+    </div>
+    <p class="map-hint">
+      Edges: <span style="color:#3b6fb0;font-weight:600;">blue</span> entry → add-on ·
+      <span style="color:#387493;font-weight:600;">teal</span> add-on → core ·
+      <span style="color:#c9a227;font-weight:600;">amber ◂▸ two-way</span> live sync — edit the
+      Method Profile <em>or</em> the AnalysisSpec and both update (per-analyte) ·
+      dashed = single-source reference.
+    </p>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

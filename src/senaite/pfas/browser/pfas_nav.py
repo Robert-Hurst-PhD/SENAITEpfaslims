@@ -39,7 +39,7 @@ class PFASDashboardTilesViewlet(ViewletBase):
         {
             'id':    'control-charts',
             'title': 'Control Charts',
-            'desc':  'Levey-Jennings + Westgard multi-rule charts',
+            'desc':  'QC control charts with Westgard rule evaluation',
             'view':  '@@pfas-control-chart',
             'icon':  'fa-chart-line',
         },

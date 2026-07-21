@@ -34,4 +34,13 @@
   <!-- Archetypes schema extenders (ReferenceDefinition PFAS QC fields) -->
   <include package=".extenders" />
 
+  <!-- Reverse sync: editing a spec_sync-managed AnalysisSpec writes per-analyte
+       overrides back into the owning Method Profile (write-through; profile
+       stays the single source of truth). Loop-guarded in spec_reverse. -->
+  <subscriber
+      for="bika.lims.interfaces.IAnalysisSpec
+           zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+      handler=".spec_reverse.on_spec_modified"
+      />
+
 </configure>

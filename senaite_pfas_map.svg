@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1660" height="1020" viewBox="0 0 1660 1020" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+<rect width="1660" height="1020" fill="#ffffff"/>
+<defs><marker id="aE" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0L7,3L0,6Z" fill="#3b6fb0"/></marker></defs>
+<defs><marker id="aA" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0L7,3L0,6Z" fill="#387493"/></marker></defs>
+<defs><marker id="aN" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0L7,3L0,6Z" fill="#c9a227"/></marker></defs>
+<defs><marker id="aR" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0L7,3L0,6Z" fill="#8a9ba8"/></marker></defs>
+<text x="34" y="42" font-size="27" font-weight="700" fill="#293333">senaite.pfas — System Map</text>
+<text x="34" y="66" font-size="14" fill="#5b6b6b">How each role’s workspace (entry points) drives add-on logic, which connects to core SENAITE services and builds the sample report / EDD.</text>
+<text x="34" y="134" font-size="12.5" font-weight="700" letter-spacing="1.5" fill="#9aa7b0">USER ENTRY POINTS  ·  role workspaces</text>
+<text x="34" y="454" font-size="12.5" font-weight="700" letter-spacing="1.5" fill="#9aa7b0">SENAITE.PFAS ADD-ON PARTS</text>
+<text x="34" y="784" font-size="12.5" font-weight="700" letter-spacing="1.5" fill="#9aa7b0">CORE SENAITE SERVICES</text>
+<line x1="30" y1="120" x2="1630" y2="120" stroke="#eef1f3" stroke-width="1"/>
+<line x1="30" y1="440" x2="1630" y2="440" stroke="#eef1f3" stroke-width="1"/>
+<line x1="30" y1="770" x2="1630" y2="770" stroke="#eef1f3" stroke-width="1"/>
+<path d="M168,212 C168,341 168,341 168,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M168,212 C168,341 489,341 489,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M449,212 C449,341 780,341 780,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M449,212 C449,384 439,384 439,556" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M710,212 C710,341 489,341 489,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M970,212 C970,341 1020,341 1020,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M970,212 C970,341 489,341 489,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M970,212 C970,384 1161,384 1161,556" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M1231,212 C1231,341 1020,341 1020,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M1231,212 C1231,341 780,341 780,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M1502,212 C1502,341 1512,341 1512,470" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M449,298 C449,427 680,427 680,556" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M710,298 C710,427 920,427 920,556" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M1502,298 C1502,427 1512,427 1512,556" stroke="#3b6fb0" stroke-width="2.2" fill="none" marker-end="url(#aE)" opacity="0.9"/>
+<path d="M489,470 C489,501 1261,501 1261,532" stroke="#c9a227" stroke-width="2.6" fill="none" marker-end="url(#aN)" opacity="0.9"/>
+<path d="M168,470 C168,501 489,501 489,532" stroke="#8a9ba8" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#aR)" opacity="0.9"/>
+<path d="M489,470 C489,501 1512,501 1512,532" stroke="#8a9ba8" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#aR)" opacity="0.9"/>
+<path d="M1020,532 C1020,544 1161,544 1161,556" stroke="#8a9ba8" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#aR)" opacity="0.9"/>
+<path d="M168,532 C168,666 148,666 148,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M168,532 C168,666 399,666 399,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M489,532 C489,666 148,666 148,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M489,532 C489,666 399,666 399,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M1261,532 C1261,666 1041,666 1041,800" stroke="#c9a227" stroke-width="2.6" fill="none" marker-end="url(#aN)" opacity="0.9"/>
+<path d="M1261,532 C1261,666 1512,666 1512,800" stroke="#c9a227" stroke-width="2.6" fill="none" marker-end="url(#aN)" opacity="0.9"/>
+<path d="M780,532 C780,666 630,666 630,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M1512,532 C1512,666 630,666 630,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M1512,532 C1512,666 1512,666 1512,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M1020,532 C1020,666 1281,666 1281,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M1512,618 C1512,709 830,709 830,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<path d="M780,532 C780,666 830,666 830,800" stroke="#387493" stroke-width="2.2" fill="none" marker-end="url(#aA)" opacity="0.9"/>
+<rect x="34" y="150" width="269" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="168" y="176" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Method &amp; Analyte Setup</text>
+<text x="168" y="194" text-anchor="middle" font-size="10" fill="#5b6b6b">Manager</text>
+<rect x="335" y="150" width="229" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="449" y="176" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Bench</text>
+<text x="449" y="194" text-anchor="middle" font-size="10" fill="#5b6b6b">Bench Chemist</text>
+<rect x="595" y="150" width="229" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="710" y="176" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Sample Workflow</text>
+<text x="710" y="194" text-anchor="middle" font-size="10" fill="#5b6b6b">Manager/Analyst</text>
+<rect x="856" y="150" width="229" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="970" y="176" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">QC Management</text>
+<text x="970" y="194" text-anchor="middle" font-size="10" fill="#5b6b6b">Manager/QAO</text>
+<rect x="1117" y="150" width="229" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="1231" y="176" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Data Review</text>
+<text x="1231" y="194" text-anchor="middle" font-size="10" fill="#5b6b6b">Analyst</text>
+<rect x="1377" y="150" width="249" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="1502" y="176" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Reporting &amp; EDD</text>
+<text x="1502" y="194" text-anchor="middle" font-size="10" fill="#5b6b6b">Manager/Analyst</text>
+<rect x="335" y="236" width="229" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="449" y="262" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Facility QC</text>
+<text x="449" y="280" text-anchor="middle" font-size="10" fill="#5b6b6b">Manager/QAO</text>
+<rect x="595" y="236" width="229" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="710" y="262" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Instrument &amp; Import</text>
+<text x="710" y="280" text-anchor="middle" font-size="10" fill="#5b6b6b">Manager/Analyst</text>
+<rect x="1377" y="236" width="249" height="62" rx="9" fill="#e8f0fe" stroke="#3b6fb0" stroke-width="1.7"/>
+<text x="1502" y="262" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Client Tracker</text>
+<text x="1502" y="280" text-anchor="middle" font-size="10" fill="#5b6b6b">Client (no login)</text>
+<rect x="34" y="470" width="269" height="62" rx="9" fill="#cbe6d3" stroke="#2e7d32" stroke-width="2.4"/>
+<text x="168" y="496" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">analyte_reference  ★</text>
+<text x="168" y="514" text-anchor="middle" font-size="10" fill="#5b6b6b">MASTER: analytes·CAS·IS·matrices</text>
+<rect x="335" y="470" width="309" height="62" rx="9" fill="#d7ecf3" stroke="#387493" stroke-width="1.7"/>
+<text x="489" y="496" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">method_profile_store</text>
+<text x="489" y="514" text-anchor="middle" font-size="10" fill="#5b6b6b">METHOD PROFILE hub (20×)</text>
+<rect x="676" y="470" width="209" height="62" rx="9" fill="#d7ecf3" stroke="#387493" stroke-width="1.7"/>
+<text x="780" y="496" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">reagents + prep_std</text>
+<text x="780" y="514" text-anchor="middle" font-size="10" fill="#5b6b6b">3-level traceability</text>
+<rect x="916" y="470" width="209" height="62" rx="9" fill="#d7ecf3" stroke="#387493" stroke-width="1.7"/>
+<text x="1020" y="496" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">qc.rules + qc.store</text>
+<text x="1020" y="514" text-anchor="middle" font-size="10" fill="#5b6b6b">toggles + results DB</text>
+<rect x="1157" y="470" width="209" height="62" rx="9" fill="#fff8e1" stroke="#c9a227" stroke-width="2.4"/>
+<text x="1261" y="496" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">spec_sync  ★</text>
+<text x="1261" y="514" text-anchor="middle" font-size="10" fill="#5b6b6b">→ per-matrix specs + audit</text>
+<rect x="1397" y="470" width="229" height="62" rx="9" fill="#d7ecf3" stroke="#387493" stroke-width="1.7"/>
+<text x="1512" y="496" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">egad_store + builder</text>
+<text x="1512" y="514" text-anchor="middle" font-size="10" fill="#5b6b6b">EDD assembly + CAS overlay</text>
+<rect x="335" y="556" width="209" height="62" rx="9" fill="#d7ecf3" stroke="#387493" stroke-width="1.7"/>
+<text x="439" y="582" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">logbook_store</text>
+<text x="439" y="600" text-anchor="middle" font-size="10" fill="#5b6b6b">FM-ENV logbooks</text>
+<rect x="575" y="556" width="209" height="62" rx="9" fill="#d7ecf3" stroke="#387493" stroke-width="1.7"/>
+<text x="680" y="582" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">facility_qc</text>
+<text x="680" y="600" text-anchor="middle" font-size="10" fill="#5b6b6b">SQLite readings</text>
+<rect x="816" y="556" width="209" height="62" rx="9" fill="#d7ecf3" stroke="#387493" stroke-width="1.7"/>
+<text x="920" y="582" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">import_studio / data_importer</text>
+<text x="920" y="600" text-anchor="middle" font-size="10" fill="#5b6b6b">instrument mappings</text>
+<rect x="1057" y="556" width="209" height="62" rx="9" fill="#fdecea" stroke="#c62828" stroke-width="1.7"/>
+<text x="1161" y="582" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">control_chart engine</text>
+<text x="1161" y="600" text-anchor="middle" font-size="10" fill="#5b6b6b">Py3 worker · rules mirrored in view</text>
+<rect x="1397" y="556" width="229" height="62" rx="9" fill="#d7ecf3" stroke="#387493" stroke-width="1.7"/>
+<text x="1512" y="582" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">tracking_store</text>
+<text x="1512" y="600" text-anchor="middle" font-size="10" fill="#5b6b6b">client tracker backend</text>
+<rect x="34" y="800" width="229" height="62" rx="9" fill="#eceff1" stroke="#607d8b" stroke-width="1.7"/>
+<text x="148" y="826" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">AnalysisService</text>
+<text x="148" y="844" text-anchor="middle" font-size="10" fill="#5b6b6b">analyte identity·keyword</text>
+<rect x="295" y="800" width="209" height="62" rx="9" fill="#eceff1" stroke="#607d8b" stroke-width="1.7"/>
+<text x="399" y="826" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">SampleType</text>
+<text x="399" y="844" text-anchor="middle" font-size="10" fill="#5b6b6b">matrix identity</text>
+<rect x="535" y="800" width="188" height="62" rx="9" fill="#eceff1" stroke="#607d8b" stroke-width="1.7"/>
+<text x="630" y="826" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Batch</text>
+<text x="630" y="844" text-anchor="middle" font-size="10" fill="#5b6b6b">method × matrix</text>
+<rect x="736" y="800" width="188" height="62" rx="9" fill="#eceff1" stroke="#607d8b" stroke-width="1.7"/>
+<text x="830" y="826" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">Worksheet</text>
+<text x="830" y="844" text-anchor="middle" font-size="10" fill="#5b6b6b">analytical unit</text>
+<rect x="936" y="800" width="209" height="62" rx="9" fill="#eceff1" stroke="#607d8b" stroke-width="1.7"/>
+<text x="1041" y="826" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">AnalysisSpec</text>
+<text x="1041" y="844" text-anchor="middle" font-size="10" fill="#5b6b6b">per QC × matrix · real SampleTypes</text>
+<rect x="1177" y="800" width="209" height="62" rx="9" fill="#eceff1" stroke="#607d8b" stroke-width="1.7"/>
+<text x="1281" y="826" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">ReferenceDefinition</text>
+<text x="1281" y="844" text-anchor="middle" font-size="10" fill="#5b6b6b">QC controls</text>
+<rect x="1397" y="800" width="229" height="62" rx="9" fill="#eceff1" stroke="#607d8b" stroke-width="1.7"/>
+<text x="1512" y="826" text-anchor="middle" font-size="13" font-weight="700" fill="#293333">senaite catalogs</text>
+<text x="1512" y="844" text-anchor="middle" font-size="10" fill="#5b6b6b">+ snapshot / audit log</text>
+<text x="34" y="924" font-size="12.5" font-weight="700" fill="#293333">Legend</text>
+<rect x="34" y="931" width="26" height="13" rx="3" fill="#e8f0fe" stroke="#3b6fb0"/>
+<text x="68" y="942" font-size="12" fill="#5b6b6b">User entry point (role workspace)</text>
+<rect x="34" y="953" width="26" height="13" rx="3" fill="#cbe6d3" stroke="#2e7d32"/>
+<text x="68" y="964" font-size="12" fill="#5b6b6b">★ Single-source master data</text>
+<rect x="34" y="975" width="26" height="13" rx="3" fill="#d7ecf3" stroke="#387493"/>
+<text x="68" y="986" font-size="12" fill="#5b6b6b">Add-on module / store</text>
+<rect x="464" y="931" width="26" height="13" rx="3" fill="#fff8e1" stroke="#c9a227"/>
+<text x="498" y="942" font-size="12" fill="#5b6b6b">★ New bridge to core (spec_sync)</text>
+<rect x="464" y="953" width="26" height="13" rx="3" fill="#eceff1" stroke="#607d8b"/>
+<text x="498" y="964" font-size="12" fill="#5b6b6b">Core SENAITE service</text>
+<rect x="464" y="975" width="26" height="13" rx="3" fill="#fdecea" stroke="#c62828"/>
+<text x="498" y="986" font-size="12" fill="#5b6b6b">Open item (D1: rules duplicated Py2 view / Py3 engine)</text>
+<text x="900" y="942" font-size="12" fill="#5b6b6b">— solid: data/control flow   · · dashed: reference (single-source)</text>
+<text x="900" y="964" font-size="12" fill="#5b6b6b">blue: entry→add-on   teal: add-on→core   amber: new spec_sync bridge</text>
+</svg>

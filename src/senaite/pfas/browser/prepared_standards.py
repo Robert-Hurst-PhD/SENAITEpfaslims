@@ -40,15 +40,9 @@ STATUS_ACTIVE    = "active"
 STATUS_EXHAUSTED = "exhausted"
 STATUS_EXPIRED   = "expired"
 
-STANDARD_TYPES = [
-    "Calibration Standard",
-    "QC Check Standard",
-    "Surrogate Mix",
-    "Internal Standard Mix",
-    "Matrix Spike",
-    "Solvent / Reagent",
-    "Other",
-]
+# Vocabulary is OWNED by the PreparedStandard content type — single source of
+# truth (was duplicated here). Imported so this view stays in lock-step.
+from senaite.pfas.content.prepared_standard import STANDARD_TYPES  # noqa: F401
 
 
 # ── Annotation helpers ─────────────────────────────────────────────────────────
@@ -161,6 +155,16 @@ def _populate_obj(obj, data):
     obj.prepared_by = data.get("prepared_by") or u""
     obj.prepared_date = _parse_date(data.get("prepared_date"))
     obj.expiry_date = _parse_date(data.get("expiry_date"))
+    # Global-default assignment: an in-house prep with no stated expiry gets
+    # prepared_date + the preset global period (Reagent Inventory → Expiry
+    # Defaults). Parent-lot tightening is applied dynamically at read time.
+    if obj.expiry_date is None and obj.prepared_date is not None:
+        defaults = data.get("_expiry_defaults") or {}
+        days = int(defaults.get("prepared_std_default_days", 365))
+        obj.expiry_date = obj.prepared_date + timedelta(days=days)
+        note = u"Expiry assigned from global default ({0} days from prep)".format(days)
+        prev = data.get("expiry_notes") or u""
+        data["expiry_notes"] = (prev + u"\n" + note).strip() if prev else note
     obj.expiry_notes = data.get("expiry_notes") or u""
     obj.storage_location = data.get("storage_location") or u""
     obj.volume_prepared = data.get("volume_prepared") or u""
@@ -182,6 +186,11 @@ def _save(portal, data):
         title = data.get("title") or u"Prepared Standard"
         folder.invokeFactory("PreparedStandard", id=uid, title=title)
         obj = folder[uid]
+    try:
+        from senaite.pfas.browser.reagents import get_expiry_defaults
+        data["_expiry_defaults"] = get_expiry_defaults(portal)
+    except Exception:
+        pass
     _populate_obj(obj, data)
     try:
         obj.reindexObject()
@@ -204,6 +213,24 @@ def _get(portal, uid):
     return _obj_to_dict(obj) if obj else None
 
 
+def effective_expiry_info(portal, d):
+    """Inherited expiry: min(own expiry, every parent reagent lot's effective
+    expiry). If a parent is tighter (earlier), the prep inherits it.
+    Returns {"date": iso, "inherited_from": parent-name-or-empty}."""
+    own = d.get("expiry_date") or ""
+    eff, src = own, ""
+    try:
+        from senaite.pfas.browser.reagents import get_reagent_effective_expiry
+        for p in d.get("parent_reagents") or []:
+            pexp = get_reagent_effective_expiry(
+                portal, p.get("lot", ""), p.get("name", ""))
+            if pexp and (not eff or pexp < eff):
+                eff, src = pexp, (p.get("name") or p.get("lot") or u"parent")
+    except Exception:
+        pass
+    return {"date": eff, "inherited_from": src}
+
+
 def _list(portal, q="", status_filter="", type_filter=""):
     try:
         folder = _get_folder(portal)
@@ -215,6 +242,12 @@ def _list(portal, q="", status_filter="", type_filter=""):
         if obj.portal_type != "PreparedStandard":
             continue
         d = _obj_to_dict(obj)
+        eff = effective_expiry_info(portal, d)
+        d["effective_expiry"] = eff["date"]
+        d["expiry_inherited_from"] = eff["inherited_from"]
+        # a tighter parent expiry can also expire the prep
+        if d["status"] == STATUS_ACTIVE and _is_expired(eff["date"]):
+            d["status"] = STATUS_EXPIRED
         if status_filter and d["status"] != status_filter:
             continue
         if type_filter and d["standard_type"] != type_filter:
@@ -429,7 +462,8 @@ class PFASPrepStandardsView(BrowserView):
         return getToolByName(self.context, "portal_url")()
 
     def expiry_class(self, rec):
-        exp = rec.get("expiry_date", "")
+        # colour by the EFFECTIVE (possibly parent-inherited) expiry
+        exp = rec.get("effective_expiry") or rec.get("expiry_date", "")
         if not exp:
             return ""
         try:

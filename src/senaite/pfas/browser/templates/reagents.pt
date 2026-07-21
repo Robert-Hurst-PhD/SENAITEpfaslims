@@ -12,9 +12,9 @@
                   margin-bottom:20px; }
     .rg-toolbar input[type=text] { flex:1; min-width:200px; max-width:360px;
       padding:8px 12px; font-size:13px; border:1px solid var(--s-input-border);
-      border-radius:7px; }
+      border-radius:4px; }
     .rg-toolbar select { padding:8px 10px; font-size:13px;
-      border:1px solid var(--s-input-border); border-radius:7px; }
+      border:1px solid var(--s-input-border); border-radius:4px; }
 
     /* ── Summary cards ───────────────────────────────── */
     .rg-summary { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
@@ -31,7 +31,7 @@
                    border-bottom:2px solid var(--s-border); font-weight:700; white-space:nowrap; }
     .rg-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
                    vertical-align:middle; }
-    .rg-table tr:hover td { background:#fafbff; }
+    .rg-table tr:hover td { background:var(--s-primary-lt); }
     .rg-name { font-weight:600; }
     .rg-cat { font-family:monospace; font-size:11px; color:#555; }
     .rg-lot { font-family:monospace; font-size:11px; font-weight:700; }
@@ -40,31 +40,16 @@
     .exp-expired { color:#dc3545; font-weight:700; }
     .exp-warning { color:#856404; font-weight:700; }
 
-    /* ── Status badges ───────────────────────────────── */
-    .badge { display:inline-block; font-size:10px; font-weight:700; padding:2px 8px;
-             border-radius:10px; white-space:nowrap; }
-    .badge-active     { background:#d4edda; color:#155724; }
-    .badge-opened     { background:#cce5ff; color:#004085; }
-    .badge-exhausted  { background:#e2e3e5; color:#495057; }
-    .badge-expired    { background:#f8d7da; color:#721c24; }
-    .badge-quarantine { background:#fff3cd; color:#856404; }
+    /* .badge base and common badge-* colors are now global (pfas_macros) */
 
-    /* ── Action buttons ──────────────────────────────── */
-    .btn-primary { padding:8px 18px; background:var(--s-primary); color:#fff;
-                   border:none; border-radius:7px; font-size:13px; font-weight:600;
-                   cursor:pointer; white-space:nowrap; }
-    .btn-primary:hover { opacity:.9; }
+    /* ── Action buttons (page-specific) ─────────────── */
     .btn-scan { padding:8px 16px; background:#6610f2; color:#fff;
-                border:none; border-radius:7px; font-size:13px; font-weight:600;
+                border:none; border-radius:4px; font-size:13px; font-weight:600;
                 cursor:pointer; white-space:nowrap; }
     .btn-scan:hover { opacity:.9; }
     .btn-ocr { padding:8px 16px; background:#20c997; color:#fff;
-               border:none; border-radius:7px; font-size:13px; font-weight:600;
+               border:none; border-radius:4px; font-size:13px; font-weight:600;
                cursor:pointer; white-space:nowrap; }
-    .btn-sm { padding:4px 10px; font-size:11px; border-radius:5px; cursor:pointer;
-              border:1px solid var(--s-border); background:#fff; }
-    .btn-sm:hover { background:#f0f0f0; }
-    .btn-danger { border-color:#dc3545; color:#dc3545; }
 
     /* ── Add/Edit modal ──────────────────────────────── */
     .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
@@ -229,6 +214,15 @@
     .scan-tab-pane.active { display:block; }
     .cam-lookup-input { flex:1; padding:6px 8px; font-size:12px; background:#222;
                         color:#fff; border:1px solid #555; border-radius:5px; }
+      /* Row action pills — consistent with status badges (site pattern) */
+    .btn-sm { font-size:11px; font-weight:700; padding:2px 10px; border-radius:10px;
+              background:#e8f4f8; color:#387493; border:1px solid #cfe5ee;
+              cursor:pointer; text-decoration:none; display:inline-block; line-height:1.6; }
+    .btn-sm:hover { background:#d7ecf3; color:#2d5f7d; text-decoration:none; }
+    .btn-sm.btn-danger { background:#fdecea; color:#a33; border-color:#f2c6c2; }
+    .btn-sm.btn-danger:hover { background:#f8d7da; }
+    .btn-sm.btn-warn { background:#fff3cd; color:#856404; border-color:#ffeeba; }
+    .btn-sm.btn-warn:hover { background:#ffe8a1; }
   </style>
   </tal:styles>
 </head>
@@ -266,6 +260,41 @@
         </span>
       </div>
     </tal:mode>
+
+    <!-- ─── Global expiry defaults (inherited when no expiry stated) ──── -->
+    <details style="margin-bottom:18px;border:1px solid var(--s-border);border-radius:8px;padding:10px 16px;background:var(--s-bg);"
+             tal:define="ed view/expiry_defaults">
+      <summary style="font-size:13px;font-weight:700;cursor:pointer;">
+        Expiry Defaults
+        <span style="font-weight:400;font-size:11px;color:var(--s-secondary);margin-left:8px;">
+          preset periods assigned when a reagent/standard has no stated expiry
+        </span>
+      </summary>
+      <form method="post" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;">
+        <input type="hidden" name="action" value="save_expiry_defaults"/>
+        <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+          Reagent (from receipt, days)
+          <input type="number" name="reagent_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
+                 tal:attributes="value ed/reagent_default_days"/></label>
+        <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+          Mobile phase (from opening, days)
+          <input type="number" name="mobile_phase_open_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
+                 tal:attributes="value ed/mobile_phase_open_days"/></label>
+        <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+          Other opened (days)
+          <input type="number" name="opened_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
+                 tal:attributes="value ed/opened_default_days"/></label>
+        <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+          Prepared standard (from prep, days)
+          <input type="number" name="prepared_std_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
+                 tal:attributes="value ed/prepared_std_default_days"/></label>
+        <button class="btn btn-primary" type="submit">Save Defaults</button>
+        <span style="font-size:11px;color:var(--s-secondary);max-width:340px;">
+          In-house preps also inherit a parent lot's expiry when it is tighter
+          than their own.
+        </span>
+      </form>
+    </details>
 
     <!-- ─── Summary cards ──────────────────────────────────── -->
     <div class="rg-summary">
@@ -310,12 +339,13 @@
              class="btn-sm" style="text-decoration:none;background:#e2e3e5;">Hide Archived</a>
         </tal:arc>
       </form>
-      <button type="button" class="btn-scan" onclick="openScanModal('barcode')">&#128247; Scan Barcode</button>
-      <button type="button" class="btn-ocr"  onclick="openScanModal('ocr')">&#128065; OCR Label</button>
+      <button type="button" class="btn-scan" onclick="openScanModal('barcode')"
+              title="Scan a barcode or switch to OCR inside the scanner">&#128247; Scan Label</button>
       <button type="button" class="btn-primary" onclick="openAddForm()">+ Add Reagent</button>
     </div>
 
     <!-- ─── Reagent table ───────────────────────────────────── -->
+    <div class="table-wrap">
     <table class="rg-table">
       <thead>
         <tr>
@@ -455,6 +485,7 @@
         </tr>
       </tbody>
     </table>
+    </div>
 
     <!-- ════════════════════════════════════════════════════
          CoA Helper Modal

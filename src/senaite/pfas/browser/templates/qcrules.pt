@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html metal:use-macro="context/@@pfas-macros/macros/page"
       xmlns="http://www.w3.org/1999/xhtml"
@@ -46,8 +47,10 @@
 
     /* Rule Toggle Grid */
     .toggle-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .toggle-table th { background: var(--s-dark); color: #fff; padding: 8px 12px;
-                       font-weight: 600; text-align: center; }
+    .toggle-table th { background: var(--s-light); color: var(--s-secondary);
+                       font-size: 11px; font-weight: 700; text-transform: uppercase;
+                       letter-spacing: .04em; padding: 8px 12px; text-align: center;
+                       border-bottom: 2px solid var(--s-border); }
     .toggle-table th.rule-col { text-align: left; min-width: 200px; }
     .toggle-table td { padding: 7px 12px; border-bottom: 1px solid var(--s-border); }
     .toggle-table tr:last-child td { border-bottom: none; }
@@ -128,7 +131,7 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">QC Rule Configuration</tal:t>
+  <tal:t metal:fill-slot="header-title">QC Rules</tal:t>
   <tal:r metal:fill-slot="header-right">
     <span class="role-badge">LabManager</span>
   </tal:r>
@@ -164,6 +167,14 @@
 
       <!-- ── GLOBAL CRITERIA ─────────────────────────────────────────────── -->
       <div class="tab-pane active" id="pane-global">
+        <div style="background:var(--s-primary-lt);border:1px solid #bee5eb;border-radius:8px;
+                padding:10px 16px;font-size:12.5px;color:#0c5460;margin-bottom:16px;">
+      <strong>Scope of this page:</strong> global <em>instrument-verification</em>
+      rule library — which engine rules are ON per method (exported to
+      <code>qc_rules.json</code> for the pipeline). Method-science acceptance —
+      recovery tiers, QC-type limits &amp; toggles, spike levels, matrices —
+      lives in <a href="@@pfas-method-profiles">Method Profiles</a>.
+    </div>
         <div class="field-grid">
           <tal:gfields tal:repeat="item view/global_fields">
             <div class="field-row">
@@ -189,8 +200,6 @@
             <div class="section-head"
                  tal:attributes="onclick string:toggleSection('sec-${qtype}')">
               <h2 tal:content="python:'{} — {}'.format(qtype, view.qc_label(qtype))">CCV</h2>
-              <span tal:attributes="class python:'chart-badge badge-threshold' if view.chart_type(qtype)=='threshold' else 'chart-badge badge-lj'"
-                    tal:content="python:'Threshold chart' if view.chart_type(qtype)=='threshold' else 'Levey-Jennings'">LJ</span>
             </div>
             <div class="section-body">
               <div class="field-grid">
@@ -225,7 +234,7 @@
           </div>
         </tal:qcsections>
         <div class="pane-footer">
-          <span>Per-QC-type acceptance limits (Levey-Jennings or threshold)</span>
+          <span>Per-QC-type acceptance limits</span>
           <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
         </div>
       </div>

@@ -5,7 +5,7 @@
       xmlns:metal="http://xml.zope.org/namespaces/metal"
       xmlns:i18n="http://xml.zope.org/namespaces/i18n">
 <head>
-  <title metal:fill-slot="title">Maine EGAD EDD Configuration</title>
+  <title metal:fill-slot="title">EDD Configuration</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     /* ── EGAD Config panel styles ─────────────────────────────────── */
@@ -122,7 +122,7 @@
     <a href="${view/portal_url}/@@lims-setup" class="pfas-back-link">
       &#8592; Site Setup
     </a>
-    <h1 style="margin:8px 0 4px">Maine EGAD EDD Configuration</h1>
+    <h1 style="margin:8px 0 4px">EDD Configuration</h1>
     <p style="margin:0;color:var(--s-secondary);font-size:13px">
       Configure lab-global, method, and per-analyte settings for
       Electronic Data Deliverable (EDD v6.0) submission to Maine DEP.
@@ -285,7 +285,7 @@
       <div class="method-block-body">
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">EGAD TEST Code *</label>
+            <label class="form-label">TEST Code *</label>
             <input type="text"
                    tal:attributes="name python:m['method_id']+'_test_code';
                                    id python:m['method_id']+'_test_code';
@@ -336,7 +336,7 @@
   <!-- ── ANALYTE CAS tab ─────────────────────────────────────────────── -->
   <div id="pane-cas" class="egad-tab-pane">
     <div class="section-card">
-      <h3><i class="fas fa-atom"></i> Analyte → EGAD CAS_NO Mapping</h3>
+      <h3><i class="fas fa-atom"></i> Analyte → CAS_NO Mapping (Maine EGAD)</h3>
       <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
         32 of 34 analytes are auto-matched from CAS_LUP (CATEGORY=PFC).
         Entries marked <span class="blocking-badge">BLOCKING</span> must be
@@ -349,7 +349,7 @@
           <thead>
             <tr>
               <th style="width:130px">Analyte</th>
-              <th style="width:140px">EGAD CAS_NO</th>
+              <th style="width:140px">CAS_NO</th>
               <th style="width:180px">PARAMETER_NAME</th>
               <th>Note / Override Reason</th>
               <th style="width:80px">Status</th>
@@ -401,7 +401,7 @@
                       style="font-size:11px;color:#78350f;display:block;margin-top:2px">
                   <strong>PFUnDS</strong> (CAS 749786-16-1) is not in Maine EGAD&#8217;s CAS_LUP.
                   Contact Maine DEP to request a DEP##### code, then enter it in the
-                  <em>EGAD CAS_NO</em> field above. The PARAMETER_NAME should follow
+                  <em>CAS_NO</em> field above. The PARAMETER_NAME should follow
                   the pattern <code>PFUNDS_A</code>.
                 </span>
                 <span tal:condition="python:row['keyword']=='PFTrDS'"
@@ -435,7 +435,7 @@
         <thead>
           <tr>
             <th>Our Qualifier Label</th>
-            <th style="width:160px">EGAD Code</th>
+            <th style="width:160px">Program Code</th>
             <th>Description</th>
             <th style="width:40px"></th>
           </tr>
@@ -478,7 +478,7 @@
         <thead>
           <tr>
             <th>Our QC Type Label</th>
-            <th style="width:160px">EGAD Code</th>
+            <th style="width:160px">Program Code</th>
             <th>Description</th>
             <th style="width:40px"></th>
           </tr>
@@ -512,7 +512,7 @@
   <!-- ── REFRESH LOOKUPS tab ────────────────────────────────────────── -->
   <div id="pane-lookups" class="egad-tab-pane">
     <div class="section-card">
-      <h3><i class="fas fa-sync-alt"></i> Refresh EGAD Lookup Tables</h3>
+      <h3><i class="fas fa-sync-alt"></i> Refresh Maine EGAD Lookup Tables</h3>
       <p style="font-size:12px;color:var(--s-secondary);margin:0 0 14px">
         Maine DEP updates EGAD_Lookup_Tables.xlsx periodically.
         Upload the new version here to refresh valid codes for qualifiers,
@@ -569,7 +569,7 @@
     </div>
 
     <div class="section-card">
-      <h3><i class="fas fa-info-circle"></i> About EGAD Lookup Codes</h3>
+      <h3><i class="fas fa-info-circle"></i> About Maine EGAD Lookup Codes</h3>
       <p style="font-size:12px;color:var(--s-secondary)">
         Download the current lookup tables from the
         <a href="https://www.maine.gov/dep/spills/egad/data-entry.html"
@@ -606,7 +606,67 @@
     </div>
   </div><!-- /pane-test_edd -->
 
+<div class="page-body" id="edd-profiles" style="max-width:1100px;margin-top:8px;">
+  <div style="border:1px solid var(--s-border);border-radius:10px;background:var(--s-bg);padding:16px 18px;">
+    <h3 style="font-size:14px;font-weight:700;margin:0 0 6px;">EDD Format Profiles</h3>
+    <p style="font-size:12px;color:var(--s-secondary);max-width:760px;">
+      The EDD engine is profile-driven: <strong>maine_egad</strong> is the seeded
+      Maine DEP format; clone it into sub-profiles or other state programs
+      (column subset/order, heading aliases, SampleType&#8594;code map), then pick a
+      profile per client on the client&#8217;s EGAD page.
+    </p>
+
+    <form method="post" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+      <input type="hidden" name="section" value="edd_profiles"/>
+      <input type="hidden" name="edd_action" value="clone"/>
+      <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Clone from
+        <select name="source_id" style="padding:6px;border:1px solid var(--s-border);border-radius:4px;">
+          <option tal:repeat="p view/edd_profiles" tal:attributes="value p/id" tal:content="p/name">maine</option>
+        </select></label>
+      <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">New profile name
+        <input type="text" name="new_name" placeholder="e.g. Maine EGAD — biota sub-profile"
+               style="padding:6px;border:1px solid var(--s-border);border-radius:4px;width:260px;"/></label>
+      <button class="btn btn-primary" type="submit">Clone profile</button>
+    </form>
+
+    <details tal:repeat="p view/edd_profiles" style="border:1px solid var(--s-border);border-radius:8px;padding:10px 14px;margin-bottom:10px;">
+      <summary style="font-size:13px;font-weight:700;cursor:pointer;">
+        <span tal:content="p/name">name</span>
+        <code style="font-size:11px;color:var(--s-primary);margin-left:6px;" tal:content="p/id">id</code>
+        <span style="font-weight:400;font-size:11px;color:var(--s-secondary);margin-left:8px;">
+          <tal:n tal:content="p/n_columns">53</tal:n> columns · base: <tal:b tal:content="p/base">-</tal:b>
+        </span>
+      </summary>
+      <form method="post" style="margin-top:10px;">
+        <input type="hidden" name="section" value="edd_profiles"/>
+        <input type="hidden" name="edd_action" value="save"/>
+        <input type="hidden" name="profile_id" tal:attributes="value p/id"/>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+            Columns (one per line, order = output order; must be Maine-superset names)
+            <textarea name="columns" rows="10" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+                      tal:content="p/columns_text"></textarea></label>
+          <div>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-bottom:10px;">
+              SampleType &#8594; SAMPLE_TYPE code map (JSON)
+              <textarea name="matrix_map_json" rows="5" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+                        tal:content="p/matrix_map_json"></textarea></label>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+              Column heading aliases (JSON, e.g. {"CAS_NO": "CAS Number"})
+              <textarea name="aliases_json" rows="4" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+                        tal:content="p/aliases_json"></textarea></label>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">Display name
+              <input type="text" name="name" tal:attributes="value p/name"
+                     style="padding:6px;border:1px solid var(--s-border);border-radius:4px;"/></label>
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit" style="margin-top:10px;">Save profile</button>
+      </form>
+    </details>
+  </div>
+</div>
 </div><!-- content -->
+
 
 <tal:scripts metal:fill-slot="scripts">
 <script>

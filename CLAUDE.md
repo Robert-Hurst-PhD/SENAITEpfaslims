@@ -43,10 +43,20 @@ Read in order: data model (§3) → roles (§4) → workspaces (§5) → layout 
    annotation syntax. Use `.format()`, `os.path`, `six`. The out-of-process
    worker may be Python 3 (it talks to SENAITE only over JSON/REST).
 
-6. **Every output traces its parentage.** A result must be able to name: its
-   analyte → method × matrix → batch → samples/QC → surrogate/IS → tier →
-   factors/qualifiers applied. If a value can't name its parents, the model
-   is wrong.
+6. **Every output traces its parentage — in both directions.**
+
+   OUTPUT (result → model): A result must name its analyte → method × matrix
+   → batch/worksheet → samples/QC → surrogate/IS → tier → factors/qualifiers.
+
+   INPUT (result → reagents): A result must also trace its inputs: extraction
+   result → which prepared standard lots were used (FM-ENV-251 lot_ref fields)
+   → which reagent lots those standards were made from (PreparedStandard parent
+   annotation at `senaite.pfas.prepstd.parent_reagents`) → the CRM/reference
+   standard CoA (reagent inventory). Three levels: Reagent lot → Prepared
+   Standard lot → Analysis result. Breaking any link = traceability failure =
+   the result is not defensible under ISO 17025 §6.6.
+
+   If a value can't name its parents in either direction, the model is wrong.
 
 7. **Define UI once, inherit everywhere.** No page is styled independently.
    One shared layout + one shared tile/section style, inheriting SENAITE core
@@ -80,6 +90,10 @@ A LIMS is a relational database with a UI on top. ZODB is an OBJECT store, so
 relationships are object references, and referential integrity is YOUR code's
 job (no SQL foreign keys enforce it). Every feature is a VIEW onto this:
 
+> Every feature must be a view onto the hierarchy below — never a standalone
+> island. If you are about to store a value or mapping that duplicates something
+> another object already owns, STOP and reference the owning object instead.
+
 ```
 LABORATORY
   └─ METHOD                       (FDA 32-PFAS / EPA 537.1 / EPA 1633A)
@@ -110,21 +124,58 @@ LABORATORY
        ├─ CAS MAP         analyte -> CAS / Maine DEP code (for EGAD EDD).
        └─ LOGBOOK TEMPLATES (FM-ENV-250/251/252/253) owned by the method.
 
-  BATCH  -> belongs to ONE method + ONE matrix; inherits that Method x Matrix
-           panel, QC rules, factors, units; instantiates logbook templates as
-           concrete logbooks (each with an ID referencing batch+method);
-           contains SAMPLES (field + QC: MB/LFSM/LFSMD/Dup/LCS); produces
-           RESULTS + QC RESULTS.
+  BATCH
+    ├─ belongs to ONE METHOD and ONE MATRIX
+    ├─ inherits that Method × Matrix analyte panel, QC rules, factors, units
+    ├─ instantiates the method's LOGBOOK TEMPLATES as concrete logbooks
+    │   (each with a unique ID that references the batch + method)
+    ├─ contains SAMPLES (field samples + QC: MB, LFSM, LFSMD, Dup, LCS)
+    └─ produces RESULTS + QC RESULTS (each result references its analyte,
+        which references its method/matrix parentage)
 
-  REPORT -> assembled from a batch, full parentage at every line. Optional EGAD
-           EDD export reads results + CAS map + qualifier map; BLOCKS if any
-           analyte lacks a CAS code.
+  WORKSHEET -> the ANALYTICAL PROCESSING UNIT inside a batch.
+           Logbooks (FM-ENV-250/251/252/253/CoC), QC results, prepared-
+           standard lot records, and the 5-item data-review release checklist
+           all attach to the WORKSHEET via ZODB annotations (IAnnotations) —
+           NOT to the Batch. Batch is the client-facing container; Worksheet
+           is the science. (SENAITE indexes Worksheets in
+           senaite_catalog_worksheet, not portal_catalog — see DECISIONS.md.)
+
+  REPORT
+    └─ assembled from a BATCH → carries full parentage at every line:
+        result → analyte → method × matrix → batch → samples → QC → logbooks
+        → factors/qualifiers applied. Optional EDD export reads results + CAS
+        map + qualifier map; BLOCKS if any analyte in the batch lacks a CAS.
+
+  FACILITY QC RECORDS (parallel compliance subsystem, ISO 17025 §6.4):
+           Time-stamped environmental and equipment verification records:
+           temperature (refrigerators, freezers, room), balance verification,
+           reagent water, waste, eyewash. Stored in SQLite at
+           /data/qc/facility_monitoring.db. Independent facility compliance
+           obligation — records do NOT gate individual batch release; audited
+           on their own cadence by the QAO.
 ```
 
-Rules: populate top-down in order; enforce prerequisites in the UI; scope every
-analyte list to Method x Matrix (never a flat global list); show
-method-conditional fields only for methods that use them; maintain referential
-integrity on rename/delete.
+**Rules that follow from the hierarchy:**
+
+1. **Populate in order; enforce prerequisites.** You cannot define a surrogate
+   map before the method's analyte set exists; cannot create a batch before its
+   Method × Matrix panel is configured; cannot export an EDD before every
+   analyte has a CAS code. The UI must reflect and enforce this order.
+
+2. **Method × Matrix scoping is mandatory.** Any tool that lists analytes —
+   surrogate map, recovery tiers, QC, report, EDD — must list the analytes
+   valid for THAT method × matrix intersection, never a flat global list.
+   PFODA must not appear for FDA × eggs.
+
+3. **Show method-conditional fields only for the method that uses them.**
+   EIS recovery limits appear only for EPA 1633A. FDA's matrix-dependent
+   recovery tiers appear only for FDA. Never expose a criterion the method
+   doesn't use.
+
+4. **Referential integrity on rename/delete.** Deleting or renaming an analyte,
+   IS, method, or matrix must surface what references it — never leave orphaned
+   surrogate maps, result rows, or logbook entries pointing at nothing.
 
 ---
 
@@ -166,11 +217,23 @@ decision = alongside/launcher; revisitable.)
 Workspaces:
 - **QC Management** (Manager/QAO) — method profiles, QC rule toggles, recovery
   tiers, control charts review, sign-off. Default for Manager.
-- **Data Review** (Analyst) — the three-way comparison: extraction data packet
-  vs QC results vs instrument data, per batch, to verify results. Default for
-  Analyst.
-- **Bench** (Bench Chemist) — reagent creation, logbooks/documentation, SOP
-  access, SOP-deviation notes, append corrections to a batch. Default for Bench
+- **Data Review** (Analyst) — per-worksheet release gating via a 5-item
+  checklist (all must pass before submission):
+    (1) Chain of Custody — sample receipt conditions verified (manual)
+    (2) Reagent/Standard Traceability — 3-level chain auto-resolved (auto)
+    (3) QC Summary — recovery results vs method acceptance criteria (auto)
+    (4) Final Data Summary — analyst review of reported results (manual)
+    (5) Instrument Report — raw data file attached and reviewed (manual)
+  Analyst submits when all five pass (Worksheet → to_be_verified); Manager
+  approves (Worksheet → verified). This is the formal technical review
+  required under ISO 17025 §7.8.4. Default for Analyst.
+- **Facility QC** (Manager/QAO) — environmental monitoring and equipment
+  verification dashboard (ISO 17025 §6.4): temperature sensors, balance
+  verification, reagent water, waste, eyewash. Reviewed by QAO independently
+  of batch release. Records in SQLite (/data/qc/facility_monitoring.db).
+- **Bench** (Bench Chemist) — reagent creation, prepared standards (with
+  parent-reagent traceability chain), logbooks/documentation, SOP access,
+  SOP-deviation notes, append corrections to a batch. Default for Bench
   Chemist. Built so a robot service account can perform the same actions.
 - **Sample Workflow** (Manager/Analyst) — walks Method -> Matrix -> Batch ->
   Samples -> Results: receive -> extract -> run -> review -> report.
@@ -212,7 +275,10 @@ It replaces the situation where important features were buried on a separate
   OPERATIONS          Clients · Samples · Batches · Worksheets · Sample Tracker
   QC & METHODS        Method Profiles · QC Rules · Control Charts ·
                       Calibrations · Specifications/Recovery
-  BENCH               Reagent Inventory · Logbooks · SOPs / Deviations
+  BENCH               Reagent Inventory · Prepared Standards ·
+                      Prep Logbooks · Batch Logbooks · SOPs / Deviations
+  FACILITY QC         Temperature · Balance · Reagent Water ·
+                      Waste · Eyewash
   INSTRUMENTS & IMPORT  Instruments · Import Studio · Calibrations
   REPORTING           Reports · EGAD EDD
   CONFIGURATION       (collapsible, out-of-the-way) the old Setup tiles grouped:
@@ -279,6 +345,21 @@ Profile pages:
   Studio (never auto-guess into processing).
 - Barcode scanning is wired into SENAITE (Batch/Worksheet + Reagent inventory +
   extraction logbooks), not standalone.
+- **Storage architecture — three tiers, each for a reason:**
+  - **ZODB annotations** (`IAnnotations(obj)[key]`): per-object transactional
+    data — logbook entries, release checklists, prepared-standard parent chains.
+    Use when the data belongs to exactly one ZODB object and must participate in
+    ZODB transactions.
+  - **SQLite** (`/data/qc/*.db`): time-series and cross-object tabular data —
+    facility QC readings (`facility_monitoring.db`), QC result sets for control
+    charting (`pfas_qc_results.db`). Use when data is date-indexed, queried by
+    range, and not owned by a single ZODB object. Both the Plone process
+    (Py2.7) and the pipeline worker (Py3) can read the same SQLite file.
+  - **Filesystem** (`/data/instrument_reports/{ws_uid}/`): binary uploads and
+    pipeline-consumed artifacts — instrument data files, PDF certificates. Use
+    when the file must survive ZODB restores or is a binary upload from a user.
+  - Rule: one ZODB object → annotate it; time-series/cross-object → SQLite;
+    binary file artifact → filesystem.
 
 ---
 
@@ -317,3 +398,59 @@ Profile pages:
 - If it can't be expressed as a view onto §3 scoped by §4 rendered in §6 —
   STOP and raise it with me; the model may need a new relationship, which is an
   explicit decision, not something to paper over.
+
+---
+
+## 10. LAB PRACTICE PRINCIPLES (ISO 17025 / PFAS-method grounding)
+
+These are the regulatory obligations the system exists to enforce. A feature
+that undermines one of these is a defect, not a design choice.
+
+**Chain of Custody as a sample acceptance prerequisite.** Under EPA 537.1,
+EPA 1633A, and FDA PFAS methods, a sample without a completed CoC is formally
+unreceivable. CoC records: client, project, collection date, field sampler,
+preservation method, container condition, holding-time compliance, and every
+custody transfer. No CoC → no analysis. CoC is gate #1 of the Data Review
+checklist.
+
+**Holding times are a hard acceptance criterion.** EPA 537.1: 14 days for
+drinking water PFAS. FDA methods specify per-matrix holding times. Samples
+received past holding time have compromised integrity; this must be documented
+in CoC condition notes. "Holding Times OK" is a required CoC field; if
+unchecked, the CoC gate does not pass.
+
+**Reagent lot traceability (3-level chain).** ISO 17025 §6.6 requires every
+result to trace back to the reference standards and reagents used:
+(1) Reagent lot (`pfas_reagents/`) — CoA, supplier, lot#, expiry — is the
+    leaf node.
+(2) Prepared Standard lot (`pfas_prepared_standards/`) — parent reagent lots
+    stored via ZODB annotation (`senaite.pfas.prepstd.parent_reagents`) — is
+    the middle link.
+(3) Analysis result connects back via FM-ENV-251 (which PS lots in calibration/
+    QC) and FM-ENV-252 (which reagent lots in extraction).
+Each link is explicit, not inferred. An expired CRM lot invalidates prepared
+standards made from it; those results are not defensible.
+
+**QC acceptance as a hard release gate.** Method blank, LCS, LFSM/LFSMD, and
+IS recovery results are pass/fail — not informational. Each method specifies
+acceptance limits per analyte per QC type; a failing result means the batch
+CANNOT be released without a documented exception. The Data Review QC Summary
+auto-check blocks submission if any non-voided QC result fails.
+
+**Reference standard provenance (NIST-traceable).** CRM reagents must carry a
+CoA from an accredited supplier establishing NIST traceability. Expired CRMs
+must not be used; the reagent inventory displays expiry status.
+
+**Facility QC as an independent compliance obligation (ISO 17025 §6.4).**
+Environmental monitoring (temperature, balance verification, reagent water,
+waste, eyewash) is documented on its own cadence — continuous/daily for
+sensors, daily for balance and water, periodic for eyewash and waste. Records
+are reviewed by the QAO independently, not per-batch. A failing reading on a
+run date is noted in the Facility QC dashboard but evaluated separately from
+batch release.
+
+**Data Review as the formal technical review (ISO 17025 §7.8.4).** Report
+issuance requires a documented technical review. The 5-item checklist + Analyst
+submit + Manager approve IS this technical review — not a courtesy step.
+Without it the Worksheet cannot transition to verified and no report can be
+issued.

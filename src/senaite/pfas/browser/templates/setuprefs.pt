@@ -26,8 +26,7 @@
     .ref-table tr:last-child td { border-bottom: none; }
     .ref-table tr:hover td { background: var(--s-primary-lt); }
 
-    .badge { font-size: 10px; padding: 2px 7px; border-radius: 10px;
-             font-weight: 700; text-transform: uppercase; }
+    /* .badge base is global (pfas_macros) — page-specific colours: */
     .badge-blank    { background: var(--s-primary-lt); color: var(--s-primary); }
     .badge-control  { background: #f3e5f5; color: #6a1b9a; }
     .badge-recovery { background: #d4edda; color: #155724; }
@@ -110,6 +109,7 @@
       </tal:ex>
     </div>
 
+    <div class="table-wrap">
     <table class="ref-table">
       <thead>
         <tr>
@@ -140,6 +140,7 @@
         </tal:rows>
       </tbody>
     </table>
+    </div>
 
     <div class="action-bar">
       <form method="POST" action=""

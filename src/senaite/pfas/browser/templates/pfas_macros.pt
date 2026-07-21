@@ -2,7 +2,8 @@
 <html metal:define-macro="page"
       xmlns="http://www.w3.org/1999/xhtml"
       xmlns:tal="http://xml.zope.org/namespaces/tal"
-      xmlns:metal="http://xml.zope.org/namespaces/metal">
+      xmlns:metal="http://xml.zope.org/namespaces/metal"
+      tal:define="dummy python:context.restrictedTraverse('@@pfas-macros').require_login()">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -458,6 +459,20 @@
       box-shadow: 0 -2px 8px rgba(0,0,0,.08);
     }
 
+    /* ── Generic status badges ──────────────────────────────────────────── */
+    .badge {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+      text-transform: uppercase; letter-spacing: .03em;
+    }
+    .badge-active     { background: #d4edda; color: #155724; }
+    .badge-draft      { background: #e2e3e5; color: #495057; }
+    .badge-archived   { background: #e2e3e5; color: #495057; }
+    .badge-exhausted  { background: #e2e3e5; color: #495057; }
+    .badge-expired    { background: #f8d7da; color: #721c24; }
+    .badge-opened     { background: #cce5ff; color: #004085; }
+    .badge-quarantine { background: #fff3cd; color: #856404; }
+
     /* ── Mono badges ─────────────────────────────────────────────────────── */
     .mono-badge {
       font-family: monospace; font-size: 12px; color: var(--s-primary);
@@ -526,11 +541,15 @@
       /* Content: let it scroll horizontally rather than clip */
       .pfas-content-area { overflow-x: auto; }
 
-      /* Tables: contained scroll */
+      /* Tables: contained scroll. Any table inside .table-wrap scrolls
+         sideways as a unit (cells nowrap) so the page chrome never drags.
+         Opt a cell out of nowrap with class="col-wrap". */
       .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-      .table-wrap .pfas-table td,
-      .table-wrap .pfas-table th { white-space: nowrap; }
-      .table-wrap .pfas-table td.col-wrap { white-space: normal; max-width: 180px; }
+      .table-wrap table { display: table; }
+      .table-wrap table td,
+      .table-wrap table th { white-space: nowrap; }
+      .table-wrap table td.col-wrap,
+      .table-wrap table th.col-wrap { white-space: normal; max-width: 180px; }
       .pfas-table { min-width: 480px; }
       .hide-mobile { display: none !important; }
 
@@ -552,8 +571,21 @@
       .stat-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     }
 
+    /* ── Shared print header/footer (see Configuration → Print Settings) ── */
+    .pfas-printhead, .pfas-printfoot { display: none; }
+
     /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
+      .pfas-printhead { display: block !important;
+        border-bottom: 2px solid #000; margin: 0 0 12px; padding-bottom: 8px; }
+      .pfas-ph-row  { display: flex; gap: 14px; align-items: center; }
+      .pfas-ph-logo { max-height: 46px; }
+      .pfas-ph-name { font-size: 16px; font-weight: 700; color: #000; }
+      .pfas-ph-sub  { font-size: 10px; color: #333; }
+      .pfas-ph-date { margin-left: auto; font-size: 10px; color: #333; }
+      .pfas-printfoot { display: block !important; position: fixed;
+        bottom: 0; left: 0; right: 0; font-size: 9px; color: #444;
+        border-top: 1px solid #999; padding-top: 3px; text-align: center; }
       .pfas-header { display: none !important; }
       #sidebar.pfas-sidebar { display: none !important; }
       .pfas-tabs-wrap { display: none !important; }
@@ -614,7 +646,7 @@
       color: #fff; background: rgba(255,255,255,.1); text-decoration: none;
     }
     .pfas-hdr-userbtn i.fas { font-size: 19px; }
-    .pfas-hdr-user { position: relative; flex-shrink: 0; }
+    .pfas-hdr-user { position: static; flex-shrink: 0; }
     .pfas-hdr-userbtn {
       display: flex; align-items: center; gap: 2px;
       background: none; border: none; padding: 4px 6px; border-radius: 4px;
@@ -628,30 +660,65 @@
       content: ""; border-top: .3em solid; border-right: .3em solid transparent;
       border-bottom: 0; border-left: .3em solid transparent;
     }
+    /* Dropdown: position:fixed computed by JS so no ancestor overflow can clip it.
+       Matches Bootstrap 4 dropdown-menu style used by SENAITE core. */
     .pfas-hdr-userdrop {
-      display: none; position: absolute; right: 0; top: calc(100% + 6px);
-      background: #2d3236; border: 1px solid rgba(255,255,255,.12);
-      border-radius: 6px; min-width: 160px;
-      box-shadow: 0 8px 24px rgba(0,0,0,.35); z-index: 500; overflow: hidden;
+      display: none; position: fixed;
+      background: #fff; border: 1px solid rgba(0,0,0,.15);
+      border-radius: 0.25rem; min-width: 180px;
+      box-shadow: 0 0.5rem 1rem rgba(0,0,0,.175);
+      z-index: 9000; overflow: hidden; padding: 0.5rem 0;
     }
     .pfas-hdr-userdrop.open { display: block; }
-    .pfas-hdr-useritem {
-      display: flex; align-items: center; gap: 9px;
-      padding: 9px 14px; color: rgba(255,255,255,.82);
-      text-decoration: none; font-size: 13px;
-      transition: background .1s, color .1s;
+    /* Higher specificity (drop + a) beats .pfas-header-right a which sets white text */
+    .pfas-hdr-userdrop a.pfas-hdr-useritem {
+      display: flex; align-items: center; gap: 8px;
+      padding: 0.35rem 1.25rem; color: #212529;
+      text-decoration: none; font-size: 14px; white-space: nowrap;
+      transition: background .1s;
     }
-    .pfas-hdr-useritem:hover {
-      background: rgba(255,255,255,.08); color: #fff; text-decoration: none;
+    .pfas-hdr-userdrop a.pfas-hdr-useritem:hover {
+      background: #f8f9fa; color: #1a1e21; text-decoration: none;
     }
-    .pfas-hdr-logout { color: rgba(220,80,80,.85); }
-    .pfas-hdr-logout:hover { color: #ff6b6b; }
-    .pfas-hdr-user-sep { border-top: 1px solid rgba(255,255,255,.1); margin: 3px 0; }
+    .pfas-hdr-userdrop a.pfas-hdr-useritem i.fas { color: #6c757d; font-size: 13px; width: 14px; }
+    .pfas-hdr-userdrop a.pfas-hdr-logout { color: #dc3545; }
+    .pfas-hdr-userdrop a.pfas-hdr-logout:hover { background: #f8d7da; color: #a71d2a; }
+    .pfas-hdr-userdrop a.pfas-hdr-logout i.fas { color: #dc3545; }
+    .pfas-hdr-langactive { font-weight: 600; }
+    .pfas-hdr-user-sep { height: 0; border-top: 1px solid rgba(0,0,0,.15); margin: 0.5rem 0; }
     @media (max-width: 768px) { .pfas-hdr-userbtn span { display: none; } }
   </style>
   <tal:head-extra metal:define-slot="head-extra" />
 </head>
 <body class="pfas-app">
+  <!-- ── Shared print header/footer — settings at Configuration → Print
+       Settings (@@pfas-print-settings). Hidden on screen; renders on EVERY
+       print so a standard form and a CoC produce consistent audit copies.
+       Standalone templates (receipt.pt) reuse via macros/printhead. ──── -->
+  <div class="pfas-printhead" metal:define-macro="printhead"
+       tal:define="ps python:context.restrictedTraverse('@@pfas-macros').print_settings()">
+    <div class="pfas-ph-row">
+      <img class="pfas-ph-logo" tal:condition="ps/logo_url"
+           tal:attributes="src ps/logo_url; alt ps/lab_name"/>
+      <div class="pfas-ph-id">
+        <div class="pfas-ph-name" tal:content="ps/lab_name">Lab name</div>
+        <div class="pfas-ph-sub">
+          <tal:a tal:condition="ps/lab_address" tal:replace="ps/lab_address"/><tal:p
+            tal:condition="ps/lab_phone"> · <tal:x tal:replace="ps/lab_phone"/></tal:p><tal:e
+            tal:condition="ps/lab_email"> · <tal:x tal:replace="ps/lab_email"/></tal:e>
+        </div>
+        <div class="pfas-ph-sub" tal:condition="ps/accreditation"
+             tal:content="ps/accreditation">accreditation</div>
+      </div>
+      <div class="pfas-ph-date" tal:condition="ps/show_print_date">
+        Printed: <tal:d tal:replace="ps/print_date">date</tal:d>
+      </div>
+    </div>
+  </div>
+  <div class="pfas-printfoot"
+       tal:define="ps python:context.restrictedTraverse('@@pfas-macros').print_settings()"
+       tal:condition="ps/show_page_footer"
+       tal:content="ps/footer_text">footer</div>
 
 <!-- ── Top header bar ──────────────────────────────────────────────────────── -->
 <header class="pfas-header">
@@ -667,12 +734,12 @@
 
     <!-- ── Persistent toolbar actions (always present on PFAS pages) ── -->
     <tal:acts tal:define="
-        purl    python:context.portal_url();
-        is_anon python:context.portal_membership.isAnonymousUser();
-        uname   python:'' if is_anon else (context.portal_membership.getAuthenticatedMember().getId() or '');
-        roles   python:[] if is_anon else list(context.portal_membership.getAuthenticatedMember().getRolesInContext(context));
-        is_mgr  python:'LabManager' in roles or 'Manager' in roles;
-        ptabs   python:[{'url': purl+'/clients','title':'Clients'},{'url': purl+'/samples','title':'Samples'},{'url': purl+'/batches','title':'Batches'},{'url': purl+'/worksheets','title':'Worksheets'},{'url': purl+'/reports','title':'Reports'}]">
+        macros_view python:context.restrictedTraverse('@@pfas-macros');
+        purl        python:context.portal_url();
+        is_anon     python:context.portal_membership.isAnonymousUser();
+        uname       python:'' if is_anon else (context.portal_membership.getAuthenticatedMember().getId() or '');
+        roles       python:[] if is_anon else list(context.portal_membership.getAuthenticatedMember().getRolesInContext(context));
+        is_mgr      python:'LabManager' in roles or 'Manager' in roles">
 
       <!-- Global sections (apps grid) — same icon as core: fas fa-th -->
       <div class="pfas-hdr-user" id="pfas-hdr-apps" tal:condition="uname">
@@ -680,23 +747,20 @@
                 onclick="pfasAppsMenuToggle(event)" title="Global sections">
           <i class="fas fa-th"></i>
         </button>
-        <div class="pfas-hdr-userdrop" id="pfas-appsdrop">
-          <tal:tabs tal:repeat="tab ptabs">
-            <a class="pfas-hdr-useritem"
-               tal:attributes="href tab/url"
-               tal:content="tab/title">Tab</a>
-          </tal:tabs>
+        <div class="pfas-hdr-userdrop" id="pfas-appsdrop"
+             tal:content="structure python:macros_view.render_section_items()">
         </div>
       </div>
 
-      <!-- Language selector (globe) — same icon as core: fas fa-globe -->
-      <div class="pfas-hdr-user" id="pfas-hdr-lang" tal:condition="uname">
+      <!-- Language selector (globe) — hidden when only 1 language configured -->
+      <div class="pfas-hdr-user" id="pfas-hdr-lang"
+           tal:condition="python:uname and macros_view.render_lang_available()">
         <button class="pfas-hdr-userbtn" type="button"
                 onclick="pfasLangMenuToggle(event)" title="Language">
           <i class="fas fa-globe"></i>
         </button>
-        <div class="pfas-hdr-userdrop" id="pfas-langdrop">
-          <a class="pfas-hdr-useritem" tal:attributes="href string:${purl}">English</a>
+        <div class="pfas-hdr-userdrop" id="pfas-langdrop"
+             tal:content="structure python:macros_view.render_language_items()">
         </div>
       </div>
 
@@ -744,11 +808,11 @@
   <div class="pfas-panel-backdrop" id="pfas-panel-backdrop"
        onclick="pfasClosePanel()"></div>
 
-  <!-- Unified sidebar — rendered via PFASMacrosView.render_sidebar() to avoid
-       the <!DOCTYPE html> envelope that Plone adds to top-level BrowserView
-       responses. PFASMacrosView._sidebar_template() is called as a method,
-       not as a request handler, so the transform pipeline is bypassed. -->
-  <tal:sb tal:replace="structure context/@@pfas-macros/render_sidebar" />
+  <!-- Unified sidebar — suppressed for anonymous users (Client Tracker / public pages).
+       Authenticated staff always see the full sidebar regardless of page. -->
+  <tal:sb tal:define="is_anon python:context.portal_membership.isAnonymousUser()"
+          tal:condition="python:not is_anon"
+          tal:replace="structure context/@@pfas-macros/render_sidebar" />
 
   <!-- Main: tabs + content + action bar -->
   <div class="pfas-main">
@@ -844,25 +908,43 @@ function _closeAllHdrDrops(except) {
   });
 }
 
-window.pfasAppsMenuToggle = function (e) {
+/* Position a fixed dropdown below its trigger button, flush with the right
+   edge. Uses getBoundingClientRect() so no ancestor overflow can clip it. */
+function _positionDrop(drop, trigger) {
+  if (!drop || !trigger) return;
+  var rect = trigger.getBoundingClientRect();
+  drop.style.top  = (rect.bottom + 4) + 'px';
+  /* Align right edge of drop with right edge of button; clamp to keep it on screen */
+  var rightFromEdge = window.innerWidth - rect.right;
+  drop.style.right = Math.max(4, rightFromEdge) + 'px';
+  drop.style.left  = 'auto';
+}
+
+function _toggleDrop(btnId, dropId, e) {
   if (e) e.stopPropagation();
-  _closeAllHdrDrops('pfas-hdr-apps');
-  var drop = document.getElementById('pfas-appsdrop');
-  if (drop) drop.classList.toggle('open');
-};
-window.pfasLangMenuToggle = function (e) {
-  if (e) e.stopPropagation();
-  _closeAllHdrDrops('pfas-hdr-lang');
-  var drop = document.getElementById('pfas-langdrop');
-  if (drop) drop.classList.toggle('open');
-};
-window.pfasUserMenuToggle = function (e) {
-  if (e) e.stopPropagation();
-  _closeAllHdrDrops('pfas-hdr-user');
-  var drop = document.getElementById('pfas-userdrop');
-  if (drop) drop.classList.toggle('open');
-};
+  _closeAllHdrDrops(btnId);
+  var drop    = document.getElementById(dropId);
+  var trigger = document.getElementById(btnId);
+  if (!drop) return;
+  var opening = !drop.classList.contains('open');
+  if (opening) {
+    /* Position before making visible so size is known */
+    drop.classList.add('open');
+    _positionDrop(drop, trigger ? trigger.querySelector('button') || trigger : trigger);
+  } else {
+    drop.classList.remove('open');
+  }
+}
+
+window.pfasAppsMenuToggle  = function (e) { _toggleDrop('pfas-hdr-apps', 'pfas-appsdrop',  e); };
+window.pfasLangMenuToggle  = function (e) { _toggleDrop('pfas-hdr-lang', 'pfas-langdrop',  e); };
+window.pfasUserMenuToggle  = function (e) { _toggleDrop('pfas-hdr-user', 'pfas-userdrop',  e); };
+
+/* Close all drops when clicking outside */
 document.addEventListener('click', function () { _closeAllHdrDrops(null); });
+
+/* Reposition on scroll/resize in case viewport shifts */
+window.addEventListener('resize', function () { _closeAllHdrDrops(null); });
 </script>
 
 

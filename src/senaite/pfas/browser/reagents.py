@@ -53,16 +53,9 @@ _LAB_SETTINGS_KEY = u"senaite.pfas.lab_settings"
 _ANN_ARCHIVED_KEY = u"senaite.pfas.reagent.archived"
 
 # Reagent categories (ISO 17025-friendly)
-REAGENT_CATEGORIES = [
-    "Mobile Phase / Solvent",
-    "Extraction Reagent",
-    "Standard / Reference Material",
-    "Internal Standard",
-    "Buffer",
-    "Acid / Base",
-    "Salt",
-    "Other Reagent",
-]
+# Vocabulary is OWNED by the Reagent content type — single source of truth
+# (was duplicated here). Imported so this view stays in lock-step.
+from senaite.pfas.content.reagent import REAGENT_CATEGORIES  # noqa: F401
 
 # Mobile phase name pattern for auto-expiry (7 days from open date)
 _MOBILE_PHASE_RE = re.compile(
@@ -71,13 +64,40 @@ _MOBILE_PHASE_RE = re.compile(
 )
 
 # ── Expiry helpers ────────────────────────────────────────────────────────────
+# Global default expiry periods (days). Editable in lab settings (Reagent
+# Inventory → Expiry Defaults); these literals are only the seed values.
 
-def _auto_expiry_from_open(name, opened_date_str):
+EXPIRY_DEFAULTS = {
+    "reagent_default_days":       365,  # manufactured reagent w/o stated expiry
+    "mobile_phase_open_days":     7,    # mobile phases after opening
+    "opened_default_days":        365,  # other reagents after opening
+    "prepared_std_default_days":  365,  # in-house prepared standards
+}
+
+
+def get_expiry_defaults(portal):
+    """Merged global expiry defaults (lab settings over seeds)."""
+    out = dict(EXPIRY_DEFAULTS)
+    try:
+        s = _get_lab_settings(portal)
+        for k in EXPIRY_DEFAULTS:
+            v = s.get(k)
+            if v:
+                out[k] = int(v)
+    except Exception:
+        pass
+    return out
+
+
+def _auto_expiry_from_open(name, opened_date_str, defaults=None):
     """Calculate auto-expiry from open date.
 
-    Mobile phases: 7 days.  All others: 1 year.
+    Mobile phases: `mobile_phase_open_days` (default 7); all others
+    `opened_default_days` (default 365). Periods come from the global
+    expiry defaults, not hardcoded.
     Returns ISO date string or empty string if input is invalid.
     """
+    d = defaults or EXPIRY_DEFAULTS
     if not opened_date_str:
         return ""
     try:
@@ -85,18 +105,56 @@ def _auto_expiry_from_open(name, opened_date_str):
     except (ValueError, TypeError):
         return ""
     if _MOBILE_PHASE_RE.search(name or ""):
-        exp = opened + timedelta(days=7)
+        exp = opened + timedelta(days=int(d.get("mobile_phase_open_days", 7)))
     else:
-        try:
-            exp = date(opened.year + 1, opened.month, opened.day)
-        except ValueError:
-            exp = date(opened.year + 1, 3, 1)  # Feb 29 edge case
+        exp = opened + timedelta(days=int(d.get("opened_default_days", 365)))
     return exp.strftime("%Y-%m-%d")
 
 
-def _effective_expiry(rec):
-    """Return the expiry date string in effect for a record."""
-    return rec.get("expiry_date") or rec.get("manufacturer_expiry") or ""
+def _effective_expiry(rec, defaults=None):
+    """Expiry date string in effect for a record.
+
+    Inheritance chain: explicit expiry_date → manufacturer_expiry → GLOBAL
+    default (received_date + reagent_default_days) so a manufactured reagent
+    without a stated expiry is still governed by the preset global value."""
+    exp = rec.get("expiry_date") or rec.get("manufacturer_expiry") or ""
+    if exp:
+        return exp
+    received = rec.get("received_date") or ""
+    if received:
+        d = defaults or EXPIRY_DEFAULTS
+        try:
+            rd = datetime.strptime(received, "%Y-%m-%d").date()
+            return (rd + timedelta(days=int(d.get("reagent_default_days", 365)))
+                    ).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            pass
+    return ""
+
+
+def get_reagent_effective_expiry(portal, lot, name=None):
+    """Public: effective expiry (incl. global-default fallback) of the reagent
+    lot with the given lot number — used by prepared-standards inheritance."""
+    try:
+        folder = _get_reagents_folder(portal)
+    except Exception:
+        return ""
+    defaults = get_expiry_defaults(portal)
+    for obj in folder.objectValues():
+        try:
+            if (obj.lot_number or "") != lot:
+                continue
+            if name and name.strip() and (obj.title or "").strip() != name.strip():
+                continue
+            rec = {
+                "expiry_date": _date_to_str(obj.expiry_date),
+                "manufacturer_expiry": _date_to_str(obj.manufacturer_expiry),
+                "received_date": _date_to_str(obj.received_date),
+            }
+            return _effective_expiry(rec, defaults)
+        except Exception:
+            continue
+    return ""
 
 
 def _is_expired(rec):
@@ -278,9 +336,22 @@ def _populate_obj(obj, data):
             setattr(obj, field_name, raw)
 
     # Auto-compute expiry from opened_date when not supplied
+    defaults = data.get("_expiry_defaults") or EXPIRY_DEFAULTS
     if not obj.expiry_date and not obj.manufacturer_expiry and obj.opened_date:
-        computed = _auto_expiry_from_open(obj.title, _date_to_str(obj.opened_date))
+        computed = _auto_expiry_from_open(obj.title, _date_to_str(obj.opened_date),
+                                          defaults)
         obj.expiry_date = _str_to_date(computed)
+
+    # Global-default assignment: a manufactured reagent with NO stated expiry
+    # (neither explicit nor manufacturer) is assigned received_date + the
+    # preset global period, so every lot is governed by a real date.
+    if not obj.expiry_date and not obj.manufacturer_expiry and obj.received_date:
+        rd = obj.received_date
+        obj.expiry_date = rd + timedelta(
+            days=int(defaults.get("reagent_default_days", 365)))
+        note = u"Expiry assigned from global default ({0} days from receipt)".format(
+            defaults.get("reagent_default_days", 365))
+        obj.notes = (obj.notes + u"\n" + note).strip() if obj.notes else note
 
     # Auto-update to expired
     if obj.status not in (STATUS_EXHAUSTED, STATUS_QUARANTINE):
@@ -301,6 +372,7 @@ def _save_reagent(portal, data):
         folder.invokeFactory("Reagent", id=uid, title=name)
         obj = folder[uid]
 
+    data["_expiry_defaults"] = get_expiry_defaults(portal)
     _populate_obj(obj, data)
     try:
         obj.reindexObject()
@@ -598,6 +670,8 @@ class PFASReagentsView(BrowserView):
                 return self._handle_status_change()
             if action == "delete":
                 return self._handle_delete()
+            if action == "save_expiry_defaults":
+                return self._handle_save_expiry_defaults()
             if action == "restore":
                 return self._handle_restore_reagent()
             if action == "purge_test":
@@ -755,6 +829,25 @@ class PFASReagentsView(BrowserView):
             self._self_url(), data["lot_number"].replace(" ", "+"))
         return self._redirect(url)
 
+    def expiry_defaults(self):
+        return get_expiry_defaults(self._portal())
+
+    def _handle_save_expiry_defaults(self):
+        """Persist global expiry defaults (lab settings) — the preset periods
+        assigned when a reagent/standard has no stated expiry."""
+        portal = self._portal()
+        s = _get_lab_settings(portal)
+        f = self.request.form
+        for k in EXPIRY_DEFAULTS:
+            v = (f.get(k) or "").strip()
+            if v:
+                try:
+                    s[k] = int(v)
+                except (TypeError, ValueError):
+                    pass
+        _save_lab_settings(portal, s)
+        return self._redirect("{0}?ok=Expiry+defaults+saved".format(self._self_url()))
+
     def _handle_open(self):
         uid = self.request.form.get("uid", "").strip()
         opened_date = self.request.form.get("opened_date", "").strip()
@@ -766,7 +859,9 @@ class PFASReagentsView(BrowserView):
         rec["opened_date"] = opened_date or date.today().strftime("%Y-%m-%d")
         rec["status"] = STATUS_OPENED
         if not rec.get("expiry_date") and not rec.get("manufacturer_expiry"):
-            rec["expiry_date"] = _auto_expiry_from_open(rec.get("name", ""), rec["opened_date"])
+            rec["expiry_date"] = _auto_expiry_from_open(
+                rec.get("name", ""), rec["opened_date"],
+                get_expiry_defaults(self._portal()))
         _save_reagent(self._portal(), rec)
         url = "{0}?ok=Marked+as+opened".format(self._self_url())
         return self._redirect(url)

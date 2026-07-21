@@ -181,11 +181,21 @@ PRESERVATIONS = [
 ]
 
 # ── Calibration ladders per method (working ranges) ──────────────────────────
+# SINGLE SOURCE for calibration ladders. Convention: index 0 = CAL-1 = HIGHEST
+# standard (descending), matching the printed FM-ENV-251 logbook. VERIFY with
+# the lab that instrument sequence naming uses the same direction.
+# FDA values are the exact halving series (display rounding happens at render).
 CAL_LADDERS = {
-    "FDA_32PFAS": [20.0, 10.0, 5.0, 2.5, 1.25, 0.625, 0.313, 0.156, 0.078, 0.039],  # ng/mL
-    "EPA_537_1":  [2.0, 4.0, 8.0, 16.0, 40.0, 80.0, 160.0],                          # ng/L (ppt)
-    "EPA_1633A":  [0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0],                      # ng/mL (verify)
+    "FDA_32PFAS": [20.0, 10.0, 5.0, 2.5, 1.25, 0.625, 0.3125, 0.15625,
+                   0.078125, 0.0390625],                                # ng/mL
+    "EPA_537_1":  [2.0, 4.0, 8.0, 16.0, 40.0, 80.0, 160.0],             # ng/L (ppt)
+    "EPA_1633A":  [0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0],        # ng/mL (verify)
 }
+
+
+def get_cal_ladder(method_id):
+    """Descending calibration ladder for a method (CAL-1 = highest)."""
+    return list(CAL_LADDERS.get(method_id, []))
 
 
 def native_count():
@@ -216,6 +226,35 @@ def get_no_labeled_keywords():
 def get_no_labeled_names():
     """Frozenset of display names for analytes with no matched labeled standard."""
     return frozenset(row[1] for row in NATIVE_ANALYTES if row[7])
+
+
+def get_cas_by_keyword(dashed=True):
+    """Dict of {keyword: CAS} from the master analyte table — the single source
+    of truth for analyte CAS.
+
+    SENAITE core's AnalysisService has no CAS field in 2.6, so CAS is owned in
+    this add-on, keyed by the core AnalysisService keyword (the join to core).
+
+    dashed=True  -> registry format, e.g. '335-67-1'
+    dashed=False -> digits only, e.g. '335671' (EGAD/EDD wants undashed CAS)
+    Empty / 'PLACEHOLDER' entries are returned unchanged.
+    """
+    import re as _re
+    out = {}
+    for row in NATIVE_ANALYTES:
+        cas = row[2] or ""
+        if not dashed and cas and cas != "PLACEHOLDER":
+            cas = _re.sub(r"[^0-9]", "", cas)
+        out[row[0]] = cas
+    return out
+
+
+def get_method_ids():
+    """Ordered list of method IDs — the single source of truth for "which
+    methods exist" (FDA_32PFAS, EPA_537_1, EPA_1633A). Presentation labels stay
+    local to each consumer; only the ID list/order is owned here, so adding a
+    method to METHODS propagates everywhere that derives from this."""
+    return [row[0] for row in METHODS]
 
 
 def get_surrogate_map_by_keyword():

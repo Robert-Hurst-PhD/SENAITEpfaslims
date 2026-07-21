@@ -67,7 +67,7 @@ _PFAS_TOOL_DEFS = [
 
     ("pfas-control-chart",   "Control Charts",
      "@@pfas-control-chart",
-     "Levey-Jennings + Westgard multi-rule charts",
+     "QC control charts with Westgard rule evaluation",
      "fa-chart-line"),
 
     ("pfas-calibrations",    "Calibrations",
@@ -120,14 +120,14 @@ _PFAS_TOOL_DEFS = [
      "Manage logbook definitions — rename, reorder, create custom logbooks",
      "fa-book"),
 
-    ("pfas-egad-config",     "EGAD EDD Config",
+    ("pfas-egad-config",     "EDD Configuration",
      "@@pfas-egad-config",
-     "Maine DEP EGAD EDD v6.0 submission settings: lab, methods, analyte CAS, qualifiers",
+     "EDD deliverable settings — program profiles (incl. Maine EGAD): lab, methods, analyte CAS, qualifiers",
      "fa-file-export"),
 
     ("pfas-egad-batches",    "Batch EDDs",
      "@@pfas-egad-batches",
-     "Download EGAD EDD files per batch; set per-sample SAMPLE_TYPE overrides",
+     "Delivered EDDs: download per-batch EDD files; per-sample SAMPLE_TYPE overrides",
      "fa-download"),
 ]
 

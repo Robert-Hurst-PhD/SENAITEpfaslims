@@ -527,30 +527,64 @@
     catch(e) { return; }
     var analytes = d.analytes      || [];
     var labels   = d.analyte_labels || {};
-    var surr     = d.surrogates    || [];
-    var map      = d.map           || {};
+    var surr     = d.surrogates    || [];   // [{keyword,name,in_core,role,url}]
+    var map      = d.map           || {};   // effective (override or default)
+    var defaults = d.defaults      || {};
+
+    // Injection IS: prefill the field with the derived default if empty.
+    var isField = document.getElementById('surrogate_is');
+    if (isField && !isField.value && d.injection_is_default) {
+      isField.value = d.injection_is_default;
+    }
 
     tbody.innerHTML = '';
     if (!analytes.length) {
-      tbody.innerHTML = '<tr><td colspan="2" style="color:var(--s-secondary);font-size:12px;padding:8px">No analytes configured.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="3" style="color:var(--s-secondary);font-size:12px;padding:8px">No analytes configured.</td></tr>';
       return;
     }
 
+    // Dropdown options = this method's DERIVED surrogate set (not the global pool)
+    var surByKw = {};
     var baseSurOpts = '<option value="">— None —</option>';
     surr.forEach(function(s) {
-      baseSurOpts += '<option value="' + _esc(s[0]) + '">' + _esc(s[1]) + '</option>';
+      surByKw[s.keyword] = s;
+      baseSurOpts += '<option value="' + _esc(s.keyword) + '">' + _esc(s.name) + '</option>';
     });
 
     analytes.forEach(function(kw) {
       var label   = labels[kw] || kw;
       var current = map[kw] || '';
-      var opts = baseSurOpts.replace('value="' + _esc(current) + '"',
-                                     'value="' + _esc(current) + '" selected');
+      var dflt    = defaults[kw] || '';
+      // include the current value as an option even if outside the derived set
+      var opts = baseSurOpts;
+      if (current && !surByKw[current]) {
+        opts += '<option value="' + _esc(current) + '">' + _esc(current) + '</option>';
+      }
+      opts = opts.replace('value="' + _esc(current) + '"',
+                          'value="' + _esc(current) + '" selected');
+      // marking: default vs override, and core-service role
+      var s = surByKw[current];
+      var mark = '';
+      if (current) {
+        mark += (current === dflt)
+          ? '<span class="sur-tag sur-default" title="from the analyte→surrogate master map">default</span>'
+          : '<span class="sur-tag sur-override" title="overridden (default: ' + _esc(dflt || '—') + ')">override</span>';
+        if (s && s.in_core) {
+          mark += ' <a class="sur-tag sur-core" target="_blank" href="' + _esc(s.url) +
+                  '" title="core AnalysisService · pfas_role=' + _esc(s.role) + '">&#128279; core</a>';
+        } else {
+          mark += ' <span class="sur-tag sur-nocore" title="no core AnalysisService marked pfas_role=surrogate">&#9888; not in core</span>';
+        }
+      } else if (dflt === '') {
+        mark = '<span style="font-size:11px;color:var(--s-secondary)">no labeled standard</span>';
+      }
       var tr = document.createElement('tr');
       tr.innerHTML =
         '<td class="pa-name">' + _esc(label) + '</td>' +
         '<td><select class="sur-map-sel" data-analyte="' + _esc(kw) + '"' +
-          ' onchange="syncSurrogateMapJson()">' + opts + '</select></td>';
+          ' data-default="' + _esc(dflt) + '"' +
+          ' onchange="syncSurrogateMapJson();updateSurMark(this)">' + opts + '</select></td>' +
+        '<td class="sur-mark">' + mark + '</td>';
       tbody.appendChild(tr);
     });
     syncSurrogateMapJson();
@@ -565,6 +599,19 @@
     var el = document.getElementById('surrogate_map_json');
     if (el) el.value = JSON.stringify(result);
   }
+
+  /* Update just one row's default/override tag after a change (no full rebuild,
+     which would revert edits by re-reading the server payload). */
+  function updateSurMark(sel) {
+    var cell = sel.closest('tr').querySelector('.sur-mark');
+    if (!cell) return;
+    var cur = sel.value, dflt = sel.getAttribute('data-default') || '';
+    if (!cur) { cell.innerHTML = ''; return; }
+    cell.innerHTML = (cur === dflt)
+      ? '<span class="sur-tag sur-default">default</span>'
+      : '<span class="sur-tag sur-override" title="default: ' + _esc(dflt || '—') + '">override</span>';
+  }
+  window.updateSurMark = updateSurMark;
 
   /* ── Per-Analyte Assignments table ───────────────────────────── */
 
@@ -707,14 +754,10 @@
   }
 
   document.addEventListener('DOMContentLoaded', function() {
-    try {
-      var mf = JSON.parse(document.getElementById('matrix_factors_json').value || '[]');
-      mf.forEach(function(r) { addMatrixFactorRow(r.matrix, r.factor); });
-    } catch(e) {}
-    try {
-      var sa = JSON.parse(document.getElementById('salt_adjustment_factors_json').value || '[]');
-      sa.forEach(function(r) { addSaltRow(r.analyte, r.factor, r.source || ''); });
-    } catch(e) {}
+    /* Matrix adjustment is now server-rendered per supported matrix (named
+       fields matrix_factor.<title>, tied to core SampleTypes) — no JS. */
+    /* Salt adjustment is now server-rendered per analyte (named fields
+       salt_factor.<kw> + salt_lot.<kw>) — no JS population needed. */
     try {
       var iso = JSON.parse(document.getElementById('isomer_summation_json').value || '[]');
       iso.forEach(function(r) { addIsomerRow(r.linear, r.branched, r.reported, r.enabled !== false); });

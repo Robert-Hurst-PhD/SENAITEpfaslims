@@ -64,7 +64,7 @@
   .r2-badge { padding:2px 10px; border-radius:10px; font-size:11px; font-weight:700; }
   .r2-ok   { background:var(--s-primary-lt); color:var(--s-primary); }
   .r2-fail { background:#f8d7da; color:#721c24; }
-  .badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; }
+  /* .badge base is global; page-specific badge colours: */
   .badge-pending  { background:#fff3cd; color:#856404; }
   .badge-approved { background:#d4edda; color:#155724; }
   .badge-rejected { background:#f8d7da; color:#721c24; }

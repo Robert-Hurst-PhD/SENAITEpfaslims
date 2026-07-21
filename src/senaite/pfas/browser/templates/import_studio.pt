@@ -533,6 +533,7 @@
             &nbsp;|&nbsp;
             <a href="#" onclick="autoIgnoreAll();return false;" style="font-size:11px;">Ignore all</a>
           </p>
+          <div class="table-wrap">
           <table class="mapping-grid">
             <thead>
               <tr>
@@ -543,6 +544,7 @@
             </thead>
             <tbody id="mapping-body"></tbody>
           </table>
+          </div><!-- /table-wrap -->
 
           <!-- Calculation chain (shown when calc_mode = raw) -->
           <div id="calc-chain-box"
@@ -636,6 +638,66 @@
         </a>
       </div>
     </div><!-- /phase-mapping -->
+
+    <!-- ── Saved import profiles: retire / reactivate (audited) ─────────── -->
+    <div class="profile-card" style="margin-top:22px;"
+         tal:define="profiles view/saved_profiles">
+      <h3>Saved Import Profiles</h3>
+      <p style="font-size:11px;color:var(--s-secondary);margin:0 0 10px;">
+        Retired profiles are refused by the pipeline (imports stop rather than
+        use a withdrawn mapping). Every retirement is written to the audit log.
+      </p>
+      <div class="table-wrap" tal:condition="profiles">
+      <table class="pfas-table">
+        <thead><tr><th>Vendor</th><th>Version</th><th>Columns</th>
+                   <th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="p profiles">
+            <td tal:content="p/vendor">SCIEX OS</td>
+            <td><code tal:content="python:p['version'] or '(any)'">1.7.2</code></td>
+            <td tal:content="p/n_columns">8</td>
+            <td>
+              <span tal:condition="not:p/retired"
+                    style="font-size:11px;background:#d4edda;color:#155724;padding:2px 8px;border-radius:8px;">active</span>
+              <span tal:condition="p/retired"
+                    style="font-size:11px;background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:8px;">RETIRED</span>
+            </td>
+            <td>
+              <form method="post" style="display:flex;gap:6px;align-items:center;">
+                <input type="hidden" name="action"
+                       tal:attributes="value python:'reactivate_profile' if p['retired'] else 'retire_profile'"/>
+                <input type="hidden" name="vendor_key" tal:attributes="value p/vendor_key"/>
+                <input type="hidden" name="version" tal:attributes="value p/version"/>
+                <input type="text" name="reason" placeholder="reason"
+                       tal:condition="not:p/retired"
+                       style="width:130px;padding:3px 6px;font-size:11px;border:1px solid var(--s-border);border-radius:4px;"/>
+                <button class="btn-action" type="submit"
+                        tal:content="python:'Reactivate' if p['retired'] else 'Retire'">Retire</button>
+              </form>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p tal:condition="not:profiles" style="font-size:12px;color:var(--s-secondary);">
+        No saved profiles yet — upload an instrument export above to create one.
+      </p>
+
+      <tal:log tal:define="log view/studio_audit" tal:condition="log">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;
+                    letter-spacing:.04em;color:var(--s-secondary);margin:14px 0 6px;">
+          Profile audit history
+        </div>
+        <div style="font-size:11px;color:var(--s-secondary);"
+             tal:repeat="e log">
+          <span tal:content="e/ts">ts</span> —
+          <strong tal:content="e/action">retire</strong>
+          <code tal:content="string:${e/vendor_key}:${e/version}">key</code>
+          by <span tal:content="e/user">user</span>
+          <tal:r tal:condition="e/reason">· <em tal:content="e/reason">reason</em></tal:r>
+        </div>
+      </tal:log>
+    </div>
 
   </div>
 

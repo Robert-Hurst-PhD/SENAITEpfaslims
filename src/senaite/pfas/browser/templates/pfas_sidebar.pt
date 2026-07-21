@@ -327,12 +327,21 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   body:not(.pfas-app) .container { overflow-x: auto; }
 
   /* ── Toolbar layout on mobile ──────────────────────────────────────────── */
-  /* Single row, never wraps */
+  /* Single row, never wraps.  Clip horizontal spill only — overflow-y MUST
+     stay visible or the header dropdowns (apps / language / user) get clipped
+     by the bar.  z-index keeps those dropdowns above the page content below. */
   body:not(.pfas-app) #senaite-toolbar {
     flex-wrap: nowrap !important;
-    overflow: hidden;
+    overflow-x: clip;
+    overflow-y: visible;
+    position: relative;
+    z-index: 1030;
   }
-  /* Brand: shrinks if needed, truncates, doesn't push icons off-screen */
+  /* Collapse takes its natural width so icons are never squeezed out */
+  body:not(.pfas-app) #senaite-toolbar .navbar-collapse {
+    flex: 0 0 auto !important;
+  }
+  /* Brand: fills remaining space, truncates long names */
   body:not(.pfas-app) .navbar-brand {
     flex: 1 1 0 !important;
     min-width: 0 !important;
@@ -341,19 +350,16 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     font-size: 14px !important;
     margin: 0 4px !important;
   }
+  /* Bootstrap mobile sets navbar-nav to column — override so icons stay in one row */
+  body:not(.pfas-app) #senaite-toolbar .navbar-nav {
+    flex-direction: row !important;
+    align-items: center !important;
+  }
   /* Tighten icon padding on mobile to gain space */
   body:not(.pfas-app) #senaite-toolbar .nav-link,
   body:not(.pfas-app) #senaite-toolbar .dropdown-toggle {
     padding-left: 4px !important;
     padding-right: 4px !important;
-  }
-  /* Language selector: rarely needed on mobile — accessible via desktop */
-  body:not(.pfas-app) #senaite-toolbar li.nav-item:has(i.fa-globe) {
-    display: none !important;
-  }
-  /* LIMS setup cog: reachable from the sidebar Configuration group */
-  body:not(.pfas-app) #senaite-toolbar li.nav-item:has(i.fa-cog) {
-    display: none !important;
   }
   /* User dropdown: show icon, hide username text to save width */
   body:not(.pfas-app) #navbarUserDropdown .pfas-user-icon {
@@ -546,6 +552,13 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   </symbol>
 
   <!-- Configuration -->
+  <symbol id="ico-sitemap" viewBox="0 0 24 24">
+    <rect width="8" height="6" x="8" y="2" rx="1"/>
+    <rect width="6" height="6" x="2" y="16" rx="1"/>
+    <rect width="6" height="6" x="16" y="16" rx="1"/>
+    <path d="M12 8v4"/><path d="M5 16v-2a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v2"/>
+  </symbol>
+
   <symbol id="ico-storage" viewBox="0 0 24 24">
     <path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"/>
     <path d="M6 18h12"/><path d="M6 14h12"/><path d="M6 10h12"/>
@@ -593,6 +606,14 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     <rect x="14" y="3" width="7" height="7" rx="1"/>
     <rect x="14" y="14" width="7" height="7" rx="1"/>
     <rect x="3" y="14" width="7" height="7" rx="1"/>
+  </symbol>
+
+  <!-- Deviations / CARs — warning triangle with exclamation -->
+  <symbol id="ico-warning" viewBox="0 0 24 24">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+          fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
   </symbol>
 
   <!-- Collapse arrow -->
@@ -671,29 +692,17 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-data-review"/></svg></span>
           <span class="pfas-si-label">Data Review</span>
         </a>
-        <a class="pfas-si" title="Method Profiles"
+        <a class="pfas-si" title="Method Profiles &amp; QC Rules — per-method configuration console"
            tal:attributes="href string:${purl}/@@pfas-method-profiles;
-                           class python:'pfas-si si-active' if '@@pfas-method-profile' in path else 'pfas-si'">
+                           class python:'pfas-si si-active' if ('@@pfas-method-profile' in path or '@@pfas-qc-rules' in path) else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-method-profiles"/></svg></span>
-          <span class="pfas-si-label">Method Profiles</span>
-        </a>
-        <a class="pfas-si" title="QC Rules"
-           tal:attributes="href string:${purl}/@@pfas-qc-rules;
-                           class python:'pfas-si si-active' if '@@pfas-qc-rules' in path else 'pfas-si'">
-          <span class="pfas-si-icon"><svg><use href="#ico-qc-rules"/></svg></span>
-          <span class="pfas-si-label">QC Rules</span>
+          <span class="pfas-si-label">Method Profiles &amp; QC</span>
         </a>
         <a class="pfas-si" title="Control Charts"
            tal:attributes="href string:${purl}/@@pfas-control-chart;
                            class python:'pfas-si si-active' if '@@pfas-control-chart' in path else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-control-charts"/></svg></span>
           <span class="pfas-si-label">Control Charts</span>
-        </a>
-        <a class="pfas-si" title="Calibrations"
-           tal:attributes="href string:${purl}/@@pfas-calibrations;
-                           class python:'pfas-si si-active' if '@@pfas-calibrations' in path else 'pfas-si'">
-          <span class="pfas-si-icon"><svg><use href="#ico-calibrations"/></svg></span>
-          <span class="pfas-si-label">Calibrations</span>
         </a>
         <a class="pfas-si" title="Specifications"
            tal:attributes="href string:${purl}/bika_setup/bika_analysisspecs;
@@ -743,6 +752,18 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-extraction"/></svg></span>
           <span class="pfas-si-label">Extraction Guide</span>
         </a>
+        <a class="pfas-si" title="SOPs"
+           tal:attributes="href string:${purl}/@@pfas-sop;
+                           class python:'pfas-si si-active' if '@@pfas-sop' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book-open"/></svg></span>
+          <span class="pfas-si-label">SOPs</span>
+        </a>
+        <a class="pfas-si" title="Deviations &amp; CARs"
+           tal:attributes="href string:${purl}/@@pfas-deviations;
+                           class python:'pfas-si si-active' if '@@pfas-deviations' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-warning"/></svg></span>
+          <span class="pfas-si-label">Deviations / CARs</span>
+        </a>
       </div>
     </div>
 
@@ -773,11 +794,11 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-balance"/></svg></span>
           <span class="pfas-si-label">Balance Verification</span>
         </a>
-        <a class="pfas-si" title="Type 1 Water"
+        <a class="pfas-si" title="Reagent Water"
            tal:attributes="href string:${purl}/@@pfas-water-log;
                            class python:'pfas-si si-active' if '@@pfas-water-log' in path else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-water"/></svg></span>
-          <span class="pfas-si-label">Type 1 Water</span>
+          <span class="pfas-si-label">Reagent Water</span>
         </a>
         <a class="pfas-si" title="Waste Log"
            tal:attributes="href string:${purl}/@@pfas-waste-log;
@@ -821,6 +842,18 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-import"/></svg></span>
           <span class="pfas-si-label">Import Studio</span>
         </a>
+        <a class="pfas-si" title="LC-MS Run Builder — build the injection sequence from the extraction form"
+           tal:attributes="href string:${purl}/@@pfas-run-builder;
+                           class python:'pfas-si si-active' if '@@pfas-run-builder' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-instrument-setup"/></svg></span>
+          <span class="pfas-si-label">Run Builder</span>
+        </a>
+        <a class="pfas-si" title="Calibrations"
+           tal:attributes="href string:${purl}/@@pfas-calibrations;
+                           class python:'pfas-si si-active' if '@@pfas-calibrations' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-calibrations"/></svg></span>
+          <span class="pfas-si-label">Calibrations</span>
+        </a>
       </div>
     </div>
 
@@ -833,17 +866,23 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
         <span class="pfas-sg-arrow">&#9660;</span>
       </button>
       <div class="pfas-sg-items">
-        <a class="pfas-si" title="EGAD EDD"
+        <a class="pfas-si" title="Published Reports"
+           tal:attributes="href string:${purl}/samples?review_state=published;
+                           class python:'pfas-si si-active' if 'review_state=published' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
+          <span class="pfas-si-label">Reports</span>
+        </a>
+        <a class="pfas-si" title="Delivered EDDs — download EDD files per batch"
            tal:attributes="href string:${purl}/@@pfas-egad-batches;
                            class python:'pfas-si si-active' if '@@pfas-egad-batches' in path else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-egad-edd"/></svg></span>
-          <span class="pfas-si-label">EGAD EDD</span>
+          <span class="pfas-si-label">Delivered EDDs</span>
         </a>
-        <a class="pfas-si" title="EGAD Config"
+        <a class="pfas-si" title="EDD Configuration"
            tal:attributes="href string:${purl}/@@pfas-egad-config;
                            class python:'pfas-si si-active' if '@@pfas-egad-config' in path else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-egad-config"/></svg></span>
-          <span class="pfas-si-label">EGAD Config</span>
+          <span class="pfas-si-label">EDD Configuration</span>
         </a>
       </div>
     </div>
@@ -857,6 +896,18 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
         <span class="pfas-sg-arrow">&#9660;</span>
       </button>
       <div class="pfas-sg-items">
+        <a class="pfas-si" title="System Map — clickable navigation diagram"
+           tal:attributes="href string:${purl}/@@pfas-system-map;
+                           class python:'pfas-si si-active' if '@@pfas-system-map' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-sitemap"/></svg></span>
+          <span class="pfas-si-label">System Map</span>
+        </a>
+        <a class="pfas-si" title="Print Settings — site-wide print header/footer"
+           tal:attributes="href string:${purl}/@@pfas-print-settings;
+                           class python:'pfas-si si-active' if '@@pfas-print-settings' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-grid"/></svg></span>
+          <span class="pfas-si-label">Print Settings</span>
+        </a>
         <a class="pfas-si" title="General — all settings"
            tal:attributes="href string:${purl}/@@lims-setup;
                            class python:'pfas-si si-active' if '@@lims-setup' in path and not sect else 'pfas-si'">

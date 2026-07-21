@@ -36,6 +36,16 @@ class PFASMacrosView(BrowserView):
     def macros(self):
         return self._template.macros
 
+    def print_settings(self):
+        """Print header/footer settings for the shared printhead macro —
+        single source: Configuration → Print Settings."""
+        import datetime
+        from senaite.pfas.print_settings import get_print_settings
+        portal = getToolByName(self.context, 'portal_url').getPortalObject()
+        ps = get_print_settings(portal)
+        ps["print_date"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        return ps
+
     def portal_url(self):
         return getToolByName(self.context, 'portal_url').getPortalObject().absolute_url()
 
@@ -56,6 +66,118 @@ class PFASMacrosView(BrowserView):
         """Return True if the current user is a LabManager or Manager."""
         roles = self.user_roles()
         return 'LabManager' in roles or 'Manager' in roles
+
+    def render_language_items(self):
+        """Return pre-built HTML for the language dropdown.
+
+        Builds the items in Python to avoid Chameleon macro scope issues
+        where tal:repeat loop variables are inaccessible in python: expressions
+        inside the macro body. Returns empty string when only one language is
+        configured (caller hides the button via render_lang_available()).
+        """
+        lt = getToolByName(self.context, 'portal_languages', None)
+        if lt is None:
+            return u''
+        supported = lt.getSupportedLanguages()
+        if not lt.showSelector() or len(supported) <= 1:
+            return u''
+        try:
+            bound = lt.getLanguageBindings(self.request)
+            current = bound[0] if bound else ''
+        except Exception:
+            current = ''
+        base = self.request.get('ACTUAL_URL', self.portal_url())
+        qs = self.request.get('QUERY_STRING', '')
+        params_base = [p for p in qs.split('&')
+                       if p and not p.startswith('set_language')]
+        languages = []
+        for code, info in lt.getAvailableLanguageInformation().items():
+            if not info.get('selected'):
+                continue
+            entry = dict(info)
+            entry['code'] = code
+            entry['active'] = code == current
+            languages.append(entry)
+
+        def _idx(entry):
+            try:
+                return supported.index(entry['code'])
+            except ValueError:
+                return len(supported)
+
+        languages = sorted(languages, key=_idx)
+        parts = []
+        for lang in languages:
+            name = lang.get('native') or lang.get('name', lang['code'])
+            params = params_base + ['set_language={0}'.format(lang['code'])]
+            url = u'{0}?{1}'.format(base, '&'.join(params))
+            css = (u'pfas-hdr-useritem pfas-hdr-langactive'
+                   if lang['active'] else u'pfas-hdr-useritem')
+            parts.append(
+                u'<a href="{0}" class="{1}">{2}</a>'.format(url, css, name)
+            )
+        return u''.join(parts)
+
+    def render_lang_available(self):
+        """Return True when more than one language is configured."""
+        lt = getToolByName(self.context, 'portal_languages', None)
+        if lt is None:
+            return False
+        return lt.showSelector() and len(lt.getSupportedLanguages()) > 1
+
+    def render_section_items(self):
+        """Return pre-built HTML for the global sections dropdown.
+
+        Queries portal_tabs_view.topLevelTabs() — the same source used by
+        the core SENAITE toolbar — so the PFAS apps-grid always matches core.
+        Built in Python to avoid Chameleon macro scope issues with tal:repeat.
+        """
+        try:
+            from zope.component import getMultiAdapter
+            view = getMultiAdapter(
+                (self.context, self.request), name='portal_tabs_view'
+            )
+            tabs = view.topLevelTabs()
+        except Exception:
+            tabs = []
+        parts = []
+        for tab in tabs:
+            name = tab.get('name') or tab.get('title', '')
+            url = tab.get('url', '#')
+            parts.append(
+                u'<a href="{0}" class="pfas-hdr-useritem">{1}</a>'.format(
+                    url, name
+                )
+            )
+        return u''.join(parts)
+
+    # Views intentionally accessible without authentication.
+    _PUBLIC_VIEWS = frozenset(["@@pfas-track"])
+
+    def require_login(self):
+        """Redirect anonymous users to the login form.
+
+        Called from pfas_macros.pt before any rendering so all PFAS pages
+        behave consistently on session timeout.  Raises zExceptions.Redirect
+        which ZPublisher converts to a clean 302 without rendering the page.
+        The came_from parameter lets Plone return the user to the page they
+        were trying to reach after they authenticate.
+        Views in _PUBLIC_VIEWS are exempt (e.g. the Client Tracker).
+        """
+        path = self.request.get("PATH_INFO", "")
+        if any(v in path for v in self._PUBLIC_VIEWS):
+            return
+        mt = getToolByName(self.context, "portal_membership", None)
+        if mt and mt.isAnonymousUser():
+            from zExceptions import Redirect
+            came_from = self.request.get("ACTUAL_URL", "")
+            qs = self.request.get("QUERY_STRING", "")
+            if qs:
+                came_from = came_from + "?" + qs
+            login_url = u"{0}/login_form?came_from={1}".format(
+                self.portal_url(), came_from
+            )
+            raise Redirect(login_url)
 
     def render_sidebar(self):
         """Return the unified sidebar HTML fragment.

@@ -32,11 +32,18 @@ CHART_LJ       = "levey_jennings"   # Levey-Jennings + Westgard
 CHART_THRESHOLD = "threshold"       # flat threshold line only (blanks)
 
 # ── Method identifiers ────────────────────────────────────────────────────────
-METHODS = [
-    {"id": "FDA_32PFAS", "label": "FDA 32-PFAS"},
-    {"id": "EPA_537_1",  "label": "EPA 537.1"},
-    {"id": "EPA_1633A",  "label": "EPA 1633A"},
-]
+# The METHOD ID LIST is single-sourced from analyte_reference.get_method_ids();
+# the short labels below are presentation only. Adding a method to the master
+# adds a QC-rules toggle-grid column here automatically (falls back to the id).
+from senaite.pfas.analyte_reference import get_method_ids as _get_method_ids
+
+_METHOD_SHORT_LABELS = {
+    "FDA_32PFAS": "FDA 32-PFAS",
+    "EPA_537_1":  "EPA 537.1",
+    "EPA_1633A":  "EPA 1633A",
+}
+METHODS = [{"id": mid, "label": _METHOD_SHORT_LABELS.get(mid, mid)}
+           for mid in _get_method_ids()]
 
 # ── Instrument Verification rule library ─────────────────────────────────────
 # Only instrument-level rules live here.  Extraction/matrix QC acceptance
@@ -204,6 +211,14 @@ class QCRulesStore(object):
                     if method_id not in rules["method_overrides"]:
                         rules["method_overrides"][method_id] = {}
                     rules["method_overrides"][method_id].update(method_params)
+            # Global engine defaults (D52: previously dropped on load — this is
+            # why the Global Criteria tab always rendered empty).
+            if isinstance(saved.get("global"), dict):
+                rules.setdefault("global", {}).update(saved["global"])
+            # NOTE (D53): salt_factors is intentionally NOT loaded here. Salt
+            # adjustment is a CORE per-method sample correction (lives in the
+            # method profile, applied to ALL samples), not a QC-engine concept.
+            # The legacy qc_rules.salt_factors block is deprecated/dead.
         except (ValueError, KeyError, IOError) as exc:
             logger.error("Could not load QC rules from %s: %s", self.path, exc)
         return rules

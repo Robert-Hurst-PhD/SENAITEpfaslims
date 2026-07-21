@@ -1582,3 +1582,1038 @@ equivalent export button.
 
 `get_active_logbook_defs()` filters by `d.get("active", True)`; it does NOT
 filter by `status`.
+
+## D22 — Core UI unification via CSS overlay + mobile table-scroll (2026-06-30)
+
+**Context:** Two requests: (1) fix mobile so wide objects scroll sideways
+inside their own box instead of dragging the whole page; (2) apply the PFAS
+look to core SENAITE pages. Chosen mechanism (user sign-off): **global CSS
+overlay** targeting core's existing markup. Scope (first pass): **Sample /
+Batch / Worksheet listings** (all render as `table.contentstable` via
+senaite.app.listing).
+
+**PFAS-page mobile fix (fail-safe, per advisor):**
+- Did NOT clamp `.pfas-content-area` to `overflow-x:hidden` (fail-UNSAFE —
+  clips any wide object lacking its own scroll box). Instead each wide object
+  self-scrolls; once it does, it no longer expands the content area, so the
+  page stops dragging without touching `.pfas-content-area`.
+- Wrapped the 4 actually-wide tables (verified at 375px via Playwright) in the
+  existing `.table-wrap`: `deviations.pt` (.dev-table), `reagents.pt`
+  (.rg-table), `sop_documents.pt` (.sop-table), `setuprefs.pt` (.ref-table).
+- Generalized the macro mobile rule from `.table-wrap .pfas-table` to
+  `.table-wrap table` (nowrap cells + `.col-wrap` opt-out) so any wrapped
+  table scrolls cleanly. The other ~19 PFAS pages were already clean.
+
+**Core overlay (NEW, upgrade-safe layer — flag for upgrade checks):**
+- `browser/static/pfas-core-overlay.css` — restyles `table.contentstable`
+  headers/hover, `.btn-primary`/`.btn-outline-primary`, `.alert-info`/
+  `dl.portalMessage.info`, and listing status badges into the PFAS palette;
+  and on ≤768px makes `table.contentstable` self-scroll (Bootstrap
+  table-responsive pattern: `display:block;overflow-x:auto;white-space:nowrap`
+  with `thead/tbody{display:table;width:max-content;min-width:100%}`).
+- Worksheets-only: `.worksheet_add_controls .input-group.flex-nowrap`
+  (the Create/analyst/template/instrument toolbar, a `d-inline-flex.w-auto`
+  Bootstrap input-group) gets `flex-wrap:wrap; max-width:100%` on mobile so it
+  stacks instead of forcing page width.
+- Token values (`--s-*`) are duplicated into the overlay `:root` because core
+  pages do not load `pfas_macros.pt`. **Keep in sync with pfas_macros.pt.**
+- Injected via a `plone.htmlhead` viewlet (`name="senaite.pfas.core-overlay-css"`,
+  `template=templates/core_overlay_link.pt`) registered on
+  `ISenaitePFASLayer` in `browser/configure.zcml`. No core `.pt` is forked;
+  reversible by removing the viewlet registration.
+- **Upgrade fragility:** depends on core class names `table.contentstable`,
+  `.worksheet_add_controls`, Bootstrap utilities (`.flex-nowrap`,
+  `.btn-primary`), and the `IHtmlHead` viewlet manager. Re-verify these on any
+  senaite.core / Bootstrap bump.
+- **Resource caching:** Zope caches the resourceDirectory file; editing the
+  CSS requires a container restart to serve the new content.
+
+**Verification:** Playwright at 375px — samples/batches/worksheets all
+`doc_drag=False` (docScrollW=375); desktop (1280px) tables remain
+`display:table`, worksheet toolbar remains `nowrap`, no regression.
+
+## D23 — Core header dropdowns clipped on mobile (2026-06-30)
+
+**Symptom:** On core SENAITE pages at ≤768px, the top navbar dropdowns (apps /
+language / user) were clipped by the bar and/or rendered behind the content
+below (e.g. the breadcrumb covered them).
+
+**Root cause:** `pfas_sidebar.pt`'s ≤768px block set `overflow: hidden` on
+`#senaite-toolbar` (the core `.navbar.static-top`) to keep the toolbar on a
+single row. `overflow:hidden` clips on BOTH axes, so the dropdown menus — which
+extend vertically below the bar — were cut off. The navbar also had no stacking
+context, so its `z-index:1000` menus lost to page content.
+
+**Fix (in pfas_sidebar.pt, the source — not the overlay):**
+```
+#senaite-toolbar { overflow-x: clip; overflow-y: visible;
+                   position: relative; z-index: 1030; }
+```
+`overflow-x:clip` keeps the single-row horizontal containment intent;
+`overflow-y:visible` lets dropdowns escape downward; `z-index:1030` (Bootstrap's
+navbar level) puts the menus above page content.
+
+**Verified (Playwright):** 768px & 1280px — user dropdown opens at top:54 (just
+below the bar), `shows:true`, no page drag, toolbar stays single-row.
+
+**Known minor quirk (pre-existing, not fixed):** at 375px the tall user menu is
+anchored by Bootstrap Popper slightly over the bar top, clipping the first item
+against the viewport edge. This is core SENAITE's Popper positioning (the
+`overflow:hidden` previously hid it entirely); the menu now displays over
+content. A Popper-offset override would be fragile, so left as-is pending need.
+
+## D24 — CAS single-source + core-connectivity finding (2026-07-01)
+
+**Context:** Audit D2 (CAS duplicated) + user request to "ensure greater
+connectivity to the core system."
+
+**Key discovery:** SENAITE 2.6 core `AnalysisService` has **no CAS field** (none
+in `bika.lims/content`). So CAS cannot live on the core object; it legitimately
+lives in the add-on, and the **join to core is the AnalysisService keyword**.
+This reframes "connectivity to core" for CAS: not a shared field, but a shared
+key.
+
+**Decision:**
+- `analyte_reference.NATIVE_ANALYTES` is the **single source of truth** for
+  analyte CAS. New accessor `get_cas_by_keyword(dashed=False)`.
+- `egad_store` no longer hardcodes CAS. `DEFAULT_ANALYTE_CAS` is built from
+  `_EGAD_ANALYTE_OVERLAY` (EGAD-specific: parameter_name, override_note, and
+  `cas_override` only where EGAD uses a Maine DEP##### code or the master has no
+  usable CAS) layered over the master. 29/34 CAS values now derive; 5 overrides
+  remain (PFHxS/PFOS/br-PFHxS/br-PFOS DEP codes + PFTrDS placeholder-drift).
+- **Verification bar:** rebuilt `DEFAULT_ANALYTE_CAS` byte-identical to the old
+  hardcoded dict (34/34) and `get_analyte_cas()` output unchanged. Regulated EDD
+  output provably identical — this was the safety gate, not a spot check.
+
+**Also fixed (D5):** `setuphandlers` called non-existent `svc.setCASNumber()`
+inside a silent `try/except`, which had been failing every install AND blocking
+the subsequent `setPrecision()`. Removed; precision now seeds.
+
+**Not changed (scope):** `analyte_reference.cas` is dashed; egad derives undashed.
+The setupdata CSV (`analysis_services.csv`) still carries its own CAS column used
+only for service identity display — a future cleanup could regenerate it from the
+master, but it is not read for the EDD so it is not a live drift risk.
+
+**Upgrade note:** if a future SENAITE core adds a CAS field to AnalysisService,
+revisit — core could then become the CAS owner, seeded from the master.
+
+## D25 — Siloed-list consolidation + D1 re-diagnosis + D4 plan (2026-07-01)
+
+**Context:** "Connect the orphaned/siloed lists" + produce a 3-layer system SVG.
+
+**Deliverable:** `senaite_pfas_map.svg` — standalone SVG, three named layers
+(user entry points by role → add-on parts → core SENAITE services), legend
+inside. Replaces the PNG as the canonical system diagram.
+
+**Facts-vs-presentation rule applied:** consolidated only *facts* (single-source
+per §1.3); left view-local enums alone (LABEL_SIZES, RISK_COLOURS, STEP_META,
+SETUP_GROUPS, PURPOSES, QC_COLUMNS).
+
+**Applied (all byte-identical verified):**
+- D6: `STANDARD_TYPES` / `REAGENT_CATEGORIES` — `content/` owns, `browser/`
+  imports (browser name IS the content object).
+- D7 (partial): `analyte_reference.get_method_ids()` = single source for method
+  IDs; `qc.rules.METHODS` derives from it (labels stay local). Byte-identical.
+
+**D1 re-diagnosed (important):** `qc/control_chart.py` is **Python 3**
+(`@dataclass`, `typing`) — the Py2.7 Plone process cannot import it
+(SyntaxError, verified). It is the out-of-process worker's engine (§7); the
+Py2.7 view reimplements the *same* rules (equivalent: same 6 Westgard rules +
+same n-1 limit formula). NOT dead code, NOT a compliance gap, NOT wireable
+across runtimes. Fix = extract thresholds to a Py2/3-safe constants module
+(deferred; regulated chart path needs byte-identical verification).
+
+**D4 staged (not executed):** matrix-string→SampleType-UID is a data-model
+change with a migration; plan recorded in SYSTEM_AUDIT.md §6. Behind a
+`matrix_ref` resolver so it lands incrementally, backward-compatible.
+
+**Scope discipline:** did not big-bang the regulated pipeline (D4) or the
+regulated chart (D1); both staged with verification gates.
+
+## D26 — matrix_ref resolver (D4 foundation) + method-ID D7 + D1 decision (2026-07-01)
+
+**D7 continued:** `qc_grid.GRID_METHODS` now derives from
+`analyte_reference.get_method_ids()` (byte-identical, verified). Remaining
+method-keyed items are *data* not duplicated lists (`DEFAULT_METHOD_EGAD`,
+`DEFAULT_PROFILES`) or a divergent local slug taxonomy
+(`sop_documents.METHOD_LABELS` uses `fda/epa5371/epa1633`, not canonical IDs —
+flagged; changing needs SOP-data migration, left as-is).
+
+**D4 foundation (new module `matrix_ref.py`):** single resolver joining matrix
+title-strings ↔ core `SampleType` (resolve / title_to_uid / uid_to_title /
+all_matrices / find_profiles_referencing). Additive, backward-compatible,
+nothing consumes it yet → zero risk. Verified live: "Eggs" round-trips to UID,
+16 SampleTypes listed, referential-integrity check finds `FDA_32PFAS`→"Eggs".
+Next staged steps (write UID on save, read-path adoption, migration) recorded in
+SYSTEM_AUDIT.md §6.
+
+**D1 decision:** NOT refactored. Westgard thresholds are identical across the
+Py2.7 view and Py3 engine and are fixed by the methodology (not per-lab
+configurable). Rewiring the regulated chart for a shared constants module = risk
+without functional benefit. Left as accurately documented (cross-runtime
+duplication, equivalent, not a compliance gap).
+
+## D27 — D4 step 2: matrix→SampleType write + read path (2026-07-01)
+
+**Write path:** `method_profile_store.save_profile` now persists
+`matrix_uid_map = {title: SampleType UID}` (via `matrix_ref.title_to_uid`) on
+every save. Additive — `supported_matrices` stays a list of titles; nothing that
+reads titles breaks. Verified: FDA_32PFAS → 6 matrix→UID entries; UI save 200.
+
+**Read path (first consumer):** `get_included_analytes` (the §3 Method×Matrix
+key relation) resolves its `matrix` arg (title OR SampleType UID) through
+`matrix_ref`. Backward-compatible: a live title resolves to itself (byte-
+identical), an unknown/renamed title falls through unchanged (no orphaning), a
+UID resolves to the canonical title. Verified byte-identical vs old logic on 3
+matrices + UID-equivalence.
+
+**Chose the profile path over EGAD** for the read-path adoption because
+`egad_builder` already resolves sample type from the core object
+(`ar.getSampleType()`), whereas the profile's `supported_matrices` /
+`analyte_matrix_inclusion` was the actual raw-string coupling (§3 key relation).
+
+**Next:** backfill migration for pre-existing profiles; adopt the same
+`resolve()` one-liner in the remaining matrix consumers as they're touched.
+
+## D28 — matrix_uid_map backfill migration (2026-07-01)
+
+`migrations/backfill_matrix_uid_map.py` — one-shot, idempotent backfill of
+`matrix_uid_map` (title→core SampleType UID) onto profiles saved before D4.
+
+**Design note:** first version called `save_profile`, which triggered
+`spec_sync` as a side effect (failed harmlessly in the `bin/instance run`
+context — no types tool — and was semantically wrong for a map backfill).
+Refactored to a local `_persist_profile` that writes straight to the store
+(Dexterity folder or annotation) with no spec-sync/export churn. Reuses
+`export_profiles_to_file` once at the end for the worker's JSON.
+
+**Result:** EPA_1633A 9/9, EPA_537_1 3/3, FDA_32PFAS 6/6 matrices mapped, 0
+unresolved; re-run = all "already current" (idempotent). Unresolved titles are
+reported for manual fix, never guessed.
+
+**D4 status:** foundation (resolver) + write path + first read-path consumer +
+backfill migration all landed & verified. Remaining: adopt `matrix_ref.resolve`
+in the other matrix consumers (surrogate map, recovery tiers, EGAD units) as
+they're next touched — each a one-line change behind the resolver.
+
+## D29 — Interactive System Map navigation page (2026-07-01)
+
+New `@@pfas-system-map` (view `browser/system_map.py` + `templates/system_map.pt`),
+linked as the first item in the sidebar **Configuration** group (`ico-sitemap`).
+
+Renders the 3-layer architecture diagram (entry points → add-on parts → core
+services) as **inline SVG with portal-relative `<a xlink:href>` baked into each
+bubble** — native SVG navigation, no JS. 26 of 27 nodes are clickable and jump
+straight to the screen a user edits (e.g. method_profile_store → @@pfas-method-
+profiles, SampleType → setup/sampletypes, AnalysisService → bika_setup/...).
+Hover highlights the bubble (CSS). Rendered through the shared page macro so it
+inherits the sidebar/shell and is responsive (card scrolls on narrow screens).
+
+The view owns the node/edge/nav model (mirrors gen_svg.py / senaite_pfas_map.svg);
+the standalone `senaite_pfas_map.svg` remains the static export. Verified: page
+200, 26 links resolve, click on a bubble navigates correctly.
+
+## D30 — Two-way tolerance editing: AnalysisSpec ⇄ Method Profile (2026-07-01)
+
+User asked for the Method Profile and Analyte Specification to be mutually
+editable. Built as **write-through**, NOT two masters (which would undo this
+session's single-source work): the Method Profile stays the one source of truth;
+the AnalysisSpec is an editing surface onto it.
+
+**Decision (user):** editing one analyte's spec limit creates a PER-ANALYTE
+exception — it does NOT move its tier siblings. Tiers become defaults + per-
+analyte exceptions.
+
+**Mechanism:**
+- Profile gains `spec_overrides = {qc_type: {analyte_kw: {min, max}}}`.
+- Forward (`spec_sync`): override wins over tier default per analyte.
+- Reverse (`spec_reverse.on_spec_modified`, subscriber on
+  `IAnalysisSpec`+`IObjectModifiedEvent`): a spec edit writes changed analytes
+  as overrides into the profile and re-saves it (regenerating the spec).
+  Removes an override when the value returns to the tier default.
+
+**Loop safety (verified):**
+- `spec_sync.is_forward_syncing()` thread-local guard: reverse no-ops while
+  forward writes specs.
+- Write-back gated on NUMERICALLY-normalized diff (rounded floats, not the
+  "80.0" strings the spec stores) so it can't churn.
+- Verified end-to-end: PFOA 80–120→75–125 writes only PFOA override, siblings
+  untouched, settles in one pass, idempotent on re-fire, revert removes the
+  override, and a normal profile save preserves the override (PFOA 70–130 kept,
+  PFOS at tier).
+
+**Map:** the profile↔spec edge is now a double-headed amber "live two-way" link
+(`@@pfas-system-map`); edge routing also cleaned up (port spreading + same-band
+side routing).
+
+## D31 — Pane control audit: selectors link to existing objects (2026-07-01)
+
+Swept every pane's dropdowns/selectors for "links to an existing object /
+creates a new one / hardcoded orphan."
+
+**Fixed (genuine orphans — hardcoded, not linked to real methods):**
+- `deviations.available_methods()` — read a non-existent `bika_setup.bika_methods`
+  folder (SENAITE 2.6 uses `bika_setup.methods`); the `except` swallowed the
+  AttributeError → EMPTY dropdown. Now queries `senaite_catalog_setup` for active
+  `Method` objects (method-1/2/3), which is what worksheets are tagged with.
+- `sop_documents.method_options()` + `filter_tabs()` — a frozen `fda/epa5371/
+  epa1633` list. Now derived from `analyte_reference.get_method_ids()` (single
+  source); legacy slug VALUES preserved for stored SOPs. Byte-identical output
+  today; a new method now appears automatically.
+
+**Verified OK (already dynamic or legitimate vocab):**
+- Dynamic (read live objects): qc_grid, method_profiles, import_studio,
+  data_review, reagents, prepared_standards; qc.rules/qc_grid methods derive
+  from the single-source registry.
+- Config vocabularies (editable, read a saved store): egad_config lookups
+  (EGAD SAMPLE_TYPE/test/prep codes — the Maine-DEP vocabulary, correctly
+  distinct from core SampleTypes; core→EGAD mapping is in egad_builder via
+  ar.getSampleType()).
+- Status/workflow vocab: calibrations.status_choices (pending/approved/rejected).
+
+**Flagged (minor, not fixed):** `egad_config._ANALYTE_ORDER`/`_ANALYTE_TITLES` —
+a curated 34-analyte EGAD display list that overlaps `egad_store`'s overlay set;
+each row still links to the single-sourced CAS (D2). Set-duplication only; order
+is EGAD presentation. Could derive the set from egad_store later.
+
+## D32 — Method bridge: profile ⇄ core SENAITE Method, + linked display (2026-07-01)
+
+Populated the empty `senaite.pfas.method_associations` bridge and surfaced it.
+
+**`method_bridge.py`** (new) — maintains + reads the link between a PFAS method
+profile (FDA_32PFAS: QC ranges/tiers/matrices) and the core SENAITE Method
+object (method-1: what analytes/worksheets reference):
+- `get_association / get_core_method / get_profile_id_for_method` (both
+  directions), `link_one`, `link_all`.
+- Matches by Method TITLE (single-source registry label == Method.Title()),
+  matched in Python (some titles contain parentheses that break a Title=
+  ZCTextIndex query). Unmatched profiles reported, never guessed.
+- Stores method_uid/method_id/method_title + the governed AnalysisService and
+  SampleType UIDs (services from master_analyte_set, sampletypes from the D4
+  matrix_uid_map).
+
+**Wiring:**
+- `save_profile` calls `link_one` (guarded) so the bridge stays fresh.
+- `migrations/backfill_method_associations.py` — idempotent backfill for the 3
+  seeded methods. Result: FDA→method-1 (32 svc/6 st), EPA_537_1→method-2 (18/3),
+  EPA_1633A→method-3 (40/9); 0 unmatched.
+
+**Display add-in (the "improve on core" ask):** the Method Profiles page now has
+a "SENAITE Method" column — each profile shows its linked core Method as a
+clickable link (resolves to `/methods/method-N`, HTTP 200) with "N analytes ·
+M matrices" beneath. The intuitive PFAS profile now sits visibly on top of the
+proper core Method record.
+
+**Reverse (future add-in):** a viewlet on the core Method view linking back to
+the PFAS profile (QC ranges) — `get_profile_id_for_method` already supports it.
+
+## D33 — Reverse bridge add-in on the core Method view (2026-07-01)
+
+Completes D32's bridge in the UI: a viewlet (`browser/method_viewlet.py` +
+`templates/method_profile_viewlet.pt`) on the core SENAITE Method view (registered
+for `bika.lims.interfaces.IMethod` in the `IAboveContentBody` manager, on
+ISenaitePFASLayer — upgrade-safe, no core fork) shows the linked PFAS profile:
+profile name + id, "governs N analytes · M matrices", and a "Configure QC ranges"
+button to `@@pfas-method-profile-edit`. Renders nothing for Methods with no PFAS
+profile (`get_profile_id_for_method` → None).
+
+So the bridge is now visible from BOTH sides: Method Profiles page → core Method
+(forward), core Method view → PFAS profile (reverse). The core Method stays the
+proper SENAITE anchor; the PFAS panel is the intuitive add-in on top.
+
+**Gotcha fixed:** the panel template first used `tal:attributes="style string:…"`
+with CSS containing semicolons — TAL reads `;` as attribute separators, so it
+threw "error while rendering". Moved styles into a scoped `<style>` block with
+classes; only `href` stays in `tal:attributes`.
+
+## D34 — Per-matrix AnalysisSpecs on REAL SampleTypes; tight-matrix tiers (2026-07-02)
+
+**User-reported defect:** AnalysisSpec SampleType showed the QC profile name
+("FDA 32-PFAS in Food LFSM"), not the real matrices. Root cause: spec_sync
+invented synthetic SampleTypes — but SENAITE matches specs to samples BY
+SampleType, so those specs could never match a real sample.
+
+**Second (loose-variable) find while fixing:** tier `matrix_scope:"tight"` was
+consumed NOWHERE, and no tight-matrix list existed. The flat specs claimed PFOA
+80–120 for ALL matrices — wrong per FDA Table 10-1 (tight range applies only in
+egg/meat/seafood).
+
+**Fix:**
+- spec_sync now builds ONE spec per method × QC type × REAL matrix
+  (`spec_id_for()` = `{mid}-{qc}-{matrix-slug}-recovery`), linked to the real
+  SampleType via matrix_ref. Synthetic-SampleType creation removed.
+- New `tight_matrices` profile key (configurable, golden rule #1; seeded
+  Eggs / Meat / Muscle / Fish / Seafood per CLAUDE.md §3).
+  `effective_tier()`: tier 1 → tier 2 outside tight matrices.
+- `spec_overrides` now nests per matrix: `{qc: {matrix: {kw: {min,max}}}}`
+  (legacy flat shape still READ, applied to all matrices; writes are nested).
+  spec_reverse identifies specs per-matrix and compares against the
+  matrix-effective tier.
+- Migration `cleanup_synthetic_qc_sampletypes.py`: removed 2 old flat specs;
+  seeded tight_matrices; regenerated 48 per-matrix specs (FDA 12, 537.1 9,
+  1633A 27). The 2 synthetic SampleTypes were KEPT — 3 samples each reference
+  them (§3 rule 4: surfaced, not orphaned); reassign those samples then delete.
+
+**Verified:** every FDA LFSM spec links to its real matrix SampleType; PFOA
+80–120 in Eggs/Meat/Fish vs 65–135 in Milk/Feed/Aquatic (matrix-dependent tier
+now enforced); reverse sync writes matrix-scoped overrides (Eggs edit leaves
+Milk/Meat untouched), revert removes them; pages load clean.
+
+**Gotcha:** Archetypes `manage_delObjects` fails for the root admin in
+`bin/instance run` (portal-member permission check) — use `_delObject`.
+
+## D35 — Loose-variable catalogue sweep + fixes (2026-07-02)
+
+Fork-agent catalogue of all addon constants (classified: hardcoded lab value /
+duplicate / legit vocab / editable seed), core empty dirs vs siloed addon data,
+and annotation-store liveness. Full tables in the audit; actions taken:
+
+1. **FDA cal ladder was defined 3× with contradictory numbering** (CAL-1 = 20
+   in FM-ENV-251 logbook + CAL_LADDERS, but CAL-1 = 0.039 in analytes.CAL_LEVELS,
+   which had ZERO consumers). Single-sourced: `analyte_reference.CAL_LADDERS`
+   (exact halving values) + `get_cal_ladder()`; logbook FDA_CAL_DEFAULTS derives
+   descending (verified byte-identical to old literal); CAL_LEVELS derives
+   ASCENDING — its comment says instrument sample descriptions number the ladder
+   upward. Both directions now share one value set; direction is explicit.
+   **VERIFY with lab** before wiring injection-name consumers.
+2. **vendor_templates never populated** (seeding failed: post_install context
+   without getSite). Defensive portal resolution added; store seeded now —
+   4 vendor templates (agilent/native/sciex/waters) in Import Studio.
+3. **Empty core dirs un-siloed** (migrations/seed_empty_core_dirs.py, idempotent):
+   5 SamplePoints + 7 ContainerTypes from setupdata CSVs (PLACEHOLDER client
+   names NOT fabricated — flagged in descriptions); 1 "PFAS Chemistry"
+   Department (method-wizard step 2 previously had an empty selector).
+4. **BALANCE_DEFAULTS false alarm**: per-unit weight_points_json override fully
+   implemented (form save + read-with-fallback) — legit editable seed.
+5. **COLUMN_MAP** (data_importer hardcodes vendor mappings, §7 violation) —
+   BLOCKED on D3: module has no in-tree caller; confirm the Py3 worker uses it
+   before refactoring (refactoring dead code = waste).
+Also noted: spec_sync_audit is write-only (no UI reads it yet); wizard_sessions
+grows unbounded; analyte_reference CONTAINERS/STORAGE_LOCATIONS/PRESERVATIONS
+constants are dead (CSVs are the real seed source) — candidates for deletion.
+System map updated (per-matrix specs labels).
+
+## D36 — Data Review: final-data diagnosis, live qualifier legend, e-sign corrections (2026-07-02)
+
+**Final Data tab empty (user report):** root cause was a data-linking gap, not
+rendering — worksheets have 0 assigned analyses, batch links absent, no results
+in core (18 ARs × 3 analyses, all resultless), and no pipeline output files.
+Fixes: (1) `get_final_data` falls back ws→batch ARs (senaite_catalog_sample,
+getBatchUID); (2) `final_data_diagnosis()` renders WHICH link is unpopulated
+("no samples linked to batch" vs "samples found but no results imported")
+instead of a silent blank table; (3) qualifier legend now rendered LIVE from
+`egad_store.get_qualifier_map` (the user's example vocabulary: N.D./BLoQ/J/…,
+editable under EGAD Config, with an "edit map →" link) — no hardcoded copy.
+
+**Corrections (user report: date edits not noted, no initial+date):**
+e-sign-style corrections implemented:
+- `correct_field` action: whitelisted CoC fields (collection date, received
+  date), REQUIRED initials, reason optional; write-through to the owning CoC
+  annotation; old→new logged to `senaite.pfas.data_review.corrections`.
+- Corrections rendered in the CoC tab (strike-through old value, initials,
+  date, reason) AND in the Overview/final review.
+- All four checklist "Mark Reviewed" sign-offs now REQUIRE typed initials
+  ("Sign & Mark Reviewed"), stored and displayed next to reviewer + timestamp.
+- New msgs: initials_required / correction_logged / no_change.
+
+**Open (next): print-template system** — user wants consistent printing
+(standard forms vs CoC) driven by templates configurable centrally (for audit
+copies of SOPs etc.). Design: print-settings store (lab identity, logo, footer,
+form-code display) + shared print header/footer macro in pfas_macros applied to
+all printable views (logbooks, CoC, extraction PDF, SOPs).
+
+## D37 — Site-wide print template system (2026-07-02)
+
+**Store:** `print_settings.py` — `senaite.pfas.print_settings` annotation
+(lab identity, logo, accreditation line, footer text, show flags), editable at
+**Configuration → Print Settings** (`@@pfas-print-settings`, ManageBika,
+sidebar entry, live preview on the page).
+
+**Application:** a `printhead` macro + fixed page footer defined INSIDE the
+shared page macro (pfas_macros.pt) — every page that uses the page macro
+(all FM-ENV logbooks, SOPs, every PFAS view) gets the identical print
+header/footer automatically, no per-template wiring. Hidden on screen
+(`.pfas-printhead{display:none}`), shown under `@media print`. The macro
+resolves settings itself via `@@pfas-macros/print_settings()` so it works
+from any caller's namespace. Standalone templates reuse it:
+`receipt.pt` (CoC/receipt) wired via `metal:use-macro` + minimal local CSS.
+
+**Verified:** settings save round-trip persists and propagates site-wide
+(saved address rendered in another page's printhead); Playwright print-media
+emulation shows the header (lab name, address line, "Printed: <ts>") above
+content with screen chrome hidden. Test address reset to defaults after QA.
+
+**Remaining printables:** `label_print.pt` intentionally excluded (labels have
+their own compact format). `extraction_pdf` is ReportLab-generated — reading
+the same store from Python is the follow-up for full parity.
+
+## D38 — D3 resolved: dead importer deleted; §7 refusal enforced (2026-07-02)
+
+**Verdict:** `src/senaite/pfas/ingest/data_importer.py` (593 lines, hardcoded
+COLUMN_MAP) was dead code — the Py3 worker builds from `pfas_pipeline/` only
+(Dockerfile.worker) and has its own importer; nothing in-tree or in the worker
+referenced the addon module. **Deleted** (with its .pyc; ingest/ package kept).
+
+**Live path was already §7-correct** (worker → `@@pfas-instrument-profile` →
+Import Studio profile, raises on error), but `load_instrument_csv` silently
+fell back to hardcoded `vendor_profiles.py` when called without a profile
+(dev/direct calls). Now **refuses by default** with an instructive error;
+legacy fallback gated behind `PFAS_ALLOW_LEGACY_VENDOR_MAP=1` (set in the two
+tests that exercise it). Verified: refusal raises without env; importer-related
+tests pass with it; worker rebuilt + healthy; senaite clean after deletion.
+
+**Pre-existing failure flagged (NOT D3, not fixed):** `tests/test_profiles.py`
+`test_fda_three_tier` asserts `qc_rules("M2-6:2FTS","aqueous","EIS").
+verify_against_method is True` and fails on worker BUILTIN profiles (host has
+no exported json). Worker EIS logic in `pfas_pipeline/method_profiles.py` —
+untouched this session; needs its own investigation.
+
+## D39 — Method-pool dynamics + QC-type toggles + inherited expiry system (2026-07-02)
+
+**Method pool (verified):** a newly saved method (wizard or API) appears in the
+Method Profiles pool automatically (pool = DEFAULT_PROFILES ∪ saved ids) and
+spec_sync creates its per-matrix specs. Live-tested with TEST_NEWM →
+`test-newm-lcs-drinking-water-recovery` linked to the real Drinking Water
+SampleType.
+
+**QC types now dynamic + toggleable:** spec_sync and spec_reverse derive QC
+types from the profile's `qc_acceptance` keys (hardcoded ("LCS","LFSM","LFB",
+"LFSMD") tuples removed; static tuple kept only as reverse-sync fallback).
+New "QC Types" tab in the profile editor: checkbox per QC type persisting
+`qc_acceptance[k]["enabled"]` (guarded by a `qc_toggles_present` marker so
+other form posts can't mass-disable). Disabled types are skipped by engine +
+sync. NOTE: disabling does not DELETE previously created specs (left in place;
+deliberate — deactivation policy TBD).
+
+**Inherited expiry system (reagents/prepared standards):**
+- Global defaults (days) in lab settings, editable at Reagent Inventory →
+  "Expiry Defaults" card: reagent_default (365), mobile_phase_open (7 — was
+  hardcoded), opened_default (365), prepared_std_default (365).
+- Manufactured reagent with NO stated expiry → assigned received_date +
+  reagent_default at save, with an audit note ("assigned from global default").
+  Read-time `_effective_expiry` also falls back the same way.
+- In-house prepared standard w/o expiry → prepared_date + prepared_std_default
+  at save (note recorded).
+- **Parent tightening:** `effective_expiry_info` = min(own expiry, every parent
+  reagent lot's effective expiry via `get_reagent_effective_expiry(portal, lot,
+  name)`), computed at READ time so later parent changes propagate; UI shows
+  "⇣ inherited: <parent>" badge, expiry colouring + expired-status use the
+  effective date.
+- Verified live: +365 assignment w/ note; PS(+300 own) with CRM parent(+30)
+  → effective +30 inherited from "TEST CRM Tight"; PS w/o expiry → +365.
+
+## D40 — Spec retirement w/ audit; control-chart pool purged of seed data (2026-07-02)
+
+**Spec retirement (user decision):** disabling a QC type (or removing a matrix/
+tiers) now RETIRES its AnalysisSpecs — spec_sync's post-loop pass deactivates
+specs no longer produced (workflow 'deactivate') and REACTIVATES them when
+re-enabled. Each transition takes a native snapshot: action "PFAS Retire" /
+"PFAS Reactivate" with an explanatory comment → visible in the standard Audit
+Log. Verified through the real UI path (QC Types tab POST): disabling LFSMD →
+all 6 FDA LFSMD specs inactive, snapshot action='PFAS Retire', actor recorded,
+LFSM untouched; re-enable → active + 'PFAS Reactivate'.
+GOTCHA: workflow transitions need a real request (`guard_handler` view) — they
+fail under bin/instance run; the pass is guarded so a script save degrades to a
+logged warning, and the web path (how users save) works.
+
+**Control-chart pool (user report: false entries):** confirmed — 2,107 of
+2,207 qc_results rows were seed/synthetic (1,344 TEST_DATA*, 42 SYNTHETIC_,
+721 unflagged B0xxx demo batches; only 100 rows belonged to real WS-xxxx
+worksheets). Two-layer fix:
+1. `QCResultStore.get_chart_data(include_test=False)` — permanently excludes
+   TEST_DATA*/SYNTHETIC_ rows from charts (guard against future seeding).
+2. `migrations/purge_seed_qc_data.py` — moved every row whose batch_id is not
+   a REAL worksheet id into *_archive tables in the same DB (qc_results 2107,
+   batches 216, calibrations 686, calibration_levels 4816 archived; fully
+   reversible; refuses to run if no real worksheets exist).
+Verified: PFOA/LFB chart now returns exactly the WS-0001 row(s); no synthetic
+batches; chart/calibrations/qc pages render clean on the reduced pool.
+
+## D41 — Calibration pane guard; Import-Studio retirement; LC-MS Run Builder (2026-07-02)
+
+**Calibrations (same treatment as charts):** legacy synthetic rows were already
+archived by the D40 purge (686 cals + 4,816 levels); `get_calibrations` now
+also permanently excludes `SYNTHETIC_%` batches. Page renders clean.
+
+**Import-profile retirement (audited):** `set_vendor_profile_retired` +
+retire/reactivate actions in Import Studio, a "Saved Import Profiles" card
+(status badges, reason field), and a dedicated audit log
+(`senaite.pfas.import_studio_audit` — profiles are annotation records, not
+content objects, so SENAITE snapshots don't apply; this log is the audit trail
+and is displayed as "Profile audit history"). The pipeline REST bridge REFUSES
+retired profiles with an explicit error. Verified: REST served the profile →
+retired via UI (reason recorded) → REST refuses ("is RETIRED — imports are
+refused") → UI shows RETIRED + history entry.
+
+**LC-MS Run Builder (@@pfas-run-builder, Instruments & Import):** new interface
+bridging extraction → instrument → import:
+- Batch selector auto-populates samples from the extraction session
+  (FM-ENV-252) or batch-linked samples; manual add supported.
+- User inputs: analyst initials (required), matrix word, method, CCV interval,
+  cal-curve toggle, LFSM spike.
+- Builds the injection sequence: MeOH blank → CAL ladder (single-source
+  `get_cal_ladder`, names `FDA-CAL-n-YYMMDD` = validated pattern 2) → ICV/MB/
+  LCS → samples with CCV every N (pattern-3 names `INI Matrix TYPE date-NN`)
+  → LFSM/LFSMD → closing CCV. Saved as `senaite.pfas.run_manifest` on the
+  batch for import-time cross-check; downloadable worklist CSV
+  (Vial/Sample Name/Type) for the instrument's sequence-import tool.
+- **Upload point**: writes the finished instrument export into
+  `/addon/data/instrument_output` == the worker's WATCH_DIR (compose-shared).
+
+**End-to-end verified:** built a run for example-batch-fda32 (preview + CSV
+correct incl. FDA-CAL-1-260702); uploaded a test export → worker detected it
+within its 30 s poll, identified vendor=sciex, queried the Import Studio REST
+bridge and correctly REFUSED without an active mapping — proving upload→watch→
+worker→REST connectivity, §7 strictness, and retirement enforcement in one
+pass. Test artifacts removed.
+
+## D42 — Run Builder rework: fully derived inputs; CSRF fix; mobile (2026-07-02)
+
+User-reported issues, all fixed and verified:
+1. **Upload/build errors** — the forms lacked CSRF handling; browser POSTs were
+   rejected. Now `IDisableCSRFProtection` (same pattern as sibling PFAS form
+   views). Tokenless upload + build both 302 and the file lands in the watch dir.
+2. **FM-252 no longer an exact parameter** — the extraction logbook is resolved
+   PER METHOD: profile `extraction_logbook` if set, else the extraction-titled
+   entry of the method's `required_logbooks` (registry lookup), last-resort
+   "252" only when the method requires it. Batch→method uses the same
+   resolution as logbooks (session > logbook > batch).
+3. **Analyst from the laboratory staff pool** — selector reads LabContacts
+   (initials derived from full name); when the pool is empty the form says so
+   and links to SENAITE setup (pool was flagged empty in the D35 catalogue).
+4. **Matrix per sample, from the log** — the single "Matrix" input is GONE.
+   Per-sample matrix comes from the extraction-log rows; rows without one
+   resolve it from the sample's REAL core SampleType by id (no fabrication —
+   unmatched demo ids show "—"). QC injections use the run's dominant matrix.
+   GOTCHA fixed: the log field `sample_type` is the QC ROLE (Sample/Dup), NOT
+   the matrix — it briefly leaked into the matrix column.
+5. **CCV from method parameters** — `instrument_verification.ccv.frequency`
+   (shown read-only, "method parameter"); form input removed.
+6. **Spike from the extraction logbook** — read from log rows
+   (`spike_ppt`/`spike`); form input removed.
+7. **Mobile** — Saved Import Profiles + mapping-grid tables wrapped in
+   `.table-wrap`; Run Builder inputs full-width/box-sizing; verified at 375px:
+   no page drag on Run Builder or Import Studio, tables self-scroll.
+
+## D43 — Staff pool: placeholder contacts, explicit initials, signatures on documents (2026-07-02)
+
+- **Core reuse:** LabContact already carries the Signature ImageField — upload
+  on the contact's edit form; nothing reinvented.
+- **Initials made explicit:** `extenders/labcontact.py` adds `pfas_initials`
+  (declared per person, derived-from-name only as fallback).
+- **`staff.py`** — single staff-pool API: `list_staff` / `find_by_initials`
+  → {fullname, initials, signature_url, placeholder}. Run Builder selector now
+  reads it.
+- **Seeded 4 PLACEHOLDER contacts** (Lab Manager LM, Analyst One A1, Analyst
+  Two A2, Bench Chemist BC) — names flagged PLACEHOLDER per §8; NO signature
+  images fabricated (lab uploads real ones).
+- **Signatures appended to documents:** data-review sign-offs and correction
+  rows now render the signer's Signature image next to their initials whenever
+  the initials match a staff member with an uploaded signature (initials alone
+  until then). Verified: sign-off as LM shows "(LM)"; image is conditional on
+  signature_url.
+
+## D44 — End-to-end dry run: client → samples → review → EDD (2026-07-02)
+
+Full walkthrough with seeded food/feed data (client "DEMO Food & Feed Producer
+Ltd", contact, EGG/MEAT/FEED samples ×4 analytes, batch B-002, worksheet
+WS-001, extraction log, CoC, QC rows, results, 5/5 review gates PASS, EDD
+generated). Issues found & status:
+
+1. Samples must be RECEIVED before worksheet assignment (process order) — noted.
+2. Workflow transitions blocked in scripts (guard_handler needs real request) —
+   WORKAROUND: senaite.jsonapi POST update {uid, transition} works.
+3. qc_results.created_at NOT NULL — seeding scripts must supply it.
+4. Worksheet assignment must precede analysis submit (assign guard); submitted
+   analyses can't be assigned retroactively → WS stayed 'open' (checklist gate
+   itself passed). PROCESS DOC needed.
+5. **FIXED**: data_review batch-fallback joined on the WORKSHEET's uid. The
+   missing model link (user's intuition) is Worksheet↔Batch — now closed via
+   CoC `batch_id` (the CoC accompanies the worksheet), with SENAITE-native
+   assignment as the primary path.
+6. Logbook home mismatch: run_builder reads batch annotations, data_review's
+   traceability reads WORKSHEET annotations (CLAUDE.md says worksheet). E2E
+   seeded both; consolidation to worksheet pending.
+7. **FIXED**: EGAD export resolved Batch via portal_catalog (not indexed
+   there) → "Batch not found". Direct folder fallback added.
+8. **FIXED**: egad_builder dropped EVERY analysis — `analysis.review_state` is
+   a catalog-brain attribute; on full objects it raised AttributeError into a
+   silent continue. Now api.get_review_status().
+9. OPEN: EDD row derivation uses client DEFAULTS (SAMPLE_TYPE=GW, NG/L,
+   TEST=E537.1) instead of the batch's method/matrices (FDA food → USFDA-PFAS,
+   NG/KG, per-sample EGAD types) — method/matrix mapping into the EDD needs
+   wiring to the batch method + matrix_uid_map.
+10. OPEN (the "missing section"): no client-facing COA/report step — analyses
+    stop at to_be_verified; verify+publish (senaite COA) is unwired in the PFAS
+    flow. The EDD is the only end artifact today.
+
+Artifact: DEMO_B-002_EDD.csv (12 result rows, CAS single-sourced).
+
+## D45 — #10 closed: client COA step wired (verify → publish → impress) (2026-07-02)
+
+The missing final section now exists, via core reuse (senaite.impress 2.6 was
+installed but unwired):
+- Self-verification enabled in setup (demo: submitter==verifier; production
+  labs with separate analysts can disable again).
+- Analyses verified + samples PUBLISHED (EGG/MEAT/FEED-0001 → 'published' via
+  jsonapi transitions — the charts' "published samples" pool is now real).
+- **Data Review → "Client Report (COA)" section**: appears when all five
+  review gates pass; "Generate COA →" opens senaite.impress's publish view
+  pre-loaded with the worksheet's samples (uids resolved via the same
+  ws→CoC→batch join from D44#5). Verified: button renders on WS-001 with the
+  3 published sample uids; impress UI loads (HTTP 200).
+
+Full lifecycle now demonstrated: client → samples → batch/worksheet →
+extraction log → results → 5-gate review → verify → publish → COA + EDD.
+Remaining from the D44 ledger: #9 (EDD method/matrix mapping), #4/#6 (process
+order + logbook home consolidation).
+
+## D46 — D44#9 fixed: EDD derives from the batch's method (2026-07-02)
+
+- New `EGADBuilder._batch_method_profile(batch)`: core Method → PROFILE id via
+  the method bridge; else the batch's run_manifest / extraction-log
+  annotations. Passed into every row build.
+- Per-AR method: ar.getMethod() (core object) also mapped through the bridge —
+  previously its raw id ('method-1') could never match the EGAD method cfg
+  keys, so client defaults always won.
+- **Units single-sourced**: the profile's UNIT MAP (method × matrix, §3) wins
+  per sample (ng/g normalised to NG/KG for EDD); EGAD-code fallback otherwise.
+- Verified on B-002: rows now carry TEST=USFDA-PFAS + NG/KG (were E537.1 +
+  NG/L from client defaults). Artifact DEMO_B-002_EDD.csv refreshed.
+- Gotcha: _ar_to_rows signature patch missed the actual formatting once →
+  TypeError 500; fixed.
+Remaining ledger: D44 #4/#6 (process order; logbook home) + per-sample EGAD
+SAMPLE_TYPE codes for food matrices (needs a configurable matrix→EGAD-code
+map; current per-AR override/default retained).
+
+## D47 — EDD generalized: format profiles, client association, Maine sub-profiles (2026-07-02)
+
+The EDD engine is no longer Maine-EGAD-hardcoded:
+- **Profile store** (`senaite.pfas.edd_profiles`): each profile = display name,
+  column subset/order (of the Maine superset the builder can emit), heading
+  ALIASES, and a configurable SampleType→SAMPLE_TYPE-code MATRIX MAP. Seeded
+  base `maine_egad` (full 53 columns + standard env codes GW/SW/DW/SO/SE/WW/LL;
+  food matrices deliberately unmapped — never fabricated). `clone_edd_profile`
+  creates sub-profiles / other state programs.
+- **Client association**: client EGAD config gains `edd_profile` (selector on
+  the client page); builder resolves it per batch. Validation still runs on the
+  full Maine-semantics superset; output is then shaped by the profile.
+- **UI**: EGAD Config → "EDD Format Profiles" card (clone form + per-profile
+  editors: columns list, matrix-map JSON, aliases JSON, name).
+- **Bonus fix (same gap family)**: export resolved client via
+  `batch.getClient()` only — batches aren't always client-linked; now falls
+  back to the batch's first sample's client.
+
+**Verified end-to-end**: cloned "Maine EGAD — food sub-profile", shrunk to 8
+columns, aliased CAS_NO→"CAS Number", mapped Eggs/Meat→FOOD + Feed→FEED,
+assigned to the DEMO client → B-002 export emits exactly those 8 aliased
+columns with FOOD/FEED sample types (also closing the D46 food-code edge),
+method-true NG/KG + USFDA-PFAS retained.
+
+Gotchas: card initially rendered nothing (inserted outside the metal content
+slot — silently discarded); LocationError after the move (accessor had landed
+on the CLIENT view class, template served by the MAIN view).
+
+## D48 — D44 #4/#6 closed: assign-order action + logbook dual-read (2026-07-02)
+
+**#4 (process order → enforceable action):** Data Review overview shows a
+banner when the worksheet has no assigned analyses but its linked batch has
+samples, with a "Receive & assign batch samples" button
+(`assign_batch_samples` action): receives sample_due ARs and assigns their
+UNSUBMITTED analyses (runs in a real request so workflow guards resolve);
+already-submitted analyses are counted as skipped with an explanatory message
+(SENAITE forbids assignment after submit — reviewed via the batch join
+instead). Verified on WS-001: banner + button render; action reports the
+skip path correctly; all 5 gates unaffected.
+
+**#6 (logbook home consolidation):** `_logbook_json(ws, key)` dual-read —
+worksheet annotation first (CLAUDE.md canonical), else the CoC-linked batch
+(where the logbook views historically write). Traceability tree now uses it.
+Verified by REMOVING the worksheet's duplicate FM-ENV-252 copy (batch holds
+the only copy) — traceability still PASSES via the fallback. Net effect:
+single stored copy + resilient readers; a future storage migration to the
+worksheet remains optional rather than required.
+
+D44 ledger fully closed (#1–#10).
+
+## D49 — Naming: EGAD (Maine-specific) → EDD (generic) in all chrome (2026-07-02)
+
+User point (correct): EGAD is Maine DEP's system name; other states have their
+own (e.g. Massachusetts eDEP). With D47's program profiles, the generic layer
+must speak "EDD":
+- Page titles/headers: "Maine EGAD EDD Configuration" → **"EDD Configuration"**;
+  batches page → **"Delivered EDDs"** (sidebar + lims-setup tiles renamed too;
+  tile descriptions mention "program profiles (incl. Maine EGAD)").
+- Client page: "EDD Settings — <client>", "Save Client EDD Settings".
+- Maine-specific content KEEPS its qualifier ("Maine EGAD" lookup tables /
+  CAS mapping / DEP data-entry link) — accuracy over blanket rename.
+- Internal ids/URLs/store keys (@@pfas-egad-*, senaite.pfas.egad*) unchanged —
+  implementation naming; renaming them would break links/wiring for zero user
+  value. System map node relabelled "EDD engine".
+Verified rendered: titles, sidebar items and batch page all show the generic
+names; zero bare ">EGAD" strings left in chrome.
+
+## D50 — UI consistency, spike-prune on QC toggle, profiles/QC-Rules separation, Lab Workflow tab (2026-07-02)
+
+**Minor:** prep-standards row actions Edit/Certificate unified as `.row-pill`
+(pill style matching the status badges). Reagents: "Scan Barcode" + "OCR Label"
+merged into ONE "Scan Label" button (the scan modal keeps its barcode/OCR mode
+tabs inside).
+
+**Spike prune (major):** saving the profile with a QC type toggled OFF now
+prunes that type's spike-level blocks from EVERY matrix (e.g. LFB off → LFB
+spike rows removed). Proven live: disabling LFSM emptied spike_levels across
+all 6 FDA matrices; re-enable + reseed restored. NOTE: pruning is one-way — a
+re-enabled type starts with no spike rows (deliberate: no stale data).
+
+**Profiles vs QC Rules — decision: CLEAN SEPARATION (not consolidation).**
+Evidence: the worker consumes BOTH stores for different things —
+`qc_rules.json` = per-method instrument-rule TOGGLES (run_queue), the profile's
+`instrument_verification` = the acceptance PARAMETERS (method_profiles.py).
+So the split is real; the UIs just never said so. Both pages now carry scope
+banners with cross-links: QC Rules = global instrument-rule library + per-
+method on/off; Method Profiles = method-science acceptance (tiers/QC types/
+spikes/matrices) AND the method's instrument-verification parameter values.
+
+**Lab Workflow:** promoted from a buried section to its OWN tab in the profile
+editor, with a legend explaining the stage flags — "Creates Solution" records a
+new Prepared Standard lot (parents = the stage's reagents; expiry inherits);
+"Capture Standard Pedigree" shows the pedigree table in Guided Extraction,
+completing the 3-level traceability chain the review gate checks. The tab
+states explicitly that these stages BECOME the guided extraction inside the
+batch's method-set extraction logbook. FUTURE (user suggestion, agreed):
+surface/edit the workflow from within the extraction-log admin itself.
+
+## D51 — UI pass: pills everywhere, QC Rules polish, LJ badge cleanup, review tables (2026-07-02)
+
+- `.btn-sm` had NO css in reagents.pt / prep_logbooks.pt — row buttons rendered
+  as unstyled browser defaults (the inconsistency). Defined once per page as the
+  status-badge-style pill (+ .btn-danger red / .btn-warn amber tints); zero
+  markup changes.
+- QC Rules: header-title renamed "QC Rule Configuration" → "QC Rules" (matches
+  sidebar/tiles); the scope note moved INSIDE the Global Criteria pane (was a
+  floating page-top banner; first landed in a tal:repeat rendering ×10 — fixed
+  to single placement).
+- Levey-Jennings badge cleanup: removed the per-QC-type row badges (qcrules),
+  the control-chart header badge, and reworded three tile descriptions to
+  "QC control charts with Westgard rule evaluation". The chart-type SELECT
+  (functional) keeps its Levey-Jennings option.
+- Data Review tables (fd-table, qc-matrix) had dark primary headers — restyled
+  to the system-standard light header (uppercase secondary, border-bottom),
+  incl. the worksheet-selection table.
+
+## D52 — QC Rules + Method Profiles consolidated into one per-method console (2026-07-03)
+
+User directive: "integrate it into one page ... two empty pages in qc rules ...
+toggles and qc run as one of the first tabs. Method specific recoveries."
+
+**Audit findings:** QC Rules had 6 tabs; two render ZERO editable controls —
+Global Criteria (global section unpopulated) and Matrix Factors (salt factors
+are per-method, so the global doc holds none). The emptiness is diagnostic: that
+data belongs under METHOD (§3). "QC Types" existed in BOTH pages (acceptance
+limits in QC Rules; enable toggles in Method Profile) — same concept, split.
+
+**Decision (supersedes D50's UI separation ONLY):** merge into ONE per-method
+console = the existing @@pfas-method-profile-edit page (already per-method, has
+the method selector), gaining the QC-rule tabs scoped to the selected method.
+- **Stores stay SEPARATE** (qc_rules.json + method_profiles.json). This is a UI
+  merge, not a data merge — the pipeline reads both for different jobs (D50).
+  The merged page's save writes to BOTH stores. Golden Rule #3 preserved.
+- Tab order: Rule Toggles & QC Run → QC Types (MERGED: enable toggle + limits)
+  → Recovery Tiers → Analyte Inclusion → Surrogate Map → EIS (1633A only) →
+  Factors (salt/matrix) → Calibration → CCV → IS Response → Lab Workflow →
+  Advanced (Global Defaults + raw JSON, last).
+- **Rule Toggles = per selected method** (user chose "Per-method (consistent)"
+  over the all-methods matrix), matching every other tab.
+- @@pfas-qc-rules retired → redirects to the merged console; sidebar updated.
+- Two empty tabs disappear; no data lost.
+
+## D52 (cont.) — Built & verified (2026-07-03)
+
+Merged console live at @@pfas-method-profile-edit. Tab order confirmed:
+Rule Toggles & QC Run · QC Types · Recovery Tiers · Analyte × Matrix ·
+Surrogate Map · EIS Limits · Calibration · CCV · IS Response · Lab Workflow ·
+Advanced. @@pfas-qc-rules now 302-redirects to the console; sidebar shows a
+single "Method Profiles & QC" entry (QC Rules item removed).
+
+- Rule Toggles & QC Run merges the old Rule-Toggles + Method-Limits tabs:
+  each rule = enable checkbox + inline param overrides (blank = inherit global).
+  8 rules/method (matches the old all-methods grid: 24 controls / 3 methods).
+- Save writes BOTH stores in one POST (profile → method_profiles.json;
+  toggles/overrides/global → qc_rules.json). Verified round-trip: toggled
+  cal_r2 off, set ccv_recovery_min override=75, global cal_r2_min 0.995→0.990,
+  all landed in qc_rules.json; profile store (spike_levels, matrices, analytes,
+  qc_acceptance) untouched by the partial POST. Restored test values after.
+- **Store bug fixed (root cause of the "empty Global Criteria" tab):**
+  QCRulesStore.load() merged qc_types/method_rule_toggles/method_overrides from
+  the saved file but DROPPED `global` and `salt_factors` — so get_rules()
+  always returned default/empty global. Now merged; Advanced tab renders all 13
+  global fields. The other "empty" tab (Matrix Factors) is gone entirely.
+- Worker confirmed still reading qc_rules.json (13 global keys, FDA toggles).
+- Stores remain SEPARATE (D50 data-layer separation preserved); only the UI
+  was unified.
+
+## D53 — Console UI refinements + Sample Corrections split (2026-07-03)
+
+Six items off the merged console (D52):
+1. **Font consistency** — `.json-hint` was `font-family: monospace`, so every
+   tab's prose rendered in monospace and clashed with the sans-serif system.
+   Changed to the system font; inline field names use `<code>` (still mono).
+   New `.pane-intro` class for tab descriptions.
+2. **Pill toggles** — the Rule Toggles tab used plain checkboxes; restored the
+   original `.toggle-switch` sliding pill (ported from the old QC Rules page).
+   `name="ruletoggle.<key>"` unchanged, so save is unaffected.
+3. **Grey-out on off** — a rule's param inputs grey (`.rule-off`, opacity/colour)
+   when its pill is toggled off. Inputs stay submittable (not `disabled`) so a
+   value survives an off→on toggle; JS syncs on load + change.
+4. **Mobile tables** — `.section-body { overflow-x:auto }` + wrapped the toggle
+   table; verified 0 page-drag at 375px across all panes (tables were bleeding
+   past card borders before).
+5. **Duplicate criteria → spike info** (confirmed): pane-rt reorganised into a
+   "Spike QC Criteria (LFSM / LFB)" group = Spike Levels + Recovery Acceptance
+   together (was split). Recovery Tiers relabelled "Recovery Acceptance
+   (LFSM / LFB / LCS)".
+6. **Salt = core correction** (confirmed): Salt + Matrix adjustment moved OUT of
+   the Recovery Tiers (QC) tab into a NEW **Sample Corrections** tab, framed
+   "applied to every sample — not just QC". qc_rules.salt_factors deprecated
+   (dead — pipeline never read it; salt lives in the profile as a core
+   per-method correction, like matrix_factors).
+
+New tab order: Rule Toggles & QC Run · QC Types · Recovery Tiers ·
+Sample Corrections · Analyte × Matrix · Surrogate Map · EIS · Calibration ·
+CCV · IS Response · Lab Workflow · Advanced.
+
+Verified: full-form save round-trip preserves both stores (matrix_factors=13,
+spike_levels=6, qc_acceptance=5; qc_rules FDA toggles=14, global intact); JS
+tables (saltAdjBody/matrixFactorsBody) still populate after the move.
+
+## D54 — Salt adjustment: per-analyte, default 1.0, CoA lot → inventory (2026-07-03)
+
+User model: every analyte carries a salt factor (default 1.0); the factor
+seldom changes but the CoA lot number updates with each new standard lot.
+Confirmed: CoA lot LINKS to the reagent inventory (traceability, not free text).
+
+- Salt table now server-renders ONE row per master-set analyte (32 for FDA),
+  each with a factor input (default 1.0) and a CoA-lot <select>.
+- CoA lot dropdown = "Standard / Reference Material" lots from the Reagent
+  Inventory (name — lot #, EXPIRED flagged red). Empty-inventory warning links
+  the analyst to add reference-standard lots. Establishes reagent-lot → result
+  traceability (golden rule #6, §10).
+- Storage: salt_adjustment_factors = [{analyte, factor, lot_uid, lot_number}].
+  Only meaningful rows persist (non-default factor OR a linked lot) — the 30
+  untouched default-1.0/no-lot analytes stay out of the file (lean).
+- Save is named fields (salt_factor.<kw> + salt_lot.<kw>, guarded by
+  salt_present); legacy JSON fallback retained. Salt JS population removed.
+- Verified: 32 rows render at default 1.0; seeded a Wellington PFAC-MXA
+  (lot MXA-2453-A) standard → dropdown populated → saved PFOA=0.9636 linked +
+  PFOS=1.0 linked → both stored with lot_uid + lot_number; others omitted.
+
+## D55 — Matrix Adjustment Factors tied to core SampleTypes (2026-07-03)
+
+**Verification (user asked which representation ties to core SampleTypes):**
+- matrix_uid_map {title→core SampleType UID} is AUTHORITATIVE; the method↔core
+  association derives sampletype_uids from it. Analyte × Matrix map
+  (supported_matrices) == matrix_uid_map.keys() (verified). Spike Levels keyed
+  by the same titles. ALL tie to core SampleTypes.
+- **matrix_factors did NOT** — free-text lowercase substrings (muscle/deer/beef/
+  pork/poultry/fish/egg/milk/feed), matched in the pipeline by fragile substring
+  `entry in m`. Half weren't SampleTypes at all. Golden-rule-#3 violation.
+
+**Fix (confirmed):** Matrix Adjustment renders ONE row per supported matrix
+(from matrix_uid_map → core SampleType), default 1.0, badged "core type". Save =
+named fields matrix_factor.<title>; stores {matrix, factor, sampletype_uid};
+non-default rows only. Legacy substring entries collapse onto the matching
+supported matrix on render + migrate away on first save (deer/beef/pork/poultry
+0.5 → "Meat / Muscle" 0.5). JS population removed.
+
+**Pipeline:** sample_factor() now matches the core SampleType title EXACTLY
+(case-insensitive), with legacy substring as fallback. Verified in worker:
+Meat / Muscle→0.5, Animal Feed→2.0, case-insensitive, Drinking Water→None.
+Both senaite + worker restarted.
+
+## D56 — CCV+IS under Calibration; Sample Duplicate params wired (2026-07-03)
+
+**CCV & IS Response under Calibration (user):** the standalone CCV and IS
+Response tabs were folded into the Calibration tab (renamed "Calibration & CCV")
+under a "Continuing Verification" group — CCV recovery + IS/surrogate response
+are calibration-verification, not separate concerns. The two tabs removed; JS
+valid-list + default-tab updated. Verified: fields render once (no dup IDs),
+save round-trip persists ccv (72/128), is (vs_ical 50), all from the one tab.
+
+**Duplicate params under Recovery tab (user):** the "Duplicate / LFSMD RPD"
+section moved from the (removed) CCV tab into the Recovery Tiers tab.
+
+**Sample Duplicate parameters (user) + disconnection fix:** AUDIT found the
+editable dup field (dup_rpd_max) wrote to profile.duplicate.rpd_max, which the
+pipeline NEVER reads — it evaluates sample duplicates from qc_acceptance.Dup
+(_resolve_fda_tier). So the sample-duplicate limit wasn't actually wired. Fixed:
+- Section relabelled "Sample Duplicate (Dup) RPD" (field sample precision;
+  RPD = |A−B|/((A+B)/2)×100), placed under Recovery.
+- Save now writes BOTH profile.duplicate.rpd_max AND
+  qc_acceptance.Dup.tiers[0].rpd_max (with a valid catch-all tier), so the
+  field drives the pipeline. Accessor dup_rpd() reads the pipeline-used value.
+- Verified end-to-end: set RPD=18 → both stores updated → worker's Dup rule
+  returned rpd_max=18.0 (was disconnected). Restored to FDA-standard 20.
+- Engine note: the duplicate check evaluates rpd_max ONLY (no RL-threshold /
+  low-level branch), so RPD max % is the single wired sample-duplicate param.
+
+## D57 — Surrogate/IS map: per-method, derived, tied to core services (2026-07-03)
+
+**Audit (answers to user's questions):**
+- Surrogates stored 3 ways: code master INTERNAL_STANDARDS (27, tagged
+  surrogate/injection_is) + NATIVE_ANALYTES.surrogate_is (native→surrogate) +
+  per-method surrogate_map (was blank). Core AnalysisServices DO carry the tie:
+  pfas_role populated = 47 analyte / 26 surrogate / 1 injection_is (M4PFOA).
+- GAP: the surrogate-map dropdown fed from get_surrogates() = the GLOBAL 26
+  pool; the method association linked only its 32 analytes (no surrogate/IS).
+  So it couldn't show per-method surrogates. master_analyte_set = natives only.
+
+**Decision (confirmed): derive from analyte set + editable overrides.**
+- surrogate_is_data() now DERIVES the method's surrogate set = union of each
+  native's default surrogate (NATIVE_ANALYTES.surrogate_is), pre-filled;
+  dropdown shows ONLY the method's surrogates (20 for FDA), not the global 26.
+- Each row shows: default vs override tag + a 🔗core link to the surrogate's
+  core AnalysisService (pfas_role) or a ⚠ not-in-core flag.
+- Injection IS derived from role=injection_is (M4PFOA), pre-filled.
+
+**Data inconsistency found & fixed (normalization):** 6 natives (4:2/6:2/8:2/
+10:2FTS, FOSA, GenX) stored the surrogate NAME ("13C8-FOSA") in surrogate_is
+instead of the KEYWORD ("M8FOSA"), breaking the core tie. Added name→keyword
+canonicalization (via INTERNAL_STANDARDS) in the accessor — all 20 now resolve
+to the core keyword (FOSA→M8FOSA, 6:2FTS→M2-6:2FTS, GenX→M3HFPO). 20/20 tie to
+core. (Source-data fix of those 6 rows recommended as follow-up so the pipeline
+reads canonical keywords too.)
+
+Bug fixed: _core_service_roles() had a wrong self-import of _portal (it's a
+module-level fn) — returned empty, so everything showed not-in-core.
+
+## D58 — Surrogate/IS pulled from core AnalysisServices (source of truth) (2026-07-03)
+
+User principle: core services are required for reporting, so analytes/surrogates/
+IS must be pulled FROM the AnalysisServices, not parallel code tables (which
+drifted — see the FTS/FOSA keyword mismatch in D57).
+
+Confirmed approach: the native→surrogate quantification link lives ON the core
+analyte service (new field).
+
+- **New extender field `pfas_quant_surrogate`** on every AnalysisService (beside
+  pfas_role): on an analyte service, the keyword of the surrogate service that
+  quantifies it. The authoritative native→surrogate link on core.
+- **Migration** stamped 29 analyte services from the canonicalized code map,
+  fixing the 6 FTS/FOSA/GenX name→keyword issues AT SOURCE (FOSA→M8FOSA,
+  6:2FTS→M2-6:2FTS, GenX→M3HFPO); 0 surrogates missing in core.
+- **surrogate_is_data() now sources from services** (`_pfas_service_index`):
+  each native's default surrogate = its service's pfas_quant_surrogate; surrogate
+  SET = services with pfas_role=surrogate (20 for FDA, all in_core); injection IS
+  = pfas_role=injection_is service (M4PFOA). Code tables no longer consulted for
+  the link.
+- **Save writes back to services** (`_sync_surrogate_links`): editing the map
+  sets pfas_quant_surrogate on the core services (the store); then
+  `_rebuild_surrogate_map` rebuilds profile.surrogate_map FROM services as the
+  pipeline export (complete + canonical). Verified: PFDA→M8PFOA round-trip hit
+  the service; empty submit rebuilt 21 entries from services; worker reads
+  canonical keywords.
+
+REMAINING (offered): master_analyte_set is still a hardcoded per-method list;
+fully deriving the analyte SET from the method's linked analyte services (the
+association) is the natural next step to complete "everything from services".

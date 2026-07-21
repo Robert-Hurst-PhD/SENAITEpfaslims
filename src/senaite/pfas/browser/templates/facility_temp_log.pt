@@ -51,6 +51,7 @@
   </tal:styles>
 </head>
 <body>
+<tal:t metal:fill-slot="header-title">Temperature Log</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="
     unit       view/unit;
@@ -58,10 +59,6 @@
     days       view/days;
     units_nav  view/units_for_nav;
   ">
-
-  <h1 style="font-size:18px;font-weight:700;margin:0 0 14px;color:var(--s-body)">
-    Temperature Log
-  </h1>
 
   <!-- Unit navigation -->
   <div class="temp-nav">

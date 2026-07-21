@@ -402,6 +402,21 @@ class PFASExtractionGuideView(BrowserView):
         sess["finalized_at"] = _utcnow()
         sess["finalized_by"] = self.request.form.get("analyst", "").strip()
         _save_session(b, sess)
+
+        # Write a summary stub into logbook 252 so the logbook index shows it as filled
+        try:
+            from senaite.pfas.browser.logbooks import _save_logbook
+            _save_logbook(b, "252", {
+                "analyst":         sess.get("analyst", ""),
+                "extraction_date": (sess.get("started_at") or "")[:10],
+                "method":          sess.get("method_id", ""),
+                "from_guided":     True,
+                "finalized_at":    sess.get("finalized_at", ""),
+                "finalized_by":    sess.get("finalized_by", ""),
+            })
+        except Exception as exc:
+            logger.warning("_handle_finalize: could not write logbook 252 stub: %s", exc)
+
         url = "{0}?batch_uid={1}&ok=Extraction+logbook+finalized".format(
             self._self_url(), b.UID())
         return self._redirect(url)

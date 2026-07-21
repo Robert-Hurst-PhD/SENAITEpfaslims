@@ -37,12 +37,9 @@
   </tal:styles>
 </head>
 <body>
+<tal:t metal:fill-slot="header-title">Facility Units Registry</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url">
-
-  <h1 style="font-size:18px;font-weight:700;margin:0 0 18px;color:var(--s-body)">
-    Facility Units Registry
-  </h1>
 
   <!-- API key -->
   <div class="api-card">

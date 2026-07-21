@@ -128,6 +128,41 @@ _SCHEMA_STMTS = [
     """CREATE UNIQUE INDEX IF NOT EXISTS uq_active_result
        ON qc_results(batch_id, analyte, qc_type, qc_level)
        WHERE result_status = 'active'""",
+
+    # Per-injection chromatographic detail (D59): one row per injection ×
+    # analyte, carrying the per-injection values the QC engine computes but the
+    # summary discards. Feeds the multi-page Results Review (qualifier ions,
+    # retention times, IS/surrogates, per-sample results).
+    """CREATE TABLE IF NOT EXISTS injection_results (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id        TEXT    NOT NULL DEFAULT '',
+        run_date        TEXT    NOT NULL DEFAULT '',
+        sample_id       TEXT    NOT NULL DEFAULT '',
+        injection_name  TEXT    NOT NULL DEFAULT '',
+        qc_type         TEXT    NOT NULL DEFAULT '',
+        analyte         TEXT    NOT NULL DEFAULT '',
+        role            TEXT    NOT NULL DEFAULT 'analyte',
+        method          TEXT    NOT NULL DEFAULT '',
+        rt              REAL,
+        rrt             REAL,
+        ion_ratio_obs   REAL,
+        ion_ratio_exp   REAL,
+        is_area         REAL,
+        sn              REAL,
+        qual_sn         REAL,
+        response        REAL,
+        calc_conc       REAL,
+        recovery        REAL,
+        flag            TEXT    NOT NULL DEFAULT '',
+        passed          INTEGER NOT NULL DEFAULT 1,
+        created_at      TEXT    NOT NULL
+    )""",
+
+    "CREATE INDEX IF NOT EXISTS idx_inj_batch    ON injection_results(batch_id)",
+    "CREATE INDEX IF NOT EXISTS idx_inj_run_date ON injection_results(run_date)",
+    "CREATE INDEX IF NOT EXISTS idx_inj_analyte  ON injection_results(analyte)",
+    "CREATE INDEX IF NOT EXISTS idx_inj_qc_type  ON injection_results(qc_type)",
+    "CREATE INDEX IF NOT EXISTS idx_inj_sample   ON injection_results(sample_id)",
 ]
 
 # ALTER TABLE migrations — run once; silently ignored if column already exists.
@@ -244,6 +279,61 @@ class QCResultStore(object):
                     "UPDATE batches SET status=?, updated_at=? WHERE batch_id=?",
                     (status, now, batch_id),
                 )
+
+    # ── Per-injection detail (D59) ──────────────────────────────────────────
+
+    _INJ_COLS = ("batch_id", "run_date", "sample_id", "injection_name",
+                 "qc_type", "analyte", "role", "method", "rt", "rrt",
+                 "ion_ratio_obs", "ion_ratio_exp", "is_area", "sn", "qual_sn",
+                 "response", "calc_conc", "recovery", "flag", "passed")
+
+    def add_injection_results(self, rows, replace_batch=None):
+        """Bulk-insert per-injection detail rows (list of dicts keyed by
+        _INJ_COLS; missing keys default to NULL/'' /1). If replace_batch is
+        given, existing rows for that batch_id are deleted first (idempotent
+        re-import)."""
+        if not rows:
+            return 0
+        now = _now_iso()
+        cols = self._INJ_COLS
+        placeholders = ",".join(["?"] * (len(cols) + 1))  # +created_at
+        sql = ("INSERT INTO injection_results ({0},created_at) VALUES ({1})"
+               .format(",".join(cols), placeholders))
+        payload = []
+        for r in rows:
+            vals = []
+            for c in cols:
+                v = r.get(c)
+                if c == "passed":
+                    v = 1 if (v is None or v) else 0
+                elif c in ("batch_id", "run_date", "sample_id",
+                           "injection_name", "qc_type", "analyte", "role",
+                           "method", "flag"):
+                    v = v or ""
+                vals.append(v)
+            vals.append(now)
+            payload.append(tuple(vals))
+        with self._connect() as conn:
+            if replace_batch is not None:
+                conn.execute("DELETE FROM injection_results WHERE batch_id=?",
+                             (replace_batch,))
+            conn.executemany(sql, payload)
+        return len(payload)
+
+    def get_injection_results(self, batch_id=None, run_date=None, analyte=None,
+                              qc_type=None, role=None):
+        """Fetch per-injection detail rows filtered by any of the given keys."""
+        sql = "SELECT * FROM injection_results WHERE 1=1"
+        params = []
+        for col, val in (("batch_id", batch_id), ("run_date", run_date),
+                         ("analyte", analyte), ("qc_type", qc_type),
+                         ("role", role)):
+            if val is not None:
+                sql += " AND {0}=?".format(col)
+                params.append(val)
+        sql += " ORDER BY sample_id, analyte"
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
     def get_batch(self, batch_id):
         """Return batch metadata dict or None."""
@@ -447,7 +537,7 @@ class QCResultStore(object):
 
     def get_chart_data(self, analyte, qc_type, qc_level=None, method=None,
                        analyst=None, instrument_id=None, limit=20,
-                       include_superseded=False):
+                       include_superseded=False, include_test=False):
         """
         Return ordered list of dicts for Levey-Jennings charting.
 
@@ -473,6 +563,18 @@ class QCResultStore(object):
                "LEFT JOIN batches b ON r.batch_id = b.batch_id "
                "WHERE r.analyte=? AND r.qc_type=? AND " + status_clause)
         params = [analyte, qc_type]
+
+        if not include_test:
+            # Control charts must reflect REAL runs only — exclude seeded /
+            # synthetic rows (TEST_DATA* flags, SYNTHETIC_ batches).
+            sql += (" AND r.flag NOT LIKE 'TEST_DATA%'"
+                    " AND r.batch_id NOT LIKE 'SYNTHETIC_%'")
+
+        if not include_test:
+            # Control charts must reflect REAL runs only — exclude seeded /
+            # synthetic rows (TEST_DATA* flags, SYNTHETIC_ batches).
+            sql += (" AND r.flag NOT LIKE 'TEST_DATA%'"
+                    " AND r.batch_id NOT LIKE 'SYNTHETIC_%'")
 
         if qc_level is not None:
             sql += " AND r.qc_level=?"
@@ -607,8 +709,11 @@ class QCResultStore(object):
         return cal_id
 
     def get_calibrations(self, analyte=None, method=None, limit=50):
-        """Return recent calibration records, newest first."""
-        sql = "SELECT * FROM calibrations WHERE 1=1"
+        """Return recent calibration records, newest first.
+        Synthetic/seeded batches are always excluded (same policy as
+        get_chart_data) so the calibration pane reflects real runs only."""
+        sql = ("SELECT * FROM calibrations WHERE 1=1"
+               " AND batch_id NOT LIKE 'SYNTHETIC_%'")
         params = []
         if analyte:
             sql += " AND analyte=?"

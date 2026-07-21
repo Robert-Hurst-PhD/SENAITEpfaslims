@@ -664,9 +664,17 @@ class FDA32PFASProfile(MethodProfile):
         )
 
     def sample_factor(self, matrix):
-        m = matrix.lower().strip()
-        for entry in self._profile_data().get("matrix_factors", []):
-            if entry.get("matrix", "") in m:
+        # Matrix factors are keyed by the core SampleType title (D55). Match the
+        # sample's matrix EXACTLY first; fall back to legacy substring matching
+        # for any old-format entries that predate the core-type tie.
+        m = (matrix or "").lower().strip()
+        factors = self._profile_data().get("matrix_factors", [])
+        for entry in factors:
+            if (entry.get("matrix", "") or "").lower().strip() == m:
+                return float(entry["factor"])
+        for entry in factors:
+            key = (entry.get("matrix", "") or "").lower().strip()
+            if key and key in m:
                 return float(entry["factor"])
         return None
 

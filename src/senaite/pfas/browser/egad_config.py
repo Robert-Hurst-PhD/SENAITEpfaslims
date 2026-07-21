@@ -131,6 +131,42 @@ class PFASEGADConfigView(BrowserView):
         portal = _portal(self.context)
         section = form.get("section", "")
 
+        if section == "edd_profiles":
+            from senaite.pfas.egad_store import (
+                get_edd_profiles, save_edd_profile, clone_edd_profile)
+            import re as _re
+            f = self.request.form
+            act = f.get("edd_action", "")
+            if act == "clone":
+                src = f.get("source_id", "maine_egad")
+                name = (f.get("new_name") or "").strip() or "New EDD profile"
+                pid = _re.sub(r"[^a-z0-9_]+", "_", name.lower()).strip("_")
+                clone_edd_profile(portal, src, pid, name)
+            elif act == "save":
+                pid = f.get("profile_id", "")
+                profs = get_edd_profiles(portal)
+                prof = profs.get(pid)
+                if prof is not None:
+                    prof["name"] = (f.get("name") or prof.get("name") or pid)
+                    cols = [c.strip() for c in
+                            (f.get("columns") or "").splitlines() if c.strip()]
+                    if cols:
+                        prof["columns"] = cols
+                    try:
+                        prof["matrix_map"] = json.loads(
+                            f.get("matrix_map_json") or "{}")
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        prof["aliases"] = json.loads(
+                            f.get("aliases_json") or "{}")
+                    except (ValueError, TypeError):
+                        pass
+                    save_edd_profile(portal, pid, prof)
+            self.request.response.redirect(
+                "{0}/@@pfas-egad-config?saved=1#edd-profiles".format(
+                    portal.absolute_url()))
+            return u""
         if section == "lab":
             data = {
                 "analysis_lab_code": form.get("analysis_lab_code", "").strip(),
@@ -302,6 +338,23 @@ class PFASEGADConfigView(BrowserView):
 
 # ── Per-client EGAD settings ──────────────────────────────────────────────────
 
+    def edd_profiles(self):
+        from senaite.pfas.egad_store import get_edd_profiles
+        profs = get_edd_profiles(_portal(self.context))
+        out = []
+        for k, v in sorted(profs.items()):
+            out.append({
+                "id": k, "name": v.get("name", k), "base": v.get("base", ""),
+                "n_columns": len(v.get("columns") or []),
+                "columns_text": "\n".join(v.get("columns") or []),
+                "matrix_map_json": json.dumps(v.get("matrix_map") or {},
+                                              indent=1, sort_keys=True),
+                "aliases_json": json.dumps(v.get("aliases") or {},
+                                           indent=1, sort_keys=True),
+            })
+        return out
+
+
 class PFASEGADClientConfigView(BrowserView):
     """
     Per-client EGAD toggle and settings.
@@ -329,6 +382,7 @@ class PFASEGADClientConfigView(BrowserView):
             "default_sample_type": form.get("default_sample_type", "GW").strip(),
             "analysis_lab_override": form.get("analysis_lab_override", "").strip(),
             "per_report_override_default": bool(form.get("per_report_override_default", True)),
+            "edd_profile": form.get("edd_profile", "maine_egad").strip() or "maine_egad",
         }
         save_client_egad(self.context, data)
         self.request.response.redirect(
@@ -338,12 +392,19 @@ class PFASEGADClientConfigView(BrowserView):
     def client_egad_config(self):
         return get_client_egad(self.context)
 
+    def edd_profile_options(self):
+        from senaite.pfas.egad_store import get_edd_profiles
+        profs = get_edd_profiles(_portal(self.context))
+        return [{"id": k, "name": v.get("name", k)}
+                for k, v in sorted(profs.items())]
+
     def portal_url(self):
         return _portal(self.context).absolute_url()
 
     def sample_type_options(self):
         lookups = get_lookups(_portal(self.context))
         return sorted(lookups.get("sample_types", ["GW", "SW", "AQ"]))
+
 
     def analysis_lab_options(self):
         lookups = get_lookups(_portal(self.context))
@@ -392,6 +453,13 @@ class PFASEGADExportView(BrowserView):
             logger.error("Cannot look up batch %s: %s", batch_id, exc)
 
         if batch_obj is None:
+            # Batches are not reliably indexed in portal_catalog (SENAITE 2.x
+            # uses its own catalogs) — resolve directly from the folder.
+            try:
+                batch_obj = portal["batches"].get(batch_id)
+            except Exception:
+                batch_obj = None
+        if batch_obj is None:
             return json.dumps({"error": "Batch not found: " + batch_id})
 
         # Get client
@@ -400,6 +468,18 @@ class PFASEGADExportView(BrowserView):
             client_obj = batch_obj.getClient()
         except AttributeError:
             pass
+        if client_obj is None:
+            # batches aren't always client-linked — derive from the batch's
+            # first sample (AR.getClient), the same join the EDD rows use
+            try:
+                from Products.CMFCore.utils import getToolByName
+                cat = getToolByName(portal, "senaite_catalog_sample")
+                brains = cat(portal_type="AnalysisRequest",
+                             getBatchUID=batch_obj.UID())
+                if brains:
+                    client_obj = brains[0].getObject().getClient()
+            except Exception:
+                client_obj = None
 
         from senaite.pfas.egad_builder import EGADBuilder
         builder = EGADBuilder(portal)

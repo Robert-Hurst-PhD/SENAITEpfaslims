@@ -295,6 +295,11 @@ class EGADBuilder(object):
             ""
         )
         default_sample_type = client_cfg.get("default_sample_type", "GW")
+        # EDD FORMAT PROFILE: per-client (client cfg `edd_profile`), Maine EGAD
+        # by default. Controls SAMPLE_TYPE matrix map + output columns/aliases.
+        from senaite.pfas.egad_store import get_edd_profile_for_client
+        self._edd_profile_id, self._edd_profile = \
+            get_edd_profile_for_client(self.portal, client_cfg)
 
         batch_id = batch_obj.getId()
         sdg = self._build_sdg(batch_id)
@@ -310,25 +315,50 @@ class EGADBuilder(object):
             ars = batch_obj.getAnalysisRequests()
         except AttributeError:
             ars = []
+        if not ars:
+            # Batch.getAnalysisRequests() is unreliable across versions —
+            # resolve via the sample catalog (ARs carry getBatchUID).
+            try:
+                from Products.CMFCore.utils import getToolByName
+                cat = getToolByName(self.portal, "senaite_catalog_sample")
+                ars = [b.getObject() for b in cat(
+                    portal_type="AnalysisRequest",
+                    getBatchUID=batch_obj.UID())]
+            except Exception:
+                ars = []
+
+        # Resolve the BATCH's method profile once (issue D44#9): core Method
+        # via the bridge, else the batch's extraction/run annotations. Rows
+        # must speak the batch's method — not client defaults.
+        batch_profile_id = self._batch_method_profile(batch_obj)
 
         for ar in ars:
             ar_rows = self._ar_to_rows(
                 ar, project_site, analysis_lab, default_sample_type,
                 sdg, batch_id, lab, client_cfg,
+                batch_profile_id=batch_profile_id,
             )
             rows_data.extend(ar_rows)
 
-        # ── Produce CSV ───────────────────────────────────────────────────────
-        csv_rows = [EDD_COLUMNS]
+        # ── Produce CSV (shaped by the EDD profile) ──────────────────────────
+        prof = getattr(self, "_edd_profile", None) or {}
+        out_cols = [c for c in (prof.get("columns") or EDD_COLUMNS)
+                    if c in EDD_COLUMNS] or list(EDD_COLUMNS)
+        aliases = prof.get("aliases") or {}
+        idx = dict((c, i) for i, c in enumerate(EDD_COLUMNS))
+        header = [aliases.get(c, c) for c in out_cols]
+        csv_rows = [header]
         row_number = 0
 
         for rd in rows_data:
             row_number += 1
             is_qc = rd.get("qc_type", "NA") != "NA"
-            row_vals = _row_to_list(rd)
-            csv_rows.append(row_vals)
-            errs = _validate_row(row_vals, row_number, is_qc)
+            full_vals = _row_to_list(rd)          # Maine superset order
+            # validation runs on the FULL superset (Maine semantics);
+            # output is then subset/reordered/aliased per the profile
+            errs = _validate_row(full_vals, row_number, is_qc)
             all_errors.extend(errs)
+            csv_rows.append([full_vals[idx[c]] for c in out_cols])
 
         # Python 2.7 CSV: writer expects byte strings; encode unicode as utf-8
         buf = io.BytesIO()
@@ -348,8 +378,38 @@ class EGADBuilder(object):
         filename = self.filename_for_batch(batch_id, client_cfg)
         return (csv_str, all_errors, filename)
 
+
+    def _batch_method_profile(self, batch_obj):
+        """Method PROFILE id for a batch: core Method (via the bridge) first,
+        then the batch's extraction-log / run-manifest annotations."""
+        try:
+            m = batch_obj.getMethod()
+            if m is not None:
+                from senaite.pfas.method_bridge import get_profile_id_for_method
+                pid = get_profile_id_for_method(self.portal, m)
+                if pid:
+                    return pid
+        except Exception:
+            pass
+        try:
+            import json as _json
+            from zope.annotation.interfaces import IAnnotations
+            ann = IAnnotations(batch_obj)
+            for key in (u"senaite.pfas.run_manifest",
+                        u"senaite.pfas.logbook.252",
+                        u"senaite.pfas.logbook.251"):
+                raw = ann.get(key)
+                if raw:
+                    d = _json.loads(raw)
+                    mid = d.get("method_id") or d.get("method")
+                    if mid:
+                        return mid
+        except Exception:
+            pass
+        return ""
+
     def _ar_to_rows(self, ar, project_site, analysis_lab, default_sample_type,
-                    sdg, batch_id, lab, client_cfg):
+                    sdg, batch_id, lab, client_cfg, batch_profile_id=""):
         """Convert one AnalysisRequest and all its analyses to EDD row dicts."""
         rows = []
 
@@ -381,7 +441,17 @@ class EGADBuilder(object):
         try:
             from zope.annotation.interfaces import IAnnotations
             ar_ann = IAnnotations(ar)
-            sample_type_code = ar_ann.get("senaite.pfas.egad_sample_type", "") or default_sample_type
+            sample_type_code = ar_ann.get("senaite.pfas.egad_sample_type", "")
+            if not sample_type_code:
+                # profile's configurable SampleType→code map (state-specific)
+                try:
+                    st = ar.getSampleType()
+                    mm = (getattr(self, "_edd_profile", {}) or {}).get(
+                        "matrix_map") or {}
+                    sample_type_code = mm.get(st.Title() if st else "", "")
+                except Exception:
+                    sample_type_code = ""
+            sample_type_code = sample_type_code or default_sample_type
         except Exception:
             sample_type_code = default_sample_type
 
@@ -434,19 +504,41 @@ class EGADBuilder(object):
         except AttributeError:
             pass
 
-        # Method info
+        # Method info — the BATCH's method profile governs TEST/prep/units
+        # (D44#9). ar.getMethod() returns the CORE Method object; map it to the
+        # profile id via the bridge; else use the batch-level resolution.
         method_id = ""
         try:
             method = ar.getMethod()
             if method:
-                method_id = method.getId() or ""
-        except AttributeError:
+                from senaite.pfas.method_bridge import get_profile_id_for_method
+                method_id = get_profile_id_for_method(self.portal, method) or ""
+        except Exception:
             pass
+        if not method_id:
+            method_id = batch_profile_id or ""
 
         method_cfg = self._get_method_cfg(method_id)
         test_code = method_cfg.get("test_code", "")
         prep_method = method_cfg.get("prep_method", lab.get("default_prep_method", "SW3535"))
-        units = _get_units(method_id, edd_sample_type, method_cfg)
+
+        # Units: the profile's UNIT MAP (method × matrix — §3 single source)
+        # wins; EGAD-code based fallback otherwise.
+        units = ""
+        try:
+            st = ar.getSampleType()
+            matrix_title = st.Title() if st else ""
+            if method_id and matrix_title:
+                from senaite.pfas.method_profile_store import get_profile
+                umap = (get_profile(self.portal, method_id) or {}).get(
+                    "unit_map") or {}
+                u = umap.get(matrix_title, "")
+                if u:
+                    units = u.upper().replace("NG/G", "NG/KG")
+        except Exception:
+            pass
+        if not units:
+            units = _get_units(method_id, edd_sample_type, method_cfg)
 
         weight_basis = "NA"
         if edd_sample_type in _SOLID_SAMPLE_TYPES:
@@ -471,7 +563,14 @@ class EGADBuilder(object):
                 title = analysis.Title()
                 result = analysis.getResult()
                 interims = analysis.getInterimFields() or []
-                review_state = analysis.review_state or ""
+                # review_state is a CATALOG BRAIN attribute — on full objects
+                # it raises AttributeError and silently dropped EVERY analysis
+                # from the EDD. Resolve via the workflow API instead.
+                try:
+                    from bika.lims import api as _bapi
+                    review_state = _bapi.get_review_status(analysis) or ""
+                except Exception:
+                    review_state = getattr(analysis, "review_state", "") or ""
             except AttributeError:
                 continue
 

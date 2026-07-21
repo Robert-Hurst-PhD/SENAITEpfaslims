@@ -23,7 +23,7 @@ from archetypes.schemaextender.field import ExtensionField
 from archetypes.schemaextender.interfaces import ISchemaExtender
 from Products.Archetypes.Field import StringField
 from Products.Archetypes.public import DisplayList
-from Products.Archetypes.Widget import SelectionWidget
+from Products.Archetypes.Widget import SelectionWidget, StringWidget
 from zope.component import adapts
 from zope.interface import implements
 
@@ -42,7 +42,16 @@ class _ExtStringField(ExtensionField, StringField):
 
 
 class AnalysisServiceExtender(object):
-    """Adds pfas_role identity field to every AnalysisService."""
+    """Adds PFAS identity fields to every AnalysisService.
+
+    pfas_role            — analyte / surrogate / injection_is (the authoritative
+                           source for the analyte/surrogate/IS lists).
+    pfas_quant_surrogate — on an ANALYTE service: the KEYWORD of the surrogate
+                           AnalysisService that quantifies it (the native→
+                           surrogate quantification link, now living ON core
+                           services — D58). Rich editing is in the Method
+                           Profile → Surrogate Map; this field is the store.
+    """
 
     implements(ISchemaExtender)
     adapts(AnalysisService)
@@ -63,6 +72,22 @@ class AnalysisServiceExtender(object):
                     "standard that all surrogates are quantified against."
                 ),
                 format="select",
+            ),
+        ),
+        _ExtStringField(
+            "pfas_quant_surrogate",
+            schemata="PFAS",
+            required=False,
+            default="",
+            widget=StringWidget(
+                label="Quantifying Surrogate (keyword)",
+                description=(
+                    "For an ANALYTE service: the keyword of the surrogate "
+                    "AnalysisService that quantifies this native (isotope "
+                    "dilution). Edit via the Method Profile Surrogate Map; "
+                    "this is the authoritative store on the core service."
+                ),
+                size=20,
             ),
         ),
     ]

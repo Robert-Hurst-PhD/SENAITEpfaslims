@@ -164,7 +164,17 @@ def load_instrument_csv(
         if col_map:
             df = df.rename(columns=col_map)
     else:
-        # Legacy path: hardcoded vendor_profiles.py (only runs when no profile)
+        # §7: Import Studio is the SINGLE source of instrument mappings — the
+        # importer must refuse rather than auto-guess. The hardcoded
+        # vendor_profiles.py path is retained for the test-suite only, behind
+        # an explicit opt-in.
+        import os
+        if os.environ.get("PFAS_ALLOW_LEGACY_VENDOR_MAP") != "1":
+            raise ImportError(
+                "No Import Studio column-mapping profile provided — refusing "
+                "to auto-guess vendor columns (CLAUDE.md §7). Save a profile "
+                "in Import Studio, or set PFAS_ALLOW_LEGACY_VENDOR_MAP=1 "
+                "(tests/dev only).")
         from .vendor_profiles import get_vendor_profile, detect_vendor
         vkey = vendor or detect_vendor(list(df.columns))
         vprofile = get_vendor_profile(vkey)

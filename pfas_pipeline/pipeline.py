@@ -294,6 +294,14 @@ def run_pipeline(
     # 5. Summary
     build_summary(batch)
 
+    # 5b. Persist per-injection detail for the multi-page Results Review (D59).
+    try:
+        from .injection_store import persist_injection_results
+        n_inj = persist_injection_results(batch)
+        logger.info("Persisted %d per-injection rows to injection_results", n_inj)
+    except Exception as e:                            # noqa: BLE001
+        logger.error("injection_results persist failed: %s", e)
+
     # 6. Extraction log
     ext_log = None
     if extraction_log_path and Path(extraction_log_path).exists():

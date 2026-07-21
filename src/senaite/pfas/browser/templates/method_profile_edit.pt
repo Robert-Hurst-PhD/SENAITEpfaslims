@@ -19,8 +19,33 @@
                  border-radius: 4px; background: #fafafa; resize: vertical; }
     .json-area:focus { outline: none; border-color: var(--s-primary);
                        box-shadow: 0 0 0 3px var(--s-focus-ring); }
+    /* Descriptive hint text uses the SYSTEM font (was monospace — the source
+       of the cross-page font inconsistency). Inline field names use <code>. */
     .json-hint { font-size: 11px; color: var(--s-secondary); margin-top: 4px;
-                 font-family: monospace; line-height: 1.5; }
+                 line-height: 1.5; }
+    .json-hint code { font-family: "Fira Code", monospace; }
+    /* Prose intro/description text — system sans-serif, NOT monospace.
+       Use for tab descriptions (json-hint is for JSON-field hints only). */
+    .pane-intro { font-size: 12px; color: var(--s-secondary); line-height: 1.5;
+                  max-width: 760px; margin: 0 0 14px; }
+    .pane-intro code { font-family: "Fira Code", monospace; font-size: 11px; }
+
+    /* Pill toggle switch (ported from the original QC Rules page) */
+    .toggle-switch { position: relative; display: inline-block;
+                     width: 38px; height: 22px; cursor: pointer; margin: 0; vertical-align: middle; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                    background: var(--s-input-border); border-radius: 22px; transition: background .15s; }
+    .toggle-track::before { content: ""; position: absolute; width: 16px; height: 16px;
+                             left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+                             transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+    .toggle-switch input:checked + .toggle-track { background: var(--s-primary); }
+    .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
+    .toggle-switch input:focus + .toggle-track { box-shadow: 0 0 0 3px var(--s-focus-ring); }
+    /* Param inputs grey out when their rule is toggled off */
+    .rule-params.rule-off input { background: var(--s-light); color: var(--s-secondary);
+                                  opacity: .55; }
+    .rule-params.rule-off label { color: var(--s-secondary); opacity: .7; }
 
     .factor-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
     .factor-table th { background: var(--s-light); color: var(--s-secondary);
@@ -88,6 +113,10 @@
     .pa-tier-3 { color: var(--s-secondary); font-style: italic; }
 
     .inclusion-wrap { overflow-x: auto; margin-bottom: 8px; }
+    /* Mobile: wide data tables scroll inside their section instead of
+       bleeding past the card border (consistent with .table-wrap). */
+    .section-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab-pane .factor-table, .tab-pane .pfas-table { max-width: 100%; }
     .inclusion-grid { border-collapse: collapse; font-size: 12px; }
     .inclusion-grid th { background: var(--s-light); padding: 5px 10px;
                          border-bottom: 2px solid var(--s-border); text-align: center;
@@ -179,21 +208,27 @@
 
   <tal:tabs metal:fill-slot="tabs">
     <div class="pfas-tabs" id="method-profile-tabs">
+      <a class="pfas-tab" data-pane="pane-toggles" href="#pane-toggles"
+         onclick="pfasTabSwitch('pane-toggles'); return false;">Rule Toggles &amp; QC Run</a>
+      <a class="pfas-tab" data-pane="pane-qct" href="#pane-qct"
+         onclick="pfasTabSwitch('pane-qct'); return false;">QC Types</a>
+      <a class="pfas-tab" data-pane="pane-rt" href="#pane-rt"
+         onclick="pfasTabSwitch('pane-rt'); return false;">Recovery Tiers</a>
+      <a class="pfas-tab" data-pane="pane-corr" href="#pane-corr"
+         onclick="pfasTabSwitch('pane-corr'); return false;">Sample Corrections</a>
       <a class="pfas-tab" data-pane="pane-ami" href="#pane-ami"
          onclick="pfasTabSwitch('pane-ami'); return false;">Analyte &#215; Matrix</a>
       <a class="pfas-tab" data-pane="pane-sur" href="#pane-sur"
          onclick="pfasTabSwitch('pane-sur'); return false;">Surrogate Map</a>
-      <a class="pfas-tab" data-pane="pane-rt" href="#pane-rt"
-         onclick="pfasTabSwitch('pane-rt'); return false;">Recovery Tiers</a>
       <a class="pfas-tab" data-pane="pane-eis" href="#pane-eis"
          onclick="pfasTabSwitch('pane-eis'); return false;"
          tal:attributes="style python:'' if view.show_eis_overrides() else 'display:none'">EIS Limits</a>
       <a class="pfas-tab" data-pane="pane-cal" href="#pane-cal"
-         onclick="pfasTabSwitch('pane-cal'); return false;">Calibration</a>
-      <a class="pfas-tab" data-pane="pane-ccv" href="#pane-ccv"
-         onclick="pfasTabSwitch('pane-ccv'); return false;">CCV</a>
-      <a class="pfas-tab" data-pane="pane-si" href="#pane-si"
-         onclick="pfasTabSwitch('pane-si'); return false;">SI Response</a>
+         onclick="pfasTabSwitch('pane-cal'); return false;">Calibration &amp; CCV</a>
+      <a class="pfas-tab" data-pane="pane-lwf" href="#pane-lwf"
+         onclick="pfasTabSwitch('pane-lwf'); return false;">Lab Workflow</a>
+      <a class="pfas-tab" data-pane="pane-adv" href="#pane-adv"
+         onclick="pfasTabSwitch('pane-adv'); return false;">Advanced</a>
     </div>
   </tal:tabs>
 
@@ -217,6 +252,60 @@
     <form id="profile-form" method="POST"
           tal:attributes="action string:@@pfas-method-profile-edit">
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <!-- marker so a save also writes the qc_rules store (D52); the
+           qc_toggles_present marker lives in the QC Types pane below -->
+      <input type="hidden" name="qc_rules_present" value="1" />
+
+      <!-- ── Tab: Rule Toggles & QC Run (qc_rules.json, per method) ──────── -->
+      <div class="tab-pane" id="pane-toggles">
+        <div class="page-body">
+          <p class="pane-intro">
+            Which QC-engine rules fire for <strong tal:content="view/display_name">this
+            method</strong> when the pipeline evaluates a run. Turn a rule off to
+            exclude it from automated evaluation; adjust a rule&#8217;s parameters
+            inline (blank = inherit the global default). Saved to the QC-engine
+            store (<code tal:content="view/qc_rules_path">/data/qc/qc_rules.json</code>),
+            read by the pipeline worker.
+          </p>
+          <div class="table-wrap">
+          <table class="factor-table" style="max-width:820px;">
+            <thead>
+              <tr><th style="width:52px;">On</th><th>Rule</th><th>Parameters</th></tr>
+            </thead>
+            <tbody>
+              <tr tal:repeat="row view/rule_toggle_rows">
+                <td style="text-align:center;">
+                  <label class="toggle-switch">
+                    <input type="checkbox" class="rule-toggle-cb"
+                           tal:attributes="name string:ruletoggle.${row/key};
+                                           data-rule row/key;
+                                           checked python:row['enabled']" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </td>
+                <td><strong tal:content="row/label">CCV Recovery</strong></td>
+                <td class="rule-params"
+                    tal:attributes="data-rule row/key;
+                                    class python:'rule-params rule-off' if not row['enabled'] else 'rule-params'">
+                  <span tal:condition="not:row/has_params"
+                        style="color:var(--s-secondary);font-size:12px;">&#8212;</span>
+                  <tal:p tal:repeat="p row/params">
+                    <label style="display:inline-flex;align-items:center;gap:5px;
+                                  margin:0 12px 4px 0;font-size:12px;">
+                      <span tal:content="p/label" style="color:var(--s-secondary);">min</span>
+                      <input type="number" step="any" style="width:90px;"
+                             tal:attributes="name string:rulelimit.${p/name};
+                                             value p/value;
+                                             placeholder python:'inherit' if p['inherited'] else ''" />
+                    </label>
+                  </tal:p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div><!-- /pane-toggles -->
 
       <!-- ── Tab: Analyte × Matrix ─────────────────────────────────────── -->
       <div class="tab-pane" id="pane-ami">
@@ -333,28 +422,46 @@
       <div class="tab-pane" id="pane-sur">
         <div class="page-body">
 
-          <details>
-            <summary>Surrogate Map (analyte &#8594; labeled IS)</summary>
+          <details open="open">
+            <summary>Surrogate Map (native analyte &#8594; quantifying surrogate)</summary>
             <div class="section-body">
+              <style>
+                .sur-tag { font-size:10px; padding:1px 7px; border-radius:8px; font-weight:700;
+                           display:inline-block; text-decoration:none; }
+                .sur-default { background:#e8f4f8; color:#387493; }
+                .sur-override { background:#fff3cd; color:#856404; }
+                .sur-core { background:#d4edda; color:#155724; margin-left:4px; }
+                .sur-nocore { background:#f8d7da; color:#721c24; margin-left:4px; }
+              </style>
               <div class="field-grid" style="margin-bottom:14px">
                 <div class="field-row">
                   <label for="surrogate_is">Injection IS</label>
                   <div class="field-sublabel">
-                    The IS used to quantify all surrogate recoveries (e.g. M4PFOA).
+                    The single IS all surrogate recoveries quantify against
+                    (core service, pfas_role=injection_is &#8212; e.g. M4PFOA).
+                    Pre-filled from the derived default.
                   </div>
                   <input type="text" id="surrogate_is" name="surrogate_is"
                          tal:attributes="value view/surrogate_is" />
                 </div>
               </div>
-              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:8px">
-                Assign each native analyte to the labeled IS that quantifies it.
-                Analytes with no assignment are treated as unquantified by a labeled IS.
+              <p class="pane-intro">
+                Each native is pre-assigned its labeled surrogate from the
+                single-source native&#8594;surrogate map; the dropdown shows only
+                <strong>this method&#8217;s surrogates</strong> (derived from its
+                analyte set), not the global pool. <span class="sur-tag sur-default">default</span>
+                = from the master map; <span class="sur-tag sur-override">override</span>
+                = reassigned here; <span class="sur-tag sur-core">&#128279; core</span>
+                links the surrogate&#8217;s core AnalysisService (pfas_role);
+                <span class="sur-tag sur-nocore">&#9888; not in core</span> flags a
+                surrogate with no marked core service.
               </p>
               <table class="factor-table" id="surMapTable">
                 <thead>
                   <tr>
-                    <th style="width:45%">Analyte</th>
-                    <th>Surrogate IS</th>
+                    <th style="width:40%">Native Analyte</th>
+                    <th style="width:35%">Quantifying Surrogate</th>
+                    <th style="width:25%">Source / Core</th>
                   </tr>
                 </thead>
                 <tbody id="surMapBody"></tbody>
@@ -373,27 +480,13 @@
       <div class="tab-pane" id="pane-rt">
         <div class="page-body">
 
-          <details>
-            <summary>Recovery Tiers</summary>
-            <div class="section-body">
-              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
-                Each tier card sets the recovery window (min/max %) and optional RSD limit.
-                <strong>Key Analytes</strong> &#8212; analytes subject to this tier&#39;s stricter limits.
-                <strong>Tight Matrices</strong> &#8212; if set, this tier only applies in those matrices.
-                <strong>No-Std Analytes</strong> &#8212; analytes that always fall to this tier (no labeled IS).
-                Leave all three pickers empty for a catch-all default tier.
-              </p>
-              <div id="recoveryTiersContainer"></div>
-              <button type="button" class="btn-add-row" style="margin-top:4px"
-                      onclick="addRecoveryTier()">+ Add Tier</button>
-              <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
-                     tal:attributes="value view/recovery_tiers_json" />
-            </div>
-          </details>
+          <div class="section-group-hdr">Spike QC Criteria (LFSM / LFB)</div>
+          <p class="pane-intro">
+            Spike-based QC is configured here in one place: the spike amounts
+            per matrix and the recovery acceptance windows applied to them.
+          </p>
 
-          <div class="section-group-hdr">Sample Prep &amp; Corrections</div>
-
-          <details>
+          <details open="open">
             <summary>Spike Levels (LFB / LFSM) by Matrix</summary>
             <div class="section-body">
               <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
@@ -413,56 +506,172 @@
           </details>
 
           <details>
-            <summary>Salt Adjustment Factors (per analyte, from CoA)</summary>
+            <summary>Recovery Acceptance (LFSM / LFB / LCS)</summary>
             <div class="section-body">
-              <p class="json-hint">
-                Molar-mass correction for standards supplied as salts.
-                Factor = (M.W. free acid) / (M.W. salt form).
+              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+                The recovery windows applied to the spike QC above. Each tier
+                card sets the recovery window (min/max %) and optional RSD limit.
+                <strong>Key Analytes</strong> &#8212; analytes subject to this tier&#39;s stricter limits.
+                <strong>Tight Matrices</strong> &#8212; if set, this tier only applies in those matrices.
+                <strong>No-Std Analytes</strong> &#8212; analytes that always fall to this tier (no labeled IS).
+                Leave all three pickers empty for a catch-all default tier.
               </p>
-              <table class="factor-table" id="saltAdjTable">
-                <thead>
-                  <tr>
-                    <th style="width:35%">Analyte</th>
-                    <th style="width:20%">Factor</th>
-                    <th style="width:35%">CoA Reference</th>
-                    <th style="width:36px"></th>
-                  </tr>
-                </thead>
-                <tbody id="saltAdjBody"></tbody>
-              </table>
-              <button type="button" class="btn-add-row" onclick="addSaltRow()">+ Add row</button>
-              <input type="hidden" name="salt_adjustment_factors_json" id="salt_adjustment_factors_json"
-                     tal:attributes="value view/salt_adjustment_factors_json" />
+              <div id="recoveryTiersContainer"></div>
+              <button type="button" class="btn-add-row" style="margin-top:4px"
+                      onclick="addRecoveryTier()">+ Add Tier</button>
+              <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
+                     tal:attributes="value view/recovery_tiers_json" />
             </div>
           </details>
 
-          <details>
-            <summary>Matrix Adjustment Factors (per sample type)</summary>
+          <div class="section-group-hdr">Sample Duplicate (Dup)</div>
+          <details open="open">
+            <summary>Sample Duplicate RPD</summary>
             <div class="section-body">
-              <p class="json-hint">
-                C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor.
-                &#8220;Sample type&#8221; is matched as a case-insensitive substring of the batch matrix
-                name (e.g. &#8220;milk&#8221; matches &#8220;Whole Milk&#8221;).
-                Leave empty if no adjustment needed for a matrix type.
+              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+                Precision check on a field sample run in duplicate: the maximum
+                Relative Percent Difference between the two results.
+                RPD&nbsp;=&nbsp;|A&nbsp;&#8722;&nbsp;B|&nbsp;/&nbsp;((A+B)/2)&nbsp;&#215;&nbsp;100.
+                Drives the <code>Dup</code> QC type in the pipeline
+                (qc_acceptance.Dup). Enable/disable it on the
+                <strong>QC&nbsp;Types</strong> tab.
               </p>
-              <table class="factor-table" id="matrixFactorsTable">
-                <thead>
-                  <tr>
-                    <th style="width:50%">Sample Type (substring match)</th>
-                    <th style="width:25%">Factor</th>
-                    <th style="width:36px"></th>
-                  </tr>
-                </thead>
-                <tbody id="matrixFactorsBody"></tbody>
-              </table>
-              <button type="button" class="btn-add-row" onclick="addMatrixFactorRow()">+ Add row</button>
-              <input type="hidden" name="matrix_factors_json" id="matrix_factors_json"
-                     tal:attributes="value view/matrix_factors_json" />
+              <div class="field-grid">
+                <div class="field-row">
+                  <label for="dup_rpd_max">Max RPD %</label>
+                  <input type="number" id="dup_rpd_max" name="dup_rpd_max"
+                         step="0.1" min="0"
+                         tal:attributes="value view/dup_rpd" />
+                  <span class="hint">20 for FDA; 30 for EPA methods</span>
+                </div>
+              </div>
             </div>
           </details>
 
         </div>
       </div><!-- /pane-rt -->
+
+      <!-- ── Tab: Sample Corrections (per-method, applied to ALL samples) ── -->
+      <div class="tab-pane" id="pane-corr">
+        <div class="page-body">
+          <p class="pane-intro">
+            Concentration corrections applied to <strong>every sample</strong>
+            for this method &#8212; not just QC. These are core method
+            corrections (like the reported-value formula), independent of the
+            QC engine.
+          </p>
+
+          <details open="open">
+            <summary>Salt Adjustment Factors (per analyte, from CoA)</summary>
+            <div class="section-body">
+              <p class="json-hint">
+                Molar-mass correction for standards supplied as salts.
+                Factor = (M.W. free acid) / (M.W. salt form); default
+                <strong>1.0</strong> (no correction). Every analyte is listed.
+                The factor seldom changes, but the <strong>CoA lot</strong>
+                updates with each new standard lot &#8212; pick it from the
+                reagent inventory so the salt correction traces to a specific
+                reference-standard lot (golden rule&nbsp;#6).
+              </p>
+              <input type="hidden" name="salt_present" value="1" />
+              <table class="factor-table" id="saltAdjTable">
+                <thead>
+                  <tr>
+                    <th style="width:38%">Analyte</th>
+                    <th style="width:18%">Factor</th>
+                    <th style="width:44%">CoA Lot (standard / reference material)</th>
+                  </tr>
+                </thead>
+                <tbody tal:define="lots view/standard_lot_options">
+                  <tr tal:repeat="row view/salt_adjustment_rows">
+                    <td>
+                      <span tal:content="row/label"
+                            style="font-family:'Fira Code',monospace;font-size:12px;">PFOS</span>
+                    </td>
+                    <td>
+                      <input type="number" step="0.0001" min="0" max="1"
+                             style="width:100px;"
+                             tal:attributes="name string:salt_factor.${row/analyte};
+                                             value row/factor" />
+                    </td>
+                    <td>
+                      <select tal:attributes="name string:salt_lot.${row/analyte}"
+                              style="max-width:100%;">
+                        <option value="">&#8212; no linked lot &#8212;</option>
+                        <option tal:repeat="lot lots"
+                                tal:attributes="value lot/uid;
+                                                selected python:lot['uid'] == row['lot_uid'];
+                                                style python:'color:#a33' if lot['expired'] else ''"
+                                tal:content="lot/label">Std — lot 123</option>
+                      </select>
+                    </td>
+                  </tr>
+                  <tr tal:condition="not:view/salt_adjustment_rows">
+                    <td colspan="3" style="color:var(--s-secondary);font-size:12px;">
+                      No analytes in this method&#8217;s master set yet &#8212;
+                      configure the Analyte&nbsp;&#215;&nbsp;Matrix tab first.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p tal:condition="not:view/standard_lot_options"
+                 style="font-size:11px;color:#856404;margin-top:8px;">
+                No <strong>Standard / Reference Material</strong> lots are in the
+                Reagent Inventory yet, so the CoA-lot dropdown is empty. Add your
+                reference-standard lots there to enable traceability linking.
+              </p>
+            </div>
+          </details>
+
+          <details open="open">
+            <summary>Matrix Adjustment Factors (per sample type)</summary>
+            <div class="section-body">
+              <p class="json-hint">
+                C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor;
+                default <strong>1.0</strong> (no correction). One row per matrix
+                in this method&#8217;s <strong>Analyte&nbsp;&#215;&nbsp;Matrix</strong>
+                map &#8212; each tied to a SENAITE core <strong>Sample Type</strong>
+                (single source of truth, golden rule&nbsp;#3). Applied to every
+                sample of that type.
+              </p>
+              <input type="hidden" name="matrix_present" value="1" />
+              <table class="factor-table" id="matrixFactorsTable">
+                <thead>
+                  <tr>
+                    <th style="width:55%">Sample Type (core)</th>
+                    <th style="width:25%">Factor</th>
+                    <th style="width:20%"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr tal:repeat="row view/matrix_adjustment_rows">
+                    <td tal:content="row/matrix">Meat / Muscle</td>
+                    <td>
+                      <input type="number" step="0.0001" min="0" style="width:110px;"
+                             tal:attributes="name string:matrix_factor.${row/matrix};
+                                             value row/factor" />
+                    </td>
+                    <td>
+                      <span tal:condition="row/linked"
+                            style="font-size:11px;background:#e8f4f8;color:#387493;padding:2px 8px;border-radius:8px;">&#128279; core type</span>
+                      <span tal:condition="not:row/linked"
+                            style="font-size:11px;color:#a33;"
+                            title="No matrix_uid_map entry ties this matrix to a core SampleType">&#9888; unlinked</span>
+                    </td>
+                  </tr>
+                  <tr tal:condition="not:view/matrix_adjustment_rows">
+                    <td colspan="3" style="color:var(--s-secondary);font-size:12px;">
+                      No matrices in this method&#8217;s Analyte&nbsp;&#215;&nbsp;Matrix
+                      map yet &#8212; configure that tab first.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+        </div>
+      </div><!-- /pane-corr -->
 
       <!-- ── Tab: EIS Limits ────────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-eis">
@@ -502,6 +711,14 @@
       <!-- ── Tab: Calibration ───────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-cal">
         <div class="page-body">
+          <div style="background:var(--s-primary-lt);border:1px solid #bee5eb;border-radius:8px;
+                      padding:9px 14px;font-size:12px;color:#0c5460;margin-bottom:14px;">
+            These tabs (Calibration / CCV / IS Response) hold THIS METHOD&#8217;s
+            instrument-verification <strong>acceptance parameters</strong>
+            (exported with the profile). Whether each engine <em>rule</em> is
+            switched on per method is governed globally in
+            <a tal:attributes="href string:${view/portal_url}/@@pfas-qc-rules">QC Rules</a>.
+          </div>
 
           <div class="section-group-hdr">Instrument QC Criteria</div>
           <div class="alert alert-info" style="font-size:12px;margin-bottom:10px;">
@@ -601,12 +818,7 @@
             </div>
           </details>
 
-        </div>
-      </div><!-- /pane-cal -->
-
-      <!-- ── Tab: CCV ───────────────────────────────────────────────────── -->
-      <div class="tab-pane" id="pane-ccv">
-        <div class="page-body">
+          <div class="section-group-hdr">Continuing Verification</div>
 
           <details>
             <summary>Continuing Calibration Verification (CCV)</summary>
@@ -645,28 +857,6 @@
           </details>
 
           <details>
-            <summary>Duplicate / LFSMD RPD</summary>
-            <div class="section-body">
-              <div class="field-grid">
-                <div class="field-row">
-                  <label for="dup_rpd_max">Max RPD %</label>
-                  <input type="number" id="dup_rpd_max" name="dup_rpd_max"
-                         step="0.1" min="0"
-                         tal:attributes="value python:view.duplicate().get('rpd_max', 20.0)" />
-                  <span class="hint">20 for FDA; 30 for EPA methods</span>
-                </div>
-              </div>
-            </div>
-          </details>
-
-        </div>
-      </div><!-- /pane-ccv -->
-
-      <!-- ── Tab: SI Response ───────────────────────────────────────────── -->
-      <div class="tab-pane" id="pane-si">
-        <div class="page-body">
-
-          <details>
             <summary>Internal Standard (IS) / Surrogate Response</summary>
             <div class="section-body">
               <div class="field-grid">
@@ -700,7 +890,36 @@
             </div>
           </details>
 
-          <div class="section-group-hdr">Lab Workflow</div>
+        </div>
+      </div><!-- /pane-cal -->
+
+
+      <!-- ── Tab: Lab Workflow (guided extraction stages) ───────────────── -->
+      <div class="tab-pane" id="pane-lwf">
+        <div class="page-body">
+          <p class="json-hint" style="max-width:760px;">
+            This method&#8217;s bench workflow: the stages defined here become the
+            step-by-step <strong>Guided Extraction</strong> inside the batch&#8217;s
+            extraction logbook (FM-ENV form set by this method) — edit the
+            workflow here once, and every batch&#8217;s extraction log follows it.
+          </p>
+          <div style="background:var(--s-light);border:1px solid var(--s-border);
+                      border-radius:8px;padding:10px 14px;font-size:12px;
+                      color:var(--s-secondary);max-width:760px;margin-bottom:14px;">
+            <strong style="color:var(--s-body);">Stage flags explained</strong><br/>
+            <strong>Creates Solution</strong> — completing this stage records a new
+            in-house <em>Prepared Standard</em> lot (it appears in Prepared
+            Standards with this stage&#8217;s reagents as its parent lots, and its
+            expiry inherits the tightest parent expiry).<br/>
+            <strong>Capture Standard Pedigree</strong> — this stage shows the
+            Standard/IS pedigree table in the Guided Extraction: the analyst
+            records WHICH prepared-standard lots were spiked, completing the
+            3-level traceability chain (reagent lot &#8594; prepared standard &#8594;
+            result) that Data Review&#8217;s traceability gate checks.
+          </div>
+
+
+          
 
           <details>
             <summary>Extraction Stages</summary>
@@ -718,7 +937,87 @@
           </details>
 
         </div>
-      </div><!-- /pane-si -->
+      </div><!-- /pane-lwf -->
+      <!-- ── Tab: QC Types (per-method enable toggles) ─────────────────── -->
+      <div class="tab-pane" id="pane-qct">
+        <div class="page-body">
+          <details open="open">
+            <summary>Associated QC Types</summary>
+            <div class="section-body">
+              <p style="font-size:12px;color:var(--s-secondary);max-width:640px;">
+                Toggle which QC types this method runs. Enabled types drive the
+                QC engine and auto-sync per-matrix Analysis Specifications;
+                disabled types are skipped everywhere. Types marked
+                <strong>recovery</strong> carry recovery ranges and generate specs.
+              </p>
+              <input type="hidden" name="qc_toggles_present" value="1"/>
+              <table class="pfas-table" style="max-width:560px;">
+                <thead><tr><th>Enabled</th><th>QC Type</th><th>Name</th><th>Spec sync</th></tr></thead>
+                <tbody>
+                  <tr tal:repeat="q view/qc_type_toggles">
+                    <td style="text-align:center;">
+                      <input type="checkbox"
+                             tal:attributes="name string:qc_enabled_${q/key};
+                                             checked q/enabled"/>
+                    </td>
+                    <td><code tal:content="q/key">LCS</code></td>
+                    <td tal:content="q/label">Laboratory Control Sample</td>
+                    <td>
+                      <span tal:condition="q/has_recovery"
+                            style="font-size:11px;background:#e8f4f8;color:#387493;padding:2px 8px;border-radius:8px;">recovery → specs</span>
+                      <span tal:condition="not:q/has_recovery"
+                            style="font-size:11px;color:var(--s-secondary);">limits only</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </div><!-- /pane-qct -->
+
+      <!-- ── Tab: Advanced (qc_rules global defaults + raw JSON) ─────────── -->
+      <div class="tab-pane" id="pane-adv">
+        <div class="page-body">
+          <details open="open">
+            <summary>Global Engine Defaults (all methods)</summary>
+            <div class="section-body">
+              <p class="json-hint" style="max-width:760px;">
+                Cross-method fallback values for the QC engine. A per-method
+                override on the <strong>Rule Toggles &amp; QC Run</strong> tab
+                always wins over these; edit here only to change the baseline
+                every method inherits.
+              </p>
+              <table class="factor-table" style="max-width:560px;">
+                <tbody>
+                  <tr tal:repeat="g view/global_criteria_fields">
+                    <td><label tal:content="g/label"
+                               style="font-size:12px;color:var(--s-secondary);">label</label></td>
+                    <td style="width:150px;">
+                      <input type="number" step="any" style="width:120px;"
+                             tal:attributes="name string:qcglobal.${g/key}; value g/value" />
+                      <span tal:condition="g/unit" tal:content="g/unit"
+                            style="font-size:11px;color:var(--s-secondary);">%</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+          <details>
+            <summary>Full QC-rules document (read-only reference)</summary>
+            <div class="section-body">
+              <p class="json-hint">
+                The complete <code tal:content="view/qc_rules_path">qc_rules.json</code>
+                as the pipeline sees it. Edit via the tabs above; this is a
+                reference view (the store is shared across methods).
+              </p>
+              <textarea class="json-area" readonly="readonly" rows="20"
+                        tal:content="view/qc_rules_json"></textarea>
+            </div>
+          </details>
+        </div>
+      </div><!-- /pane-adv -->
 
     </form>
 
@@ -741,10 +1040,26 @@
       }
       window.pfasTabSwitch = pfasTabSwitch;
 
+      /* Rule Toggles: grey out a rule's param inputs when it is toggled off */
+      (function () {
+        function sync(cb) {
+          var cell = document.querySelector('.rule-params[data-rule="' + cb.getAttribute('data-rule') + '"]');
+          if (!cell) return;
+          /* grey visually but keep inputs submittable so values persist
+             across an off/on toggle (a disabled input would not POST) */
+          cell.classList.toggle('rule-off', !cb.checked);
+        }
+        document.querySelectorAll('.rule-toggle-cb').forEach(function (cb) {
+          sync(cb);
+          cb.addEventListener('change', function () { sync(cb); });
+        });
+      })();
+
       (function () {
         var hash = location.hash.replace('#', '');
-        var valid = ['pane-ami', 'pane-sur', 'pane-rt', 'pane-eis', 'pane-cal', 'pane-ccv', 'pane-si'];
-        pfasTabSwitch((hash && valid.indexOf(hash) !== -1) ? hash : 'pane-ami');
+        var valid = ['pane-toggles', 'pane-qct', 'pane-rt', 'pane-corr', 'pane-ami',
+                     'pane-sur', 'pane-eis', 'pane-cal', 'pane-lwf', 'pane-adv'];
+        pfasTabSwitch((hash && valid.indexOf(hash) !== -1) ? hash : 'pane-toggles');
       })();
     })();
     </script>

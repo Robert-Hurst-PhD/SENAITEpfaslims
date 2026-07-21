@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">EGAD EDD Settings — ${context/Title}</title>
+  <title metal:fill-slot="title">EDD Settings — ${context/Title}</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .section-card { background: var(--s-bg); border: 1px solid var(--s-border);
@@ -44,7 +44,7 @@
     <a href="${view/portal_url}/@@pfas-egad-config" class="pfas-back-link">
       &#8592; EGAD Config
     </a>
-    <h1 style="margin:8px 0 4px">EGAD Settings — ${context/Title}</h1>
+    <h1 style="margin:8px 0 4px">EDD Settings — ${context/Title}</h1>
     <p style="margin:0;color:var(--s-secondary);font-size:13px">
       Per-client EGAD EDD settings.  Government-agency flag enables EDD generation
       when publishing reports for this client.
@@ -127,12 +127,27 @@
               Generate EDD by default when publishing (can be unchecked per report)
             </label>
           </div>
+          <div style="margin-top:12px">
+            <label for="edd_profile" style="font-size:13px;font-weight:700;display:block;margin-bottom:3px">
+              EDD format profile</label>
+            <select id="edd_profile" name="edd_profile"
+                    style="padding:6px 10px;border:1px solid var(--s-border);border-radius:4px;font-size:13px;">
+              <option tal:repeat="p view/edd_profile_options"
+                      tal:attributes="value p/id;
+                                      selected python:p['id'] == cfg.get('edd_profile', 'maine_egad')"
+                      tal:content="p/name">Maine EGAD</option>
+            </select>
+            <div style="font-size:11px;color:var(--s-secondary);margin-top:3px">
+              Which state/program EDD format this client's exports use
+              (profiles are managed under EGAD Config → EDD Format Profiles).
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <div style="margin-top:4px">
-      <button type="submit" class="btn-save">Save Client EGAD Settings</button>
+      <button type="submit" class="btn-save">Save Client EDD Settings</button>
     </div>
   </form>
   </tal:cfg>

@@ -1,5 +1,6 @@
 """Pass 5 regression: method profiles, multi-vendor import, sequence templates."""
 import sys, os, csv
+os.environ.setdefault("PFAS_ALLOW_LEGACY_VENDOR_MAP", "1")  # tests exercise the legacy vendor map
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date
 from pfas_pipeline.method_profiles import get_profile, available_profiles

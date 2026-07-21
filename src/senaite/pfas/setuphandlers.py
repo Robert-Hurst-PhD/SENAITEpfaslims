@@ -97,10 +97,15 @@ def setup_handler(context):
                              Keyword=row["Keyword"], Category=pfas_cat)
         try:
             svc.setCategory(pfas_cat)   # migrate existing services to collapsed category
-            svc.setCASNumber(row["CAS"] if row["CAS"] != "PLACEHOLDER" else "")
             svc.setPrecision(int(row["PrecisionDigits"]))
         except Exception:
             pass
+        # NOTE: SENAITE 2.6 core AnalysisService has NO CAS field, so CAS is NOT
+        # stored on the core service. Analyte CAS is owned in the add-on
+        # (analyte_reference.NATIVE_ANALYTES, single source), keyed by Keyword —
+        # which is the join back to this core service. A previous setCASNumber()
+        # call here threw AttributeError into a silent except and also blocked
+        # setPrecision(); both are fixed by removing it.
         _stamp_pfas_role(svc, "analyte")
 
     # ── Internal standards / surrogates ─────────────────────────────────
@@ -653,7 +658,23 @@ def migrate_egad_config_from_annotations(portal):
 
 def post_install(context):
     logger.info("senaite.pfas post_install")
-    portal = context.getSite()
+    # Defensive portal resolution: in some invocation contexts (e.g. a
+    # bin/instance interpreter bootstrap) `context` is a RequestContainer with
+    # no getSite(), which used to abort seeding ("Failed to seed vendor
+    # templates: ... no attribute 'getSite'"). Fall back to locating the site.
+    if hasattr(context, "getSite"):
+        portal = context.getSite()
+    else:
+        try:
+            from bika.lims import api
+            portal = api.get_portal()
+        except Exception:
+            portals = [o for o in context.objectValues("Plone Site")] \
+                if hasattr(context, "objectValues") else []
+            portal = portals[0] if portals else None
+    if portal is None:
+        logger.error("post_install: cannot resolve portal — aborting")
+        return
 
     # ── Import Studio vendor templates ────────────────────────────────────
     try:

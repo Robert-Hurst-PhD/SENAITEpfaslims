@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">EGAD EDD — Batches</title>
+  <title metal:fill-slot="title">Delivered EDDs</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .page-header { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
@@ -71,7 +71,7 @@
           &#8592; Batch EDD Dashboard
         </a>
         <h2>
-          EGAD Sample Types —
+          Sample Types —
           <span tal:content="view/batch_id">B-001</span>
         </h2>
       </div>
@@ -83,10 +83,10 @@
       </tal:saved>
 
       <div class="editor-header">
-        <h3>Per-sample EGAD SAMPLE_TYPE overrides</h3>
+        <h3>Per-sample SAMPLE_TYPE overrides</h3>
         <p>
-          Set the EGAD SAMPLE_TYPE code for each sample in this batch.
-          The default comes from the client's EGAD configuration.
+          Set the SAMPLE_TYPE code for each sample in this batch (per the client's EDD program profile).
+          The default comes from the client's EDD settings and profile matrix map.
           Changes here are used when generating the next EDD export.
         </p>
       </div>
@@ -108,7 +108,7 @@
               <th>Sample ID</th>
               <th>Sample Title</th>
               <th>SENAITE Sample Type</th>
-              <th>EGAD SAMPLE_TYPE</th>
+              <th>SAMPLE_TYPE</th>
             </tr>
           </thead>
           <tbody>
@@ -147,7 +147,7 @@
 
       <div class="page-header">
         <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-egad-config">
-          &#8592; EGAD EDD Config
+          &#8592; EDD Configuration
         </a>
         <h2>Batch EDD Dashboard</h2>
       </div>

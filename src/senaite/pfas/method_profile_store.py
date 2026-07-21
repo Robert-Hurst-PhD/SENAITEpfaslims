@@ -505,6 +505,9 @@ DEFAULT_PROFILES = {
                 "capture_pedigree": False,
             },
         ],
+        # Ordered logbooks required for a batch using this method.
+        # 250 = Solvent/Reagent Prep, 252 = Extraction Log (Guided), 251 = Cal Prep, 253 = Sample Processing
+        "required_logbooks": ["250", "252", "251", "253"],
     },
 
     "EPA_537_1": {
@@ -696,6 +699,7 @@ DEFAULT_PROFILES = {
                 "capture_pedigree": False,
             },
         ],
+        "required_logbooks": ["250", "252", "251", "253"],
     },
 
     "EPA_1633A": {
@@ -991,6 +995,7 @@ DEFAULT_PROFILES = {
                 "capture_pedigree": False,
             },
         ],
+        "required_logbooks": ["250", "252", "251", "253"],
     },
 }
 
@@ -1081,6 +1086,23 @@ def save_profile(portal, method_id, data):
     Create-on-demand: if method_id has no Dexterity object yet (e.g. wizard
     creating a new method), invokeFactory is called automatically.
     """
+    # D4: connect matrices to the canonical core SampleType — persist a
+    # title->UID map so each profile's matrices reference the core object.
+    # Additive: supported_matrices stays a list of titles for backward compat;
+    # consumers may resolve via matrix_ref instead of raw string matching.
+    try:
+        from senaite.pfas.matrix_ref import title_to_uid
+        umap = {}
+        for t in (data.get("supported_matrices") or []):
+            if t and not isinstance(t, dict):
+                uid = title_to_uid(portal, t)
+                if uid:
+                    umap[t] = uid
+        data["matrix_uid_map"] = umap
+    except Exception as exc:
+        logger.warning("save_profile: matrix_uid_map build failed for %s: %s",
+                       method_id, exc)
+
     folder = _get_profiles_folder(portal)
     if folder is not None:
         if method_id not in folder:
@@ -1102,6 +1124,24 @@ def save_profile(portal, method_id, data):
         # Annotation fallback (pre-migration)
         store = get_profile_store(portal)
         store[method_id] = json.dumps(data)
+
+    # Sync QC acceptance limits to SENAITE AnalysisSpec objects and audit trail
+    try:
+        from senaite.pfas.spec_sync import sync_analysis_specs
+        sync_analysis_specs(portal, method_id, data)
+    except Exception as exc:
+        logger.warning(
+            "Profile %s saved but AnalysisSpec sync failed: %s", method_id, exc
+        )
+
+    # Keep the profile ⇄ core SENAITE Method bridge (method_associations) fresh
+    try:
+        from senaite.pfas.method_bridge import link_one
+        link_one(portal, method_id, profile=data)
+    except Exception as exc:
+        logger.warning(
+            "Profile %s saved but method bridge link failed: %s", method_id, exc
+        )
 
     try:
         export_profiles_to_file(portal)
@@ -1213,8 +1253,17 @@ def get_included_analytes(portal, method_id, matrix):
     inclusion = profile.get("analyte_matrix_inclusion", {})
     if not inclusion:
         return list(master)
+    # D4: resolve matrix (a SampleType title OR UID) to the canonical title used
+    # as the inclusion key. Backward-compatible and byte-identical for existing
+    # title callers — a live title resolves to itself; an unknown string (e.g. a
+    # renamed/legacy title) falls through unchanged so nothing is orphaned.
+    try:
+        from senaite.pfas.matrix_ref import resolve
+        matrix_key = resolve(portal, matrix).get("title") or matrix
+    except Exception:
+        matrix_key = matrix
     return [kw for kw in master
-            if inclusion.get(kw, {}).get(matrix, True)]
+            if inclusion.get(kw, {}).get(matrix_key, True)]
 
 
 def seed_default_profiles(portal):

@@ -12,8 +12,7 @@
 
     .method-id { font-family: monospace; font-size: 12px; color: var(--s-primary);
                  background: var(--s-primary-lt); padding: 2px 6px; border-radius: 3px; }
-    .badge { font-size: 10px; padding: 2px 7px; border-radius: 10px;
-             font-weight: 700; text-transform: uppercase; }
+    /* .badge base is global (pfas_macros) — page-specific colours: */
     .badge-custom  { background: #d4edda; color: #155724; }
     .badge-default { background: #fff3cd; color: #856404; }
 
@@ -44,6 +43,7 @@
           <th>Method ID</th>
           <th>Display Name</th>
           <th class="hide-mobile">Description</th>
+          <th>SENAITE Method</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -56,6 +56,20 @@
           <td tal:content="m/display_name">FDA 32-PFAS in Food</td>
           <td class="hide-mobile">
             <div class="desc" tal:content="m/description">...</div>
+          </td>
+          <td>
+            <tal:linked tal:condition="m/core_method_url">
+              <a tal:attributes="href m/core_method_url;
+                                 title string:Open the core SENAITE Method record"
+                 tal:content="m/core_method_title"
+                 style="color:var(--s-primary);text-decoration:none;font-weight:600;">method</a>
+              <div style="font-size:11px;color:var(--s-secondary);margin-top:2px;">
+                <span tal:content="m/linked_services">0</span> analytes ·
+                <span tal:content="m/linked_sampletypes">0</span> matrices
+              </div>
+            </tal:linked>
+            <span tal:condition="not:m/core_method_url"
+                  style="font-size:11px;color:var(--s-secondary);">&#8212; not linked &#8212;</span>
           </td>
           <td>
             <span class="badge badge-custom"  tal:condition="m/is_customised">Customised</span>

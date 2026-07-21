@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Print Settings</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .ps-form { max-width: 720px; }
+    .ps-row { display:flex; flex-direction:column; gap:3px; margin-bottom:14px; }
+    .ps-row label { font-size:12px; font-weight:700; color:var(--s-body); }
+    .ps-row .hint { font-size:11px; color:var(--s-secondary); }
+    .ps-row input[type=text] { padding:7px 10px; border:1px solid var(--s-border);
+      border-radius:4px; font-size:13px; }
+    .ps-check { display:flex; gap:8px; align-items:center; margin-bottom:10px;
+      font-size:13px; }
+    .ps-preview { border:1px dashed var(--s-border); border-radius:8px;
+      padding:14px 16px; margin:18px 0; background:#fff; }
+    .ps-prev-label { font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+      color:var(--s-secondary); margin-bottom:8px; font-weight:700; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Print Settings</tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="ps view/settings">
+
+    <div class="alert alert-success" tal:condition="view/saved">
+      Print settings saved — every printable form (logbooks, CoC, SOP copies)
+      now uses the updated header/footer.
+    </div>
+
+    <p style="font-size:13px;color:var(--s-secondary);max-width:720px;">
+      One template for every printed form. The header/footer below is applied
+      automatically when ANY page is printed (FM-ENV logbooks, Chain of
+      Custody, SOP copies), so audit copies are consistent site-wide.
+    </p>
+
+    <!-- live preview of the print header -->
+    <div class="ps-preview">
+      <div class="ps-prev-label">Print header preview</div>
+      <div style="display:flex;gap:14px;align-items:center;border-bottom:2px solid #000;padding-bottom:8px;">
+        <img tal:condition="ps/logo_url" tal:attributes="src ps/logo_url"
+             style="max-height:46px;"/>
+        <div>
+          <div style="font-size:16px;font-weight:700;" tal:content="ps/lab_name">Lab</div>
+          <div style="font-size:10px;color:#333;">
+            <tal:a tal:replace="ps/lab_address"/><tal:p tal:condition="ps/lab_phone"> · <tal:x tal:replace="ps/lab_phone"/></tal:p><tal:e tal:condition="ps/lab_email"> · <tal:x tal:replace="ps/lab_email"/></tal:e>
+          </div>
+          <div style="font-size:10px;color:#333;" tal:condition="ps/accreditation"
+               tal:content="ps/accreditation">accreditation</div>
+        </div>
+        <div style="margin-left:auto;font-size:10px;color:#333;"
+             tal:condition="ps/show_print_date">Printed: 2026-07-02 12:00</div>
+      </div>
+      <div style="font-size:9px;color:#444;border-top:1px solid #999;margin-top:10px;padding-top:3px;text-align:center;"
+           tal:condition="ps/show_page_footer" tal:content="ps/footer_text">footer</div>
+    </div>
+
+    <form method="post" class="ps-form"
+          tal:attributes="action string:${view/portal_url}/@@pfas-print-settings">
+      <input type="hidden" name="action" value="save"/>
+
+      <div class="ps-row"><label>Laboratory name</label>
+        <input type="text" name="lab_name" tal:attributes="value ps/lab_name"/></div>
+      <div class="ps-row"><label>Address</label>
+        <input type="text" name="lab_address" tal:attributes="value ps/lab_address"/></div>
+      <div class="ps-row"><label>Phone</label>
+        <input type="text" name="lab_phone" tal:attributes="value ps/lab_phone"/></div>
+      <div class="ps-row"><label>Email</label>
+        <input type="text" name="lab_email" tal:attributes="value ps/lab_email"/></div>
+      <div class="ps-row"><label>Logo URL</label>
+        <input type="text" name="logo_url" tal:attributes="value ps/logo_url"/>
+        <span class="hint">Absolute URL or portal-relative path to a logo image.</span></div>
+      <div class="ps-row"><label>Accreditation line</label>
+        <input type="text" name="accreditation" tal:attributes="value ps/accreditation"/>
+        <span class="hint">e.g. “ISO/IEC 17025:2017 — Certificate #1234”.</span></div>
+      <div class="ps-row"><label>Footer text</label>
+        <input type="text" name="footer_text" tal:attributes="value ps/footer_text"/>
+        <span class="hint">Printed at the bottom of every page (controlled-copy notice).</span></div>
+
+      <div class="ps-check">
+        <input type="checkbox" name="show_form_code" id="sfc"
+               tal:attributes="checked ps/show_form_code"/>
+        <label for="sfc" style="font-weight:400;">Show form code block (FM-ENV-xxx)</label></div>
+      <div class="ps-check">
+        <input type="checkbox" name="show_print_date" id="spd"
+               tal:attributes="checked ps/show_print_date"/>
+        <label for="spd" style="font-weight:400;">Show print date/time in the header</label></div>
+      <div class="ps-check">
+        <input type="checkbox" name="show_page_footer" id="spf"
+               tal:attributes="checked ps/show_page_footer"/>
+        <label for="spf" style="font-weight:400;">Show page footer</label></div>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:8px;">
+        Save Print Settings
+      </button>
+    </form>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

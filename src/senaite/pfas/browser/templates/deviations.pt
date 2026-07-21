@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Deviations &amp; CARs</title>
+  <metal:extra metal:fill-slot="head-extra">
+  <style>
+    /* ── Layout ─────────────────────────────────────────────── */
+    .dev-page { padding: 0 20px 40px; }
+    .dev-filter-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px;
+                      align-items:center; }
+    .dev-filter-btn { padding:5px 14px; border-radius:20px; font-size:12px;
+                      border:1px solid var(--s-border); background:#fff;
+                      cursor:pointer; color:var(--s-body); text-decoration:none; }
+    .dev-filter-btn:hover { background:var(--s-primary-lt); }
+    .dev-filter-btn.active { background:var(--s-primary); color:#fff;
+                              border-color:var(--s-primary); }
+    .dev-filter-sep { width:1px; height:20px; background:var(--s-border);
+                      margin:0 4px; }
+    /* ── List table ─────────────────────────────────────────── */
+    .dev-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .dev-table th { background:var(--s-light); font-weight:700;
+                    padding:8px 12px; text-align:left;
+                    border-bottom:2px solid var(--s-border);
+                    color:var(--s-secondary); text-transform:uppercase;
+                    font-size:11px; letter-spacing:.04em; }
+    .dev-table td { padding:10px 12px; border-bottom:1px solid var(--s-border);
+                    vertical-align:middle; }
+    .dev-table tr:hover td { background:var(--s-primary-lt); }
+    .dev-empty { text-align:center; padding:40px; color:var(--s-secondary);
+                 font-size:13px; }
+    /* ── Badges (page-specific — base .badge is global) ─────── */
+    .badge-deviation  { background:#e8f0fe; color:#1a56db; }
+    .badge-car        { background:#fce8ff; color:#6b21a8; }
+    .badge-open       { background:#fff3cd; color:#856404; }
+    .badge-in_progress{ background:#d1ecf1; color:#0c5460; }
+    .badge-closed     { background:#d4edda; color:#155724; }
+    .risk-green  { background:#d4edda; color:#155724; }
+    .risk-yellow { background:#fff3cd; color:#856404; }
+    .risk-orange { background:#ffe8d6; color:#743e12; }
+    .risk-red    { background:#f8d7da; color:#721c24; }
+    /* ── Detail view ────────────────────────────────────────── */
+    .dev-breadcrumb { font-size:12px; color:var(--s-secondary);
+                      margin-bottom:14px; }
+    .dev-breadcrumb a { color:var(--s-primary); text-decoration:none; }
+    .dev-detail-header { display:flex; align-items:center; gap:10px;
+                         margin-bottom:18px; flex-wrap:wrap; }
+    .dev-detail-id { font-size:18px; font-weight:700; color:var(--s-body); }
+    .dev-filed-meta { font-size:12px; color:var(--s-secondary); margin-left:auto; }
+    /* ── Tabs ────────────────────────────────────────────────── */
+    .dev-tabs { display:flex; gap:0; border-bottom:2px solid var(--s-border);
+                margin-bottom:20px; }
+    .dev-tab { padding:9px 18px; font-size:13px; font-weight:600; cursor:pointer;
+               text-decoration:none; color:var(--s-secondary);
+               border-bottom:2px solid transparent; margin-bottom:-2px; }
+    .dev-tab:hover { color:var(--s-primary); }
+    .dev-tab.active { color:var(--s-primary);
+                      border-bottom-color:var(--s-primary); }
+    /* ── Tab content ─────────────────────────────────────────── */
+    .dev-section-label { font-size:11px; font-weight:700; text-transform:uppercase;
+                         letter-spacing:.08em; color:var(--s-secondary);
+                         margin-bottom:4px; margin-top:16px; }
+    .dev-section-value { font-size:13px; color:var(--s-body);
+                         margin-bottom:12px; white-space:pre-wrap; }
+    .dev-form-group { margin-bottom:14px; }
+    .dev-form-group label { display:block; font-size:12px; font-weight:600;
+                            color:var(--s-secondary); margin-bottom:4px; }
+    .dev-form-group input, .dev-form-group textarea, .dev-form-group select {
+      width:100%; padding:7px 10px; border:1px solid var(--s-input-border);
+      border-radius:4px; font-size:13px; color:var(--s-input-text);
+      background:#fafafa; box-sizing:border-box; }
+    .dev-form-group input:focus, .dev-form-group textarea:focus,
+    .dev-form-group select:focus { outline:none; border-color:var(--s-primary);
+                                   box-shadow:0 0 0 3px var(--s-focus-ring); }
+    .dev-form-group textarea { min-height:80px; resize:vertical; }
+    /* ── Risk matrix ─────────────────────────────────────────── */
+    .risk-matrix-wrap { overflow-x:auto; margin:16px 0; }
+    .risk-matrix { border-collapse:collapse; }
+    .risk-matrix td, .risk-matrix th {
+      width:56px; height:44px; text-align:center; font-size:12px;
+      border:1px solid #fff; cursor:default; }
+    .risk-matrix .rm-axis { background:var(--s-light); font-size:10px; font-weight:700;
+                             color:var(--s-secondary); cursor:default; }
+    .rm-cell { font-weight:700; transition:outline .1s; }
+    .rm-cell.clickable { cursor:pointer; }
+    .rm-cell.clickable:hover { outline:3px solid #333; outline-offset:-2px; }
+    .rm-cell.rm-selected { outline:3px solid #333; outline-offset:-2px; }
+    .rm-cell.risk-green  { background:#28a745; color:#fff; }
+    .rm-cell.risk-yellow { background:#ffc107; color:#333; }
+    .rm-cell.risk-orange { background:#fd7e14; color:#fff; }
+    .rm-cell.risk-red    { background:#dc3545; color:#fff; }
+    .risk-score-display { display:inline-block; padding:5px 14px; border-radius:6px;
+                          font-weight:700; font-size:13px; margin-top:8px; }
+    /* ── Corrective actions ──────────────────────────────────── */
+    .ca-card { border:1px solid var(--s-border); border-radius:6px;
+               padding:14px 16px; margin-bottom:12px; }
+    .ca-card-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .ca-type-label { font-size:11px; font-weight:700; text-transform:uppercase;
+                     letter-spacing:.06em; padding:2px 8px; border-radius:10px; }
+    .ca-sop_revision  { background:#e8f0fe; color:#1a56db; }
+    .ca-training      { background:#fce8ff; color:#6b21a8; }
+    .ca-notification  { background:#fff3cd; color:#856404; }
+    .ca-ack-list { margin:8px 0; font-size:12px; }
+    .ca-ack-item { display:flex; align-items:center; gap:6px; padding:2px 0; }
+    .ca-ack-check { color:var(--s-success); font-weight:700; }
+    .ca-ack-pend  { color:var(--s-secondary); }
+    /* ── Add CA form ─────────────────────────────────────────── */
+    .ca-add-section { border:1px dashed var(--s-border); border-radius:6px;
+                      padding:16px; margin-top:16px; }
+    .ca-type-options { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+    .ca-type-opt { padding:6px 14px; border:1px solid var(--s-border);
+                   border-radius:20px; font-size:12px; cursor:pointer;
+                   background:#fff; color:var(--s-body); }
+    .ca-type-opt.selected { background:var(--s-primary); color:#fff;
+                            border-color:var(--s-primary); }
+    /* ── Modal ───────────────────────────────────────────────── */
+    .dev-modal-overlay { display:none; position:fixed; inset:0;
+                         background:rgba(0,0,0,.5); z-index:1000;
+                         align-items:center; justify-content:center; }
+    .dev-modal-overlay.open { display:flex; }
+    .dev-modal { background:#fff; border-radius:8px; padding:24px;
+                 max-width:640px; width:100%; max-height:90vh;
+                 overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,.18); }
+    .dev-modal-title { font-size:16px; font-weight:700; margin-bottom:16px;
+                       color:var(--s-body); }
+    .dev-modal-footer { display:flex; justify-content:flex-end; gap:8px;
+                        margin-top:16px; padding-top:16px;
+                        border-top:1px solid var(--s-border); }
+    /* ── Closure ─────────────────────────────────────────────── */
+    .closure-check { display:flex; align-items:center; gap:8px; font-size:13px;
+                     padding:6px 0; }
+    .closure-check .icon-ok  { color:var(--s-success); font-size:16px; }
+    .closure-check .icon-nok { color:var(--s-danger); font-size:16px; }
+  </style>
+  </metal:extra>
+</head>
+<body>
+
+<tal:t metal:fill-slot="header-title">Deviations &amp; CARs</tal:t>
+
+<tal:hr metal:fill-slot="header-right">
+  <tal:mgr tal:condition="view/can_edit">
+    <button class="btn btn-primary btn-sm"
+            style="margin-right:6px"
+            onclick="openDevModal('deviation')">+ New Deviation</button>
+    <button class="btn btn-secondary btn-sm"
+            onclick="openDevModal('car')">+ New CAR</button>
+  </tal:mgr>
+</tal:hr>
+
+<metal:content metal:fill-slot="content">
+<div class="dev-page">
+
+  <!-- Flash message -->
+  <tal:flash tal:condition="view/msg">
+    <div tal:define="mtype view/msg_type"
+         tal:attributes="class python:'alert alert-' + mtype">
+      <tal:text tal:replace="view/msg_text"/>
+    </div>
+  </tal:flash>
+
+  <!-- ══ DETAIL VIEW ══════════════════════════════════════════════════════ -->
+  <tal:detail tal:condition="view/is_detail_view">
+  <tal:dev tal:define="dev view/current_deviation">
+
+    <tal:found tal:condition="dev">
+      <!-- Breadcrumb -->
+      <div class="dev-breadcrumb">
+        <a tal:attributes="href string:${view/portal_url}/@@pfas-deviations">
+          &#8592; Deviations &amp; CARs
+        </a>
+      </div>
+
+      <!-- Record header -->
+      <div class="dev-detail-header">
+        <span class="dev-detail-id" tal:content="dev/dev_id"/>
+        <span tal:define="dtype dev/type"
+              tal:attributes="class python:'badge badge-' + dtype">
+          <tal:v tal:replace="python:dtype.upper()"/>
+        </span>
+        <span tal:define="dstatus dev/status"
+              tal:attributes="class python:'badge badge-' + dstatus">
+          <tal:v tal:replace="python:dstatus.replace('_', ' ').title()"/>
+        </span>
+        <span tal:define="rscore dev/risk_score"
+              tal:attributes="class python:'badge risk-' + dev['risk_colour']">
+          Risk: <tal:v tal:replace="rscore"/> — <tal:v tal:replace="dev/risk_label"/>
+        </span>
+        <span class="dev-filed-meta">
+          Filed by <strong tal:content="dev/filed_by"/> on <tal:v tal:replace="dev/filed_at"/>
+        </span>
+      </div>
+
+      <!-- Tabs -->
+      <div class="dev-tabs">
+        <a class="dev-tab"
+           tal:attributes="class python:'dev-tab active' if view.active_tab() == 'overview' else 'dev-tab';
+                           href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}&amp;tab=overview">
+          Overview
+        </a>
+        <a class="dev-tab"
+           tal:attributes="class python:'dev-tab active' if view.active_tab() == 'rootcause' else 'dev-tab';
+                           href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}&amp;tab=rootcause">
+          Scale &amp; Root Cause
+        </a>
+        <a class="dev-tab"
+           tal:attributes="class python:'dev-tab active' if view.active_tab() == 'actions' else 'dev-tab';
+                           href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}&amp;tab=actions">
+          Corrective Actions
+          <tal:pending tal:condition="python:dev.get('corrective_actions')">
+            <tal:count tal:define="nc python:sum(1 for ca in dev.get('corrective_actions',[]) if ca.get('status') != 'complete')">
+              <tal:show tal:condition="nc">
+                (<tal:v tal:replace="nc"/> pending)
+              </tal:show>
+            </tal:count>
+          </tal:pending>
+        </a>
+        <a class="dev-tab"
+           tal:attributes="class python:'dev-tab active' if view.active_tab() == 'closure' else 'dev-tab';
+                           href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}&amp;tab=closure">
+          Closure
+        </a>
+      </div>
+
+      <!-- ── Tab: Overview ──────────────────────────────────── -->
+      <tal:tab_overview tal:condition="python:view.active_tab() == 'overview'">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">
+          <div>
+            <div class="dev-section-label">Event Type</div>
+            <div class="dev-section-value" tal:content="dev/event_label"/>
+
+            <div class="dev-section-label">Event Date</div>
+            <div class="dev-section-value" tal:content="dev/event_date"/>
+
+            <div class="dev-section-label">Description</div>
+            <div class="dev-section-value" tal:content="dev/description"/>
+          </div>
+
+          <!-- Risk matrix display -->
+          <div>
+            <div class="dev-section-label">Risk Assessment Matrix
+              (L=<tal:v tal:replace="dev/likelihood"/>,
+               S=<tal:v tal:replace="dev/severity"/>)
+            </div>
+            <div class="risk-matrix-wrap">
+              <table class="risk-matrix">
+                <tr>
+                  <td class="rm-axis" style="font-size:9px">L\S</td>
+                  <td class="rm-axis">S=1</td>
+                  <td class="rm-axis">S=2</td>
+                  <td class="rm-axis">S=3</td>
+                  <td class="rm-axis">S=4</td>
+                  <td class="rm-axis">S=5</td>
+                </tr>
+                <tal:lrow tal:repeat="li python:[5,4,3,2,1]">
+                  <tr>
+                    <td class="rm-axis">
+                      L=<tal:v tal:replace="li"/>
+                    </td>
+                    <tal:scol tal:repeat="si python:[1,2,3,4,5]">
+                      <td tal:define="score python:li * si;
+                                      colour python:view.risk_colour_for(li, si);
+                                      is_sel python:dev.get('likelihood') == li and dev.get('severity') == si"
+                          tal:attributes="class python:'rm-cell risk-' + colour + (' rm-selected' if is_sel else '')">
+                        <tal:v tal:replace="score"/>
+                      </td>
+                    </tal:scol>
+                  </tr>
+                </tal:lrow>
+              </table>
+            </div>
+            <div tal:define="rscore dev/risk_score"
+                 tal:attributes="class python:'risk-score-display risk-' + dev['risk_colour']">
+              Score <tal:v tal:replace="rscore"/> — <tal:v tal:replace="dev/risk_label"/>
+            </div>
+          </div>
+        </div>
+      </tal:tab_overview>
+
+      <!-- ── Tab: Scale & Root Cause ────────────────────────── -->
+      <tal:tab_rc tal:condition="python:view.active_tab() == 'rootcause'">
+        <tal:editable tal:condition="python:dev.get('status') != 'closed' and view.can_edit()">
+          <form method="post"
+                tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+            <input type="hidden" name="action" value="update_scale_rootcause"/>
+            <input type="hidden" name="dev_id"
+                   tal:attributes="value dev/dev_id"/>
+            <input type="hidden" name="likelihood" id="detail-likelihood"
+                   tal:attributes="value dev/likelihood"/>
+            <input type="hidden" name="severity" id="detail-severity"
+                   tal:attributes="value dev/severity"/>
+
+            <!-- Interactive risk matrix -->
+            <div class="dev-form-group">
+              <label>Risk Assessment (tap cell to change)</label>
+              <div class="risk-matrix-wrap">
+                <table class="risk-matrix" id="detail-risk-matrix">
+                  <tr>
+                    <td class="rm-axis" style="font-size:9px">L\S</td>
+                    <td class="rm-axis">S=1</td><td class="rm-axis">S=2</td>
+                    <td class="rm-axis">S=3</td><td class="rm-axis">S=4</td>
+                    <td class="rm-axis">S=5</td>
+                  </tr>
+                  <tal:lrow tal:repeat="li python:[5,4,3,2,1]">
+                    <tr>
+                      <td class="rm-axis">L=<tal:v tal:replace="li"/></td>
+                      <tal:scol tal:repeat="si python:[1,2,3,4,5]">
+                        <td tal:define="score python:li * si;
+                                        colour python:view.risk_colour_for(li, si)"
+                            tal:attributes="class python:'rm-cell clickable risk-' + colour;
+                                            data-l string:${li};
+                                            data-s string:${si}">
+                          <tal:v tal:replace="score"/>
+                        </td>
+                      </tal:scol>
+                    </tr>
+                  </tal:lrow>
+                </table>
+              </div>
+              <div id="detail-score-display"
+                   tal:attributes="class python:'risk-score-display risk-' + dev['risk_colour']">
+                L=<tal:v tal:replace="dev/likelihood"/> &#215;
+                S=<tal:v tal:replace="dev/severity"/> = Score
+                <tal:v tal:replace="dev/risk_score"/> &#8212;
+                <tal:v tal:replace="dev/risk_label"/>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              <div class="dev-form-group">
+                <label>Affected Date From</label>
+                <input type="date" name="affected_date_from" id="ws_date_from"
+                       tal:attributes="value dev/affected_date_from"/>
+              </div>
+              <div class="dev-form-group">
+                <label>Affected Date To</label>
+                <input type="date" name="affected_date_to" id="ws_date_to"
+                       tal:attributes="value dev/affected_date_to"/>
+              </div>
+            </div>
+            <div class="dev-form-group">
+              <label>Affected Worksheets</label>
+              <!-- Method selector drives the worksheet lookup (not a saved field) -->
+              <div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-end">
+                <div style="flex:1">
+                  <div style="font-size:11px;color:#888;margin-bottom:3px">Method</div>
+                  <select id="ws_lookup_method"
+                          style="width:100%;padding:5px 8px;border:1px solid #ccc;
+                                 border-radius:4px;font-size:13px">
+                    <option value="">&#8212; select method &#8212;</option>
+                    <tal:m tal:repeat="m view/available_methods">
+                      <option tal:attributes="value m/id"
+                              tal:content="m/title"/>
+                    </tal:m>
+                  </select>
+                </div>
+                <button type="button" id="ws_find_btn" onclick="findWorksheets()"
+                        class="btn btn-secondary btn-sm"
+                        style="white-space:nowrap">
+                  Find Worksheets
+                </button>
+              </div>
+              <!-- Results rendered by JS -->
+              <div id="ws_results" style="margin-bottom:8px;font-size:12px"></div>
+              <!-- Actual saved field — auto-populated from checklist or manual -->
+              <textarea name="affected_worksheets" id="ws_textarea" rows="2"
+                        placeholder="IDs appear here automatically, or enter manually..."
+                        tal:attributes="value python:', '.join(dev.get('affected_worksheets',[]))"/>
+            </div>
+            <div class="dev-form-group">
+              <label>Scale Description
+                <span style="font-weight:400;color:#888">(extent of affected data)</span>
+              </label>
+              <textarea name="scale_description" rows="3"
+                        tal:content="dev/scale_description"/>
+            </div>
+            <div class="dev-form-group">
+              <label>Root Cause Analysis</label>
+              <textarea name="root_cause" rows="5"
+                        tal:content="dev/root_cause"/>
+            </div>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </form>
+        </tal:editable>
+
+        <!-- Read-only view for closed records or users without edit rights -->
+        <tal:readonly tal:condition="python:dev.get('status') == 'closed' or not view.can_edit()">
+          <div class="dev-section-label">Affected Worksheets</div>
+          <div class="dev-section-value">
+            <tal:none tal:condition="python:not dev.get('affected_worksheets')">
+              <em style="color:#aaa">None recorded</em>
+            </tal:none>
+            <tal:ws tal:condition="python:bool(dev.get('affected_worksheets'))">
+              <tal:row tal:repeat="ws dev/affected_worksheets">
+                <span class="badge badge-deviation" style="margin-right:4px"
+                      tal:content="ws"/>
+              </tal:row>
+            </tal:ws>
+          </div>
+          <div class="dev-section-label">Date Range</div>
+          <div class="dev-section-value">
+            <tal:v tal:replace="dev/affected_date_from"/> — <tal:v tal:replace="dev/affected_date_to"/>
+          </div>
+          <div class="dev-section-label">Scale Description</div>
+          <div class="dev-section-value">
+            <tal:v tal:replace="dev/scale_description"/>
+          </div>
+          <div class="dev-section-label">Root Cause</div>
+          <div class="dev-section-value">
+            <tal:v tal:replace="dev/root_cause"/>
+          </div>
+        </tal:readonly>
+      </tal:tab_rc>
+
+      <!-- ── Tab: Corrective Actions ────────────────────────── -->
+      <tal:tab_ca tal:condition="python:view.active_tab() == 'actions'">
+        <tal:no_cas tal:condition="python:not dev.get('corrective_actions')">
+          <div class="dev-empty">No corrective actions recorded yet.</div>
+        </tal:no_cas>
+
+        <tal:ca_list tal:repeat="ca dev/corrective_actions">
+          <div class="ca-card">
+            <div class="ca-card-header">
+              <span tal:define="catype ca/type"
+                    tal:attributes="class python:'ca-type-label ca-' + catype">
+                <tal:v tal:replace="python:catype.replace('_',' ').title()"/>
+              </span>
+              <span tal:define="castatus ca/status"
+                    tal:attributes="class python:'badge badge-' + ('closed' if castatus == 'complete' else 'open')">
+                <tal:v tal:replace="python:'Complete' if castatus == 'complete' else 'Pending'"/>
+              </span>
+            </div>
+            <div style="font-size:13px;color:var(--s-body);margin-bottom:10px"
+                 tal:content="ca/description"/>
+
+            <!-- SOP Revision CA -->
+            <tal:ca_sop tal:condition="python:ca.get('type') == 'sop_revision'">
+              <tal:sop_id tal:condition="ca/sop_id">
+                <div style="font-size:12px;color:#666;margin-bottom:8px">
+                  SOP: <strong tal:content="ca/sop_id"/>
+                  <tal:rev tal:condition="ca/new_rev_num">
+                    — Rev <tal:v tal:replace="ca/new_rev_num"/>
+                  </tal:rev>
+                </div>
+              </tal:sop_id>
+              <tal:complete_btn tal:condition="python:ca.get('status') != 'complete' and view.can_manage() and dev.get('status') != 'closed'">
+                <form method="post" style="display:inline"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+                  <input type="hidden" name="action" value="complete_ca"/>
+                  <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
+                  <input type="hidden" name="ca_id"  tal:attributes="value ca/ca_id"/>
+                  <button type="submit" class="btn btn-secondary btn-sm">Mark Complete</button>
+                </form>
+              </tal:complete_btn>
+            </tal:ca_sop>
+
+            <!-- Training CA -->
+            <tal:ca_training tal:condition="python:ca.get('type') == 'training'">
+              <div class="ca-ack-list">
+                <div style="font-size:11px;font-weight:700;color:#888;
+                            text-transform:uppercase;margin-bottom:4px">
+                  Required Acknowledgments
+                </div>
+                <tal:req_users tal:repeat="uid ca/required_users">
+                  <div class="ca-ack-item"
+                       tal:define="acks python:ca.get('acknowledgments',{});
+                                    is_acked python:uid in acks">
+                    <span tal:attributes="class python:'ca-ack-check' if is_acked else 'ca-ack-pend'">
+                      <tal:y tal:condition="is_acked">&#10003;</tal:y>
+                      <tal:n tal:condition="python:not is_acked">&#9675;</tal:n>
+                    </span>
+                    <span tal:content="uid"/>
+                    <tal:acked tal:condition="is_acked">
+                      <span style="color:#aaa;font-size:11px">
+                        (<tal:v tal:replace="python:acks[uid].get('acked_at','')[:10]"/>)
+                      </span>
+                    </tal:acked>
+                  </div>
+                </tal:req_users>
+              </div>
+              <!-- Acknowledge button for current user if required and not yet acked -->
+              <tal:ack_btn tal:define="uid view/current_user_id;
+                                       req python:ca.get('required_users',[]);
+                                       acks python:ca.get('acknowledgments',{});
+                                       can_ack python:uid in req and uid not in acks and ca.get('status') != 'complete'">
+                <tal:show_ack tal:condition="can_ack">
+                  <form method="post"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+                    <input type="hidden" name="action" value="acknowledge_training"/>
+                    <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
+                    <input type="hidden" name="ca_id"  tal:attributes="value ca/ca_id"/>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                      I acknowledge this training
+                    </button>
+                  </form>
+                </tal:show_ack>
+              </tal:ack_btn>
+              <!-- Manager complete override -->
+              <tal:mgr_complete tal:condition="python:ca.get('status') != 'complete' and view.can_manage() and dev.get('status') != 'closed'">
+                <form method="post" style="display:inline;margin-left:8px"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+                  <input type="hidden" name="action" value="complete_ca"/>
+                  <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
+                  <input type="hidden" name="ca_id"  tal:attributes="value ca/ca_id"/>
+                  <button type="submit" class="btn btn-secondary btn-sm">Mark Complete</button>
+                </form>
+              </tal:mgr_complete>
+            </tal:ca_training>
+
+            <!-- Notification CA -->
+            <tal:ca_notif tal:condition="python:ca.get('type') == 'notification'">
+              <div style="font-size:12px;margin-bottom:8px">
+                <strong>Subtype:</strong>
+                <span tal:replace="python:'Retest Offer' if ca.get('subtype') == 'retest' else 'Impact Notification'"/>
+                &nbsp;&bull;&nbsp;
+                <strong>Affected:</strong>
+                <tal:ws tal:repeat="ws python:ca.get('affected_worksheets',[])">
+                  <span class="badge badge-deviation" style="margin-right:2px"
+                        tal:content="ws"/>
+                </tal:ws>
+              </div>
+              <tal:notif_text tal:condition="ca/notification_text">
+                <div style="font-size:12px;color:#555;background:#f8f8f8;
+                            padding:8px;border-radius:4px;white-space:pre-wrap;
+                            margin-bottom:8px"
+                     tal:content="ca/notification_text"/>
+              </tal:notif_text>
+              <div style="display:flex;gap:8px;align-items:center">
+                <!-- View/print notification letter -->
+                <a target="_blank"
+                   tal:attributes="href string:${view/portal_url}/@@pfas-deviations?action=generate_notification&dev_id=${dev/dev_id}&ca_id=${ca/ca_id}"
+                   class="btn btn-secondary btn-sm">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round"
+                       style="display:inline-block;vertical-align:-2px;margin-right:4px"
+                       aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <line x1="10" y1="9" x2="8" y2="9"/>
+                  </svg>
+                  View Notification Letter
+                </a>
+                <!-- Mark sent button -->
+                <tal:mark_sent tal:condition="python:ca.get('status') != 'complete' and view.can_manage() and dev.get('status') != 'closed'">
+                  <form method="post" style="display:inline"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+                    <input type="hidden" name="action" value="mark_notification_sent"/>
+                    <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
+                    <input type="hidden" name="ca_id"  tal:attributes="value ca/ca_id"/>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                      Mark as Sent
+                    </button>
+                  </form>
+                </tal:mark_sent>
+                <tal:sent_at tal:condition="ca/sent_at">
+                  <span style="font-size:11px;color:#888">
+                    Sent <tal:v tal:replace="python:ca.get('sent_at','')[:10]"/>
+                  </span>
+                </tal:sent_at>
+              </div>
+            </tal:ca_notif>
+
+            <tal:completed_info tal:condition="python:ca.get('completed_at')">
+              <div style="font-size:11px;color:#aaa;margin-top:8px">
+                Completed <tal:v tal:replace="python:ca.get('completed_at','')[:10]"/>
+                by <tal:v tal:replace="python:ca.get('completed_by','')"/>
+              </div>
+            </tal:completed_info>
+          </div><!-- /ca-card -->
+        </tal:ca_list>
+
+        <!-- Add CA form (manager, non-closed) -->
+        <tal:add_ca_section tal:condition="python:view.can_manage() and dev.get('status') != 'closed'">
+          <div class="ca-add-section">
+            <div style="font-size:13px;font-weight:700;color:var(--s-body);
+                        margin-bottom:12px">+ Add Corrective Action</div>
+            <form method="post" id="add-ca-form"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+              <input type="hidden" name="action" value="add_corrective_action"/>
+              <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
+
+              <!-- CA type selector -->
+              <div class="dev-form-group">
+                <label>Type</label>
+                <div class="ca-type-options">
+                  <button type="button" class="ca-type-opt selected"
+                          onclick="selectCAType(this,'sop_revision')">SOP Revision</button>
+                  <button type="button" class="ca-type-opt"
+                          onclick="selectCAType(this,'training')">Training</button>
+                  <button type="button" class="ca-type-opt"
+                          onclick="selectCAType(this,'notification')">Notification</button>
+                </div>
+                <input type="hidden" name="ca_type" id="ca_type_input" value="sop_revision"/>
+              </div>
+
+              <div class="dev-form-group">
+                <label>Description</label>
+                <textarea name="ca_description" rows="3"
+                          placeholder="Describe this corrective action..."></textarea>
+              </div>
+
+              <!-- SOP Revision fields -->
+              <div id="ca-fields-sop_revision">
+                <div class="dev-form-group">
+                  <label>SOP Reference (optional)</label>
+                  <input type="text" name="ca_sop_id"
+                         placeholder="e.g. SOP-001"/>
+                </div>
+              </div>
+
+              <!-- Training fields -->
+              <div id="ca-fields-training" style="display:none">
+                <div class="dev-form-group">
+                  <label>Required Users
+                    <span style="font-weight:400;color:#888">(comma-separated user IDs)</span>
+                  </label>
+                  <input type="text" name="ca_required_users"
+                         placeholder="e.g. jsmith, bjones"/>
+                </div>
+              </div>
+
+              <!-- Notification fields -->
+              <div id="ca-fields-notification" style="display:none">
+                <div class="dev-form-group">
+                  <label>Notification Type</label>
+                  <select name="ca_subtype">
+                    <option value="impact">Impact Notification</option>
+                    <option value="retest">Retest Offer</option>
+                  </select>
+                </div>
+                <div class="dev-form-group">
+                  <label>Affected Worksheets
+                    <span style="font-weight:400;color:#888">(comma-separated)</span>
+                  </label>
+                  <input type="text" name="ca_affected_ws"
+                         tal:attributes="value python:', '.join(dev.get('affected_worksheets',[]))"/>
+                </div>
+                <div class="dev-form-group">
+                  <label>Notification Text</label>
+                  <textarea name="ca_notification_text" rows="5"
+                            placeholder="Text to be included in the notification letter..."></textarea>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-sm">Add Corrective Action</button>
+            </form>
+          </div>
+        </tal:add_ca_section>
+      </tal:tab_ca>
+
+      <!-- ── Tab: Closure ───────────────────────────────────── -->
+      <tal:tab_closure tal:condition="python:view.active_tab() == 'closure'">
+        <tal:already_closed tal:condition="python:dev.get('status') == 'closed'">
+          <div class="alert alert-success">
+            This record was closed on
+            <strong tal:content="python:dev.get('closed_at','')[:10]"/>
+            by <strong tal:content="dev/closed_by"/>.
+          </div>
+          <tal:notes tal:condition="dev/closure_notes">
+            <div class="dev-section-label">Closure Notes</div>
+            <div class="dev-section-value" tal:content="dev/closure_notes"/>
+          </tal:notes>
+        </tal:already_closed>
+
+        <tal:not_closed tal:condition="python:dev.get('status') != 'closed'">
+          <!-- CA completion checklist -->
+          <div style="margin-bottom:20px">
+            <div style="font-size:13px;font-weight:700;color:var(--s-body);
+                        margin-bottom:10px">Corrective Action Status</div>
+            <tal:no_cas tal:condition="python:not dev.get('corrective_actions')">
+              <div class="closure-check">
+                <span class="icon-nok">&#10007;</span>
+                No corrective actions defined
+              </div>
+            </tal:no_cas>
+            <tal:cas tal:repeat="ca dev/corrective_actions">
+              <div class="closure-check">
+                <span tal:attributes="class python:'icon-ok' if ca.get('status') == 'complete' else 'icon-nok'">
+                  <tal:y tal:condition="python:ca.get('status') == 'complete'">&#10003;</tal:y>
+                  <tal:n tal:condition="python:ca.get('status') != 'complete'">&#10007;</tal:n>
+                </span>
+                <span tal:content="python:ca.get('type','').replace('_',' ').title()"/>:
+                <span style="color:#666" tal:content="ca/description"/>
+              </div>
+            </tal:cas>
+          </div>
+
+          <!-- Closure form (manager only, all CAs complete) -->
+          <tal:mgr_close tal:condition="view/can_manage">
+            <form method="post"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+              <input type="hidden" name="action" value="close_deviation"/>
+              <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
+              <div class="dev-form-group">
+                <label>Closure Notes / QAO Sign-off</label>
+                <textarea name="closure_notes" rows="4"
+                          placeholder="Confirm all corrective actions are effective and the non-conformance is resolved..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-danger"
+                      tal:attributes="disabled python:'' if dev.get('all_cas_complete') else 'disabled'">
+                Close <tal:v tal:replace="python:dev.get('type','').upper()"/> (QAO Sign-off)
+              </button>
+              <tal:pending_msg tal:condition="python:not dev.get('all_cas_complete')">
+                <span style="font-size:12px;color:#dc3545;margin-left:10px">
+                  All corrective actions must be complete before closure.
+                </span>
+              </tal:pending_msg>
+            </form>
+          </tal:mgr_close>
+        </tal:not_closed>
+      </tal:tab_closure>
+
+    </tal:found>
+
+    <tal:notfound tal:condition="python:not dev">
+      <div class="alert alert-error">Record not found.</div>
+    </tal:notfound>
+  </tal:dev>
+  </tal:detail>
+
+  <!-- ══ LIST VIEW ════════════════════════════════════════════════════════ -->
+  <tal:listview tal:condition="python:not view.is_detail_view()">
+
+    <!-- Filter bar -->
+    <div class="dev-filter-bar">
+      <a class="dev-filter-btn"
+         tal:attributes="class python:'dev-filter-btn active' if (not view.filter_type() and not view.filter_status()) else 'dev-filter-btn';
+                         href string:${view/portal_url}/@@pfas-deviations">
+        All
+      </a>
+      <span class="dev-filter-sep"></span>
+      <a class="dev-filter-btn"
+         tal:attributes="class python:'dev-filter-btn active' if view.filter_status() == 'open' else 'dev-filter-btn';
+                         href string:${view/portal_url}/@@pfas-deviations?filter_status=open">
+        Open
+      </a>
+      <a class="dev-filter-btn"
+         tal:attributes="class python:'dev-filter-btn active' if view.filter_status() == 'in_progress' else 'dev-filter-btn';
+                         href string:${view/portal_url}/@@pfas-deviations?filter_status=in_progress">
+        In Progress
+      </a>
+      <a class="dev-filter-btn"
+         tal:attributes="class python:'dev-filter-btn active' if view.filter_status() == 'closed' else 'dev-filter-btn';
+                         href string:${view/portal_url}/@@pfas-deviations?filter_status=closed">
+        Closed
+      </a>
+      <span class="dev-filter-sep"></span>
+      <a class="dev-filter-btn"
+         tal:attributes="class python:'dev-filter-btn active' if view.filter_type() == 'deviation' else 'dev-filter-btn';
+                         href string:${view/portal_url}/@@pfas-deviations?filter_type=deviation">
+        Deviations Only
+      </a>
+      <a class="dev-filter-btn"
+         tal:attributes="class python:'dev-filter-btn active' if view.filter_type() == 'car' else 'dev-filter-btn';
+                         href string:${view/portal_url}/@@pfas-deviations?filter_type=car">
+        CARs Only
+      </a>
+    </div>
+
+    <!-- List table -->
+    <tal:devs tal:define="devs view/list_deviations">
+      <tal:empty tal:condition="python:not devs">
+        <div class="dev-empty">No records found.</div>
+      </tal:empty>
+
+      <tal:notempty tal:condition="devs">
+        <div class="table-wrap">
+        <table class="dev-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Filed</th>
+              <th>Event</th>
+              <th>Risk</th>
+              <th>CAs</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tal:row tal:repeat="dev devs">
+              <tr>
+                <td style="font-weight:700;font-family:monospace"
+                    tal:content="dev/dev_id"/>
+                <td>
+                  <span tal:define="dtype dev/type"
+                        tal:attributes="class python:'badge badge-' + dtype">
+                    <tal:v tal:replace="python:dtype.upper()"/>
+                  </span>
+                </td>
+                <td style="color:#888;font-size:12px"
+                    tal:content="dev/filed_at"/>
+                <td tal:content="dev/event_label"/>
+                <td>
+                  <span tal:define="rscore dev/risk_score"
+                        tal:attributes="class python:'badge risk-' + dev['risk_colour']">
+                    <tal:v tal:replace="rscore"/>
+                  </span>
+                </td>
+                <td>
+                  <tal:pending tal:condition="python:dev.get('ca_pending', 0) > 0">
+                    <span style="color:#856404">
+                      <tal:v tal:replace="dev/ca_pending"/> / <tal:v tal:replace="dev/ca_count"/>
+                    </span>
+                  </tal:pending>
+                  <tal:done tal:condition="python:dev.get('ca_pending', 0) == 0">
+                    <span style="color:#888">
+                      <tal:v tal:replace="dev/ca_count"/> total
+                    </span>
+                  </tal:done>
+                </td>
+                <td>
+                  <span tal:define="dstatus dev/status"
+                        tal:attributes="class python:'badge badge-' + dstatus">
+                    <tal:v tal:replace="python:dstatus.replace('_',' ').title()"/>
+                  </span>
+                </td>
+                <td>
+                  <a class="btn btn-secondary btn-sm"
+                     tal:attributes="href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}">
+                    View &#8594;
+                  </a>
+                </td>
+              </tr>
+            </tal:row>
+          </tbody>
+        </table>
+        </div>
+      </tal:notempty>
+    </tal:devs>
+  </tal:listview>
+
+</div><!-- /dev-page -->
+</metal:content>
+
+<!-- ══ New Deviation/CAR modal ══════════════════════════════════════════ -->
+<metal:extra metal:fill-slot="body-extra">
+<div class="dev-modal-overlay" id="new-dev-modal">
+  <div class="dev-modal">
+    <div class="dev-modal-title" id="new-dev-modal-title">File New Deviation</div>
+    <form method="post"
+          tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
+      <input type="hidden" name="action" value="file_deviation"/>
+      <input type="hidden" name="type" id="new-dev-type" value="deviation"/>
+
+      <div class="dev-form-group">
+        <label>Event Type</label>
+        <select name="event_type">
+          <tal:opts tal:repeat="evt view/event_types">
+            <option tal:attributes="value python:evt[0]"
+                    tal:content="python:evt[1]"/>
+          </tal:opts>
+        </select>
+      </div>
+
+      <div class="dev-form-group">
+        <label>Event Date</label>
+        <input type="date" name="event_date"
+               id="new-dev-date"/>
+      </div>
+
+      <div class="dev-form-group">
+        <label>Description</label>
+        <textarea name="description" rows="4"
+                  placeholder="Describe the non-conformance or event..."></textarea>
+      </div>
+
+      <!-- Interactive risk matrix -->
+      <div class="dev-form-group">
+        <label>Risk Assessment — click a cell to set Likelihood × Severity</label>
+        <div class="risk-matrix-wrap">
+          <table class="risk-matrix" id="new-dev-risk-matrix">
+            <tr>
+              <td class="rm-axis" style="font-size:9px">L\S</td>
+              <td class="rm-axis">S=1<br/><span style="font-weight:400;font-size:9px">Insig.</span></td>
+              <td class="rm-axis">S=2<br/><span style="font-weight:400;font-size:9px">Minor</span></td>
+              <td class="rm-axis">S=3<br/><span style="font-weight:400;font-size:9px">Moderate</span></td>
+              <td class="rm-axis">S=4<br/><span style="font-weight:400;font-size:9px">Major</span></td>
+              <td class="rm-axis">S=5<br/><span style="font-weight:400;font-size:9px">Catastrop.</span></td>
+            </tr>
+            <tal:lrow tal:repeat="li python:[5,4,3,2,1]">
+              <tr>
+                <td class="rm-axis">
+                  L=<tal:v tal:replace="li"/><br/>
+                  <span style="font-weight:400;font-size:9px"
+                        tal:replace="python:view.likelihood_label(li).split(' — ')[1] if ' — ' in view.likelihood_label(li) else ''"/>
+                </td>
+                <tal:scol tal:repeat="si python:[1,2,3,4,5]">
+                  <td tal:define="score python:li * si;
+                                   colour python:view.risk_colour_for(li, si)"
+                      tal:attributes="class python:'rm-cell clickable risk-' + colour;
+                                      data-l string:${li};
+                                      data-s string:${si}">
+                    <tal:v tal:replace="score"/>
+                  </td>
+                </tal:scol>
+              </tr>
+            </tal:lrow>
+          </table>
+        </div>
+        <div class="risk-score-display risk-green" id="new-dev-score-display"
+             style="display:none">
+          Score — —
+        </div>
+        <input type="hidden" name="likelihood" id="new-dev-likelihood" value="3"/>
+        <input type="hidden" name="severity"   id="new-dev-severity"   value="3"/>
+      </div>
+
+      <div class="dev-modal-footer">
+        <button type="button" class="btn btn-secondary"
+                onclick="closeDevModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">File Record</button>
+      </div>
+    </form>
+  </div>
+</div>
+</metal:extra>
+
+<metal:scripts metal:fill-slot="scripts">
+<script>
+(function() {
+  var _x  = String.fromCharCode(215);   // multiplication sign ×
+  var _nd = String.fromCharCode(8211);  // en dash –
+
+  // ── Modal ─────────────────────────────────────────────────────────────
+  function openDevModal(type) {
+    var modal = document.getElementById('new-dev-modal');
+    var title = document.getElementById('new-dev-modal-title');
+    var typeInput = document.getElementById('new-dev-type');
+    var dateInput = document.getElementById('new-dev-date');
+    if (!modal) return;
+    typeInput.value = type;
+    title.textContent = type === 'car' ? 'File New CAR' : 'File New Deviation';
+    var today = new Date().toISOString().split('T')[0];
+    if (dateInput && !dateInput.value) { dateInput.value = today; }
+    modal.classList.add('open');
+    document.addEventListener('keydown', escHandler);
+  }
+  function closeDevModal() {
+    var modal = document.getElementById('new-dev-modal');
+    if (modal) { modal.classList.remove('open'); }
+    document.removeEventListener('keydown', escHandler);
+  }
+  function escHandler(e) {
+    if (e.key === 'Escape') { closeDevModal(); }
+  }
+  // Click outside to close
+  document.addEventListener('click', function(e) {
+    var modal = document.getElementById('new-dev-modal');
+    if (modal && modal.classList.contains('open') && e.target === modal) {
+      closeDevModal();
+    }
+  });
+  // Expose to global scope
+  window.openDevModal = openDevModal;
+  window.closeDevModal = closeDevModal;
+
+  // ── Interactive risk matrix ────────────────────────────────────────────
+  var colours = {green:'#28a745',yellow:'#ffc107',orange:'#fd7e14',red:'#dc3545'};
+  var textColours = {green:'#fff',yellow:'#333',orange:'#fff',red:'#fff'};
+  function scoreToColour(s) {
+    return s <= 4 ? 'green' : s <= 9 ? 'yellow' : s <= 14 ? 'orange' : 'red';
+  }
+  function scoreToLabel(s) {
+    return s <= 4 ? 'Low' : s <= 9 ? 'Medium' : s <= 14 ? 'High' : 'Critical';
+  }
+  var matrix = document.getElementById('new-dev-risk-matrix');
+  if (matrix) {
+    matrix.addEventListener('click', function(e) {
+      var cell = e.target.closest('[data-l]');
+      if (!cell) { return; }
+      var l = parseInt(cell.getAttribute('data-l'), 10);
+      var s = parseInt(cell.getAttribute('data-s'), 10);
+      var score = l * s;
+      var colour = scoreToColour(score);
+      // Update hidden inputs
+      document.getElementById('new-dev-likelihood').value = l;
+      document.getElementById('new-dev-severity').value = s;
+      // Clear previous selection highlight
+      var cells = matrix.querySelectorAll('[data-l]');
+      for (var i = 0; i < cells.length; i++) {
+        cells[i].classList.remove('rm-selected');
+      }
+      cell.classList.add('rm-selected');
+      // Update score display
+      var disp = document.getElementById('new-dev-score-display');
+      if (disp) {
+        disp.style.display = 'inline-block';
+        disp.className = 'risk-score-display risk-' + colour;
+        disp.textContent = 'L=' + l + ' ' + _x + ' S=' + s + ' = Score ' + score + ' (' + _nd + ' ' + scoreToLabel(score) + ')';
+      }
+    });
+  }
+
+  // ── Add CA type switcher ───────────────────────────────────────────────
+  function selectCAType(btn, type) {
+    // Deselect all
+    var btns = document.querySelectorAll('.ca-type-opt');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.remove('selected');
+    }
+    btn.classList.add('selected');
+    document.getElementById('ca_type_input').value = type;
+    // Show/hide conditional fields
+    var types = ['sop_revision', 'training', 'notification'];
+    for (var j = 0; j < types.length; j++) {
+      var el = document.getElementById('ca-fields-' + types[j]);
+      if (el) { el.style.display = types[j] === type ? 'block' : 'none'; }
+    }
+  }
+  window.selectCAType = selectCAType;
+
+  // ── Detail view risk matrix (Scale & Root Cause tab) ───────────────────
+  var detailMatrix = document.getElementById('detail-risk-matrix');
+  if (detailMatrix) {
+    var dlInput = document.getElementById('detail-likelihood');
+    var dsInput = document.getElementById('detail-severity');
+    var dDisp   = document.getElementById('detail-score-display');
+
+    function initDetailMatrix() {
+      var curL = parseInt(dlInput.value, 10);
+      var curS = parseInt(dsInput.value, 10);
+      var dcells = detailMatrix.querySelectorAll('[data-l]');
+      for (var i = 0; i < dcells.length; i++) {
+        var cl = parseInt(dcells[i].getAttribute('data-l'), 10);
+        var cs = parseInt(dcells[i].getAttribute('data-s'), 10);
+        if (cl === curL && cs === curS) {
+          dcells[i].classList.add('rm-selected');
+        } else {
+          dcells[i].classList.remove('rm-selected');
+        }
+      }
+    }
+    initDetailMatrix();
+
+    detailMatrix.addEventListener('click', function(e) {
+      var cell = e.target.closest('[data-l]');
+      if (!cell) { return; }
+      var l = parseInt(cell.getAttribute('data-l'), 10);
+      var s = parseInt(cell.getAttribute('data-s'), 10);
+      var score = l * s;
+      var colour = scoreToColour(score);
+      dlInput.value = l;
+      dsInput.value = s;
+      var dcells = detailMatrix.querySelectorAll('[data-l]');
+      for (var i = 0; i < dcells.length; i++) {
+        dcells[i].classList.remove('rm-selected');
+      }
+      cell.classList.add('rm-selected');
+      if (dDisp) {
+        dDisp.style.display = 'inline-block';
+        dDisp.className = 'risk-score-display risk-' + colour;
+        dDisp.textContent = 'L=' + l + ' ' + _x + ' S=' + s + ' = Score ' + score + ' ' + _nd + ' ' + scoreToLabel(score);
+      }
+    });
+  }
+
+  // ── Worksheet auto-lookup ──────────────────────────────────────────────
+  var _pfasBase = '';
+  try {
+    var _b = document.querySelector('base');
+    _pfasBase = _b ? _b.href.replace(/\/$/, '') : window.location.origin;
+  } catch(e) {}
+
+  function findWorksheets() {
+    var sel   = document.getElementById('ws_lookup_method');
+    var dfrom = document.getElementById('ws_date_from');
+    var dto   = document.getElementById('ws_date_to');
+    var btn   = document.getElementById('ws_find_btn');
+    var res   = document.getElementById('ws_results');
+    if (!sel || !sel.value) {
+      res.innerHTML = '<em style="color:#c00">Please select a method first.</em>';
+      return;
+    }
+    var url = _pfasBase + '/@@pfas-deviations?action=lookup_worksheets'
+      + '&method_id=' + encodeURIComponent(sel.value)
+      + '&date_from=' + encodeURIComponent(dfrom ? dfrom.value : '')
+      + '&date_to='   + encodeURIComponent(dto   ? dto.value   : '');
+    btn.disabled = true;
+    btn.textContent = 'Searching...';
+    res.innerHTML = '';
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) { renderWsResults(data.results || []); })
+      .catch(function() { res.innerHTML = '<em style="color:#c00">Search failed.</em>'; })
+      .finally(function() { btn.disabled = false; btn.textContent = 'Find Worksheets'; });
+  }
+
+  function renderWsResults(worksheets) {
+    var res      = document.getElementById('ws_results');
+    var textarea = document.getElementById('ws_textarea');
+    var current  = textarea
+      ? (textarea.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean)
+      : [];
+    if (!worksheets.length) {
+      res.innerHTML = '<em style="color:#888">No worksheets found for this method and date range.</em>';
+      return;
+    }
+    var html = '<div style="color:#555;margin-bottom:4px">'
+             + worksheets.length + ' worksheet(s) found — check to include:</div>'
+             + '<div style="max-height:160px;overflow-y:auto;border:1px solid #e0e0e0;'
+             + 'border-radius:4px;padding:6px 8px">';
+    worksheets.forEach(function(ws) {
+      var checked = current.indexOf(ws.id) >= 0 ? 'checked' : '';
+      html += '<label style="display:block;padding:2px 0;cursor:pointer">'
+            + '<input type="checkbox" class="ws-check" value="' + ws.id + '" '
+            + checked + ' onchange="syncWorksheets()">&nbsp;'
+            + '<code style="font-size:12px">' + ws.id + '</code>'
+            + (ws.created ? ' <span style="color:#aaa">(' + ws.created + ')</span>' : '')
+            + '</label>';
+    });
+    html += '</div>';
+    res.innerHTML = html;
+  }
+
+  function syncWorksheets() {
+    var textarea = document.getElementById('ws_textarea');
+    if (!textarea) return;
+    var checks = document.querySelectorAll('.ws-check:checked');
+    var ids = [];
+    for (var i = 0; i < checks.length; i++) { ids.push(checks[i].value); }
+    textarea.value = ids.join(', ');
+  }
+  window.findWorksheets   = findWorksheets;
+  window.syncWorksheets   = syncWorksheets;
+
+})();
+</script>
+</metal:scripts>
+
+</body>
+</html>

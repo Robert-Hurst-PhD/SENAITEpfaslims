@@ -46,16 +46,13 @@
   </tal:styles>
 </head>
 <body>
+<tal:t metal:fill-slot="header-title">Balance Verification Log</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="
     unit     view/unit;
     purl     view/portal_url;
     bal_units view/balance_units;
   ">
-
-  <h1 style="font-size:18px;font-weight:700;margin:0 0 14px;color:var(--s-body)">
-    Balance Verification Log
-  </h1>
 
   <div class="bal-nav">
     <tal:each tal:repeat="u bal_units">

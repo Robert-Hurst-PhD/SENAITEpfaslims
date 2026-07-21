@@ -12,6 +12,55 @@
        so Zope prefers our view over senaite.core's without any conflict). -->
   <include file="overrides.zcml" />
 
+  <!-- Core UI overlay: inject pfas-core-overlay.css into the <head> of every
+       core SENAITE page (PFAS-layer requests only).  Pure CSS overlay — restyles
+       senaite.app.listing tables/buttons/alerts into the PFAS palette and adds
+       the mobile table-scroll fix.  Upgrade-safe: no core template forked.
+       See DECISIONS.md (core UI unification) and static/pfas-core-overlay.css. -->
+  <browser:viewlet
+      name="senaite.pfas.core-overlay-css"
+      for="*"
+      manager="plone.app.layout.viewlets.interfaces.IHtmlHead"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      template="templates/core_overlay_link.pt"
+      permission="zope2.Public"
+      />
+
+  <!-- Reverse bridge add-in: on a core Method view, link to its PFAS profile
+       (QC ranges). Upgrade-safe viewlet on the PFAS layer — no core fork. -->
+  <browser:viewlet
+      name="senaite.pfas.method-profile-link"
+      for="bika.lims.interfaces.IMethod"
+      manager="plone.app.layout.viewlets.interfaces.IAboveContentBody"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      class=".method_viewlet.PFASMethodProfileViewlet"
+      permission="zope2.View"
+      />
+
+  <!-- LC-MS Run Builder — extraction form → instrument worklist → re-import -->
+  <browser:page
+      name="pfas-run-builder"
+      for="*"
+      class=".run_builder.PFASRunBuilderView"
+      permission="zope2.View"
+      />
+
+  <!-- Print settings — site-wide print header/footer template (Configuration) -->
+  <browser:page
+      name="pfas-print-settings"
+      for="*"
+      class=".print_settings.PFASPrintSettingsView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- Interactive system map — clickable architecture diagram under Configuration -->
+  <browser:page
+      name="pfas-system-map"
+      for="*"
+      class=".system_map.PFASSystemMapView"
+      permission="zope2.View"
+      />
+
   <!-- Shared METAL macro provider — access via context/@@pfas-macros/macros/page -->
   <browser:page
       name="pfas-macros"
@@ -402,6 +451,24 @@
       for="*"
       class=".facility_qc.PFASSensorIngestView"
       permission="zope2.Public"
+      />
+
+  <!-- SOP Document Management — revision control, sign-off, PDF viewer -->
+  <browser:page
+      name="pfas-sop"
+      for="*"
+      class=".sop_documents.PFASSOPView"
+      template="templates/sop_documents.pt"
+      permission="zope2.View"
+      />
+
+  <!-- Deviation & CAR non-conformance management -->
+  <browser:page
+      name="pfas-deviations"
+      for="*"
+      class=".deviations.PFASDeviationView"
+      template="templates/deviations.pt"
+      permission="zope2.View"
       />
 
 </configure>

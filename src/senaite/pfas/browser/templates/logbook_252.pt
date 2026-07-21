@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">FM-ENV-252: Extraction Log</title>
+  <title metal:fill-slot="title">FM-ENV-003: Extraction Log</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .lb-form { max-width: 1000px; }
@@ -53,7 +53,7 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">FM-ENV-252: Extraction Log</tal:t>
+  <tal:t metal:fill-slot="header-title">FM-ENV-003: Extraction Log</tal:t>
   <tal:r metal:fill-slot="header-right">
     <a class="header-meta"
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">

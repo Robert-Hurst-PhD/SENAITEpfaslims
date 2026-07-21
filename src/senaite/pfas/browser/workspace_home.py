@@ -5,6 +5,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 
 def _portal(context):
@@ -39,10 +40,65 @@ class PFASWorkspaceHomeView(BrowserView):
 
 
 class PFASQCManagementView(BrowserView):
-    """Legacy alias — redirects to Method Profiles."""
+    """QC Management workspace landing page — tile grid for the Manager/QAO role."""
+
+    template = ViewPageTemplateFile("templates/pfas_qc_management.pt")
 
     def __call__(self):
+        return self.template()
+
+    def portal_url(self):
+        return getToolByName(self.context, "portal_url")()
+
+    def sections(self):
         base = _portal(self.context).absolute_url()
-        return self.request.response.redirect(
-            '{0}/@@pfas-method-profiles'.format(base)
-        )
+        return [
+            {
+                "url":   u"{0}/@@pfas-method-profiles".format(base),
+                "icon":  u"⚙",
+                "title": u"Method Profiles",
+                "desc":  u"QC rules, recovery tiers, analyte factors per method",
+            },
+            {
+                "url":   u"{0}/@@pfas-qc-rules".format(base),
+                "icon":  u"☑",
+                "title": u"QC Rules",
+                "desc":  u"Toggle Westgard rules and set per-analyte acceptance limits",
+            },
+            {
+                "url":   u"{0}/@@pfas-control-chart".format(base),
+                "icon":  u"↗",
+                "title": u"Control Charts",
+                "desc":  u"QC control charts across all methods",
+            },
+            {
+                "url":   u"{0}/@@pfas-calibrations".format(base),
+                "icon":  u"◈",
+                "title": u"Calibrations",
+                "desc":  u"Review and approve calibration curve submissions",
+            },
+            {
+                "url":   u"{0}/@@pfas-data-review".format(base),
+                "icon":  u"✓",
+                "title": u"Data Review",
+                "desc":  u"Worksheets awaiting analyst sign-off or manager approval",
+            },
+            {
+                "url":   u"{0}/@@pfas-deviations".format(base),
+                "icon":  u"⚠",
+                "title": u"Deviations / CARs",
+                "desc":  u"Non-conformance tracking, root cause, corrective actions",
+            },
+            {
+                "url":   u"{0}/@@pfas-facility-qc".format(base),
+                "icon":  u"⌂",
+                "title": u"Facility QC",
+                "desc":  u"Environmental monitoring, balance and water verification",
+            },
+            {
+                "url":   u"{0}/@@pfas-sop".format(base),
+                "icon":  u"❐",
+                "title": u"SOPs",
+                "desc":  u"Standard operating procedures — revisions and sign-off",
+            },
+        ]

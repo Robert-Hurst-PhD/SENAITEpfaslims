@@ -1,6 +1,7 @@
 """End-to-end smoke test with a synthetic batch matching the real
 FDA-CAL-x-260226 / KCP Deer Sample structure from the actual xlsm data."""
 import csv, sys, os
+os.environ.setdefault("PFAS_ALLOW_LEGACY_VENDOR_MAP", "1")  # tests exercise the legacy vendor map
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import date

@@ -36,15 +36,12 @@
   </tal:styles>
 </head>
 <body>
+<tal:t metal:fill-slot="header-title">Facility QC — Daily Checklist</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="
     summary  view/summary;
     purl     view/portal_url;
   ">
-
-  <h1 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--s-body)">
-    Facility QC — Daily Checklist
-  </h1>
   <p style="font-size:12px;color:var(--s-secondary);margin:0 0 18px">
     ISO 17025 daily instrument and environmental verifications.
     <a tal:attributes="href string:${purl}/@@pfas-facility-units"
