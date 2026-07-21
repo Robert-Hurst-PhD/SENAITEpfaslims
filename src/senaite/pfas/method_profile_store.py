@@ -1208,6 +1208,9 @@ def export_profiles_to_file(portal, path=None):
             except (ValueError, TypeError):
                 pass
 
+    # keyword -> display-name map, single-sourced from the analyte library.
+    _kw_to_display = dict((row[0], row[1]) for row in _NATIVE_ANALYTES)
+
     # Augment each exported profile with derived fields the pipeline expects.
     for method_id, profile in all_profiles.items():
         # master_analyte_set: service-derived membership (D59) so the pipeline
@@ -1223,14 +1226,18 @@ def export_profiles_to_file(portal, path=None):
             logger.warning("export: master_analyte_set derivation failed for "
                            "%s, keeping stored: %s", method_id, exc)
 
-        # display_analyte_set: display names in analyte order, derived from
-        # per_analyte rows.  The pipeline's get_analyte_list() checks this
-        # first so it does not need to fall back to a hardcoded list.
-        per_a = profile.get("per_analyte", [])
-        if per_a and "display_analyte_set" not in profile:
-            profile["display_analyte_set"] = [
-                r["analyte"] for r in per_a if r.get("analyte")
-            ]
+        # display_analyte_set (D60): the pipeline's reported analyte panel, in
+        # display names, DERIVED from the service-derived master_analyte_set via
+        # the analyte library's keyword->name map. This makes the reported set
+        # service-derived for every method (completing D59's "everything from
+        # services"). Byte-identical to the previous per_analyte-derived list for
+        # FDA; also populates EPA 537.1 / 1633A, which carry no per_analyte rows
+        # and previously exported an empty display set. per_analyte remains the
+        # source of per-analyte PARAMETERS (tiers/factors/confirm-ions) only.
+        profile["display_analyte_set"] = [
+            _kw_to_display.get(kw, kw)
+            for kw in profile.get("master_analyte_set", [])
+        ]
 
     d = os.path.dirname(path)
     if d and not os.path.exists(d):

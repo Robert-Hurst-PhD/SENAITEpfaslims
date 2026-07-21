@@ -2683,3 +2683,42 @@ Method column; order preserved byte-identical). Actual getMethods() service
 linkage is CREATED by the backfill and is NOT yet verified live — the container
 was down and the docker-socket fix needs the user. Run the backfill + its
 self-check to confirm the derivation is active.
+
+**LIVE-VERIFIED 2026-07-21:** ran backfill against the real DB — getMethods()
+linkage already present & correct (FDA 32/32, 537 18/18, 1633 40/40); backfill a
+clean no-op (committed nothing); br-PFHxS/br-PFOS correctly excluded; export +
+get_included_analytes route through the derivation; profile page renders 200; no
+regression. Aside (NOT D59): live FDA profile stores PFODA×Eggs=True, so the
+documented carve-out is absent in this DB (only seeds on fresh install) — a
+regulatory config item for the user, not a code fix.
+
+## D60 — reported analyte panel (display_analyte_set) service-derived too (2026-07-21)
+
+Extends D59 to the pipeline's *reported* panel. The Py3 worker's analyte list
+comes from `display_analyte_set` (display names) + `analyte_matrix_inclusion`,
+NOT master_analyte_set. Previously export derived display_analyte_set from
+`per_analyte` rows, which only FDA has populated — so EPA 537.1 and 1633A
+exported an EMPTY display set and the worker reported zero analytes for them.
+
+**Scope (confirmed: minimal / export-only).** In `export_profiles_to_file`,
+`display_analyte_set` is now derived for EVERY method from the service-derived
+`master_analyte_set` (D59) via the analyte library's keyword→display map
+(`NATIVE_ANALYTES`, single source — the same alias per_analyte used). `per_analyte`
+stays as the source of per-analyte PARAMETERS (tiers/factors/confirm-ions) only,
+no longer doubling as the membership list.
+
+**Verified live end-to-end (2026-07-21):**
+- FDA: display=32, BYTE-IDENTICAL to the old per_analyte-derived list (no
+  regulated-output drift).
+- 537.1: 18, 1633A: 40 — newly populated (were 0). Every keyword maps; no
+  unmapped analytes.
+- Py3 worker (`get_analyte_list` / `get_included_display_analytes`) now returns
+  32 / 18 / 40 — previously 0 for 537.1 and 1633A. Real gap fixed.
+- Pipeline tests unchanged (5 pass; test_537_vs_1633 pre-existing unrelated fail).
+
+**Not done (deliberately out of scope, offered as D60b):** the worker's
+`get_included_display_analytes` maps display→keyword for the Method×Matrix filter
+via an FDA-specific table (`_FDA_DISPLAY_TO_KW`); for 537.1/1633A it falls back to
+identity (correct for their analytes, but conservative — an unmapped differing
+name defaults to included, never dropped). Making that map method-agnostic
+(exported from NATIVE_ANALYTES) is the exact-filter follow-on.
