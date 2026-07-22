@@ -2853,3 +2853,21 @@ verification + step D (core email override) still pending.
 - **Deferred (flagged, not built):** required-field validation is still the
   Maine superset (not yet per-profile); revisit when a non-Maine state needs a
   different required set.
+
+  **Artifact evidence (end-to-end, real objects):** created an egad_enabled demo
+  client + batch + received-equivalent sample with PFOS/PFOA/PFNA results, ran
+  the real builder + PFASEmailView. Produced `PFAS_Demo_Site_B-###_YYYYMMDD_EDD.csv`
+  with 3 real data rows (Maine: PFOS→DEP18026/PFOS_A_L, PFOA→335671, PFNA→375951,
+  conc 12.5); `_build_edd_attachment` returned a valid text/csv MIME part
+  (non-empty payload); the opt-in gate flipped attachment count 1↔0;
+  `email_attachments` = core PDFs (0 here) + our CSV = 1 (property appends via
+  super()); switching the client to an NH profile emitted real CAS 1763231 (no
+  DEP18026). All changes aborted (not persisted). Harness fed the genuinely-
+  existing analyses past the un-received-sample catalog gap — no product code
+  altered.
+
+  **BEHAVIORAL CHANGE to confirm with lab:** EDDs now attach to the report
+  **Email** action (impress) rather than auto-sending on the publish/
+  publish_immediately transition. A sample auto-published WITHOUT going through
+  the Email action will send no EDD. Correct if the normal flow is
+  "publish → Email report"; revisit if the lab ever auto-publishes.
