@@ -45,13 +45,12 @@ class PFASEmailView(EmailView):
 
     def _edd_attachments(self):
         """One EDD CSV per distinct batch across the emailed reports, for
-        clients that have opted into state EDD delivery."""
+        clients that have opted into state EDD delivery. A report can span more
+        than one batch (primary + contained samples), so every sample is
+        considered; batches are de-duplicated by UID."""
         out = []
         seen_batches = set()
-        for report in self.reports:
-            batch, client = self._batch_and_client(report)
-            if batch is None or client is None:
-                continue
+        for batch, client in self._batches_and_clients():
             buid = api.get_uid(batch)
             if buid in seen_batches:
                 continue
@@ -67,25 +66,37 @@ class PFASEmailView(EmailView):
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
-    def _batch_and_client(self, report):
-        """Resolve (batch, client) for an ARReport via its primary sample."""
-        try:
-            ar = report.getAnalysisRequest()
-        except Exception:
-            ar = None
-        if ar is None:
-            return (None, None)
-        batch = None
-        client = None
-        try:
-            batch = ar.getBatch()
-        except Exception:
-            pass
-        try:
-            client = ar.getClient()
-        except Exception:
-            pass
-        return (batch, client)
+    def _batches_and_clients(self):
+        """Yield (batch, client) for every sample across the emailed reports —
+        the primary sample and any contained samples of each report."""
+        for report in self.reports:
+            samples = []
+            try:
+                primary = report.getAnalysisRequest()
+                if primary is not None:
+                    samples.append(primary)
+            except Exception:
+                pass
+            try:
+                samples.extend(report.getContainedAnalysisRequests() or [])
+            except Exception:
+                pass
+            for ar in samples:
+                batch = None
+                client = None
+                try:
+                    batch = ar.getBatch()
+                except Exception:
+                    pass
+                if batch is None:
+                    continue
+                try:
+                    client = ar.getClient()
+                except Exception:
+                    pass
+                if client is None:
+                    continue
+                yield (batch, client)
 
     def _edd_enabled(self, client):
         try:
