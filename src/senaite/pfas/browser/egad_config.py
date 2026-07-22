@@ -81,8 +81,12 @@ _ANALYTE_TITLES = {
     "9ClPF3ONS": "9Cl-PF3ONS", "11ClPF3OUdS": "11Cl-PF3OUdS",
 }
 
-# Analytes needing manual CAS entry
-_NEEDS_MANUAL_CAS = frozenset(["PFUnDS", "PFTrDS"])
+# Analytes whose real CAS is NOT accepted by Maine EGAD's CAS_LUP, so a
+# Maine-issued DEP##### code must be entered manually. The guidance clears once
+# a DEP code is present (see analyte_cas_rows). PFTrDS was removed: its CAS
+# (791563-89-8) is now confirmed and accepted (DECISIONS D-line 526), so it no
+# longer needs manual entry.
+_NEEDS_MANUAL_CAS = frozenset(["PFUnDS"])
 
 
 def _require_manager(context, request):
@@ -279,6 +283,15 @@ class PFASEGADConfigView(BrowserView):
             safe_kw = kw.replace(":", "_").replace("-", "_").replace(" ", "_")
             is_blank = not entry.get("cas_no", "")
             is_placeholder = str(entry.get("cas_no", "")).upper() == "PLACEHOLDER"
+            is_blocking = is_blank or is_placeholder
+            # "Manual DEP code" guidance is DATA-DRIVEN, not a permanent label:
+            # for a manual-required analyte (real CAS Maine won't accept) it
+            # shows until a Maine DEP##### code is actually entered, then it
+            # auto-clears. Was hardcoded frozenset membership that persisted
+            # forever regardless of the data — a §1 defect.
+            cas_val = str(entry.get("cas_no", "") or "").upper()
+            needs_manual = (kw in _NEEDS_MANUAL_CAS
+                            and not cas_val.startswith("DEP"))
             rows.append({
                 "keyword": kw,
                 "safe_keyword": safe_kw,
@@ -286,10 +299,10 @@ class PFASEGADConfigView(BrowserView):
                 "cas_no": entry.get("cas_no", ""),
                 "parameter_name": entry.get("parameter_name", ""),
                 "override_note": entry.get("override_note", ""),
-                "needs_manual": kw in _NEEDS_MANUAL_CAS,
+                "needs_manual": needs_manual,
                 "is_blank": is_blank,
                 "is_placeholder": is_placeholder,
-                "is_blocking": is_blank or is_placeholder,
+                "is_blocking": is_blocking,
             })
         return rows
 

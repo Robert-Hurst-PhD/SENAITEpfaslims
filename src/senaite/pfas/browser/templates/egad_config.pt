@@ -402,14 +402,7 @@
                   <strong>PFUnDS</strong> (CAS 749786-16-1) is not in Maine EGAD&#8217;s CAS_LUP.
                   Contact Maine DEP to request a DEP##### code, then enter it in the
                   <em>CAS_NO</em> field above. The PARAMETER_NAME should follow
-                  the pattern <code>PFUNDS_A</code>.
-                </span>
-                <span tal:condition="python:row['keyword']=='PFTrDS'"
-                      style="font-size:11px;color:#78350f;display:block;margin-top:2px">
-                  <strong>PFTrDS</strong> has no confirmed CAS number in any public registry.
-                  Check with Maine DEP whether this analyte is reportable under your EDD
-                  version; if so, request a DEP##### code. Enter it above when received.
-                  Leave blank only if Maine DEP confirms PFTrDS is not required in your EDD.
+                  the pattern <code>PFUNDS_A</code>. This note clears once a DEP code is entered.
                 </span>
               </td>
             </tr>
