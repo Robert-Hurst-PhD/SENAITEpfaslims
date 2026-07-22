@@ -35,4 +35,32 @@
       layer="senaite.pfas.interfaces.ISenaitePFASLayer"
       />
 
+  <!--
+    Override @@email (report/COA delivery) from senaite.core
+    (bika.lims.browser.publish.emailview.EmailView) so the state EDD CSV rides
+    the same email as the report PDF (D63 step D). Registered on
+    ISenaitePFASLayer (> ISenaiteCore) — a more-specific-layer subclass, not a
+    core fork. PFASEmailView.email_attachments calls super() then appends the
+    EDD; if the core email_attachments contract changes, revisit edd_email.py.
+
+    Two contexts, mirroring core: Sample (IAnalysisRequest) and Client.
+    Permission mirrors core's @@email (senaite.core.permissions.ManageAnalysisRequests);
+    keep in sync with the core registration on upgrade.
+  -->
+  <browser:page
+      name="email"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      class="senaite.pfas.browser.edd_email.PFASEmailView"
+      permission="senaite.core.permissions.ManageAnalysisRequests"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
+  <browser:page
+      name="email"
+      for="bika.lims.interfaces.IClient"
+      class="senaite.pfas.browser.edd_email.PFASEmailView"
+      permission="senaite.core.permissions.ManageAnalysisRequests"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
 </configure>

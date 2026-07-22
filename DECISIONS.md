@@ -2811,3 +2811,45 @@ byte-identical to the prior lab-global overlay; a second (NH) profile translates
 N.D.→ND and emits real single-sourced CAS for PFOS (1763231) where Maine emits
 DEP18026; migration round-trips lab-global→naming→CAS without loss. Live SENAITE
 verification + step D (core email override) still pending.
+
+### D63 step D — EDD CSV rides the report (COA) email (built + live-verified 2026-07-22)
+
+- **Override view** `senaite.pfas.browser.edd_email.PFASEmailView` subclasses
+  core `bika.lims.browser.publish.emailview.EmailView`; `email_attachments`
+  calls `super()` then appends one state EDD CSV per distinct batch across the
+  emailed reports. Try/except so EDD assembly can never break the report email.
+- **Registration (no core fork, no global replace):** `@@email` re-registered
+  for IAnalysisRequest + IClient on `ISenaitePFASLayer` in `overrides.zcml`
+  (plain `<include>`, not includeOverrides). Core registers `@@email` on the
+  `IBikaLIMS` layer — which is INDEPENDENT of ISenaiteCore (neither derives from
+  the other), so the prior single-base PFAS layer was NOT more specific than it.
+  **Fix:** `ISenaitePFASLayer` now extends BOTH `ISenaiteCore` AND `IBikaLIMS`,
+  so any PFAS-layer view is strictly more specific than a core view on either —
+  our `@@lims-setup`/sidebar (ISenaiteCore) and `@@email` (IBikaLIMS) all win by
+  adapter specificity. Permission mirrors core's `ManageAnalysisRequests`
+  (keep in sync on upgrade). §6C core-touch — documented, upgrade-fragility noted.
+- **Gate:** the CSV attaches only when the client's per-client EDD config has
+  `egad_enabled` (the explicit "emit a state EDD for this client" opt-in) — the
+  default `edd_profile=maine_egad` would otherwise attach an EDD for every
+  ordinary commercial client. STATE = client's `edd_profile`; METHOD = batch's.
+  BLOCKING-validation EDDs are NOT attached (bad file); batch-stored EDD +
+  export view still surface the errors.
+- **No double-send:** the separate publish-transition EDD email in
+  `egad_publish.py` is disabled (kept commented for rollback); generation +
+  batch-annotation storage retained for audit/download. Resolves the standing
+  Round-7 Decision (k) vs code discrepancy — now one email, as decided.
+- **Live-verified (running SENAITE 2.6, impress 2.6.0):** clean Zope boot;
+  `@@email` on the PFAS layer resolves to `PFASEmailView` for IAnalysisRequest
+  AND IClient (core keeps `EmailView` on IBikaLIMS); maine profile byte-identical
+  after migration (state ME, N.D.→U, PFOS DEP18026/PFOS_A_L, 34 analytes); a
+  cloned NH profile translates N.D.→ND + emits real single-sourced CAS for PFOS;
+  EGAD Config page renders the new state-vocabulary editors (HTTP 200, no error).
+- **Dev-env note:** `docker compose restart senaite` reruns buildout's
+  precompiler (force=True), which needs to (re)write `.pyc` into the bind-mounted
+  `/addon` tree as the container user; host-owned files blocked it → boot abort.
+  Cleared stale `.pyc` + made the src tree writable to unblock. Pre-existing
+  quirk (also: `qc/control_chart.py` carries py3 annotations the py2 precompiler
+  warns on — latent, not touched here).
+- **Deferred (flagged, not built):** required-field validation is still the
+  Maine superset (not yet per-profile); revisit when a non-Maine state needs a
+  different required set.

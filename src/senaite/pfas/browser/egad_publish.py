@@ -176,8 +176,12 @@ def _handle_publish(ar):
             batch_obj.getId(), filename, len(errors), batch_obj.getId()
         )
 
-    # Email EDD to client
-    _email_edd_to_client(portal, client_obj, batch_obj, csv_str, filename, errors)
+    # NOTE (D63 step D): the EDD is now delivered as an attachment ON the
+    # report (COA) email — one email carries the report PDF + the state EDD CSV
+    # (senaite.pfas.browser.edd_email.PFASEmailView). We deliberately no longer
+    # send a SEPARATE EDD email here (that would double-deliver). Generation +
+    # batch storage above are retained for the audit trail and the export view.
+    # _email_edd_to_client(...) kept below for reference/rollback only.
 
 
 def _email_edd_to_client(portal, client_obj, batch_obj, csv_str, filename, errors):
