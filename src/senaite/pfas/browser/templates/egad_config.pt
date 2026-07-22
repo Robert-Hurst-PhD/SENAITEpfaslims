@@ -344,6 +344,25 @@
         DEP##### codes (e.g. DEP18024) are valid Maine-specific codes for
         branched/linear isomers.
       </p>
+
+      <!-- Manual-DEP-code guidance as wrapping advisory blocks (NOT table rows,
+           so they read cleanly on mobile instead of being clipped by the
+           table's horizontal scroll). Data-driven: only for analytes still
+           lacking a Maine DEP code. -->
+      <tal:manual tal:repeat="row view/analyte_cas_rows">
+        <div tal:condition="row/needs_manual"
+             style="background:#fff8e1;border-left:3px solid #f59e0b;border-radius:4px;padding:8px 12px;margin:0 0 12px;">
+          <strong style="font-size:11px;color:#92400e">&#9888; Manual DEP Code Required — <span tal:content="row/keyword">PFUnDS</span></strong>
+          <span tal:condition="python:row['keyword']=='PFUnDS'"
+                style="font-size:11px;color:#78350f;display:block;margin-top:2px">
+            <strong>PFUnDS</strong> (CAS 749786-16-1) is not in Maine EGAD&#8217;s CAS_LUP.
+            Contact Maine DEP to request a DEP##### code, then enter it in the
+            <em>CAS_NO</em> field below. The PARAMETER_NAME should follow
+            the pattern <code>PFUNDS_A</code>. This note clears once a DEP code is entered.
+          </span>
+        </div>
+      </tal:manual>
+
       <form id="form-cas" onsubmit="saveSection('cas');return false">
         <table class="cas-table">
           <thead>
@@ -390,20 +409,6 @@
                 <tal:ok tal:condition="python:not row['is_blocking'] and not row['needs_manual']">
                   <span style="color:var(--s-success);font-size:12px">&#10003;</span>
                 </tal:ok>
-              </td>
-            </tr>
-            <!-- Inline guidance row for analytes needing manual DEP code entry -->
-            <tr tal:condition="row/needs_manual"
-                style="background:#fff8e1;border-left:3px solid #f59e0b">
-              <td colspan="5" style="padding:8px 12px">
-                <strong style="font-size:11px;color:#92400e">&#9888; Manual DEP Code Required</strong>
-                <span tal:condition="python:row['keyword']=='PFUnDS'"
-                      style="font-size:11px;color:#78350f;display:block;margin-top:2px">
-                  <strong>PFUnDS</strong> (CAS 749786-16-1) is not in Maine EGAD&#8217;s CAS_LUP.
-                  Contact Maine DEP to request a DEP##### code, then enter it in the
-                  <em>CAS_NO</em> field above. The PARAMETER_NAME should follow
-                  the pattern <code>PFUNDS_A</code>. This note clears once a DEP code is entered.
-                </span>
               </td>
             </tr>
             </tal:rows>
