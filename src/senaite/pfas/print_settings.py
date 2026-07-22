@@ -31,7 +31,27 @@ DEFAULTS = {
     "show_form_code":  True,          # FM-ENV-xxx block top-right
     "show_print_date": True,
     "show_page_footer": True,
+    # QA sign-off attestation (rendered on SOPs, prep logs, prepared standards):
+    # who signs as Quality Assurance Officer and Laboratory Director. Stored as
+    # the LabContact's initials (staff pool key); their uploaded Signature image
+    # is the stamp. Empty → the sign-off block prints a blank ruled line.
+    "qao_initials":       "",
+    "director_initials":  "",
+    "show_signoff":       True,
 }
+
+
+def get_signoff_signers(portal):
+    """Resolve the QAO + Laboratory Director attestation signers from the saved
+    print settings, as staff dicts ({fullname, signature_url, job_title,
+    placeholder, ...}) or None. Single source: Print Settings; stamps: staff
+    pool (LabContact Signature). See [[project-pfas-lims]]."""
+    from senaite.pfas.staff import find_by_initials
+    ps = get_print_settings(portal)
+    return {
+        "qao": find_by_initials(portal, ps.get("qao_initials")),
+        "director": find_by_initials(portal, ps.get("director_initials")),
+    }
 
 
 def get_print_settings(portal):

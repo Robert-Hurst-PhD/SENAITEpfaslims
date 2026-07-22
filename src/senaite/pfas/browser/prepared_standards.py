@@ -272,7 +272,9 @@ def _write_cert(obj):
     """Generate and store the internal certificate HTML for a prepared standard."""
     try:
         d = _obj_to_dict(obj)
-        html = _render_cert_html(d)
+        from senaite.pfas.print_settings import get_signoff_signers
+        from bika.lims import api as _api
+        html = _render_cert_html(d, get_signoff_signers(_api.get_portal()))
         path = os.path.join(CERT_DIR, "{}.html".format(obj.getId()))
         if not os.path.isdir(CERT_DIR):
             os.makedirs(CERT_DIR)
@@ -282,8 +284,17 @@ def _write_cert(obj):
         logger.error("_write_cert %s: %s", obj.getId(), exc)
 
 
-def _render_cert_html(d):
-    """Return the internal certificate HTML string for a prepared-standard dict."""
+def _render_cert_html(d, signers=None):
+    """Return the internal certificate HTML string for a prepared-standard dict.
+
+    `signers` (optional) = {"qao": staff-dict-or-None, "director": ...} from
+    print settings; drives the 3-tier QA attestation. Names only (this cert is
+    written to a standalone file, so signature-image URLs are not embedded)."""
+    signers = signers or {}
+    _qao = signers.get("qao") or {}
+    _dir = signers.get("director") or {}
+    qao_name = _qao.get("fullname") or u"—"
+    director_name = _dir.get("fullname") or u"—"
     rows_html = u""
     for row in d.get("analyte_concentrations") or []:
         rows_html += (
@@ -320,6 +331,14 @@ def _render_cert_html(d):
              font-size: 11px; color: #888; }}
   .sig-block {{ margin-top: 30px; display: flex; gap: 60px; }}
   .sig-block div {{ border-top: 1px solid #333; padding-top: 4px; min-width: 160px; font-size: 11px; }}
+  .signoff {{ margin-top: 28px; border: 1px solid #000; border-radius: 6px; padding: 12px 14px; }}
+  .signoff-title {{ font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: #444; margin-bottom: 6px; }}
+  .signoff-tbl {{ width: 100%; border-collapse: collapse; font-size: 11px; margin: 0; }}
+  .signoff-tbl td {{ padding: 9px 8px; border-top: 1px solid #eee; vertical-align: bottom; }}
+  .signoff-tbl .r {{ width: 92px; font-weight: 600; color: #555; white-space: nowrap; }}
+  .signoff-tbl .dt {{ width: 150px; white-space: nowrap; color: #555; }}
+  .signoff-tbl .ln {{ display: inline-block; min-width: 90px; border-bottom: 1px solid #888; }}
 </style>
 </head>
 <body>
@@ -350,10 +369,19 @@ def _render_cert_html(d):
 
 {expiry_note_section}
 
-<div class="sig-block">
-  <div>Prepared By<br><br><strong>{prepared_by}</strong></div>
-  <div>Reviewed By<br><br>&nbsp;</div>
-  <div>Date<br><br><strong>{prepared_date}</strong></div>
+<div class="signoff">
+  <div class="signoff-title">Quality Assurance Documentation</div>
+  <table class="signoff-tbl">
+    <tr><td class="r">Prepared&nbsp;by</td>
+        <td>This standard was prepared by <strong>{prepared_by}</strong>.</td>
+        <td class="dt">Date: {prepared_date}</td></tr>
+    <tr><td class="r">Verified&nbsp;by</td>
+        <td>Reviewed and verified by <strong>{qao_name}</strong>, Quality Assurance Officer.</td>
+        <td class="dt">Date: <span class="ln">&nbsp;</span></td></tr>
+    <tr><td class="r">Authorized&nbsp;by</td>
+        <td>Authorized by <strong>{director_name}</strong>, Laboratory Director.</td>
+        <td class="dt">Date: <span class="ln">&nbsp;</span></td></tr>
+  </table>
 </div>
 <div class="footer">
   Generated automatically by senaite.pfas on {generated_date}.
@@ -366,7 +394,9 @@ def _render_cert_html(d):
         standard_type=d.get("standard_type", ""),
         prepared_date=d.get("prepared_date", ""),
         expiry_date=d.get("expiry_date", ""),
-        prepared_by=d.get("prepared_by", ""),
+        prepared_by=d.get("prepared_by", "") or u"—",
+        qao_name=qao_name,
+        director_name=director_name,
         storage_location=d.get("storage_location", ""),
         volume_prepared=d.get("volume_prepared", ""),
         logbook_title=d.get("logbook_title", ""),
@@ -582,7 +612,8 @@ class PFASPrepStandardsView(BrowserView):
             if not rec:
                 self.request.response.setStatus(404)
                 return "Certificate not found"
-            html = _render_cert_html(rec)
+            from senaite.pfas.print_settings import get_signoff_signers
+            html = _render_cert_html(rec, get_signoff_signers(self._portal()))
         else:
             with open(cert_path, "r") as fh:
                 html = fh.read()

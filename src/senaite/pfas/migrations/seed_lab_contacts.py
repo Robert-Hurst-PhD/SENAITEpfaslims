@@ -19,6 +19,8 @@ import sys
 SEED = [
     # (Firstname, Surname, JobTitle, initials)
     ("PLACEHOLDER", "Lab Manager",   "Laboratory Manager / QAO", "LM"),
+    ("PLACEHOLDER", "QA Officer",    "Quality Assurance Officer","QA"),
+    ("PLACEHOLDER", "Lab Director",  "Laboratory Director",      "LD"),
     ("PLACEHOLDER", "Analyst One",   "Analyst (Data Review)",    "A1"),
     ("PLACEHOLDER", "Analyst Two",   "Analyst",                  "A2"),
     ("PLACEHOLDER", "Bench Chemist", "Bench Chemist",            "BC"),

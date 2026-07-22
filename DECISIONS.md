@@ -2871,3 +2871,48 @@ verification + step D (core email override) still pending.
   publish_immediately transition. A sample auto-published WITHOUT going through
   the Email action will send no EDD. Correct if the normal flow is
   "publish → Email report"; revisit if the lab ever auto-publishes.
+
+## D64 — shared QA sign-off attestation on controlled records (2026-07-22)
+
+**Confirmed with lab:** (a) a RENDERED attestation (not a per-document e-sign
+workflow); (b) QAO + Laboratory Director resolved from Configuration → Print
+Settings (staff-pool selectors; their uploaded LabContact Signature is the
+stamp); (c) applied to SOP + reagent/standard prep logs (FM-ENV-250/251/252/253)
++ Prepared Standards.
+
+**Review finding first:** print header/footer was already a solid single source
+(`print_settings.py` → shared `printhead`/`printfoot` macros, inherited by ~40
+templates). The gap was QA sign-off — fragmented (logbooks had free-text
+Prepared/Reviewed; prep-std cert had Prepared/Reviewed; SOP a signer roster),
+NO shared 3-tier (Analyst→QAO→Director) block, and Lab Director wasn't seeded.
+
+**Built:**
+- Print Settings gains `qao_initials` + `director_initials` (+ `show_signoff`);
+  `get_signoff_signers(portal)` resolves them via the staff pool. Seeded
+  "Quality Assurance Officer" + "Laboratory Director" LabContacts.
+- Shared `signoff` METAL macro in pfas_macros.pt (define-once, §6C/§7): renders
+  "This {noun} was prepared by {analyst}" + stamp / "Reviewed and verified by
+  {QAO}, Quality Assurance Officer" + stamp / "Authorized by {Director},
+  Laboratory Director" + stamp. Missing stamp → ruled line for wet signature.
+- Wired into logbooks 250 (reagent) / 251 (standard) / 252 (extraction) / 253
+  (sample-processing) via a `tal:define` wrapper; prep-std certificate
+  (`_render_cert_html`) upgraded to the 3-tier names.
+
+**Two METAL gotchas fixed (live):** (1) `tal:define` on the `metal:use-macro`
+element did NOT reach the macro in Chameleon — must define on a WRAPPING element
+around the use-macro. (2) A `define-macro` placed in the page-macro body renders
+INLINE on every page (like printhead) — the signoff definition emitted a stray
+default "document" block site-wide; fixed by gating the macro on a caller var
+(`tal:condition` on `signoff_noun`), so it renders only where explicitly used.
+
+**Live-verified (headless render):** logbook 250 shows exactly one block with
+noun "reagent" + resolved QAO/Director; nouns correct on 251/252/253; no stray
+block on non-artifact pages (print-settings, data-review); prep-std cert emits
+the 3-tier; Print Settings page renders the selectors. Stamps show as ruled
+lines until real signatures are uploaded to the LabContacts.
+
+**Not done this pass (flagged):** SOP controlled doc is an uploaded PDF — the
+macro can't stamp the PDF itself; the attestation belongs on a rendered SOP
+record if desired, or via PDF overlay (separate capability). Prep-std cert is a
+saved file, so signature IMAGES are not embedded there (names only); base64
+stamp embedding is a follow-up.

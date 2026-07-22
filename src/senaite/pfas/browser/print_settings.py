@@ -34,6 +34,11 @@ class PFASPrintSettingsView(BrowserView):
     def settings(self):
         return get_print_settings(self._portal())
 
+    def staff(self):
+        """Lab staff pool for the QAO / Director selectors (initials + name)."""
+        from senaite.pfas.staff import list_staff
+        return list_staff(self._portal())
+
     def saved(self):
         return self.request.form.get("saved", "") == "1"
 

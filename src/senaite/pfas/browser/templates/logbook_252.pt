@@ -236,6 +236,12 @@
         </div>
       </div>
 
+      <tal:signoff tal:define="signoff_noun string:extraction record;
+                    signoff_prepared_name python:view.data().get('analyst','');
+                    signoff_prepared_initials python:view.data().get('analyst','')">
+        <tal:m metal:use-macro="context/@@pfas-macros/macros/signoff"/>
+      </tal:signoff>
+
       <div class="form-actions">
         <button class="btn-save" type="submit">Save Logbook</button>
         <button type="button" class="btn-print-preview" onclick="window.print()">

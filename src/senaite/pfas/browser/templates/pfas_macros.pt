@@ -598,8 +598,31 @@
     /* ── Shared print header/footer (see Configuration → Print Settings) ── */
     .pfas-printhead, .pfas-printfoot { display: none; }
 
+    /* ── Shared QA sign-off attestation (screen + print) ─────────────────── */
+    .pfas-signoff { margin: 22px 0 6px; border: 1px solid var(--s-border, #ccc);
+      border-radius: 6px; padding: 12px 14px; background: #fcfcfd;
+      page-break-inside: avoid; }
+    .pfas-signoff-title { font-size: 12px; font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; color: #444; margin-bottom: 8px; }
+    .pfas-signoff-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .pfas-signoff-tbl td { padding: 10px 8px; vertical-align: bottom;
+      border-top: 1px solid #eee; }
+    .pfas-signoff-tbl .so-role { width: 96px; font-weight: 600; color: #555;
+      white-space: nowrap; }
+    .pfas-signoff-tbl .so-title { color: #666; }
+    .pfas-signoff-tbl .so-sig { width: 150px; text-align: center; }
+    .pfas-signoff-tbl .so-date { width: 130px; white-space: nowrap; color: #555; }
+    .pfas-signoff .so-stamp { max-height: 40px; max-width: 140px; }
+    .pfas-signoff .so-line { display: inline-block; min-width: 90px;
+      border-bottom: 1px solid #888; }
+    .pfas-signoff-foot { margin-top: 8px; font-size: 11px; color: #92400e;
+      background: #fff8e1; border-left: 3px solid #f59e0b; padding: 5px 8px;
+      border-radius: 3px; }
+
     /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
+      .pfas-signoff { border-color: #000; background: transparent; }
+      .pfas-signoff-foot { display: none !important; }
       .pfas-printhead { display: block !important;
         border-bottom: 2px solid #000; margin: 0 0 12px; padding-bottom: 8px; }
       .pfas-ph-row  { display: flex; gap: 14px; align-items: center; }
@@ -743,6 +766,88 @@
        tal:define="ps python:context.restrictedTraverse('@@pfas-macros').print_settings()"
        tal:condition="ps/show_page_footer"
        tal:content="ps/footer_text">footer</div>
+
+  <!-- ── Shared QA sign-off attestation ────────────────────────────────────
+       Rendered 3-tier attestation (Analyst prepared → QAO verified → Lab
+       Director authorized) with signature stamps, for controlled printable
+       records (SOP, prep logs FM-ENV-25x, prepared standards). Define-once
+       (§6C/§7). QAO + Director come from Print Settings; the preparer + date
+       are passed by the calling template. A missing stamp prints a ruled line
+       for wet signature. Caller sets: signoff_noun, signoff_prepared_name,
+       signoff_prepared_date, signoff_prepared_initials (any may be omitted).
+         <tal:s metal:use-macro="context/@@pfas-macros/macros/signoff"
+                tal:define="signoff_noun string:reagent;
+                            signoff_prepared_name python:view.data().get('prepared_by','');
+                            signoff_prepared_date python:view.data().get('prepared_date','');
+                            signoff_prepared_initials python:view.data().get('prepared_by','')" />
+       ──────────────────────────────────────────────────────────────────── -->
+  <div class="pfas-signoff" metal:define-macro="signoff"
+       tal:define="nn signoff_noun|nothing;
+                   ps python:context.restrictedTraverse('@@pfas-macros').print_settings();
+                   render python:bool(nn) and ps.get('show_signoff', True);
+                   signers python:context.restrictedTraverse('@@pfas-macros').signoff_signers();
+                   noun python:nn or 'document';
+                   prep_name signoff_prepared_name|string:;
+                   prep_date signoff_prepared_date|string:;
+                   prep_ini signoff_prepared_initials|string:;
+                   prep_sig python:context.restrictedTraverse('@@pfas-macros').signature_for_initials(prep_ini);
+                   qao signers/qao;
+                   director signers/director"
+       tal:condition="render">
+    <div class="pfas-signoff-title">Quality Assurance Documentation</div>
+    <table class="pfas-signoff-tbl no-mobile-scroll">
+      <tbody>
+      <tr>
+        <td class="so-role">Prepared&nbsp;by</td>
+        <td class="so-who">
+          This <tal:n tal:replace="noun">document</tal:n> was prepared by
+          <strong tal:content="python:prep_name or (prep_sig and prep_sig['fullname']) or '—'">analyst</strong>.
+        </td>
+        <td class="so-sig">
+          <img class="so-stamp" tal:condition="prep_sig/signature_url|nothing"
+               tal:attributes="src prep_sig/signature_url; alt prep_sig/fullname"/>
+          <span class="so-line" tal:condition="not:prep_sig/signature_url|python:True">&nbsp;</span>
+        </td>
+        <td class="so-date">Date:
+          <tal:d tal:condition="prep_date" tal:replace="prep_date"/>
+          <span class="so-line" tal:condition="not:prep_date">&nbsp;</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="so-role">Verified&nbsp;by</td>
+        <td class="so-who">
+          Reviewed and verified by
+          <strong tal:content="python:(qao and qao['fullname']) or '—'">QAO</strong>,
+          <span class="so-title">Quality Assurance Officer</span>.
+        </td>
+        <td class="so-sig">
+          <img class="so-stamp" tal:condition="qao/signature_url|nothing"
+               tal:attributes="src qao/signature_url; alt qao/fullname"/>
+          <span class="so-line" tal:condition="not:qao/signature_url|python:True">&nbsp;</span>
+        </td>
+        <td class="so-date">Date: <span class="so-line">&nbsp;</span></td>
+      </tr>
+      <tr>
+        <td class="so-role">Authorized&nbsp;by</td>
+        <td class="so-who">
+          Authorized by
+          <strong tal:content="python:(director and director['fullname']) or '—'">Director</strong>,
+          <span class="so-title">Laboratory Director</span>.
+        </td>
+        <td class="so-sig">
+          <img class="so-stamp" tal:condition="director/signature_url|nothing"
+               tal:attributes="src director/signature_url; alt director/fullname"/>
+          <span class="so-line" tal:condition="not:director/signature_url|python:True">&nbsp;</span>
+        </td>
+        <td class="so-date">Date: <span class="so-line">&nbsp;</span></td>
+      </tr>
+      </tbody>
+    </table>
+    <div class="pfas-signoff-foot" tal:condition="python:(qao and qao['placeholder']) or (director and director['placeholder']) or not qao or not director">
+      &#9888; Set the Quality Assurance Officer and Laboratory Director (with
+      uploaded signature images) at Configuration &#8594; Print Settings.
+    </div>
+  </div>
 
 <!-- ── Top header bar ──────────────────────────────────────────────────────── -->
 <header class="pfas-header">

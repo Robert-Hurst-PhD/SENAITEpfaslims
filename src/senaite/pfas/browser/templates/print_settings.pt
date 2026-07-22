@@ -95,6 +95,35 @@
                tal:attributes="checked ps/show_page_footer"/>
         <label for="spf" style="font-weight:400;">Show page footer</label></div>
 
+      <!-- ── QA sign-off attestation signers ──────────────────────────────── -->
+      <h3 style="font-size:14px;font-weight:700;margin:18px 0 4px;">QA Sign-off Attestation</h3>
+      <p class="hint" style="margin:0 0 10px;">
+        The 3-tier sign-off block (Prepared → Verified → Authorized) printed on
+        SOPs, reagent/standard prep logs and prepared standards. Choose the
+        Quality Assurance Officer and Laboratory Director; their uploaded
+        <em>Signature</em> image (on the LabContact) is used as the stamp.
+      </p>
+      <div class="ps-row"><label>Quality Assurance Officer</label>
+        <select name="qao_initials">
+          <option value="">— none —</option>
+          <option tal:repeat="s view/staff"
+                  tal:attributes="value s/initials;
+                                  selected python:s['initials']==ps.get('qao_initials')"
+                  tal:content="string:${s/fullname} (${s/initials})">name</option>
+        </select></div>
+      <div class="ps-row"><label>Laboratory Director</label>
+        <select name="director_initials">
+          <option value="">— none —</option>
+          <option tal:repeat="s view/staff"
+                  tal:attributes="value s/initials;
+                                  selected python:s['initials']==ps.get('director_initials')"
+                  tal:content="string:${s/fullname} (${s/initials})">name</option>
+        </select></div>
+      <div class="ps-check">
+        <input type="checkbox" name="show_signoff" id="sso"
+               tal:attributes="checked ps/show_signoff"/>
+        <label for="sso" style="font-weight:400;">Show QA sign-off block on controlled records</label></div>
+
       <button class="btn btn-primary" type="submit" style="margin-top:8px;">
         Save Print Settings
       </button>

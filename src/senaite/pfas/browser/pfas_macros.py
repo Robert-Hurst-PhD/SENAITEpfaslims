@@ -46,6 +46,23 @@ class PFASMacrosView(BrowserView):
         ps["print_date"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         return ps
 
+    def signoff_signers(self):
+        """QAO + Laboratory Director attestation signers for the shared
+        `signoff` macro — single source: Configuration → Print Settings."""
+        from senaite.pfas.print_settings import get_signoff_signers
+        portal = getToolByName(self.context, 'portal_url').getPortalObject()
+        return get_signoff_signers(portal)
+
+    def signature_for_initials(self, initials):
+        """Staff dict (fullname, signature_url, job_title, ...) for the person
+        with these initials, or None — used by the sign-off macro to stamp the
+        preparer's signature. Reuses the staff pool."""
+        if not initials:
+            return None
+        from senaite.pfas.staff import find_by_initials
+        portal = getToolByName(self.context, 'portal_url').getPortalObject()
+        return find_by_initials(portal, initials)
+
     def portal_url(self):
         return getToolByName(self.context, 'portal_url').getPortalObject().absolute_url()
 
