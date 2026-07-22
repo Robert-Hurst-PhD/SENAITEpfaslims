@@ -148,20 +148,29 @@ class PFASEGADConfigView(BrowserView):
                 prof = profs.get(pid)
                 if prof is not None:
                     prof["name"] = (f.get("name") or prof.get("name") or pid)
+                    prof["state"] = (f.get("state") or
+                                     prof.get("state") or "").strip()
                     cols = [c.strip() for c in
                             (f.get("columns") or "").splitlines() if c.strip()]
                     if cols:
                         prof["columns"] = cols
-                    try:
-                        prof["matrix_map"] = json.loads(
-                            f.get("matrix_map_json") or "{}")
-                    except (ValueError, TypeError):
-                        pass
-                    try:
-                        prof["aliases"] = json.loads(
-                            f.get("aliases_json") or "{}")
-                    except (ValueError, TypeError):
-                        pass
+                    # D63: state vocabulary — JSON blocks for the state's own
+                    # qualifier/QC maps and analyte naming/coding. Bad JSON is
+                    # ignored (keeps the prior value) rather than clobbering.
+                    for field, key in (
+                        ("matrix_map_json", "matrix_map"),
+                        ("aliases_json", "aliases"),
+                        ("qualifier_map_json", "qualifier_map"),
+                        ("qc_type_map_json", "qc_type_map"),
+                        ("analyte_naming_json", "analyte_naming"),
+                    ):
+                        raw = f.get(field)
+                        if raw is None or not raw.strip():
+                            continue
+                        try:
+                            prof[key] = json.loads(raw)
+                        except (ValueError, TypeError):
+                            pass
                     save_edd_profile(portal, pid, prof)
             self.request.response.redirect(
                 "{0}/@@pfas-egad-config?saved=1#edd-profiles".format(
@@ -345,12 +354,19 @@ class PFASEGADConfigView(BrowserView):
         for k, v in sorted(profs.items()):
             out.append({
                 "id": k, "name": v.get("name", k), "base": v.get("base", ""),
+                "state": v.get("state", ""),
                 "n_columns": len(v.get("columns") or []),
                 "columns_text": "\n".join(v.get("columns") or []),
                 "matrix_map_json": json.dumps(v.get("matrix_map") or {},
                                               indent=1, sort_keys=True),
                 "aliases_json": json.dumps(v.get("aliases") or {},
                                            indent=1, sort_keys=True),
+                "qualifier_map_json": json.dumps(v.get("qualifier_map") or [],
+                                                 indent=1),
+                "qc_type_map_json": json.dumps(v.get("qc_type_map") or [],
+                                               indent=1),
+                "analyte_naming_json": json.dumps(v.get("analyte_naming") or {},
+                                                  indent=1, sort_keys=True),
             })
         return out
 

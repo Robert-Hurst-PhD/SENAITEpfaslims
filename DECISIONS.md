@@ -2763,3 +2763,51 @@ outside limits (qc_engine.py:531 returns pass BEFORE the flag is read), where it
 appends " [VERIFY limits vs method tables]" to the failure message. No change to
 pass/fail, limits, or which analytes fail. Scoped to 1633A EIS; FDA/537 rules
 unchanged (verified live: 1633A EIS True, FDA LFSM False). Test suite now 6/6.
+
+## D63 — state-specific EDD profiles: full untie from Maine EGAD (2026-07-22)
+
+**Confirmed with lab (four design forks):**
+- **(a) Profile model:** state-format-by-reference, NOT a method×state matrix. A
+  profile = one STATE program's EDD format+vocabulary; the METHOD is fixed by the
+  batch (§3) and supplies analytes/units/test/CAS by reference. A literal
+  method×state matrix would duplicate method-owned content into every cell — a §3
+  single-source violation. Applicable EDD = f(client's state profile, batch method).
+- **(b) Untie scope:** FULL. The state profile now owns the qualifier map, QC-type
+  map, and per-analyte parameter naming / state code overrides — previously
+  hardcoded lab-global Maine vocabulary (`_EGAD_ANALYTE_OVERLAY`, `DEFAULT_QUALIFIER_MAP`,
+  `DEFAULT_QC_TYPE_MAP`). Format-only (D47) left the output Maine-semantic underneath;
+  this removes that.
+- **(c) Client cardinality:** ONE state per client. The existing single
+  `edd_profile` association is retained (now points at a state profile). The
+  Maine `egad_enabled` boolean gate is superseded by "client has a state profile."
+- **(d) Delivery:** ONE email — the CSV attached to the core report (COA) email.
+  Requires overriding senaite.impress's email path (core override, §6C) — built
+  in step D after live inspection of the running impress version; documented
+  separately. Resolves the standing discrepancy between Round-7 Decision (k)
+  ("attached to client report email") and the code (separate email).
+
+**Data model (`senaite.pfas.edd_profiles`):** each profile gains `state`,
+`qualifier_map`, `qc_type_map`, `analyte_naming` ({keyword: {parameter_name,
+code_override, note}}). REAL CAS stays single-sourced in `analyte_reference`;
+`code_override` holds ONLY a state-specific code (Maine DEP#####) where the state
+uses one instead of CAS — reference, not duplicate (§3).
+
+**Builder:** `EGADBuilder._apply_profile_vocab(profile)` swaps the lab-global
+qualifier/QC/analyte-CAS maps for the resolved state profile's own vocabulary.
+Validation still runs on the Maine superset for now (required-field-per-profile
+deferred, flagged not built).
+
+**Migration (without loss, §8):** `migrate_state_profile_vocab(portal)` (run from
+post_install) folds each pre-D63 profile's missing vocab from the LIVE lab-global
+maps — not the DEFAULT constants — so an install that customized the lab-global
+qualifier/QC/CAS maps keeps those edits. `_analyte_cas_to_naming` reconstructs
+`code_override` faithfully: a stored cas_no differing from the single-source master
+is a state override; one equal to master is just the real CAS (no override).
+`get_edd_profiles` also fills missing vocab on read so the builder is correct even
+before the upgrade step persists.
+
+**Verified (pure-logic harness):** Maine qualifier/QC dicts + 34-analyte CAS map
+byte-identical to the prior lab-global overlay; a second (NH) profile translates
+N.D.→ND and emits real single-sourced CAS for PFOS (1763231) where Maine emits
+DEP18026; migration round-trips lab-global→naming→CAS without loss. Live SENAITE
+verification + step D (core email override) still pending.

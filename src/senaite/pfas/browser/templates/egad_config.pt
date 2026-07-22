@@ -611,9 +611,12 @@
     <h3 style="font-size:14px;font-weight:700;margin:0 0 6px;">EDD Format Profiles</h3>
     <p style="font-size:12px;color:var(--s-secondary);max-width:760px;">
       The EDD engine is profile-driven: <strong>maine_egad</strong> is the seeded
-      Maine DEP format; clone it into sub-profiles or other state programs
-      (column subset/order, heading aliases, SampleType&#8594;code map), then pick a
-      profile per client on the client&#8217;s EGAD page.
+      Maine DEP format; clone it into other state programs. Each profile owns its
+      state&#8217;s format (column subset/order, heading aliases, SampleType&#8594;code map)
+      <strong>and its state vocabulary</strong> — qualifier map, QC-type map, and
+      per-analyte parameter naming / state code overrides. Then pick a profile per
+      client on the client&#8217;s EGAD page. The method (fixed by the batch) still
+      supplies analytes, units, test code and real CAS by reference.
     </p>
 
     <form method="post" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
@@ -634,6 +637,7 @@
         <span tal:content="p/name">name</span>
         <code style="font-size:11px;color:var(--s-primary);margin-left:6px;" tal:content="p/id">id</code>
         <span style="font-weight:400;font-size:11px;color:var(--s-secondary);margin-left:8px;">
+          state: <tal:s tal:content="p/state">ME</tal:s> ·
           <tal:n tal:content="p/n_columns">53</tal:n> columns · base: <tal:b tal:content="p/base">-</tal:b>
         </span>
       </summary>
@@ -658,8 +662,36 @@
             <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">Display name
               <input type="text" name="name" tal:attributes="value p/name"
                      style="padding:6px;border:1px solid var(--s-border);border-radius:4px;"/></label>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">State code (e.g. ME, NH)
+              <input type="text" name="state" tal:attributes="value p/state"
+                     style="padding:6px;border:1px solid var(--s-border);border-radius:4px;width:120px;"/></label>
           </div>
         </div>
+
+        <!-- D63: state vocabulary — this state program's own translations -->
+        <div style="border-top:1px solid var(--s-border);margin-top:14px;padding-top:12px;">
+          <div style="font-size:12px;font-weight:700;margin-bottom:2px;">State vocabulary</div>
+          <p style="font-size:11px;color:var(--s-secondary);max-width:760px;margin:0 0 10px;">
+            How this state program names things. Real CAS stays single-sourced from
+            the analyte library; <code>code_override</code> is only where the state
+            uses its own code (e.g. Maine <code>DEP18026</code>) instead of CAS.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+              Qualifier map (JSON list: our_qualifier &#8594; egad_code)
+              <textarea name="qualifier_map_json" rows="8" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+                        tal:content="p/qualifier_map_json"></textarea></label>
+            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+              QC-type map (JSON list: our_qc_type &#8594; egad_code)
+              <textarea name="qc_type_map_json" rows="8" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+                        tal:content="p/qc_type_map_json"></textarea></label>
+          </div>
+          <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">
+            Analyte naming (JSON: keyword &#8594; {parameter_name, code_override, note})
+            <textarea name="analyte_naming_json" rows="10" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+                      tal:content="p/analyte_naming_json"></textarea></label>
+        </div>
+
         <button class="btn btn-primary" type="submit" style="margin-top:10px;">Save profile</button>
       </form>
     </details>

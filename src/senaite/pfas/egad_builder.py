@@ -232,6 +232,23 @@ class EGADBuilder(object):
         self._qualifier_dict = get_qualifier_dict(portal)
         self._qc_type_dict = get_qc_type_dict(portal)
 
+    def _apply_profile_vocab(self, profile):
+        """Swap the lab-global qualifier/QC/analyte-CAS maps for the state
+        profile's own vocabulary (D63 full untie). Profiles always carry these
+        (backfilled on load), so Maine output is byte-identical while other
+        state profiles translate qualifiers/QC types and name/code analytes
+        their own way. Real CAS stays single-sourced via the profile helper."""
+        from senaite.pfas.egad_store import (
+            get_profile_qualifier_dict, get_profile_qc_type_dict,
+            get_profile_analyte_cas)
+        if not profile:
+            return
+        self._qualifier_dict = get_profile_qualifier_dict(profile)
+        self._qc_type_dict = get_profile_qc_type_dict(profile)
+        prof_cas = get_profile_analyte_cas(profile)
+        if prof_cas:
+            self._analyte_cas = prof_cas
+
     def _get_method_cfg(self, method_id):
         return self._method_egad.get(method_id, {
             "test_code": "E537.1",
@@ -295,11 +312,15 @@ class EGADBuilder(object):
             ""
         )
         default_sample_type = client_cfg.get("default_sample_type", "GW")
-        # EDD FORMAT PROFILE: per-client (client cfg `edd_profile`), Maine EGAD
-        # by default. Controls SAMPLE_TYPE matrix map + output columns/aliases.
+        # EDD STATE PROFILE: per-client (client cfg `edd_profile`), Maine EGAD
+        # by default. Controls SAMPLE_TYPE matrix map, output columns/aliases,
+        # AND (D63) the state vocabulary: qualifier map, QC-type map, and
+        # analyte parameter-naming/state-code overrides. The method still
+        # supplies analytes/units/test/CAS by reference.
         from senaite.pfas.egad_store import get_edd_profile_for_client
         self._edd_profile_id, self._edd_profile = \
             get_edd_profile_for_client(self.portal, client_cfg)
+        self._apply_profile_vocab(self._edd_profile)
 
         batch_id = batch_obj.getId()
         sdg = self._build_sdg(batch_id)

@@ -163,31 +163,173 @@ _DEFAULT_MATRIX_MAP = {
 }
 
 
+def _default_analyte_naming():
+    """State-specific analyte naming/coding, derived from the Maine EGAD overlay.
+
+    Shape: {keyword: {parameter_name, code_override, note}}.  The REAL CAS stays
+    single-sourced in analyte_reference; a state profile only carries its own
+    parameter name and (where it uses one) a state-specific code override
+    (Maine DEP#####).  Reference, not duplicate — §3."""
+    out = {}
+    for kw, ov in _EGAD_ANALYTE_OVERLAY.items():
+        out[kw] = {
+            "parameter_name": ov.get("parameter_name", ""),
+            "code_override": ov.get("cas_override", ""),
+            "note": ov.get("override_note", ""),
+        }
+    return out
+
+
 def _default_edd_profile():
     from senaite.pfas.egad_builder import EDD_COLUMNS
     return {
         "name": "Maine EGAD (default)",
         "base": "maine_egad",
+        "state": "ME",
         "columns": list(EDD_COLUMNS),
         "aliases": {},              # {column: replacement heading}
         "matrix_map": dict(_DEFAULT_MATRIX_MAP),
+        # State-owned vocabulary (full untie from Maine — D63). Seeded with the
+        # historical Maine lab-global maps so Maine output is byte-identical;
+        # other state profiles override these.
+        "qualifier_map": copy.deepcopy(DEFAULT_QUALIFIER_MAP),
+        "qc_type_map": copy.deepcopy(DEFAULT_QC_TYPE_MAP),
+        "analyte_naming": _default_analyte_naming(),
         "notes": "Seeded Maine DEP EGAD format. Clone to create sub-profiles "
                  "or other state programs.",
     }
 
 
+# Keys a state profile must carry; filled onto older saved profiles so
+# existing installs gain the state vocabulary without losing edited data.
+_PROFILE_VOCAB_KEYS = ("state", "qualifier_map", "qc_type_map",
+                       "analyte_naming")
+
+
+def _analyte_cas_to_naming(portal):
+    """Convert the LIVE lab-global analyte_cas into the analyte_naming shape,
+    reconstructing code_override faithfully: a stored cas_no that differs from
+    the single-source master CAS is a state code override (Maine DEP#####);
+    one that equals the master is just the real CAS, so no override."""
+    live = get_analyte_cas(portal)
+    master = _get_cas_by_keyword(dashed=False)
+    naming = {}
+    for kw, ent in live.items():
+        cas_no = (ent.get("cas_no") or "")
+        code_override = "" if cas_no == master.get(kw, "") else cas_no
+        naming[kw] = {
+            "parameter_name": ent.get("parameter_name", ""),
+            "code_override": code_override,
+            "note": ent.get("override_note", ""),
+        }
+    return naming
+
+
+def _ensure_profile_vocab(portal, profile_id, profile):
+    """Fill any missing D63 state-vocab key on a profile from the LIVE lab-global
+    maps — so an existing install's customized qualifier/QC/CAS data migrates
+    without loss (pre-D63 every profile used the lab-global maps). Returns True
+    if anything was filled. Never overwrites keys already present."""
+    changed = False
+    if "state" not in profile:
+        profile["state"] = "ME" if profile_id == "maine_egad" else ""
+        changed = True
+    if "qualifier_map" not in profile:
+        profile["qualifier_map"] = copy.deepcopy(get_qualifier_map(portal))
+        changed = True
+    if "qc_type_map" not in profile:
+        profile["qc_type_map"] = copy.deepcopy(get_qc_type_map(portal))
+        changed = True
+    if "analyte_naming" not in profile:
+        profile["analyte_naming"] = _analyte_cas_to_naming(portal)
+        changed = True
+    return changed
+
+
 def get_edd_profiles(portal):
-    """{profile_id: profile-dict}; 'maine_egad' is always present."""
+    """{profile_id: profile-dict}; 'maine_egad' is always present.
+
+    Older saved profiles predate the state vocabulary (D63); their missing keys
+    are filled from the live lab-global maps on read so callers always see a
+    complete state profile even before the upgrade step persists them."""
     store = _get_store_generic(portal, EDD_PROFILES_KEY)
     out = {}
     for k in list(store.keys()):
         try:
-            out[k] = json.loads(store[k])
+            prof = json.loads(store[k])
         except (ValueError, TypeError):
             continue
+        _ensure_profile_vocab(portal, k, prof)
+        out[k] = prof
     if "maine_egad" not in out:
-        out["maine_egad"] = _default_edd_profile()
+        prof = _default_edd_profile()
+        # Prefer the live lab-global maps (may be customized) over the DEFAULT
+        # vocab baked into the profile shape.
+        for key in ("state", "qualifier_map", "qc_type_map", "analyte_naming"):
+            prof.pop(key, None)
+        _ensure_profile_vocab(portal, "maine_egad", prof)
+        out["maine_egad"] = prof
     return out
+
+
+def get_profile_qualifier_dict(profile):
+    """{our_qualifier: state_code} for a state profile (D63 profile-scoped)."""
+    rows = (profile or {}).get("qualifier_map") or DEFAULT_QUALIFIER_MAP
+    return {r["our_qualifier"]: r.get("egad_code", r.get("state_code", ""))
+            for r in rows}
+
+
+def get_profile_qc_type_dict(profile):
+    """{our_qc_type: state_code} for a state profile (D63 profile-scoped)."""
+    rows = (profile or {}).get("qc_type_map") or DEFAULT_QC_TYPE_MAP
+    return {r["our_qc_type"]: r.get("egad_code", r.get("state_code", ""))
+            for r in rows}
+
+
+def get_profile_analyte_cas(profile):
+    """Build {keyword: {cas_no, parameter_name, override_note}} for a state
+    profile, layering its analyte_naming (state parameter name + state code
+    override) over the single-source master CAS.  Same shape as
+    get_analyte_cas() so the builder consumes it unchanged."""
+    master = _get_cas_by_keyword(dashed=False)
+    naming = (profile or {}).get("analyte_naming") or {}
+    out = {}
+    for kw, nm in naming.items():
+        cas = nm.get("code_override") or master.get(kw, "")
+        out[kw] = {
+            "cas_no": cas,
+            "parameter_name": nm.get("parameter_name", ""),
+            "override_note": nm.get("note", ""),
+        }
+    return out
+
+
+def migrate_state_profile_vocab(portal):
+    """Durably fold the historical Maine lab-global maps into saved profiles.
+
+    Idempotent: only fills profiles missing the D63 state-vocab keys; never
+    overwrites edited data.  Ensures maine_egad exists and is persisted."""
+    store = _get_store_generic(portal, EDD_PROFILES_KEY)
+    migrated = []
+    for k in list(store.keys()):
+        try:
+            prof = json.loads(store[k])
+        except (ValueError, TypeError):
+            continue
+        if _ensure_profile_vocab(portal, k, prof):
+            store[k] = json.dumps(prof)
+            migrated.append(k)
+    if "maine_egad" not in store:
+        prof = _default_edd_profile()
+        for key in ("state", "qualifier_map", "qc_type_map", "analyte_naming"):
+            prof.pop(key, None)
+        _ensure_profile_vocab(portal, "maine_egad", prof)
+        store["maine_egad"] = json.dumps(prof)
+        migrated.append("maine_egad")
+    if migrated:
+        logger.info("D63: state-vocab backfilled onto EDD profiles: %s",
+                    ", ".join(migrated))
+    return migrated
 
 
 def save_edd_profile(portal, profile_id, data):

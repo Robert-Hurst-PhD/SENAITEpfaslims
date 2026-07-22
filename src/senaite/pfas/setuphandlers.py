@@ -164,6 +164,10 @@ def setup_handler(context):
     try:
         from senaite.pfas.egad_store import seed_defaults as seed_egad_defaults
         seed_egad_defaults(portal)
+        # D63: fold the historical Maine lab-global maps into the state EDD
+        # profiles (idempotent; no-op once vocab is present).
+        from senaite.pfas.egad_store import migrate_state_profile_vocab
+        migrate_state_profile_vocab(portal)
     except Exception as e:
         logger.warning("EGAD EDD defaults not seeded: %s", e)
 
