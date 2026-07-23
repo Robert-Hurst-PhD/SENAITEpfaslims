@@ -308,6 +308,13 @@
       handler=".egad_publish.on_after_transition"
       />
 
+  <!-- Controlled publication register (D65 B): record an immutable issuance
+       entry on the sample each time a CoA is published (publish transition). -->
+  <subscriber
+      for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".controlled_publications.on_after_transition"
+      />
+
   <!-- Role-aware workspace launcher — redirects to the user's default workspace -->
   <browser:page
       name="pfas-home"
