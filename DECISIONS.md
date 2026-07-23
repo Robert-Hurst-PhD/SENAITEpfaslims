@@ -2961,3 +2961,38 @@ revision/amendment tracking. Build attestation first, register second.
   supersede link. Original ARReport is NEVER modified (matches deviation rule).
 
 Implementation plan (Phase A attestation, Phase B register) pending build sign-off.
+
+**A1 built + verified (2026-07-23):** `templates/reports/CertificateOfAnalysis.pt`
+registered via `plone:static` (name `senaite.pfas`, type `senaite.impress.reports`)
+in `configure.zcml`. impress `TemplateFinder` discovers
+`senaite.pfas:CertificateOfAnalysis.pt`; clean boot. Template is a verbatim copy
+of core `Default.pt`'s `view.render_*` section calls.
+
+**A2 built + LIVE-VERIFIED (2026-07-23):** attestation replaces the
+`render_signatures` line with a call to a new `@@pfas-coa-attestation` view
+(`browser/coa_attestation.py` + `templates/coa_attestation.pt`, registered
+`for="*"`). The view resolves the 3 tiers from live workflow history:
+`api.get_review_history(sample [+ analyses])` → `submit` actor = prepared-by,
+`verify` actor = verified-by, `api.get_current_user()` = authorized-by. Each
+actor → `api.get_user_contact(user, ["LabContact"])` for fullname / job title /
+`…/Signature` image; ruled line when no signature on file. Called from the CoA
+template via `context.restrictedTraverse('@@pfas-coa-attestation')(collection=
+view.collection, report_view=view)` (`context`=portal, `view`=impress
+ReportView exposing `.collection`).
+- Warm HTTP render of published EGG-0001 (`@@ajax_publish/render_reports`,
+  template=`senaite.pfas:CertificateOfAnalysis.pt`): 23.6 KB report; attestation
+  present with Prepared/Verified (admin, real submit/verify timestamps) +
+  Authorized (publisher); **core `section-signatures`/`Responsibles` ABSENT**
+  (replaced, not duplicated); ruled siglines (admin has no signature on file).
+- **Dev gotchas:** (1) impress `TemplateFinder`/catalog lookups (`SuperModel(uid)`,
+  `sample.getAnalyses()`) read STALE in `bin/instance run` (ZEO cache) → verify via
+  HTTP; the sample's OWN review history carries submit/verify rolled up, so it is
+  the primary source. (2) ajax dispatch prepends `ajax_` → the path segment is
+  `render_reports`, not `ajax_render_reports`. (3) **Run `bin/instance run` as
+  `-u senaite`, NOT root** — root-run Chameleon writes `/data/cache/*.py` owned by
+  root, then the senaite server hits `Permission denied` compiling new templates
+  (chown `/data/cache` back to senaite to recover).
+
+**A3 (pending):** controlled-doc header/footer stamp (report ID · Rev N;
+"controlled document — uncontrolled when printed") — revision no. comes from the
+Phase B register; set the PFAS CoA as the default impress template.

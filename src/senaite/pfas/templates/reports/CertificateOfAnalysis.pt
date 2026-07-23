@@ -46,8 +46,12 @@
   <!-- REPORT ATTACHMENTS -->
   <tal:t replace="structure python:view.render_attachments(context, **options)" />
 
-  <!-- REPORT SIGNATURES -->
-  <tal:t replace="structure python:view.render_signatures(context, **options)" />
+  <!-- CONTROLLED CoA ATTESTATION (PFAS, D65 A2) — replaces core's
+       render_signatures. Resolves the actual workflow actors (prepared /
+       verified / authorized) from the samples on this certificate. `context`
+       here is the portal; the attestation view is traversed off it and handed
+       the report's collection of SuperModels + the impress report view. -->
+  <tal:t replace="structure python:context.restrictedTraverse('@@pfas-coa-attestation')(collection=view.collection, report_view=view)" />
 
   <!-- REPORT DISCREETER -->
   <tal:t replace="structure python:view.render_discreeter(context, **options)" />

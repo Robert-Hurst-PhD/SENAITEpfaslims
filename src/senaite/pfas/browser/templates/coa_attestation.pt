@@ -1,0 +1,116 @@
+<tal:attestation define="sig view/signatories"
+                 i18n:domain="senaite.pfas">
+  <!-- Controlled CoA attestation (D65 A2). Rendered in the impress report
+       context, so all styling is inline/scoped here (the PFAS macro stylesheet
+       is not loaded on published reports). Actors are the live workflow
+       actors resolved in coa_attestation.py. -->
+  <div class="pfas-coa-attestation">
+    <style type="text/css">
+      .pfas-coa-attestation { margin: 22px 0 6px; page-break-inside: avoid; }
+      .pfas-coa-attestation .coa-att-title {
+        font-size: 12px; font-weight: 700; letter-spacing: .04em;
+        text-transform: uppercase; color: #333; border-bottom: 1px solid #999;
+        padding-bottom: 4px; margin-bottom: 10px; }
+      .pfas-coa-attestation table.coa-att-tbl {
+        width: 100%; border-collapse: collapse; }
+      .pfas-coa-attestation td { padding: 8px 8px; vertical-align: top;
+        border-bottom: 1px solid #e0e0e0; }
+      .pfas-coa-attestation td.role {
+        width: 110px; font-weight: 600; color: #555; font-size: 11px;
+        text-transform: uppercase; letter-spacing: .03em; padding-top: 12px; }
+      .pfas-coa-attestation .person {
+        display: inline-block; min-width: 190px; margin: 0 22px 6px 0;
+        vertical-align: bottom; }
+      .pfas-coa-attestation .sig { max-height: 46px; max-width: 180px;
+        display: block; margin-bottom: 2px; }
+      .pfas-coa-attestation .sigline {
+        height: 40px; border-bottom: 1px solid #333; width: 180px;
+        margin-bottom: 2px; }
+      .pfas-coa-attestation .nm { font-weight: 600; font-size: 12px; }
+      .pfas-coa-attestation .jt { color: #666; font-size: 11px; }
+      .pfas-coa-attestation .dt { color: #555; font-size: 11px;
+        white-space: nowrap; }
+      .pfas-coa-attestation .coa-att-note {
+        margin-top: 10px; font-size: 10px; color: #666; font-style: italic; }
+    </style>
+
+    <div class="coa-att-title" i18n:translate="">
+      Certificate authorization &mdash; controlled record
+    </div>
+
+    <table class="coa-att-tbl">
+      <!-- Prepared by (analyst[s] who submitted) -->
+      <tr>
+        <td class="role" i18n:translate="">Prepared by</td>
+        <td>
+          <tal:has condition="sig/prepared">
+            <div class="person" tal:repeat="p sig/prepared">
+              <img class="sig" tal:condition="p/signature_url"
+                   tal:attributes="src p/signature_url"/>
+              <div class="sigline" tal:condition="not:p/signature_url"></div>
+              <div class="nm" tal:content="p/fullname"></div>
+              <div class="jt" tal:condition="p/jobtitle"
+                   tal:content="p/jobtitle"></div>
+              <div class="jt" tal:condition="not:p/jobtitle"
+                   i18n:translate="">Analyst</div>
+              <div class="dt" tal:content="p/date"></div>
+            </div>
+          </tal:has>
+          <div class="person" tal:condition="not:sig/prepared">
+            <div class="sigline"></div>
+            <div class="nm">&mdash;</div>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Verified by (technical reviewer / QAO) -->
+      <tr>
+        <td class="role" i18n:translate="">Verified by</td>
+        <td>
+          <tal:has condition="sig/verified">
+            <div class="person" tal:repeat="p sig/verified">
+              <img class="sig" tal:condition="p/signature_url"
+                   tal:attributes="src p/signature_url"/>
+              <div class="sigline" tal:condition="not:p/signature_url"></div>
+              <div class="nm" tal:content="p/fullname"></div>
+              <div class="jt" tal:condition="p/jobtitle"
+                   tal:content="p/jobtitle"></div>
+              <div class="jt" tal:condition="not:p/jobtitle"
+                   i18n:translate="">Technical reviewer</div>
+              <div class="dt" tal:content="p/date"></div>
+            </div>
+          </tal:has>
+          <div class="person" tal:condition="not:sig/verified">
+            <div class="sigline"></div>
+            <div class="nm">&mdash;</div>
+          </div>
+        </td>
+      </tr>
+
+      <!-- Authorized by (the publisher, now) -->
+      <tr tal:define="a sig/authorized">
+        <td class="role" i18n:translate="">Authorized by</td>
+        <td>
+          <div class="person">
+            <img class="sig" tal:condition="a/signature_url"
+                 tal:attributes="src a/signature_url"/>
+            <div class="sigline" tal:condition="not:a/signature_url"></div>
+            <div class="nm" tal:content="a/fullname"></div>
+            <div class="jt" tal:condition="a/jobtitle"
+                 tal:content="a/jobtitle"></div>
+            <div class="jt" tal:condition="not:a/jobtitle"
+                 i18n:translate="">Authorized signatory</div>
+            <div class="dt" tal:content="a/date"></div>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="coa-att-note" i18n:translate="">
+      This certificate is issued as a controlled documentation publication. The
+      signatories above are the actual personnel who prepared, verified and
+      authorized this report under the laboratory's technical review procedure
+      (ISO/IEC 17025 §7.8.4).
+    </div>
+  </div>
+</tal:attestation>

@@ -180,6 +180,16 @@
       permission="zope2.View"
       />
 
+  <!-- Controlled CoA attestation (D65 A2): renders the 3-tier authorization
+       block (prepared/verified/authorized) from the live workflow actors.
+       Called from the PFAS Certificate of Analysis impress template. -->
+  <browser:page
+      name="pfas-coa-attestation"
+      for="*"
+      class=".coa_attestation.PFASCoAAttestationView"
+      permission="zope2.View"
+      />
+
   <!-- PFAS Analyst Batch Status — five-stage tracker driven from WS workflow -->
   <browser:page
       name="pfas-sample-status"
