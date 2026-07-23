@@ -3032,7 +3032,20 @@ disabled like data_review) calls `update_amendment_reason` on that specific
 entry, clearing the flag; only the reason is editable, issuance facts stay
 immutable. Verified: (b) HTTP POST filled a flagged rev2 (flag cleared, rev1
 untouched); (a) stashed reason consumed onto the entry via a REAL jsonapi
-republish, pending key cleared.
+republish, pending key cleared; (a) handler runs over HTTP (302, no error);
+`batch_url` confirmed present.
+
+**(a) reachability — UNCONFIRMED (finding, not a pass):** the Data Review
+reissue BRANCH was never live-rendered because no worksheet in this DB resolves
+to a published sample (`_batch_ars()` empty on all 5 worksheets), so
+`is_reissue` is False everywhere. Two open questions: (1) whether real amend
+flows route through Data Review's "Generate COA" at all vs. re-publishing from
+the samples listing (where (a)'s trigger never fires); (2) whether the worksheet
+↔ published-sample join (`_batch_ars`) holds at reissue time. **(a)'s machinery
+is verified but its live trigger is not** — confirm the lab's actual amend entry
+point before relying on (a). **(b) covers the best-effort policy regardless** —
+the register captures the issuance, flags a missing reason, and lets the QAO
+record it later, independent of (a).
 
 D65 verification env: live Docker Desktop stack, published EGG-0001, warm-HTTP
 render via `@@ajax_publish/render_reports` (path segment is `render_reports`,
