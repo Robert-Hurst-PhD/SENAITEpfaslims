@@ -2993,6 +2993,44 @@ ReportView exposing `.collection`).
   root, then the senaite server hits `Permission denied` compiling new templates
   (chown `/data/cache` back to senaite to recover).
 
-**A3 (pending):** controlled-doc header/footer stamp (report ID · Rev N;
-"controlled document — uncontrolled when printed") — revision no. comes from the
-Phase B register; set the PFAS CoA as the default impress template.
+**B1 built + verified (2026-07-23):** publication-log subscriber on the sample
+publish transition (see commit c44f7fc). `browser/controlled_publications.py`:
+`on_after_transition` (mirrors egad_publish) → `record_publication` appends an
+immutable entry to `senaite.pfas.controlled_pub_log` on the sample. Revision =
+log length; supersede link; reissue with no captured reason → `reason_missing`
+flag (best-effort policy). Status computed (latest = current), never stored.
+Verified: guard rejects non-publish transitions; rev1/2/3 numbering + flag +
+supersede + status correct; test annotation cleaned up.
+
+**B3 built + verified (2026-07-23):** `@@pfas-controlled-publications` register
+view (ManageBika, cross-client, read-only) — report ID, sample, client,
+revision, current/superseded, authorizer, issued date, recipients + PDF link
+(live from the referenced ARReport), amendment reason / "reason not recorded"
+flag. Sidebar link added to REPORTING (manager-gated). Verified over HTTP:
+empty-state + seeded rev1/rev2 rows render correctly; cleaned up.
+
+**A3 built + verified (2026-07-23):** CoA carries report ID (`sample-Rn`,
+PROSPECTIVE revision computed at render time = prior issues + 1) in the
+attestation title + a "Controlled documentation publication … uncontrolled when
+printed" footer stamp. `coa_attestation.controlled_doc_meta`. Verified: render
+shows stamp + EGG-0001-R1 + attestation.
+
+**Default template (2026-07-23):** `senaite.impress.default_template` set to
+`senaite.pfas:CertificateOfAnalysis.pt` (live + profile registry.xml). Prior
+default was MultiDefault (combined); PFAS CoA is single-per-sample so each
+sample issues its own controlled certificate. **Flagged:** if the lab ever
+publishes a batch as ONE combined report, a MultiDefault-based PFAS CoA variant
+would be needed (not built).
+
+**Still open (amendment-reason capture UI — best-effort policy):** the backend
+(`set_pending_amendment_reason` / `_pop_pending_reason`) is built and the
+register FLAGS reissues with no reason. NOT yet built: (a) up-front capture in
+the Data Review "Generate COA" path (`data_review.py` publish_url area) that
+stashes a reason before a reissue; (b) a fill-in-later affordance on the
+register so the QAO can add a reason to a flagged entry. Both are UI (POST +
+CSRF token); (a) touches the large data_review.pt. These complete "reason can be
+filled in later" but the system is functional + auditable without them.
+
+D65 verification env: live Docker Desktop stack, published EGG-0001, warm-HTTP
+render via `@@ajax_publish/render_reports` (path segment is `render_reports`,
+NOT `ajax_render_reports`). Always run `bin/instance run` as `-u senaite`.
