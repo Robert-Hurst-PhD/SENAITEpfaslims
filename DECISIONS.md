@@ -3034,3 +3034,28 @@ filled in later" but the system is functional + auditable without them.
 D65 verification env: live Docker Desktop stack, published EGG-0001, warm-HTTP
 render via `@@ajax_publish/render_reports` (path segment is `render_reports`,
 NOT `ajax_render_reports`). Always run `bin/instance run` as `-u senaite`.
+
+**BUG FOUND + FIXED (2026-07-23) — republish:** core `EmailView.publish()`
+maps sample status -> transition `{"verified":"publish","published":
+"republish"}`, so an amended REISSUE fires **`republish`**, which the subscriber
+did NOT listen for → every revision >= 2 would have been missed (the exact case
+the register exists for). `PUBLISH_TRANSITIONS` now = publish / publish_immediately
+/ republish. This surfaced only when doing a REAL publish (all prior B checks
+used synthetic events).
+
+**Real end-to-end verification (2026-07-23):** fired a REAL `republish` on
+EGG-0001 via **senaite.jsonapi** (`POST @@API/senaite/v1/update/<uid>`
+`{"transition":"republish"}` — D45's path; `content_status_modify` GET is a
+CSRF no-op, and `bin/instance run` doActionFor fails on the guard's
+`guard_handler`). Result: review_history gained a real `republish` by admin;
+the subscriber recorded EGG-0001-R1 with **`authorizer=admin`** (real user; was
+`None` in every synthetic test). Multi-sample render under the new default
+template produced **2 individual CoAs**, each with its own attestation + report
+ID + stamp (no broken multi-render).
+
+**LIMITATION (documented):** on the jsonapi publish path `report_uid` is None
+(that path creates no ARReport) → the register row has no PDF link / recipients,
+only the issuance + authorizer + revision. On the impress **email** path the
+ARReport is created by `ajax_save_reports` BEFORE `EmailView` fires the publish
+transition, so `report_uid` resolves. If the lab issues CoAs via jsonapi, add an
+ARReport-creation step (or accept link-less register rows).

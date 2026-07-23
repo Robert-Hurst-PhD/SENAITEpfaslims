@@ -41,7 +41,11 @@ PUBLICATION_LOG_KEY = u"senaite.pfas.controlled_pub_log"
 # reissue and consumed (cleared) by the publish subscriber.
 PENDING_REASON_KEY = u"senaite.pfas.pending_amendment_reason"
 
-PUBLISH_TRANSITIONS = ("publish", "publish_immediately")
+# Every transition core fires when a CoA is issued/re-issued. Core's EmailView
+# maps sample status -> transition: verified->publish, published->REPUBLISH
+# (the amended-reissue case — must be captured or the register misses every
+# revision >= 2), else prepublish/publish_immediately.
+PUBLISH_TRANSITIONS = ("publish", "publish_immediately", "republish")
 
 
 # ── event subscriber (mirrors egad_publish.on_after_transition) ─────────────
