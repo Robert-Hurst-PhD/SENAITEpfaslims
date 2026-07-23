@@ -29,6 +29,8 @@ import logging
 
 from bika.lims import api
 from DateTime import DateTime
+from Products.Five.browser import BrowserView
+from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 
 logger = logging.getLogger("senaite.pfas.controlled_publications")
@@ -144,3 +146,81 @@ def _latest_arreport_uid(ar):
         return None
     reports.sort(key=lambda o: o.created(), reverse=True)
     return api.get_uid(reports[0])
+
+
+# ── register view (Reporting → Controlled Publications) ─────────────────────
+
+class PFASControlledPublicationsView(BrowserView):
+    """Auditor-facing, read-only register of every issued CoA (all clients).
+
+    A view onto the §3 relational spine: each row is a controlled issuance
+    entry from a sample's publication log, with artifact facts (recipients,
+    PDF) read LIVE from the referenced core ARReport.
+    """
+    template = ViewPageTemplateFile("templates/controlled_publications.pt")
+
+    def __call__(self):
+        return self.template()
+
+    def publications(self):
+        """All issuance rows across all samples, newest issue first."""
+        rows = []
+        for ar in self._samples_with_log():
+            client = self._client_title(ar)
+            for entry in get_publication_log(ar):  # newest revision first
+                recipients, pdf_url = self._artifact_info(entry.get("report_uid"))
+                row = dict(entry)
+                row.update({
+                    "sample_id": api.get_id(ar),
+                    "sample_url": api.get_url(ar),
+                    "client": client,
+                    "recipients": recipients,
+                    "pdf_url": pdf_url,
+                })
+                rows.append(row)
+        rows.sort(key=lambda r: r.get("issued_at") or "", reverse=True)
+        return rows
+
+    def has_flags(self):
+        return any(r["reason_missing"] for r in self.publications())
+
+    # ── helpers ─────────────────────────────────────────────────────────
+
+    def _samples_with_log(self):
+        out = []
+        try:
+            brains = api.search({"portal_type": "AnalysisRequest"},
+                                catalog="senaite_catalog_sample")
+        except Exception:
+            brains = []
+        for brain in brains:
+            ar = api.get_object(brain)
+            if ar is None:
+                continue
+            if IAnnotations(ar).get(PUBLICATION_LOG_KEY):
+                out.append(ar)
+        return out
+
+    def _client_title(self, ar):
+        try:
+            client = ar.getClient()
+            return client.Title() if client else u""
+        except Exception:
+            return u""
+
+    def _artifact_info(self, report_uid):
+        """(recipients-string, pdf-url) read live from the core ARReport."""
+        if not report_uid:
+            return (u"", None)
+        report = api.get_object_by_uid(report_uid, default=None)
+        if report is None:
+            return (u"", None)
+        names = []
+        try:
+            for r in (report.getRecipients() or []):
+                nm = r.get("Fullname") or r.get("EmailAddress") or ""
+                if nm:
+                    names.append(nm)
+        except Exception:
+            pass
+        return (u", ".join(names), api.get_url(report))

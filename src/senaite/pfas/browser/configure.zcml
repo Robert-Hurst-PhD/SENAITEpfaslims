@@ -190,6 +190,15 @@
       permission="zope2.View"
       />
 
+  <!-- Controlled Publications register (D65 B): auditor-facing, read-only,
+       cross-client → manager/QAO permission (not client-accessible). -->
+  <browser:page
+      name="pfas-controlled-publications"
+      for="*"
+      class=".controlled_publications.PFASControlledPublicationsView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
   <!-- PFAS Analyst Batch Status — five-stage tracker driven from WS workflow -->
   <browser:page
       name="pfas-sample-status"
