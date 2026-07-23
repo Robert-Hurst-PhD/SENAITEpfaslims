@@ -872,6 +872,13 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
           <span class="pfas-si-label">Reports</span>
         </a>
+        <a class="pfas-si" title="Controlled Publications — CoA issue register (ISO 17025 document control)"
+           tal:condition="python:is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-controlled-publications;
+                           class python:'pfas-si si-active' if '@@pfas-controlled-publications' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
+          <span class="pfas-si-label">Controlled Publications</span>
+        </a>
         <a class="pfas-si" title="Delivered EDDs — download EDD files per batch"
            tal:attributes="href string:${purl}/@@pfas-egad-batches;
                            class python:'pfas-si si-active' if '@@pfas-egad-batches' in path else 'pfas-si'">

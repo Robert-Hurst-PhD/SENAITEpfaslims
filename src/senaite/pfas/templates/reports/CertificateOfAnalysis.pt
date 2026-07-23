@@ -59,4 +59,18 @@
   <!-- REPORT FOOTER -->
   <tal:t replace="structure python:view.render_footer(context, **options)" />
 
+  <!-- CONTROLLED-DOCUMENT STAMP (PFAS, D65 A3) — report identity + revision
+       (prospective at render time) and the uncontrolled-when-printed notice. -->
+  <tal:stamp define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
+                     meta python:att.controlled_doc_meta(view.collection)">
+    <div style="margin-top:10px; padding-top:6px; border-top:1px solid #ccc;
+                font-size:10px; color:#666; text-align:center;">
+      <span i18n:translate="">Controlled documentation publication</span>
+      <tal:rid condition="meta/report_id">
+        &middot; <span tal:content="meta/report_id"></span>
+      </tal:rid>
+      &middot; <span i18n:translate="">uncontrolled when printed</span>
+    </div>
+  </tal:stamp>
+
 </tal:report>

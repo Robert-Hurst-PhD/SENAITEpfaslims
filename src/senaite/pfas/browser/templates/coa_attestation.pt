@@ -34,8 +34,12 @@
         margin-top: 10px; font-size: 10px; color: #666; font-style: italic; }
     </style>
 
-    <div class="coa-att-title" i18n:translate="">
-      Certificate authorization &mdash; controlled record
+    <div class="coa-att-title">
+      <span i18n:translate="">Certificate authorization &mdash; controlled record</span>
+      <span tal:condition="view/meta/report_id"
+            style="float:right; font-family:monospace; font-weight:600;">
+        <span tal:content="view/meta/report_id"></span>
+      </span>
     </div>
 
     <table class="coa-att-tbl">

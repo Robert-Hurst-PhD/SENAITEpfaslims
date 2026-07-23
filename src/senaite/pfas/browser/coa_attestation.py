@@ -42,7 +42,33 @@ class PFASCoAAttestationView(BrowserView):
         self.collection = collection or []
         self.report_view = report_view
         self.signatories = self.resolve_signatories(self.collection)
+        self.meta = self.controlled_doc_meta(self.collection)
         return self.attestation()
+
+    def controlled_doc_meta(self, collection=None):
+        """Controlled-document identity for the primary sample. Computed at
+        RENDER time, i.e. BEFORE the publish transition writes the log entry —
+        so the revision shown is the PROSPECTIVE one this issuance will become
+        (prior issues + 1). Used for the report header/footer stamp."""
+        collection = collection if collection is not None else getattr(
+            self, "collection", [])
+        meta = {"report_id": u"", "revision": 1, "sample_id": u""}
+        if not collection:
+            return meta
+        try:
+            from senaite.pfas.browser.controlled_publications import \
+                get_publication_log
+            sample = api.get_object(collection[0])
+            revision = len(get_publication_log(sample)) + 1
+            sample_id = api.get_id(sample)
+            meta.update({
+                "report_id": u"{0}-R{1}".format(sample_id, revision),
+                "revision": revision,
+                "sample_id": sample_id,
+            })
+        except Exception:
+            pass
+        return meta
 
     # ── resolution ────────────────────────────────────────────────────────
 
