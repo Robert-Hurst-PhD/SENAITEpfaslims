@@ -3035,10 +3035,34 @@ untouched); (a) stashed reason consumed onto the entry via a REAL jsonapi
 republish, pending key cleared; (a) handler runs over HTTP (302, no error);
 `batch_url` confirmed present.
 
-**(a) reachability — UNCONFIRMED (finding, not a pass):** the Data Review
-reissue BRANCH was never live-rendered because no worksheet in this DB resolves
-to a published sample (`_batch_ars()` empty on all 5 worksheets), so
-`is_reissue` is False everywhere. Two open questions: (1) whether real amend
+**FULL-DATASET END-TO-END VERIFICATION (2026-07-23, commit 9bf64cb):** built
+COA-DEMO-0001 (client-1, Eggs/FDA) via `seed_published_coa.py` — all 32 FDA
+analyte results + 192 QC rows — and drove it through the REAL workflow:
+per-analysis submit (32) → per-analysis verify (32, self-verification enabled) →
+sample `publish` (all via jsonapi). Results:
+- Real `publish` (verified→published) fired the subscriber → register recorded
+  **COA-DEMO-0001-R1, authorizer=admin** (real user, real transition — closes the
+  synthetic-event gap definitively).
+- CoA renders the full 32-analyte panel + attestation (real prepared/verified
+  actors) + report ID + controlled stamp (HTTP render, 54 KB).
+- Amend = republish (user's model: "amending simply republishes … minor changes
+  like date"): stashed a reason + created a representative ARReport →
+  `republish` → **R2 current (report_uid resolved, reason recorded), R1
+  superseded**. Register VIEW renders both rows with correct current/superseded
+  badges + the reason.
+- **Workflow lesson:** `setStatusOf` forces a state but skips the bookkeeping the
+  publish/republish guards check, leaving the sample non-firable ("Invalid
+  transition"); the sample MUST reach published through real transitions
+  (submit→verify→publish) for republish/amend to be available. Sample-level
+  submit/verify do NOT cascade — fire per-analysis. Self-verification must be
+  enabled for one user to submit+verify (demo seed does this — a global
+  bika_setup change to revert for production).
+
+**(a) reachability — the amend path is REPUBLISH, confirmed by the user
+("amending simply republishes the data … changes should be minor like date").**
+The Data Review up-front branch (`is_reissue`) was still never live-rendered
+here because no worksheet joins to a published sample (`_batch_ars()` empty on
+all 5 worksheets), so `is_reissue` is False everywhere. Two open questions: (1) whether real amend
 flows route through Data Review's "Generate COA" at all vs. re-publishing from
 the samples listing (where (a)'s trigger never fires); (2) whether the worksheet
 ↔ published-sample join (`_batch_ars`) holds at reissue time. **(a)'s machinery
