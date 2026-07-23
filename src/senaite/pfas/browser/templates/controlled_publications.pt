@@ -75,11 +75,27 @@
           <td tal:content="r/issued_at"></td>
           <td tal:content="r/recipients"></td>
           <td>
-            <span class="cp-flag" tal:condition="r/reason_missing"
-                  i18n:translate="">Reason not recorded</span>
-            <span class="cp-reason" tal:condition="python:r['amendment_reason']"
+            <!-- flagged reissue: QAO fills in the reason (best-effort policy) -->
+            <tal:missing tal:condition="r/reason_missing">
+              <span class="cp-flag" i18n:translate="">Reason not recorded</span>
+              <form method="post" class="cp-reason-form"
+                    style="display:flex; gap:4px; margin-top:4px;">
+                <input type="hidden" name="action" value="record_reason"/>
+                <input type="hidden" name="sample_uid"
+                       tal:attributes="value r/sample_uid"/>
+                <input type="hidden" name="revision"
+                       tal:attributes="value r/revision"/>
+                <input type="text" name="reason" required="required"
+                       placeholder="Reason for this reissue"
+                       style="font-size:12px; padding:2px 6px; min-width:180px;"/>
+                <button type="submit" class="cp-badge cp-current"
+                        style="border:0; cursor:pointer;"
+                        i18n:translate="">Record</button>
+              </form>
+            </tal:missing>
+            <span class="cp-reason" tal:condition="python:not r['reason_missing'] and r['amendment_reason']"
                   tal:content="r/amendment_reason"></span>
-            <span tal:condition="python:r['revision']==1 and not r['reason_missing']"
+            <span tal:condition="python:r['revision']==1 and not r['reason_missing'] and not r['amendment_reason']"
                   style="color:var(--s-secondary)">&mdash;</span>
           </td>
         </tr>

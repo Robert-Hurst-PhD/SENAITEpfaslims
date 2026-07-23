@@ -127,6 +127,25 @@ def set_pending_amendment_reason(ar, reason):
         del ann[PENDING_REASON_KEY]
 
 
+def update_amendment_reason(ar, revision, reason):
+    """Fill in (or correct) the amendment reason on an EXISTING issuance entry
+    — the QAO's fill-in-later path for a flagged reissue. Only the reason field
+    is edited; the issuance facts (revision/date/authorizer/supersede) stay
+    immutable. Clears the reason_missing flag once a reason is present."""
+    ann = IAnnotations(ar)
+    log = list(ann.get(PUBLICATION_LOG_KEY, []))
+    reason = (reason or u"").strip()
+    for i, entry in enumerate(log):
+        if entry.get("revision") == revision:
+            new = dict(entry)
+            new["amendment_reason"] = api.safe_unicode(reason)
+            new["reason_missing"] = bool(revision >= 2 and not reason)
+            log[i] = new
+            ann[PUBLICATION_LOG_KEY] = log
+            return True
+    return False
+
+
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 def _pop_pending_reason(ar):
@@ -164,7 +183,31 @@ class PFASControlledPublicationsView(BrowserView):
     template = ViewPageTemplateFile("templates/controlled_publications.pt")
 
     def __call__(self):
+        if self.request.method == "POST":
+            try:
+                from plone.protect.interfaces import IDisableCSRFProtection
+                from zope.interface import alsoProvides
+                alsoProvides(self.request, IDisableCSRFProtection)
+            except ImportError:
+                pass
+            return self._handle_post()
         return self.template()
+
+    def _handle_post(self):
+        """QAO fills in an amendment reason on a flagged issuance entry."""
+        form = self.request.form
+        if form.get("action") == "record_reason":
+            sample = api.get_object_by_uid(form.get("sample_uid", ""), default=None)
+            try:
+                revision = int(form.get("revision", "0"))
+            except (TypeError, ValueError):
+                revision = 0
+            reason = (form.get("reason") or u"").strip()
+            if sample is not None and revision and reason:
+                update_amendment_reason(sample, revision, reason)
+        self.request.response.redirect(
+            "{0}/@@pfas-controlled-publications".format(api.get_url(api.get_portal())))
+        return u""
 
     def publications(self):
         """All issuance rows across all samples, newest issue first."""
@@ -176,6 +219,7 @@ class PFASControlledPublicationsView(BrowserView):
                 row = dict(entry)
                 row.update({
                     "sample_id": api.get_id(ar),
+                    "sample_uid": api.get_uid(ar),
                     "sample_url": api.get_url(ar),
                     "client": client,
                     "recipients": recipients,

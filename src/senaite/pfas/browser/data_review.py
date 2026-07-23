@@ -1133,6 +1133,23 @@ class PFASDataReviewView(BrowserView):
         return u"{0}/samples/publish?uids={1}".format(
             portal.absolute_url(), uids)
 
+    def reissue_ars(self):
+        """ARs in this worksheet's batch that are already published — issuing a
+        CoA for them is an AMENDED reissue (D65). We capture an amendment reason
+        up front so the controlled register records why (best-effort policy)."""
+        from bika.lims import api as _bapi
+        out = []
+        for ar in self._batch_ars():
+            try:
+                if _bapi.get_review_status(ar) == "published":
+                    out.append(ar)
+            except Exception:
+                pass
+        return out
+
+    def is_reissue(self):
+        return bool(self.reissue_ars())
+
     def needs_assignment(self):
         """True when this worksheet has no assigned analyses but its linked
         batch has samples — the assign-before-submit process point (D44#4)."""
@@ -1252,11 +1269,28 @@ class PFASDataReviewView(BrowserView):
             "reject":                   self._handle_reject,
             "upload_instrument_report": self._handle_upload_instrument_report,
             "download_report":          self._handle_download_report,
+            "record_amendment_reason":  self._handle_record_amendment_reason,
         }
         handler = dispatch.get(action)
         if handler:
             return handler()
         self.request.response.redirect(self.request.URL)
+        return u""
+
+    def _handle_record_amendment_reason(self):
+        """Stash an amendment reason on each already-published sample, then
+        continue to the publisher. The publish (republish) transition's
+        subscriber consumes it into the controlled register (D65)."""
+        if not self.can_act():
+            return self._redirect_with_msg("permission_denied", "error")
+        reason = (self.request.form.get("reason") or "").strip()
+        if reason:
+            from senaite.pfas.browser.controlled_publications import \
+                set_pending_amendment_reason
+            for ar in self.reissue_ars():
+                set_pending_amendment_reason(ar, reason)
+        purl = self.publish_url()
+        self.request.response.redirect(purl or self.request.URL)
         return u""
 
     def _handle_check_item(self):

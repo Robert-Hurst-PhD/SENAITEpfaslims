@@ -357,8 +357,38 @@
             Analysis for this worksheet's samples (opens SENAITE's report
             publisher with the samples pre-selected).
           </p>
+          <!-- First issue: straight to the publisher. -->
           <a class="btn-approve" style="text-decoration:none;display:inline-block;"
+             tal:condition="not:view/is_reissue"
              tal:attributes="href purl">Generate COA →</a>
+
+          <!-- Amended reissue (samples already published): capture the reason
+               up front so the controlled register records why (D65). -->
+          <tal:reissue tal:condition="view/is_reissue">
+            <div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;
+                        padding:10px 12px;margin-top:6px;">
+              <div style="font-weight:600;font-size:13px;color:#856404;margin-bottom:6px;">
+                Amended reissue — this sample was already published
+              </div>
+              <p style="font-size:12px;color:var(--s-secondary);margin:0 0 8px;">
+                State the reason for reissuing. It is recorded against the new
+                revision in the Controlled Publications register. The original
+                report is not modified.
+              </p>
+              <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;"
+                    tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
+                <input type="hidden" name="action" value="record_amendment_reason"/>
+                <input type="hidden" name="batch_uid"
+                       tal:attributes="value view/batch_uid"/>
+                <textarea name="reason" rows="2" required="required"
+                          placeholder="Reason for reissuing this certificate"
+                          style="flex:1;min-width:240px;font-size:12px;padding:4px 6px;"></textarea>
+                <button type="submit" class="btn-approve" style="border:0;cursor:pointer;">
+                  Record reason &amp; generate COA →
+                </button>
+              </form>
+            </div>
+          </tal:reissue>
         </div>
       </tal:coa>
 
