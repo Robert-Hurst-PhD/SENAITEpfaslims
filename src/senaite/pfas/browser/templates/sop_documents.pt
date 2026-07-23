@@ -221,7 +221,7 @@
             <td onclick="event.stopPropagation()">
               <div style="display:flex;gap:5px;flex-wrap:wrap">
                 <tal:hasrev tal:condition="sop/active_rev"
-                            tal:define="ar_rev python:sop['active_rev']['rev_num']">
+                            tal:define="ar_rev python:sop['active_rev'] and sop['active_rev']['rev_num']">
                   <a class="btn-sm" target="_blank"
                      tal:attributes="href string:${purl}/@@pfas-sop?action=download_sop&amp;sop_id=${sop/sop_id}&amp;rev_num=${ar_rev}&amp;view=0"
                      >Download</a>
@@ -279,7 +279,7 @@
                      tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
                      tal:attributes="id string:panel-${sop_id_js}-viewer">
                   <tal:hasrev tal:condition="sop/active_rev"
-                              tal:define="ar_rev python:sop['active_rev']['rev_num']">
+                              tal:define="ar_rev python:sop['active_rev'] and sop['active_rev']['rev_num']">
                     <iframe class="sop-viewer"
                             tal:attributes="src string:${purl}/@@pfas-sop?action=download_sop&amp;sop_id=${sop/sop_id}&amp;rev_num=${ar_rev}&amp;view=1"
                             ></iframe>
