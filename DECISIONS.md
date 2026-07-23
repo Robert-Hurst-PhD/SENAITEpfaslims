@@ -3022,14 +3022,17 @@ sample issues its own controlled certificate. **Flagged:** if the lab ever
 publishes a batch as ONE combined report, a MultiDefault-based PFAS CoA variant
 would be needed (not built).
 
-**Still open (amendment-reason capture UI — best-effort policy):** the backend
-(`set_pending_amendment_reason` / `_pop_pending_reason`) is built and the
-register FLAGS reissues with no reason. NOT yet built: (a) up-front capture in
-the Data Review "Generate COA" path (`data_review.py` publish_url area) that
-stashes a reason before a reissue; (b) a fill-in-later affordance on the
-register so the QAO can add a reason to a flagged entry. Both are UI (POST +
-CSRF token); (a) touches the large data_review.pt. These complete "reason can be
-filled in later" but the system is functional + auditable without them.
+**B4 amendment-reason capture UI — BUILT + verified (2026-07-23, commit dde9a7a):**
+(a) up-front — Data Review "Generate COA" shows a reason field on an amended
+reissue (`is_reissue`/`reissue_ars`); `_handle_record_amendment_reason` stashes
+it via `set_pending_amendment_reason` on the reissue ARs then redirects to the
+publisher; the republish subscriber consumes it. (b) fill-in-later — flagged
+register rows carry an inline form; the register view's POST handler (CSRF
+disabled like data_review) calls `update_amendment_reason` on that specific
+entry, clearing the flag; only the reason is editable, issuance facts stay
+immutable. Verified: (b) HTTP POST filled a flagged rev2 (flag cleared, rev1
+untouched); (a) stashed reason consumed onto the entry via a REAL jsonapi
+republish, pending key cleared.
 
 D65 verification env: live Docker Desktop stack, published EGG-0001, warm-HTTP
 render via `@@ajax_publish/render_reports` (path segment is `render_reports`,
