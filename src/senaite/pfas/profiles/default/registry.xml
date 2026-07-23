@@ -24,4 +24,11 @@
     </field>
     <value>0</value>
   </record>
+  <!-- D65: make the controlled PFAS Certificate of Analysis the default
+       impress report template (record is owned by senaite.impress; we only
+       set its value). Single-per-sample so each sample gets its own
+       controlled certificate with its own report ID / revision. -->
+  <record name="senaite.impress.default_template">
+    <value>senaite.pfas:CertificateOfAnalysis.pt</value>
+  </record>
 </registry>
