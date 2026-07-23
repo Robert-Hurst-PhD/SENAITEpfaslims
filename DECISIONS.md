@@ -2916,3 +2916,48 @@ macro can't stamp the PDF itself; the attestation belongs on a rendered SOP
 record if desired, or via PDF overlay (separate capability). Prep-std cert is a
 saved file, so signature IMAGES are not embedded there (names only); base64
 stamp embedding is a follow-up.
+
+## D65 — CoA issuance as a controlled documentation publication (2026-07-23)
+
+Extends D64 (internal-record attestation) to the CLIENT-FACING Certificate of
+Analysis. Scope confirmed with lab: FULL controlled-document treatment — the
+attestation ON the certificate AND a controlled issue register with
+revision/amendment tracking. Build attestation first, register second.
+
+**Audit findings (grounded, this session):**
+- CoA today (D45) is only a hand-off link to core senaite.impress
+  `/samples/publish` (`data_review.py:1125`). The add-on ships NO custom impress
+  report template and does NO controlled-doc handling for the client certificate.
+- impress discovers report templates via `plone.resource` directories of type
+  `senaite.impress.reports` (`impress/template.py` `TemplateFinder` →
+  `iterDirectoriesOfType`). An add-on registers its own `templates/reports/` dir
+  under that type; the template appears in the picker as `senaite.pfas:<name>.pt`.
+  → upgrade-safe, NO core fork (§6C).
+- Core `Default.pt` composes the report by calling `view.render_*` methods (NOT
+  METAL macros); `analysisrequest/templates/signatures.pt` ALREADY renders a
+  "Responsibles" block (managers + Signature images) + a "Published by" actor
+  (`view.current_user`). → the PFAS template must REPLACE the signatures section,
+  not append a second block (would duplicate/fight core; violates Golden Rule 3).
+- Core `ARReport` (`bika/lims/content/arreport.py`) already stores `DatePublished`,
+  publisher, `Recipients`, `SendLog`, `Pdf`, `Html`, `ContainedAnalysisRequests`,
+  `Metadata` — it IS the publication record, and it is cataloged. Every publish
+  creates a NEW ARReport (`impress/storage.py create_report`).
+
+**Confirmed design decisions:**
+- **Signatories = ACTUAL WORKFLOW ACTORS** (not D64's static Print Settings pool):
+  prepared-by = analyst who submitted the worksheet (to_be_verified actor from
+  review history), verified-by = the manager/QAO who verified, authorized/
+  published-by = the publishing user — resolved live from AR/analyses review
+  history with real timestamps. Multi-sample CoA may list several analysts.
+- **Authorization event = existing verify → publish** (D45); NO new workflow
+  state/gate. Publishing by an authorized role IS the authorization.
+- **Register storage = ANNOTATION on the core ARReport** (single-object-owned →
+  §7 says annotate, NOT SQLite) + a catalog-query "Controlled Publications" view.
+  PFAS annotation adds: report ID, revision no., authorizer, amendment reason,
+  supersede→prior-ARReport-UID. References core ARReport data, never duplicates it
+  (Golden Rule 3).
+- **Reissue/amendment** = core's new-ARReport-per-publish is the revision chain
+  (ordered by DatePublished); PFAS annotation stamps revision no. + reason +
+  supersede link. Original ARReport is NEVER modified (matches deviation rule).
+
+Implementation plan (Phase A attestation, Phase B register) pending build sign-off.

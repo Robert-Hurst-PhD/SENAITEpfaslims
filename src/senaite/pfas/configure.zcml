@@ -3,10 +3,22 @@
     xmlns:i18n="http://namespaces.zope.org/i18n"
     xmlns:genericsetup="http://namespaces.zope.org/genericsetup"
     xmlns:browser="http://namespaces.zope.org/browser"
+    xmlns:plone="http://namespaces.plone.org/plone"
     i18n_domain="senaite.pfas">
 
   <includeDependencies package="." />
   <include package=".browser" />
+
+  <!-- PFAS impress report templates (D65): registers templates/reports/ as a
+       senaite.impress.reports resource directory so the PFAS Certificate of
+       Analysis appears in the impress template picker as
+       "senaite.pfas:CertificateOfAnalysis.pt". Mirrors senaite.impress's own
+       report-dir registration; no core fork (§6C). -->
+  <plone:static
+      name="senaite.pfas"
+      directory="templates/reports"
+      type="senaite.impress.reports"
+      />
 
   <!-- GenericSetup profile that installs analytes, methods, sample types,
        containers, storage locations, and custom content types -->
