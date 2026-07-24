@@ -247,6 +247,14 @@
                           tal:define="sop_id_safe sop/sop_id"
                           tal:attributes="onclick string:openSOPModal('${sop_id_safe}')"
                           >New Revision</button>
+                  <form method="POST" style="display:inline"
+                        tal:attributes="action string:${purl}/@@pfas-sop"
+                        onsubmit="return confirm('Delete this SOP? It will be moved to Archived; its number is not reused.');">
+                    <input type="hidden" name="action" value="delete_sop"/>
+                    <input type="hidden" name="sop_id" tal:attributes="value sop/sop_id"/>
+                    <button type="submit" class="btn-sm"
+                            style="background:#dc3545;color:#fff;border-color:#dc3545">Delete</button>
+                  </form>
                 </tal:mgr>
               </div>
             </td>
@@ -369,6 +377,44 @@
   </table>
   </div>
 
+  <!-- ── Archived SOPs (Manager) ──────────────────────────────────────────── -->
+  <tal:archived tal:condition="python:can_mgr and view.archived_sops()"
+                tal:define="arch python:view.archived_sops()">
+    <details class="sop-archived" style="margin-top:22px">
+      <summary style="cursor:pointer;font-weight:600;color:var(--s-secondary,#6c757d)">
+        Archived SOPs (<tal:n tal:replace="python:len(arch)">0</tal:n>)
+      </summary>
+      <table class="sop-table" style="margin-top:10px;opacity:.85">
+        <thead>
+          <tr><th>SOP</th><th>Title</th><th>Category</th><th>Method</th>
+              <th>Deleted</th><th>By</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr tal:repeat="a arch">
+            <td><strong tal:content="a/sop_id">SOP-002</strong></td>
+            <td tal:content="a/title">Title</td>
+            <td tal:content="a/category">—</td>
+            <td tal:content="a/method_label">General</td>
+            <td tal:content="python:a['archived_at'] or '—'">—</td>
+            <td tal:content="python:a['archived_by'] or '—'">—</td>
+            <td>
+              <form method="POST" style="display:inline"
+                    tal:attributes="action string:${purl}/@@pfas-sop">
+                <input type="hidden" name="action" value="restore_sop"/>
+                <input type="hidden" name="sop_id" tal:attributes="value a/sop_id"/>
+                <button type="submit" class="btn-sm">Restore</button>
+              </form>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:11px;color:var(--s-secondary,#6c757d);margin-top:6px">
+        Deleted SOP numbers are never reused — the next new SOP always takes the
+        next number in sequence.
+      </p>
+    </details>
+  </tal:archived>
+
   <!-- ── New/New Revision Modal ───────────────────────────────────────────── -->
   <tal:mgr tal:condition="can_mgr">
   <div class="sop-modal-overlay" id="sopModalOverlay"
@@ -406,8 +452,8 @@
                     placeholder="What changed in this revision?"></textarea>
         </div>
         <div class="fld">
-          <label>Document File * (.pdf, .doc, .docx)</label>
-          <input type="file" name="sop_file" accept=".pdf,.doc,.docx" required/>
+          <label>Document File * (PDF only)</label>
+          <input type="file" name="sop_file" accept=".pdf,application/pdf" required/>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-ghost" onclick="closeSopModal()">Cancel</button>

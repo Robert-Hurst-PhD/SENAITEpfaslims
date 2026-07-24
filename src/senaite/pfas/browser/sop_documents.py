@@ -127,6 +127,10 @@ class PFASSOPView(BrowserView):
                 return self._handle_activate()
             if action == "sign_sop":
                 return self._handle_sign()
+            if action == "delete_sop":
+                return self._handle_delete()
+            if action == "restore_sop":
+                return self._handle_restore()
         if action == "download_sop":
             return self._handle_download()
         return self.index()
@@ -180,6 +184,8 @@ class PFASSOPView(BrowserView):
         result = []
         uid = self._current_user_id()
         for entry in registry:
+            if entry.get("status") == "archived":
+                continue                      # archived SOPs live under Archived
             sop_id = entry["sop_id"]
             revs = _get_revisions(portal, sop_id)
             active_rev = None
@@ -252,6 +258,24 @@ class PFASSOPView(BrowserView):
                 result.append(sop)
         return result
 
+    def archived_sops(self):
+        """Deleted SOPs — hidden from the main list, retained for audit and to
+        keep SOP-NNN numbering iterating (their numbers are never reused)."""
+        portal = self._portal()
+        result = []
+        for entry in _get_registry(portal):
+            if entry.get("status") != "archived":
+                continue
+            result.append({
+                "sop_id":       entry["sop_id"],
+                "title":        entry.get("title", ""),
+                "method_label": METHOD_LABELS.get(entry.get("method_slug"), "General Lab"),
+                "category":     entry.get("category", ""),
+                "archived_by":  entry.get("archived_by", ""),
+                "archived_at":  (entry.get("archived_at", "") or "")[:10],
+            })
+        return result
+
     def method_options(self):
         """Method choices for the SOP form — derived from the single-source
         method registry so new methods appear automatically."""
@@ -287,6 +311,11 @@ class PFASSOPView(BrowserView):
 
         if not upload or not getattr(upload, "filename", None):
             return self._redirect("?msg=no_file&msg_type=error")
+
+        # Controlled documents are PDF-only (fixed/immutable). This module is
+        # exclusive to SOPs — other documentation (logbooks) has its own home.
+        if os.path.splitext(getattr(upload, "filename", "") or "")[1].lower() != ".pdf":
+            return self._redirect("?msg=not_pdf&msg_type=error")
 
         portal = self._portal()
         registry = _get_registry(portal)
@@ -353,6 +382,52 @@ class PFASSOPView(BrowserView):
         })
         _save_revisions(portal, sop_id, revs)
         return self._redirect("?msg=uploaded&msg_type=success&sop_id={0}".format(sop_id))
+
+    def _handle_delete(self):
+        """Soft-delete: move the SOP to Archived. The registry entry is kept
+        (status='archived') so SOP-NNN numbering keeps iterating and the record
+        survives for audit; revisions/sign-offs/files are left intact."""
+        if not self.can_manage():
+            return self._redirect("?msg=permission_denied&msg_type=error")
+        sop_id = (self.request.form.get("sop_id") or "").strip()
+        if not sop_id:
+            return self._redirect("?msg=bad_request&msg_type=error")
+        portal = self._portal()
+        registry = _get_registry(portal)
+        found = False
+        for entry in registry:
+            if entry["sop_id"] == sop_id:
+                entry["status"] = "archived"
+                entry["archived_by"] = self._current_user_id()
+                entry["archived_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                found = True
+                break
+        if not found:
+            return self._redirect("?msg=not_found&msg_type=error")
+        _save_registry(portal, registry)
+        return self._redirect("?msg=archived&msg_type=success")
+
+    def _handle_restore(self):
+        """Bring an archived SOP back into the active list."""
+        if not self.can_manage():
+            return self._redirect("?msg=permission_denied&msg_type=error")
+        sop_id = (self.request.form.get("sop_id") or "").strip()
+        if not sop_id:
+            return self._redirect("?msg=bad_request&msg_type=error")
+        portal = self._portal()
+        registry = _get_registry(portal)
+        found = False
+        for entry in registry:
+            if entry["sop_id"] == sop_id and entry.get("status") == "archived":
+                entry["status"] = "active"
+                entry.pop("archived_by", None)
+                entry.pop("archived_at", None)
+                found = True
+                break
+        if not found:
+            return self._redirect("?msg=not_found&msg_type=error")
+        _save_registry(portal, registry)
+        return self._redirect("?msg=restored&msg_type=success")
 
     def _handle_activate(self):
         if not self.can_manage():
@@ -488,6 +563,10 @@ class PFASSOPView(BrowserView):
         "bad_request":      "Invalid request.",
         "rev_not_found":    "Revision not found.",
         "no_active_rev":    "No active revision to sign.",
+        "not_pdf":          "SOPs must be uploaded as PDF files.",
+        "not_found":        "SOP not found.",
+        "archived":         "SOP deleted — moved to Archived.",
+        "restored":         "SOP restored to the active list.",
     }
 
     def msg_text(self):
