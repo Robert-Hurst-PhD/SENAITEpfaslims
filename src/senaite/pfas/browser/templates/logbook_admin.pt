@@ -277,10 +277,9 @@
                   </button>
                 </form>
                 <form method="POST"
-                      tal:condition="not:lb/builtin"
                       tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin"
-                      onsubmit="return confirm('Delete this logbook definition? Existing data on batches is preserved.')">
-                  <input type="hidden" name="action" value="delete"/>
+                      onsubmit="return confirm('Delete this logbook? It moves to Archived; its FM-ENV number is not reused. PDF revisions and batch data are preserved.')">
+                  <input type="hidden" name="action" value="archive_logbook"/>
                   <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
                   <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                 </form>
@@ -347,6 +346,125 @@
           </button>
         </form>
       </div>
+
+      <!-- ── Controlled Documents (PDF per logbook) ──────────────────────── -->
+      <div class="section-divider">
+        <h3 class="section-h3">Controlled Documents (PDF)</h3>
+        <p style="font-size:12px;color:var(--s-secondary);margin-bottom:12px">
+          Upload a controlled PDF for each logbook, revision-controlled with
+          mandatory sign-off — the same document control as SOPs. PDF-only; the
+          active revision must be acknowledged by each user before use.
+        </p>
+        <tal:each tal:repeat="lb view/logbook_defs">
+          <details style="border:1px solid var(--s-border,#ddd);border-radius:6px;padding:10px 14px;margin-bottom:10px"
+                   tal:define="di python:view.logbook_doc_info(lb['slug'])"
+                   tal:attributes="id string:lb-${lb/slug}">
+            <summary style="cursor:pointer;font-weight:600">
+              <span tal:content="lb/form_num">FM-ENV-001</span> —
+              <span tal:content="lb/title">Title</span>
+              <tal:has tal:condition="di/active_rev">
+                <span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:6px">
+                  Rev <tal:n tal:replace="python:di['active_rev']['rev_num']">1</tal:n> active</span>
+                <span tal:condition="di/user_signed"
+                      style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:4px">Signed &#10003;</span>
+                <span tal:condition="not:di/user_signed"
+                      style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:4px">You must sign</span>
+              </tal:has>
+              <span tal:condition="not:di/active_rev"
+                    style="color:var(--s-secondary);font-size:11px;margin-left:6px">no active document</span>
+            </summary>
+
+            <div style="margin-top:10px" tal:condition="di/active_rev">
+              <a class="btn btn-secondary btn-sm" target="_blank"
+                 tal:attributes="href python:view.portal_url()+'/@@pfas-logbook-admin?action=download_logbook_doc&slug='+lb['slug']+'&rev_num='+str(di['active_rev']['rev_num'])+'&view=1'">View active PDF</a>
+              <form method="POST" style="display:inline"
+                    tal:condition="not:di/user_signed"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                <input type="hidden" name="action" value="sign_logbook_doc"/>
+                <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                <button type="submit" class="btn btn-primary btn-sm">Sign / acknowledge active revision</button>
+              </form>
+            </div>
+
+            <div style="margin-top:10px" tal:condition="di/draft_revs">
+              <tal:d tal:repeat="dr di/draft_revs">
+                <form method="POST" style="display:inline;margin-right:5px"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                  <input type="hidden" name="action" value="activate_logbook_doc"/>
+                  <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                  <input type="hidden" name="rev_num" tal:attributes="value dr/rev_num"/>
+                  <button type="submit" class="btn btn-sm" style="background:#28a745;color:#fff;border-color:#28a745">
+                    Activate Rev <tal:n tal:replace="dr/rev_num">1</tal:n></button>
+                </form>
+              </tal:d>
+            </div>
+
+            <table style="margin-top:10px;border-collapse:collapse;font-size:12px"
+                   tal:condition="di/all_revs">
+              <thead><tr>
+                <th style="text-align:left;padding:4px 10px;border-bottom:1px solid #ccc">Rev</th>
+                <th style="text-align:left;padding:4px 10px;border-bottom:1px solid #ccc">Status</th>
+                <th style="text-align:left;padding:4px 10px;border-bottom:1px solid #ccc">Uploaded</th>
+                <th style="text-align:left;padding:4px 10px;border-bottom:1px solid #ccc">File</th>
+              </tr></thead>
+              <tbody>
+                <tr tal:repeat="r di/all_revs">
+                  <td style="padding:4px 10px" tal:content="r/rev_num">1</td>
+                  <td style="padding:4px 10px" tal:content="r/status">draft</td>
+                  <td style="padding:4px 10px" tal:content="python:(r.get('uploaded_at') or '')[:10]">—</td>
+                  <td style="padding:4px 10px">
+                    <a target="_blank"
+                       tal:attributes="href string:${view/portal_url}/@@pfas-logbook-admin?action=download_logbook_doc&amp;slug=${lb/slug}&amp;rev_num=${r/rev_num}&amp;view=0">Download</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <form method="POST" enctype="multipart/form-data" style="margin-top:12px"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+              <input type="hidden" name="action" value="upload_logbook_doc"/>
+              <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Upload new PDF revision</label>
+              <input type="file" name="doc_file" accept=".pdf,application/pdf" required="required"/>
+              <input type="text" name="release_notes" placeholder="What changed in this revision"
+                     style="min-width:220px;margin:0 6px"/>
+              <button type="submit" class="btn btn-primary btn-sm">Upload (draft)</button>
+            </form>
+          </details>
+        </tal:each>
+      </div>
+
+      <!-- ── Archived Logbooks ───────────────────────────────────────────── -->
+      <tal:arch tal:condition="view/archived_logbooks"
+                tal:define="arch view/archived_logbooks">
+        <div class="section-divider">
+          <h3 class="section-h3">Archived Logbooks</h3>
+          <table style="border-collapse:collapse;font-size:13px;opacity:.85">
+            <thead><tr>
+              <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ccc">Form #</th>
+              <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ccc">Title</th>
+              <th style="border-bottom:2px solid #ccc"></th>
+            </tr></thead>
+            <tbody>
+              <tr tal:repeat="lb arch">
+                <td style="padding:6px 12px" tal:content="lb/form_num">FM-ENV-xxx</td>
+                <td style="padding:6px 12px" tal:content="lb/title">Title</td>
+                <td style="padding:6px 12px">
+                  <form method="POST" style="display:inline"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                    <input type="hidden" name="action" value="restore_logbook"/>
+                    <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                    <button type="submit" class="btn btn-secondary btn-sm">Restore</button>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="font-size:11px;color:var(--s-secondary);margin-top:6px">
+            Deleted logbooks are retained and their FM-ENV numbers are never reused.
+          </p>
+        </div>
+      </tal:arch>
 
     </div><!-- /__pool__ -->
 

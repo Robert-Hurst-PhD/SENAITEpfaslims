@@ -585,7 +585,30 @@ class PFASLogbookAdminView(BrowserView):
             return "Forbidden"
         if self.request.method == "POST":
             return self._handle_post()
+        if self.request.form.get("action") == "download_logbook_doc":
+            return self._download_doc()
         return self.template()
+
+    def _download_doc(self):
+        from senaite.pfas.browser.logbook_docs import resolve_download
+        slug = self.request.form.get("slug", "")
+        try:
+            rev_num = int(self.request.form.get("rev_num", 0))
+        except (TypeError, ValueError):
+            rev_num = 0
+        path, fname = resolve_download(self._portal(), slug, rev_num)
+        if not path or not os.path.exists(path):
+            self.request.response.setStatus(404)
+            return "Not found"
+        inline = self.request.form.get("view", "0") == "1"
+        disp = "inline" if inline else "attachment"
+        with open(path, "rb") as fh:
+            data = fh.read()
+        self.request.response.setHeader("Content-Type", "application/pdf")
+        self.request.response.setHeader(
+            "Content-Disposition",
+            '{0}; filename="{1}"'.format(disp, fname or "logbook.pdf"))
+        return data
 
     def _portal(self):
         return getToolByName(self.context, "portal_url").getPortalObject()
@@ -594,8 +617,43 @@ class PFASLogbookAdminView(BrowserView):
         return getToolByName(self.context, "portal_url")()
 
     def logbook_defs(self):
+        """Active logbook families for the pool table (archived ones excluded —
+        they live under the Archived section)."""
         from senaite.pfas.logbook_store import get_logbook_defs
-        return get_logbook_defs(self._portal())
+        from senaite.pfas.browser.logbook_docs import get_archived_slugs
+        archived = get_archived_slugs(self._portal())
+        return [d for d in get_logbook_defs(self._portal())
+                if d["slug"] not in archived]
+
+    def archived_logbooks(self):
+        """Deleted logbooks — hidden from the pool, retained; FM-ENV numbers
+        are never reused. Restorable."""
+        from senaite.pfas.logbook_store import get_logbook_defs
+        from senaite.pfas.browser.logbook_docs import get_archived_slugs
+        archived = get_archived_slugs(self._portal())
+        return [d for d in get_logbook_defs(self._portal())
+                if d["slug"] in archived]
+
+    # ── controlled-document (PDF) layer ──────────────────────────────────────
+
+    def _uid(self):
+        from AccessControl import getSecurityManager
+        return getSecurityManager().getUser().getId() or ""
+
+    def _fullname(self):
+        from AccessControl import getSecurityManager
+        user = getSecurityManager().getUser()
+        mt = getToolByName(self._portal(), "portal_membership", None)
+        if mt:
+            member = mt.getMemberById(user.getId())
+            if member and member.getProperty("fullname", ""):
+                return member.getProperty("fullname", "")
+        return user.getUserName() or user.getId() or "Unknown"
+
+    def logbook_doc_info(self, slug):
+        """Controlled-PDF summary for one logbook (revisions, active, sign-off)."""
+        from senaite.pfas.browser.logbook_docs import doc_info
+        return doc_info(self._portal(), slug, self._uid())
 
     def saved(self):
         return self.request.get("saved", "")
@@ -671,6 +729,43 @@ class PFASLogbookAdminView(BrowserView):
 
     # ── POST handlers ─────────────────────────────────────────────────────────
 
+    def _handle_doc_action(self, action, slug):
+        """Controlled-PDF actions on a logbook: upload / activate / sign, and
+        delete->archive / restore. Mirrors the SOP document-control flow."""
+        from senaite.pfas.browser import logbook_docs as ld
+        portal = self._portal()
+        uid = self._uid()
+        def done(msg):
+            self.request.response.redirect(
+                "{0}/@@pfas-logbook-admin?saved={1}#lb-{2}".format(
+                    self.portal_url(), msg, slug))
+            return ""
+
+        if not slug:
+            return done("bad_request")
+        if action == "upload_logbook_doc":
+            upload = self.request.form.get("doc_file")
+            notes = (self.request.form.get("release_notes") or "").strip()
+            ok, msg = ld.upload_doc(portal, slug, upload, notes, uid)
+            return done(msg)
+        if action == "activate_logbook_doc":
+            try:
+                rev_num = int(self.request.form.get("rev_num", 0))
+            except (TypeError, ValueError):
+                rev_num = 0
+            ok, msg = ld.activate_doc(portal, slug, rev_num, uid)
+            return done(msg)
+        if action == "sign_logbook_doc":
+            ok, msg = ld.sign_doc(portal, slug, uid, self._fullname())
+            return done(msg)
+        if action == "archive_logbook":
+            ld.archive_logbook(portal, slug)
+            return done("archived")
+        if action == "restore_logbook":
+            ld.restore_logbook(portal, slug)
+            return done("restored")
+        return done("bad_request")
+
     def _handle_post(self):
         from senaite.pfas.logbook_store import get_logbook_defs, save_logbook_defs
         import uuid
@@ -679,6 +774,11 @@ class PFASLogbookAdminView(BrowserView):
         slug = self.request.form.get("slug", "")
         defs = get_logbook_defs(portal)
         slugs = [d["slug"] for d in defs]
+
+        # ── Controlled-document (PDF) actions ────────────────────────────────
+        if action in ("upload_logbook_doc", "activate_logbook_doc",
+                      "sign_logbook_doc", "archive_logbook", "restore_logbook"):
+            return self._handle_doc_action(action, slug)
 
         # ── Method sequence save ──────────────────────────────────────────────
         if action == "save_method_config":
