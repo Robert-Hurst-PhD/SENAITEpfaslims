@@ -57,9 +57,16 @@
       <tbody>
         <tr tal:repeat="r rows">
           <td>
-            <a class="cp-rid" tal:condition="r/pdf_url"
-               tal:attributes="href r/pdf_url" tal:content="r/report_id"></a>
-            <span class="cp-rid" tal:condition="not:r/pdf_url"
+            <!-- printed CoA PDF (issued document) -->
+            <a class="cp-rid" tal:condition="r/pdf_url" target="_blank"
+               tal:attributes="href r/pdf_url" tal:content="r/report_id"
+               title="Open the printed Certificate of Analysis (PDF)"></a>
+            <!-- no stored PDF but current: link to the publisher to view/print -->
+            <a class="cp-rid" tal:condition="python:not r['pdf_url'] and r['coa_live']"
+               tal:attributes="href r/coa_live" tal:content="r/report_id"
+               title="Generate / print the Certificate of Analysis"></a>
+            <span class="cp-rid"
+                  tal:condition="python:not r['pdf_url'] and not r['coa_live']"
                   tal:content="r/report_id"></span>
           </td>
           <td><a tal:attributes="href r/sample_url" tal:content="r/sample_id"></a></td>

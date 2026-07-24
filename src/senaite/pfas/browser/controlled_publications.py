@@ -216,6 +216,12 @@ class PFASControlledPublicationsView(BrowserView):
             client = self._client_title(ar)
             for entry in get_publication_log(ar):  # newest revision first
                 recipients, pdf_url = self._artifact_info(entry.get("report_uid"))
+                # Fallback: the CURRENT revision with no stored CoA artifact
+                # (e.g. published without going through impress) still links to
+                # the sample's publisher so the final CoA can be viewed/printed.
+                coa_live = None
+                if not pdf_url and entry.get("status") == "current":
+                    coa_live = api.get_url(ar) + "/publish"
                 row = dict(entry)
                 row.update({
                     "sample_id": api.get_id(ar),
@@ -224,6 +230,7 @@ class PFASControlledPublicationsView(BrowserView):
                     "client": client,
                     "recipients": recipients,
                     "pdf_url": pdf_url,
+                    "coa_live": coa_live,
                 })
                 rows.append(row)
         rows.sort(key=lambda r: r.get("issued_at") or "", reverse=True)
@@ -257,7 +264,9 @@ class PFASControlledPublicationsView(BrowserView):
             return u""
 
     def _artifact_info(self, report_uid):
-        """(recipients-string, pdf-url) read live from the core ARReport."""
+        """(recipients-string, coa-url) read live from the core ARReport. The
+        URL points at the printed CoA PDF (@@download_pdf) when one is stored,
+        else at the ARReport (its rendered HTML report)."""
         if not report_uid:
             return (u"", None)
         report = api.get_object_by_uid(report_uid, default=None)
@@ -271,4 +280,11 @@ class PFASControlledPublicationsView(BrowserView):
                     names.append(nm)
         except Exception:
             pass
-        return (u", ".join(names), api.get_url(report))
+        url = api.get_url(report)
+        try:
+            pdf = report.getPdf()
+            if pdf and pdf.get_size():
+                url = url + "/download_pdf"    # stream the printed CoA PDF
+        except Exception:
+            pass
+        return (u", ".join(names), url)
