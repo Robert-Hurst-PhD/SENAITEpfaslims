@@ -552,24 +552,21 @@
       .table-wrap table th.col-wrap { white-space: normal; max-width: 180px; }
       .pfas-table { min-width: 480px; }
 
-      /* ── EVERY PFAS content table scrolls sideways as its own box on mobile
-         (defined once here; every bespoke table — CAS map, EDD-profile editors,
-         QC matrix, calibrations, logbooks, factor/spec/units tables — inherits
-         it with no per-page markup). Same max-content technique core uses for
-         table.contentstable: the table becomes its own horizontal scroll
-         container while thead/tbody stay real table rows so columns align, so
-         a wide table never drags the page chrome or overflows the viewport.
-         Opt a whole table out with class="no-mobile-scroll"; let one cell wrap
-         instead of nowrap with class="col-wrap". */
+      /* ── Content tables on mobile: keep each as ONE real table so <thead> and
+         <tbody> always share the SAME column widths — headers and cells line up
+         on narrow screens (iPhone SE). A table wider than the screen scrolls
+         horizontally INSIDE the content area, which is a width-contained scroll
+         box (overflow-x:auto + min-width:0), so the chrome/page never move.
+
+         Replaces the earlier per-table `display:block` approach: putting
+         display:block on the <table> and display:table on <thead>/<tbody> turned
+         each row-group into an INDEPENDENT table that sized its columns to its
+         own content, so headers and body drifted out of alignment on narrow
+         viewports. A single real table can't do that. Opt a whole table out with
+         class="no-mobile-scroll"; let one cell wrap with class="col-wrap". */
+      .pfas-content-area { min-width: 0; }
       .pfas-content-area table:not(.no-mobile-scroll) {
-        display: block;
-        width: 100%; max-width: 100%; min-width: 0;
-        overflow-x: auto; -webkit-overflow-scrolling: touch;
-      }
-      .pfas-content-area table:not(.no-mobile-scroll) > thead,
-      .pfas-content-area table:not(.no-mobile-scroll) > tbody,
-      .pfas-content-area table:not(.no-mobile-scroll) > tfoot {
-        display: table; width: max-content; min-width: 100%;
+        min-width: 100%; max-width: none;
       }
       .pfas-content-area table:not(.no-mobile-scroll) td.col-wrap,
       .pfas-content-area table:not(.no-mobile-scroll) th.col-wrap {
