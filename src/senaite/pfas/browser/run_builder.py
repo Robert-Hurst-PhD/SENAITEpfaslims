@@ -33,6 +33,17 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 logger = logging.getLogger("senaite.pfas.browser.run_builder")
 
+
+def _first(value, default=u""):
+    """First value if the form field arrived as a list (Zope merges duplicate
+    query-string + POST-body params into a list — e.g. batch_id, which is both
+    in the page URL from the batch selector and a hidden field in the build/
+    upload forms). Returns a string so .strip()/.splitlines() are always safe."""
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else default
+    return default if value is None else value
+
+
 RUN_MANIFEST_KEY = u"senaite.pfas.run_manifest"
 UPLOAD_DIR = os.environ.get("PFAS_INSTRUMENT_UPLOAD_DIR",
                             "/addon/data/instrument_output")
@@ -73,7 +84,7 @@ class PFASRunBuilderView(BrowserView):
         return self.request.form.get("error", "")
 
     def selected_batch(self):
-        return self.request.form.get("batch_id", "")
+        return _first(self.request.form.get("batch_id", ""))
 
     def _batch(self, batch_id=None):
         bid = batch_id or self.selected_batch()
@@ -297,9 +308,9 @@ class PFASRunBuilderView(BrowserView):
     # ── actions ───────────────────────────────────────────────────────────
     def _handle_build(self):
         f = self.request.form
-        batch_id = (f.get("batch_id") or "").strip()
-        initials = (f.get("initials") or "").strip().upper()
-        include_cal = f.get("include_cal") in ("on", "1", "true")
+        batch_id = _first(f.get("batch_id")).strip()
+        initials = _first(f.get("initials")).strip().upper()
+        include_cal = _first(f.get("include_cal")) in ("on", "1", "true")
         if not batch_id:
             return self._redirect_err(batch_id, "Select a batch first")
         if not initials:
@@ -310,7 +321,7 @@ class PFASRunBuilderView(BrowserView):
                 batch_id, "Batch has no method — fill its extraction log first")
         rows_in = self.sample_rows(batch_id)
         # manual additions (one per line) are appended, matrix left blank
-        for s in (f.get("extra_samples") or "").splitlines():
+        for s in _first(f.get("extra_samples")).splitlines():
             s = s.strip()
             if s:
                 rows_in.append({"sample_id": s, "matrix": "", "spike": ""})
@@ -373,7 +384,7 @@ class PFASRunBuilderView(BrowserView):
 
     def _handle_upload_export(self):
         f = self.request.form.get("export_file")
-        bid = (self.request.form.get("batch_id") or "").strip()
+        bid = _first(self.request.form.get("batch_id")).strip()
         if f is None or not getattr(f, "filename", ""):
             return self._redirect_err(bid, "No file selected")
         fname = re.sub(r"[^A-Za-z0-9._-]", "_", f.filename)

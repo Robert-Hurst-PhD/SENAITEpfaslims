@@ -103,7 +103,8 @@
             this batch — complete the extraction log, or add sample names below.
           </p>
 
-          <form method="post">
+          <form method="post"
+                tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
             <input type="hidden" name="action" value="build"/>
             <input type="hidden" name="batch_id"
                    tal:attributes="value view/selected_batch"/>
@@ -145,7 +146,8 @@
             saved, active Import Studio mapping is required — imports refuse
             otherwise).
           </p>
-          <form method="post" enctype="multipart/form-data">
+          <form method="post" enctype="multipart/form-data"
+                tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
             <input type="hidden" name="action" value="upload_export"/>
             <input type="hidden" name="batch_id"
                    tal:attributes="value view/selected_batch"/>
