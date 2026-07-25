@@ -96,6 +96,16 @@ class PFASDeviationView(BrowserView):
         if action == "lookup_worksheets":
             return self._handle_lookup_worksheets()
         if self.request.method == "POST":
+            # PFAS forms don't carry a CSRF _authenticator token; every other
+            # PFAS POST view disables plone.protect the same way. Without this a
+            # browser-session POST (cookie auth) is blocked/rolled back while
+            # basic-auth works — so filing a deviation/CAR failed only in the UI.
+            try:
+                from plone.protect.interfaces import IDisableCSRFProtection
+                from zope.interface import alsoProvides
+                alsoProvides(self.request, IDisableCSRFProtection)
+            except ImportError:
+                pass
             if action == "file_deviation":
                 return self._handle_file()
             if action == "update_scale_rootcause":
