@@ -229,6 +229,12 @@
       overflow-x: auto;
       background: var(--s-light);
       min-height: 0;
+      /* Universal gutter so page content never sits flush against the window
+         edges. Pages that use .page-body keep their own inner padding on top of
+         this (extra breathing room); pages that fill the slot directly (SOPs,
+         Deviations/CARs, batch logbooks, facility, calibrations, ...) get their
+         spacing from here. */
+      padding: 18px 22px;
     }
 
     /* ── Pane footer — storage path + role note ─────────────────────────── */
@@ -564,7 +570,7 @@
          own content, so headers and body drifted out of alignment on narrow
          viewports. A single real table can't do that. Opt a whole table out with
          class="no-mobile-scroll"; let one cell wrap with class="col-wrap". */
-      .pfas-content-area { min-width: 0; }
+      .pfas-content-area { min-width: 0; padding: 12px 12px; }
       .pfas-content-area table:not(.no-mobile-scroll) {
         min-width: 100%; max-width: none;
       }

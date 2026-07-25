@@ -8,7 +8,7 @@
   <metal:extra metal:fill-slot="head-extra">
   <style>
     /* ── Layout ─────────────────────────────────────────────── */
-    .dev-page { padding: 0 20px 40px; }
+    .dev-page { padding: 0 0 40px; }   /* gutter comes from .pfas-content-area */
     .dev-filter-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px;
                       align-items:center; }
     .dev-filter-btn { padding:5px 14px; border-radius:20px; font-size:12px;
