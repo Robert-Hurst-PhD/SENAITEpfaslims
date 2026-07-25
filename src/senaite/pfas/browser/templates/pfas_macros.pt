@@ -359,6 +359,48 @@
       box-shadow: 0 0 0 3px var(--s-focus-ring);
     }
     .field-row .hint { font-size: 10px; color: var(--s-secondary); margin-top: 3px; }
+
+    /* ── Consistent text-field baseline (define once, §7) ─────────────────────
+       Every text/number/date/email input, <select> and <textarea> in the
+       content window shares ONE font (inherits the page font, not the browser
+       default), size and height, ending the ad-hoc / browser-default mix where
+       some boxes were a different font, size or taller than others. Pages may
+       still set width or override with a class; this is only the baseline.
+       Checkboxes, radios and file inputs are intentionally excluded. */
+    .pfas-content-area input[type=text],
+    .pfas-content-area input[type=number],
+    .pfas-content-area input[type=date],
+    .pfas-content-area input[type=datetime-local],
+    .pfas-content-area input[type=time],
+    .pfas-content-area input[type=email],
+    .pfas-content-area input[type=search],
+    .pfas-content-area input[type=tel],
+    .pfas-content-area input[type=url],
+    .pfas-content-area input[type=password],
+    .pfas-content-area input:not([type]),
+    .pfas-content-area select,
+    .pfas-content-area textarea {
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 7px 10px;
+      border: 1px solid var(--s-input-border, #ced4da);
+      border-radius: 4px;
+      color: var(--s-input-text, #495057);
+      background: #fff;
+      box-sizing: border-box;
+      vertical-align: middle;
+    }
+    .pfas-content-area textarea {
+      line-height: 1.5; resize: vertical;
+    }
+    .pfas-content-area input:focus,
+    .pfas-content-area select:focus,
+    .pfas-content-area textarea:focus {
+      outline: none;
+      border-color: var(--s-primary, #0d6efd);
+      box-shadow: 0 0 0 3px var(--s-focus-ring, rgba(13,110,253,.15));
+    }
     .field-row-wide { grid-column: 1 / -1; }
 
     /* ── Checkboxes ──────────────────────────────────────────────────────── */
