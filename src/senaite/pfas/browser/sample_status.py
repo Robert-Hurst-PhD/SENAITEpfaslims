@@ -36,6 +36,7 @@ import os
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.sample_status")
 
@@ -257,6 +258,7 @@ class PFASSampleStatusView(BrowserView):
     template = ViewPageTemplateFile("templates/sample_status.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def portal_url(self):

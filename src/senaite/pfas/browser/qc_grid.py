@@ -23,6 +23,7 @@ import json
 import logging
 
 from Products.Five.browser import BrowserView
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.qc_grid")
 
@@ -81,6 +82,7 @@ class PFASQCTypeGridView(BrowserView):
     """
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             action = self.request.form.get("action", "")
             if action == "save_grid":

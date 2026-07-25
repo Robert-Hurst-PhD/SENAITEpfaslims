@@ -18,6 +18,7 @@ import logging
 
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger('senaite.pfas.browser.receipt')
 
@@ -52,6 +53,7 @@ class PFASReceiptView(BrowserView):
     template = ViewPageTemplateFile('templates/receipt.pt')
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def _portal_url(self):

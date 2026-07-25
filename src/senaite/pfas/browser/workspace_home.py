@@ -6,6 +6,7 @@ from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 
 def _portal(context):
@@ -16,6 +17,7 @@ class PFASWorkspaceHomeView(BrowserView):
     """Role-aware launcher — redirects to the user's default workspace."""
 
     def __call__(self):
+        flatten_form(self.request)
         portal = _portal(self.context)
         base = portal.absolute_url()
 
@@ -45,6 +47,7 @@ class PFASQCManagementView(BrowserView):
     template = ViewPageTemplateFile("templates/pfas_qc_management.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def portal_url(self):

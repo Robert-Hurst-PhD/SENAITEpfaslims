@@ -14,6 +14,7 @@ import logging
 
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.qcrules")
 
@@ -73,6 +74,7 @@ class PFASQCRulesView(BrowserView):
     template = ViewPageTemplateFile("templates/qcrules.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if not _check_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden: Manager role required"

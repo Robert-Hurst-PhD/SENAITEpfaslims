@@ -22,6 +22,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
+from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.egad_store import (
     DEFAULT_ANALYTE_CAS,
     DEFAULT_QC_TYPE_MAP,
@@ -121,6 +122,7 @@ class PFASEGADConfigView(BrowserView):
     template = ViewPageTemplateFile("templates/egad_config.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden: Manager, LabManager, or Owner role required"
@@ -393,6 +395,7 @@ class PFASEGADClientConfigView(BrowserView):
     template = ViewPageTemplateFile("templates/egad_client_config.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden"
@@ -458,6 +461,7 @@ class PFASEGADExportView(BrowserView):
     """
 
     def __call__(self):
+        flatten_form(self.request)
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden"
@@ -573,6 +577,7 @@ class PFASEGADBatchesView(BrowserView):
     template = ViewPageTemplateFile("templates/egad_batches.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden"

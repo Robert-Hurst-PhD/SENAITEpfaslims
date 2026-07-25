@@ -12,6 +12,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas.print_settings import (
     DEFAULTS, get_print_settings, save_print_settings)
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.print_settings")
 
@@ -20,6 +21,7 @@ class PFASPrintSettingsView(BrowserView):
     template = ViewPageTemplateFile("templates/print_settings.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST" and \
                 self.request.form.get("action") == "save":
             return self._handle_save()

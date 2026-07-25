@@ -31,6 +31,7 @@ from zope.annotation.interfaces import IAnnotations
 
 from senaite.pfas.method_profile_store import get_profile
 from senaite.pfas.browser.reagents import _list_reagents, _save_reagent, STATUS_OPENED
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.extraction_guide")
 
@@ -66,6 +67,7 @@ class PFASExtractionGuideView(BrowserView):
     template = ViewPageTemplateFile("templates/extraction_guide.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         action = self.request.form.get("action", "")
         if self.request.method == "POST":
             if action == "start":

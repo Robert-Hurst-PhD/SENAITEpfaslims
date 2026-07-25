@@ -30,6 +30,7 @@ from zope.lifecycleevent import ObjectModifiedEvent
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.reagents")
 
@@ -642,6 +643,7 @@ class PFASReagentsView(BrowserView):
     template = ViewPageTemplateFile("templates/reagents.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         try:
             _maybe_record_production_since(self._portal())
         except Exception:

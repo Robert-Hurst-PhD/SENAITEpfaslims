@@ -15,6 +15,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 
 # ── Layout constants (match gen_svg / senaite_pfas_map.svg) ───────────────────
@@ -105,6 +106,7 @@ class PFASSystemMapView(BrowserView):
     template = ViewPageTemplateFile("templates/system_map.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def portal_url(self):

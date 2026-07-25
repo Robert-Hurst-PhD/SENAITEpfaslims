@@ -6,6 +6,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.core.browser.viewlets.sidebar import SidebarViewletManager
+from senaite.pfas.browser.formutil import flatten_form
 
 
 def _get_user_roles(context):
@@ -31,6 +32,7 @@ class PFASSidebarView(BrowserView):
     _sidebar_template = ViewPageTemplateFile('templates/pfas_sidebar.pt')
 
     def __call__(self):
+        flatten_form(self.request)
         content = self._sidebar_template()
         # Plone/Chameleon wraps BrowserView top-level output in <!DOCTYPE><html><body>.
         # Strip it to return just the <nav> fragment.

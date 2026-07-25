@@ -34,6 +34,7 @@ from .sample_status import (
     _get_method_name, _workflow_state,
 )
 from .stage_estimates import format_estimate, get_stage_estimates
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger('senaite.pfas.browser.tracker')
 
@@ -383,6 +384,7 @@ class PFASClientTrackerView(BrowserView):
     template = ViewPageTemplateFile('templates/tracker.pt')
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def portal_url(self):

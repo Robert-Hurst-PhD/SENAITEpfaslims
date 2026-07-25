@@ -34,6 +34,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.import_studio")
 
@@ -605,6 +606,7 @@ class PFASInstrumentProfileView(BrowserView):
     """
 
     def __call__(self):
+        flatten_form(self.request)
         portal = getToolByName(self.context, "portal_url").getPortalObject()
         vendor_key = (self.request.form.get("vendor_key", "") or "").strip().lower()
         version = (self.request.form.get("version", "") or "").strip()
@@ -647,6 +649,7 @@ class PFASImportStudioView(BrowserView):
     template = ViewPageTemplateFile("templates/import_studio.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         action = self.request.form.get("action", "")
         if self.request.method == "POST":
             if action == "upload":

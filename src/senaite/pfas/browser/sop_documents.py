@@ -9,6 +9,7 @@ from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from zope.annotation.interfaces import IAnnotations
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.sop")
 
@@ -119,6 +120,7 @@ def _next_sop_id(registry):
 class PFASSOPView(BrowserView):
 
     def __call__(self):
+        flatten_form(self.request)
         action = self.request.form.get("action", "")
         if self.request.method == "POST":
             if action == "upload_sop":

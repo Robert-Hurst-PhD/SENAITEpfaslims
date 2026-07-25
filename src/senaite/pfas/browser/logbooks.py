@@ -30,6 +30,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.logbooks")
 
@@ -206,6 +207,7 @@ class PFASLogbookIndexView(_LogbookBase):
     template = ViewPageTemplateFile("templates/logbook_index.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def logbooks(self):
@@ -326,6 +328,7 @@ class PFASLogbook250View(_LogbookBase):
     template = ViewPageTemplateFile("templates/logbook_250.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             return self._handle_post()
         return self.template()
@@ -374,6 +377,7 @@ class PFASLogbook251View(_LogbookBase):
     template = ViewPageTemplateFile("templates/logbook_251.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             action = self.request.form.get("action", "")
             if action == "download_csv":
@@ -461,6 +465,7 @@ class PFASLogbook252View(_LogbookBase):
     template = ViewPageTemplateFile("templates/logbook_252.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             return self._handle_post()
         # If the batch's method has extraction stages, redirect to the
@@ -527,6 +532,7 @@ class PFASLogbook253View(_LogbookBase):
     template = ViewPageTemplateFile("templates/logbook_253.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             return self._handle_post()
         return self.template()
@@ -580,6 +586,7 @@ class PFASLogbookAdminView(BrowserView):
     template = ViewPageTemplateFile("templates/logbook_admin.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden"
@@ -957,6 +964,7 @@ class PFASDynamicLogbookView(_LogbookBase):
     template = ViewPageTemplateFile("templates/logbook_dynamic.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             return self._handle_post()
         return self.template()
@@ -1041,6 +1049,7 @@ class PFASLotAutocompleteView(BrowserView):
     """
 
     def __call__(self):
+        flatten_form(self.request)
         self.request.response.setHeader("Content-Type", "application/json")
         try:
             from plone.protect.interfaces import IDisableCSRFProtection
@@ -1093,6 +1102,7 @@ class PFASReagentAutocompleteView(BrowserView):
     """
 
     def __call__(self):
+        flatten_form(self.request)
         self.request.response.setHeader("Content-Type", "application/json")
         try:
             from plone.protect.interfaces import IDisableCSRFProtection
@@ -1139,6 +1149,7 @@ class PFASLogbookCustomView(_LogbookBase):
     template = ViewPageTemplateFile("templates/logbook_custom.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             return self._handle_post()
         return self.template()

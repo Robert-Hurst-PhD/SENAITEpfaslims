@@ -32,6 +32,7 @@ from DateTime import DateTime
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.controlled_publications")
 
@@ -183,6 +184,7 @@ class PFASControlledPublicationsView(BrowserView):
     template = ViewPageTemplateFile("templates/controlled_publications.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             try:
                 from plone.protect.interfaces import IDisableCSRFProtection

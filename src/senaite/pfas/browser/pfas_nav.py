@@ -9,6 +9,7 @@ from Products.CMFCore.utils import getToolByName
 
 from senaite.pfas.browser.sample_status import _compute_stage, STAGES
 from senaite.pfas.tracking_store import get_tracking_by_ar_uid
+from senaite.pfas.browser.formutil import flatten_form
 
 
 def _portal_url(context):
@@ -146,6 +147,7 @@ class PFASWorksheetStageTabView(BrowserView):
     template = ViewPageTemplateFile('templates/pfas_ws_stage_tab.pt')
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def portal_url(self):
@@ -178,6 +180,7 @@ class PFASARTrackerTabView(BrowserView):
     template = ViewPageTemplateFile('templates/pfas_ar_tracker_tab.pt')
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def portal_url(self):

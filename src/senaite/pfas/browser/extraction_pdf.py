@@ -19,6 +19,7 @@ from Products.Five.browser import BrowserView
 
 from senaite.pfas.browser.extraction_guide import _load_session
 from senaite.pfas.method_profile_store import get_profile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.extraction_pdf")
 
@@ -344,6 +345,7 @@ class PFASExtractionPDFView(BrowserView):
     """Generate and serve the extraction logbook PDF via ReportLab."""
 
     def __call__(self):
+        flatten_form(self.request)
         uid = self.request.form.get("batch_uid", "")
         if not uid:
             self.request.response.setStatus(400)

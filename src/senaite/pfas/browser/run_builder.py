@@ -30,6 +30,7 @@ from zope.annotation.interfaces import IAnnotations
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.run_builder")
 
@@ -53,6 +54,7 @@ class PFASRunBuilderView(BrowserView):
     template = ViewPageTemplateFile("templates/run_builder.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         action = self.request.form.get("action", "")
         if self.request.method == "POST":
             # Same CSRF handling as the sibling PFAS form views

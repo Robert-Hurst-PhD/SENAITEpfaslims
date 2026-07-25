@@ -21,6 +21,7 @@ import logging
 
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.setuprefs")
 
@@ -202,6 +203,7 @@ class PFASSetupRefsView(BrowserView):
     template = ViewPageTemplateFile("templates/setuprefs.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             if not _is_manager(self.context):
                 self.request.response.setStatus(403)

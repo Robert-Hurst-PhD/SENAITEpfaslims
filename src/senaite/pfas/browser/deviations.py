@@ -7,6 +7,7 @@ from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from zope.annotation.interfaces import IAnnotations
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.deviations")
 
@@ -90,6 +91,7 @@ def _next_dev_id(registry, dev_type):
 class PFASDeviationView(BrowserView):
 
     def __call__(self):
+        flatten_form(self.request)
         action = self.request.form.get("action", "")
         if action == "generate_notification":
             return self._handle_notification()

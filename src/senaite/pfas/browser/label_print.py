@@ -28,6 +28,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 
 # Common label sizes: (id, display_name, width_mm, height_mm)
@@ -48,6 +49,7 @@ class PFASLabelPrintView(BrowserView):
     template = ViewPageTemplateFile("templates/label_print.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         return self.template()
 
     def _get(self, key, default=""):

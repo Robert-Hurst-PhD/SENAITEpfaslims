@@ -27,6 +27,7 @@ import os
 
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.controlchart")
 
@@ -69,6 +70,7 @@ class PFASControlChartView(BrowserView):
     template = ViewPageTemplateFile("templates/controlchart.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         req = self.request
         fmt = req.get("format", "").lower()
         accept = req.getHeader("Accept", "")

@@ -25,6 +25,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
+from senaite.pfas.browser.formutil import flatten_form
 
 try:
     from bika.lims import api as bika_api
@@ -233,6 +234,7 @@ class PFASMethodWizardView(BrowserView):
     # -- Dispatch --------------------------------------------------------
 
     def __call__(self):
+        flatten_form(self.request)
         rq = self.request
         action = rq.form.get("action", "")
 

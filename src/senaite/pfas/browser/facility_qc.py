@@ -10,6 +10,7 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import facility_qc as db
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.facility_qc")
 
@@ -28,6 +29,7 @@ class PFASFacilityDashboardView(BrowserView):
     _template = ViewPageTemplateFile("templates/facility_dashboard.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         return self._template()
 
     def summary(self):
@@ -74,6 +76,7 @@ class PFASFacilityUnitsView(BrowserView):
     _template = ViewPageTemplateFile("templates/facility_units.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         req = self.request
         action = req.form.get("action", "")
         if req.method == "POST":
@@ -156,6 +159,7 @@ class PFASTemperatureLogView(BrowserView):
     _template = ViewPageTemplateFile("templates/facility_temp_log.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         req = self.request
         if req.method == "POST" and req.form.get("action") == "add_study":
             self._create_study()
@@ -246,6 +250,7 @@ class PFASBalanceLogView(BrowserView):
     _template = ViewPageTemplateFile("templates/facility_balance.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             self._save()
             self.request.response.redirect(
@@ -318,6 +323,7 @@ class PFASWaterLogView(BrowserView):
     _template = ViewPageTemplateFile("templates/facility_water.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             f = self.request.form
             db.save_water_qc(
@@ -351,6 +357,7 @@ class PFASWasteLogView(BrowserView):
     _template = ViewPageTemplateFile("templates/facility_waste.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             f = self.request.form
             db.save_waste_log(
@@ -383,6 +390,7 @@ class PFASEyeWashLogView(BrowserView):
     _template = ViewPageTemplateFile("templates/facility_eyewash.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             f = self.request.form
             unit_id = f.get("unit_id", "")
@@ -433,6 +441,7 @@ class PFASSensorIngestView(BrowserView):
     """
 
     def __call__(self):
+        flatten_form(self.request)
         resp = self.request.response
         resp.setHeader("Content-Type", "application/json")
 

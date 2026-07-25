@@ -16,6 +16,7 @@ import os
 
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.calibrations")
 
@@ -44,6 +45,7 @@ class PFASCalibrationsView(BrowserView):
     template = ViewPageTemplateFile("templates/calibrations.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             return self._handle_post()
         return self.template()

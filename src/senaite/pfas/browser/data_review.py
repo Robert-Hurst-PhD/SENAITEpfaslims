@@ -33,6 +33,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
+from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.data_review")
 
@@ -73,6 +74,7 @@ class PFASDataReviewView(BrowserView):
     template = ViewPageTemplateFile("templates/data_review.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if self.request.method == "POST":
             try:
                 from plone.protect.interfaces import IDisableCSRFProtection

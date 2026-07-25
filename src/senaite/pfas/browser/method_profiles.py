@@ -21,6 +21,7 @@ import urllib
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
+from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.method_profile_store import (
     DEFAULT_PROFILES,
     get_profile,
@@ -57,6 +58,7 @@ class PFASMethodProfilesView(BrowserView):
     template = ViewPageTemplateFile("templates/method_profiles.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden: Manager, LabManager, or Owner role required"
@@ -111,6 +113,7 @@ class PFASMethodProfileEditView(BrowserView):
     template = ViewPageTemplateFile("templates/method_profile_edit.pt")
 
     def __call__(self):
+        flatten_form(self.request)
         if not _require_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden: Manager, LabManager, or Owner role required"
