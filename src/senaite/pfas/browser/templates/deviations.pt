@@ -867,7 +867,7 @@
 
       <div class="dev-form-group">
         <label>Description</label>
-        <textarea name="description" rows="4"
+        <textarea name="description" rows="4" required="required"
                   placeholder="Describe the non-conformance or event..."></textarea>
       </div>
 

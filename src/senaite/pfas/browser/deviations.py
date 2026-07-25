@@ -386,6 +386,7 @@ class PFASDeviationView(BrowserView):
             "permission_denied":"Permission denied.",
             "incomplete_cas":   "All corrective actions must be complete before closing.",
             "bad_request":      "Invalid request.",
+            "description_required": "A description is required to file a deviation/CAR.",
             "not_found":        "Record not found.",
         }
         return msgs.get(self.msg(), self.msg())
@@ -405,14 +406,26 @@ class PFASDeviationView(BrowserView):
         if not self.can_edit():
             return self._redirect("?msg=permission_denied&msg_type=error")
         form      = self.request.form
-        dev_type  = form.get("type", "deviation")
-        event_type = form.get("event_type", "other")
-        event_date = form.get("event_date", self._today())
-        description = form.get("description", "").strip()
-        likelihood  = int(form.get("likelihood", 3))
-        severity    = int(form.get("severity", 3))
+        def _one(name, default=""):
+            v = form.get(name, default)
+            if isinstance(v, (list, tuple)):
+                v = v[0] if v else default
+            return v
+
+        def _score(name):
+            try:
+                return max(1, min(5, int(_one(name, 3) or 3)))
+            except (TypeError, ValueError):
+                return 3
+
+        dev_type   = "car" if _one("type") == "car" else "deviation"
+        event_type = _one("event_type", "other")
+        event_date = _one("event_date") or self._today()
+        description = (_one("description") or "").strip()
         if not description:
-            return self._redirect("?msg=bad_request&msg_type=error")
+            return self._redirect("?msg=description_required&msg_type=error")
+        likelihood = _score("likelihood")
+        severity   = _score("severity")
 
         portal   = self._portal()
         registry = _get_registry(portal)
