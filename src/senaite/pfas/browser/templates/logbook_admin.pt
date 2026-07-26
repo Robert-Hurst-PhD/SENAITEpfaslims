@@ -61,11 +61,11 @@
     .lb-table { width:100%; border-collapse:collapse; font-size:13px; }
     .lb-table th { background:var(--s-light); color:var(--s-secondary);
                    font-size:11px; font-weight:700; text-transform:uppercase;
-                   letter-spacing:.04em; padding:8px 10px; text-align:left;
+                   letter-spacing:.04em; padding:8px 12px; text-align:left;
                    border-bottom:2px solid var(--s-border); }
-    .lb-table td { padding:9px 10px; border-bottom:1px solid var(--s-border);
+    .lb-table td { padding:9px 12px; border-bottom:1px solid var(--s-border);
                    vertical-align:middle; }
-    .lb-table tr:hover td { background:var(--s-hover); }
+    .lb-table tr:hover td { background:var(--s-primary-lt); }
     .badge-builtin { background:#e3f2fd; color:#1565c0; font-size:11px;
                      padding:2px 8px; border-radius:3px; font-weight:600; }
     .badge-custom  { background:#f3e5f5; color:#6a1b9a; font-size:11px;
@@ -192,6 +192,7 @@
         New logbooks added here can be scoped to a specific method.
       </p>
 
+      <div class="table-wrap">
       <table class="lb-table">
         <thead>
           <tr>
@@ -289,6 +290,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
 
       <!-- Add new logbook -->
       <div class="add-card">
