@@ -105,7 +105,23 @@
                    font-size:11px; text-transform:uppercase; letter-spacing:.04em;
                    border-bottom:2px solid var(--s-border); }
     .fd-table td { padding:5px 10px; border-bottom:1px solid var(--s-border); }
-    .fd-table tr:hover td { background:#f8f9fa; }
+    .fd-table tr:hover td { background:var(--s-primary-lt); }
+
+    /* pending-review worklist — canonical listing look (matches SOPs / CARs /
+       Batch Logbooks / Prep Logbooks) */
+    .dr-worklist { width:100%; border-collapse:collapse; font-size:13px; }
+    .dr-worklist th { background:var(--s-light); padding:8px 12px; text-align:left;
+                      font-size:11px; color:var(--s-secondary); text-transform:uppercase;
+                      font-weight:700; letter-spacing:.04em; }
+    .dr-worklist td { padding:9px 12px; border-top:1px solid var(--s-border);
+                      vertical-align:middle; }
+    .dr-worklist tr:hover td { background:var(--s-primary-lt); }
+    .dr-worklist .dr-num { font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .dr-worklist .dr-analyst { color:var(--s-dark); }
+    .dr-stage { display:inline-block; font-size:11px; font-weight:700;
+                padding:2px 9px; border-radius:11px; white-space:nowrap; }
+    .dr-stage-open { background:#fff3e0; color:#b26a00; }
+    .dr-stage-review { background:#e8f4f8; color:#155e75; }
 
     /* instrument report */
     .ir-file-list { margin-bottom:20px; }
@@ -153,14 +169,21 @@
   <tal:no_ws tal:condition="not:view/batch_id">
     <div class="page-body">
       <p style="color:var(--s-secondary); font-size:13px;">
-        Select a Worksheet to begin data review.
+        Select a Worksheet to open its data review. Each row shows the analyst
+        responsible for the analysis, whether the case is with the analyst or in
+        peer review, how long it has been open since extraction, and — once
+        submitted — how long it has been in review.
       </p>
-      <table class="fd-table" style="max-width:700px;">
+      <div class="table-wrap">
+      <table class="dr-worklist">
         <thead>
           <tr>
             <th>Worksheet</th>
             <th>Title</th>
-            <th>State</th>
+            <th>Analyst</th>
+            <th>Review status</th>
+            <th>Open since extraction</th>
+            <th>Time in review</th>
           </tr>
         </thead>
         <tbody>
@@ -169,16 +192,22 @@
               <td><a tal:attributes="href ws/url"
                      tal:content="ws/id">WS</a></td>
               <td tal:content="ws/title">Title</td>
-              <td><span class="ws-badge"
-                        tal:attributes="class string:ws-badge ws-${ws/state}"
-                        tal:content="ws/state">state</span></td>
+              <td class="dr-analyst" tal:content="ws/analyst">Analyst</td>
+              <td>
+                <span class="dr-stage"
+                      tal:attributes="class python:'dr-stage dr-stage-review' if ws['under_review'] else 'dr-stage dr-stage-open'"
+                      tal:content="ws/stage_label">status</span>
+              </td>
+              <td class="dr-num" tal:content="ws/open_age">—</td>
+              <td class="dr-num" tal:content="ws/review_age">—</td>
             </tr>
           </tal:row>
           <tr tal:condition="not:view/recent_worksheets">
-            <td colspan="3" style="color:#aaa;font-size:12px;">No open worksheets found.</td>
+            <td colspan="6" style="color:#aaa;font-size:12px;">No worksheets are currently open or awaiting review.</td>
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   </tal:no_ws>
 

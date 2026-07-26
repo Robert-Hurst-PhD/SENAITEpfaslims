@@ -1045,8 +1045,79 @@ class PFASDataReviewView(BrowserView):
             lines.append("ERROR: %s" % exc)
         return " | ".join(lines)
 
+    # ── Pending-review worklist helpers ───────────────────────────────────
+    # All age arithmetic is done in naive-UTC: extraction logs store
+    # datetime.utcnow().isoformat(), and workflow-history timestamps are Zope
+    # DateTime whose .timeTime() is an absolute epoch we read via utcfromtimestamp.
+
+    @staticmethod
+    def _parse_iso(value):
+        """Parse an ISO-8601 timestamp string (with or without microseconds)
+        into a naive datetime, or None."""
+        if not value:
+            return None
+        text = value.split("+")[0].split("Z")[0].strip()
+        for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.datetime.strptime(text, fmt)
+            except (ValueError, TypeError):
+                continue
+        return None
+
+    @staticmethod
+    def _ws_action_time(ws, action):
+        """Most-recent time a workflow *action* (e.g. 'submit') fired on the
+        worksheet, as a naive-UTC datetime, or None."""
+        try:
+            history = ws.workflow_history
+        except Exception:
+            return None
+        best = None
+        try:
+            for events in history.values():
+                for event in events:
+                    if event.get("action") != action:
+                        continue
+                    stamp = event.get("time")
+                    if stamp is None:
+                        continue
+                    try:
+                        moment = datetime.datetime.utcfromtimestamp(
+                            stamp.timeTime())
+                    except Exception:
+                        continue
+                    if best is None or moment > best:
+                        best = moment
+        except Exception:
+            return None
+        return best
+
+    @staticmethod
+    def _fmt_age(now, then):
+        """Human elapsed time between two datetimes, e.g. '12d 4h', '5h 20m',
+        '45m'. Returns an em-dash when *then* is unknown."""
+        if then is None:
+            return u"—"
+        total = int((now - then).total_seconds())
+        if total < 0:
+            total = 0
+        days = total // 86400
+        hours = (total % 86400) // 3600
+        mins = (total % 3600) // 60
+        if days >= 1:
+            return u"{0}d {1}h".format(days, hours)
+        if hours >= 1:
+            return u"{0}h {1}m".format(hours, mins)
+        return u"{0}m".format(mins)
+
     def recent_worksheets(self):
-        """Return recent Worksheets in open/to_be_verified state for batch selector."""
+        """Pending data-review worklist: worksheets in open/to_be_verified,
+        enriched per row with the responsible analyst, whether it is under
+        peer review, how long the case has been open since extraction, and
+        (once submitted) how long it has been in review."""
+        from senaite.pfas.browser.sample_status import (
+            _fullname, _load_extraction_log)
         try:
             cat = getToolByName(self.context, "senaite_catalog_worksheet")
             if cat is None:
@@ -1058,14 +1129,47 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:
             logger.error("recent_worksheets: %s", exc, exc_info=True)
             return []
+        now = datetime.datetime.utcnow()
         result = []
         for b in brains[:50]:
             try:
+                wid = b.getId
+                state = b.review_state
+                under_review = (state == "to_be_verified")
+
+                log = _load_extraction_log(wid) or {}
+                analyst = (log.get("analyst") or u"").strip()
+                started = self._parse_iso(log.get("started"))
+
+                # Load the object only when we still need something off it:
+                # a fallback analyst (no extraction log) or the submit time.
+                obj = None
+                if not analyst or under_review:
+                    try:
+                        obj = b.getObject()
+                    except Exception:
+                        obj = None
+                if not analyst and obj is not None:
+                    try:
+                        analyst = _fullname(obj, obj.getAnalyst() or u"")
+                    except Exception:
+                        analyst = u""
+                submitted = None
+                if under_review and obj is not None:
+                    submitted = self._ws_action_time(obj, "submit")
+
                 result.append({
-                    "id":    b.getId,
-                    "title": b.Title or b.getId,
-                    "url":   b.getURL() + "/@@pfas-data-review",
-                    "state": b.review_state,
+                    "id":           wid,
+                    "title":        b.Title or wid,
+                    "url":          b.getURL() + "/@@pfas-data-review",
+                    "state":        state,
+                    "analyst":      analyst or u"—",
+                    "under_review": under_review,
+                    "stage_label":  u"In peer review" if under_review
+                                    else u"With analyst",
+                    "open_age":     self._fmt_age(now, started),
+                    "review_age":   self._fmt_age(now, submitted)
+                                    if under_review else u"—",
                 })
             except Exception as exc:
                 logger.error("recent_worksheets brain: %s", exc)
