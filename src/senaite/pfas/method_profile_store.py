@@ -282,20 +282,9 @@ DEFAULT_PROFILES = {
                 "tiers": [{"name": "default", "analyte_group": "all",
                            "matrix_scope": "all", "max_conc_x_rl": 1.0}],
             },
-            "LCS": {
-                "enabled": True,
-                "tiers": [
-                    {"name": "tier1_key_tight", "analyte_group": "key",
-                     "matrix_scope": "tight",
-                     "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0},
-                    {"name": "tier2_linked", "analyte_group": "linked",
-                     "matrix_scope": "all",
-                     "recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0},
-                    {"name": "tier3_no_std", "analyte_group": "no_std",
-                     "matrix_scope": "all",
-                     "recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0},
-                ],
-            },
+            # NB: PFAS-in-food/feed (FDA) does NOT use LFB/LCS — it relies on
+            # matrix spikes (LFSM/LFSMD). The blank-spike QC type lives on the
+            # EPA water-method profiles, not here.
             "LFSM": {
                 "enabled": True,
                 "tiers": [
@@ -330,7 +319,7 @@ DEFAULT_PROFILES = {
                            "matrix_scope": "all", "rpd_max": 20.0}],
             },
         },
-        "associated_qc_types": ["MB", "LRB", "LCS", "LFSM", "LFSMD", "Dup"],
+        "associated_qc_types": ["MB", "LRB", "LFSM", "LFSMD", "Dup"],
         "matrix_factors": [
             {"matrix": "muscle",      "factor": 0.5},
             {"matrix": "meat",        "factor": 0.5},

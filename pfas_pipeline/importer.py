@@ -295,7 +295,7 @@ def classify_injection(name: str) -> str:
     if "-CAL-" in upper or " CAL " in upper:
         return "CAL"
     if "LCS" in upper:
-        return "LCS"
+        return "LFB"   # LCS folds into the canonical LFB code
     return "Sample"
 
 

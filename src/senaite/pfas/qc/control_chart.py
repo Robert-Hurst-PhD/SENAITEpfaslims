@@ -540,7 +540,8 @@ def extract_qc_points_from_batch(
             if "CCV" in inj or "ICV" in inj:
                 _add(analyte, "CCV", level, dev, "pct_deviation", flag, passed)
             elif "LCS" in inj:
-                _add(analyte, "LCS", level, dev, "pct_deviation", flag, passed)
+                # LCS folds into the canonical LFB code (see qc/qc_types.py).
+                _add(analyte, "LFB", level, dev, "pct_deviation", flag, passed)
 
     # ── Method Blank from method_blank_table ──────────────────────────────
     mb = batch_result.method_blank_table

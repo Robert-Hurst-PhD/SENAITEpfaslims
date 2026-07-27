@@ -30,7 +30,7 @@ import logging
 
 logger = logging.getLogger("senaite.pfas.spec_reverse")
 
-QC_TYPES = ("LCS", "LFSM", "LFB", "LFSMD")
+QC_TYPES = ("LFB", "LFSM", "LFSMD")
 _ROUND = 4
 
 

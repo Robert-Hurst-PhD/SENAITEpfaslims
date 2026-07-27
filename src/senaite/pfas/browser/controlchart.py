@@ -38,7 +38,8 @@ MAX_LIMIT = 300
 QC_TYPE_TARGETS = {
     "CCV":   0.0,
     "ICV":   0.0,
-    "LCS":   100.0,
+    # LFB (lab fortified blank) is the canonical name; LCS folds into it.
+    "LFB":   100.0,
     "MB":    0.0,
     "MxB":   0.0,
     "LRB":   0.0,
@@ -52,7 +53,7 @@ QC_TYPE_TARGETS = {
 QC_TYPE_UNITS = {
     "CCV":   "% Deviation",
     "ICV":   "% Deviation",
-    "LCS":   "% Recovery",
+    "LFB":   "% Recovery",
     "MB":    "Concentration (ng/mL)",
     "MxB":   "Concentration (ng/mL)",
     "LRB":   "Concentration (ng/mL)",

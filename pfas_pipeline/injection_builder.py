@@ -71,7 +71,7 @@ REVIEW_CHECKS: dict[str, list[str]] = {
     "ICV":    ["ccv_pct_dev", "is_response", "rt_deviation"],
     "CCV":    ["ccv_pct_dev", "is_response", "rt_deviation", "ion_ratio"],
     "MB":     ["blank_contamination", "is_response", "lod_check"],
-    "LCS":    ["recovery", "is_response"],
+    "LFB":    ["recovery", "is_response"],
     "LFSM":   ["lfsm_recovery", "is_response", "ion_ratio", "rt_deviation"],
     "LFSMD":  ["lfsmd_rpd", "lfsm_recovery", "is_response"],
     "Dup":    ["duplicate_rpd", "is_response"],

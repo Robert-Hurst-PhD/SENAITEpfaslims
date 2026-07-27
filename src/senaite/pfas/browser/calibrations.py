@@ -371,7 +371,7 @@ class PFASCalibrationsView(BrowserView):
         """Return QC results for a run_date, as a dict keyed by analyte."""
         try:
             rows = self._store().get_qc_for_run(
-                run_date, qc_types=["ICV", "CCV", "CCB", "MB", "LCS"]
+                run_date, qc_types=["ICV", "CCV", "CCB", "MB", "LFB"]
             )
         except Exception as e:
             logger.error("_qc_for_run: %s", e)

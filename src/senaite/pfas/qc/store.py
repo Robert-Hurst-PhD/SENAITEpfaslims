@@ -31,6 +31,8 @@ import logging
 import os
 import sqlite3
 
+from senaite.pfas.qc.qc_types import normalize_qc_type
+
 logger = logging.getLogger("senaite.pfas.qc.store")
 
 DEFAULT_DB_PATH = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
@@ -386,7 +388,10 @@ class QCResultStore(object):
             for r in rows:
                 bid     = r.get("batch_id", "")
                 analyte = r.get("analyte", "")
-                qtype   = r.get("qc_type", "")
+                # Single normalization point: every QC type entering the store
+                # is folded to its canonical code (uppercase, LCS -> LFB, ...)
+                # so the stored text is always uniform. See qc/qc_types.py.
+                qtype   = normalize_qc_type(r.get("qc_type", ""))
                 qlevel  = r.get("qc_level", "")
 
                 # Check for existing active result
