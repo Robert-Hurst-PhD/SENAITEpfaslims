@@ -103,6 +103,20 @@ class PFASControlChartView(BrowserView):
     def selected_instrument(self):
         return self.request.get("instrument_id", "") or None
 
+    @staticmethod
+    def _clean_date(value):
+        """Accept only a well-formed ISO date (YYYY-MM-DD); ignore anything
+        else so a stray value can't break the query."""
+        import re as _re
+        value = (value or "").strip()
+        return value if _re.match(r"^\d{4}-\d{2}-\d{2}$", value) else ""
+
+    def selected_date_from(self):
+        return self._clean_date(self.request.get("date_from", ""))
+
+    def selected_date_to(self):
+        return self._clean_date(self.request.get("date_to", ""))
+
     def selected_limit(self):
         try:
             v = int(self.request.get("limit", DEFAULT_LIMIT))
@@ -192,6 +206,18 @@ class PFASControlChartView(BrowserView):
             logger.error("summary: %s", e)
             return []
 
+    def date_bounds(self):
+        """(min, max) run-date in the DB as ISO strings, for the date picker's
+        min/max. Empty strings when there is no data."""
+        if not self.db_available:
+            return {"min": "", "max": ""}
+        try:
+            lo, hi = self._store().date_bounds()
+            return {"min": lo or "", "max": hi or ""}
+        except Exception as e:
+            logger.error("date_bounds: %s", e)
+            return {"min": "", "max": ""}
+
     def _cached_chart_dict(self):
         """Return (and cache) the chart dict for this request."""
         if not hasattr(self, "_chart_dict_cache"):
@@ -235,6 +261,8 @@ class PFASControlChartView(BrowserView):
         instrument  = self.selected_instrument()
         limit       = self.selected_limit()
         history     = self.show_history()
+        date_from   = self.selected_date_from() or None
+        date_to     = self.selected_date_to() or None
         units       = QC_TYPE_UNITS.get(qc_type, "")
         target      = QC_TYPE_TARGETS.get(qc_type)
 
@@ -251,6 +279,8 @@ class PFASControlChartView(BrowserView):
                 instrument_id=instrument,
                 limit=limit,
                 include_superseded=history,
+                date_from=date_from,
+                date_to=date_to,
             )
         except Exception as e:
             logger.error("get_chart_data: %s", e)

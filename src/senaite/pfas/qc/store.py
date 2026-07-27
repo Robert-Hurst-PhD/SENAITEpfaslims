@@ -537,13 +537,18 @@ class QCResultStore(object):
 
     def get_chart_data(self, analyte, qc_type, qc_level=None, method=None,
                        analyst=None, instrument_id=None, limit=20,
-                       include_superseded=False, include_test=False):
+                       include_superseded=False, include_test=False,
+                       date_from=None, date_to=None):
         """
         Return ordered list of dicts for Levey-Jennings charting.
 
         Only returns result_status='active' rows by default.
         Set include_superseded=True to show the full historical record
         (useful for analyst performance review).
+
+        date_from / date_to (inclusive, 'YYYY-MM-DD') restrict to a run-date
+        window; run_date is stored as ISO text so string comparison sorts
+        chronologically.
 
         Default limit=20 matches one month of weekly batches; set limit=200+
         for annual review.
@@ -570,12 +575,6 @@ class QCResultStore(object):
             sql += (" AND r.flag NOT LIKE 'TEST_DATA%'"
                     " AND r.batch_id NOT LIKE 'SYNTHETIC_%'")
 
-        if not include_test:
-            # Control charts must reflect REAL runs only — exclude seeded /
-            # synthetic rows (TEST_DATA* flags, SYNTHETIC_ batches).
-            sql += (" AND r.flag NOT LIKE 'TEST_DATA%'"
-                    " AND r.batch_id NOT LIKE 'SYNTHETIC_%'")
-
         if qc_level is not None:
             sql += " AND r.qc_level=?"
             params.append(qc_level)
@@ -588,6 +587,12 @@ class QCResultStore(object):
         if instrument_id is not None:
             sql += " AND r.instrument_id=?"
             params.append(instrument_id)
+        if date_from:
+            sql += " AND r.run_date >= ?"
+            params.append(date_from)
+        if date_to:
+            sql += " AND r.run_date <= ?"
+            params.append(date_to)
 
         # Wrap in subquery to get the N most-recent then return in chart order
         inner = sql + " ORDER BY r.run_date DESC, r.id DESC LIMIT ?"
@@ -607,6 +612,20 @@ class QCResultStore(object):
                 "ORDER BY method"
             ).fetchall()
         return [r[0] for r in rows]
+
+    def date_bounds(self):
+        """Return (min_run_date, max_run_date) across active QC results as
+        ISO 'YYYY-MM-DD' strings, or (None, None) when empty. Used to bound
+        the control-chart date-range picker to what the database actually
+        holds."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT MIN(run_date), MAX(run_date) FROM qc_results "
+                "WHERE result_status='active' AND run_date != ''"
+            ).fetchone()
+        if not row or row[0] is None:
+            return (None, None)
+        return (str(row[0])[:10], str(row[1])[:10])
 
     def get_analytes(self, qc_type=None, method=None):
         sql = ("SELECT DISTINCT analyte FROM qc_results "

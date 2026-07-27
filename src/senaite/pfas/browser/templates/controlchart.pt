@@ -8,49 +8,47 @@
   <tal:extras metal:fill-slot="head-extra">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
-    /* ── Control chart layout ──────────────────────────────────────────── */
-    .layout { display: flex; min-height: calc(100vh - 48px); }
-    .sidebar { width: 240px; flex-shrink: 0; background: var(--s-bg);
-               border-right: 1px solid var(--s-border); padding: 14px;
-               overflow-y: auto; }
-    .main { flex: 1; padding: 18px; min-width: 0; }
+    /* ── Control chart layout: filters as a top bar ────────────────────── */
+    .main { padding: 18px; min-width: 0; }
 
-    .filter-section { margin-bottom: 14px; }
-    .filter-section + .filter-section { border-top: 1px solid var(--s-border);
-                                         padding-top: 14px; }
+    /* Top filter bar (was the left sidebar) */
+    .filter-bar { background: var(--s-bg); border: 1px solid var(--s-border);
+                  border-radius: 6px; padding: 12px 14px; margin-bottom: 16px;
+                  display: flex; flex-wrap: wrap; gap: 10px 16px;
+                  align-items: flex-end; }
+    .filter-group { display: flex; flex-direction: column; min-width: 130px; }
+    .filter-group.grow { flex: 1 1 150px; }
     .filter-label { display: block; font-size: 11px; color: var(--s-secondary);
                     margin-bottom: 4px; font-weight: 700;
                     text-transform: uppercase; letter-spacing: .04em; }
-    .filter-form select, .filter-form input[type=number],
-    .filter-form input[type=text] {
+    .filter-bar select, .filter-bar input[type=number],
+    .filter-bar input[type=date], .filter-bar input[type=text] {
       width: 100%; padding: 6px 8px; border: 1px solid var(--s-input-border);
       border-radius: 4px; font-size: 13px; background: #fafafa;
-      color: var(--s-input-text); }
-    .filter-form select { margin-bottom: 8px; }
-    .filter-form select:focus, .filter-form input:focus {
+      color: var(--s-input-text); box-sizing: border-box; }
+    .filter-bar select:focus, .filter-bar input:focus {
       outline: none; border-color: var(--s-primary);
       box-shadow: 0 0 0 3px var(--s-focus-ring); }
-    .filter-form button.apply-btn {
-      width: 100%; padding: 8px; background: var(--s-primary); color: #fff;
+    .date-range { display: flex; gap: 6px; align-items: center; }
+    .date-range input[type=date] { width: 148px; }
+    .date-range span { font-size: 11px; color: var(--s-secondary); }
+    .filter-bar .apply-btn {
+      padding: 7px 16px; background: var(--s-primary); color: #fff;
       border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
-      font-weight: 600; margin-top: 4px; }
-    .filter-form button.apply-btn:hover { background: var(--s-primary-dk); }
+      font-weight: 600; white-space: nowrap; }
+    .filter-bar .apply-btn:hover { background: var(--s-primary-dk); }
+    .filter-bar .reset-link { font-size: 11px; color: var(--s-secondary);
+                              align-self: center; white-space: nowrap; }
 
-    .limit-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
-    .limit-row label { font-size: 11px; color: var(--s-secondary); white-space: nowrap; }
-    .limit-row input { width: 60px; flex-shrink: 0; }
-    .limit-row .hint { font-size: 10px; color: var(--s-secondary); }
+    .limit-input { width: 80px; }
 
-    .toggle-row { display: flex; align-items: center; gap: 8px;
-                  font-size: 12px; margin-bottom: 8px; }
+    .toggle-row { display: flex; align-items: center; gap: 6px;
+                  font-size: 12px; white-space: nowrap; padding-bottom: 6px; }
     .toggle-row input[type=checkbox] { width: 14px; height: 14px; }
 
-    .summary-heading { font-size: 11px; color: var(--s-secondary);
-                       text-transform: uppercase;
-                       letter-spacing: .04em; font-weight: 700;
-                       margin-bottom: 6px; margin-top: 14px; }
-    .summary-row { display: flex; justify-content: space-between;
-                   font-size: 12px; padding: 3px 0; }
+    .cc-note { margin-top: 16px; padding: 12px 14px; background: var(--s-light);
+               border: 1px solid var(--s-border); border-radius: 6px;
+               font-size: 11px; color: var(--s-secondary); line-height: 1.6; }
     .fail-count { color: var(--s-danger); font-weight: 600; }
 
     .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -98,26 +96,11 @@
                       border-radius: 4px; padding: 8px 14px; margin-bottom: 14px;
                       font-size: 12px; color: var(--s-primary); }
 
-    /* ── Mobile: collapsible sidebar ───────────────────────────────── */
-    .sidebar-toggle {
-      display: none; width: 100%; padding: 10px 16px;
-      background: var(--s-primary); color: #fff; border: none;
-      font-size: 13px; font-weight: 600; cursor: pointer;
-      text-align: left;
-    }
-    .sidebar-toggle::after { content: " \25BC"; font-size: 10px; float: right; }
-    .sidebar-toggle.open::after { content: " \25B2"; }
-
     @media (max-width: 768px) {
-      .layout { flex-direction: column; min-height: auto; }
-      .sidebar {
-        width: 100%; max-height: 0; overflow: hidden;
-        border-right: none; border-bottom: 1px solid var(--s-border);
-        padding: 0; transition: max-height .25s ease, padding .25s ease;
-      }
-      .sidebar.mobile-open { max-height: 700px; padding: 14px; }
-      .sidebar-toggle { display: block; }
       .main { padding: 10px 12px; }
+      .filter-group, .filter-group.grow { flex: 1 1 100%; min-width: 0; }
+      .filter-bar .apply-btn { width: 100%; }
+      .date-range input[type=date] { width: 100%; }
       .chart-container { height: 220px; }
       .stats-bar { gap: 8px; }
       .stat-box { min-width: 70px; padding: 6px 10px; }
@@ -134,150 +117,134 @@
 
   <div metal:fill-slot="content">
 
-  <!-- Mobile-only filter toggle -->
-  <button class="sidebar-toggle" id="sidebarToggle"
-          onclick="(function(btn){
-            var s=document.getElementById('chartSidebar');
-            s.classList.toggle('mobile-open');
-            btn.classList.toggle('open');
-            btn.childNodes[0].nodeValue = s.classList.contains('mobile-open') ? 'Hide Filters ' : 'Show Filters ';
-          })(this)">Show Filters </button>
+  <!-- ── Top filter bar (was the left sidebar) ──────────────────────────── -->
+  <form class="filter-bar" method="GET" action="" id="filterForm"
+        tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
+
+    <div class="filter-group grow">
+      <label class="filter-label" for="method">Method</label>
+      <select id="method" name="method" onchange="this.form.submit()">
+        <option value="">&#8212; all methods &#8212;</option>
+        <tal:methods tal:repeat="m view/methods">
+          <option tal:attributes="value m;
+                                  selected python:m == view.selected_method()"
+                  tal:content="m">FDA_32PFAS</option>
+        </tal:methods>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="qc_type">QC Type</label>
+      <select id="qc_type" name="qc_type" onchange="this.form.submit()">
+        <option value="">&#8212; all QC types &#8212;</option>
+        <tal:types tal:repeat="qt view/qc_types">
+          <option tal:attributes="value qt;
+                                  selected python:qt == view.selected_qc_type()"
+                  tal:content="qt">CCV</option>
+        </tal:types>
+      </select>
+    </div>
+
+    <div class="filter-group grow">
+      <label class="filter-label" for="analyte">Test (Analyte)</label>
+      <select id="analyte" name="analyte" onchange="this.form.submit()">
+        <option value="">&#8212; select test &#8212;</option>
+        <tal:analytes tal:repeat="a python:view.analytes(view.selected_qc_type())">
+          <option tal:attributes="value a;
+                                  selected python:a == view.selected_analyte()"
+                  tal:content="a">PFOA</option>
+        </tal:analytes>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="qc_level">QC Level</label>
+      <select id="qc_level" name="qc_level" onchange="this.form.submit()">
+        <option value="">&#8212; all levels &#8212;</option>
+        <tal:levels tal:repeat="lv python:view.qc_levels(view.selected_qc_type(), view.selected_analyte())">
+          <option tal:attributes="value lv;
+                                  selected python:lv == view.selected_level()"
+                  tal:content="lv">L5</option>
+        </tal:levels>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="chart_type_override">Chart Type</label>
+      <select id="chart_type_override" name="chart_type_override" onchange="this.form.submit()">
+        <option value="">&#8212; auto &#8212;</option>
+        <option value="levey_jennings"
+                tal:attributes="selected python:view.selected_chart_type_override()=='levey_jennings'">
+          Levey-Jennings
+        </option>
+        <option value="threshold"
+                tal:attributes="selected python:view.selected_chart_type_override()=='threshold'">
+          Threshold
+        </option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="analyst">Analyst</label>
+      <select id="analyst" name="analyst" onchange="this.form.submit()">
+        <option value="">&#8212; all analysts &#8212;</option>
+        <tal:analysts tal:repeat="a view/analysts">
+          <option tal:attributes="value a;
+                                  selected python:a == (view.selected_analyst() or '')"
+                  tal:content="a">KCP</option>
+        </tal:analysts>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="instrument_id">Instrument</label>
+      <select id="instrument_id" name="instrument_id" onchange="this.form.submit()">
+        <option value="">&#8212; all instruments &#8212;</option>
+        <tal:insts tal:repeat="inst view/instruments">
+          <option tal:attributes="value inst;
+                                  selected python:inst == (view.selected_instrument() or '')"
+                  tal:content="inst">QTOF-1</option>
+        </tal:insts>
+      </select>
+    </div>
+
+    <!-- Date range — bounded to the dates the database actually holds -->
+    <div class="filter-group" tal:define="bounds view/date_bounds">
+      <label class="filter-label">Date range</label>
+      <div class="date-range">
+        <input type="date" name="date_from" onchange="this.form.submit()"
+               tal:attributes="value view/selected_date_from;
+                               min bounds/min; max bounds/max;
+                               title string:Earliest in database: ${bounds/min}" />
+        <span>&#8594;</span>
+        <input type="date" name="date_to" onchange="this.form.submit()"
+               tal:attributes="value view/selected_date_to;
+                               min bounds/min; max bounds/max;
+                               title string:Latest in database: ${bounds/max}" />
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="limit">Show last (runs)</label>
+      <input class="limit-input" type="number" id="limit" name="limit"
+             min="5" max="300"
+             tal:attributes="value view/selected_limit"
+             title="Caps the most-recent points within the date range. Default 20; set 200+ for annual review." />
+    </div>
+
+    <div class="toggle-row">
+      <input type="checkbox" id="show_history" name="show_history" value="1"
+             tal:attributes="checked python:view.show_history() and 'checked' or None"
+             onchange="this.form.submit()" />
+      <label for="show_history">Incl. superseded</label>
+    </div>
+
+    <button class="apply-btn" type="submit">Apply</button>
+    <a class="reset-link"
+       tal:attributes="href string:${context/absolute_url}/@@pfas-control-chart">Reset</a>
+  </form>
 
   <div class="layout">
-
-    <!-- ── Sidebar ────────────────────────────────────────────────────── -->
-    <nav class="sidebar" id="chartSidebar">
-      <form class="filter-form" method="GET" action="" id="filterForm"
-            tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
-
-        <div class="filter-section">
-          <label class="filter-label" for="method">Method</label>
-          <select id="method" name="method" onchange="this.form.submit()">
-            <option value="">&#8212; all methods &#8212;</option>
-            <tal:methods tal:repeat="m view/methods">
-              <option tal:attributes="value m;
-                                      selected python:m == view.selected_method()"
-                      tal:content="m">FDA_32PFAS</option>
-            </tal:methods>
-          </select>
-        </div>
-
-        <div class="filter-section">
-          <label class="filter-label" for="qc_type">QC Type</label>
-          <select id="qc_type" name="qc_type" onchange="this.form.submit()">
-            <option value="">&#8212; all QC types &#8212;</option>
-            <tal:types tal:repeat="qt view/qc_types">
-              <option tal:attributes="value qt;
-                                      selected python:qt == view.selected_qc_type()"
-                      tal:content="qt">CCV</option>
-            </tal:types>
-          </select>
-
-          <label class="filter-label" for="chart_type_override">Chart Type</label>
-          <select id="chart_type_override" name="chart_type_override" onchange="this.form.submit()">
-            <option value="">&#8212; auto (from QC type) &#8212;</option>
-            <option value="levey_jennings"
-                    tal:attributes="selected python:view.selected_chart_type_override()=='levey_jennings'">
-              Levey-Jennings
-            </option>
-            <option value="threshold"
-                    tal:attributes="selected python:view.selected_chart_type_override()=='threshold'">
-              Threshold
-            </option>
-          </select>
-
-          <label class="filter-label" for="analyte">Test (Analyte)</label>
-          <select id="analyte" name="analyte" onchange="this.form.submit()">
-            <option value="">&#8212; select test &#8212;</option>
-            <tal:analytes tal:repeat="a python:view.analytes(view.selected_qc_type())">
-              <option tal:attributes="value a;
-                                      selected python:a == view.selected_analyte()"
-                      tal:content="a">PFOA</option>
-            </tal:analytes>
-          </select>
-
-          <label class="filter-label" for="qc_level">QC Level</label>
-          <select id="qc_level" name="qc_level" onchange="this.form.submit()">
-            <option value="">&#8212; all levels &#8212;</option>
-            <tal:levels tal:repeat="lv python:view.qc_levels(view.selected_qc_type(), view.selected_analyte())">
-              <option tal:attributes="value lv;
-                                      selected python:lv == view.selected_level()"
-                      tal:content="lv">L5</option>
-            </tal:levels>
-          </select>
-        </div>
-
-        <div class="filter-section">
-          <label class="filter-label" for="analyst">Analyst</label>
-          <select id="analyst" name="analyst" onchange="this.form.submit()">
-            <option value="">&#8212; all analysts &#8212;</option>
-            <tal:analysts tal:repeat="a view/analysts">
-              <option tal:attributes="value a;
-                                      selected python:a == (view.selected_analyst() or '')"
-                      tal:content="a">KCP</option>
-            </tal:analysts>
-          </select>
-
-          <label class="filter-label" for="instrument_id">Instrument</label>
-          <select id="instrument_id" name="instrument_id" onchange="this.form.submit()">
-            <option value="">&#8212; all instruments &#8212;</option>
-            <tal:insts tal:repeat="inst view/instruments">
-              <option tal:attributes="value inst;
-                                      selected python:inst == (view.selected_instrument() or '')"
-                      tal:content="inst">QTOF-1</option>
-            </tal:insts>
-          </select>
-        </div>
-
-        <div class="filter-section">
-          <label class="filter-label">Data Range</label>
-          <div class="limit-row">
-            <label for="limit">Show last</label>
-            <input type="number" id="limit" name="limit" min="5" max="300"
-                   tal:attributes="value view/selected_limit" />
-            <span class="hint">runs</span>
-          </div>
-          <p style="font-size:10px;color:var(--s-secondary);margin-bottom:8px">
-            Default 20 (monthly). Set 200+ for annual analyst review.
-          </p>
-
-          <div class="toggle-row">
-            <input type="checkbox" id="show_history" name="show_history" value="1"
-                   tal:attributes="checked python:view.show_history() and 'checked' or None"
-                   onchange="this.form.submit()" />
-            <label for="show_history">Include superseded results</label>
-          </div>
-        </div>
-
-        <button class="apply-btn" type="submit">Apply Filters</button>
-      </form>
-
-      <div class="summary-heading">Database summary</div>
-      <tal:summary tal:repeat="row view/summary">
-        <div class="summary-row">
-          <span tal:content="row/qc_type">CCV</span>
-          <span>
-            <span tal:content="row/n">0</span>
-            <tal:fail tal:condition="python:int(row.get('failures',0))>0">
-              <a class="fail-count"
-                 tal:attributes="href string:?qc_type=${row/qc_type}&amp;show_failures=1;
-                                 title string:Click to filter to ${row/failures} failing ${row/qc_type} results"
-                 tal:content="string: (${row/failures})"></a>
-            </tal:fail>
-          </span>
-        </div>
-      </tal:summary>
-      <tal:nosum tal:condition="not:view/summary">
-        <div style="font-size:12px;color:var(--s-secondary);font-style:italic;padding:4px 0">
-          No data yet
-        </div>
-      </tal:nosum>
-
-      <div style="margin-top:18px;font-size:10px;color:var(--s-secondary);line-height:1.6">
-        Control limits from first 20 in-control results.<br/>
-        Rules: 1-2S warn &bull; 1-3S / 2-2S / R-4S / 4-1S / 10X reject.
-      </div>
-    </nav>
 
     <!-- ── Main ───────────────────────────────────────────────────────── -->
     <main class="main">
@@ -406,6 +373,15 @@
         </div>
 
       </tal:content>
+
+      <div class="cc-note" tal:condition="view/db_available">
+        Control limits are computed from the first 20 in-control results.
+        Westgard rules: <strong>1-2S</strong> warn &bull;
+        <strong>1-3S / 2-2S / R-4S / 4-1S / 10X</strong> reject.
+        Charts read live QC results from the laboratory database
+        (<code tal:content="view/db_path">/data/qc/pfas_qc_results.db</code>);
+        synthetic/test rows are excluded.
+      </div>
     </main>
   </div>
 
