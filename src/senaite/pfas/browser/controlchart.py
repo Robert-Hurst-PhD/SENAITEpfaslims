@@ -44,6 +44,9 @@ QC_TYPE_TARGETS = {
     "LRB":   0.0,
     "LFSM":  100.0,
     "LFSMD": 100.0,
+    # Surrogate (labeled-analog / extracted-IS) recovery measured in each
+    # field sample — an ongoing per-sample QC metric, target 100 % recovery.
+    "SURR":  100.0,
 }
 
 QC_TYPE_UNITS = {
@@ -55,6 +58,7 @@ QC_TYPE_UNITS = {
     "LRB":   "Concentration (ng/mL)",
     "LFSM":  "% Recovery",
     "LFSMD": "% Recovery",
+    "SURR":  "% Recovery",
 }
 
 
