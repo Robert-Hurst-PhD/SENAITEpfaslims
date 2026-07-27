@@ -24,9 +24,17 @@ import sqlite3
 DB_PATH = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
 # Canonical method-id spelling -> list of alias spellings to fold in.
+# Canonical ids match method_profile_store.py method_id / rules.py labels.
 METHOD_MERGES = {
     "FDA_32PFAS": ["fda-32-pfas"],
+    "EPA_537_1":  ["EPA_537.1"],
 }
+
+# (method, qc_type) rows to DELETE — a QC type a method does not run.
+# FDA (PFAS in food/feed) does not use LFB/LCS; it uses matrix spikes.
+DELETE_METHOD_QC = [
+    ("FDA_32PFAS", "LFB"),
+]
 
 # qc_type alias -> canonical (compared case-insensitively).
 QC_TYPE_ALIASES = {
@@ -76,6 +84,18 @@ def run():
                 (canonical, alias))
             if cur.rowcount:
                 changed["%s.qc_type %s->%s" % (tbl, alias, canonical)] = cur.rowcount
+
+    # 3) Delete rows for (method, qc_type) combinations a method does not run.
+    for method, qc_type in DELETE_METHOD_QC:
+        for tbl in _tables_with_column(conn, "qc_type"):
+            if "method" not in [r[1] for r in
+                                conn.execute("PRAGMA table_info(%s)" % tbl)]:
+                continue
+            cur = conn.execute(
+                "DELETE FROM %s WHERE method=? AND qc_type=?" % tbl,
+                (method, qc_type))
+            if cur.rowcount:
+                changed["DELETE %s %s/%s" % (tbl, method, qc_type)] = cur.rowcount
 
     conn.commit()
 
