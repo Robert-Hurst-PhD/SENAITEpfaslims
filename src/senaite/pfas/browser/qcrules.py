@@ -134,8 +134,16 @@ class PFASQCRulesView(BrowserView):
         return fields
 
     def qc_label(self, qtype):
+        # Prefer the UI-editable core Reference Definition name; fall back to
+        # the qc_rules store label, then the raw code.
         r = self.rules()
-        return r.get("qc_types", {}).get(qtype, {}).get("label", qtype)
+        store_label = r.get("qc_types", {}).get(qtype, {}).get("label", qtype)
+        try:
+            from senaite.pfas.qc_labels import qc_label as _qc_label
+            from bika.lims import api
+            return _qc_label(api.get_portal(), qtype, default=store_label)
+        except Exception:
+            return store_label
 
     def chart_type(self, qtype):
         r = self.rules()

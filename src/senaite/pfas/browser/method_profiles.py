@@ -286,13 +286,13 @@ class PFASMethodProfileEditView(BrowserView):
     def qc_type_toggles(self):
         """Per-method QC-type enable toggles — one row per qc_acceptance key.
         Enabling/disabling here gates the QC engine AND spec_sync (which now
-        derives its QC types from these keys, not a hardcoded tuple)."""
-        labels = {
-            "LCS": "Laboratory Control Sample", "LFB": "Laboratory Fortified Blank",
-            "LFSM": "Lab Fortified Sample Matrix", "LFSMD": "LFSM Duplicate",
-            "MB": "Method Blank", "LRB": "Laboratory Reagent Blank",
-            "Dup": "Sample Duplicate", "MxB": "Matrix Blank",
-        }
+        derives its QC types from these keys, not a hardcoded tuple).
+
+        Display names come from the tagged core Reference Definitions (the
+        single UI-editable source), not a hardcoded map."""
+        from senaite.pfas.qc_labels import get_qc_label_map, qc_label
+        from bika.lims import api
+        label_map = get_qc_label_map(api.get_portal())
         qca = self.profile().get("qc_acceptance", {}) or {}
         out = []
         for key in sorted(qca.keys()):
@@ -302,7 +302,7 @@ class PFASMethodProfileEditView(BrowserView):
                 for t in cfg.get("tiers", []))
             out.append({
                 "key": key,
-                "label": labels.get(key, key),
+                "label": qc_label(None, key, label_map=label_map),
                 "enabled": bool(cfg.get("enabled")),
                 "has_recovery": has_recovery,
             })

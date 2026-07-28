@@ -462,7 +462,7 @@
     }
 
     var main = {
-      label: CHART_DATA.analyte + ' (' + CHART_DATA.qc_type + ')',
+      label: CHART_DATA.analyte + ' (' + (CHART_DATA.qc_type_label || CHART_DATA.qc_type) + ')',
       data: CHART_DATA.values,
       borderColor: '#90a4ae', borderWidth: 1,
       pointBackgroundColor: ptColour,

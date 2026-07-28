@@ -351,6 +351,10 @@ def _sync_analysis_specs(portal, method_id, profile, triggered_by=None):
     tight = set(get_tight_matrices(profile))
 
     from senaite.pfas.matrix_ref import resolve as _resolve_matrix
+    # Display names come from the tagged core Reference Definitions (single
+    # UI-editable source); _QC_LABELS is only an offline fallback.
+    from senaite.pfas.qc_labels import get_qc_label_map, qc_label as _qc_label
+    _label_map = get_qc_label_map(portal)
 
     # QC types derive from the profile's qc_acceptance keys — a newly
     # associated QC type syncs automatically; a disabled one is filtered by
@@ -359,7 +363,8 @@ def _sync_analysis_specs(portal, method_id, profile, triggered_by=None):
         tier_lims = _tier_limits(qc_acceptance, qc_type)
         if tier_lims is None:
             continue
-        qc_label = _QC_LABELS.get(qc_type, qc_type)
+        qc_label = _qc_label(None, qc_type, default=_QC_LABELS.get(qc_type, qc_type),
+                             label_map=_label_map)
 
         for matrix_title in matrices:
             try:
