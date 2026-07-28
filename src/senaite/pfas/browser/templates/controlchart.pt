@@ -140,7 +140,7 @@
         <tal:types tal:repeat="qt view/qc_types">
           <option tal:attributes="value qt;
                                   selected python:qt == view.selected_qc_type()"
-                  tal:content="qt">CCV</option>
+                  tal:content="python:view.qc_type_label(qt)">CCV</option>
         </tal:types>
       </select>
     </div>
@@ -335,7 +335,7 @@
         <div class="chart-card">
           <tal:hasdata tal:condition="view/has_data">
             <div class="chart-title"
-                 tal:content="string:${data/analyte} &#8212; ${data/qc_type}"></div>
+                 tal:content="python:u'{0} — {1}'.format(data['analyte'], view.qc_type_label(data['qc_type']))"></div>
             <div class="chart-subtitle">
               <tal:sub tal:content="string:${data/n_points} data points"></tal:sub>
               <tal:meth tal:condition="data/method">

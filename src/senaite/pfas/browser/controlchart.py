@@ -24,6 +24,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import json
 import logging
 import os
+import re
 
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
@@ -145,6 +146,38 @@ class PFASControlChartView(BrowserView):
     def _store(self):
         from senaite.pfas.qc.store import QCResultStore
         return QCResultStore(self.db_path)
+
+    # ── QC-type display labels from core Reference Definitions ───────────
+    # The UI-editable source of QC-type names is Setup -> Reference
+    # Definitions. A definition opts in with a [QC:CODE] tag in its
+    # Description; we map the stored qc_type code -> that definition's Title.
+    # Both sides run through normalize_qc_type() so casing/aliases can't miss.
+    _QC_TAG_RE = re.compile(r"\[QC:\s*([A-Za-z0-9_]+)\s*\]")
+
+    def _qc_ref_label_map(self):
+        if hasattr(self, "_qc_label_cache"):
+            return self._qc_label_cache
+        from senaite.pfas.qc.qc_types import normalize_qc_type
+        from bika.lims import api
+        out = {}
+        try:
+            folder = api.get_portal().bika_setup.bika_referencedefinitions
+            for d in folder.objectValues():
+                match = self._QC_TAG_RE.search(d.Description() or "")
+                if match:
+                    out[normalize_qc_type(match.group(1))] = d.Title()
+        except Exception as e:
+            logger.warning("qc ref label map: %s", e)
+        self._qc_label_cache = out
+        return out
+
+    def qc_type_label(self, code):
+        """Editable display name for a qc_type code (falls back to the raw
+        code when no Reference Definition is tagged for it)."""
+        if not code:
+            return code
+        from senaite.pfas.qc.qc_types import normalize_qc_type
+        return self._qc_ref_label_map().get(normalize_qc_type(code), code)
 
     def methods(self):
         """Distinct method IDs in the QC results store."""
