@@ -54,6 +54,27 @@
     .rb-add select { max-width:280px; }
     .rb-add .btn-sm { font-size:12px; padding:5px 10px; }
     .rb-ro .rb-chip button, .rb-ro .rb-add { display:none; }
+    /* single drag-and-drop run sequence */
+    .rb-seqlist { display:flex; flex-direction:column; gap:5px; padding:8px;
+                  border:1px dashed var(--s-border); border-radius:8px;
+                  background:var(--s-light); max-width:540px; }
+    .rb-seqrow { display:flex; align-items:center; gap:9px; background:var(--s-bg);
+                 border:1px solid var(--s-border); border-radius:6px;
+                 padding:7px 9px; font-size:12.5px; cursor:grab; }
+    .rb-seqrow.dragging { opacity:.35; }
+    .rb-seqrow .grip { color:var(--s-secondary); font-size:15px; line-height:1;
+                       cursor:grab; user-select:none; }
+    .rb-seqrow .lbl { font-weight:600; flex:1; }
+    .rb-seqrow .code { color:var(--s-secondary); font-size:10.5px; }
+    .rb-seqrow.samples { background:#eef7ee; border-color:#bcdcbc; }
+    .rb-seqrow.cal     { background:#eef4f8; border-color:#bcd3e0; }
+    .rb-seqrow.blank   { background:#f6f6f7; }
+    .rb-seqrow .del { border:none; background:transparent; cursor:pointer;
+                      color:var(--s-secondary); font-size:14px; line-height:1;
+                      padding:2px 5px; border-radius:3px; }
+    .rb-seqrow .del:hover { background:var(--s-primary-lt); color:var(--s-body); }
+    .rb-ro .rb-seqrow { cursor:default; }
+    .rb-ro .rb-seqrow .grip, .rb-ro .rb-seqrow .del { display:none; }
   </style>
   </tal:styles>
 </head>
@@ -184,6 +205,7 @@
       <!-- ── Run template (per-method, editable) ───────────────────────── -->
       <tal:tpl tal:define="tpl view/current_template;
                            vocab view/qc_vocabulary;
+                           braq view/bracket_vocabulary;
                            editable view/can_edit_template"
                tal:condition="tpl">
       <div class="rb-card" style="margin-top:22px;"
@@ -193,9 +215,11 @@
                 tal:content="ctx/method_id">FDA</span>
         </h3>
         <p style="font-size:12px;color:var(--s-secondary);margin-top:-4px;">
-          The opening QC block, the QC type that brackets the samples, and the
-          closing QC block below drive <em>Build Run Sequence</em>. QC types are
-          the same ones the control charts and method profiles use.
+          One ordered run sequence — <strong>drag rows to reorder</strong>. The
+          calibration ladder opens the CCV-bracketed body; every injection after
+          it (extracted QC <em>and</em> the field samples) counts toward the
+          <em>CCV every N</em> spacing, and a closing CCV ends the run. Place
+          extracted QC after the ladder to sit them inside the bracketing.
         </p>
         <div class="alert alert-success" tal:condition="view/template_saved">
           Run template saved to the method profile.
@@ -207,67 +231,53 @@
           <input type="hidden" name="batch_id"
                  tal:attributes="value view/selected_batch"/>
           <input type="hidden" name="method_id" tal:attributes="value ctx/method_id"/>
-          <input type="hidden" name="opening_codes" id="opening_codes"/>
-          <input type="hidden" name="closing_codes" id="closing_codes"/>
+          <input type="hidden" name="sequence_codes" id="sequence_codes"/>
 
           <div class="rb-tpl-block">
-            <label>Opening QC — in order (before the samples)</label>
-            <div class="rb-chips" id="opening-chips" data-field="opening">
-              <span class="rb-chip" tal:repeat="c tpl/opening_labelled"
-                    tal:attributes="data-code c/code">
+            <label>Run sequence — drag to reorder</label>
+            <div class="rb-seqlist" id="seq-chips">
+              <div tal:repeat="c tpl/sequence_labelled"
+                   tal:attributes="data-code c/code; data-kind c/kind;
+                                   class python:'rb-seqrow ' + c['kind'];
+                                   draggable python:'true' if editable else 'false'">
+                <span class="grip" title="Drag to reorder">&#8942;</span>
                 <span class="lbl" tal:content="c/label">Method Blank</span>
-                <span class="code" tal:content="string:(${c/code})">(MB)</span>
-                <button type="button" data-act="up" title="Move earlier">&#9650;</button>
-                <button type="button" data-act="down" title="Move later">&#9660;</button>
-                <button type="button" data-act="del" title="Remove">&#215;</button>
-              </span>
+                <span class="code"
+                      tal:condition="python:c['code'] != 'SAMPLES'"
+                      tal:content="string:(${c/code})">(MB)</span>
+                <button type="button" class="del" title="Remove"
+                        tal:condition="c/removable">&#215;</button>
+              </div>
             </div>
             <div class="rb-add">
-              <select id="opening-add">
+              <select id="seq-add">
+                <option value="">&#8212; add QC / calibration &#8212;</option>
                 <option tal:repeat="v vocab" tal:attributes="value v/code"
-                        tal:content="python:(('Calibration ladder (+ bracket QC)') if v['code']=='CAL' else (v['label']+' ('+v['code']+')'))">MB</option>
+                        tal:content="python:(('Calibration ladder') if v['code']=='CAL' else (v['label']+' ('+v['code']+')'))">MB</option>
               </select>
               <button type="button" class="btn btn-secondary btn-sm"
-                      data-add-target="opening-chips" data-add-src="opening-add">+ add</button>
+                      id="seq-add-btn">+ add</button>
             </div>
           </div>
 
-          <div class="rb-tpl-block" style="max-width:340px;">
-            <label>Bracketing QC — every
-              <span tal:content="ctx/ccv_interval">6</span> samples (method parameter)</label>
-            <select name="bracket_qc" id="bracket_qc" class="rb-row">
-              <option tal:repeat="v vocab" tal:attributes="value v/code;
+          <div class="rb-tpl-block" style="max-width:360px;">
+            <label>Bracketing QC — a
+              <span tal:content="python:tpl['bracket_qc']">CCV</span> every
+              <span tal:content="ctx/ccv_interval">6</span> injections
+              (interval from the method parameter)</label>
+            <select name="bracket_qc" id="bracket_qc">
+              <option tal:repeat="v braq" tal:attributes="value v/code;
                           selected python:v['code']==tpl['bracket_qc']"
                       tal:content="python:v['label']+' ('+v['code']+')'">CCV</option>
             </select>
           </div>
 
-          <div class="rb-tpl-block">
-            <label>Closing QC — in order (after the samples)</label>
-            <div class="rb-chips" id="closing-chips" data-field="closing">
-              <span class="rb-chip" tal:repeat="c tpl/closing_labelled"
-                    tal:attributes="data-code c/code">
-                <span class="lbl" tal:content="c/label">LFSM</span>
-                <span class="code" tal:content="string:(${c/code})">(LFSM)</span>
-                <button type="button" data-act="up" title="Move earlier">&#9650;</button>
-                <button type="button" data-act="down" title="Move later">&#9660;</button>
-                <button type="button" data-act="del" title="Remove">&#215;</button>
-              </span>
-            </div>
-            <div class="rb-add">
-              <select id="closing-add">
-                <option tal:repeat="v vocab" tal:attributes="value v/code"
-                        tal:content="python:v['label']+' ('+v['code']+')'">LFSM</option>
-              </select>
-              <button type="button" class="btn btn-secondary btn-sm"
-                      data-add-target="closing-chips" data-add-src="closing-add">+ add</button>
-            </div>
-          </div>
-
           <p style="font-size:11px;color:var(--s-secondary);">
-            The <b>Calibration ladder</b> chip expands at build time to the
-            method's calibration standards followed by one bracketing injection —
-            only when <em>Include calibration curve</em> is ticked above.
+            The <b>Calibration ladder</b> row expands at build time to the
+            method's calibration standards + one opening bracket injection —
+            only when <em>Include calibration curve</em> is ticked above. The
+            <b>Field samples</b> row is the batch's samples and can be moved but
+            not removed.
           </p>
           <button class="btn btn-primary" type="submit"
                   tal:condition="editable">Save run template</button>
@@ -279,68 +289,89 @@
       </div>
 
       <script>
-      /* Built entirely via DOM APIs (no innerHTML / no literal markup) so the
-         Chameleon template parser never sees a bare "&lt;" in this block. */
+      /* Pure DOM (no innerHTML / no literal markup); and NO bare "less-than",
+         "ampersand" or "and-and" operators, so the Chameleon template parser
+         never mistakes JS for markup. HTML5 drag-and-drop reorders the rows. */
       (function () {
         var form = document.getElementById("rb-tpl-form");
         if (!form) return;
+        var list = document.getElementById("seq-chips");
 
-        function makeChip(code, label) {
-          var chip = document.createElement("span");
-          chip.className = "rb-chip";
-          chip.setAttribute("data-code", code);
+        function makeRow(code, label, kind) {
+          var row = document.createElement("div");
+          row.className = "rb-seqrow " + kind;
+          row.setAttribute("data-code", code);
+          row.setAttribute("data-kind", kind);
+          row.setAttribute("draggable", "true");
+          var g = document.createElement("span");
+          g.className = "grip"; g.title = "Drag to reorder";
+          g.textContent = "⋮"; row.appendChild(g);
           var l = document.createElement("span");
-          l.className = "lbl"; l.textContent = label; chip.appendChild(l);
+          l.className = "lbl"; l.textContent = label; row.appendChild(l);
           var c = document.createElement("span");
           c.className = "code"; c.textContent = "(" + code + ")";
-          chip.appendChild(c);
-          var btns = [["up", "▲", "Move earlier"],
-                      ["down", "▼", "Move later"],
-                      ["del", "×", "Remove"]];
-          btns.forEach(function (spec) {
-            var b = document.createElement("button");
-            b.type = "button";
-            b.setAttribute("data-act", spec[0]);
-            b.title = spec[2];
-            b.textContent = spec[1];
-            chip.appendChild(b);
-          });
-          return chip;
+          row.appendChild(c);
+          var d = document.createElement("button");
+          d.type = "button"; d.className = "del"; d.title = "Remove";
+          d.textContent = "×"; row.appendChild(d);
+          return row;
         }
         function serialize() {
-          ["opening-chips", "closing-chips"].forEach(function (id) {
-            var box = document.getElementById(id);
-            var codes = [];
-            box.querySelectorAll(".rb-chip").forEach(function (ch) {
-              codes.push(ch.getAttribute("data-code")); });
-            document.getElementById(box.getAttribute("data-field") + "_codes")
-                    .value = codes.join(",");
-          });
+          var codes = [];
+          list.querySelectorAll(".rb-seqrow").forEach(function (r) {
+            codes.push(r.getAttribute("data-code")); });
+          document.getElementById("sequence_codes").value = codes.join(",");
         }
         // add
-        form.querySelectorAll("[data-add-target]").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            var box = document.getElementById(btn.getAttribute("data-add-target"));
-            var sel = document.getElementById(btn.getAttribute("data-add-src"));
+        var addBtn = document.getElementById("seq-add-btn");
+        if (addBtn) {
+          addBtn.addEventListener("click", function () {
+            var sel = document.getElementById("seq-add");
             if (!sel.value) return;
+            if (sel.value === "SAMPLES") return;
             var label = sel.options[sel.selectedIndex].text
                            .replace(/\s*\([^)]*\)\s*$/, "");
-            box.appendChild(makeChip(sel.value, label));
+            var kind = (sel.value === "CAL") ? "cal" : "qc";
+            list.appendChild(makeRow(sel.value, label, kind));
           });
-        });
-        // up / down / delete (event delegation)
-        form.addEventListener("click", function (e) {
-          var b = e.target.closest ? e.target.closest("button[data-act]") : null;
+        }
+        // delete
+        list.addEventListener("click", function (e) {
+          var b = e.target.closest ? e.target.closest("button.del") : null;
           if (!b) return;
-          var chip = b.parentNode, act = b.getAttribute("data-act");
-          if (act === "del") { chip.remove(); return; }
-          if (act === "up") {
-            var prev = chip.previousElementSibling;
-            if (prev) { chip.parentNode.insertBefore(chip, prev); }
-          } else if (act === "down") {
-            var next = chip.nextElementSibling;
-            if (next) { chip.parentNode.insertBefore(next, chip); }
-          }
+          var row = b.parentNode;
+          if (row.getAttribute("data-kind") === "samples") return;
+          row.remove();
+        });
+        // drag reorder (HTML5 DnD)
+        var dragging = null;
+        list.addEventListener("dragstart", function (e) {
+          var row = e.target.closest ? e.target.closest(".rb-seqrow") : null;
+          if (!row) return;
+          dragging = row; row.classList.add("dragging");
+        });
+        list.addEventListener("dragend", function () {
+          if (dragging) { dragging.classList.remove("dragging"); }
+          dragging = null; serialize();
+        });
+        function afterElement(y) {
+          var rows = list.querySelectorAll(".rb-seqrow:not(.dragging)");
+          var closest = null, closestOffset = -Infinity;
+          rows.forEach(function (r) {
+            var box = r.getBoundingClientRect();
+            var offset = y - box.top - box.height / 2;
+            if (offset > closestOffset) {
+              if (0 > offset) { closestOffset = offset; closest = r; }
+            }
+          });
+          return closest;
+        }
+        list.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          if (!dragging) return;
+          var after = afterElement(e.clientY);
+          if (after == null) { list.appendChild(dragging); }
+          else { list.insertBefore(dragging, after); }
         });
         form.addEventListener("submit", serialize);
       })();

@@ -153,42 +153,59 @@ class PFASRunBuilderView(BrowserView):
 
     # ── run template (per-method, editable) ──────────────────────────────
     #
-    # A run template describes HOW a worklist is assembled: an ordered opening
-    # QC block, the QC type that BRACKETS the samples (frequency comes from the
-    # method's own CCV parameter — single source), and an ordered closing QC
-    # block. Stored on the method profile (senaite.pfas.method_profiles) so the
-    # METHOD owns its sequence (§3). QC codes are the canonical vocabulary the
-    # control charts / method profiles already use — the run builder never
-    # invents its own QC list.
+    # A run template is ONE ordered sequence of injection tokens describing HOW
+    # a worklist is assembled. Tokens are: a QC code (MB, LFB, ICV, LFSM, …),
+    # the special "CAL" token (the calibration ladder), and exactly one
+    # "SAMPLES" token (the batch's field samples). Stored on the method profile
+    # (senaite.pfas.method_profiles) so the METHOD owns its sequence (§3). QC
+    # codes are the canonical Reference-Definition vocabulary the control charts
+    # / method profiles use — the run builder never invents its own QC list.
     #
-    # The special "CAL" token in the opening block expands, at build time, to
-    # the method's calibration ladder followed by one bracketing injection —
-    # but only when the per-run "include calibration" box is checked.
+    # CCV bracketing (2026-07-28 decision, user-confirmed): the CAL token
+    # expands to the ladder + one OPENING bracket injection and starts the
+    # bracketed BODY; every injection in the body — extracted QC AND field
+    # samples alike — counts toward the "CCV every N" interval (N = the method's
+    # own CCV frequency); a CLOSING bracket ends the run. Extracted QC therefore
+    # sit INSIDE the bracketing simply by being placed after CAL in the
+    # sequence. Tokens before CAL (e.g. a system MeOH blank) are pre-bracket.
+
+    SAMPLES_TOKEN = "SAMPLES"
 
     def _default_run_template(self, profile):
-        """Sensible starting template derived from the method's own QC types.
+        """Sensible starting sequence derived from the method's own QC types.
 
-        Reproduces the historic hardcoded sequence: MB, calibration, ICV, MB,
-        (LFB only for methods that use it), samples bracketed by CCV, then the
-        matrix-spike QC and a closing CCV. Nothing method-specific is hardcoded
-        beyond reading the method's associated_qc_types."""
+        Reproduces the historic order (system MB, calibration, ICV, MB, LFB for
+        methods that use it, samples, matrix-spike QC) as a single editable
+        sequence. The opening/interval/closing CCVs are inserted automatically
+        at build time, so no literal bracket token is seeded."""
         assoc = [str(c).upper() for c in (profile.get("associated_qc_types") or [])]
-        opening = ["MB", "CAL", "ICV", "MB"]
+        seq = ["MB", "CAL", "ICV", "MB"]
         if "LFB" in assoc:
-            opening.append("LFB")
-        closing = [q for q in ("LFSM", "LFSMD") if q in assoc] + ["CCV"]
-        return {"opening": opening, "closing": closing, "bracket_qc": "CCV"}
+            seq.append("LFB")
+        seq.append(self.SAMPLES_TOKEN)
+        seq += [q for q in ("LFSM", "LFSMD") if q in assoc]
+        return {"sequence": seq, "bracket_qc": "CCV"}
 
     def run_template(self, method_id):
-        """The saved run template for a method, else the derived default."""
+        """The saved run template for a method, else the derived default.
+
+        Migrates the legacy {opening, closing} shape to a single sequence:
+        opening + SAMPLES + closing (a trailing literal CCV in the old closing
+        block is harmless — build_sequence de-dupes the auto closing CCV)."""
         prof = self._profile(method_id)
         tpl = prof.get("run_template")
-        if isinstance(tpl, dict) and (tpl.get("opening") or tpl.get("closing")):
-            return {
-                "opening":    [str(c) for c in (tpl.get("opening") or [])],
-                "closing":    [str(c) for c in (tpl.get("closing") or [])],
-                "bracket_qc": str(tpl.get("bracket_qc") or "CCV"),
-            }
+        if isinstance(tpl, dict):
+            if tpl.get("sequence"):
+                return {
+                    "sequence":   [str(c) for c in tpl["sequence"]],
+                    "bracket_qc": str(tpl.get("bracket_qc") or "CCV"),
+                }
+            if tpl.get("opening") or tpl.get("closing"):
+                seq = [str(c) for c in (tpl.get("opening") or [])]
+                seq.append(self.SAMPLES_TOKEN)
+                seq += [str(c) for c in (tpl.get("closing") or [])]
+                return {"sequence": seq,
+                        "bracket_qc": str(tpl.get("bracket_qc") or "CCV")}
         return self._default_run_template(prof)
 
     def current_template(self):
@@ -198,16 +215,33 @@ class PFASRunBuilderView(BrowserView):
             return None
         tpl = self.run_template(method_id)
         vocab = {v["code"]: v["label"] for v in self.qc_vocabulary()}
-        tpl["opening_labelled"] = [
-            {"code": c, "label": self._chip_label(c, vocab)} for c in tpl["opening"]]
-        tpl["closing_labelled"] = [
-            {"code": c, "label": self._chip_label(c, vocab)} for c in tpl["closing"]]
+        n = len(self.sample_rows())
+        # guarantee exactly one SAMPLES token so the UI always shows the block
+        seq = [c for c in tpl["sequence"] if c != self.SAMPLES_TOKEN]
+        insert_at = tpl["sequence"].index(self.SAMPLES_TOKEN) \
+            if self.SAMPLES_TOKEN in tpl["sequence"] else len(seq)
+        seq.insert(min(insert_at, len(seq)), self.SAMPLES_TOKEN)
+        tpl["sequence_labelled"] = [self._chip(c, vocab, n) for c in seq]
+        tpl["n_samples"] = n
         return tpl
 
-    def _chip_label(self, code, vocab):
+    def _chip(self, code, vocab, n_samples=0):
+        """One row descriptor for the sequence editor."""
+        if code == self.SAMPLES_TOKEN:
+            return {"code": code, "kind": "samples", "removable": False,
+                    "label": u"Field samples ({0})".format(n_samples)}
         if code == "CAL":
-            return vocab.get("CAL", "Calibration ladder")
-        return vocab.get(code, code)
+            return {"code": code, "kind": "cal", "removable": True,
+                    "label": u"Calibration ladder"}
+        kind = "blank" if self.qc_injection_type(code) == "Blank" else "qc"
+        return {"code": code, "kind": kind, "removable": True,
+                "label": vocab.get(code, code)}
+
+    def bracket_vocabulary(self):
+        """QC types eligible as the bracket (non-blank, not the CAL ladder)."""
+        blanks = self._blank_codes()
+        return [v for v in self.qc_vocabulary()
+                if v["code"] != "CAL" and v["code"].upper() not in blanks]
 
     def qc_vocabulary(self):
         """[{code,label}] of QC types, from the single Reference-Definition
@@ -376,24 +410,32 @@ class PFASRunBuilderView(BrowserView):
 
     def build_sequence(self, sample_rows, initials, method_id, ccv_interval,
                        include_cal):
-        """Assemble the injection worklist from the method's run template.
+        """Assemble the injection worklist by walking the method's run sequence.
 
-        Output shape (vial / name / type per row) is identical to the previous
-        hardcoded builder — only the ORDER and QC SELECTION now come from the
-        editable per-method template instead of literals."""
+        Output shape (vial / name / type per row) is unchanged. The CAL token
+        emits the ladder + an OPENING bracket and starts the bracketed BODY;
+        thereafter every injection (extracted QC AND field samples) counts
+        toward the CCV interval N, and a CLOSING bracket ends the run. Tokens
+        before CAL are pre-bracket (e.g. a system MeOH blank)."""
         run_date = date.today()
         # QC rows use the run's dominant matrix (from the extraction log)
         matrices = [r.get("matrix") for r in sample_rows if r.get("matrix")]
         dom = max(set(matrices), key=matrices.count) if matrices else "Lab"
         tpl = self.run_template(method_id)
         bracket = tpl["bracket_qc"] or "CCV"
+        seq = list(tpl["sequence"])
+        if self.SAMPLES_TOKEN not in seq:
+            seq.append(self.SAMPLES_TOKEN)          # samples are never optional
+        n = max(1, int(ccv_interval or 1))
 
         rows = []
         counters = {}
         first_blank = [False]
+        state = {"in_body": False, "count": 0, "last_bracket": False}
 
         def add(name, typ):
             rows.append({"vial": len(rows) + 1, "name": name, "type": typ})
+            state["last_bracket"] = False
 
         def add_qc(code):
             counters[code] = counters.get(code, 0) + 1
@@ -406,32 +448,48 @@ class PFASRunBuilderView(BrowserView):
             add(self._qc_name(initials, dom, code, run_date, counters[code])
                 + suffix, typ)
 
-        # ── opening block (CAL token expands to the ladder + one bracket) ──
-        for code in tpl["opening"]:
-            if code == "CAL":
+        def emit_bracket():
+            add_qc(bracket)
+            state["count"] = 0
+            state["last_bracket"] = True
+
+        def body_tick():
+            state["count"] += 1
+            if state["count"] >= n:
+                emit_bracket()
+
+        spikes = [r.get("spike") for r in sample_rows if r.get("spike")]
+
+        for tok in seq:
+            if tok == "CAL":
                 if include_cal:
                     for name, typ in self._cal_names(method_id, run_date):
                         add(name, typ)
-                    add_qc(bracket)
+                    emit_bracket()              # opening bracket
+                    state["in_body"] = True
                 continue
-            add_qc(code)
+            if tok == self.SAMPLES_TOKEN:
+                if not state["in_body"]:
+                    emit_bracket()              # open body when there is no CAL
+                    state["in_body"] = True
+                for i, r in enumerate(sample_rows):
+                    mtx = r.get("matrix") or dom
+                    add(u"{0} {1} Sample {2}-{3:02d} {4}".format(
+                        initials, mtx, run_date.strftime("%Y-%m-%d"), i + 1,
+                        r["sample_id"]), "Sample")
+                    body_tick()
+                continue
+            # a QC token
+            if tok == bracket and state["in_body"]:
+                emit_bracket()       # an explicitly-placed bracket injection
+                continue             # resets the interval; never double-counts
+            add_qc(tok)
+            if state["in_body"]:
+                body_tick()
 
-        # ── samples, bracketed by the template's bracket QC every N ──
-        since_ccv = 0
-        spikes = [r.get("spike") for r in sample_rows if r.get("spike")]
-        for i, r in enumerate(sample_rows):
-            mtx = r.get("matrix") or dom
-            add(u"{0} {1} Sample {2}-{3:02d} {4}".format(
-                initials, mtx, run_date.strftime("%Y-%m-%d"), i + 1,
-                r["sample_id"]), "Sample")
-            since_ccv += 1
-            if since_ccv >= ccv_interval:
-                add_qc(bracket)
-                since_ccv = 0
-
-        # ── closing block ──
-        for code in tpl["closing"]:
-            add_qc(code)
+        # closing bracket (skip if the run already ended on one)
+        if state["in_body"] and not state["last_bracket"]:
+            emit_bracket()
         return rows, dom, (spikes[0] if spikes else "")
 
     # ── actions ───────────────────────────────────────────────────────────
@@ -562,12 +620,10 @@ class PFASRunBuilderView(BrowserView):
         if not method_id:
             return self._redirect_err(batch_id, "No method to configure")
 
-        def parse(name):
-            raw = _first(f.get(name)) or u""
-            return [c.strip() for c in raw.split(",") if c.strip()]
-
-        opening = parse("opening_codes")
-        closing = parse("closing_codes")
+        raw = _first(f.get("sequence_codes")) or u""
+        sequence = [c.strip() for c in raw.split(",") if c.strip()]
+        if self.SAMPLES_TOKEN not in sequence:
+            sequence.append(self.SAMPLES_TOKEN)     # samples are never optional
         bracket = _first(f.get("bracket_qc")).strip() or "CCV"
 
         portal = self._portal()
@@ -576,7 +632,7 @@ class PFASRunBuilderView(BrowserView):
                 get_profile, save_profile)
             prof = get_profile(portal, method_id)
             prof["run_template"] = {
-                "opening": opening, "closing": closing, "bracket_qc": bracket}
+                "sequence": sequence, "bracket_qc": bracket}
             save_profile(portal, method_id, prof)
         except Exception as exc:
             logger.error("save_template failed: %s", exc)

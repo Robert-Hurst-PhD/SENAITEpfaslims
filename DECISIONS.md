@@ -3151,3 +3151,37 @@ inline `<script>` content and chokes on any bare `<` / `</` / `&` (e.g. `</g` in
 a regex, `</span>` in an innerHTML string, `&&`). The chip editor JS is written
 purely with DOM APIs (createElement/textContent) and nested ifs — no literal
 markup, no `&&` — to keep the block parseable.
+
+## 2026-07-28 — Run Builder template: single drag-and-drop sequence (revises the 3-block model)
+
+**Context:** User: "I need to be able to move the extracted QC inside the CCV
+bracketing. Ideally … a drag and drop system vs up/down arrows." The 3-block
+model (opening → samples → closing) structurally forced extracted QC (MB/LFB/
+LFSM/LFSMD) to sit fully before or after the samples — never inside the
+bracketed body.
+
+**Decisions (AskUserQuestion, user-confirmed):**
+- **Placement = "Grouped inside the bracket."** Extracted QC are dragged into
+  the bracketed body (typically just before the field samples), not interleaved
+  on an every-M-samples interval.
+- **Bracket counting = "Yes, they count."** Every injection in the bracketed
+  body — extracted QC AND field samples — advances the "CCV every N" counter.
+
+**Executed:** The run template is now ONE ordered `sequence` of tokens (QC
+codes, the `CAL` ladder token, and exactly one `SAMPLES` block) plus `bracket_qc`
+— replacing `{opening, closing}`. `run_template()` migrates legacy saved
+templates (`opening + SAMPLES + closing`; a trailing literal CCV is de-duped by
+the builder). `build_sequence()` walks the sequence: tokens before `CAL` are
+pre-bracket (e.g. the system MeOH blank); `CAL` emits the ladder + an opening
+bracket and starts the body; thereafter each injection ticks the interval and a
+CCV is inserted every N; an explicitly-placed bracket-QC token resets the
+interval and suppresses the auto-closing CCV (fixes a double-CCV at the run
+end); a single closing CCV ends the run if it didn't already. Editor UI is a
+vertical **HTML5 drag-and-drop** list (grip + drag to reorder; Field-samples row
+is movable but not removable); bracket selector filtered to non-blank QC types.
+Same manifest/CSV output shape. Stale test templates cleared so all three
+methods show the clean derived default.
+
+**Reconfirmed Chameleon rule:** the DnD JS is pure-DOM with NO bare `<`, `&`, or
+`&&` (used `0 > offset` instead of `offset < 0`, nested ifs instead of `&&`) so
+the inline `<script>` parses.
