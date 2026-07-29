@@ -32,6 +32,28 @@
     .rb-type-Standard { color:#387493; font-weight:600; }
     .rb-type-QC       { color:#856404; font-weight:600; }
     .rb-type-Sample   { color:#155724; }
+    /* run-template editor */
+    .rb-tpl-block { margin-bottom:14px; }
+    .rb-tpl-block > label { font-size:12px; font-weight:700; display:block;
+                            margin-bottom:6px; }
+    .rb-chips { display:flex; flex-wrap:wrap; gap:6px; min-height:34px;
+                padding:6px; border:1px dashed var(--s-border); border-radius:6px;
+                background:var(--s-light); }
+    .rb-chips:empty::before { content:"none"; color:var(--s-secondary);
+                              font-size:12px; padding:2px 4px; }
+    .rb-chip { display:inline-flex; align-items:center; gap:4px;
+               background:var(--s-bg); border:1px solid var(--s-border);
+               border-radius:14px; padding:3px 4px 3px 10px; font-size:12px; }
+    .rb-chip .lbl { font-weight:600; }
+    .rb-chip .code { color:var(--s-secondary); font-size:10.5px; }
+    .rb-chip button { border:none; background:transparent; cursor:pointer;
+                      font-size:12px; line-height:1; padding:2px 3px;
+                      color:var(--s-secondary); border-radius:3px; }
+    .rb-chip button:hover { background:var(--s-primary-lt); color:var(--s-body); }
+    .rb-add { display:flex; gap:6px; margin-top:6px; align-items:center; }
+    .rb-add select { max-width:280px; }
+    .rb-add .btn-sm { font-size:12px; padding:5px 10px; }
+    .rb-ro .rb-chip button, .rb-ro .rb-add { display:none; }
   </style>
   </tal:styles>
 </head>
@@ -158,6 +180,172 @@
           </form>
         </div>
       </div>
+
+      <!-- ── Run template (per-method, editable) ───────────────────────── -->
+      <tal:tpl tal:define="tpl view/current_template;
+                           vocab view/qc_vocabulary;
+                           editable view/can_edit_template"
+               tal:condition="tpl">
+      <div class="rb-card" style="margin-top:22px;"
+           tal:attributes="class python:'rb-card' + ('' if editable else ' rb-ro')">
+        <h3>Run template — how this method builds its worklist
+          <span style="font-weight:400;font-size:12px;color:var(--s-secondary);"
+                tal:content="ctx/method_id">FDA</span>
+        </h3>
+        <p style="font-size:12px;color:var(--s-secondary);margin-top:-4px;">
+          The opening QC block, the QC type that brackets the samples, and the
+          closing QC block below drive <em>Build Run Sequence</em>. QC types are
+          the same ones the control charts and method profiles use.
+        </p>
+        <div class="alert alert-success" tal:condition="view/template_saved">
+          Run template saved to the method profile.
+        </div>
+
+        <form method="post" id="rb-tpl-form"
+              tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
+          <input type="hidden" name="action" value="save_template"/>
+          <input type="hidden" name="batch_id"
+                 tal:attributes="value view/selected_batch"/>
+          <input type="hidden" name="method_id" tal:attributes="value ctx/method_id"/>
+          <input type="hidden" name="opening_codes" id="opening_codes"/>
+          <input type="hidden" name="closing_codes" id="closing_codes"/>
+
+          <div class="rb-tpl-block">
+            <label>Opening QC — in order (before the samples)</label>
+            <div class="rb-chips" id="opening-chips" data-field="opening">
+              <span class="rb-chip" tal:repeat="c tpl/opening_labelled"
+                    tal:attributes="data-code c/code">
+                <span class="lbl" tal:content="c/label">Method Blank</span>
+                <span class="code" tal:content="string:(${c/code})">(MB)</span>
+                <button type="button" data-act="up" title="Move earlier">&#9650;</button>
+                <button type="button" data-act="down" title="Move later">&#9660;</button>
+                <button type="button" data-act="del" title="Remove">&#215;</button>
+              </span>
+            </div>
+            <div class="rb-add">
+              <select id="opening-add">
+                <option tal:repeat="v vocab" tal:attributes="value v/code"
+                        tal:content="python:(('Calibration ladder (+ bracket QC)') if v['code']=='CAL' else (v['label']+' ('+v['code']+')'))">MB</option>
+              </select>
+              <button type="button" class="btn btn-secondary btn-sm"
+                      data-add-target="opening-chips" data-add-src="opening-add">+ add</button>
+            </div>
+          </div>
+
+          <div class="rb-tpl-block" style="max-width:340px;">
+            <label>Bracketing QC — every
+              <span tal:content="ctx/ccv_interval">6</span> samples (method parameter)</label>
+            <select name="bracket_qc" id="bracket_qc" class="rb-row">
+              <option tal:repeat="v vocab" tal:attributes="value v/code;
+                          selected python:v['code']==tpl['bracket_qc']"
+                      tal:content="python:v['label']+' ('+v['code']+')'">CCV</option>
+            </select>
+          </div>
+
+          <div class="rb-tpl-block">
+            <label>Closing QC — in order (after the samples)</label>
+            <div class="rb-chips" id="closing-chips" data-field="closing">
+              <span class="rb-chip" tal:repeat="c tpl/closing_labelled"
+                    tal:attributes="data-code c/code">
+                <span class="lbl" tal:content="c/label">LFSM</span>
+                <span class="code" tal:content="string:(${c/code})">(LFSM)</span>
+                <button type="button" data-act="up" title="Move earlier">&#9650;</button>
+                <button type="button" data-act="down" title="Move later">&#9660;</button>
+                <button type="button" data-act="del" title="Remove">&#215;</button>
+              </span>
+            </div>
+            <div class="rb-add">
+              <select id="closing-add">
+                <option tal:repeat="v vocab" tal:attributes="value v/code"
+                        tal:content="python:v['label']+' ('+v['code']+')'">LFSM</option>
+              </select>
+              <button type="button" class="btn btn-secondary btn-sm"
+                      data-add-target="closing-chips" data-add-src="closing-add">+ add</button>
+            </div>
+          </div>
+
+          <p style="font-size:11px;color:var(--s-secondary);">
+            The <b>Calibration ladder</b> chip expands at build time to the
+            method's calibration standards followed by one bracketing injection —
+            only when <em>Include calibration curve</em> is ticked above.
+          </p>
+          <button class="btn btn-primary" type="submit"
+                  tal:condition="editable">Save run template</button>
+          <p style="font-size:12px;color:var(--s-secondary);"
+             tal:condition="not:editable">
+            Read-only — a Manager can edit this run template.
+          </p>
+        </form>
+      </div>
+
+      <script>
+      /* Built entirely via DOM APIs (no innerHTML / no literal markup) so the
+         Chameleon template parser never sees a bare "&lt;" in this block. */
+      (function () {
+        var form = document.getElementById("rb-tpl-form");
+        if (!form) return;
+
+        function makeChip(code, label) {
+          var chip = document.createElement("span");
+          chip.className = "rb-chip";
+          chip.setAttribute("data-code", code);
+          var l = document.createElement("span");
+          l.className = "lbl"; l.textContent = label; chip.appendChild(l);
+          var c = document.createElement("span");
+          c.className = "code"; c.textContent = "(" + code + ")";
+          chip.appendChild(c);
+          var btns = [["up", "▲", "Move earlier"],
+                      ["down", "▼", "Move later"],
+                      ["del", "×", "Remove"]];
+          btns.forEach(function (spec) {
+            var b = document.createElement("button");
+            b.type = "button";
+            b.setAttribute("data-act", spec[0]);
+            b.title = spec[2];
+            b.textContent = spec[1];
+            chip.appendChild(b);
+          });
+          return chip;
+        }
+        function serialize() {
+          ["opening-chips", "closing-chips"].forEach(function (id) {
+            var box = document.getElementById(id);
+            var codes = [];
+            box.querySelectorAll(".rb-chip").forEach(function (ch) {
+              codes.push(ch.getAttribute("data-code")); });
+            document.getElementById(box.getAttribute("data-field") + "_codes")
+                    .value = codes.join(",");
+          });
+        }
+        // add
+        form.querySelectorAll("[data-add-target]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var box = document.getElementById(btn.getAttribute("data-add-target"));
+            var sel = document.getElementById(btn.getAttribute("data-add-src"));
+            if (!sel.value) return;
+            var label = sel.options[sel.selectedIndex].text
+                           .replace(/\s*\([^)]*\)\s*$/, "");
+            box.appendChild(makeChip(sel.value, label));
+          });
+        });
+        // up / down / delete (event delegation)
+        form.addEventListener("click", function (e) {
+          var b = e.target.closest ? e.target.closest("button[data-act]") : null;
+          if (!b) return;
+          var chip = b.parentNode, act = b.getAttribute("data-act");
+          if (act === "del") { chip.remove(); return; }
+          if (act === "up") {
+            var prev = chip.previousElementSibling;
+            if (prev) { chip.parentNode.insertBefore(chip, prev); }
+          } else if (act === "down") {
+            var next = chip.nextElementSibling;
+            if (next) { chip.parentNode.insertBefore(next, chip); }
+          }
+        });
+        form.addEventListener("submit", serialize);
+      })();
+      </script>
+      </tal:tpl>
     </tal:ctx>
 
     <!-- ── Built sequence + download ──────────────────────────────────── -->

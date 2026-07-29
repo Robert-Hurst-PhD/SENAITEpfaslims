@@ -68,6 +68,8 @@ class PFASRunBuilderView(BrowserView):
                 return self._handle_build()
             if action == "upload_export":
                 return self._handle_upload_export()
+            if action == "save_template":
+                return self._handle_save_template()
         if action == "download_csv":
             return self._handle_download_csv()
         return self.template()
@@ -148,6 +150,109 @@ class PFASRunBuilderView(BrowserView):
             return max(1, int(freq))
         except (TypeError, ValueError):
             return 6
+
+    # ── run template (per-method, editable) ──────────────────────────────
+    #
+    # A run template describes HOW a worklist is assembled: an ordered opening
+    # QC block, the QC type that BRACKETS the samples (frequency comes from the
+    # method's own CCV parameter — single source), and an ordered closing QC
+    # block. Stored on the method profile (senaite.pfas.method_profiles) so the
+    # METHOD owns its sequence (§3). QC codes are the canonical vocabulary the
+    # control charts / method profiles already use — the run builder never
+    # invents its own QC list.
+    #
+    # The special "CAL" token in the opening block expands, at build time, to
+    # the method's calibration ladder followed by one bracketing injection —
+    # but only when the per-run "include calibration" box is checked.
+
+    def _default_run_template(self, profile):
+        """Sensible starting template derived from the method's own QC types.
+
+        Reproduces the historic hardcoded sequence: MB, calibration, ICV, MB,
+        (LFB only for methods that use it), samples bracketed by CCV, then the
+        matrix-spike QC and a closing CCV. Nothing method-specific is hardcoded
+        beyond reading the method's associated_qc_types."""
+        assoc = [str(c).upper() for c in (profile.get("associated_qc_types") or [])]
+        opening = ["MB", "CAL", "ICV", "MB"]
+        if "LFB" in assoc:
+            opening.append("LFB")
+        closing = [q for q in ("LFSM", "LFSMD") if q in assoc] + ["CCV"]
+        return {"opening": opening, "closing": closing, "bracket_qc": "CCV"}
+
+    def run_template(self, method_id):
+        """The saved run template for a method, else the derived default."""
+        prof = self._profile(method_id)
+        tpl = prof.get("run_template")
+        if isinstance(tpl, dict) and (tpl.get("opening") or tpl.get("closing")):
+            return {
+                "opening":    [str(c) for c in (tpl.get("opening") or [])],
+                "closing":    [str(c) for c in (tpl.get("closing") or [])],
+                "bracket_qc": str(tpl.get("bracket_qc") or "CCV"),
+            }
+        return self._default_run_template(prof)
+
+    def current_template(self):
+        """Run template for the selected batch's method (for the config UI)."""
+        method_id = self.batch_method()
+        if not method_id:
+            return None
+        tpl = self.run_template(method_id)
+        vocab = {v["code"]: v["label"] for v in self.qc_vocabulary()}
+        tpl["opening_labelled"] = [
+            {"code": c, "label": self._chip_label(c, vocab)} for c in tpl["opening"]]
+        tpl["closing_labelled"] = [
+            {"code": c, "label": self._chip_label(c, vocab)} for c in tpl["closing"]]
+        return tpl
+
+    def _chip_label(self, code, vocab):
+        if code == "CAL":
+            return vocab.get("CAL", "Calibration ladder")
+        return vocab.get(code, code)
+
+    def qc_vocabulary(self):
+        """[{code,label}] of QC types, from the single Reference-Definition
+        source the control charts and method profiles use."""
+        try:
+            from senaite.pfas.qc_labels import get_qc_label_map
+            m = get_qc_label_map(self._portal())
+        except Exception as exc:
+            logger.warning("qc_vocabulary: %s", exc)
+            m = {}
+        return [{"code": k, "label": m[k]} for k in sorted(m)]
+
+    def _blank_codes(self):
+        """QC codes whose injection type is Blank (from the Reference
+        Definition blank flag), with a conservative constant fallback."""
+        cache = getattr(self, "_blank_cache", None)
+        if cache is not None:
+            return cache
+        out = set()
+        try:
+            folder = self._portal().bika_setup.bika_referencedefinitions
+            tagre = re.compile(r"\[QC:\s*([A-Za-z0-9_]+)\s*\]")
+            for d in folder.objectValues():
+                code = None
+                try:
+                    code = d.getField("pfas_qc_code").get(d)
+                except Exception:
+                    pass
+                if not code:
+                    m = tagre.search(d.Description() or "")
+                    code = m.group(1) if m else None
+                if code and d.getBlank():
+                    out.add(code.upper())
+        except Exception as exc:
+            logger.warning("_blank_codes: %s", exc)
+        out |= set(["MB", "LRB", "MXB", "CCB"])
+        self._blank_cache = out
+        return out
+
+    def qc_injection_type(self, code):
+        """Worklist 'Sample Type' column for a QC code: Standard for the
+        calibration ladder, Blank for blank QC types, QC otherwise."""
+        if code == "CAL":
+            return "Standard"
+        return "Blank" if code.upper() in self._blank_codes() else "QC"
 
     def _extraction_log(self, batch, slug):
         raw = IAnnotations(batch).get(u"senaite.pfas.logbook." + str(slug))
@@ -271,26 +376,48 @@ class PFASRunBuilderView(BrowserView):
 
     def build_sequence(self, sample_rows, initials, method_id, ccv_interval,
                        include_cal):
+        """Assemble the injection worklist from the method's run template.
+
+        Output shape (vial / name / type per row) is identical to the previous
+        hardcoded builder — only the ORDER and QC SELECTION now come from the
+        editable per-method template instead of literals."""
         run_date = date.today()
         # QC rows use the run's dominant matrix (from the extraction log)
         matrices = [r.get("matrix") for r in sample_rows if r.get("matrix")]
         dom = max(set(matrices), key=matrices.count) if matrices else "Lab"
+        tpl = self.run_template(method_id)
+        bracket = tpl["bracket_qc"] or "CCV"
+
         rows = []
+        counters = {}
+        first_blank = [False]
 
         def add(name, typ):
             rows.append({"vial": len(rows) + 1, "name": name, "type": typ})
 
-        add(self._qc_name(initials, dom, "MB", run_date, 0) + " MeOH-Blank",
-            "Blank")
-        if include_cal:
-            for name, typ in self._cal_names(method_id, run_date):
-                add(name, typ)
-            add(self._qc_name(initials, dom, "CCV", run_date, 0), "QC")
-        add(self._qc_name(initials, dom, "ICV", run_date, 0), "QC")
-        add(self._qc_name(initials, dom, "MB", run_date, 1), "Blank")
-        add(self._qc_name(initials, dom, "LCS", run_date, 1), "QC")
+        def add_qc(code):
+            counters[code] = counters.get(code, 0) + 1
+            typ = self.qc_injection_type(code)
+            suffix = u""
+            # preserve the historic "first blank is the MeOH system blank" cue
+            if typ == "Blank" and not first_blank[0]:
+                suffix = u" MeOH-Blank"
+                first_blank[0] = True
+            add(self._qc_name(initials, dom, code, run_date, counters[code])
+                + suffix, typ)
 
-        since_ccv, ccv_n = 0, 1
+        # ── opening block (CAL token expands to the ladder + one bracket) ──
+        for code in tpl["opening"]:
+            if code == "CAL":
+                if include_cal:
+                    for name, typ in self._cal_names(method_id, run_date):
+                        add(name, typ)
+                    add_qc(bracket)
+                continue
+            add_qc(code)
+
+        # ── samples, bracketed by the template's bracket QC every N ──
+        since_ccv = 0
         spikes = [r.get("spike") for r in sample_rows if r.get("spike")]
         for i, r in enumerate(sample_rows):
             mtx = r.get("matrix") or dom
@@ -299,12 +426,12 @@ class PFASRunBuilderView(BrowserView):
                 r["sample_id"]), "Sample")
             since_ccv += 1
             if since_ccv >= ccv_interval:
-                add(self._qc_name(initials, dom, "CCV", run_date, ccv_n), "QC")
-                since_ccv, ccv_n = 0, ccv_n + 1
-        if sample_rows:
-            add(self._qc_name(initials, dom, "LFSM", run_date, 1), "QC")
-            add(self._qc_name(initials, dom, "LFSMD", run_date, 1), "QC")
-        add(self._qc_name(initials, dom, "CCV", run_date, ccv_n), "QC")
+                add_qc(bracket)
+                since_ccv = 0
+
+        # ── closing block ──
+        for code in tpl["closing"]:
+            add_qc(code)
         return rows, dom, (spikes[0] if spikes else "")
 
     # ── actions ───────────────────────────────────────────────────────────
@@ -407,6 +534,56 @@ class PFASRunBuilderView(BrowserView):
             "{0}/@@pfas-run-builder?batch_id={1}&ok=Uploaded+{2}+—+the+"
             "pipeline+worker+will+import+it".format(
                 self.portal_url(), bid, fname))
+        return u""
+
+    # ── run-template save (Manager only — this is method configuration) ──
+    def _is_manager(self):
+        try:
+            from AccessControl import getSecurityManager
+            roles = getSecurityManager().getUser().getRolesInContext(self.context)
+            return "Manager" in roles or "LabManager" in roles
+        except Exception:
+            return False
+
+    def template_saved(self):
+        return self.request.form.get("tpl_saved", "") == "1"
+
+    def can_edit_template(self):
+        return self._is_manager()
+
+    def _handle_save_template(self):
+        f = self.request.form
+        batch_id = _first(f.get("batch_id")).strip()
+        if not self._is_manager():
+            return self._redirect_err(
+                batch_id, "Only a Manager may edit the run template")
+        method_id = (_first(f.get("method_id")).strip()
+                     or self.batch_method(self._batch(batch_id)))
+        if not method_id:
+            return self._redirect_err(batch_id, "No method to configure")
+
+        def parse(name):
+            raw = _first(f.get(name)) or u""
+            return [c.strip() for c in raw.split(",") if c.strip()]
+
+        opening = parse("opening_codes")
+        closing = parse("closing_codes")
+        bracket = _first(f.get("bracket_qc")).strip() or "CCV"
+
+        portal = self._portal()
+        try:
+            from senaite.pfas.method_profile_store import (
+                get_profile, save_profile)
+            prof = get_profile(portal, method_id)
+            prof["run_template"] = {
+                "opening": opening, "closing": closing, "bracket_qc": bracket}
+            save_profile(portal, method_id, prof)
+        except Exception as exc:
+            logger.error("save_template failed: %s", exc)
+            return self._redirect_err(batch_id, "Save failed — see log")
+        self.request.response.redirect(
+            "{0}/@@pfas-run-builder?batch_id={1}&tpl_saved=1".format(
+                self.portal_url(), batch_id))
         return u""
 
     def _redirect_err(self, batch_id, msg):

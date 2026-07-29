@@ -3099,3 +3099,55 @@ only the issuance + authorizer + revision. On the impress **email** path the
 ARReport is created by `ajax_save_reports` BEFORE `EmailView` fires the publish
 transition, so `report_uid` resolves. If the lab issues CoAs via jsonapi, add an
 ARReport-creation step (or accept link-less register rows).
+
+---
+
+## 2026-07-28 — QC-type labels: drop "PFAS" prefix (single source = RefDef Title)
+
+**Context:** User: 'The QC Types should not be labelled "PFAS...". We don't need
+to include "PFAS" denotations on everything.' The QC-type display labels resolve
+from SENAITE core Reference Definition Titles (single UI-editable source, tagged
+`[QC:CODE]` / stamped `pfas_qc_code`), consumed by the control-chart
+dropdown/legend, method-profile toggles and QC rules.
+
+**Decision (executed):** Strip the leading `"PFAS "` from all 13 QC-type
+Reference Definition Titles on the live DB (`rename_qc_titles_drop_pfas.py`;
+prior title backed up to annotation `senaite.pfas.title_backup`). Because the
+label source IS the Title, this propagates to every surface — including core
+SENAITE reference-sample pickers, which is desired.
+
+**Orphan fix (§3.4):** `setuprefs.py` matched existing defs *by Title string*
+(`_get_or_create_ref_def`) and filtered `existing_ref_defs()` on `"PFAS" in
+Title` — a live rename would have made `@@pfas-setup-references` recreate
+"PFAS …" duplicates. Changed to match by the STABLE `pfas_qc_code` (title
+fallback) and de-prefixed the seed titles, so the Title is now freely
+UI-editable without ever breaking setup idempotency. `setup_qc_type_refdefs.py`
+title keys de-prefixed and made prefix-tolerant.
+
+## 2026-07-28 — Configurable per-method Run Builder template
+
+**Context:** User asked for a UI-interactive way to determine how runs are
+submitted onto the LC-MS. `run_builder.py:build_sequence()` hardcoded the
+injection order (and still emitted a stale `LCS` from before the LCS→LFB merge).
+Chosen configurability level (AskUserQuestion): **"Ordered QC blocks."**
+
+**Decision (executed):** A per-method **run template** — `{opening:[codes],
+bracket_qc:code, closing:[codes]}` — stored ON the method profile
+(`senaite.pfas.method_profiles`; §3 the METHOD owns its bracketing). Editable
+on the Run Builder page (Manager-only POST `action=save_template`) as
+add/remove/reorder QC chips. QC vocabulary is drawn from the same Reference
+Definition source as the control charts (no re-hardcoded QC list). Bracketing
+FREQUENCY stays sourced from `instrument_verification.ccv.frequency` (single
+source). The `CAL` chip expands at build time to the method's calibration ladder
++ one bracketing injection, only when the per-run "include calibration" box is
+ticked. Default template is DERIVED from each method's `associated_qc_types`
+(FDA has no LFB → matrix-spike QC only; EPA methods include LFB) — no template
+literals duplicated into DEFAULT_PROFILES. Output manifest/CSV shape unchanged;
+stale `LCS` removed. The pipeline worker does not consume the template
+(worklist-generation concern only).
+
+**Gotcha:** SENAITE renders these templates via **Chameleon**, which parses
+inline `<script>` content and chokes on any bare `<` / `</` / `&` (e.g. `</g` in
+a regex, `</span>` in an innerHTML string, `&&`). The chip editor JS is written
+purely with DOM APIs (createElement/textContent) and nested ifs — no literal
+markup, no `&&` — to keep the block parseable.
