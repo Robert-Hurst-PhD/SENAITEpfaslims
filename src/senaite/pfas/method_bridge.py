@@ -104,6 +104,25 @@ def get_core_method(portal, method_id):
     return None
 
 
+def get_method_cal_code(portal, method_id):
+    """The per-method calibrator injection code — SINGLE SOURCE.
+
+    Returns the core SENAITE Method's stored MethodID (e.g. FDA_32PFAS,
+    EPA_537_1, EPA_1633A), which is the internal code core services already
+    hold for the method. Falls back to the profile id, then "CAL". Every
+    calibrator name (run worklist, prep logbook, seeds) routes through here so
+    an injection name always traces to its prepared-standard vial name."""
+    m = get_core_method(portal, method_id)
+    if m is not None:
+        try:
+            code = m.getMethodID()
+            if code:
+                return code
+        except Exception:
+            pass
+    return method_id or "CAL"
+
+
 def get_profile_id_for_method(portal, method):
     """Reverse lookup: given a core Method (object or UID) return the profile id."""
     uid = method.UID() if hasattr(method, "UID") else method

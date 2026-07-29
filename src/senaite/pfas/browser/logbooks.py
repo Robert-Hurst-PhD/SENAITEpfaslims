@@ -79,8 +79,11 @@ BATCHES_EXPORT_ROOT = os.environ.get("PFAS_BATCHES_PATH", "/data/qc/batches")
 # once contradictory) copy of the FDA ladder.
 from senaite.pfas.analyte_reference import get_cal_ladder as _get_cal_ladder
 
+# Injection name prefix = the FDA method's core code (MethodID == "FDA_32PFAS"),
+# matching the run worklist (run_builder derives the same code from core services)
+# so a logged cal standard traces to its worklist injection.
 FDA_CAL_DEFAULTS = [
-    ("CAL-%d" % (i + 1), "FDA-CAL-%d" % (i + 1), conc)
+    ("CAL-%d" % (i + 1), "FDA_32PFAS-CAL-%d" % (i + 1), conc)
     for i, conc in enumerate(_get_cal_ladder("FDA_32PFAS"))
 ]
 

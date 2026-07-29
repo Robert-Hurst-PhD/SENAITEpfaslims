@@ -94,7 +94,9 @@ IS_MRM = {
 from senaite.pfas.analyte_reference import get_cal_ladder as _get_cal_ladder
 
 CAL_LEVELS = dict(
-    [("FDA-CAL-%d" % (i + 1), conc)
+    # Name prefix = the FDA method's core code (MethodID == "FDA_32PFAS");
+    # the live worklist derives the same code via method_bridge.
+    [("FDA_32PFAS-CAL-%d" % (i + 1), conc)
      for i, conc in enumerate(reversed(_get_cal_ladder("FDA_32PFAS")))] +
     [("FDA-ICV", 1.25),   # Initial Calibration Verification
      ("FDA-CCV", 1.25)]   # Continuing Calibration Verification

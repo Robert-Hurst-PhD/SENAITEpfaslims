@@ -3207,3 +3207,39 @@ Follow-ups on the drag-and-drop run sequence (all user-directed):
 
 Stale test run_templates cleared so all three methods show the clean derived
 default.
+
+## 2026-07-29 — Calibrator naming: method-specific, sourced from core Method.MethodID
+
+**Context:** the calibrator injection prefix was hardcoded "FDA-CAL-" on EVERY
+method (so EPA worklists wrongly read "FDA-CAL-1"). User: make it method-specific
+and tied to the internal code stored in senaite core services; "interconnected …
+impacts overall usability and quality."
+
+**Decisions (AskUserQuestion, user-confirmed):** (1) Calibrator code = the core
+SENAITE **Method.MethodID** (FDA_32PFAS / EPA_537_1 / EPA_1633A) — already stored
+in core, resolved via `method_bridge.get_core_method`; verbose but no new
+storage. (2) **Unify everywhere + migrate.**
+
+**Executed — single source `method_bridge.get_method_cal_code(portal, method_id)`**
+(returns Method.MethodID; falls back to profile id, then "CAL"). Routed through:
+- `run_builder._cal_names` → live worklist names `{MethodID}-CAL-{n}-{ymd}`.
+- FDA seeds updated to `FDA_32PFAS-CAL-` (FDA's fixed MethodID): `analytes.CAL_LEVELS`,
+  `logbooks.FDA_CAL_DEFAULTS`, `prep_logbooks` default `field_schema_json`.
+- **Migration** `migrate_cal_names_method_code.py`: stored PrepLogbookDef (FDA
+  Cal Curve Prep Log, slug 251 / FM-ENV-002) cal-point names FDA-CAL- →
+  FDA_32PFAS-CAL-, so a logged standard traces to its worklist injection.
+
+**Interconnection verified (why it's safe):**
+- `get_core_method` resolves by UID/Title, NOT MethodID → editing/using MethodID
+  doesn't break resolution. MethodID is coupled to the profile id (wizard/setup
+  key on it) so it's an internal identifier, not a freely-editable label.
+- Pipeline worker: `pipeline.py` imports only `REVIEW_CHECKS` from
+  `injection_builder` — its hardcoded `FDA_CAL_LEVELS`/`InjectionSequenceBuilder`
+  (VBA port) are NOT in the import/QC path (pre-existing §7 duplication, left
+  as-is). `importer.classify_qc_type` keys on the `-CAL-` substring (new names
+  still classify as CAL); the QC engine reads `expected_conc` FROM the instrument
+  file, not by name lookup — so renaming injections breaks neither import nor
+  calibration % dev.
+
+Live-verified: FDA build worklist shows FDA_32PFAS-CAL-1..10; headless EPA_537_1
+/ EPA_1633A show their own codes; migrated FDA prep-logbook CAL-1 = FDA_32PFAS-CAL-1.

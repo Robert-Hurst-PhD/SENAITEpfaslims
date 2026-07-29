@@ -435,8 +435,12 @@ class PFASRunBuilderView(BrowserView):
     # ── sequence construction ─────────────────────────────────────────────
     def _cal_names(self, method_id, run_date):
         from senaite.pfas.analyte_reference import get_cal_ladder
+        from senaite.pfas.method_bridge import get_method_cal_code
         ymd = run_date.strftime("%y%m%d")
-        return [("FDA-CAL-{0}-{1}".format(i + 1, ymd), "Standard")
+        # Method-specific code from core services (Method.MethodID) — never a
+        # hardcoded "FDA-" prefix. Ladder length is already per-method.
+        code = get_method_cal_code(self._portal(), method_id)
+        return [(u"{0}-CAL-{1}-{2}".format(code, i + 1, ymd), "Standard")
                 for i, _c in enumerate(get_cal_ladder(method_id) or [])]
 
     def _qc_name(self, initials, matrix, qc, run_date, seq):
