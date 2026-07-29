@@ -35,43 +35,48 @@ logger = logging.getLogger("senaite.pfas.browser.setuprefs")
 #                       blank_threshold | recovery_tiered | tiered_recovery_rpd
 #                       rpd_tiered | instrument_cal | instrument_ccv
 #
+# Titles carry NO "PFAS " prefix — these are the user-facing QC-type labels
+# (control-chart dropdown/legend, method-profile toggles). The prefix was
+# stripped from both the seed here and the live Reference Definitions; the
+# stable identity is the QC code (the dict key / pfas_qc_code field), never
+# the editable Title.
 QC_REF_SPEC = {
     # ── Blank QC types ──────────────────────────────────────────────────────
-    "MB":    ("PFAS Method Blank",
+    "MB":    ("Method Blank",
               True,  "blank",
               "blank", "blank_threshold"),
-    "LRB":   ("PFAS Lab Reagent Blank",
+    "LRB":   ("Lab Reagent Blank",
               True,  "blank",
               "blank", "blank_threshold"),
-    "MxB":   ("PFAS Matrix Blank",
+    "MxB":   ("Matrix Blank",
               True,  "blank",
               "blank", "blank_threshold"),
 
     # ── Calibration / instrument verification ────────────────────────────────
-    "CAL":   ("PFAS Calibration Standard",
+    "CAL":   ("Calibration Standard",
               False, "cal_dev",
               "instrument", "instrument_cal"),
-    "ICV":   ("PFAS Initial Calibration Verification",
+    "ICV":   ("Initial Calibration Verification",
               False, "cal_dev_tight",
               "instrument", "instrument_cal"),
-    "CCV":   ("PFAS Continuing Calibration Verification",
+    "CCV":   ("Continuing Calibration Verification",
               False, "cal_dev_tight",
               "instrument", "instrument_ccv"),
 
     # ── Extraction / matrix QC types ────────────────────────────────────────
-    "LFB":   ("PFAS Laboratory Fortified Blank",
+    "LFB":   ("Laboratory Fortified Blank",
               False, "recovery",
               "extraction", "recovery_tiered"),
-    "LCS":   ("PFAS Laboratory Control Sample",
+    "LCS":   ("Laboratory Control Sample",
               False, "recovery",
               "extraction", "recovery_tiered"),
-    "LFSM":  ("PFAS Lab Fortified Sample Matrix",
+    "LFSM":  ("Lab Fortified Sample Matrix",
               False, "recovery",
               "extraction", "recovery_tiered"),
-    "LFSMD": ("PFAS LFSM Duplicate",
+    "LFSMD": ("LFSM Duplicate",
               False, "recovery_dup",
               "extraction", "tiered_recovery_rpd"),
-    "Dup":   ("PFAS Sample Duplicate",
+    "Dup":   ("Sample Duplicate",
               False, "rpd",
               "extraction", "rpd_tiered"),
 }
@@ -87,12 +92,33 @@ def _is_manager(context):
         return False
 
 
-def _get_or_create_ref_def(folder, title, is_blank=False):
+def _ref_def_code(obj):
+    """The QC code an existing ReferenceDefinition carries, if any."""
+    try:
+        code = obj.getField("pfas_qc_code").get(obj)
+        if code:
+            return code
+    except Exception:
+        pass
+    return None
+
+
+def _get_or_create_ref_def(folder, code, title, is_blank=False):
     """
-    Idempotently get or create a ReferenceDefinition by title.
+    Idempotently get or create a ReferenceDefinition for a QC type.
+
+    Identity is the STABLE QC code (pfas_qc_code), so the Title stays freely
+    UI-editable without this setup ever recreating a duplicate. Falls back to
+    a title match only for legacy defs created before the code field existed.
     Returns (obj, created_bool).
     """
     from bika.lims import api
+    for obj in folder.objectValues():
+        try:
+            if _ref_def_code(obj) == code:
+                return obj, False
+        except Exception:
+            pass
     for obj in folder.objectValues():
         try:
             if obj.Title() == title:
@@ -258,11 +284,11 @@ class PFASSetupRefsView(BrowserView):
         return len(self._get_analyte_uids())
 
     def existing_ref_defs(self):
-        """Return list of existing PFAS ReferenceDefinition titles."""
+        """Return titles of ReferenceDefinitions that carry a QC code."""
         try:
             folder = self.context.bika_setup.bika_referencedefinitions
             return [obj.Title() for obj in folder.objectValues()
-                    if "PFAS" in (obj.Title() or "")]
+                    if _ref_def_code(obj)]
         except Exception:
             return []
 
@@ -319,7 +345,7 @@ class PFASSetupRefsView(BrowserView):
         for code, spec in sorted(QC_REF_SPEC.items()):
             title, is_blank, _strategy, category, acceptance_schema = spec
             try:
-                obj, is_new = _get_or_create_ref_def(folder, title,
+                obj, is_new = _get_or_create_ref_def(folder, code, title,
                                                      is_blank=is_blank)
                 records = _build_reference_results(code, rules, analyte_uids)
                 obj.setReferenceResults(records)

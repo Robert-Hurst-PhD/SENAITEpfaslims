@@ -21,25 +21,28 @@ from __future__ import absolute_import, print_function
 
 import re
 
-# current Title -> canonical qc_type code (None = leave untagged / retired)
+# current Title -> canonical qc_type code (None = leave untagged / retired).
+# Titles carry NO "PFAS " prefix (stripped from labels); `by_title` matching
+# below also tolerates a legacy "PFAS " prefix so this stays re-runnable on
+# databases seeded before the rename.
 TITLE_TO_CODE = {
-    "PFAS Calibration Standard":                 "CAL",
-    "PFAS Continuing Calibration Verification":  "CCV",
-    "PFAS Sample Duplicate":                     "DUP",
-    "PFAS Initial Calibration Verification":     "ICV",
-    "PFAS Laboratory Control Sample":            None,   # retired: LCS -> LFB
-    "PFAS Lab Fortified Sample Matrix":          "LFSM",
-    "PFAS LFSM Duplicate":                       "LFSMD",
-    "PFAS Lab Reagent Blank":                    "LRB",
-    "PFAS Method Blank":                         "MB",
-    "PFAS Matrix Blank":                         "MXB",
-    "PFAS Laboratory Fortified Blank":           "LFB",
+    "Calibration Standard":                 "CAL",
+    "Continuing Calibration Verification":  "CCV",
+    "Sample Duplicate":                     "DUP",
+    "Initial Calibration Verification":     "ICV",
+    "Laboratory Control Sample":            None,   # retired: LCS -> LFB
+    "Lab Fortified Sample Matrix":          "LFSM",
+    "LFSM Duplicate":                       "LFSMD",
+    "Lab Reagent Blank":                    "LRB",
+    "Method Blank":                         "MB",
+    "Matrix Blank":                         "MXB",
+    "Laboratory Fortified Blank":           "LFB",
 }
 
 # code -> (title, blank) for definitions that don't exist yet
 CREATE = [
-    ("CCB",  "PFAS Continuing Calibration Blank", True),
-    ("SURR", "PFAS Surrogate Recovery",           False),
+    ("CCB",  "Continuing Calibration Blank", True),
+    ("SURR", "Surrogate Recovery",           False),
 ]
 
 _TAG = "[QC:{0}]"
@@ -65,7 +68,11 @@ def run(app):
     portal = app.senaite
     folder = portal.bika_setup.bika_referencedefinitions
 
-    by_title = {d.Title(): d for d in folder.objectValues()}
+    def _norm(t):
+        t = t or ""
+        return t[5:].strip() if t.startswith("PFAS ") else t
+
+    by_title = {_norm(d.Title()): d for d in folder.objectValues()}
     tagged, created, skipped = [], [], []
 
     # 1) tag existing definitions
