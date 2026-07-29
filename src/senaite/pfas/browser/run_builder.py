@@ -550,7 +550,12 @@ class PFASRunBuilderView(BrowserView):
 
         rows = []
         counters = {}
-        state = {"in_body": False, "count": 0, "last_bracket": False}
+        # pending_open: the ladder has run, but the bracket has NOT opened yet.
+        # It opens immediately before the first COUNTING injection, so
+        # instrument-cal injections (ICV, solvent blank) placed after the
+        # calibrators stay in the calibration block — outside the bracketing.
+        state = {"in_body": False, "pending_open": False,
+                 "count": 0, "last_bracket": False}
 
         def add(name, typ, desc=u""):
             rows.append({"vial": len(rows) + 1, "name": name,
@@ -567,6 +572,12 @@ class PFASRunBuilderView(BrowserView):
             add_qc(bracket)
             state["count"] = 0
             state["last_bracket"] = True
+            state["pending_open"] = False
+
+        def open_bracket_if_needed():
+            """Open the bracket lazily — right before the first counting row."""
+            if state["pending_open"]:
+                emit_bracket()
 
         def body_tick():
             state["count"] += 1
@@ -581,13 +592,16 @@ class PFASRunBuilderView(BrowserView):
                     for name, typ, desc in self._cal_rows(
                             method_id, run_date, initials, std):
                         add(name, typ, desc)
-                    emit_bracket()              # opening bracket
+                    # bracket does NOT open here — it opens at the first
+                    # counting injection, leaving ICV/solvent blank outside
                     state["in_body"] = True
+                    state["pending_open"] = True
                 continue
             if tok == self.SAMPLES_TOKEN:
                 if not state["in_body"]:
-                    emit_bracket()              # open body when there is no CAL
-                    state["in_body"] = True
+                    state["in_body"] = True     # no CAL: body starts at samples
+                    state["pending_open"] = True
+                open_bracket_if_needed()        # samples count → open now
                 for i, r in enumerate(sample_rows):
                     mtx = r.get("matrix") or dom
                     sid = r["sample_id"]
@@ -600,11 +614,14 @@ class PFASRunBuilderView(BrowserView):
             if tok == bracket and state["in_body"]:
                 emit_bracket()       # an explicitly-placed bracket injection
                 continue             # resets the interval; never double-counts
+            # instrument-cal injections (CAL/ICV/CCV/CCB) ride with the
+            # calibration: they neither open the bracket nor advance the CCV
+            # interval. Extraction QC (MB/LFB/LFSM/LFSMD) and field samples do.
+            counts = state["in_body"] and tok.upper() not in noncount
+            if counts:
+                open_bracket_if_needed()    # bracket opens BEFORE this row
             add_qc(tok)
-            # instrument-cal injections (CAL/ICV/CCV/CCB) are counted like
-            # calibrators — they do NOT advance the CCV interval; extraction QC
-            # + field samples do.
-            if state["in_body"] and tok.upper() not in noncount:
+            if counts:
                 body_tick()
 
         # closing bracket (skip if the run already ended on one)

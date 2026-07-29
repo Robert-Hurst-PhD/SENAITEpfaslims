@@ -3269,3 +3269,26 @@ Three user-directed run-builder fixes (AskUserQuestion-confirmed):
 Live-verified on example-batch-fda32: cal/spike lots + real prep date flow into
 names and descriptions; CSV gains the Description column; counting unchanged
 except ICV/CCB now excluded.
+
+## 2026-07-29 — CCV bracket opens LAZILY (ICV / solvent blank sit outside it)
+
+**Correction to the previous entry.** Making ICV/CCB non-COUNTING was not the
+issue the user reported — the complaint was POSITIONAL: the opening CCV was
+emitted the instant the calibrator ladder ended, so an ICV or solvent blank
+placed after the calibrators landed *inside* the bracketed region:
+
+    10 CAL-L10 | 11 CCV (bracket) | 12 ICV | 13 CCB | 14 MB …   <-- wrong
+
+**Fix:** the CAL token no longer emits the opening bracket. It sets
+`pending_open`, and `open_bracket_if_needed()` fires the bracket immediately
+before the FIRST COUNTING injection (extraction QC or field sample). Because
+instrument-cal codes (CAL/ICV/CCV/CCB) never count, they stay in the calibration
+block, outside the bracketing:
+
+    10 CAL-L10 | 11 ICV | 12 CCB | 13 CCV (bracket) | 14 MB | 15+ samples
+
+Rule: **the calibration block runs to the last instrument-cal injection; the CCV
+bracket opens at the first injection that counts toward the interval.** Sequences
+with no CAL still open the bracket at the samples. Live-verified on
+example-batch-fda32 for both the derived default and a sequence with the solvent
+blank placed after the ICV.
