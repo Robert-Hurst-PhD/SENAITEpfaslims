@@ -392,11 +392,14 @@
         </h3>
         <div class="table-wrap">
           <table class="rb-seq">
-            <thead><tr><th>Vial</th><th>Injection name</th><th>Type</th></tr></thead>
+            <thead><tr><th>Vial</th><th>Injection name (lot)</th>
+                       <th>Description</th><th>Type</th></tr></thead>
             <tbody>
               <tr tal:repeat="r m/rows">
                 <td tal:content="r/vial">1</td>
                 <td style="font-family:monospace;" tal:content="r/name">name</td>
+                <td style="color:var(--s-secondary);"
+                    tal:content="python:r.get('description','')">desc</td>
                 <td><span tal:attributes="class string:rb-type-${r/type}"
                           tal:content="r/type">QC</span></td>
               </tr>

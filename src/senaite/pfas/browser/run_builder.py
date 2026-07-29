@@ -275,7 +275,9 @@ class PFASRunBuilderView(BrowserView):
                     out.add(code.upper())
         except Exception as exc:
             logger.warning("_noncount_codes: %s", exc)
-        out |= set(["CAL", "ICV", "CCV"])
+        # CAL/ICV/CCV are instrument-cal; CCB is the solvent/system blank — all
+        # ride with the calibration, none advance the sample CCV interval.
+        out |= set(["CAL", "ICV", "CCV", "CCB"])
         self._noncount_cache = out
         return out
 
@@ -433,34 +435,111 @@ class PFASRunBuilderView(BrowserView):
         return out
 
     # ── sequence construction ─────────────────────────────────────────────
-    def _cal_names(self, method_id, run_date):
+    # QC code → which FM-ENV-251 (cal-prep log) lot field supplies the vial lot.
+    # Standards ride the cal lot; matrix/blank spikes ride the analyte spike lot.
+    _QC_LOT_FIELD = {
+        "CAL": "cal_a_lot", "ICV": "cal_a_lot", "CCV": "cal_a_lot",
+        "LFB": "analyte_spike_lot", "LFSM": "analyte_spike_lot",
+        "LFSMD": "analyte_spike_lot",
+    }
+
+    CAL_PREP_SLUG = "251"   # FM-ENV-251 Calibration Curve Prep Log
+
+    def _std_context(self, batch_id):
+        """The batch's cal-prep logbook (FM-ENV-251) dict: prepared-standard lot
+        refs + prepared date that LINK each standard injection to its lot.
+        Returns {} when the log is not filled."""
+        b = self._batch(batch_id)
+        if b is None:
+            return {}
+        return self._extraction_log(b, self.CAL_PREP_SLUG) or {}
+
+    def _qc_lot(self, code, std):
+        field = self._QC_LOT_FIELD.get(code.upper())
+        return (std.get(field) or u"").strip() if (field and std) else u""
+
+    def _label_map(self):
+        cache = getattr(self, "_lbl_cache", None)
+        if cache is None:
+            try:
+                from senaite.pfas.qc_labels import get_qc_label_map
+                cache = get_qc_label_map(self._portal())
+            except Exception:
+                cache = {}
+            self._lbl_cache = cache
+        return cache
+
+    def _label(self, code):
+        m = self._label_map()
+        return m.get(code) or m.get(code.upper(), code)
+
+    def _cal_rows(self, method_id, run_date, initials, std):
+        """(name, type, description) per calibrator level. Injection name = the
+        recorded cal lot + level (else method code); description carries analyst,
+        level, lot and the real prep date."""
         from senaite.pfas.analyte_reference import get_cal_ladder
         from senaite.pfas.method_bridge import get_method_cal_code
-        ymd = run_date.strftime("%y%m%d")
-        # Method-specific code from core services (Method.MethodID) — never a
-        # hardcoded "FDA-" prefix. Ladder length is already per-method.
+        cal_lot = (std.get("cal_a_lot") or u"").strip() if std else u""
+        prep = (std.get("prepared_date") or u"").strip() if std else u""
         code = get_method_cal_code(self._portal(), method_id)
-        return [(u"{0}-CAL-{1}-{2}".format(code, i + 1, ymd), "Standard")
-                for i, _c in enumerate(get_cal_ladder(method_id) or [])]
+        ymd = run_date.strftime("%y%m%d")
+        out = []
+        for i, _c in enumerate(get_cal_ladder(method_id) or []):
+            lvl = i + 1
+            name = (u"{0}-L{1}".format(cal_lot, lvl) if cal_lot
+                    else u"{0}-CAL-{1}-{2}".format(code, lvl, ymd))
+            desc = u"{0} · Calibrator L{1}".format(initials, lvl)
+            if cal_lot:
+                desc += u" · lot {0}".format(cal_lot)
+            if prep:
+                desc += u" · prep {0}".format(prep)
+            out.append((name, "Standard", desc))
+        return out
 
-    def _qc_name(self, initials, matrix, qc, run_date, seq):
-        # validated pattern 3: "KCP Water MB 2026-03-13-01"
-        return u"{0} {1} {2} {3}-{4:02d}".format(
-            initials, matrix or "Lab", qc, run_date.strftime("%Y-%m-%d"), seq)
+    def _qc_injection(self, code, initials, matrix, run_date, seq, std,
+                      method_code):
+        """(name, description) for one QC injection. Injection name = the linked
+        prepared-standard lot (cal/spike) + type; blanks & no-lot QC fall back to
+        the method code. Description surfaces the lot + real prep date so the
+        reviewer needn't open the logbook."""
+        label = self._label(code)
+        lot = self._qc_lot(code, std)
+        prep = (std.get("prepared_date") or u"").strip() if std else u""
+        ymd = run_date.strftime("%y%m%d")
+        cu = code.upper()
+        if lot:
+            name = u"{0}-{1}".format(lot, cu)
+            if seq > 1:
+                name = u"{0}-{1:02d}".format(name, seq)
+            kind = u"spike lot" if cu in ("LFB", "LFSM", "LFSMD") else u"lot"
+            desc = u"{0} · {1} · {2} {3}".format(initials, label, kind, lot)
+            if prep:
+                desc += u" · prep {0}".format(prep)
+        else:
+            name = u"{0}-{1}-{2}-{3:02d}".format(method_code, cu, ymd, seq)
+            desc = u"{0} · {1} · {2} · {3}".format(
+                initials, label, matrix or u"Lab",
+                run_date.strftime("%Y-%m-%d"))
+        return name, desc
 
     def build_sequence(self, sample_rows, initials, method_id, ccv_interval,
-                       include_cal):
+                       include_cal, std=None):
         """Assemble the injection worklist by walking the method's run sequence.
 
-        Output shape (vial / name / type per row) is unchanged. The CAL token
-        emits the ladder + an OPENING bracket and starts the bracketed BODY;
-        thereafter every injection (extracted QC AND field samples) counts
-        toward the CCV interval N, and a CLOSING bracket ends the run. Tokens
-        before CAL are pre-bracket (e.g. a system MeOH blank)."""
+        Each row carries a lot-code injection NAME (the linked prepared-standard
+        lot where one exists — cal lot / spike lot from FM-ENV-251 — else the
+        method code) and a human DESCRIPTION (analyst · QC type · lot · prep
+        date). CAL opens the CCV-bracketed body; instrument-cal injections
+        (CAL/ICV/CCV/CCB) don't advance the interval; extraction QC + samples do;
+        a single closing CCV ends the run."""
+        from senaite.pfas.method_bridge import get_method_cal_code
+        std = std or {}
         run_date = date.today()
+        sample_date = run_date.strftime("%Y-%m-%d")
         # QC rows use the run's dominant matrix (from the extraction log)
         matrices = [r.get("matrix") for r in sample_rows if r.get("matrix")]
         dom = max(set(matrices), key=matrices.count) if matrices else "Lab"
+        method_code = get_method_cal_code(self._portal(), method_id)
         tpl = self.run_template(method_id)
         bracket = tpl["bracket_qc"] or "CCV"
         seq = list(tpl["sequence"])
@@ -471,23 +550,18 @@ class PFASRunBuilderView(BrowserView):
 
         rows = []
         counters = {}
-        first_blank = [False]
         state = {"in_body": False, "count": 0, "last_bracket": False}
 
-        def add(name, typ):
-            rows.append({"vial": len(rows) + 1, "name": name, "type": typ})
+        def add(name, typ, desc=u""):
+            rows.append({"vial": len(rows) + 1, "name": name,
+                         "type": typ, "description": desc})
             state["last_bracket"] = False
 
         def add_qc(code):
             counters[code] = counters.get(code, 0) + 1
-            typ = self.qc_injection_type(code)
-            suffix = u""
-            # preserve the historic "first blank is the MeOH system blank" cue
-            if typ == "Blank" and not first_blank[0]:
-                suffix = u" MeOH-Blank"
-                first_blank[0] = True
-            add(self._qc_name(initials, dom, code, run_date, counters[code])
-                + suffix, typ)
+            name, desc = self._qc_injection(
+                code, initials, dom, run_date, counters[code], std, method_code)
+            add(name, self.qc_injection_type(code), desc)
 
         def emit_bracket():
             add_qc(bracket)
@@ -504,8 +578,9 @@ class PFASRunBuilderView(BrowserView):
         for tok in seq:
             if tok == "CAL":
                 if include_cal:
-                    for name, typ in self._cal_names(method_id, run_date):
-                        add(name, typ)
+                    for name, typ, desc in self._cal_rows(
+                            method_id, run_date, initials, std):
+                        add(name, typ, desc)
                     emit_bracket()              # opening bracket
                     state["in_body"] = True
                 continue
@@ -515,9 +590,10 @@ class PFASRunBuilderView(BrowserView):
                     state["in_body"] = True
                 for i, r in enumerate(sample_rows):
                     mtx = r.get("matrix") or dom
-                    add(u"{0} {1} Sample {2}-{3:02d} {4}".format(
-                        initials, mtx, run_date.strftime("%Y-%m-%d"), i + 1,
-                        r["sample_id"]), "Sample")
+                    sid = r["sample_id"]
+                    add(u"{0}-{1}".format(method_code, sid), "Sample",
+                        u"{0} · Sample {1} · {2} · {3}".format(
+                            initials, sid, mtx or u"Lab", sample_date))
                     body_tick()
                 continue
             # a QC token
@@ -525,8 +601,9 @@ class PFASRunBuilderView(BrowserView):
                 emit_bracket()       # an explicitly-placed bracket injection
                 continue             # resets the interval; never double-counts
             add_qc(tok)
-            # instrument-cal injections (ICV) are counted like calibrators —
-            # they do NOT advance the CCV interval; extraction QC + samples do.
+            # instrument-cal injections (CAL/ICV/CCV/CCB) are counted like
+            # calibrators — they do NOT advance the CCV interval; extraction QC
+            # + field samples do.
             if state["in_body"] and tok.upper() not in noncount:
                 body_tick()
 
@@ -559,8 +636,9 @@ class PFASRunBuilderView(BrowserView):
             return self._redirect_err(batch_id, "No samples to run")
 
         ccv = self.ccv_interval(method_id)
+        std = self._std_context(batch_id)
         rows, dom, spike = self.build_sequence(
-            rows_in, initials, method_id, ccv, include_cal)
+            rows_in, initials, method_id, ccv, include_cal, std=std)
         manifest = {
             "built_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
             "built_by": initials,
@@ -570,6 +648,10 @@ class PFASRunBuilderView(BrowserView):
             "dominant_matrix": dom,
             "ccv_interval": ccv,
             "spike_ppt": spike,
+            # linked prepared-standard lots (from FM-ENV-251) recorded on the run
+            "cal_lot": (std.get("cal_a_lot") or u""),
+            "spike_lot": (std.get("analyte_spike_lot") or u""),
+            "prep_date": (std.get("prepared_date") or u""),
             "rows": rows,
         }
         try:
@@ -601,9 +683,11 @@ class PFASRunBuilderView(BrowserView):
             return self._redirect_err(self.selected_batch(), "No built run")
         buf = io.BytesIO()
         w = csv.writer(buf)
-        w.writerow([b"Vial", b"Sample Name", b"Sample Type"])
+        w.writerow([b"Vial", b"Sample Name", b"Description", b"Sample Type"])
         for r in m["rows"]:
-            w.writerow([r["vial"], r["name"].encode("utf-8"), r["type"]])
+            w.writerow([r["vial"], r["name"].encode("utf-8"),
+                        (r.get("description") or u"").encode("utf-8"),
+                        r["type"]])
         resp = self.request.response
         resp.setHeader("Content-Type", "text/csv")
         resp.setHeader("Content-Disposition",

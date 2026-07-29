@@ -3243,3 +3243,29 @@ storage. (2) **Unify everywhere + migrate.**
 
 Live-verified: FDA build worklist shows FDA_32PFAS-CAL-1..10; headless EPA_537_1
 / EPA_1633A show their own codes; migrated FDA prep-logbook CAL-1 = FDA_32PFAS-CAL-1.
+
+## 2026-07-29 — Injection names = linked lot codes + Description column; ICV/Solvent-blank non-counting
+
+Three user-directed run-builder fixes (AskUserQuestion-confirmed):
+- **Injection Name = the linked prepared-standard lot** (user chose "literal lot"
+  over a fabricated method-code string). Read from the batch's FM-ENV-251
+  cal-prep log: `cal_a_lot` → CAL(`-L{n}`)/ICV/CCV; `analyte_spike_lot` →
+  LFB/LFSM/LFSMD. Blanks (MB/CCB) and field samples have no prepared-standard
+  lot, so they fall back to `{MethodID}-{TYPE}-{yymmdd}-{nn}` / `{MethodID}-{sampleID}`.
+  `_QC_LOT_FIELD` maps QC code → 251 lot field. The used lots are also stored on
+  the run manifest (the link).
+- **Description column** (new, on the worklist table + CSV): `analyst · QC type ·
+  lot · prep date` for standards/spikes (real prep date from FM-ENV-251, NOT the
+  run date); `analyst · QC type · matrix · run date` for blanks/samples. Lets a
+  reviewer read the run without opening the logbooks.
+- **ICV + Solvent Blank (CCB) no longer advance the CCV interval.** `_noncount_codes`
+  already had CAL/ICV/CCV (RefDef `pfas_category == "instrument"`); CCB was empty-
+  category so it counted. Stamped CCB `pfas_category = instrument` live and added
+  CCB to the constant fallback set — both instrument-side, ride with the
+  calibration, don't count. Extraction QC (MB/LFB/LFSM/LFSMD) + samples still count.
+- Dropped the legacy " MeOH-Blank" name suffix (the dedicated Solvent Blank type
+  supersedes it).
+
+Live-verified on example-batch-fda32: cal/spike lots + real prep date flow into
+names and descriptions; CSV gains the Description column; counting unchanged
+except ICV/CCB now excluded.
