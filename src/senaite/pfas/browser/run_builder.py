@@ -232,16 +232,52 @@ class PFASRunBuilderView(BrowserView):
                     "label": u"Field samples ({0})".format(n_samples)}
         if code == "CAL":
             return {"code": code, "kind": "cal", "removable": True,
-                    "label": u"Calibration ladder"}
+                    "label": u"Calibrator list"}
         kind = "blank" if self.qc_injection_type(code) == "Blank" else "qc"
         return {"code": code, "kind": kind, "removable": True,
                 "label": vocab.get(code, code)}
 
-    def bracket_vocabulary(self):
-        """QC types eligible as the bracket (non-blank, not the CAL ladder)."""
-        blanks = self._blank_codes()
-        return [v for v in self.qc_vocabulary()
-                if v["code"] != "CAL" and v["code"].upper() not in blanks]
+    def add_vocabulary(self):
+        """QC types offered in the sequence add-list — the full vocabulary minus
+        the bracket QC (CCV), which is inserted automatically from the method's
+        CCV frequency, never placed by hand."""
+        return [v for v in self.qc_vocabulary() if v["code"] != "CCV"]
+
+    def _noncount_codes(self):
+        """QC codes that DON'T advance the CCV interval — the instrument
+        calibration/verification injections (the calibrator ladder, ICV, CCV).
+        They are counted like calibrators, not like body injections. Sourced
+        from the Reference Definition 'instrument' category; constant fallback."""
+        cache = getattr(self, "_noncount_cache", None)
+        if cache is not None:
+            return cache
+        out = set()
+        try:
+            folder = self._portal().bika_setup.bika_referencedefinitions
+            tagre = re.compile(r"\[QC:\s*([A-Za-z0-9_]+)\s*\]")
+            for d in folder.objectValues():
+                cat = u""
+                try:
+                    cat = d.getField("pfas_category").get(d) or u""
+                except Exception:
+                    pass
+                if cat != "instrument":
+                    continue
+                code = None
+                try:
+                    code = d.getField("pfas_qc_code").get(d)
+                except Exception:
+                    pass
+                if not code:
+                    m = tagre.search(d.Description() or u"")
+                    code = m.group(1) if m else None
+                if code:
+                    out.add(code.upper())
+        except Exception as exc:
+            logger.warning("_noncount_codes: %s", exc)
+        out |= set(["CAL", "ICV", "CCV"])
+        self._noncount_cache = out
+        return out
 
     def qc_vocabulary(self):
         """[{code,label}] of QC types, from the single Reference-Definition
@@ -427,6 +463,7 @@ class PFASRunBuilderView(BrowserView):
         if self.SAMPLES_TOKEN not in seq:
             seq.append(self.SAMPLES_TOKEN)          # samples are never optional
         n = max(1, int(ccv_interval or 1))
+        noncount = self._noncount_codes()           # instrument cal ≠ body count
 
         rows = []
         counters = {}
@@ -484,7 +521,9 @@ class PFASRunBuilderView(BrowserView):
                 emit_bracket()       # an explicitly-placed bracket injection
                 continue             # resets the interval; never double-counts
             add_qc(tok)
-            if state["in_body"]:
+            # instrument-cal injections (ICV) are counted like calibrators —
+            # they do NOT advance the CCV interval; extraction QC + samples do.
+            if state["in_body"] and tok.upper() not in noncount:
                 body_tick()
 
         # closing bracket (skip if the run already ended on one)

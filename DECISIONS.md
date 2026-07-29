@@ -3185,3 +3185,25 @@ methods show the clean derived default.
 **Reconfirmed Chameleon rule:** the DnD JS is pure-DOM with NO bare `<`, `&`, or
 `&&` (used `0 > offset` instead of `offset < 0`, nested ifs instead of `&&`) so
 the inline `<script>` parses.
+
+## 2026-07-29 — Run Builder tweaks: CCV auto-only, ICV non-counting, label fixes
+
+Follow-ups on the drag-and-drop run sequence (all user-directed):
+- **CCV removed from the editor's choices.** The bracket QC is always CCV and
+  its interval comes from the method profile, so the bracket-QC selector is gone
+  and CCV is excluded from the sequence add-list (`add_vocabulary()` = QC vocab
+  minus CCV). `_handle_save_template` defaults `bracket_qc` to "CCV" (no field
+  posted).
+- **ICV no longer advances the CCV interval** — "counted like a calibrator."
+  `build_sequence` skips `body_tick()` for codes in `_noncount_codes()`, sourced
+  from the RefDef `pfas_category == "instrument"` (CAL, ICV, CCV; constant
+  fallback). Extraction QC (MB/LFB/LFSM/LFSMD) and field samples still count.
+- **Label changes (single source = RefDef Title / run-builder token):** CCB
+  RefDef Title renamed "Continuing Calibration Blank" → **"Solvent Blank"**
+  (`rename_ccb_to_solvent_blank.py`; setup_qc_type_refdefs CREATE seed updated;
+  identity stays the [QC:CCB] tag). The CAL sequence token label changed
+  "Calibration ladder" → **"Calibrator list"** (run_builder `_chip` + the
+  add-list option).
+
+Stale test run_templates cleared so all three methods show the clean derived
+default.

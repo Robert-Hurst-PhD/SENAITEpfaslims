@@ -41,8 +41,8 @@ TITLE_TO_CODE = {
 
 # code -> (title, blank) for definitions that don't exist yet
 CREATE = [
-    ("CCB",  "Continuing Calibration Blank", True),
-    ("SURR", "Surrogate Recovery",           False),
+    ("CCB",  "Solvent Blank",       True),
+    ("SURR", "Surrogate Recovery",  False),
 ]
 
 _TAG = "[QC:{0}]"

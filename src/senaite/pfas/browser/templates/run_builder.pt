@@ -204,8 +204,7 @@
 
       <!-- ── Run template (per-method, editable) ───────────────────────── -->
       <tal:tpl tal:define="tpl view/current_template;
-                           vocab view/qc_vocabulary;
-                           braq view/bracket_vocabulary;
+                           vocab view/add_vocabulary;
                            editable view/can_edit_template"
                tal:condition="tpl">
       <div class="rb-card" style="margin-top:22px;"
@@ -216,10 +215,12 @@
         </h3>
         <p style="font-size:12px;color:var(--s-secondary);margin-top:-4px;">
           One ordered run sequence — <strong>drag rows to reorder</strong>. The
-          calibration ladder opens the CCV-bracketed body; every injection after
-          it (extracted QC <em>and</em> the field samples) counts toward the
-          <em>CCV every N</em> spacing, and a closing CCV ends the run. Place
-          extracted QC after the ladder to sit them inside the bracketing.
+          calibrator list opens the CCV-bracketed body; each extraction QC and
+          field-sample injection after it counts toward the <em>CCV every N</em>
+          spacing (calibrators and ICV do not), and a closing CCV ends the run.
+          Place extraction QC after the calibrators to sit them inside the
+          bracketing. The CCV itself is inserted automatically — its interval
+          comes from the method profile.
         </p>
         <div class="alert alert-success" tal:condition="view/template_saved">
           Run template saved to the method profile.
@@ -251,31 +252,25 @@
             </div>
             <div class="rb-add">
               <select id="seq-add">
-                <option value="">&#8212; add QC / calibration &#8212;</option>
+                <option value="">&#8212; add QC / calibrators &#8212;</option>
                 <option tal:repeat="v vocab" tal:attributes="value v/code"
-                        tal:content="python:(('Calibration ladder') if v['code']=='CAL' else (v['label']+' ('+v['code']+')'))">MB</option>
+                        tal:content="python:(('Calibrator list') if v['code']=='CAL' else (v['label']+' ('+v['code']+')'))">MB</option>
               </select>
               <button type="button" class="btn btn-secondary btn-sm"
                       id="seq-add-btn">+ add</button>
             </div>
           </div>
 
-          <div class="rb-tpl-block" style="max-width:360px;">
-            <label>Bracketing QC — a
-              <span tal:content="python:tpl['bracket_qc']">CCV</span> every
-              <span tal:content="ctx/ccv_interval">6</span> injections
-              (interval from the method parameter)</label>
-            <select name="bracket_qc" id="bracket_qc">
-              <option tal:repeat="v braq" tal:attributes="value v/code;
-                          selected python:v['code']==tpl['bracket_qc']"
-                      tal:content="python:v['label']+' ('+v['code']+')'">CCV</option>
-            </select>
-          </div>
+          <p style="font-size:12px;color:var(--s-secondary);">
+            Bracketing: a <b>CCV</b> is inserted automatically every
+            <span tal:content="ctx/ccv_interval">6</span> injections
+            (interval from the method profile) — you don't add or position it.
+          </p>
 
           <p style="font-size:11px;color:var(--s-secondary);">
-            The <b>Calibration ladder</b> row expands at build time to the
-            method's calibration standards + one opening bracket injection —
-            only when <em>Include calibration curve</em> is ticked above. The
+            The <b>Calibrator list</b> row expands at build time to the method's
+            calibration standards + one opening bracket injection — only when
+            <em>Include calibration curve</em> is ticked above. The
             <b>Field samples</b> row is the batch's samples and can be moved but
             not removed.
           </p>
