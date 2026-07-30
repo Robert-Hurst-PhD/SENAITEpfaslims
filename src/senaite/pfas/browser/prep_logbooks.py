@@ -23,6 +23,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import require_manager
 
 logger = logging.getLogger("senaite.pfas.browser.prep_logbooks")
 
@@ -371,6 +372,12 @@ class PFASPrepLogbooksView(BrowserView):
 
     def __call__(self):
         flatten_form(self.request)
+        # Logbook definitions are lab CONFIGURATION (CLAUDE.md §4) — only a
+        # manager may read or write them. This check must stay AHEAD of the
+        # CSRF-disable below, so an unauthorised POST never reaches it.
+        if not require_manager(self.context, self.request):
+            self.request.response.setStatus(403)
+            return "Forbidden"
         action = self.request.form.get("action", "")
         if self.request.method == "POST":
             try:
@@ -414,6 +421,23 @@ class PFASPrepLogbooksView(BrowserView):
         revs = _list(self._portal(), slug=slug)
         revs.sort(key=lambda x: -x["revision"])
         return revs
+
+    def records_json(self):
+        """{uid: record} for every family AND every revision, as one JSON blob.
+
+        The Edit buttons carry only a uid (data-edit-uid) and look the record
+        up here. Previously each button embedded a full json.dumps() inside its
+        onclick attribute, which breaks as soon as any value contains a quote —
+        and step instructions certainly will.
+        """
+        out = {}
+        for fam in self.logbook_families():
+            if fam.get("uid"):
+                out[fam["uid"]] = fam
+            for rev in self.all_revisions(fam.get("logbook_slug", "")):
+                if rev.get("uid"):
+                    out[rev["uid"]] = rev
+        return json.dumps(out)
 
     def edit_uid(self):
         return self.request.form.get("edit_uid", "")
@@ -472,7 +496,19 @@ class PFASPrepLogbooksView(BrowserView):
             "active":              f.get("active") not in ("false", "0", "no", "off"),
             "builtin":             f.get("builtin") in ("true", "1", "yes", "on"),
         }
-        _save(self._portal(), data)
+        portal = self._portal()
+
+        # The Status dropdown can set "active" directly, which would otherwise
+        # bypass _handle_activate/_archive_slug and leave TWO active revisions
+        # for one slug. PreparedStandard pins (logbook_slug, logbook_revision),
+        # so an ambiguous active revision breaks traceability. Archive the
+        # siblings here too, but only when this save is what flips it active.
+        if data["status"] == STATUS_ACTIVE:
+            prior = _get(portal, data["uid"]) if data["uid"] else None
+            if not prior or prior.get("status") != STATUS_ACTIVE:
+                _archive_slug(portal, data["logbook_slug"])
+
+        _save(portal, data)
         return self._redirect("{0}?ok=Logbook+saved".format(self._self_url()))
 
     def _handle_activate(self):

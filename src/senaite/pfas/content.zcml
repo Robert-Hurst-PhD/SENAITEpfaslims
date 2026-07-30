@@ -11,10 +11,16 @@
   </class>
 
   <!-- PrepLogbookDef (versioned preparation logbook definition) -->
+  <!-- NOTE: every schema field must be listed here. The six D17 fields
+       (method_slug .. builtin) were previously omitted, so restricted/TAL
+       access to them failed silently. steps_json / guided_default are the
+       guided-workflow fields. -->
   <class class=".content.prep_logbook_def.PrepLogbookDef">
     <allow attributes="logbook_slug revision status standard_type description
                         procedure default_expiry_days analyte_template_json
-                        archived_date notes" />
+                        archived_date notes
+                        method_slug logbook_code field_schema_json sort_order
+                        active builtin steps_json guided_default" />
   </class>
 
   <!-- PreparedStandard (in-house prepared reagent or standard) -->

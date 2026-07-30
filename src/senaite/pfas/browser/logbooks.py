@@ -566,16 +566,12 @@ class PFASLogbook253View(_LogbookBase):
 
 # ── Logbook Admin (portal-level) ──────────────────────────────────────────────
 
-_ALLOWED_ROLES = frozenset(("Manager", "LabManager", "Owner"))
-
-
-def _require_manager(context, request):
-    try:
-        from AccessControl import getSecurityManager
-        user = getSecurityManager().getUser()
-        return bool(_ALLOWED_ROLES.intersection(user.getRolesInContext(context)))
-    except Exception:
-        return False
+# Single source for the management role gate — shared with prep_logbooks and
+# logbook_media so all three enforce the same rule (see browser/perms.py).
+from senaite.pfas.browser.perms import (  # noqa: E402
+    ALLOWED_ROLES as _ALLOWED_ROLES,
+    require_manager as _require_manager,
+)
 
 
 class PFASLogbookAdminView(BrowserView):

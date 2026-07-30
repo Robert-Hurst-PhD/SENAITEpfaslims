@@ -169,11 +169,9 @@
                             <button type="submit" class="btn-sm btn-danger"
                                     onclick="return confirm('Permanently delete this draft revision? This cannot be undone.')">Delete</button>
                           </form>
-                          <tal:ebtn tal:define="rev_json python:__import__('json').dumps(rev)">
-                          <button class="btn-sm"
-                                  tal:attributes="onclick string:editLogbook(${rev_json})"
+                          <button class="btn-sm" data-edit-uid=""
+                                  tal:attributes="data-edit-uid rev/uid"
                                   >Edit</button>
-                          </tal:ebtn>
                         </li>
                       </tal:revs>
                     </ul>
@@ -181,11 +179,9 @@
                 </td>
                 <td>
                   <div style="display:flex;gap:6px;flex-wrap:wrap">
-                    <tal:ebtn tal:define="fam_json python:__import__('json').dumps(fam)">
-                    <button class="btn-sm"
-                            tal:attributes="onclick string:editLogbook(${fam_json})"
+                    <button class="btn-sm" data-edit-uid=""
+                            tal:attributes="data-edit-uid fam/uid"
                             >Edit</button>
-                    </tal:ebtn>
                     <form method="POST" style="display:inline"
                           tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
                       <input type="hidden" name="action" value="new_revision" />
@@ -343,6 +339,18 @@
   </div>
 
   <script>
+  /* All logbook records, keyed by uid. Edit buttons carry only a uid, so no
+     record data is ever interpolated into an attribute (quotes in a title or
+     in step instructions would break that). */
+  var LB_RECORDS = <tal:r tal:replace="structure view/records_json" />;
+
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest ? ev.target.closest('[data-edit-uid]') : null;
+    if (!btn) return;
+    var rec = LB_RECORDS[btn.getAttribute('data-edit-uid')];
+    if (rec) { editLogbook(rec); }
+  });
+
   function openModal(data) {
     var modal = document.getElementById('lbModal');
     if (!data) {
