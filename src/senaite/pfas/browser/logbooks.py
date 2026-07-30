@@ -969,12 +969,232 @@ class PFASDynamicLogbookView(_LogbookBase):
 
     _VIEW_NAME = "@@pfas-logbook-dynamic"
     template = ViewPageTemplateFile("templates/logbook_dynamic.pt")
+    guided_template = ViewPageTemplateFile("templates/logbook_guided.pt")
+
+    # Remembers the analyst's guided/concise preference across visits and
+    # sessions. Read server-side because the two modes are different
+    # TEMPLATES — the choice must be known before any HTML is produced, so
+    # web storage (readable only after load) would cost a flicker or a
+    # redirect. See DECISIONS.md.
+    MODE_COOKIE = "pfas_lb_mode"
 
     def __call__(self):
         flatten_form(self.request)
         if self.request.method == "POST":
             return self._handle_post()
+        # An explicit ?mode= is also a preference change.
+        requested = (self.request.get("mode") or "").strip().lower()
+        if requested in ("guided", "concise"):
+            try:
+                # NB: this module uses unicode_literals, but waitress asserts
+                # that response headers are NATIVE str under Python 2 — a
+                # unicode cookie value blows up in start_response, i.e. AFTER
+                # this frame, so it cannot be caught here. Encode explicitly.
+                self.request.response.setCookie(
+                    str("pfas_lb_mode"), str(requested),
+                    path=str("/"), max_age=31536000)
+            except Exception as exc:
+                logger.warning("could not persist logbook mode cookie: %s", exc)
+        if self.mode() == "guided":
+            return self.guided_template()
         return self.template()
+
+    # ── guided mode ───────────────────────────────────────────────────────
+
+    def steps_raw(self):
+        """Parsed steps_json from the logbook definition (may be empty)."""
+        raw = self._logbook_def().get("steps_json") or "[]"
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, list) else []
+        except (ValueError, TypeError):
+            return []
+
+    def has_steps(self):
+        return bool(self.steps_raw())
+
+    def _is_method_guided_extraction(self):
+        """True when this slug is the extraction log AND the batch's method
+        drives it through @@pfas-extraction-guide. That guide owns its own
+        step model (method extraction_stages), so logbook steps do not apply."""
+        if self._slug() != "252":
+            return False
+        try:
+            from senaite.pfas.method_profile_store import get_profile
+            portal = getToolByName(self.context, "portal_url").getPortalObject()
+            method_id = PFASLogbookIndexView(self.context, self.request).batch_method()
+            if not method_id:
+                return False
+            return bool(get_profile(portal, method_id).get("extraction_stages"))
+        except Exception:
+            return False
+
+    def mode(self):
+        """'guided' or 'concise'.
+
+        Precedence: explicit ?mode= > cookie > the definition's default >
+        concise. Then two hard downgrades, so a stale link can never render a
+        half-guided form.
+        """
+        if not self.has_steps():
+            return "concise"
+        if self._is_method_guided_extraction():
+            return "concise"
+        requested = (self.request.get("mode") or "").strip().lower()
+        if requested in ("guided", "concise"):
+            return requested
+        cookie = (self.request.cookies.get(self.MODE_COOKIE) or "").strip().lower()
+        if cookie in ("guided", "concise"):
+            return cookie
+        if self._logbook_def().get("guided_default"):
+            return "guided"
+        return "concise"
+
+    def steps(self):
+        """Resolved steps for rendering; includes the trailing synthetic step
+        holding any field not assigned to a step."""
+        from senaite.pfas.logbook_schema import build_steps
+        return build_steps(self.field_schema(), self.steps_raw())
+
+    def total_steps(self):
+        return len(self.steps())
+
+    def _steps_done(self):
+        return list(self.data().get("_steps_done") or [])
+
+    def step_status(self, step):
+        """'done' | 'active' | 'pending'.
+
+        Done if the analyst submitted it, OR if every required field in it
+        already holds a value — so a logbook filled before steps existed
+        lights up correctly instead of looking untouched.
+        """
+        if step.get("id") == self.current_step_id():
+            return "active"
+        if step.get("id") in self._steps_done():
+            return "done"
+        data = self.data()
+        required = [f for f in step.get("fields", []) if f.get("required")]
+        if required and all(data.get(f.get("name")) for f in required):
+            return "done"
+        return "pending"
+
+    def current_step_id(self):
+        want = (self.request.get("step") or "").strip()
+        all_steps = self.steps()
+        ids = [s.get("id") for s in all_steps]
+        if want and want in ids:
+            return want
+        done = self._steps_done()
+        for s in all_steps:
+            if s.get("id") not in done:
+                return s.get("id")
+        return ids[0] if ids else ""
+
+    def current_step(self):
+        sid = self.current_step_id()
+        for s in self.steps():
+            if s.get("id") == sid:
+                return s
+        return {}
+
+    def step_index(self):
+        sid = self.current_step_id()
+        for i, s in enumerate(self.steps()):
+            if s.get("id") == sid:
+                return i + 1
+        return 1
+
+    def progress_pct(self):
+        total = self.total_steps()
+        if not total:
+            return 0
+        done = len([s for s in self.steps()
+                    if self.step_status(s) == "done"])
+        return int(done * 100 / total)
+
+    def step_url(self, step_id, mode="guided"):
+        return "{0}/@@pfas-logbook-dynamic?slug={1}&mode={2}&step={3}".format(
+            self.batch_url(), self._slug(), mode, step_id)
+
+    def stepper_items(self):
+        """Rows for the shared stepper macro."""
+        out = []
+        cur = self.current_step_id()
+        for i, s in enumerate(self.steps()):
+            out.append({
+                "num": i + 1,
+                "label": s.get("title") or "Step {0}".format(i + 1),
+                "status": self.step_status(s),
+                "is_current": s.get("id") == cur,
+                "url": self.step_url(s.get("id")),
+            })
+        return out
+
+    def step_field_names(self):
+        """CSV of the current step's field names — posted as _step_fields so
+        the save merges instead of blanking the other steps."""
+        return ",".join(f.get("name", "")
+                        for f in self.current_step().get("fields", []))
+
+    def media_url(self, step):
+        token = (step or {}).get("media") or ""
+        if not token:
+            return ""
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        return "{0}/@@pfas-logbook-media?f={1}".format(
+            portal.absolute_url(), token)
+
+    def instruction_lines(self, step):
+        text = (step or {}).get("instructions") or ""
+        return [l for l in text.split("\n") if l.strip()]
+
+    def next_step_id(self):
+        ids = [s.get("id") for s in self.steps()]
+        cur = self.current_step_id()
+        if cur in ids:
+            i = ids.index(cur)
+            if i + 1 < len(ids):
+                return ids[i + 1]
+        return ""
+
+    def prev_step_url(self):
+        ids = [s.get("id") for s in self.steps()]
+        cur = self.current_step_id()
+        if cur in ids:
+            i = ids.index(cur)
+            if i > 0:
+                return self.step_url(ids[i - 1])
+        return ""
+
+    def is_last_step(self):
+        return not self.next_step_id()
+
+    def concise_url(self):
+        return "{0}/@@pfas-logbook-dynamic?slug={1}&mode=concise".format(
+            self.batch_url(), self._slug())
+
+    def guided_url(self):
+        return "{0}/@@pfas-logbook-dynamic?slug={1}&mode=guided".format(
+            self.batch_url(), self._slug())
+
+    def signoff_noun(self):
+        d = self._logbook_def()
+        return (d.get("standard_type") or "logbook record").lower()
+
+    def signoff_name(self):
+        data = self.data()
+        for key in ("prepared_by", "analyst", "reviewed_by"):
+            if data.get(key):
+                return data.get(key)
+        return ""
+
+    def signoff_date(self):
+        data = self.data()
+        for key in ("prepared_date", "extraction_date", "processing_date"):
+            if data.get(key):
+                return data.get(key)
+        return ""
 
     def slug(self):
         return self.request.get("slug", "")

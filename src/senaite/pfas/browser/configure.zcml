@@ -69,6 +69,15 @@
       permission="zope2.Public"
       />
 
+  <!-- Logbook field widget macro — shared by the concise and guided renderers
+       via context/@@pfas-logbook-macros/macros/logbook_field -->
+  <browser:page
+      name="pfas-logbook-macros"
+      for="*"
+      class=".logbook_macros.PFASLogbookMacrosView"
+      permission="zope2.Public"
+      />
+
   <!-- Unified accordion sidebar — used by PFASSidebarManager (core pages)
        and called directly from pfas_macros.pt (PFAS workspace pages). -->
   <browser:page

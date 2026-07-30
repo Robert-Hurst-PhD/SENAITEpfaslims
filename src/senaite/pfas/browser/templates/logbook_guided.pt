@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title"
+         tal:content="string:${view/logbook_title} — Guided">Guided logbook</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .lbg-layout { display:flex; gap:20px; align-items:flex-start; }
+    .lbg-rail { flex:0 0 240px; position:sticky; top:8px; }
+    .lbg-main { flex:1 1 auto; min-width:0; }
+    .lbg-stagehead { margin-bottom:14px; }
+    .lbg-badge { display:inline-block; font-size:11px; font-weight:700;
+                 text-transform:uppercase; letter-spacing:.05em;
+                 color:var(--s-secondary); }
+    .lbg-title { font-size:20px; font-weight:700; margin:3px 0 0; }
+    .lbg-split { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+    .lbg-media { flex:3 1 380px; min-width:0; }
+    .lbg-side  { flex:2 1 280px; min-width:0; }
+    .lbg-media-box { border:1px solid var(--s-border); border-radius:10px;
+                     background:var(--s-light); padding:10px; text-align:center; }
+    .lbg-media-box img { max-width:100%; max-height:60vh; object-fit:contain;
+                         display:block; margin:0 auto; border-radius:6px; }
+    .lbg-replay { margin-top:8px; font-size:12px; }
+    .lbg-instr { list-style:none; margin:0; padding:0; }
+    .lbg-instr li { position:relative; padding:7px 0 7px 26px; font-size:13.5px;
+                    line-height:1.5; border-bottom:1px dashed var(--s-border); }
+    .lbg-instr li:last-child { border-bottom:none; }
+    .lbg-instr li:before { content:"›"; position:absolute; left:8px; top:6px;
+                           color:var(--s-secondary); font-weight:700; }
+    .lbg-card { border:1px solid var(--s-border); border-radius:10px;
+                background:var(--s-bg); padding:14px 16px; margin-bottom:14px; }
+    .lbg-card h3 { font-size:13px; font-weight:700; margin:0 0 10px;
+                   text-transform:uppercase; letter-spacing:.03em;
+                   color:var(--s-secondary); }
+    .lbg-nomedia { font-size:12px; color:var(--s-secondary); font-style:italic;
+                   padding:26px 0; }
+    .lbg-modeswitch { display:inline-flex; border:1px solid var(--s-border);
+                      border-radius:16px; overflow:hidden; font-size:12px; }
+    .lbg-modeswitch a { padding:4px 13px; text-decoration:none;
+                        color:var(--s-secondary); background:var(--s-bg); }
+    .lbg-modeswitch a.is-on { background:#1a73e8; color:#fff; font-weight:600; }
+    .lbg-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .lbg-actions .spacer { flex:1 1 auto; }
+    @media (max-width:900px) {
+      .lbg-layout { flex-direction:column; }
+      .lbg-rail { position:static; flex:1 1 auto; width:100%; }
+    }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title"
+         tal:content="view/logbook_title">Logbook</tal:t>
+
+  <tal:hr metal:fill-slot="header-right">
+    <span class="lbg-modeswitch">
+      <a class="is-on" tal:attributes="href view/guided_url">Guided</a>
+      <a tal:attributes="href view/concise_url">Concise</a>
+    </span>
+    <a class="btn-sm" style="margin-left:10px"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">&#8592; All Logbooks</a>
+  </tal:hr>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/ok_msg"
+         tal:content="view/ok_msg">ok</div>
+    <div class="alert alert-error" tal:condition="view/error_msg"
+         tal:content="view/error_msg">err</div>
+
+    <tal:noguide tal:condition="not:view/has_steps">
+      <div class="lbg-card">
+        This logbook has no guided steps yet. A manager can add them in
+        <b>Prep Logbooks &#8594; Edit &#8594; Steps (Guided)</b>.
+      </div>
+    </tal:noguide>
+
+    <tal:guide tal:condition="view/has_steps"
+               tal:define="step view/current_step">
+    <div class="lbg-layout">
+
+      <!-- ── step rail (shared macro) ─────────────────────────────── -->
+      <div class="lbg-rail">
+        <tal:st tal:define="stepper_items view/stepper_items;
+                            stepper_title string:Steps;
+                            stepper_subtitle view/logbook_code;
+                            stepper_progress view/progress_pct">
+          <tal:m metal:use-macro="context/@@pfas-macros/macros/stepper" />
+        </tal:st>
+      </div>
+
+      <!-- ── current step ─────────────────────────────────────────── -->
+      <div class="lbg-main">
+        <div class="lbg-stagehead">
+          <div class="lbg-badge"
+               tal:content="python:'Step {0} of {1}'.format(view.step_index(), view.total_steps())">Step 1 of 3</div>
+          <h2 class="lbg-title" tal:content="step/title">Step title</h2>
+        </div>
+
+        <form method="post"
+              tal:attributes="action string:${view/batch_url}/@@pfas-logbook-dynamic?slug=${view/slug}">
+          <input type="hidden" name="_step_id" tal:attributes="value step/id" />
+          <input type="hidden" name="_step_fields"
+                 tal:attributes="value view/step_field_names" />
+
+          <div class="lbg-split">
+            <!-- the action, centre stage -->
+            <div class="lbg-media">
+              <div class="lbg-media-box">
+                <tal:has tal:define="murl python:view.media_url(step)">
+                  <tal:img tal:condition="murl">
+                    <img id="lbg-img" tal:attributes="src murl; alt step/media_alt" />
+                    <div class="lbg-replay">
+                      <button type="button" class="btn-sm" id="lbg-replay-btn">&#8635; Replay</button>
+                    </div>
+                  </tal:img>
+                  <div class="lbg-nomedia" tal:condition="not:murl">
+                    No image for this step.
+                  </div>
+                </tal:has>
+              </div>
+            </div>
+
+            <!-- what to do -->
+            <div class="lbg-side">
+              <div class="lbg-card"
+                   tal:define="lines python:view.instruction_lines(step)"
+                   tal:condition="lines">
+                <h3>What to do</h3>
+                <ul class="lbg-instr">
+                  <li tal:repeat="line lines" tal:content="line">instruction</li>
+                </ul>
+              </div>
+
+              <div class="lbg-card" tal:condition="step/fields">
+                <h3>Record</h3>
+                <tal:fields tal:repeat="field step/fields">
+                  <tal:m metal:use-macro="context/@@pfas-logbook-macros/macros/logbook_field" />
+                </tal:fields>
+              </div>
+            </div>
+          </div>
+
+          <!-- sign-off on the final step -->
+          <tal:last tal:condition="view/is_last_step">
+            <tal:signoff tal:define="signoff_noun view/signoff_noun;
+                                     signoff_prepared_name view/signoff_name;
+                                     signoff_prepared_date view/signoff_date;
+                                     signoff_prepared_initials view/signoff_name">
+              <tal:m metal:use-macro="context/@@pfas-macros/macros/signoff" />
+            </tal:signoff>
+          </tal:last>
+
+          <div class="lbg-actions" style="margin-top:16px">
+            <a class="btn-sm" tal:condition="view/prev_step_url"
+               tal:attributes="href view/prev_step_url">&#8592; Previous</a>
+            <span class="spacer"></span>
+            <button class="btn-save" type="submit"
+                    tal:condition="view/is_last_step">Save &amp; Finish</button>
+            <tal:more tal:condition="not:view/is_last_step">
+              <button class="btn-sm" type="submit" name="_stay" value="1">Save</button>
+              <button class="btn-save" type="submit" name="_next"
+                      tal:attributes="value view/next_step_id">Save &amp; Continue &#8594;</button>
+            </tal:more>
+          </div>
+        </form>
+      </div>
+    </div>
+    </tal:guide>
+
+  </div>
+  </div><!-- /content -->
+
+  <tal:scripts metal:fill-slot="scripts">
+  <script>
+  var SAVED_DATA   = <tal:sd tal:replace="structure view/data_json" />;
+  var FIELD_SCHEMA = <tal:fs tal:replace="structure view/field_schema_json" />;
+  </script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=1"></script>
+  </tal:scripts>
+</body>
+</html>

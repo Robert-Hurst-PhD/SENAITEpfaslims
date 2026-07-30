@@ -644,6 +644,32 @@
     .pfas-printhead, .pfas-printfoot { display: none; }
 
     /* ── Shared QA sign-off attestation (screen + print) ─────────────────── */
+    /* ── shared stepper (guided logbooks; reusable by any multi-step page) ── */
+    .pfas-stepper { display:flex; flex-direction:column; gap:3px; }
+    .pfas-stepper-head { margin-bottom:8px; }
+    .pfas-stepper-title { font-size:12px; font-weight:700; text-transform:uppercase;
+                          letter-spacing:.04em; color:var(--s-secondary); }
+    .pfas-stepper-sub { font-size:11.5px; color:var(--s-secondary); margin-top:2px; }
+    .pfas-stepper-progress { margin:4px 0 10px; }
+    .pfas-stepper-bar { height:6px; border-radius:3px; background:var(--s-light);
+                        overflow:hidden; border:1px solid var(--s-border); }
+    .pfas-stepper-fill { height:100%; background:#2e7d32; transition:width .2s; }
+    .pfas-stepper-pct { font-size:10.5px; color:var(--s-secondary); margin-top:3px; }
+    .pfas-step-item { display:flex; align-items:center; gap:9px; padding:8px 10px;
+                      border-radius:6px; text-decoration:none; color:var(--s-body);
+                      font-size:12.5px; border:1px solid transparent; }
+    a.pfas-step-item:hover { background:var(--s-primary-lt); }
+    .pfas-step-item.is-current { background:var(--s-bg); border-color:var(--s-border);
+                                 font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+    .pfas-step-num { flex:0 0 22px; height:22px; border-radius:50%; display:flex;
+                     align-items:center; justify-content:center; font-size:11px;
+                     font-weight:700; border:1px solid var(--s-border);
+                     background:var(--s-bg); color:var(--s-secondary); }
+    .pfas-step-num.status-done { background:#2e7d32; border-color:#2e7d32; color:#fff; }
+    .pfas-step-num.status-active { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+    .pfas-step-label { flex:1 1 auto; }
+    .pfas-step-item.status-pending .pfas-step-label { color:var(--s-secondary); }
+
     .pfas-signoff { margin: 22px 0 6px; border: 1px solid var(--s-border, #ccc);
       border-radius: 6px; padding: 12px 14px; background: #fcfcfd;
       page-break-inside: avoid; }
@@ -826,6 +852,64 @@
                             signoff_prepared_date python:view.data().get('prepared_date','');
                             signoff_prepared_initials python:view.data().get('prepared_by','')" />
        ──────────────────────────────────────────────────────────────────── -->
+  <!-- ────────────────────────────────────────────────────────────────────
+       stepper — shared step rail for any multi-step page.
+
+       Caller defines, ON A WRAPPING ELEMENT (Chameleon does not pass
+       tal:define from the metal:use-macro element itself):
+
+           stepper_items       [{num, label, status, is_current, url}]
+                               status: done | active | pending | defaults
+                               url falsy => rendered as a non-navigable div,
+                               so this one macro serves both a freely
+                               navigable wizard and a strictly linear runner
+           stepper_title       optional heading
+           stepper_subtitle    optional sub-heading
+           stepper_progress    optional int 0-100 (renders a progress bar)
+
+       Gated on stepper_items so, like signoff, it emits nothing on pages
+       that do not use it (a define-macro in the page-macro body would
+       otherwise render inline site-wide).
+       ──────────────────────────────────────────────────────────────────── -->
+  <div class="pfas-stepper" metal:define-macro="stepper"
+       tal:define="items stepper_items|nothing;
+                   s_title stepper_title|nothing;
+                   s_sub stepper_subtitle|nothing;
+                   s_pct stepper_progress|nothing"
+       tal:condition="items">
+    <div class="pfas-stepper-head" tal:condition="s_title">
+      <div class="pfas-stepper-title" tal:content="s_title">Steps</div>
+      <div class="pfas-stepper-sub" tal:condition="s_sub" tal:content="s_sub">sub</div>
+    </div>
+    <div class="pfas-stepper-progress" tal:condition="python:s_pct is not None">
+      <div class="pfas-stepper-bar">
+        <div class="pfas-stepper-fill"
+             tal:attributes="style python:'width:{0}%'.format(s_pct)"></div>
+      </div>
+      <div class="pfas-stepper-pct"
+           tal:content="python:'{0}% complete'.format(s_pct)">0%</div>
+    </div>
+    <tal:items tal:repeat="it items">
+      <a class="pfas-step-item" tal:condition="it/url"
+         tal:attributes="href it/url;
+                         class python:'pfas-step-item status-%s%s' % (it['status'], ' is-current' if it['is_current'] else '')">
+        <span tal:attributes="class python:'pfas-step-num status-%s' % it['status']">
+          <tal:d tal:condition="python:it['status']=='done'">&#10003;</tal:d>
+          <tal:n tal:condition="python:it['status']!='done'" tal:content="it/num">1</tal:n>
+        </span>
+        <span class="pfas-step-label" tal:content="it/label">Step</span>
+      </a>
+      <div class="pfas-step-item" tal:condition="not:it/url"
+           tal:attributes="class python:'pfas-step-item status-%s%s' % (it['status'], ' is-current' if it['is_current'] else '')">
+        <span tal:attributes="class python:'pfas-step-num status-%s' % it['status']">
+          <tal:d tal:condition="python:it['status']=='done'">&#10003;</tal:d>
+          <tal:n tal:condition="python:it['status']!='done'" tal:content="it/num">1</tal:n>
+        </span>
+        <span class="pfas-step-label" tal:content="it/label">Step</span>
+      </div>
+    </tal:items>
+  </div>
+
   <div class="pfas-signoff" metal:define-macro="signoff"
        tal:define="nn signoff_noun|nothing;
                    ps python:context.restrictedTraverse('@@pfas-macros').print_settings();

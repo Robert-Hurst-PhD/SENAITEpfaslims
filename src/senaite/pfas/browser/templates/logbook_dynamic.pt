@@ -113,177 +113,20 @@
           tal:attributes="action string:${view/batch_url}/@@pfas-logbook-dynamic?slug=${view/slug}">
 
       <!-- Render each field in the schema -->
+      <!-- `field` (from the repeat) and `view` are what the macro reads;
+           both are in scope here, on the element wrapping the use-macro. -->
       <tal:fields repeat="field python:view.field_schema()">
-      <tal:fdef define="fname python:field.get('name','');
-                         ftype python:field.get('type','text');
-                         flabel python:field.get('label', field.get('name',''));
-                         fvalue python:view.data().get(field.get('name',''), '');
-                         fcorr python:bool(field.get('correctable', False));
-                         freq python:bool(field.get('required', False));
-                         fwidth python:field.get('width', 'md')">
-
-        <!-- ── TABLE ── -->
-        <tal:table condition="python:ftype == 'table'">
-          <div class="lb-section">
-            <h3 tal:content="flabel">Table</h3>
-            <table class="dyn-table" tal:attributes="id string:tbl-${fname}">
-              <thead>
-                <tr>
-                  <tal:cols repeat="col python:field.get('columns', [])">
-                    <th tal:content="col/label">Col</th>
-                  </tal:cols>
-                  <th style="width:36px"></th>
-                </tr>
-              </thead>
-              <tbody tal:attributes="id string:tbody-${fname}"></tbody>
-            </table>
-            <button type="button" class="btn-add-row"
-                    tal:attributes="onclick string:dynAddRow('${fname}')">+ Add Row</button>
-            <input type="hidden"
-                   tal:attributes="id string:${fname}_json;
-                                   name string:${fname}_json"
-                   value="[]" />
-          </div>
-        </tal:table>
-
-        <!-- ── CHECKBOX ── -->
-        <tal:checkbox condition="python:ftype == 'checkbox'">
-          <div class="lb-section">
-            <div class="lb-fields-row">
-              <div class="lb-field">
-                <div class="check-row">
-                  <input type="checkbox" value="yes"
-                         tal:attributes="name fname;
-                                         id fname;
-                                         checked python:'checked' if fvalue else None" />
-                  <label tal:attributes="for fname" tal:content="flabel">Label</label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </tal:checkbox>
-
-        <!-- ── TEXTAREA ── -->
-        <tal:textarea condition="python:ftype == 'textarea'">
-          <div class="lb-section lb-field-wide">
-            <div tal:attributes="class python:'corr-field lb-field-wide' if fcorr else 'lb-field-wide';
-                                 data-field python:fname if fcorr else None">
-              <label>
-                <tal:l tal:replace="flabel" />
-                <tal:corrbtn condition="fcorr">
-                  <button class="btn-correct" type="button"
-                          tal:attributes="onclick string:toggleCorrect('${fname}')">correct</button>
-                </tal:corrbtn>
-              </label>
-              <textarea class="lb-textarea"
-                        tal:attributes="name fname"
-                        tal:content="python:fvalue or u''"></textarea>
-              <tal:corrpanel condition="fcorr">
-                <div class="corr-panel" tal:attributes="id string:cp-${fname}">
-                  <label>Original:
-                    <span tal:attributes="id string:co-${fname}"
-                          style="text-decoration:line-through;color:#999;font-weight:normal;max-width:300px;display:inline-block;"></span>
-                  </label>
-                  <label>Correction:
-                    <input type="text"
-                           tal:attributes="id string:cn-${fname};
-                                           name string:_newval_${fname}"
-                           style="width:220px;" />
-                  </label>
-                  <label>Initials:
-                    <input type="text"
-                           tal:attributes="id string:cb-${fname};
-                                           name string:_corr_by_${fname}"
-                           class="corr-initials" placeholder="JS" />
-                  </label>
-                  <button type="button" class="corr-cancel"
-                          tal:attributes="onclick string:toggleCorrect('${fname}')">&#215;</button>
-                </div>
-              </tal:corrpanel>
-            </div>
-          </div>
-        </tal:textarea>
-
-        <!-- ── TEXT / DATE / NUMBER / LOT_REF / REAGENT_REF ── -->
-        <tal:scalar condition="python:ftype in ('text','date','number','lot_ref','reagent_ref')">
-          <div class="lb-fields-row">
-            <div tal:attributes="class python:'lb-field corr-field' if fcorr else 'lb-field';
-                                 data-field python:fname if fcorr else None">
-              <label>
-                <tal:l tal:replace="flabel" />
-                <tal:corrbtn condition="fcorr">
-                  <button class="btn-correct" type="button"
-                          tal:attributes="onclick string:toggleCorrect('${fname}')">correct</button>
-                </tal:corrbtn>
-              </label>
-
-              <!-- lot_ref: autocomplete -->
-              <tal:lotref condition="python:ftype == 'lot_ref'">
-                <div class="lot-ac-wrap">
-                  <input class="lb-input lb-input-lg"
-                         type="text" autocomplete="off"
-                         tal:attributes="name fname;
-                                         id fname;
-                                         value python:str(fvalue) if fvalue else u'';
-                                         data-ac-type python:field.get('lot_type','');
-                                         data-ac string:/@@pfas-lot-autocomplete" />
-                  <div class="lot-ac-dropdown"
-                       tal:attributes="id string:ac-${fname}"></div>
-                </div>
-              </tal:lotref>
-
-              <!-- reagent_ref: autocomplete -->
-              <tal:reagentref condition="python:ftype == 'reagent_ref'">
-                <div class="lot-ac-wrap">
-                  <input class="lb-input lb-input-lg"
-                         type="text" autocomplete="off"
-                         tal:attributes="name fname;
-                                         id fname;
-                                         value python:str(fvalue) if fvalue else u'';
-                                         data-ac string:/@@pfas-reagent-autocomplete" />
-                  <div class="lot-ac-dropdown"
-                       tal:attributes="id string:ac-${fname}"></div>
-                </div>
-              </tal:reagentref>
-
-              <!-- plain text / date / number -->
-              <tal:plain condition="python:ftype in ('text','date','number')">
-                <input tal:attributes="type ftype;
-                                       class string:lb-input lb-input-${fwidth};
-                                       name fname;
-                                       value python:str(fvalue) if fvalue else u'';
-                                       required python:'required' if freq else None" />
-              </tal:plain>
-
-              <!-- Correction panel -->
-              <tal:corrpanel condition="fcorr">
-                <div class="corr-panel" tal:attributes="id string:cp-${fname}">
-                  <label>Original:
-                    <span tal:attributes="id string:co-${fname}"
-                          style="text-decoration:line-through;color:#999;font-weight:normal;"></span>
-                  </label>
-                  <label>Correction:
-                    <input tal:attributes="type python:'date' if ftype == 'date' else 'text';
-                                           id string:cn-${fname};
-                                           name string:_newval_${fname}"
-                           style="width:160px;" />
-                  </label>
-                  <label>Initials:
-                    <input type="text"
-                           tal:attributes="id string:cb-${fname};
-                                           name string:_corr_by_${fname}"
-                           class="corr-initials" placeholder="JS" />
-                  </label>
-                  <button type="button" class="corr-cancel"
-                          tal:attributes="onclick string:toggleCorrect('${fname}')">&#215;</button>
-                </div>
-              </tal:corrpanel>
-            </div>
-          </div>
-        </tal:scalar>
-
-      </tal:fdef>
+        <tal:m metal:use-macro="context/@@pfas-logbook-macros/macros/logbook_field" />
       </tal:fields>
+
+      <!-- QA attestation. The schema-driven path never invoked this, so
+           250/251/253 (which all route here) printed without it. -->
+      <tal:signoff tal:define="signoff_noun view/signoff_noun;
+                               signoff_prepared_name view/signoff_name;
+                               signoff_prepared_date view/signoff_date;
+                               signoff_prepared_initials view/signoff_name">
+        <tal:m metal:use-macro="context/@@pfas-macros/macros/signoff" />
+      </tal:signoff>
 
       <div class="form-actions">
         <button class="btn-save" type="submit">Save Logbook</button>
@@ -296,142 +139,12 @@
   </div><!-- /page-body -->
 
   <script>
-  /* ── Server data ── */
+  /* Server data only; the widget code lives in a static resource so
+     Chameleon never has to parse it as markup. */
   var SAVED_DATA    = <tal:sd tal:replace="structure view/data_json" />;
   var FIELD_SCHEMA  = <tal:fs tal:replace="structure view/field_schema_json" />;
-
-  /* ── Table widget ── */
-  var TABLE_DATA = {};
-  FIELD_SCHEMA.forEach(function(f) {
-    if (f.type !== 'table') return;
-    var saved = SAVED_DATA[f.name];
-    if (Array.isArray(saved) && saved.length) {
-      TABLE_DATA[f.name] = saved;
-    } else if (f.default_rows && f.default_rows.length) {
-      TABLE_DATA[f.name] = f.default_rows.map(function(r){ return Object.assign({}, r); });
-    } else {
-      TABLE_DATA[f.name] = [];
-    }
-  });
-
-  function _esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/\x26/g, '\x26amp;').replace(/"/g, '\x26quot;').replace(/\x3c/g, '\x26lt;');
-  }
-
-  function dynRenderTable(fname) {
-    var f = null;
-    for (var i = 0; i < FIELD_SCHEMA.length; i++) {
-      if (FIELD_SCHEMA[i].name === fname) { f = FIELD_SCHEMA[i]; break; }
-    }
-    if (!f) return;
-    var cols = f.columns || [];
-    var rows = TABLE_DATA[fname] || [];
-    var tbody = document.getElementById('tbody-' + fname);
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    rows.forEach(function(row, ri) {
-      var tr = document.createElement('tr');
-      var html = cols.map(function(col) {
-        var val = row[col.name] != null ? row[col.name] : '';
-        var itype = col.type === 'date' ? 'date' : (col.type === 'number' ? 'number' : 'text');
-        return '\x3ctd\x3e\x3cinput type="' + itype + '" value="' + _esc(val) + '"'
-          + ' oninput="TABLE_DATA[\'' + fname + '\'][' + ri + '][\'' + col.name + '\']=this.value;dynSyncTable(\'' + fname + '\')"'
-          + '/\x3e\x3c/td\x3e';
-      }).join('');
-      html += '\x3ctd\x3e\x3cbutton type="button" class="btn-del-row"'
-            + ' onclick="dynDelRow(\'' + fname + '\',' + ri + ')"\x3e\x26#215;\x3c/button\x3e\x3c/td\x3e';
-      tr.innerHTML = html;
-      tbody.appendChild(tr);
-    });
-    dynSyncTable(fname);
-  }
-
-  window.dynAddRow = function(fname) {
-    var f = null;
-    for (var i = 0; i < FIELD_SCHEMA.length; i++) {
-      if (FIELD_SCHEMA[i].name === fname) { f = FIELD_SCHEMA[i]; break; }
-    }
-    if (!f) return;
-    var empty = {};
-    (f.columns || []).forEach(function(c){ empty[c.name] = ''; });
-    TABLE_DATA[fname] = TABLE_DATA[fname] || [];
-    TABLE_DATA[fname].push(empty);
-    dynRenderTable(fname);
-  };
-
-  function dynDelRow(fname, i) {
-    if (TABLE_DATA[fname]) {
-      TABLE_DATA[fname].splice(i, 1);
-      dynRenderTable(fname);
-    }
-  }
-
-  function dynSyncTable(fname) {
-    var inp = document.getElementById(fname + '_json');
-    if (inp) inp.value = JSON.stringify(TABLE_DATA[fname] || []);
-  }
-
-  /* ── Autocomplete (lot_ref / reagent_ref) ── */
-  function initDynAutocomplete() {
-    document.querySelectorAll('[data-ac]').forEach(function(inp) {
-      inp.addEventListener('input', function() {
-        var q = inp.value.trim();
-        if (q.length < 1) { hideDynAc(inp); return; }
-        var url = inp.getAttribute('data-ac') + '?q=' + encodeURIComponent(q);
-        var lotType = inp.getAttribute('data-ac-type');
-        if (lotType) url += '\x26type=' + encodeURIComponent(lotType);
-        fetch(url)
-          .then(function(r){ return r.json(); })
-          .then(function(items){ showDynAc(inp, items); })
-          .catch(function(){ hideDynAc(inp); });
-      });
-      inp.addEventListener('blur', function() {
-        setTimeout(function(){ hideDynAc(inp); }, 220);
-      });
-    });
-  }
-
-  function showDynAc(inp, items) {
-    var dd = document.getElementById('ac-' + inp.id);
-    if (!dd) return;
-    dd.innerHTML = '';
-    if (!items.length) { dd.classList.remove('open'); return; }
-    items.slice(0, 12).forEach(function(item) {
-      var label = item.lot_number || item.name || '';
-      var sub   = item.expiry_date ? 'exp: ' + item.expiry_date
-                : (item.supplier ? item.supplier : '');
-      var div = document.createElement('div');
-      div.className = 'lot-ac-item';
-      div.innerHTML = '\x3cspan\x3e' + _esc(label) + '\x3c/span\x3e'
-        + (sub ? ' \x3cspan class="lot-ac-sub"\x3e' + _esc(sub) + '\x3c/span\x3e' : '');
-      div.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        inp.value = label;
-        hideDynAc(inp);
-      });
-      dd.appendChild(div);
-    });
-    dd.classList.add('open');
-  }
-
-  function hideDynAc(inp) {
-    var dd = document.getElementById('ac-' + inp.id);
-    if (dd) dd.classList.remove('open');
-  }
-
-  /* ── Init ── */
-  document.addEventListener('DOMContentLoaded', function() {
-    /* Render tables */
-    FIELD_SCHEMA.forEach(function(f) {
-      if (f.type === 'table') dynRenderTable(f.name);
-    });
-    /* GLP corrections */
-    if (window.initCorrections) initCorrections(SAVED_DATA);
-    /* Autocomplete */
-    initDynAutocomplete();
-  });
   </script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=1"></script>
 
   </div><!-- /content slot -->
 </body>
