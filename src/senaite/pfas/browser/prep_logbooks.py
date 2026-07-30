@@ -28,6 +28,7 @@ from senaite.pfas.logbook_schema import (
     FIELD_TYPES,
     canonicalize_schema,
     validate_schema,
+    validate_steps,
 )
 
 logger = logging.getLogger("senaite.pfas.browser.prep_logbooks")
@@ -106,6 +107,10 @@ def _obj_to_dict(obj):
         "sort_order":        int(getattr(obj, "sort_order", 100) or 100),
         "active":            bool(getattr(obj, "active", True)),
         "builtin":           bool(getattr(obj, "builtin", False)),
+        # getattr-with-default: objects created before these fields existed
+        # read cleanly without any ZODB migration.
+        "steps_json":        getattr(obj, "steps_json", None) or u"[]",
+        "guided_default":    bool(getattr(obj, "guided_default", False)),
     }
 
 
@@ -127,6 +132,8 @@ def _populate_obj(obj, data):
     obj.method_slug = data.get("method_slug") or u""
     obj.logbook_code = data.get("logbook_code") or u""
     obj.field_schema_json = data.get("field_schema_json") or u"[]"
+    obj.steps_json = data.get("steps_json") or u"[]"
+    obj.guided_default = bool(data.get("guided_default", False))
     try:
         obj.sort_order = int(data.get("sort_order") or 100)
     except (ValueError, TypeError):
@@ -453,6 +460,15 @@ class PFASPrepLogbooksView(BrowserView):
         """Human-readable list of legal types, derived (not hardcoded)."""
         return ", ".join(t["type"] for t in FIELD_TYPES)
 
+    def lot_types_json(self):
+        """Lot-type choices for a lot_ref field — same list as standard_type,
+        so the two can never drift."""
+        return json.dumps(self.standard_types())
+
+    def media_url(self):
+        """Endpoint the builder POSTs step media to / reads thumbnails from."""
+        return "{0}/@@pfas-logbook-media".format(self.portal_url())
+
     def records_json(self):
         """{uid: record} for every family AND every revision, as one JSON blob.
 
@@ -527,6 +543,19 @@ class PFASPrepLogbooksView(BrowserView):
                 self._self_url(), _urlmsg("; ".join(errors[:3]))))
         clean_schema = json.dumps(canonicalize_schema(parsed_schema))
 
+        raw_steps = f.get("steps_json", "[]").strip() or "[]"
+        try:
+            parsed_steps = json.loads(raw_steps)
+        except (ValueError, TypeError) as exc:
+            return self._redirect("{0}?error={1}".format(
+                self._self_url(),
+                _urlmsg("Guided steps are not valid JSON: {0}".format(exc))))
+        step_errors = validate_steps(parsed_steps, parsed_schema)
+        if step_errors:
+            return self._redirect("{0}?error={1}".format(
+                self._self_url(), _urlmsg("; ".join(step_errors[:3]))))
+        clean_steps = json.dumps(parsed_steps if isinstance(parsed_steps, list) else [])
+
         data = {
             "uid":                 f.get("uid", "").strip() or None,
             "title":               title,
@@ -542,6 +571,8 @@ class PFASPrepLogbooksView(BrowserView):
             "method_slug":         f.get("method_slug", "").strip(),
             "logbook_code":        f.get("logbook_code", "").strip(),
             "field_schema_json":   clean_schema,
+            "steps_json":          clean_steps,
+            "guided_default":      f.get("guided_default") in ("true", "1", "yes", "on"),
             "sort_order":          f.get("sort_order", "100"),
             "active":              f.get("active") not in ("false", "0", "no", "off"),
             "builtin":             f.get("builtin") in ("true", "1", "yes", "on"),

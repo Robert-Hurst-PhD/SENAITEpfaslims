@@ -420,6 +420,15 @@
       permission="zope2.View"
       />
 
+  <!-- Guided-step media (GIF / photo). GET is open so analysts can see the
+       image while filling a logbook; POST is manager-gated inside the view. -->
+  <browser:page
+      name="pfas-logbook-media"
+      for="*"
+      class=".logbook_media.PFASLogbookMediaView"
+      permission="zope2.View"
+      />
+
   <!-- Prepared standards inventory -->
   <browser:page
       name="pfas-prep-standards"

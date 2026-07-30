@@ -71,6 +71,74 @@
     .btn-sm.btn-danger:hover { background:#f8d7da; }
     .btn-sm.btn-warn { background:#fff3cd; color:#856404; border-color:#ffeeba; }
     .btn-sm.btn-warn:hover { background:#ffe8a1; }
+    /* ── Form builder ─────────────────────────────────────────────── */
+    .fb-region { border:1px solid var(--s-border); border-radius:8px; padding:0; }
+    .fb-tabs { display:flex; align-items:center; gap:2px; border-bottom:1px solid var(--s-border);
+               background:var(--s-light); padding:6px 8px 0; border-radius:8px 8px 0 0; }
+    .fb-tab { border:1px solid transparent; border-bottom:none; background:transparent;
+              padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer;
+              border-radius:6px 6px 0 0; color:var(--s-secondary); }
+    .fb-tab.is-active { background:var(--s-bg); border-color:var(--s-border);
+                        color:var(--s-body); margin-bottom:-1px; }
+    .fb-tabs-note { margin-left:auto; font-size:11px; color:var(--s-secondary); padding-right:4px; }
+    .fb-pane { display:none; padding:12px; }
+    .fb-pane.is-active { display:block; }
+    .fb-list { display:flex; flex-direction:column; gap:8px; }
+    .fb-empty { font-size:12px; color:var(--s-secondary); font-style:italic; padding:8px 2px; }
+    .fb-hint { font-size:11px; color:var(--s-secondary); margin:0 0 8px; }
+    .fb-row, .fb-step { border:1px solid var(--s-border); border-radius:6px;
+                        padding:8px 10px; background:var(--s-bg); }
+    .fb-row-head { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .fb-idx { font-size:11px; font-weight:700; color:var(--s-secondary);
+              min-width:18px; text-align:center; }
+    .fb-in { padding:5px 8px; border:1px solid var(--s-border); border-radius:4px;
+             font-size:12px; background:var(--s-bg); color:var(--s-body); }
+    .fb-in-name { width:150px; font-family:monospace; }
+    .fb-in-label { flex:1 1 180px; min-width:120px; }
+    .fb-in-type { width:170px; }
+    .fb-in-sm { width:90px; }
+    .fb-rowbtns { margin-left:auto; display:flex; gap:2px; }
+    .fb-iconbtn { border:1px solid var(--s-border); background:var(--s-bg); cursor:pointer;
+                  border-radius:4px; font-size:12px; line-height:1; padding:4px 7px;
+                  color:var(--s-secondary); }
+    .fb-iconbtn:hover { background:var(--s-primary-lt); color:var(--s-body); }
+    .fb-row-sub { display:flex; gap:14px; flex-wrap:wrap; margin-top:7px;
+                  padding-top:7px; border-top:1px dashed var(--s-border); }
+    .fb-sublabel { font-size:11px; color:var(--s-secondary); display:flex;
+                   align-items:center; gap:4px; }
+    .fb-cols { margin-top:8px; padding:8px; background:var(--s-light); border-radius:5px; }
+    .fb-cols-title { font-size:11px; font-weight:700; text-transform:uppercase;
+                     color:var(--s-secondary); margin-bottom:6px; }
+    .fb-colrow { display:flex; gap:6px; margin-bottom:5px; align-items:center; }
+    .fb-addbar { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+    .fb-errors { margin-top:10px; padding:8px 10px; border-radius:5px;
+                 background:#f8d7da; border:1px solid #f5c6cb; color:#721c24; font-size:11.5px; }
+    .fb-errors-inline { font-size:11.5px; color:#721c24; }
+    .fb-json { width:100%; box-sizing:border-box; font-family:monospace; font-size:11px;
+               padding:8px; border:1px solid var(--s-border); border-radius:4px; }
+    .fb-jsonlabel { font-size:11px; font-weight:700; color:var(--s-secondary);
+                    display:block; margin:8px 0 3px; }
+    .fb-banner { font-size:11.5px; background:#fff3cd; border:1px solid #ffeeba;
+                 color:#856404; border-radius:5px; padding:8px 10px; margin-bottom:10px; }
+    .fb-step-body { display:flex; gap:12px; margin-top:8px; flex-wrap:wrap; }
+    .fb-step-instr { flex:1 1 280px; display:flex; flex-direction:column; }
+    .fb-step-media { flex:0 0 190px; display:flex; flex-direction:column; gap:5px; }
+    .fb-instr { width:100%; box-sizing:border-box; font-size:12px; }
+    .fb-thumb { border:1px dashed var(--s-border); border-radius:5px; min-height:96px;
+                display:flex; align-items:center; justify-content:center;
+                background:var(--s-light); overflow:hidden; }
+    .fb-thumb img { max-width:100%; max-height:150px; display:block; }
+    .fb-thumb-empty { font-size:11px; color:var(--s-secondary); }
+    .fb-file { font-size:11px; }
+    .fb-assign { margin-top:9px; padding-top:8px; border-top:1px dashed var(--s-border);
+                 display:flex; flex-wrap:wrap; gap:6px 14px; }
+    .fb-assign-item { font-size:11.5px; display:flex; align-items:center; gap:4px; }
+    .fb-assign-item.is-taken { opacity:.55; }
+    .fb-tybadge { font-size:9.5px; text-transform:uppercase; letter-spacing:.03em;
+                  background:var(--s-light); border:1px solid var(--s-border);
+                  border-radius:3px; padding:1px 4px; color:var(--s-secondary); }
+    .fb-taken { font-size:10px; color:var(--s-secondary); font-style:italic; }
+    .fb-unassigned { font-size:11px; color:var(--s-secondary); }
   </style>
   </tal:styles>
 </head>
@@ -202,7 +270,10 @@
     <div class="modal-overlay" id="lbModal">
       <div class="modal-box">
         <h2 id="modalTitle">New Preparation Logbook</h2>
-        <form method="POST"
+        <!-- onsubmit (not the Save button's onclick) so that submitting with
+             Enter from a text input also serialises the builder + analytes;
+             returning false blocks the POST when validation fails. -->
+        <form method="POST" onsubmit="return serializeForm();"
               tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
           <input type="hidden" name="action" value="add" id="formAction" />
           <input type="hidden" name="uid" id="editUid" value="" />
@@ -267,25 +338,63 @@
             </div>
           </div>
 
-          <div class="form-row">
-            <div class="form-field full">
-              <label>Field Schema (JSON)</label>
-              <textarea name="field_schema_json" id="lbFieldSchema" rows="8"
-                        style="font-family:monospace;font-size:11px;"
-                        placeholder='[
-  {"name":"prepared_by","label":"Prepared By","type":"text","required":true,"correctable":true,"width":"lg"},
-  {"name":"prepared_date","label":"Date Prepared","type":"date","correctable":true,"width":"md"},
-  {"name":"notes","label":"Notes","type":"textarea","correctable":true},
-  {"name":"items","label":"Items","type":"table","columns":[
-    {"name":"name","label":"Name","type":"text"},
-    {"name":"lot","label":"Lot #","type":"text"}
-  ],"default_rows":[]}
-]'></textarea>
-              <span style="font-size:10px;color:var(--s-secondary);margin-top:3px">
-                Field types: text, date, number, textarea, lot_ref (+ lot_type), reagent_ref, checkbox, table (+ columns + default_rows).
-                Add &quot;correctable&quot;: true for GLP correction support.
-              </span>
+          <!-- ── Form builder ────────────────────────────────────────── -->
+          <div class="form-field full fb-region" style="margin-bottom:14px">
+            <div class="fb-tabs">
+              <button type="button" class="fb-tab is-active" data-fbtab="fields">Fields</button>
+              <button type="button" class="fb-tab" data-fbtab="steps">Steps (Guided)</button>
+              <button type="button" class="fb-tab" data-fbtab="json">JSON</button>
+              <span class="fb-tabs-note">These fields are what the analyst fills in.</span>
             </div>
+
+            <!-- Fields -->
+            <div class="fb-pane is-active" data-fbpane="fields">
+              <div id="fbFieldList" class="fb-list"></div>
+              <div class="fb-addbar">
+                <select id="fbNewType"></select>
+                <button type="button" class="btn-add-row" id="fbAddField">+ Add Field</button>
+              </div>
+              <div class="fb-errors" id="fbErrors" style="display:none"></div>
+            </div>
+
+            <!-- Steps -->
+            <div class="fb-pane" data-fbpane="steps">
+              <p class="fb-hint" id="fbStepsIntro">
+                Group the fields above into guided steps. Each step shows its
+                instructions beside a GIF or photo of the action. Leave this
+                empty and the logbook stays a single concise form.
+              </p>
+              <div class="fb-banner" id="fbStep252" style="display:none"></div>
+              <div id="fbStepList" class="fb-list"></div>
+              <div class="fb-addbar">
+                <button type="button" class="btn-add-row" id="fbAddStep">+ Add Step</button>
+                <button type="button" class="btn-sm" id="fbSeedSteps"
+                        title="Create one step per line of the Procedure text">
+                  Seed steps from Procedure</button>
+                <span class="fb-unassigned" id="fbUnassigned"></span>
+              </div>
+            </div>
+
+            <!-- Raw JSON escape hatch -->
+            <div class="fb-pane" data-fbpane="json">
+              <p class="fb-hint">
+                Advanced. Edit the stored JSON directly, then Apply to load it
+                back into the builder. Legal field types:
+                <b tal:content="view/field_types_hint">text, date, ...</b>
+              </p>
+              <label class="fb-jsonlabel">Field schema</label>
+              <textarea id="fbFieldsJsonRaw" rows="8" class="fb-json"></textarea>
+              <label class="fb-jsonlabel">Guided steps</label>
+              <textarea id="fbStepsJsonRaw" rows="6" class="fb-json"></textarea>
+              <div class="fb-addbar">
+                <button type="button" class="btn-sm" id="fbApplyJson">Apply JSON &#8594; Builder</button>
+                <span class="fb-errors-inline" id="fbJsonErr"></span>
+              </div>
+            </div>
+
+            <!-- Serialized on submit by serializeForm() -->
+            <input type="hidden" name="field_schema_json" id="lbFieldSchema" value="[]" />
+            <input type="hidden" name="steps_json" id="lbStepsJson" value="[]" />
           </div>
 
           <div class="form-row">
@@ -325,7 +434,7 @@
 
           <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
             <button type="button" class="btn-sm" onclick="closeModal()">Cancel</button>
-            <button type="submit" class="btn btn-primary" onclick="serializeForm()">Save</button>
+            <button type="submit" class="btn btn-primary">Save</button>
           </div>
         </form>
       </div>
@@ -343,6 +452,20 @@
      record data is ever interpolated into an attribute (quotes in a title or
      in step instructions would break that). */
   var LB_RECORDS = <tal:r tal:replace="structure view/records_json" />;
+
+  /* Canonical field-type vocabulary — generated from
+     senaite.pfas.logbook_schema.FIELD_TYPES so the builder can never offer a
+     type the renderer does not honour. */
+  var LB_FIELD_TYPES = <tal:t tal:replace="structure view/field_types_json" />;
+  var LB_LOT_TYPES   = <tal:l tal:replace="structure view/lot_types_json" />;
+  var LB_MEDIA_URL   = "<tal:m tal:replace="view/media_url" />";
+  </script>
+
+  <!-- Builder lives in a static resource: Chameleon parses inline <script>
+       bodies and chokes on bare "<", "&" and "&&". Bump ?v= when editing. -->
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_builder.js?v=1"></script>
+
+  <script>
 
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest ? ev.target.closest('[data-edit-uid]') : null;
@@ -369,9 +492,9 @@
       document.getElementById('lbMethodSlug').value = '';
       document.getElementById('lbCode').value = '';
       document.getElementById('lbSortOrder').value = '100';
-      document.getElementById('lbFieldSchema').value = '';
       document.getElementById('lbActive').checked = true;
       clearAnalyteRows();
+      lbLoadBuilder('[]', '[]', '');
     }
     modal.classList.add('open');
   }
@@ -395,9 +518,9 @@
     document.getElementById('lbMethodSlug').value = data.method_slug || '';
     document.getElementById('lbCode').value = data.logbook_code || '';
     document.getElementById('lbSortOrder').value = data.sort_order != null ? data.sort_order : 100;
-    document.getElementById('lbFieldSchema').value = (data.field_schema_json && data.field_schema_json !== '[]')
-      ? (function() { try { return JSON.stringify(JSON.parse(data.field_schema_json), null, 2); } catch(e) { return data.field_schema_json; } })()
-      : '';
+    lbLoadBuilder(data.field_schema_json || '[]',
+                  data.steps_json || '[]',
+                  data.procedure || '');
     document.getElementById('lbActive').checked = data.active !== false;
     var tmpl = [];
     try { tmpl = JSON.parse(data.analyte_template_json || '[]'); } catch(e) {}
@@ -422,6 +545,9 @@
     serializeAnalytes();
     document.getElementById('activeHidden').value =
       document.getElementById('lbActive').checked ? 'on' : 'off';
+    /* Writes #lbFieldSchema and #lbStepsJson; returns false (blocking submit)
+       if the builder found validation errors. */
+    return lbSerializeBuilder();
   }
 
   function serializeAnalytes() {
