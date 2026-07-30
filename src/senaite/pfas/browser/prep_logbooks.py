@@ -24,8 +24,26 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import require_manager
+from senaite.pfas.logbook_schema import (
+    FIELD_TYPES,
+    canonicalize_schema,
+    validate_schema,
+)
 
 logger = logging.getLogger("senaite.pfas.browser.prep_logbooks")
+
+
+def _urlmsg(msg):
+    """URL-encode a status message for the ?ok= / ?error= query string.
+
+    Validation errors contain ';', quotes and parentheses, so plain
+    space->'+' substitution is not enough.
+    """
+    try:
+        import urllib
+        return urllib.quote(msg.encode("utf-8"))
+    except Exception:
+        return "Save failed"
 
 STATUS_DRAFT    = "draft"
 STATUS_ACTIVE   = "active"
@@ -422,6 +440,19 @@ class PFASPrepLogbooksView(BrowserView):
         revs.sort(key=lambda x: -x["revision"])
         return revs
 
+    def field_types_json(self):
+        """The canonical field-type vocabulary, for the builder UI.
+
+        Single source: senaite.pfas.logbook_schema.FIELD_TYPES. The builder's
+        type <select> and its conditional sub-controls are both generated from
+        this, so the vocabulary can never drift from what the renderer honours.
+        """
+        return json.dumps(FIELD_TYPES)
+
+    def field_types_hint(self):
+        """Human-readable list of legal types, derived (not hardcoded)."""
+        return ", ".join(t["type"] for t in FIELD_TYPES)
+
     def records_json(self):
         """{uid: record} for every family AND every revision, as one JSON blob.
 
@@ -477,6 +508,25 @@ class PFASPrepLogbooksView(BrowserView):
         title = f.get("title", "").strip()
         if not title:
             return self._redirect("{0}?error=Title+is+required".format(self._self_url()))
+
+        # Validate + canonicalise the schema BEFORE saving. The builder does
+        # the same checks client-side for fast feedback, but this view accepts
+        # raw POSTs, so Python is the guarantee. Previously any string —
+        # including malformed JSON — was persisted verbatim and only degraded
+        # to an empty form later, at render time.
+        raw_schema = f.get("field_schema_json", "[]").strip() or "[]"
+        try:
+            parsed_schema = json.loads(raw_schema)
+        except (ValueError, TypeError) as exc:
+            return self._redirect("{0}?error={1}".format(
+                self._self_url(),
+                _urlmsg("Field schema is not valid JSON: {0}".format(exc))))
+        errors = validate_schema(parsed_schema)
+        if errors:
+            return self._redirect("{0}?error={1}".format(
+                self._self_url(), _urlmsg("; ".join(errors[:3]))))
+        clean_schema = json.dumps(canonicalize_schema(parsed_schema))
+
         data = {
             "uid":                 f.get("uid", "").strip() or None,
             "title":               title,
@@ -491,7 +541,7 @@ class PFASPrepLogbooksView(BrowserView):
             "notes":               f.get("notes", "").strip(),
             "method_slug":         f.get("method_slug", "").strip(),
             "logbook_code":        f.get("logbook_code", "").strip(),
-            "field_schema_json":   f.get("field_schema_json", "[]").strip() or "[]",
+            "field_schema_json":   clean_schema,
             "sort_order":          f.get("sort_order", "100"),
             "active":              f.get("active") not in ("false", "0", "no", "off"),
             "builtin":             f.get("builtin") in ("true", "1", "yes", "on"),
