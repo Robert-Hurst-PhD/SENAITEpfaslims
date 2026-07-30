@@ -915,12 +915,20 @@ def _correctable_fields(schema_fields):
     ]
 
 
-def _extract_data_from_schema(form, schema_fields):
-    """Build data dict from POST form data based on the field schema."""
+def _extract_data_from_schema(form, schema_fields, only_fields=None):
+    """Build data dict from POST form data based on the field schema.
+
+    only_fields: when given, restrict extraction to those field names. Guided
+    mode submits ONE step at a time, and every field this function touches is
+    defaulted to "" — so without this filter a per-step POST would blank every
+    field belonging to the other steps.
+    """
     data = {}
     for field in schema_fields:
         fname = field.get("name")
         if not fname:
+            continue
+        if only_fields is not None and fname not in only_fields:
             continue
         ftype = field.get("type", "text")
         if ftype == "table":
@@ -1025,9 +1033,32 @@ class PFASDynamicLogbookView(_LogbookBase):
         schema_fields = self.field_schema()
         existing = self.data()
 
-        data = _extract_data_from_schema(f, schema_fields)
+        # Guided mode posts one step at a time and names that step's fields in
+        # _step_fields. Concise mode sends no _step_fields, so `only` stays
+        # None and behaviour is byte-for-byte what it always was.
+        raw_only = (f.get("_step_fields") or "").strip()
+        only = [n for n in raw_only.split(",") if n] if raw_only else None
+
+        # _save_logbook replaces the annotation wholesale, so a partial POST
+        # must be merged onto what is already stored. Two independent
+        # protections: seeding from `existing` means an absent key can never be
+        # blanked even if `only` were computed wrongly, and `only_fields`
+        # confines this step to its own fields.
+        data = dict(existing)
+        data.update(_extract_data_from_schema(f, schema_fields, only_fields=only))
+
         correctable = _correctable_fields(schema_fields)
+        if only is not None:
+            correctable = [n for n in correctable if n in only]
         _apply_field_corrections(f, existing, correctable, data)
+
+        step_id = (f.get("_step_id") or "").strip()
+        if step_id:
+            done = list(existing.get("_steps_done") or [])
+            if step_id not in done:
+                done.append(step_id)
+            data["_steps_done"] = done
+
         _save_logbook(self.context, slug, data)
 
         # FM-ENV-251 special: export cal data for pipeline injection builder
