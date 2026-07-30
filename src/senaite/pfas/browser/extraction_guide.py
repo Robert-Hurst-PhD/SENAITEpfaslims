@@ -166,6 +166,18 @@ class PFASExtractionGuideView(BrowserView):
                 return s
         return {}
 
+    def stage_media_url(self, stage):
+        """URL of this stage's action GIF/photo, or "" if none.
+
+        Stages are plain dicts loaded from the method profile and existing
+        saved profiles predate this key (get_profile back-fills top-level keys
+        only), so always read it with a default.
+        """
+        token = (stage or {}).get("media") or ""
+        if not token:
+            return ""
+        return "{0}/@@pfas-logbook-media?f={1}".format(self.portal_url(), token)
+
     def stage_status(self, stage):
         """Return 'done', 'active', or 'pending'."""
         order = stage.get("order", 0)

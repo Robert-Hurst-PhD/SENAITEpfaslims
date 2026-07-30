@@ -179,6 +179,17 @@
   <script>
   var SAVED_DATA   = <tal:sd tal:replace="structure view/data_json" />;
   var FIELD_SCHEMA = <tal:fs tal:replace="structure view/field_schema_json" />;
+  document.addEventListener('DOMContentLoaded', function () {
+    /* Animated GIFs do not restart once played through. */
+    var rb = document.getElementById('lbg-replay-btn');
+    var im = document.getElementById('lbg-img');
+    if (rb && im) {
+      rb.addEventListener('click', function () {
+        var src = im.getAttribute('src').split('#')[0];
+        im.setAttribute('src', src + '#r=' + Date.now());
+      });
+    }
+  });
   </script>
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=1"></script>
   </tal:scripts>

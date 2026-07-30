@@ -1064,7 +1064,11 @@
     })();
     </script>
 
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js"></script>
+    <script>
+    /* Endpoint for stage action GIFs — shared with the logbook step builder. */
+    var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
+    </script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=2"></script>
 
   </div><!-- /content slot -->
 

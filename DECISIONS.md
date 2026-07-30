@@ -3292,3 +3292,84 @@ bracket opens at the first injection that counts toward the interval.** Sequence
 with no CAL still open the bracket at the samples. Live-verified on
 example-batch-fda32 for both the derived default and a sequence with the solvent
 blank placed after the ICV.
+
+---
+
+## 2026-07-30 — Visual logbook builder + guided (training) / concise runtime
+
+**Context:** logbook definitions were authored by hand-typing minified JSON into
+one 8-row textarea (no validation, no type list — bad JSON was stored verbatim
+and degraded to an empty form), and at runtime every logbook was a single flat
+form. Only the extraction log (252) was step-by-step, and nothing in the add-on
+had any media. User asked for a visual builder plus a step-by-step training view
+with a GIF per step, and a concise view for experienced analysts.
+
+**Confirmed decisions (AskUserQuestion):** guided IS the real entry and doubles
+as training (no separate practice mode); mode is a page toggle remembered per
+user; media = GIF + stills only; EVERY logbook can be guided; steps live on the
+logbook template (PrepLogbookDef); extraction 252 keeps its method-driven guide
+and gains GIFs rather than being migrated.
+
+**Shipped, in phases that each left the system working:**
+- `logbook_schema.py` — the canonical field vocabulary. `FIELD_TYPES` carries a
+  per-type `caps` list mirroring what the renderer ACTUALLY honours, and drives
+  the builder UI, the server validator and the help text alike. Also
+  `build_steps()`, which guarantees no field is ever lost: unclaimed fields land
+  in a trailing synthetic step, a doubly-claimed field belongs to the first
+  step, a stale name is dropped.
+- Three-tab builder (Fields / Steps / JSON escape hatch) in the prep-logbook
+  modal, serialising to hidden inputs so the save path was untouched. Lives in
+  `static/logbook_builder.js` — Chameleon parses inline `<script>` and chokes on
+  bare `<`, `&`, `&&`.
+- `@@pfas-logbook-media` — images on disk under immutable uuid tokens, matching
+  the SOP/CoA convention. Tokens are never overwritten, so a new revision shares
+  its parent's imagery and an archived revision stays byte-identical, which is
+  what `PreparedStandard` (slug, revision) pinning needs.
+- Guided runtime as a TEMPLATE choice on the existing view (not a second class),
+  reusing the data/save/corrections path. Shared `logbook_field` macro so the
+  concise and guided renderers cannot drift; shared `stepper` macro so this did
+  not become a third bespoke stepper.
+- Extraction stages gained `media`/`media_alt`, rendered in the guide.
+
+**Deliberate choices worth recording:**
+- **Free step navigation**, not linear. A logbook is not a procedural interlock;
+  forcing linearity would make guided strictly worse than concise for anyone but
+  a trainee, killing adoption of the mode we want used.
+- **Mode in a server-read cookie**, not sessionStorage. The two modes are
+  different templates, so the choice must be known before HTML is produced; web
+  storage is readable only after load, costing a flicker or a redirect.
+
+**Bugs found and fixed on the way:**
+- `@@pfas-prep-logbooks` was `zope2.View` with NO role check and disabled CSRF
+  on every POST — any authenticated user could rewrite logbook definitions.
+- The `PrepLogbookDef` `<allow>` list omitted `field_schema_json` and five other
+  D17 fields, so restricted/TAL access failed silently.
+- The edit form could set status active directly, bypassing `_archive_slug` and
+  leaving two active revisions for one slug.
+- Each Edit button embedded a full `json.dumps()` in its `onclick`; a quote in
+  any value broke it (step instructions certainly would).
+- Submitting the modal with Enter bypassed the Save button's onclick, so nothing
+  serialised — which would now have posted an empty schema.
+- `logbook_dynamic.pt` never invoked the shared `signoff` macro, so 250/251/253
+  printed with no QA attestation.
+
+**MERGE-ON-SAVE (the load-bearing change).** `_save_logbook` replaces the batch
+annotation wholesale and `_extract_data_from_schema` defaults every schema field
+to `""`, so a per-step POST would have zeroed every other step's fields. Fixed at
+the caller (five other views pass complete dicts, so making the sink merge would
+mask real bugs): seed from `dict(existing)`, then apply an `only_fields`-filtered
+extract, and restrict corrections to the submitted step. Shipped and verified
+BEFORE any guided UI existed.
+
+**Py2 gotchas recorded:** this codebase uses `unicode_literals`, and waitress
+asserts response headers are native `str` — a unicode cookie value raises in
+`start_response`, i.e. AFTER the view frame, where try/except cannot catch it.
+And `syncStageJson()` rebuilds each stage from an 8-key whitelist, so a new stage
+key without a matching `[data-field]` input is silently dropped on the next save.
+
+**Data note:** the live FDA_32PFAS profile was found storing
+`extraction_stages: []` — an empty list, which (unlike an absent key) masks
+`get_profile`'s top-level backfill, so the method had no stages at all. Restored
+the 8 documented stages from `DEFAULT_PROFILES`. EPA_537_1 (8) and EPA_1633A (7)
+were intact. Likely caused by an earlier profile save while the stage list was
+empty — worth watching for.

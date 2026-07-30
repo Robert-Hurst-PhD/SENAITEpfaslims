@@ -51,6 +51,9 @@
                                     font-weight:700; margin-bottom:8px; }
 
     /* ── Cards / sections ────────────────────────────────────── */
+    .eg-media-card { text-align:center; }
+    .eg-stage-img { max-width:100%; max-height:52vh; object-fit:contain;
+                    display:block; margin:0 auto; border-radius:6px; }
     .eg-card { background:#fff; border:1px solid var(--s-border); border-radius:10px;
                padding:18px; margin-bottom:16px; }
     .eg-card h3 { font-size:14px; font-weight:700; color:var(--s-dark);
@@ -278,6 +281,21 @@
           <div class="stage-title" tal:content="python:stage.get('name','')"></div>
           <div class="stage-desc"  tal:content="python:stage.get('description','')"></div>
         </div>
+
+        <!-- Action image for this stage (uploaded on the method profile's
+             Lab Workflow tab). Same media store as guided logbook steps. -->
+        <tal:media tal:define="murl python:view.stage_media_url(stage)"
+                   tal:condition="murl">
+          <div class="eg-card eg-media-card">
+            <img class="eg-stage-img" id="eg-stage-img"
+                 tal:attributes="src murl;
+                                 alt python:stage.get('media_alt','') or stage.get('name','')" />
+            <div>
+              <button type="button" class="btn-add-sol" id="eg-replay-btn"
+                      style="margin-top:8px">&#8635; Replay</button>
+            </div>
+          </div>
+        </tal:media>
 
         <form method="post"
               tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide"
@@ -799,6 +817,16 @@
     renderEquipment();
     renderSolutions();
     renderPedigree();
+    /* Replay the stage action GIF — animated GIFs do not restart on their
+       own once they have played through. */
+    var rb = document.getElementById('eg-replay-btn');
+    var im = document.getElementById('eg-stage-img');
+    if (rb && im) {
+      rb.addEventListener('click', function() {
+        var src = im.getAttribute('src').split('#')[0];
+        im.setAttribute('src', src + '#r=' + Date.now());
+      });
+    }
   });
   </script>
 

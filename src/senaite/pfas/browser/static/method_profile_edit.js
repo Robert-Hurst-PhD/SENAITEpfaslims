@@ -231,6 +231,8 @@
     var equip  = (s.equipment || []).join(', ');
     var crSol  = s.creates_solution ? 'checked' : '';
     var crPed  = s.capture_pedigree ? 'checked' : '';
+    var media    = s.media || '';
+    var mediaAlt = s.media_alt || '';
 
     var card = document.createElement('div');
     card.className = 'stage-card';
@@ -261,6 +263,22 @@
           '<label class="cb-label"><input type="checkbox" data-field="creates_solution" ' + crSol + ' /> Creates Solution</label>' +
           '<label class="cb-label"><input type="checkbox" data-field="capture_pedigree" ' + crPed + ' /> Capture Standard Pedigree</label>' +
         '</div>' +
+        /* Action GIF/photo shown to the analyst in the Extraction Guide.
+           The token rides in a hidden data-field input so syncStageJson()
+           picks it up like any other field. */
+        '<div class="stage-row stage-media-row" style="gap:12px;align-items:center">' +
+          '<input type="hidden" data-field="media" value="' + _esc(media) + '" />' +
+          '<input type="hidden" data-field="media_alt" value="' + _esc(mediaAlt) + '" />' +
+          '<span class="stage-media-thumb">' +
+            (media
+              ? '<img alt="" src="' + _esc(window.MP_MEDIA_URL || '') + '?f=' + encodeURIComponent(media) + '" />'
+              : '<span class="stage-media-empty">no action image</span>') +
+          '</span>' +
+          '<label style="flex:1">Action GIF / photo (shown in the Extraction Guide)' +
+            '<input type="file" class="stage-media-file" accept=".gif,.png,.jpg,.jpeg" />' +
+          '</label>' +
+          (media ? '<button type="button" class="del-btn stage-media-clear" title="Remove image">&#215;</button>' : '') +
+        '</div>' +
       '</div>';
 
     card.querySelector('[data-field="name"]').addEventListener('input', function() {
@@ -268,9 +286,63 @@
       syncStageJson();
     });
     card.querySelectorAll('input').forEach(function(i) {
+      if (i.type === 'file') { return; }   // handled below
       i.addEventListener('change', syncStageJson);
       i.addEventListener('input', function() { if (i.type !== 'text') syncStageJson(); });
     });
+
+    /* Stage action image: upload immediately (AJAX) so a rejected file never
+       costs the manager their unsaved edits, then store only the token. */
+    var fileIn = card.querySelector('.stage-media-file');
+    if (fileIn) {
+      fileIn.addEventListener('change', function () {
+        if (!fileIn.files || !fileIn.files[0]) { return; }
+        var fd = new FormData();
+        fd.append('action', 'upload');
+        fd.append('media', fileIn.files[0]);
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', window.MP_MEDIA_URL, true);
+        xhr.onload = function () {
+          var res = {};
+          try { res = JSON.parse(xhr.responseText); } catch (e) { res = {}; }
+          if (res.ok && res.token) {
+            card.querySelector('[data-field="media"]').value = res.token;
+            var altIn = card.querySelector('[data-field="media_alt"]');
+            if (altIn && !altIn.value) { altIn.value = fileIn.files[0].name; }
+            var thumb = card.querySelector('.stage-media-thumb');
+            if (thumb) {
+              thumb.textContent = '';
+              var img = document.createElement('img');
+              img.alt = '';
+              img.src = window.MP_MEDIA_URL + '?f=' + encodeURIComponent(res.token);
+              thumb.appendChild(img);
+            }
+            syncStageJson();
+          } else {
+            window.alert('Upload failed: ' + (res.error || ('HTTP ' + xhr.status)));
+          }
+        };
+        xhr.onerror = function () { window.alert('Upload failed (network).'); };
+        xhr.send(fd);
+      });
+    }
+    var clearBtn = card.querySelector('.stage-media-clear');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        card.querySelector('[data-field="media"]').value = '';
+        card.querySelector('[data-field="media_alt"]').value = '';
+        var thumb = card.querySelector('.stage-media-thumb');
+        if (thumb) {
+          thumb.textContent = '';
+          var sp = document.createElement('span');
+          sp.className = 'stage-media-empty';
+          sp.textContent = 'no action image';
+          thumb.appendChild(sp);
+        }
+        clearBtn.parentNode.removeChild(clearBtn);
+        syncStageJson();
+      });
+    }
 
     card.addEventListener('dragstart', function(e) {
       e.dataTransfer.setData('text/plain', id);
@@ -326,6 +398,10 @@
       var splitCsv = function(s) {
         return s ? s.split(',').map(function(x) { return x.trim(); }).filter(Boolean) : [];
       };
+      /* WARNING: this object is rebuilt from scratch on every edit, so any
+         stage key WITHOUT a matching [data-field] input above is silently
+         dropped on the next profile save. Adding a key here without also
+         adding its input in addStageCard() (or vice versa) loses data. */
       result.push({
         id:               get('id') || ('stage_' + (result.length + 1)),
         order:            parseInt(get('order'), 10) || (result.length + 1),
@@ -335,6 +411,8 @@
         equipment:        splitCsv(get('equipment')),
         creates_solution: getBool('creates_solution'),
         capture_pedigree: getBool('capture_pedigree'),
+        media:            get('media'),
+        media_alt:        get('media_alt'),
       });
     });
     document.getElementById('extraction_stages_json').value = JSON.stringify(result, null, 2);
