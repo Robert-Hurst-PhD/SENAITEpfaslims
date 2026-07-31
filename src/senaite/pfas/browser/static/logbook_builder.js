@@ -51,6 +51,20 @@
                     .replace(/^-+|-+$/g, "").substring(0, 32);
   }
 
+  /* Derive the stored key from the analyst-facing question, obeying the
+     server rules: start with a letter, lowercase/digits/underscore only,
+     never a leading underscore, never a _json suffix. */
+  function deriveName(label) {
+    var s = (label || "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .substring(0, 60);
+    if (!s) { return ""; }
+    if (!/^[a-z]/.test(s)) { s = "f_" + s; }
+    if (/_json$/.test(s)) { s += "_v"; }
+    return s;
+  }
+
   /* ── Fields tab ─────────────────────────────────────────────────────── */
 
   function renderFields() {
@@ -70,21 +84,23 @@
       var grip = el("span", "fb-idx", String(idx + 1));
       head.appendChild(grip);
 
-      var nameIn = el("input", "fb-in fb-in-name");
-      nameIn.type = "text"; nameIn.value = f.name || "";
-      nameIn.placeholder = "field_name";
-      nameIn.title = "Stored key. Lowercase letters, digits, underscore.";
-      nameIn.addEventListener("input", function () {
-        var old = f.name; f.name = nameIn.value.trim();
-        renameInSteps(old, f.name); markDirty();
-      });
-      head.appendChild(nameIn);
-
+      /* ONE visible box. What you type is what the analyst sees; the stored
+         key is derived from it automatically. The key is shown small
+         underneath and only becomes editable on request, because changing it
+         once results exist orphans the data already saved under the old key. */
       var labelIn = el("input", "fb-in fb-in-label");
       labelIn.type = "text"; labelIn.value = f.label || "";
-      labelIn.placeholder = "Label shown to the analyst";
+      labelIn.placeholder = "What the analyst is asked, e.g. Balance serial number";
       labelIn.addEventListener("input", function () {
-        f.label = labelIn.value; markDirty();
+        f.label = labelIn.value;
+        if (!f._lockName) {
+          var old = f.name;
+          f.name = deriveName(labelIn.value);
+          renameInSteps(old, f.name);
+          var kt = row.querySelector(".fb-keytext");
+          if (kt) { kt.textContent = f.name || "(not set)"; }
+        }
+        markDirty();
       });
       head.appendChild(labelIn);
 
@@ -125,9 +141,14 @@
         w.appendChild(ws); sub.appendChild(w);
       }
       if (hasCap(f.type, "correctable")) {
-        sub.appendChild(checkbox("GLP correctable", f.correctable, function (v) {
+        var cbc = checkbox("Allow corrections", f.correctable, function (v) {
           f.correctable = v; markDirty();
-        }));
+        });
+        cbc.title = "Lets an analyst change this value after saving without " +
+                    "erasing history: the original is kept, struck through, " +
+                    "with who changed it and when. Required for regulated " +
+                    "records.";
+        sub.appendChild(cbc);
       }
       if (hasCap(f.type, "lot_type")) {
         var l = el("label", "fb-sublabel");
@@ -143,6 +164,37 @@
       if (sub.childNodes.length) { row.appendChild(sub); }
 
       if (hasCap(f.type, "columns")) { row.appendChild(columnEditor(f)); }
+
+      /* the derived storage key, visible but out of the way */
+      var keyBar = el("div", "fb-keybar");
+      keyBar.appendChild(el("span", "fb-keylabel", "saved as"));
+      keyBar.appendChild(el("code", "fb-keytext", f.name || "(not set)"));
+      var edit = el("button", "fb-keyedit", f._lockName ? "auto" : "edit");
+      edit.type = "button";
+      edit.title = f._lockName
+        ? "Go back to deriving the key from the question"
+        : "Set the key by hand (only needed to match an existing record)";
+      edit.addEventListener("click", function () {
+        if (f._lockName) {                       // back to automatic
+          f._lockName = false;
+          f.name = deriveName(f.label || "");
+          renderFields(); renderSteps(); markDirty();
+          return;
+        }
+        var v = window.prompt(
+          "Storage key for this field.\n\n" +
+          "Lowercase letters, digits and underscores. Changing this on a " +
+          "logbook that already has saved records will orphan the old values.",
+          f.name || "");
+        if (v === null) { return; }
+        var old = f.name;
+        f.name = deriveName(v);
+        f._lockName = true;
+        renameInSteps(old, f.name);
+        renderFields(); renderSteps(); markDirty();
+      });
+      keyBar.appendChild(edit);
+      row.appendChild(keyBar);
 
       host.appendChild(row);
     });
@@ -277,18 +329,24 @@
 
       /* media */
       var right = el("div", "fb-step-media");
-      right.appendChild(el("label", "fb-sublabel", "Action GIF or photo"));
+      right.appendChild(el("label", "fb-sublabel", "Picture of the action"));
       var prev = el("div", "fb-thumb");
       if (s.media) {
         var img = document.createElement("img");
-        img.src = window.LB_MEDIA_URL + "?f=" + encodeURIComponent(s.media);
+        img.src = mediaSrc(s.media);
         img.alt = s.media_alt || "";
         prev.appendChild(img);
       } else {
-        prev.appendChild(el("span", "fb-thumb-empty", "no media"));
+        prev.appendChild(el("span", "fb-thumb-empty", "none chosen"));
       }
       right.appendChild(prev);
 
+      var pickBtn = el("button", "btn-sm", "Choose animation");
+      pickBtn.type = "button";
+      pickBtn.addEventListener("click", function () { openGallery(s); });
+      right.appendChild(pickBtn);
+
+      var upLabel = el("label", "fb-uplabel", "or upload your own");
       var file = document.createElement("input");
       file.type = "file";
       file.accept = ".gif,.png,.jpg,.jpeg";
@@ -296,10 +354,11 @@
       file.addEventListener("change", function () {
         if (file.files && file.files[0]) { uploadMedia(file.files[0], s); }
       });
-      right.appendChild(file);
+      upLabel.appendChild(file);
+      right.appendChild(upLabel);
 
       if (s.media) {
-        var rm = el("button", "btn-sm", "Remove media");
+        var rm = el("button", "btn-sm", "Remove");
         rm.type = "button";
         rm.addEventListener("click", function () {
           s.media = ""; s.media_alt = ""; renderSteps(); markDirty();
@@ -371,6 +430,58 @@
       : "All fields are assigned to a step.";
   }
 
+  /* ── Step imagery: built-in library + own uploads ───────────────────── */
+
+  /* A step's media is either "lib:<name>" (a shipped pixel-art animation) or
+     an uploaded token. One field, two sources — mirrors media_src() server
+     side so the picker preview and the analyst view agree. */
+  function mediaSrc(token) {
+    token = token || "";
+    if (token.indexOf("lib:") === 0) {
+      return window.LB_LIBRARY_BASE + token.substring(4) + ".gif";
+    }
+    return window.LB_MEDIA_URL + "?f=" + encodeURIComponent(token);
+  }
+
+  function openGallery(step) {
+    var lib = window.LB_LIBRARY || [];
+    var back = el("div", "fb-gal-backdrop");
+    var box = el("div", "fb-gal");
+    box.appendChild(el("div", "fb-gal-title", "Choose an animation"));
+    var grid = el("div", "fb-gal-grid");
+    lib.forEach(function (item) {
+      var cell = el("button", "fb-gal-cell");
+      cell.type = "button";
+      var im = document.createElement("img");
+      im.src = window.LB_LIBRARY_BASE + item.name + ".gif";
+      im.alt = item.label;
+      cell.appendChild(im);
+      cell.appendChild(el("span", "fb-gal-cap", item.label));
+      if (step.media === "lib:" + item.name) { cell.className += " is-on"; }
+      cell.addEventListener("click", function () {
+        step.media = "lib:" + item.name;
+        step.media_alt = item.label;
+        close(); renderSteps(); markDirty();
+      });
+      grid.appendChild(cell);
+    });
+    box.appendChild(grid);
+    var bar = el("div", "fb-gal-bar");
+    var cancel = el("button", "btn-sm", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", function () { close(); });
+    bar.appendChild(cancel);
+    box.appendChild(bar);
+    back.appendChild(box);
+    document.body.appendChild(back);
+    function close() {
+      if (back.parentNode) { back.parentNode.removeChild(back); }
+    }
+    back.addEventListener("click", function (ev) {
+      if (ev.target === back) { close(); }
+    });
+  }
+
   /* ── Media upload (AJAX so a reject never loses the typing) ─────────── */
 
   function uploadMedia(file, step) {
@@ -434,6 +545,7 @@
   }
 
   function cleanFields() {
+    /* NB: _lockName is a builder-only flag and is deliberately not emitted. */
     return fields.map(function (f) {
       var o = { name: f.name, label: f.label || f.name, type: f.type };
       if (hasCap(f.type, "required") && f.required) { o.required = true; }
@@ -514,7 +626,13 @@
       var s = JSON.parse(stepsJson || "[]");
       if (Object.prototype.toString.call(s) === "[object Array]") { steps = s; }
     } catch (e) { steps = []; }
-    fields.forEach(function (x) { if (!x.type) { x.type = "text"; } });
+    fields.forEach(function (x) {
+      if (!x.type) { x.type = "text"; }
+      /* A field loaded from storage already has a key that saved records are
+         filed under. Never re-derive it from a label edit — that would orphan
+         existing data. Only fields added in this session auto-derive. */
+      if (x.name) { x._lockName = true; }
+    });
     steps.forEach(function (x) { if (!x.fields) { x.fields = []; } });
     window.__lbProcedure = procedureText || "";
     renderFields(); renderSteps(); syncJsonTab(); showErrors([]);

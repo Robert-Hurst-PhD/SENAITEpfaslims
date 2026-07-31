@@ -173,10 +173,8 @@ class PFASExtractionGuideView(BrowserView):
         saved profiles predate this key (get_profile back-fills top-level keys
         only), so always read it with a default.
         """
-        token = (stage or {}).get("media") or ""
-        if not token:
-            return ""
-        return "{0}/@@pfas-logbook-media?f={1}".format(self.portal_url(), token)
+        from senaite.pfas.browser.logbook_media import media_src
+        return media_src(self.portal_url(), (stage or {}).get("media"))
 
     def stage_status(self, stage):
         """Return 'done', 'active', or 'pending'."""

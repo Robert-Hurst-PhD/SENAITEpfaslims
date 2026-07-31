@@ -460,6 +460,28 @@ class PFASPrepLogbooksView(BrowserView):
         """Human-readable list of legal types, derived (not hardcoded)."""
         return ", ".join(t["type"] for t in FIELD_TYPES)
 
+    def method_choices(self):
+        """Methods a logbook can be restricted to.
+
+        `method_slug` is matched against the METHOD ID in
+        logbooks.py:_available_logbooks (empty means "offer for every
+        method"), so this must offer the same ids rather than free text.
+        """
+        out = []
+        try:
+            from senaite.pfas.method_profile_store import DEFAULT_PROFILES
+            portal = self._portal()
+            from senaite.pfas.method_profile_store import (
+                get_profile, list_method_ids)
+            ids = set(DEFAULT_PROFILES.keys()) | set(list_method_ids(portal))
+            for mid in sorted(ids):
+                label = (get_profile(portal, mid) or {}).get(
+                    "display_name") or mid
+                out.append({"id": mid, "label": label})
+        except Exception as exc:
+            logger.warning("method_choices: %s", exc)
+        return out
+
     def lot_types_json(self):
         """Lot-type choices for a lot_ref field — same list as standard_type,
         so the two can never drift."""
@@ -468,6 +490,23 @@ class PFASPrepLogbooksView(BrowserView):
     def media_url(self):
         """Endpoint the builder POSTs step media to / reads thumbnails from."""
         return "{0}/@@pfas-logbook-media".format(self.portal_url())
+
+    def media_library_json(self):
+        """Catalogue of the built-in pixel-art lab animations.
+
+        Read from the generated catalog.json that ships beside the GIFs
+        (tools/make_lab_gifs.py writes both), so adding an animation needs no
+        Python change.
+        """
+        import os
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "static", "labgifs", "catalog.json")
+        try:
+            with open(path) as fh:
+                return fh.read()
+        except Exception as exc:
+            logger.warning("media_library_json: %s", exc)
+            return "[]"
 
     def records_json(self):
         """{uid: record} for every family AND every revision, as one JSON blob.

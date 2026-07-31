@@ -1138,12 +1138,10 @@ class PFASDynamicLogbookView(_LogbookBase):
                         for f in self.current_step().get("fields", []))
 
     def media_url(self, step):
-        token = (step or {}).get("media") or ""
-        if not token:
-            return ""
+        """Resolve a step's image — an upload or a built-in library animation."""
+        from senaite.pfas.browser.logbook_media import media_src
         portal = getToolByName(self.context, "portal_url").getPortalObject()
-        return "{0}/@@pfas-logbook-media?f={1}".format(
-            portal.absolute_url(), token)
+        return media_src(portal.absolute_url(), (step or {}).get("media"))
 
     def instruction_lines(self, step):
         text = (step or {}).get("instructions") or ""

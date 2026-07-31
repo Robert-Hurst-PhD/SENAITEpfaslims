@@ -139,6 +139,42 @@
                   border-radius:3px; padding:1px 4px; color:var(--s-secondary); }
     .fb-taken { font-size:10px; color:var(--s-secondary); font-style:italic; }
     .fb-unassigned { font-size:11px; color:var(--s-secondary); }
+    .fld-help { font-size:10.5px; color:var(--s-secondary); margin-top:3px;
+                display:block; line-height:1.35; }
+    /* derived storage key, kept quiet */
+    .fb-keybar { display:flex; align-items:center; gap:6px; margin-top:7px;
+                 padding-top:6px; border-top:1px dashed var(--s-border); }
+    .fb-keylabel { font-size:10px; text-transform:uppercase; letter-spacing:.05em;
+                   color:var(--s-secondary); }
+    .fb-keytext { font-family:monospace; font-size:11px; color:var(--s-secondary);
+                  background:var(--s-light); border:1px solid var(--s-border);
+                  border-radius:3px; padding:1px 5px; }
+    .fb-keyedit { border:none; background:transparent; font-size:10.5px;
+                  color:#1a73e8; cursor:pointer; text-decoration:underline; }
+    .fb-uplabel { font-size:10.5px; color:var(--s-secondary);
+                  display:flex; flex-direction:column; gap:3px; }
+    /* animation gallery */
+    .fb-gal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45);
+                       z-index:9000; display:flex; align-items:center;
+                       justify-content:center; padding:20px; }
+    .fb-gal { background:var(--s-bg); border-radius:12px; padding:18px;
+              max-width:760px; width:100%; max-height:86vh; overflow:auto;
+              box-shadow:0 10px 40px rgba(0,0,0,.3); }
+    .fb-gal-title { font-size:15px; font-weight:700; margin-bottom:12px; }
+    .fb-gal-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+                   gap:10px; }
+    .fb-gal-cell { border:1px solid var(--s-border); border-radius:8px;
+                   background:var(--s-light); padding:8px; cursor:pointer;
+                   display:flex; flex-direction:column; align-items:center; gap:5px; }
+    .fb-gal-cell:hover { border-color:#1a73e8; background:var(--s-primary-lt); }
+    .fb-gal-cell.is-on { border-color:#1a73e8; box-shadow:0 0 0 2px rgba(26,115,232,.25); }
+    .fb-gal-cell img { width:96px; height:96px; image-rendering:pixelated;
+                       image-rendering:crisp-edges; border-radius:5px; }
+    .fb-gal-cap { font-size:10.5px; color:var(--s-secondary); text-align:center;
+                  line-height:1.25; }
+    .fb-gal-bar { display:flex; justify-content:flex-end; margin-top:14px; }
+    /* step thumbnails keep the pixel look */
+    .fb-thumb img { image-rendering:pixelated; image-rendering:crisp-edges; }
   </style>
   </tal:styles>
 </head>
@@ -299,19 +335,27 @@
 
           <div class="form-row">
             <div class="form-field">
-              <label>Method Slug</label>
-              <input type="text" name="method_slug" id="lbMethodSlug"
-                     placeholder="e.g. fda-32-pfas" />
+              <label>Only offer for method</label>
+              <select name="method_slug" id="lbMethodSlug">
+                <option value="">Any method</option>
+                <option tal:repeat="m view/method_choices"
+                        tal:attributes="value m/id" tal:content="m/label">FDA</option>
+              </select>
+              <span class="fld-help">Which methods may add this logbook to a
+                batch. <b>Any method</b> offers it everywhere.</span>
             </div>
             <div class="form-field">
-              <label>Logbook Code (FM-ENV-xxx)</label>
+              <label>Form number</label>
               <input type="text" name="logbook_code" id="lbCode"
                      placeholder="e.g. FM-ENV-250" />
+              <span class="fld-help">Printed on the record and shown in the
+                batch list.</span>
             </div>
-            <div class="form-field" style="flex:0 0 80px">
-              <label>Sort Order</label>
+            <div class="form-field" style="flex:0 0 120px">
+              <label>List position</label>
               <input type="number" name="sort_order" id="lbSortOrder"
                      value="100" min="0" max="999" />
+              <span class="fld-help">Lower shows first.</span>
             </div>
           </div>
 
@@ -342,7 +386,7 @@
           <div class="form-field full fb-region" style="margin-bottom:14px">
             <div class="fb-tabs">
               <button type="button" class="fb-tab is-active" data-fbtab="fields">Fields</button>
-              <button type="button" class="fb-tab" data-fbtab="steps">Steps (Guided)</button>
+              <button type="button" class="fb-tab" data-fbtab="steps">Instructions</button>
               <button type="button" class="fb-tab" data-fbtab="json">JSON</button>
               <span class="fb-tabs-note">These fields are what the analyst fills in.</span>
             </div>
@@ -360,9 +404,11 @@
             <!-- Steps -->
             <div class="fb-pane" data-fbpane="steps">
               <p class="fb-hint" id="fbStepsIntro">
-                Group the fields above into guided steps. Each step shows its
-                instructions beside a GIF or photo of the action. Leave this
-                empty and the logbook stays a single concise form.
+                Break the work into steps the analyst is walked through, each
+                with a picture of the action beside what to do. <b>The fields
+                on each step are the ones you defined on the Fields tab</b> —
+                tick which belong to that step. Leave this empty and the
+                logbook stays a single form with no guided mode.
               </p>
               <div class="fb-banner" id="fbStep252" style="display:none"></div>
               <div id="fbStepList" class="fb-list"></div>
@@ -459,11 +505,15 @@
   var LB_FIELD_TYPES = <tal:t tal:replace="structure view/field_types_json" />;
   var LB_LOT_TYPES   = <tal:l tal:replace="structure view/lot_types_json" />;
   var LB_MEDIA_URL   = "<tal:m tal:replace="view/media_url" />";
+
+  /* Built-in pixel-art lab animations shipped with the add-on. */
+  var LB_LIBRARY      = <tal:g tal:replace="structure view/media_library_json" />;
+  var LB_LIBRARY_BASE = "<tal:b tal:replace="string:${view/portal_url}/++resource++senaite.pfas/labgifs/" />";
   </script>
 
   <!-- Builder lives in a static resource: Chameleon parses inline <script>
        bodies and chokes on bare "<", "&" and "&&". Bump ?v= when editing. -->
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_builder.js?v=1"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_builder.js?v=2"></script>
 
   <script>
 

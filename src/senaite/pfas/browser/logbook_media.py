@@ -66,6 +66,34 @@ def _ext_of(token):
     return os.path.splitext(token)[1].lower()
 
 
+# Built-in animations shipped with the add-on live in the static resource
+# directory, not in /data. A step references one as "lib:<name>".
+LIBRARY_PREFIX = "lib:"
+_LIB_NAME_RE = re.compile(r"^[a-z0-9_]{1,32}$")
+
+
+def media_src(portal_url, token):
+    """Resolve a stored media reference to a URL, or "" if there is none.
+
+    Two forms, so a step can use either the lab's own photo or a built-in
+    animation without needing a second field:
+      "lib:weighing"  -> the shipped pixel-art GIF (static resource)
+      "<32hex>.gif"   -> an uploaded image (served by this view)
+    """
+    token = (token or "").strip()
+    if not token:
+        return ""
+    if token.startswith(LIBRARY_PREFIX):
+        name = token[len(LIBRARY_PREFIX):]
+        if not _LIB_NAME_RE.match(name):
+            return ""
+        return "{0}/++resource++senaite.pfas/labgifs/{1}.gif".format(
+            portal_url, name)
+    if not _TOKEN_RE.match(token):
+        return ""
+    return "{0}/@@pfas-logbook-media?f={1}".format(portal_url, token)
+
+
 def save_media(upload):
     """Persist an uploaded image. Returns (token, error_message).
 
