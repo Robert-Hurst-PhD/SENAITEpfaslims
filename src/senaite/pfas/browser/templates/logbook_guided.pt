@@ -7,6 +7,10 @@
   <title metal:fill-slot="title"
          tal:content="string:${view/logbook_title} — Guided">Guided logbook</title>
   <tal:styles metal:fill-slot="head-extra">
+  <!-- Field widget styles, shared with the concise form. Without this the
+       macro-rendered fields fall back to browser defaults. -->
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=1" />
   <style>
     .lbg-layout { display:flex; gap:20px; align-items:flex-start; }
     .lbg-rail { flex:0 0 240px; position:sticky; top:8px; }
@@ -19,6 +23,9 @@
     .lbg-split { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
     .lbg-media { flex:3 1 380px; min-width:0; }
     .lbg-side  { flex:2 1 280px; min-width:0; }
+    /* no image: the entry column takes the whole row so tables are not
+       squeezed into 40% and clipped. */
+    .lbg-split.no-media .lbg-side { flex:1 1 100%; }
     .lbg-media-box { border:1px solid var(--s-border); border-radius:10px;
                      background:var(--s-light); padding:10px; text-align:center; }
     .lbg-media-box img { image-rendering:pixelated; image-rendering:crisp-edges; max-width:100%; max-height:60vh; object-fit:contain;
@@ -28,13 +35,24 @@
     .lbg-instr li { position:relative; padding:7px 0 7px 26px; font-size:13.5px;
                     line-height:1.5; border-bottom:1px dashed var(--s-border); }
     .lbg-instr li:last-child { border-bottom:none; }
-    .lbg-instr li:before { content:"›"; position:absolute; left:8px; top:6px;
+    /* CSS escape, NOT the literal glyph. Chameleon charref-encodes non-ASCII
+       when it serialises this style text node, so the raw character would
+       reach the browser as a numeric entity and print as markup over the
+       instruction text. Keep this file ASCII-only inside style blocks. */
+    .lbg-instr li:before { content:"\203A"; position:absolute; left:8px; top:6px;
                            color:var(--s-secondary); font-weight:700; }
     .lbg-card { border:1px solid var(--s-border); border-radius:10px;
                 background:var(--s-bg); padding:14px 16px; margin-bottom:14px; }
     .lbg-card h3 { font-size:13px; font-weight:700; margin:0 0 10px;
                    text-transform:uppercase; letter-spacing:.03em;
                    color:var(--s-secondary); }
+    /* A table field's own <h3> is emitted by the shared macro inside
+       .lb-section. Without this it collides with .lbg-card h3 at equal
+       specificity and the winner depends on stylesheet order. */
+    .lbg-card .lb-section h3 { font-size:14px; text-transform:none;
+                               letter-spacing:normal; color:var(--s-dark);
+                               border-bottom:2px solid var(--s-border);
+                               padding-bottom:6px; }
     .lbg-nomedia { font-size:12px; color:var(--s-secondary); font-style:italic;
                    padding:26px 0; }
     .lbg-modeswitch { display:inline-flex; border:1px solid var(--s-border);
@@ -107,21 +125,18 @@
           <input type="hidden" name="_step_fields"
                  tal:attributes="value view/step_field_names" />
 
-          <div class="lbg-split">
-            <!-- the action, centre stage -->
-            <div class="lbg-media">
+          <tal:layout tal:define="murl python:view.media_url(step)">
+          <div class="lbg-split"
+               tal:attributes="class python:'lbg-split' if murl else 'lbg-split no-media'">
+            <!-- the action, centre stage. An empty placeholder box would eat
+                 half the width and squeeze the entry fields, so a step with no
+                 image simply gives its room back to the content. -->
+            <div class="lbg-media" tal:condition="murl">
               <div class="lbg-media-box">
-                <tal:has tal:define="murl python:view.media_url(step)">
-                  <tal:img tal:condition="murl">
-                    <img id="lbg-img" tal:attributes="src murl; alt step/media_alt" />
-                    <div class="lbg-replay">
-                      <button type="button" class="btn-sm" id="lbg-replay-btn">&#8635; Replay</button>
-                    </div>
-                  </tal:img>
-                  <div class="lbg-nomedia" tal:condition="not:murl">
-                    No image for this step.
-                  </div>
-                </tal:has>
+                <img id="lbg-img" tal:attributes="src murl; alt step/media_alt" />
+                <div class="lbg-replay">
+                  <button type="button" class="btn-sm" id="lbg-replay-btn">&#8635; Replay</button>
+                </div>
               </div>
             </div>
 
@@ -144,6 +159,7 @@
               </div>
             </div>
           </div>
+          </tal:layout>
 
           <!-- sign-off on the final step -->
           <tal:last tal:condition="view/is_last_step">

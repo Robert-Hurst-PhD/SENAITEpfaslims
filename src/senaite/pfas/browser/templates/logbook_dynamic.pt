@@ -6,69 +6,19 @@
 <head>
   <title metal:fill-slot="title" tal:content="view/logbook_title">Logbook</title>
   <tal:styles metal:fill-slot="head-extra">
+  <!-- Field widget styles are shared with the guided view; see the comment in
+       logbook_fields.css for why they are not inlined here or in the macro. -->
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=1" />
   <style>
+    /* concise-form chrome only — everything field-level lives in the shared sheet */
     .lb-form { max-width: 900px; }
-    .lb-section { margin-bottom: 24px; }
-    .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
-                     margin-bottom: 10px; padding-bottom: 6px;
-                     border-bottom: 2px solid var(--s-border); }
-    .lb-fields-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
-    .lb-field { display: flex; flex-direction: column; min-width: 160px; }
-    .lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
-    .lb-field-wide { width: 100%; }
-    .lb-input, .lb-textarea {
-      padding: 7px 10px; font-size: 13px; border: 1px solid var(--s-input-border);
-      border-radius: 6px; color: var(--s-body);
-    }
-    .lb-input:focus, .lb-textarea:focus { outline: none; border-color: var(--s-primary); }
-    .lb-input-sm { width: 110px; }
-    .lb-input-md { width: 180px; }
-    .lb-input-lg { width: 260px; }
-    .lb-textarea { width: 100%; min-height: 70px; resize: vertical; }
-    .dyn-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .dyn-table th { background: #f8f9fa; padding: 6px 10px; text-align: left;
-                    border-bottom: 2px solid var(--s-border); font-weight: 700; }
-    .dyn-table td { padding: 4px 6px; border-bottom: 1px solid var(--s-border); }
-    .dyn-table td input { width: 100%; padding: 5px 8px; font-size: 12px;
-                          border: 1px solid var(--s-input-border); border-radius: 4px; }
-    .dyn-table td input:focus { outline: none; border-color: var(--s-primary); }
-    .btn-add-row { margin-top: 8px; padding: 5px 14px; background: #f8f9fa;
-                   border: 1px dashed var(--s-border); border-radius: 6px;
-                   font-size: 12px; cursor: pointer; color: var(--s-secondary); }
-    .btn-add-row:hover { background: #e9ecef; color: var(--s-dark); }
-    .btn-del-row { background: none; border: none; cursor: pointer;
-                   color: #dc3545; font-size: 14px; padding: 2px 6px; }
-    .lot-ac-wrap { position: relative; display: inline-block; }
-    .lot-ac-dropdown { display: none; position: absolute; top: 100%; left: 0;
-                       min-width: 260px; background: #fff;
-                       border: 1px solid var(--s-border); border-radius: 4px;
-                       box-shadow: 0 4px 12px rgba(0,0,0,.12); z-index: 200;
-                       max-height: 200px; overflow-y: auto; }
-    .lot-ac-dropdown.open { display: block; }
-    .lot-ac-item { padding: 7px 10px; font-size: 12px; cursor: pointer; }
-    .lot-ac-item:hover { background: var(--s-primary-lt); }
-    .lot-ac-sub { font-size: 10px; color: var(--s-secondary); }
     .form-actions { margin-top: 28px; padding-top: 16px;
                     border-top: 1px solid var(--s-border);
                     display: flex; gap: 12px; align-items: center; }
-    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
-                border: none; border-radius: 7px; font-size: 13px;
-                font-weight: 600; cursor: pointer; }
-    .btn-save:hover { background: var(--s-primary-dk); }
-    .btn-print-preview { padding: 9px 18px; background: #f8f9fa;
-                         color: var(--s-secondary); border: 1px solid var(--s-border);
-                         border-radius: 7px; font-size: 13px; cursor: pointer; }
-    .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
-    .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
     .empty-schema { color: var(--s-secondary); font-style: italic;
                     padding: 24px; text-align: center; }
-    @media print {
-      .btn-save, .btn-print-preview, .btn-add-row, .btn-del-row { display: none !important; }
-      .corr-panel { display: none !important; }
-      .form-actions { display: none !important; }
-    }
+    @media print { .form-actions { display: none !important; } }
   </style>
   </tal:styles>
 </head>
@@ -94,8 +44,8 @@
       <strong tal:content="view/logbook_code">Logbook</strong>
     </div>
 
-    <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
-    <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+    <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
 
     <!-- Empty schema notice -->
     <tal:noschema condition="not:view/field_schema">

@@ -493,6 +493,20 @@
       background: none; border: none; color: var(--s-primary);
       padding: 0; cursor: pointer; font-size: 13px; text-decoration: underline;
     }
+    /* .btn-save and .btn-sm were referenced app-wide (and by the print block
+       below) but never defined globally — each template carried its own copy,
+       so any template that forgot one rendered a raw browser button. Local
+       definitions still win on source order; these are the fallback. */
+    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
+                border: none; border-radius: 7px; font-size: 13px;
+                font-weight: 600; cursor: pointer; }
+    .btn-save:hover { background: var(--s-primary-dk); }
+    .btn-sm { font-size: 11px; font-weight: 600; padding: 4px 12px;
+              border-radius: 4px; background: var(--s-light);
+              color: var(--s-secondary); border: 1px solid var(--s-border);
+              cursor: pointer; text-decoration: none; display: inline-block; }
+    .btn-sm:hover { background: var(--s-primary-lt); color: var(--s-body);
+                    text-decoration: none; }
 
     /* ── Legacy save-bar (inside content slot — stays sticky in scroll area) */
     .save-bar {

@@ -1,0 +1,85 @@
+/* Logbook field widgets — shared by the concise form (logbook_dynamic.pt) and the
+ * guided step view (logbook_guided.pt).
+ *
+ * These rules style the markup emitted by the `logbook_field` METAL macro
+ * (templates/logbook_field_macros.pt) AND the markup injected at runtime by
+ * static/logbook_runtime.js (.btn-del-row, .lot-ac-item, .lot-ac-sub, the row
+ * strike controls). Those two files change together, which is why the CSS lives
+ * beside the JS rather than in the template.
+ *
+ * Why not inside the macro: Chameleon expands metal:use-macro at every call
+ * site, so a <style> in the macro body would be emitted once PER FIELD.
+ * Why not pfas_macros.pt: that sheet is inlined into every page in the app;
+ * these rules are logbook-only.
+ *
+ * Custom properties used here are defined on :root in pfas_macros.pt.
+ */
+
+/* ── sections and field rows ─────────────────────────────────────────────── */
+.lb-section { margin-bottom: 24px; }
+.lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
+                 margin-bottom: 10px; padding-bottom: 6px;
+                 border-bottom: 2px solid var(--s-border); }
+.lb-fields-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.lb-field { display: flex; flex-direction: column; min-width: 160px; }
+.lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+.lb-field-wide { width: 100%; }
+
+/* ── inputs ──────────────────────────────────────────────────────────────── */
+.lb-input, .lb-textarea {
+  padding: 7px 10px; font-size: 13px; border: 1px solid var(--s-input-border);
+  border-radius: 6px; color: var(--s-body);
+}
+.lb-input:focus, .lb-textarea:focus { outline: none; border-color: var(--s-primary); }
+.lb-input-sm { width: 110px; }
+.lb-input-md { width: 180px; }
+.lb-input-lg { width: 260px; }
+.lb-textarea { width: 100%; min-height: 70px; resize: vertical; }
+
+/* ── dynamic tables ──────────────────────────────────────────────────────── */
+.dyn-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dyn-table th { background: #f8f9fa; padding: 6px 10px; text-align: left;
+                border-bottom: 2px solid var(--s-border); font-weight: 700; }
+.dyn-table td { padding: 4px 6px; border-bottom: 1px solid var(--s-border); }
+.dyn-table td input { width: 100%; padding: 5px 8px; font-size: 12px;
+                      border: 1px solid var(--s-input-border); border-radius: 4px; }
+.dyn-table td input:focus { outline: none; border-color: var(--s-primary); }
+.btn-add-row { margin-top: 8px; padding: 5px 14px; background: #f8f9fa;
+               border: 1px dashed var(--s-border); border-radius: 6px;
+               font-size: 12px; cursor: pointer; color: var(--s-secondary); }
+.btn-add-row:hover { background: #e9ecef; color: var(--s-dark); }
+.btn-del-row { background: none; border: none; cursor: pointer;
+               color: #dc3545; font-size: 14px; padding: 2px 6px; }
+
+/* ── lot / reagent autocomplete ──────────────────────────────────────────── */
+.lot-ac-wrap { position: relative; display: inline-block; }
+.lot-ac-dropdown { display: none; position: absolute; top: 100%; left: 0;
+                   min-width: 260px; background: #fff;
+                   border: 1px solid var(--s-border); border-radius: 4px;
+                   box-shadow: 0 4px 12px rgba(0,0,0,.12); z-index: 200;
+                   max-height: 200px; overflow-y: auto; }
+.lot-ac-dropdown.open { display: block; }
+.lot-ac-item { padding: 7px 10px; font-size: 12px; cursor: pointer; }
+.lot-ac-item:hover { background: var(--s-primary-lt); }
+.lot-ac-sub { font-size: 10px; color: var(--s-secondary); }
+
+/* ── row struck as not-applicable (paper-logbook convention) ─────────────── */
+.btn-na-row { background: none; border: none; cursor: pointer;
+              color: var(--s-secondary); font-size: 13px; padding: 2px 6px; }
+.btn-na-row:hover { color: var(--s-dark); }
+.dyn-table tr.row-na td { background: #f6f7f8; }
+.dyn-table tr.row-na td input { text-decoration: line-through; color: #8a8f94;
+                                background: #f1f3f4; border-style: dashed; }
+.row-na-note { display: inline-flex; align-items: center; gap: 5px;
+               font-size: 10px; color: #856404; background: #fff8e1;
+               border: 1px solid #ffe082; border-radius: 3px;
+               padding: 1px 5px; white-space: nowrap; }
+.row-na-ini { width: 52px; font-size: 11px; padding: 3px 5px;
+              border: 1px solid #ffc107; border-radius: 3px; }
+
+@media print {
+  /* the strike itself must survive onto the controlled record */
+  .btn-na-row, .btn-del-row, .btn-add-row { display: none !important; }
+  .dyn-table tr.row-na td input { text-decoration: line-through; color: #000; }
+  .row-na-note { border-color: #000; color: #000; background: transparent; }
+}
