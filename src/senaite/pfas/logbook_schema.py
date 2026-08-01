@@ -68,6 +68,32 @@ RESERVED_SUFFIXES = ("_json",)
 STEP_ID_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
 UNASSIGNED_STEP_ID = "_unassigned"
 
+# Reserved keys stored INSIDE a table row to mark it struck as not-applicable
+# ("we did not prepare this one today"). Safe from collision because NAME_RE
+# forces a column name to start with a lowercase LETTER, so no user-authored
+# column can ever begin with an underscore.
+NA_KEY = "_na"
+NA_BY_KEY = "_na_by"
+NA_AT_KEY = "_na_at"
+ROW_RESERVED_KEYS = (NA_KEY, NA_BY_KEY, NA_AT_KEY)
+
+
+def is_row_struck(row):
+    """True if this table row was struck as not-applicable."""
+    return bool(isinstance(row, dict) and row.get(NA_KEY))
+
+
+def active_rows(rows):
+    """The rows that COUNT.
+
+    A struck row is recorded and printed, but it is inert: nothing consumes it,
+    nothing is created from it, and it must never be treated as a real entry.
+    Defined once here so every consumer inherits the same meaning rather than
+    each re-deciding what a struck row means (CLAUDE.md §1.3).
+    """
+    return [r for r in (rows or [])
+            if isinstance(r, dict) and not r.get(NA_KEY)]
+
 
 def field_type_labels():
     """[(type, label)] for building a <select>."""

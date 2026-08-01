@@ -98,5 +98,19 @@ chk("empty steps ok", ls.validate_steps([], fields) == [])
 print("== unassigned_names ==")
 chk("reports b,c", ls.unassigned_names(fields, steps) == ["b","c"])
 
+print("== struck rows (N/A) ==")
+chk("is_row_struck true for _na",  ls.is_row_struck({"_na": True}))
+chk("is_row_struck false plain",   not ls.is_row_struck({"name": "x"}))
+chk("is_row_struck false non-dict", not ls.is_row_struck("nope"))
+_rows = [{"name": "A"}, {"name": "B", "_na": True, "_na_by": "KCP", "_na_at": "2026-07-31"},
+         {"name": "C"}]
+chk("active_rows drops struck",
+    [r["name"] for r in ls.active_rows(_rows)] == ["A", "C"])
+chk("active_rows keeps struck row in the source list", len(_rows) == 3)
+chk("active_rows tolerates None", ls.active_rows(None) == [])
+chk("active_rows skips non-dicts", ls.active_rows(["x", {"name": "A"}]) == [{"name": "A"}])
+chk("reserved row keys cannot be columns",
+    all(not ls.NAME_RE.match(k) for k in ls.ROW_RESERVED_KEYS))
+
 print("\n%d passed, %d failed" % (ok, fail))
 sys.exit(1 if fail else 0)

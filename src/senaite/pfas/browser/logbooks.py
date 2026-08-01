@@ -944,6 +944,59 @@ def _extract_data_from_schema(form, schema_fields, only_fields=None):
     return data
 
 
+def _current_signer(context):
+    """Display name for the logged-in user, for stamping a record."""
+    try:
+        from AccessControl import getSecurityManager
+        user = getSecurityManager().getUser()
+        try:
+            portal = getToolByName(context, "portal_url").getPortalObject()
+            mt = getToolByName(portal, "portal_membership", None)
+            if mt:
+                member = mt.getMemberById(user.getId())
+                if member and member.getProperty("fullname", ""):
+                    return member.getProperty("fullname", "")
+        except Exception:
+            pass
+        return user.getUserName() or user.getId() or "Unknown"
+    except Exception:
+        return "Unknown"
+
+
+def _stamp_struck_rows(context, data, schema_fields):
+    """Stamp who/when onto any table row newly struck as not-applicable.
+
+    The browser only ever sets the boolean flag; attribution is applied here so
+    it cannot be forged from the client and the analyst types nothing. Rows that
+    already carry a stamp keep it, so re-saving a logbook does not re-date an
+    older strike.
+    """
+    from senaite.pfas.logbook_schema import NA_KEY, NA_BY_KEY, NA_AT_KEY
+    signer = None
+    today = date.today().strftime("%Y-%m-%d")
+    for field in schema_fields or []:
+        if field.get("type") != "table":
+            continue
+        rows = data.get(field.get("name"))
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if not row.get(NA_KEY):
+                # Not struck: make sure no stale attribution lingers from a
+                # previous strike that has since been undone.
+                row.pop(NA_BY_KEY, None)
+                row.pop(NA_AT_KEY, None)
+                continue
+            if not row.get(NA_BY_KEY):
+                if signer is None:
+                    signer = _current_signer(context)
+                row[NA_BY_KEY] = signer
+            if not row.get(NA_AT_KEY):
+                row[NA_AT_KEY] = today
+
+
 def _date_str_obj(obj, field):
     """Safe date → YYYY-MM-DD string from a content object attribute."""
     val = getattr(obj, field, None)
@@ -1269,6 +1322,9 @@ class PFASDynamicLogbookView(_LogbookBase):
         if only is not None:
             correctable = [n for n in correctable if n in only]
         _apply_field_corrections(f, existing, correctable, data)
+
+        # Attribution for rows struck as not-applicable is applied server-side.
+        _stamp_struck_rows(self.context, data, schema_fields)
 
         step_id = (f.get("_step_id") or "").strip()
         if step_id:

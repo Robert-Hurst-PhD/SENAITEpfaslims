@@ -9,7 +9,7 @@
   <!-- Field widget styles are shared with the guided view; see the comment in
        logbook_fields.css for why they are not inlined here or in the macro. -->
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=1" />
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=2" />
   <style>
     /* concise-form chrome only — everything field-level lives in the shared sheet */
     .lb-form { max-width: 900px; }
@@ -94,7 +94,7 @@
   var SAVED_DATA    = <tal:sd tal:replace="structure view/data_json" />;
   var FIELD_SCHEMA  = <tal:fs tal:replace="structure view/field_schema_json" />;
   </script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=1"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=2"></script>
 
   </div><!-- /content slot -->
 </body>

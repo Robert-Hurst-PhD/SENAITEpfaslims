@@ -31,6 +31,7 @@ import re
 from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
+from senaite.pfas.logbook_schema import active_rows
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
@@ -541,7 +542,10 @@ class PFASDataReviewView(BrowserView):
         }
 
         # --- FM-ENV-252: reagents[] table ---
-        for row in (lb252.get("reagents") or []):
+        # active_rows(): a row struck as not-applicable is recorded but inert.
+        # Without this a struck row holding a half-typed lot would be reported
+        # as unresolved and would block worksheet release.
+        for row in active_rows(lb252.get("reagents")):
             lot  = (row.get("lot") or u"").strip()
             name = row.get("name") or u""
             entry = {
@@ -560,7 +564,7 @@ class PFASDataReviewView(BrowserView):
             tree["direct_reagents"].append(entry)
 
         # --- FM-ENV-252: standards[] table ---
-        for row in (lb252.get("standards") or []):
+        for row in active_rows(lb252.get("standards")):
             lot  = (row.get("lot") or u"").strip()
             name = row.get("name") or u""
             entry = {

@@ -45,20 +45,62 @@
     tbody.innerHTML = '';
     rows.forEach(function(row, ri) {
       var tr = document.createElement('tr');
+      /* A row struck as not-applicable stays visible and readable — the paper
+         logbook convention. readonly (not disabled) keeps the text legible and
+         selectable; the cell inputs carry no name attribute either way, since
+         values reach the server through the hidden <fname>_json. */
+      var na = !!row._na;
+      if (na) { tr.className = 'row-na'; }
       var html = cols.map(function(col) {
         var val = row[col.name] != null ? row[col.name] : '';
         var itype = col.type === 'date' ? 'date' : (col.type === 'number' ? 'number' : 'text');
         return '\x3ctd\x3e\x3cinput type="' + itype + '" value="' + _esc(val) + '"'
+          + (na ? ' readonly="readonly"' : '')
           + ' oninput="TABLE_DATA[\'' + fname + '\'][' + ri + '][\'' + col.name + '\']=this.value;dynSyncTable(\'' + fname + '\')"'
           + '/\x3e\x3c/td\x3e';
       }).join('');
-      html += '\x3ctd\x3e\x3cbutton type="button" class="btn-del-row"'
-            + ' onclick="dynDelRow(\'' + fname + '\',' + ri + ')"\x3e\x26#215;\x3c/button\x3e\x3c/td\x3e';
+      html += '\x3ctd class="col-actions"\x3e'
+            + '\x3cbutton type="button" class="btn-na-row"'
+            + ' aria-pressed="' + (na ? 'true' : 'false') + '"'
+            + ' title="' + (na ? 'Undo not-applicable' : 'Mark as not prepared this session') + '"'
+            + ' onclick="dynToggleNA(\'' + fname + '\',' + ri + ')"\x3e'
+            + (na ? '\x26#8634;' : 'N/A') + '\x3c/button\x3e';
+      if (!na) {
+        html += '\x3cbutton type="button" class="btn-del-row"'
+             + ' onclick="dynDelRow(\'' + fname + '\',' + ri + ')"\x3e\x26#215;\x3c/button\x3e';
+      }
+      if (na) {
+        var who = row._na_by || '';
+        var when = row._na_at || '';
+        html += '\x3cdiv class="row-na-note"\x3eN/A'
+             + (who ? ' \x26middot; ' + _esc(who) : '')
+             + (when ? ' \x26middot; ' + _esc(when) : '')
+             + '\x3c/div\x3e';
+      }
+      html += '\x3c/td\x3e';
       tr.innerHTML = html;
       tbody.appendChild(tr);
     });
     dynSyncTable(fname);
   }
+
+  /* Strike a row as not-applicable, or undo it.
+     Only the flag is set here — who/when are stamped server-side on save, so
+     they cannot be forged and the analyst types nothing. Undo must clear ALL
+     THREE keys, otherwise a later re-strike would carry a stale name and date,
+     which is a worse record than none. */
+  window.dynToggleNA = function(fname, i) {
+    var rows = TABLE_DATA[fname];
+    if (!rows || !rows[i]) return;
+    if (rows[i]._na) {
+      delete rows[i]._na;
+      delete rows[i]._na_by;
+      delete rows[i]._na_at;
+    } else {
+      rows[i]._na = true;
+    }
+    dynRenderTable(fname);
+  };
 
   window.dynAddRow = function(fname) {
     var f = null;

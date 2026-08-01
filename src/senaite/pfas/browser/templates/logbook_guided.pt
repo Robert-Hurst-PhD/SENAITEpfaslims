@@ -10,7 +10,7 @@
   <!-- Field widget styles, shared with the concise form. Without this the
        macro-rendered fields fall back to browser defaults. -->
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=1" />
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=2" />
   <style>
     .lbg-layout { display:flex; gap:20px; align-items:flex-start; }
     .lbg-rail { flex:0 0 240px; position:sticky; top:8px; }
@@ -207,7 +207,7 @@
     }
   });
   </script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=1"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=2"></script>
   </tal:scripts>
 </body>
 </html>
