@@ -130,20 +130,58 @@
   /* ── Autocomplete (lot_ref / reagent_ref) ── */
   function initDynAutocomplete() {
     document.querySelectorAll('[data-ac]').forEach(function(inp) {
+      var timer = null;
       inp.addEventListener('input', function() {
+        markLotEdited(inp);
         var q = inp.value.trim();
         if (q.length < 1) { hideDynAc(inp); return; }
-        var url = inp.getAttribute('data-ac') + '?q=' + encodeURIComponent(q);
-        var lotType = inp.getAttribute('data-ac-type');
-        if (lotType) url += '\x26type=' + encodeURIComponent(lotType);
-        fetch(url)
-          .then(function(r){ return r.json(); })
-          .then(function(items){ showDynAc(inp, items); })
-          .catch(function(){ hideDynAc(inp); });
+        /* debounce: the endpoint resolves parent-tightened expiry per record,
+           so a request per keystroke is wasteful. */
+        if (timer) { clearTimeout(timer); }
+        timer = setTimeout(function() {
+          var url = inp.getAttribute('data-ac') + '?q=' + encodeURIComponent(q);
+          var lotType = inp.getAttribute('data-ac-type');
+          if (lotType) url += '\x26type=' + encodeURIComponent(lotType);
+          fetch(url)
+            .then(function(r){ return r.json(); })
+            .then(function(items){ showDynAc(inp, items); })
+            .catch(function(){ hideDynAc(inp); });
+        }, 180);
       });
       inp.addEventListener('blur', function() {
         setTimeout(function(){ hideDynAc(inp); }, 220);
       });
+    });
+  }
+
+  /* ── Default an empty lot box to the most recent usable lot ──────────────
+   * Server computes which lot (see lot_defaults_json); the client only fills
+   * boxes that are EMPTY, so a saved lot or one the analyst just typed is
+   * never overwritten. The value is real and editable — it posts as typed.
+   */
+  function markLotEdited(inp) {
+    if (inp.getAttribute('data-lot-default')) {
+      inp.removeAttribute('data-lot-default');
+      var hint = inp.parentNode && inp.parentNode.querySelector('.lot-default-hint');
+      if (hint) { hint.parentNode.removeChild(hint); }
+    }
+  }
+
+  function applyLotDefaults() {
+    var defaults = window.LOT_DEFAULTS || {};
+    document.querySelectorAll('[data-ac-type]').forEach(function(inp) {
+      if (inp.value) { return; }                       // never overwrite
+      var d = defaults[inp.getAttribute('data-ac-type') || ''];
+      if (!d || !d.lot_number) { return; }
+      inp.value = d.lot_number;
+      inp.setAttribute('data-lot-default', '1');
+      if (inp.parentNode && !inp.parentNode.querySelector('.lot-default-hint')) {
+        var hint = document.createElement('span');
+        hint.className = 'lot-default-hint';
+        hint.textContent = 'most recent' +
+          (d.expiry_date ? ' · exp ' + d.expiry_date : '');
+        inp.parentNode.appendChild(hint);
+      }
     });
   }
 
@@ -185,4 +223,6 @@
     if (window.initCorrections) initCorrections(SAVED_DATA);
     /* Autocomplete */
     initDynAutocomplete();
+    /* Pre-fill empty lot boxes with the most recent usable lot */
+    applyLotDefaults();
   });

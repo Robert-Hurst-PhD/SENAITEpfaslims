@@ -10,7 +10,7 @@
   <!-- Field widget styles, shared with the concise form. Without this the
        macro-rendered fields fall back to browser defaults. -->
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=2" />
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=3" />
   <style>
     .lbg-layout { display:flex; gap:20px; align-items:flex-start; }
     .lbg-rail { flex:0 0 240px; position:sticky; top:8px; }
@@ -195,6 +195,8 @@
   <script>
   var SAVED_DATA   = <tal:sd tal:replace="structure view/data_json" />;
   var FIELD_SCHEMA = <tal:fs tal:replace="structure view/field_schema_json" />;
+  /* {lot_type: most recent usable lot} — applied only to EMPTY boxes */
+  var LOT_DEFAULTS = <tal:ld tal:replace="structure view/lot_defaults_json" />;
   document.addEventListener('DOMContentLoaded', function () {
     /* Animated GIFs do not restart once played through. */
     var rb = document.getElementById('lbg-replay-btn');
@@ -207,7 +209,7 @@
     }
   });
   </script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=2"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=3"></script>
   </tal:scripts>
 </body>
 </html>

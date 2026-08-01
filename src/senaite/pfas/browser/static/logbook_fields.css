@@ -83,3 +83,9 @@
   .dyn-table tr.row-na td input { text-decoration: line-through; color: #000; }
   .row-na-note { border-color: #000; color: #000; background: transparent; }
 }
+
+/* ── defaulted lot hint ──────────────────────────────────────────────────── */
+.lot-default-hint { font-size: 10px; color: var(--s-secondary);
+                    background: var(--s-primary-lt); border-radius: 3px;
+                    padding: 1px 5px; margin-left: 6px; white-space: nowrap; }
+@media print { .lot-default-hint { display: none !important; } }

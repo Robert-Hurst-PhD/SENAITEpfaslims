@@ -9,7 +9,7 @@
   <!-- Field widget styles are shared with the guided view; see the comment in
        logbook_fields.css for why they are not inlined here or in the macro. -->
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=2" />
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=3" />
   <style>
     /* concise-form chrome only — everything field-level lives in the shared sheet */
     .lb-form { max-width: 900px; }
@@ -93,8 +93,10 @@
      Chameleon never has to parse it as markup. */
   var SAVED_DATA    = <tal:sd tal:replace="structure view/data_json" />;
   var FIELD_SCHEMA  = <tal:fs tal:replace="structure view/field_schema_json" />;
+  /* {lot_type: most recent usable lot} — applied only to EMPTY boxes */
+  var LOT_DEFAULTS = <tal:ld tal:replace="structure view/lot_defaults_json" />;
   </script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=2"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=3"></script>
 
   </div><!-- /content slot -->
 </body>

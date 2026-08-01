@@ -170,7 +170,14 @@ def _populate_obj(obj, data):
     obj.storage_location = data.get("storage_location") or u""
     obj.volume_prepared = data.get("volume_prepared") or u""
     obj.notes = data.get("notes") or u""
-    obj.status = data.get("status") or STATUS_ACTIVE
+    # Only touch status when the caller actually supplied one. The edit form
+    # posts no status field, so an unconditional assignment silently
+    # RESURRECTED an exhausted lot to active on any edit — putting an emptied
+    # standard back in the picker.
+    if "status" in data:
+        obj.status = data.get("status") or STATUS_ACTIVE
+    elif not getattr(obj, "status", None):
+        obj.status = STATUS_ACTIVE
 
     # Store nested data in annotations
     _set_ann(obj, _ANN_PARENTS, data.get("parent_reagents") or [])
@@ -572,7 +579,9 @@ class PFASPrepStandardsView(BrowserView):
             "storage_location": f.get("storage_location", "").strip(),
             "volume_prepared":  f.get("volume_prepared", "").strip(),
             "notes":            f.get("notes", "").strip(),
-            "status":           f.get("status", STATUS_ACTIVE),
+            # NB: no "status" key — the edit form does not post one, and
+            # including it here would reset an exhausted lot to active.
+            # Status is changed only through _handle_status.
             "parent_reagents":  parents,
             "analyte_concentrations": analytes,
         }
@@ -585,6 +594,13 @@ class PFASPrepStandardsView(BrowserView):
         rec = _get(self._portal(), uid)
         if not rec:
             return self._redirect("{0}?error=Not+found".format(self._self_url()))
+        # Whitelist: _populate_obj assigns obj.status directly, which bypasses
+        # the schema.Choice vocabulary — an unrecognised value would persist and
+        # make the lot permanently invisible to the picker (which allows only
+        # "active") with no error anywhere.
+        if new_status not in (STATUS_ACTIVE, STATUS_EXHAUSTED, STATUS_EXPIRED):
+            return self._redirect(
+                "{0}?error=Unknown+status".format(self._self_url()))
         rec["status"] = new_status
         _save(self._portal(), rec)
         return self._redirect("{0}?ok=Status+updated".format(self._self_url()))

@@ -944,6 +944,47 @@ def _extract_data_from_schema(form, schema_fields, only_fields=None):
     return data
 
 
+def usable_lots(portal, lot_type="", q=""):
+    """Prepared-standard lots an analyst may still use, most recent first.
+
+    Single definition of "usable", shared by the autocomplete and by the
+    defaulting blob so the picker and the pre-filled value can never disagree.
+
+    Delegates to prepared_standards._list, which already resolves the
+    PARENT-TIGHTENED expiry (a prep whose source CRM has expired is itself
+    expired) and sorts by prepared_date descending. The previous implementation
+    re-scanned the folder, checked only the stored status string, and sorted
+    alphabetically — so it offered lots that were exhausted or effectively
+    expired, and never surfaced the newest one first.
+    """
+    try:
+        from senaite.pfas.browser.prepared_standards import (
+            STATUS_ACTIVE, _list)
+    except Exception as exc:
+        logger.warning("usable_lots: %s", exc)
+        return []
+
+    out = []
+    for d in _list(portal, q=q, type_filter=lot_type):
+        # _list derives `expired` from the effective expiry; anything not
+        # active is either used up (exhausted) or out of date.
+        if (d.get("status") or "") != STATUS_ACTIVE:
+            continue
+        out.append({
+            "lot_number":    d.get("lot_number") or "",
+            "title":         d.get("title") or d.get("lot_number") or "",
+            "standard_type": d.get("standard_type") or "",
+            "expiry_date":   d.get("effective_expiry") or d.get("expiry_date") or "",
+            "prepared_date": d.get("prepared_date") or "",
+            "status":        d.get("status") or "",
+        })
+    # _list sorts by prepared_date desc; make the tie-break explicit rather
+    # than relying on sort stability. A lot with no prepared_date sorts last,
+    # so it is never chosen as "most recent" but stays selectable.
+    out.sort(key=lambda x: (x["prepared_date"], x["lot_number"]), reverse=True)
+    return out
+
+
 def _current_signer(context):
     """Display name for the logged-in user, for stamping a record."""
     try:
@@ -1280,6 +1321,28 @@ class PFASDynamicLogbookView(_LogbookBase):
     def field_schema_json(self):
         return json.dumps(self.field_schema())
 
+    def lot_defaults_json(self):
+        """{lot_type: most-recent-usable-lot} for the lot_ref fields on this
+        logbook, so an empty lot box can pre-fill without a fetch per input.
+
+        Computed server-side but APPLIED client-side, deliberately: writing it
+        into view.data() would make a never-saved default indistinguishable
+        from a recorded value, and data() is the same read model the Data
+        Review traceability gate walks — a phantom lot would appear in the
+        audit tree before anyone touched the form.
+        """
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        wanted = set()
+        for f in self.field_schema():
+            if f.get("type") == "lot_ref":
+                wanted.add((f.get("lot_type") or "").strip())
+        out = {}
+        for lot_type in wanted:
+            lots = usable_lots(portal, lot_type=lot_type)
+            if lots:
+                out[lot_type] = lots[0]
+        return json.dumps(out)
+
     def logbook_title(self):
         d = self._logbook_def()
         code = d.get("logbook_code") or d.get("logbook_slug") or self._slug()
@@ -1362,37 +1425,10 @@ class PFASLotAutocompleteView(BrowserView):
         except ImportError:
             pass
 
-        q = (self.request.get("q") or u"").lower().strip()
+        q = (self.request.get("q") or u"").strip()
         lot_type = (self.request.get("type") or u"").strip()
-
         portal = getToolByName(self.context, "portal_url").getPortalObject()
-        folder = portal.get("pfas_prepared_standards")
-        if not folder:
-            return json.dumps([])
-
-        results = []
-        for obj in folder.objectValues():
-            if obj.portal_type != "PreparedStandard":
-                continue
-            obj_type = (getattr(obj, "standard_type", "") or "").strip()
-            if lot_type and obj_type != lot_type:
-                continue
-            obj_status = (getattr(obj, "status", "active") or "active").lower()
-            if obj_status == "expired":
-                continue
-            lot_num = getattr(obj, "lot_number", "") or ""
-            title = getattr(obj, "title", "") or lot_num
-            if q and q not in lot_num.lower() and q not in title.lower():
-                continue
-            results.append({
-                "lot_number":    lot_num,
-                "title":         title,
-                "standard_type": obj_type,
-                "expiry_date":   _date_str_obj(obj, "expiry_date"),
-                "status":        obj_status,
-            })
-        results.sort(key=lambda x: x["lot_number"])
-        return json.dumps(results[:50])
+        return json.dumps(usable_lots(portal, lot_type=lot_type, q=q)[:50])
 
 
 # ── AJAX: Reagent inventory autocomplete ──────────────────────────────────────
