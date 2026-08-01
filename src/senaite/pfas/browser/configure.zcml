@@ -438,6 +438,15 @@
       permission="zope2.View"
       />
 
+  <!-- Bench entry point: pick the batch whose logbooks you are filling in.
+       The per-batch list was previously unreachable from anywhere in the UI. -->
+  <browser:page
+      name="pfas-logbook-batches"
+      for="*"
+      class=".logbook_batches.PFASLogbookBatchesView"
+      permission="zope2.View"
+      />
+
   <!-- Prepared standards inventory -->
   <browser:page
       name="pfas-prep-standards"

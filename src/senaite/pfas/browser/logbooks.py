@@ -322,6 +322,14 @@ class PFASLogbookIndexView(_LogbookBase):
     def admin_url(self):
         return self.portal_url() + "/@@pfas-logbook-admin"
 
+    def is_manager(self):
+        """Gate manager-only affordances. @@pfas-logbook-admin returns 403 to
+        bench staff, so linking it unconditionally was a dead end."""
+        return _require_manager(self.context, self.request)
+
+    def batches_url(self):
+        return self.portal_url() + "/@@pfas-logbook-batches"
+
 
 # ── FM-ENV-250: Solvent / Reagent Prep Log ────────────────────────────────────
 

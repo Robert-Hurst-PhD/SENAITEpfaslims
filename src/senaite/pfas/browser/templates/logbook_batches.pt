@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Batch Logbooks</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .bq-intro { font-size:13px; color:var(--s-secondary); margin-bottom:18px; }
+    .bq-list { display:flex; flex-direction:column; gap:10px; max-width:900px; }
+    .bq-row { display:flex; align-items:center; gap:16px; text-decoration:none;
+              border:1px solid var(--s-border); border-radius:10px;
+              background:var(--s-bg); padding:16px 18px; color:var(--s-body); }
+    .bq-row:hover { border-color:var(--s-primary); background:var(--s-primary-lt);
+                    text-decoration:none; color:var(--s-body); }
+    .bq-main { flex:1 1 auto; min-width:0; }
+    .bq-title { font-size:15px; font-weight:700; }
+    .bq-meta { font-size:12px; color:var(--s-secondary); margin-top:3px; }
+    .bq-state { font-size:11.5px; font-weight:700; padding:4px 12px;
+                border-radius:12px; white-space:nowrap; }
+    .bq-state.none     { background:#fff3cd; color:#856404; border:1px solid #ffeeba; }
+    .bq-state.partial  { background:#e8f4f8; color:#387493; border:1px solid #cfe5ee; }
+    .bq-state.complete { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+    .bq-state.nomethod { background:var(--s-light); color:var(--s-secondary);
+                         border:1px solid var(--s-border); }
+    .bq-go { font-size:18px; color:var(--s-secondary); }
+    .bq-empty { border:1px dashed var(--s-border); border-radius:10px;
+                padding:34px; text-align:center; color:var(--s-secondary);
+                font-size:13px; max-width:900px; }
+    .bq-foot { margin-top:16px; font-size:12px; color:var(--s-secondary); }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Batch Logbooks</tal:t>
+
+  <tal:hr metal:fill-slot="header-right">
+    <!-- Setup is a manager task; bench staff never see a link that 403s. -->
+    <a class="btn-sm" tal:condition="view/is_manager"
+       tal:attributes="href view/setup_url">Logbook Setup</a>
+  </tal:hr>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <p class="bq-intro">
+      Pick the batch you are working on to open its logbooks.
+    </p>
+
+    <tal:rows tal:define="rows view/batches">
+      <div class="bq-list" tal:condition="rows">
+        <a class="bq-row" tal:repeat="b rows" tal:attributes="href b/url">
+          <div class="bq-main">
+            <div class="bq-title" tal:content="b/title">BATCH</div>
+            <div class="bq-meta">
+              <span tal:content="b/id">B-001</span>
+              <tal:m tal:condition="b/method">
+                &#183; <span tal:content="b/method">FDA_32PFAS</span>
+              </tal:m>
+            </div>
+          </div>
+          <span tal:attributes="class python:'bq-state ' + b['state']"
+                tal:content="b/label">status</span>
+          <span class="bq-go">&#8594;</span>
+        </a>
+      </div>
+
+      <div class="bq-empty" tal:condition="not:rows">
+        <tal:a tal:condition="not:view/show_all">
+          Nothing outstanding &#8212; every open batch has its logbooks filled in.
+        </tal:a>
+        <tal:b tal:condition="view/show_all">
+          No open batches.
+        </tal:b>
+      </div>
+    </tal:rows>
+
+    <div class="bq-foot">
+      <tal:more tal:define="hidden view/hidden_count"
+                tal:condition="python:hidden and not view.show_all()">
+        <a tal:attributes="href string:${view/portal_url}/@@pfas-logbook-batches?all=1"
+           tal:content="python:'Show all open batches ({0} with nothing outstanding are hidden)'.format(hidden)">
+          Show all</a>
+      </tal:more>
+      <a tal:condition="view/show_all"
+         tal:attributes="href string:${view/portal_url}/@@pfas-logbook-batches">
+        Show only batches needing work</a>
+    </div>
+
+  </div>
+  </div><!-- /content -->
+</body>
+</html>

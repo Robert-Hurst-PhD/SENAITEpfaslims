@@ -62,9 +62,12 @@
     <p style="font-size:13px; color:var(--s-body); margin-bottom:24px;">
       Logbooks for this batch.  Fill them in on the bench or tablet before
       extraction and instrument run.
-      <a tal:attributes="href view/admin_url"
+      <!-- Manager-only: the target 403s for bench staff, so showing this to
+           everyone was a dead end. -->
+      <a tal:condition="view/is_manager"
+         tal:attributes="href view/admin_url"
          style="margin-left:12px;font-size:12px;color:var(--s-secondary);">
-        <i class="fas fa-cog"></i> Manage logbooks
+        <i class="fas fa-cog"></i> Logbook setup
       </a>
     </p>
 

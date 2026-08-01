@@ -153,6 +153,17 @@
     }
     .pfas-header-right a:hover { color: #fff; text-decoration: underline; }
     .pfas-header-right .back-link::before { content: "\2190  "; }
+    /* A .btn-sm placed in the dark header would otherwise take the global
+       light pill background while this rule keeps the text white — i.e.
+       white on white. Give it a treatment that belongs on the dark bar. */
+    .pfas-header-right .btn-sm {
+      background: rgba(255,255,255,.10);
+      border-color: rgba(255,255,255,.25);
+      color: rgba(255,255,255,.85);
+    }
+    .pfas-header-right .btn-sm:hover {
+      background: rgba(255,255,255,.20); color: #fff; text-decoration: none;
+    }
 
     /* Context badge */
     .header-badge {

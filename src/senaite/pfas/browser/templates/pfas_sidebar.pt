@@ -740,11 +740,21 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-book-open"/></svg></span>
           <span class="pfas-si-label">Prep Logbooks</span>
         </a>
+        <!-- Bench: pick a batch and fill its logbooks in. -->
         <a class="pfas-si" title="Batch Logbooks"
-           tal:attributes="href string:${purl}/@@pfas-logbook-admin;
-                           class python:'pfas-si si-active' if '@@pfas-logbook' in path else 'pfas-si'">
+           tal:attributes="href string:${purl}/@@pfas-logbook-batches;
+                           class python:'pfas-si si-active' if ('@@pfas-logbook-batches' in path or '@@pfas-logbook-index' in path or '@@pfas-logbook-dynamic' in path) else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
           <span class="pfas-si-label">Batch Logbooks</span>
+        </a>
+        <!-- Manager: which logbooks a method requires, and the logbook pool.
+             The view already returns 403 to non-managers; hiding it keeps bench
+             staff from walking into that. -->
+        <a class="pfas-si" title="Logbook Setup" tal:condition="is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-logbook-admin;
+                           class python:'pfas-si si-active' if '@@pfas-logbook-admin' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
+          <span class="pfas-si-label">Logbook Setup</span>
         </a>
         <a class="pfas-si" title="Extraction Guide"
            tal:attributes="href string:${purl}/@@pfas-extraction-guide;
