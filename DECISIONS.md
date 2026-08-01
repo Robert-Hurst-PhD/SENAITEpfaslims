@@ -3373,3 +3373,69 @@ key without a matching `[data-field]` input is silently dropped on the next save
 the 8 documented stages from `DEFAULT_PROFILES`. EPA_537_1 (8) and EPA_1633A (7)
 were intact. Likely caused by an earlier profile save while the stage list was
 empty — worth watching for.
+
+---
+
+## 2026-07-31 — Guided logbook: presentation fixes, row strike-out, lot defaulting
+
+**Context:** the user reported guided entry was *"confusing on what or how to enter"*.
+Screenshotting the running system (Playwright) showed it was not a layout problem — it
+was two defects plus one missing lab capability. **Layout confirmed fine and left alone.**
+
+**Presentation (the actual complaint):**
+- Instruction bullets rendered literal `&#8250;` over the text. The glyph was raw
+  non-ASCII inside a `<style>` block, and Chameleon charref-encodes non-ASCII when it
+  serialises a text node, so CSS received an entity it could not read. Fixed with the CSS
+  escape `\203A`. **Rule: keep `<style>` blocks in .pt files ASCII-only.**
+- Guided rendered every field with browser defaults: extracting the `logbook_field` macro
+  left its 21 CSS rule groups behind in `logbook_dynamic.pt`. Moved to
+  `static/logbook_fields.css`, linked from both templates. NOT inside the macro (Chameleon
+  expands `metal:use-macro` per call, so a `<style>` there emits once per field) and NOT
+  in `pfas_macros.pt` (inlined into every page). It sits beside `logbook_runtime.js`,
+  which injects half the markup it styles.
+- `.btn-save`/`.btn-sm` were referenced app-wide, and by the global print block, but never
+  defined globally. Promoted to `pfas_macros.pt` as fallbacks.
+- A step with no image no longer renders an empty placeholder box that ate 60% of the
+  width while truncating table values to `FDA-!`.
+- Verified concise mode is **pixel-identical** before/after the CSS move.
+
+**Row strike-out (new).** A table row can be struck as N/A — recorded, struck through,
+never deleted. Stored as a reserved `_na` key IN the row dict with `_na_by`/`_na_at`.
+In-row rather than a parallel index list because `dynDelRow` splices the array, which
+would silently re-point an index-based structure. Collision-safe because `NAME_RE` forces
+a column name to start with a lowercase letter. Attribution is stamped **server-side** so
+it cannot be forged and the analyst types nothing; un-striking scrubs all three keys, or a
+later re-strike would carry a stale date. New `logbook_schema.active_rows()` is the single
+definition of "a row that counts" and is applied in `data_review._build_traceability_tree`,
+where a struck row with a half-typed lot would otherwise read as unresolved and block
+worksheet release. Nothing is created in inventory from a struck row because nothing is
+created from logbook table rows at all — `invokeFactory("PreparedStandard")` occurs once
+in the add-on, on the Prepared Standards page.
+
+**Lot defaulting (new + bug fixes).** `usable_lots()` is now the single definition of a
+usable lot, delegating to `prepared_standards._list` (which resolves parent-tightened
+expiry and sorts by recency). The picker previously skipped only `expired`, so **emptied
+lots stayed selectable**. Defaults are computed server-side and applied client-side to
+EMPTY boxes only — writing them into `view.data()` would make a never-saved default
+indistinguishable from a record, and `data()` feeds the traceability gate.
+
+**Scope correction (user-confirmed):** FM-ENV-250 `solutions.lot_number` is the lot of the
+solution being CREATED, so defaulting it would stamp a new solution with an old
+identifier. It stays hand-entered; defaulting applies to CONSUMED lots (FM-ENV-251's five
+`lot_ref` fields).
+
+**Mark-as-emptied was not merely unexposed, it was not durable:** nothing invoked
+`_handle_status`; it accepted any string while `_populate_obj` assigns `obj.status`
+directly, bypassing the `schema.Choice` vocabulary; and because the edit modal posts no
+status while `_populate_obj` assigned it unconditionally, **editing an exhausted standard
+silently resurrected it**. All three fixed.
+
+**Data note:** the seeded prepared standards carried no Standard Type — which is what the
+picker filters on — so the FM-ENV-251 lot fields had never matched anything. Typed per the
+seeder's own `ps_type` values.
+
+**Deferred:** `lot_ref`/`reagent_ref` as a table COLUMN type (would let FM-ENV-250
+`chemicals.lot_num` use the reagent picker). Not needed for the reported case and it
+touches the table renderer every logbook uses. Note `logbook_builder.js` hardcodes
+`COLUMN_TYPES`, duplicating the Python list — fix that by serving it like `FIELD_TYPES`
+when this is picked up.
