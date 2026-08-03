@@ -3439,3 +3439,62 @@ seeder's own `ps_type` values.
 touches the table renderer every logbook uses. Note `logbook_builder.js` hardcodes
 `COLUMN_TYPES`, duplicating the Python list — fix that by serving it like `FIELD_TYPES`
 when this is picked up.
+
+---
+
+## 2026-08-02 — End-to-end acceptance test on a real instrument run
+
+**Context.** Every module so far had been verified against seeded demo data. A real
+FDA 32-PFAS export (`Test Sample.csv` — 1254 rows, 20 injections, 4 silage samples,
+2 × 1:10 dilutions, MB, LFSM/LFSMD, 10-point ladder, CCV) was driven end to end:
+client → samples → reagents → prepared standards → logbooks → guided extraction →
+Run Builder → import → QC → Data Review → report/CoA/EDD. Full write-up in
+`E2E_TEST_2026-08-02.md`.
+
+**Decisions taken before starting** (asked, not guessed):
+- Matrix: **FDA_32PFAS × Animal Feed** (silage is feed; `Egg-N` is a sample label).
+- Posture: **test as-found** — log defects, fix only hard blockers, flag each fix.
+- Analyte name mismatches: resolve in `analyte_reference.py`, one canonical alias
+  resolver (§1.3). *Superseded by evidence* — see below.
+
+**Only code change made.** `pfas_pipeline/method_profiles.py:940` —
+`_DEFAULT_PROFILE_CACHE["FDA_32PFAS"]["recovery_tiers"]` raised `KeyError` (the
+default cache has no such key) whenever the loaded profile's `recovery_tiers` is
+empty, which the shipped FDA profile's is. This aborted **every** import. Changed to
+`.get("recovery_tiers", [])`. Open question this exposes: why is `recovery_tiers`
+empty in a profile whose `qc_acceptance` tiers are fully populated? The `N.C.`
+("no labeled standard") analyte set now silently resolves to the empty set.
+
+**Test-only unblock, not a product fix.** A `native:0.039` import profile with an
+empty pass-through map was registered so the run could proceed past the vendor-key
+mismatch. It proves the importer works on *this* file only — the version key is
+scraped from sample data, so the next export gets a different key.
+
+**Assumption retired by evidence.** The predicted analyte display-name/keyword
+mismatch in `build_summary` does **not** occur: the profile store exports
+`display_analyte_set`, so summary matching is correct. No alias resolver was
+written. The keyword/display split does bite, but at a different boundary — the two
+Data Review pages label the same analyte `10:2 FTS` and `10:2FTS`.
+
+**Headline findings** (17 total, ranked in the report):
+- Two vendor detectors that are documented as mirrors disagree, so **no profile
+  saved through Import Studio is reachable by the importer**.
+- **Dilution results are reported 10× high** — `build_summary` prefers the raw
+  `Measured Concentration` over the factor-corrected `Calculated Concentration`,
+  while `injection_store` prefers the opposite. Proven against the instrument's own
+  `Total` rows. Isomer summation itself is exact.
+- **`BLoQ` is silently reported as `N.D.`** (72 rows) — a different regulatory
+  statement.
+- The **traceability gate and the QC Summary gate cannot pass**: the CoC schema has
+  no `batch_id` field so `_linked_batch()` is always `None`; the guided extraction's
+  logbook-252 stub omits the reagents/standards it collected; and nothing in the
+  pipeline writes `qc_results` or `calibrations`.
+- `data_review.batch_method()` returns the Zope id (`method-1`) while profiles are
+  keyed by `MethodID` (`FDA_32PFAS`), and `get_profile` returns a **truthy empty
+  stub** for an unknown id — so every profile-driven QC criterion silently
+  evaporates. `method_bridge.get_method_cal_code` already does this correctly.
+- The **Run Builder emits a worklist the LIMS's own validator rejects** (27/27), and
+  the **EDD exports 288 rows with empty concentrations without blocking**.
+
+**Test data.** Client `kcp-feed-forage`, batch `kcp-b-001`, worksheet `WS-0005`,
+prefix `KCP` / `PS-KCP-`. Pre-test volume snapshots in `/home/robin/pfas_e2e_backup/`.

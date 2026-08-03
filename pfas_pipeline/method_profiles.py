@@ -937,7 +937,10 @@ def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
     """
     tiers = _profile_data_cache.get(method_id, {}).get("recovery_tiers", [])
     if not tiers and method_id == "FDA_32PFAS":
-        tiers = _DEFAULT_PROFILE_CACHE["FDA_32PFAS"]["recovery_tiers"]
+        # _DEFAULT_PROFILE_CACHE carries no recovery_tiers key, so indexing it
+        # raised KeyError and aborted the whole run for any profile whose
+        # recovery_tiers list is empty — which is the shipped FDA profile.
+        tiers = _DEFAULT_PROFILE_CACHE["FDA_32PFAS"].get("recovery_tiers", [])
     for tier in tiers:
         if tier.get("tier") == 3:
             return frozenset(tier.get("no_std_analytes", []))
