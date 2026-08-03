@@ -278,14 +278,37 @@ def run_pipeline(
     logger.info("Loaded %d rows / %d injections from %s",
                 len(rows), len(group_by_injection(rows)), csv_path.name)
 
-    # 2. Validate injection names (ValidateInjectionNames)
-    bad = []
-    for inj_name in {r.injection_name for r in rows}:
+    # 2. Injection-name check.
+    #
+    # This used to warn whenever a name failed INJECTION_PATTERNS, a hardcoded
+    # list of regexes encoding one lab's typing conventions. Once runs are
+    # driven from the Run Builder the check is worse than useless: on a
+    # worklist-generated file it fired on 21 of 22 names, every one of them
+    # issued by this system and every one of them binding correctly. A warning
+    # that cries wolf on correct data trains people to ignore the log.
+    #
+    # What actually matters is whether an injection corresponds to something
+    # the LIMS knows about. Sample injections must resolve to a sample; the
+    # pattern result is kept at debug level for the StarLIMS-style
+    # conventions that still rely on it.
+    unknown = []
+    for inj_name in sorted({r.injection_name for r in rows}):
         v = validate_injection_name(inj_name)
         if not v["valid"]:
-            bad.append(inj_name)
-    if bad:
-        logger.warning("Invalid injection names: %s", bad)
+            logger.debug("Injection name matches no configured pattern: %r",
+                         inj_name)
+        if senaite is None or classify_injection(inj_name) != "Sample":
+            continue
+        if not senaite.find_sample_by_client_sample_id(inj_name):
+            if not (v.get("starlims_id")
+                    and senaite.find_sample_by_starlims(v["starlims_id"])):
+                unknown.append(inj_name)
+    if unknown:
+        logger.warning(
+            "These sample injections match no SENAITE sample — their results "
+            "cannot be filed. Set the sample's Client Sample ID to the "
+            "injection name, or build the run from the Run Builder: %s",
+            unknown)
 
     # 3. Batch
     batch = Batch(
