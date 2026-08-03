@@ -3461,9 +3461,12 @@ Run Builder → import → QC → Data Review → report/CoA/EDD. Full write-up 
 `_DEFAULT_PROFILE_CACHE["FDA_32PFAS"]["recovery_tiers"]` raised `KeyError` (the
 default cache has no such key) whenever the loaded profile's `recovery_tiers` is
 empty, which the shipped FDA profile's is. This aborted **every** import. Changed to
-`.get("recovery_tiers", [])`. Open question this exposes: why is `recovery_tiers`
-empty in a profile whose `qc_acceptance` tiers are fully populated? The `N.C.`
-("no labeled standard") analyte set now silently resolves to the empty set.
+`.get("recovery_tiers", [])`. Tracing what it was masking became finding B18:
+`recovery_tiers` appears in no `DEFAULT_PROFILES` entry and its only writer is a
+raw-JSON textarea in the Method Profile UI, so it is `[]` on every method and the
+FDA 40-140% no-labeled-standard recovery tier has no representation at all. The
+same concept exists three times over (`qc_acceptance.tiers`, `recovery_tiers`,
+`analyte_reference.no_labeled`) - a §1.3 duplication to collapse, not just seed.
 
 **Test-only unblock, not a product fix.** A `native:0.039` import profile with an
 empty pass-through map was registered so the run could proceed past the vendor-key
@@ -3476,7 +3479,7 @@ mismatch in `build_summary` does **not** occur: the profile store exports
 written. The keyword/display split does bite, but at a different boundary — the two
 Data Review pages label the same analyte `10:2 FTS` and `10:2FTS`.
 
-**Headline findings** (17 total, ranked in the report):
+**Headline findings** (19 total, ranked in the report):
 - Two vendor detectors that are documented as mirrors disagree, so **no profile
   saved through Import Studio is reachable by the importer**.
 - **Dilution results are reported 10× high** — `build_summary` prefers the raw
