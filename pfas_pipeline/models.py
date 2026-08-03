@@ -52,6 +52,10 @@ class InstrumentRow:
     # "N.D." or "". Distinct from a computed qualifier — "BLoQ" means detected
     # but below quantitation, which is not the same claim as "not detected".
     conc_qualifier:      str             = ""
+    # The unit the instrument reports the concentration in ("ng/mL"). Mapped
+    # in _COL_MAP all along but never carried onto the row, so nothing could
+    # check a spike level or a reporting limit against it.
+    conc_units:          str             = ""
 
 
 def reported_conc(row) -> "float | None":

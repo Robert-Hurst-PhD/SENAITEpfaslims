@@ -3699,3 +3699,49 @@ The logic is verified on it — a surrogate corrects to 70.5% of the ICAL averag
 and passes, while 13C4-PFOA reads 9.5% and is flagged — but that flag is the
 fixture, not a real instrument finding. On real data it would mean the injection
 IS genuinely failed.
+
+---
+
+## 2026-08-03 (review process) — a false FAIL is worse than no result
+
+Reviewing what the Data Review screen actually tells a reviewer turned up two
+defects that compounded each other.
+
+**Every LFSM analyte was reported as FAILING, and none of it was real.** The
+spike level is recorded in **ppt** while this instrument reports in **ng/mL**;
+dividing one by the other gave recoveries near zero, so all 34 analytes failed.
+Converting properly needs the aliquot mass and the final extract volume — a
+modelling decision, not something to assume — so the check now reports that it
+could **not be evaluated**, naming both units, rather than asserting a failure
+it cannot support. (The synthetic data also has the spiked sample reading LOWER
+than its unspiked parent, so it does not model spiking either; that is the
+fixture, not the system.)
+
+**The root cause of the units being invisible was one more instance of the
+Studio-vocabulary gap.** `Concentration Units` was not in the canonical column
+list, so the saved import profile mapped it to `ignore` and the unit the
+results are reported in was discarded at import — exactly the defect already
+fixed for `Reporting Limit` and `Expected Ion Ratios`. Added; profile re-saved;
+34 mapped columns now instead of 33.
+
+**And the gates were reporting the wrong thing.** An automatic gate that had run
+and not passed showed as `PENDING` — the state least likely to make anyone look
+— with an empty card and no reason. Gates now report one of three verdicts:
+
+| verdict | meaning |
+|---|---|
+| `PASS` | the check ran and passed |
+| `FAIL` | the check ran and something is wrong |
+| `NOT EVALUATED` | the check could not run — **not** the same as failing |
+
+each with a plain-language reason on the card. The QC Summary now reads
+*"FAIL — 6 failing QC result(s) across IS; required QC not evaluated: LFSM,
+LFSMD"* instead of an empty `PENDING`. A QC type the method requires every run
+that produced no result at all is reported as not evaluated rather than passing
+in silence.
+
+**Open, and needing a lab decision:** what unit the spike level is recorded in,
+and how it converts to the extract concentration the instrument reports —
+2.5 g of sample into 1 mL of final extract, so a ppt-in-sample figure and a
+ng/mL-in-extract figure differ by the mass/volume ratio. Until that is settled
+the LFSM cannot be evaluated, and the review screen now says so.

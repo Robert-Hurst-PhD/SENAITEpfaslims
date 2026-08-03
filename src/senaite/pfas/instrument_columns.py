@@ -49,6 +49,7 @@ CANONICAL_FIELDS = [
     ("calculated_conc",     "Calculated / Final Conc. (post-adjustment, reported value)"),
     ("expected_conc",       "Expected / Standard Concentration (cal. standard target)"),
     ("reporting_limit",     "Reporting Limit (drives the BLoQ qualifier)"),
+    ("conc_units",          "Concentration Units (what the results are reported in)"),
     ("sample_factor",       "Sample Dilution / Weight Factor"),
 
     # Instrument response
@@ -118,6 +119,7 @@ NATIVE_COLUMN_MAP = {
     "Expected Concentration":         "expected_conc",
     "Calculated Concentration":       "calculated_conc",
     "Reporting Limit":                "reporting_limit",
+    "Concentration Units":            "conc_units",
     "% Deviation":                    "pct_deviation",
     "% Recovery (IS)":                "pct_recovery_is",
     "Ion Ratios":                     "ion_ratios",

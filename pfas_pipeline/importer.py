@@ -294,6 +294,7 @@ def load_instrument_csv(
 
         rows.append(InstrumentRow(
             conc_qualifier      = calc_qual or meas_qual,
+            conc_units          = str(r.get("conc_units", "") or "").strip(),
             compound_name       = str(r.get("compound_name", "")).strip(),
             compound_type       = str(r.get("compound_type", "")).strip(),
             compound_group      = str(r.get("compound_group", "")).strip(),

@@ -25,6 +25,23 @@ from .importer import classify_injection
 from .models import Batch, QCFlag, LFSMResult, LFSMDResult, reported_conc
 
 logger = logging.getLogger(__name__)
+
+
+# Units that mean the same thing for a concentration in an extract.
+_UNIT_FAMILIES = (
+    {"ng/ml", "ug/l", "ppb", "ng/g", "ug/kg"},
+    {"pg/ml", "ng/l", "ppt", "pg/g", "ng/kg"},
+    {"ug/ml", "mg/l", "ppm", "ug/g", "mg/kg"},
+)
+
+
+def _units_compatible(a, b):
+    """True when two unit strings denote the same concentration scale."""
+    a = (a or "").strip().lower().replace("µ", "u")
+    b = (b or "").strip().lower().replace("µ", "u")
+    if not a or not b or a == b:
+        return True
+    return any(a in fam and b in fam for fam in _UNIT_FAMILIES)
 from .qc_engine import (
     is_raw_check, rt_deviation_check, qual_quan_check,
     calibration_check, signal_to_noise_check,
@@ -297,6 +314,7 @@ class RunQueue:
 
             # Per-LFSM-injection evaluation
             lfsm_results_by_inj = {}   # lfsm_inj → {analyte: LFSMResult}
+            unevaluated_lfsm = {}      # lfsm_inj → why it could not be judged
 
             if lfsm_enabled and profile is not None:
                 for lfsm_inj in lfsm_inj_names:
@@ -311,6 +329,34 @@ class RunQueue:
                     if spike_ppt is None or spike_ppt == 0:
                         logger.info("No spike level for %s — LFSM recovery "
                                     "stays pending", lfsm_inj)
+                        continue
+
+                    # The spike level and the results must be in the same
+                    # units before a recovery means anything. The level is
+                    # recorded in ppt while this export reports ng/mL, and
+                    # dividing one by the other produced recoveries near zero
+                    # — every analyte failing, which reads as a catastrophic
+                    # batch rather than as a units problem. Converting needs
+                    # the aliquot mass and final extract volume, which is a
+                    # modelling decision, so the check reports that it could
+                    # NOT be evaluated instead of asserting a false failure.
+                    result_units = ""
+                    for row in conc_lookup.get(lfsm_inj, []):
+                        unit = (getattr(row, "conc_units", "") or "").strip()
+                        if unit and unit.lower() != "nan":
+                            result_units = unit
+                            break
+                    spike_units = pedigree.get("spike_units") or "ppt"
+                    if result_units and not _units_compatible(spike_units,
+                                                              result_units):
+                        logger.warning(
+                            "LFSM %s not evaluated: spike recorded in %s but "
+                            "results are in %s. Record the spike in the result "
+                            "units, or configure the extract conversion.",
+                            lfsm_inj, spike_units, result_units)
+                        unevaluated_lfsm[lfsm_inj] = (
+                            "spike level is in {0}, results are in {1}".format(
+                                spike_units, result_units))
                         continue
 
                     parent_inj = (pedigree.get("parent")

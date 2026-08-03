@@ -473,8 +473,82 @@ class PFASDataReviewView(BrowserView):
                 "checked_by": None, "checked_at": None, "notes": u"",
             }))
             item["key"] = key
+            # An automatic gate that has run and not passed is a FAILURE, and a
+            # gate that could not be evaluated is a third thing. Both showed as
+            # "PENDING", which reads as "nobody has got to it yet" — the state
+            # least likely to make a reviewer look.
+            if item.get("auto"):
+                item["verdict"], item["reason"] = self._auto_verdict(ws, key,
+                                                                     item)
+            else:
+                item["verdict"] = "pass" if item.get("checked") else "pending"
+                item["reason"] = u""
             result.append(item)
         return result
+
+    def _auto_verdict(self, ws, key, item):
+        """(verdict, reason) for an automatic gate.
+
+        verdict is "pass", "fail" or "blocked" — blocked meaning the check
+        could not run, which is not the same as failing it and must not be
+        presented as though it were.
+        """
+        if item.get("checked"):
+            return "pass", u""
+        if key == "traceability":
+            tree = self._build_traceability_tree(ws) or {}
+            unresolved = tree.get("unresolved") or []
+            if unresolved:
+                return "fail", (
+                    u"{0} reagent/standard lot(s) named in the logbooks are "
+                    u"not in inventory.".format(len(unresolved)))
+            if not (tree.get("prepared_standards") or tree.get("direct_reagents")):
+                return "blocked", (
+                    u"No reagent or standard lots recorded \u2014 fill in "
+                    u"FM-ENV-251 and FM-ENV-252.")
+            return "fail", u""
+        if key == "qc_summary":
+            summary = self._get_qc_summary(ws)
+            if summary.get("error"):
+                return "blocked", (
+                    u"QC results are not available: {0}".format(
+                        summary.get("error")))
+            failing = []
+            unevaluated = []
+            for row in (summary.get("rows") or []):
+                for qc_type, cell in (row.get("cells") or {}).items():
+                    if not cell:
+                        continue
+                    if cell.get("status") == "fail":
+                        failing.append(qc_type)
+                    elif cell.get("status") == "unevaluated":
+                        unevaluated.append(qc_type)
+            parts = []
+            if failing:
+                parts.append(u"{0} failing QC result(s) across {1}".format(
+                    len(failing), u", ".join(sorted(set(failing)))))
+            if unevaluated:
+                parts.append(
+                    u"{0} result(s) could not be evaluated ({1})".format(
+                        len(unevaluated), u", ".join(sorted(set(unevaluated)))))
+            # A QC type the method requires every run, that produced no
+            # result at all, was not evaluated — silence here is how a batch
+            # reaches release with its matrix spike never checked.
+            profile = self._method_profile() or {}
+            required = set(profile.get("associated_qc_types") or [])
+            present = set(summary.get("qc_types") or [])
+            missing = sorted(r for r in required
+                             if r not in present and r not in ("Dup", "MxB"))
+            if missing:
+                parts.append(
+                    u"required QC not evaluated: {0}".format(
+                        u", ".join(missing)))
+            if failing:
+                return "fail", u"; ".join(parts)
+            if unevaluated or missing:
+                return "blocked", u"; ".join(parts)
+            return "fail", u""
+        return "pending", u""
 
     def all_items_pass(self):
         return all(i.get("checked") for i in self.checklist_status())
