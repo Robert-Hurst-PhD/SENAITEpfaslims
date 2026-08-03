@@ -374,8 +374,18 @@ class PFASRunBuilderView(BrowserView):
         try:
             cat = getToolByName(self._portal(), "senaite_catalog_sample")
             for r in rows:
-                for br in cat(portal_type="AnalysisRequest",
-                              getId=r["sample_id"]):
+                # The extraction log names a sample however the bench writes
+                # it — usually the Client Sample ID, not the lab id — so match
+                # on either. Matching only on getId meant that filling in the
+                # log stopped the lookup working and every sample picked up a
+                # redundant method-code prefix in the worklist.
+                brains = cat.unrestrictedSearchResults(
+                    portal_type="AnalysisRequest", getId=r["sample_id"])
+                if not brains:
+                    brains = cat.unrestrictedSearchResults(
+                        portal_type="AnalysisRequest",
+                        getClientSampleID=r["sample_id"])
+                for br in brains:
                     ar = br.getObject()
                     if not r.get("matrix"):
                         st = ar.getSampleType()

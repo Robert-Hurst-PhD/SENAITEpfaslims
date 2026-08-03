@@ -3501,3 +3501,99 @@ Data Review pages label the same analyte `10:2 FTS` and `10:2FTS`.
 
 **Test data.** Client `kcp-feed-forage`, batch `kcp-b-001`, worksheet `WS-0005`,
 prefix `KCP` / `PS-KCP-`. Pre-test volume snapshots in `/home/robin/pfas_e2e_backup/`.
+
+---
+
+## 2026-08-03 — Ten open questions resolved
+
+Worked through every decision left open by the E2E test and the input-chain fixes,
+one at a time. Each is confirmed by the user unless marked otherwise.
+
+**1. Recovery tiers — `analyte_reference.no_labeled` decides membership.**
+Correction to the earlier finding: `recovery_tiers` was never "unseeded" — it is a
+RETIRED key, listed in `migrations/migrate_profile_structure.py` OLD_KEYS and
+emptied by a completed migration to the nested `qc_acceptance` structure. The real
+defect is that `get_non_iso_set()` never migrated with the rest and still reads it.
+A **fourth** copy also exists: `_FDA_NO_STD` / `_FDA_KEY` / `_FDA_TIGHT` hardcoded in
+`pfas_pipeline/method_profiles.py:414`, and it is what actually decides tier 3 today.
+It disagrees with the analyte table on **DONA and PFHpS** — both in the FDA 32 master
+set, both flagged `no_labeled`, both currently judged at 65–135% instead of 40–140%.
+→ Delete the hardcoded sets; read membership from `analyte_reference`, scoped to the
+method's own analyte set; limits stay in `qc_acceptance.tiers`; migrate
+`get_non_iso_set`; delete `recovery_tiers` and its raw-JSON textarea.
+
+**2. Ion-ratio confirmation — compute it, tolerance from the method profile.**
+The current check compares `Response Ratio` (a concentration proxy) against the mean
+over all 10 calibration levels: 658 of 1254 rows flagged. A ±30% check on
+`Ion Ratios` vs `Expected Ion Ratios` reproduces the instrument's own
+`Ion Ratio Check` verdict on **497 of 497** rows (474 Pass / 23 Fail), and the file's
+own tolerance column says 30. → Compare the ion-ratio columns at
+`confirmation.ion_ratio_tol_pct`; the limit stays editable in the UI. The 251 rows
+with no ratio data are reported as unjudgeable rather than silently passed.
+
+**3. Logbooks live on the BATCH; CLAUDE.md §3 is amended.**
+§3 said worksheet, the code writes batch, and Data Review's join went through a
+`batch_id` field the CoC schema does not have — so the traceability gate could never
+see anything. → Derive the worksheet→batch link from the worksheet's own analyses
+(`analysis.getRequest().getBatch()`, 288/288 agree), keep logbooks on the batch, and
+correct §3: one batch may have several worksheets, and the prep logbooks describe the
+batch's preparation.
+
+**4. The pipeline writes `qc_results` and `calibrations` on import.**
+Nothing writes them today; `add_results_bulk` has no caller despite
+`qc/control_chart.py:493` existing to build its input. The gate also needs a `batches`
+row, and currently queries QC **by run_date**, which mixes concurrent runs. → The
+worker registers the batch row and persists QC results and calibration curves at the
+end of a run, mirroring `persist_injection_results`; the gate query is scoped by batch.
+
+**5. Injection names are validated against the RUN MANIFEST, not regexes.**
+`INJECTION_PATTERNS` rejected 8 of 20 hand-typed names and 21 of 22 LIMS-generated
+ones. The Run Builder already stores the planned names on the batch. → Reconcile
+actual against planned and report deviations (unplanned injection, planned-but-not-run)
+without rejecting; a run legitimately departs from its plan.
+
+**6. The EDD blocks on any field-sample cell with neither a result nor a qualifier.**
+A non-detect exports with its qualifier; a blank with no qualifier means the result
+never arrived and the file is refused, naming the samples — as it already does for a
+missing CAS. Also fixed regardless: QC samples excluded or given a real `QC_TYPE`
+(everything is `NA` today), `SAMPLE_TYPE` derived from the sample's SampleType instead
+of the hardcoded `GW` default, and the preserved BLoQ/ALoQ verdicts carried into
+`LAB_QUALIFIER`.
+
+**7. Expiry: against today for selection, against the run date for review.**
+`_is_expired` gains an `as_of` parameter defaulting to today. The picker keeps
+excluding lots expired now; the traceability gate judges each lot against the date it
+was used, so a released batch does not become less defensible as time passes.
+
+**8. A sequence entry steps aside when the batch already contains that sample —
+and warns if a required QC role ends up with no injection at all.**
+MB, LFSM and LFSMD were produced twice: once by the run sequence, once because they
+are registered samples. Both candidate fixes give the same 24 injections for this
+batch; they differ only when QC is NOT registered as samples, where suppression still
+supplies it and template-editing would silently run without a method blank.
+
+**8b. A dilution stays a sample, marked as a dilution of its parent.**
+Excluded from the CoA and the EDD; its analyses are expected to be empty because the
+result is folded into the parent.
+
+**9. Tag QC type first, then file QC sample results.**
+MB, LFSM and LFSMD carry 0 of 32 results each, so 96 analyses sit unsubmitted and the
+worksheet cannot be verified. Filing them is only safe once each sample carries its QC
+type — the EDD converts every AnalysisRequest in the batch and `qc_type` defaults to
+`"NA"` on all 288 rows, so filing first would put blank contamination into a regulatory
+file labelled as a client result. → Tag (MB / LFSM / LFSMD / Dilution), then file.
+
+**10. FDA 32-PFAS calibration r² = 0.990.**
+The live profile carried the value twice with different numbers —
+`calibration.r2_min` 0.99 (legacy flat key, and what gated the real run) and
+`instrument_verification.calibration.r2_min` 0.995 (migrated key, and what the failing
+test sees). Same migration-residue shape as #1. → 0.990 in the nested structure, the
+legacy flat key deleted, and the `_DEFAULT_CRITERIA` global removed since Q-005
+established there is no global default.
+
+**Incidental fixes made while answering these:**
+`batch_ref` now uses unrestricted catalog searches — a restricted one returns nothing
+when the caller has no security context, which is indistinguishable from "no such
+batch". And `run_builder.sample_rows` matches a sample by Client Sample ID as well as
+lab id: filling in the extraction log had broken worklist naming, because the log
+names samples the way the bench writes them and the lookup only matched lab ids.

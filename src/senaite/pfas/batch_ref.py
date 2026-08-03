@@ -49,7 +49,12 @@ def get_batch(portal, batch_id):
         pass
     for cat in _catalogs(portal):
         try:
-            for brain in cat(portal_type="Batch", getId=batch_id):
+            # unrestricted: this is an internal resolver, and a restricted
+            # search silently returns nothing when the caller has no security
+            # context (a bin/instance script, a test), which looks exactly like
+            # "no such batch".
+            for brain in cat.unrestrictedSearchResults(
+                    portal_type="Batch", getId=batch_id):
                 return brain.getObject()
         except Exception:
             continue
@@ -65,7 +70,7 @@ def list_batches(portal, review_state=None):
             query = {"portal_type": "Batch"}
             if review_state:
                 query["review_state"] = review_state
-            brains = cat(**query)
+            brains = cat.unrestrictedSearchResults(**query)
         except Exception:
             continue
         for brain in brains:
