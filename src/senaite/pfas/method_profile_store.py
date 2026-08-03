@@ -1011,6 +1011,25 @@ def _get_profiles_folder(portal):
     return portal.get("pfas_method_profiles")
 
 
+def _unknown_profile(method_id):
+    """What to return when *method_id* names no configured method.
+
+    An EMPTY dict, deliberately. This used to return {"method_id": method_id},
+    which is TRUTHY — so every `if profile:` caller sailed on with no r2_min,
+    no CCV window, no recovery tiers and no acceptance criteria, and silently
+    applied none of them. An empty dict makes those checks correctly false.
+
+    The usual cause is a caller passing a core Method's Zope id ("method-1")
+    where profiles are keyed by its MethodID ("FDA_32PFAS"); the warning names
+    the id so that mistake is visible instead of merely producing empty QC.
+    """
+    logger.warning(
+        "No method profile for %r — QC criteria will be empty. Profiles are "
+        "keyed by Method.MethodID (e.g. FDA_32PFAS), not by the core Method's "
+        "Zope id; use method_bridge.profile_id_for_method().", method_id)
+    return {}
+
+
 def get_profile(portal, method_id):
     """
     Return the profile dict for method_id.  Falls back to DEFAULT_PROFILES if
@@ -1042,7 +1061,7 @@ def get_profile(portal, method_id):
         # Folder exists but method_id absent (or JSON corrupt): fall through to default.
         dflt = DEFAULT_PROFILES.get(method_id)
         if dflt is None:
-            return {"method_id": method_id}
+            return _unknown_profile(method_id)
         return copy.deepcopy(dflt)
 
     # Annotation fallback (pre-migration / fresh install)
@@ -1051,7 +1070,7 @@ def get_profile(portal, method_id):
     if raw is None:
         dflt = DEFAULT_PROFILES.get(method_id)
         if dflt is None:
-            return {"method_id": method_id}
+            return _unknown_profile(method_id)
         return copy.deepcopy(dflt)
     try:
         saved = json.loads(raw)
@@ -1064,7 +1083,8 @@ def get_profile(portal, method_id):
         return saved
     except (ValueError, TypeError):
         logger.warning("Corrupt profile JSON for %s; returning default", method_id)
-        return copy.deepcopy(DEFAULT_PROFILES.get(method_id, {"method_id": method_id}))
+        dflt = DEFAULT_PROFILES.get(method_id)
+        return copy.deepcopy(dflt) if dflt else _unknown_profile(method_id)
 
 
 def save_profile(portal, method_id, data):

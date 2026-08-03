@@ -140,17 +140,18 @@ class PFASDataReviewView(BrowserView):
         ws = self._get_worksheet()
         if not ws:
             return u""
+        from senaite.pfas.method_bridge import profile_id_for_method
         try:
             m = ws.getMethod()
             if m:
-                return m.getId()
+                return profile_id_for_method(m)
         except Exception:
             pass
         try:
             for analysis in (ws.getAnalyses() or []):
                 m = analysis.getMethod()
                 if m:
-                    return m.getId()
+                    return profile_id_for_method(m)
         except Exception:
             pass
         return u""
@@ -255,6 +256,9 @@ class PFASDataReviewView(BrowserView):
             by_sample.setdefault(sid, []).append({
                 "analyte": r.get("analyte", ""),
                 "result": r.get("calc_conc"),
+                # The instrument's own verdict when there is no number. Without
+                # it "below quantitation" and "not detected" look identical.
+                "conc_qualifier": r.get("conc_qualifier") or "",
                 "rt": r.get("rt"),
                 "ion_ratio": r.get("ion_ratio_obs"),
                 "flag": r.get("flag") or "",

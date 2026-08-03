@@ -30,6 +30,30 @@ logger = logging.getLogger("senaite.pfas.method_bridge")
 METHOD_ASSOC_KEY = u"senaite.pfas.method_associations"
 
 
+def profile_id_for_method(method):
+    """Profile id for a core SENAITE Method object (or "" if there is none).
+
+    Method profiles are keyed by ``Method.MethodID`` ("FDA_32PFAS"); the Zope
+    id ("method-1") is a different namespace entirely. Views that resolved a
+    batch's method with ``getId()`` therefore looked up a profile that does not
+    exist — and, because get_profile used to return a truthy stub, did so
+    without any visible failure. Use this wherever a Method object has to
+    become a profile id.
+    """
+    if method is None:
+        return u""
+    try:
+        mid = (method.getMethodID() or u"").strip()
+        if mid:
+            return mid
+    except Exception:
+        pass
+    try:
+        return method.getId()
+    except Exception:
+        return u""
+
+
 def _catalog(portal):
     from Products.CMFCore.utils import getToolByName
     return getToolByName(portal, "senaite_catalog_setup")

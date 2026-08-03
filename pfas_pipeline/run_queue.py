@@ -20,7 +20,7 @@ from typing import Optional
 
 import re
 
-from .models import Batch, QCFlag, LFSMResult, LFSMDResult
+from .models import Batch, QCFlag, LFSMResult, LFSMDResult, reported_conc
 from .qc_engine import (
     is_raw_check, rt_deviation_check, qual_quan_check,
     calibration_check, signal_to_noise_check,
@@ -99,7 +99,7 @@ def _lfsmd_to_lfsm_name(lfsmd_inj):
 def _get_conc(inj_name, analyte, lookup):
     for row in lookup.get(inj_name, []):
         if row.compound_name == analyte:
-            return row.measured_conc or row.calculated_conc
+            return reported_conc(row)
     return None
 
 

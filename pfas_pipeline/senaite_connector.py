@@ -134,7 +134,8 @@ class SenaiteConnector:
         self._post(f"update/{batch_uid}", {"Remarks": text})
 
     # ── Import Studio profile bridge ─────────────────────────────────────────
-    def get_instrument_profile(self, vendor_key: str, version: str = "") -> dict:
+    def get_instrument_profile(self, vendor_key: str = "", version: str = "",
+                               columns: "list | None" = None) -> dict:
         """
         Fetch a saved Import Studio column-mapping profile from SENAITE.
 
@@ -147,12 +148,19 @@ class SenaiteConnector:
         In strict mode (Round 8 Q-012), callers do NOT catch this exception —
         SENAITE downtime halts file processing.
         """
-        params: dict = {"vendor_key": vendor_key}
+        payload: dict = {}
+        if vendor_key:
+            payload["vendor_key"] = vendor_key
         if version:
-            params["version"] = version
-        r = self.session.get(
+            payload["version"] = version
+        if columns:
+            # Let SENAITE identify the instrument from the file's own headers.
+            # It owns the only vendor detector; the pipeline no longer keeps a
+            # second one that could disagree with it.
+            payload["columns"] = json.dumps(list(columns))
+        r = self.session.post(
             f"{self.base}/@@pfas-instrument-profile",
-            params=params,
+            data=payload,
             timeout=self.timeout,
         )
         r.raise_for_status()

@@ -37,6 +37,7 @@ _SCHEMA = """CREATE TABLE IF NOT EXISTS injection_results (
     qual_sn         REAL,
     response        REAL,
     calc_conc       REAL,
+    conc_qualifier  TEXT    NOT NULL DEFAULT '',
     recovery        REAL,
     flag            TEXT    NOT NULL DEFAULT '',
     passed          INTEGER NOT NULL DEFAULT 1,
@@ -61,6 +62,7 @@ def persist_injection_results(batch, db_path: str = None) -> int:
     any existing rows for the same batch_id (idempotent re-import)."""
     path = db_path or DB_PATH
     from .importer import classify_injection, validate_injection_name
+    from .models import reported_conc
 
     # index flags by (injection_name, analyte) → issue string
     flags = {}
@@ -94,7 +96,8 @@ def persist_injection_results(batch, db_path: str = None) -> int:
             _f(r.ion_ratios), _f(r.expected_ion_ratios),
             _f(r.is_response), _f(r.signal_to_noise), _f(r.qual_sn),
             _f(r.response),
-            _f(r.calculated_conc) if r.calculated_conc is not None else _f(r.measured_conc),
+            reported_conc(r),
+            getattr(r, "conc_qualifier", "") or "",
             None,                         # recovery — QC-type specific, filled later
             "; ".join(i for i in issues if i),
             0 if issues else 1,
@@ -103,11 +106,18 @@ def persist_injection_results(batch, db_path: str = None) -> int:
 
     cols = ("batch_id,run_date,sample_id,injection_name,qc_type,analyte,role,"
             "method,rt,rrt,ion_ratio_obs,ion_ratio_exp,is_area,sn,qual_sn,"
-            "response,calc_conc,recovery,flag,passed,created_at")
-    ph = ",".join(["?"] * 21)
+            "response,calc_conc,conc_qualifier,recovery,flag,passed,created_at")
+    ph = ",".join(["?"] * 22)
     conn = sqlite3.connect(path)
     try:
         conn.execute(_SCHEMA)
+        # Older databases predate conc_qualifier; add it rather than requiring
+        # a rebuild, so an existing QC database keeps its history.
+        have = {row[1] for row in conn.execute(
+            "PRAGMA table_info(injection_results)")}
+        if "conc_qualifier" not in have:
+            conn.execute("ALTER TABLE injection_results "
+                         "ADD COLUMN conc_qualifier TEXT NOT NULL DEFAULT ''")
         conn.execute("DELETE FROM injection_results WHERE batch_id=?",
                      (getattr(batch, "batch_id", "") or "",))
         conn.executemany(

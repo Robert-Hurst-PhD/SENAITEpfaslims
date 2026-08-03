@@ -48,6 +48,35 @@ class InstrumentRow:
     manual_changes:      Optional[str]   = None
     injection_volume:    Optional[float] = None
     sample_position:     Optional[str]   = None
+    # The instrument's own verdict on the concentration cell: "BLoQ", "ALoQ",
+    # "N.D." or "". Distinct from a computed qualifier — "BLoQ" means detected
+    # but below quantitation, which is not the same claim as "not detected".
+    conc_qualifier:      str             = ""
+
+
+def reported_conc(row) -> "float | None":
+    """The ONE definition of an injection row's reportable concentration.
+
+    ``calculated_conc`` is the value after the instrument has applied the
+    sample factor (dilution / weight); ``measured_conc`` is the raw reading off
+    the calibration curve. The reported result is the corrected one.
+
+    This existed twice with opposite precedence — ``build_summary`` took the
+    raw value while ``injection_store`` took the corrected one — so a 1:10
+    dilution was reported ten times high on the summary and correctly in the
+    review pages. Both now call this.
+
+    The fall-back to ``measured_conc`` covers a genuinely BLANK reported cell.
+    It must NOT override a cell the instrument filled in with a verdict: on a
+    real export ``br-PFHxS`` carried "Not Detected" as its calculated
+    concentration and 0.000188 as its raw curve reading, and falling through
+    resurrected a number the instrument had explicitly declined to report.
+    """
+    if getattr(row, "calculated_conc", None) is not None:
+        return row.calculated_conc
+    if getattr(row, "conc_qualifier", ""):
+        return None
+    return getattr(row, "measured_conc", None)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

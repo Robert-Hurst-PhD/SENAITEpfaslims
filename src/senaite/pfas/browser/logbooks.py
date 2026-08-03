@@ -175,7 +175,8 @@ class _LogbookBase(BrowserView):
         try:
             m = self.context.getMethod()
             if m:
-                return m.getId()
+                from senaite.pfas.method_bridge import profile_id_for_method
+                return profile_id_for_method(m)
         except Exception:
             pass
         return ""

@@ -154,6 +154,7 @@ _SCHEMA_STMTS = [
         qual_sn         REAL,
         response        REAL,
         calc_conc       REAL,
+        conc_qualifier  TEXT    NOT NULL DEFAULT '',
         recovery        REAL,
         flag            TEXT    NOT NULL DEFAULT '',
         passed          INTEGER NOT NULL DEFAULT 1,

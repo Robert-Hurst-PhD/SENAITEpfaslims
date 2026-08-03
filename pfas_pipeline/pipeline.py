@@ -30,8 +30,7 @@ from .importer import (
     validate_injection_name, classify_injection,
     group_by_injection,
 )
-from .vendor_profiles import detect_vendor
-from .models import Batch, SummaryResult
+from .models import Batch, SummaryResult, reported_conc
 from .run_queue import RunQueue
 from .injection_builder import REVIEW_CHECKS
 from .barcode import ExtractionLog
@@ -68,7 +67,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     # Identify MB injection(s) for <LOD rule (blank ≥ sample → < LOD)
     mb_rows = [r for r in batch.injections
                if classify_injection(r.injection_name) == "MB"]
-    mb_conc = {r.compound_name: (r.measured_conc or r.calculated_conc)
+    mb_conc = {r.compound_name: reported_conc(r)
                for r in mb_rows}
 
     # Surrogate-flagged injections (from IS results)
@@ -121,11 +120,16 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         blank_total = 0.0
         reporting_limit = None
         linked_is = None
+        # An isomer the instrument reported as BLoQ contributes no number but
+        # is still a detection. Summing it as absent and calling the pair N.D.
+        # understates the result.
+        any_bloq = any(getattr(irow, "conc_qualifier", "") == QUALIFIER_BLOQ
+                       for irow in (lin_row, br_row) if irow is not None)
 
         for irow in (lin_row, br_row):
             if irow is None:
                 continue
-            conc = irow.measured_conc or irow.calculated_conc
+            conc = reported_conc(irow)
             if conc is None:
                 continue
             total += conc
@@ -139,7 +143,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                 linked_is = irow.linked_is
 
         if total == 0.0:
-            return None, QUALIFIER_ND, []
+            return None, (QUALIFIER_BLOQ if any_bloq else QUALIFIER_ND), []
 
         # < LOD: summed blank ≥ summed sample
         if blank_total > 0.0 and blank_total >= total:
@@ -172,11 +176,16 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                 reported_name = analyte
                 row = compounds.get(analyte)
 
-                if row is None or (row.measured_conc is None
-                                   and row.calculated_conc is None):
-                    qualifier = QUALIFIER_ND
+                if row is None or reported_conc(row) is None:
+                    # No number. What that MEANS is the instrument's to say:
+                    # "BLoQ" is a detection below the quantitation limit, which
+                    # is not the same claim as "not detected". Reporting both
+                    # as N.D. overstated how clean these samples were.
+                    qualifier = getattr(row, "conc_qualifier", "") or QUALIFIER_ND
+                    if qualifier not in (QUALIFIER_BLOQ, QUALIFIER_NC):
+                        qualifier = QUALIFIER_ND
                 else:
-                    conc = row.measured_conc or row.calculated_conc
+                    conc = reported_conc(row)
                     blank = mb_conc.get(analyte)
 
                     if blank is not None and conc is not None and blank >= conc:
@@ -237,19 +246,23 @@ def run_pipeline(
     #    offline or no profile is saved, refuse with an informative error.
     import_profile = None
     if senaite is not None:
-        # Detect vendor and version from the file itself
+        # Send the file's own headers and let SENAITE identify the instrument.
+        # The pipeline deliberately does NOT detect the vendor itself: two
+        # detectors meant two answers, and the profile key built from the
+        # loser's answer never matched anything Import Studio had saved.
         import pandas as _pd
         _headers = list(_pd.read_csv(csv_path, dtype=str, encoding="utf-8-sig",
                                      nrows=0).columns)
-        _vendor_key = detect_vendor(_headers)
         _version = detect_software_version(csv_path)
-        logger.info("Detected vendor=%s version=%s from %s",
-                    _vendor_key, _version or "(none)", csv_path.name)
         # Fetch profile — raises on SENAITE connectivity failure (no fallback)
-        import_profile = senaite.get_instrument_profile(_vendor_key, _version)
+        import_profile = senaite.get_instrument_profile(
+            version=_version, columns=_headers)
         if "error" in import_profile:
             raise ImportError(import_profile["error"])
-        logger.info("Using Import Studio profile for %s:%s", _vendor_key, _version)
+        logger.info("Using Import Studio profile %s:%s for %s",
+                    import_profile.get("resolved_vendor_key", "?"),
+                    import_profile.get("resolved_version") or "(no version)",
+                    csv_path.name)
 
     rows = load_instrument_csv(csv_path, profile=import_profile)
     logger.info("Loaded %d rows / %d injections from %s",

@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Optional
 
 from .constants import CRITERIA, QUALIFIER_NC, QUALIFIER_ND
+from .models import reported_conc
 from .models import (
     InstrumentRow, QCFlag,
     ISRawResult, RTResult, QualQuanResult, CalibrationResult,
@@ -329,7 +330,7 @@ def lfsm_check(
     def get_conc(inj_name: str) -> float | None:
         for r in rows:
             if r.injection_name == inj_name and r.compound_name == analyte:
-                return r.measured_conc or r.calculated_conc
+                return reported_conc(r)
         return None
 
     fortified   = get_conc(lfsm_injection)
@@ -377,7 +378,7 @@ def lfsmd_check(
     def get_conc(inj_name: str) -> float | None:
         for r in rows:
             if r.injection_name == inj_name and r.compound_name == analyte:
-                return r.measured_conc or r.calculated_conc
+                return reported_conc(r)
         return None
 
     fortified_dup = get_conc(lfsmd_injection)

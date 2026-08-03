@@ -54,43 +54,16 @@ PORTAL_TEMPLATES_KEY = u"senaite.pfas.vendor_templates"
 
 # ── Canonical purpose descriptions ────────────────────────────────────────────
 
-PURPOSES = [
-    ("ignore",          "Ignore"),
-    # ── Identifiers ──────────────────────────────────────────────────────────
-    ("compound_name",   "Analyte / Compound Name"),
-    ("compound_type",   "Compound Type (native analyte / IS flag)"),
-    ("sample_id",       "Sample Identifier (client-facing ID or barcode)"),
-    ("injection_name",  "Injection / Run Name (data file / vial label)"),
-    ("sample_type",     "Sample Type (Cal / QC / Unknown / Blank)"),
-    # ── Concentrations ───────────────────────────────────────────────────────
-    # measured_conc  = result straight off the calibration curve, BEFORE any
-    #                  sample-preparation corrections (dilution, matrix factor,
-    #                  salt factor, weight).  Some vendors call this "Calc. Conc."
-    # calculated_conc = final reported value AFTER all adjustments are applied.
-    #                   Some vendors call this "Final Conc." or just "Conc."
-    ("measured_conc",   "Measured Conc. (pre-adjustment, direct from cal. curve)"),
-    ("calculated_conc", "Calculated / Final Conc. (post-adjustment, reported value)"),
-    ("expected_conc",   "Expected / Standard Concentration (cal. standard target)"),
-    # ── Instrument response ──────────────────────────────────────────────────
-    ("response",        "Raw Peak Area (native analyte)"),
-    ("is_response",     "IS Peak Area"),
-    ("response_ratio",  "Area Ratio (native / IS)"),
-    # ── Chromatography ───────────────────────────────────────────────────────
-    ("observed_rt",     "Retention Time (RT)"),
-    ("signal_to_noise", "Signal / Noise (S/N)"),
-    ("qual_sn",         "Qualifier S/N"),
-    ("ion_ratios",      "Ion Ratio (qualifier / quantifier)"),
-    # ── QC & calibration ─────────────────────────────────────────────────────
-    ("pct_deviation",   "% Deviation / Accuracy"),
-    ("r2",              "Calibration r or r²"),
-    ("linked_is",       "Linked Internal Standard"),
-    ("level",           "Calibration Level"),
-    ("quant_status",    "Quantitation Status / Flags (pass, fail, review)"),
-    # ── Metadata ─────────────────────────────────────────────────────────────
-    ("acq_date_str",    "Acquisition Date"),
-    ("acq_time_str",    "Acquisition Time"),
-    ("sample_factor",   "Sample Dilution / Weight Factor"),
-]
+# The mapping-grid vocabulary IS the importer's field list — one definition
+# (CLAUDE.md §1.3). This used to be a hand-maintained copy that had drifted
+# into a strict SUBSET of what the importer consumes, so "Reporting Limit" and
+# "Expected Ion Ratios" could not be mapped at all: the two columns the BLoQ
+# qualifier and the ion-ratio check need.
+from senaite.pfas.instrument_columns import (   # noqa: E402
+    CANONICAL_FIELDS, FIELD_LABELS, NATIVE_COLUMN_MAP, duplicate_targets)
+
+PURPOSES = list(CANONICAL_FIELDS)
+
 
 # ── Python 2.7-compatible vendor detection ────────────────────────────────────
 
@@ -218,8 +191,14 @@ _VENDOR_COLUMN_MAP = {
     },
     "native": {
         "vendor": "FDA Native / Pass-through",
-        "signature_cols": frozenset(),
-        "map": {},
+        # Signature: a native export is recognised by carrying the canonical
+        # header names themselves, not by a vendor-specific quirk.
+        "signature_cols": frozenset([
+            "Compound Name", "Injection Name", "Calculated Concentration"]),
+        # Already-canonical headers, so the "mapping" is the identity. Empty
+        # before, which is why a native file fell through to the regex
+        # guesser and came back with three columns aimed at observed_rt.
+        "map": dict(NATIVE_COLUMN_MAP),
     },
 }
 
@@ -341,7 +320,12 @@ def _detect_vendor_py27(headers):
     Uses float division to avoid Python 2.7 integer-division truncation.
     """
     h = set(headers)
-    for key in ("sciex", "agilent", "waters"):
+    # "native" is a real instrument identity, not a fallback: an export whose
+    # headers are already the canonical names needs no mapping at all. Leaving
+    # it out of detection meant a canonical file was scored against vendors it
+    # only incidentally overlapped with, and lost to whichever shared the most
+    # generic column names.
+    for key in ("native", "sciex", "agilent", "waters"):
         sig = _VENDOR_COLUMN_MAP[key]["signature_cols"]
         if sig and sig & h:
             overlap = len(sig & h)
@@ -351,8 +335,6 @@ def _detect_vendor_py27(headers):
     # Weaker signal: score by column-name overlap against the vendor's full map
     scores = {}
     for vkey, vdata in _VENDOR_COLUMN_MAP.items():
-        if vkey == "native":
-            continue
         known = set(vdata["map"].keys())
         scores[vkey] = len(known & h)
     if scores:
@@ -373,9 +355,14 @@ def _suggest_mapping(headers, vendor_key):
     """
     vmap = _VENDOR_COLUMN_MAP.get(vendor_key, {}).get("map", {})
     result = {}
+    # Exact vendor matches are authoritative; regex guesses are not. Track how
+    # each column was assigned so that when two columns claim the same field
+    # the guess yields to the exact match instead of overwriting it.
+    exact = set()
     for col in headers:
         if col in vmap:
             result[col] = vmap[col]
+            exact.add(col)
             continue
         matched = None
         for pattern, purpose in _FALLBACK_PATTERNS:
@@ -383,13 +370,41 @@ def _suggest_mapping(headers, vendor_key):
                 matched = purpose
                 break
         result[col] = matched if matched is not None else 'ignore'
+
+    # Never suggest a mapping that would silently discard data. Three columns
+    # matched the RT pattern here ("Expected RT", "Observed RT", "RT Relative
+    # to IS") and all three were proposed as observed_rt; pandas' rename keeps
+    # only the last. Keep one claimant per field and leave the rest to the
+    # analyst to assign deliberately.
+    for target, claimants in duplicate_targets(result).items():
+        keep = None
+        for col in claimants:
+            if col in exact:
+                keep = col
+                break
+        if keep is None:
+            keep = claimants[0]
+        for col in claimants:
+            if col != keep:
+                result[col] = 'ignore'
     return result
 
 
-def _detect_software_version(lines):
-    """Scan first 20 lines for a version string like X.Y.Z or X.Y.Z.W."""
+def _detect_software_version(lines, header_line_index=0):
+    """Scan the export's PREAMBLE for a software version like X.Y.Z.
+
+    Only lines ABOVE the header row are considered. Vendors that stamp a
+    version put it in a preamble; a file that starts directly with its header
+    row has no version to find, and "" is the honest answer.
+
+    This previously scanned the first 20 lines unconditionally and so read
+    DATA. On a real FDA export it returned "0.039" — a concentration out of
+    row 1's sample description. The profile key is built from this value, so
+    every file whose first row held a different number got a different key and
+    silently stopped matching its own saved profile.
+    """
     version_re = re.compile(r'\b(\d+\.\d+[\.\d]*)\b')
-    for line in lines[:20]:
+    for line in lines[:max(0, header_line_index)]:
         m = version_re.search(line)
         if m:
             return m.group(1)
@@ -607,15 +622,40 @@ class PFASInstrumentProfileView(BrowserView):
 
     def __call__(self):
         flatten_form(self.request)
+        if self.request.method == "POST":
+            try:
+                from plone.protect.interfaces import IDisableCSRFProtection
+                from zope.interface import alsoProvides
+                alsoProvides(self.request, IDisableCSRFProtection)
+            except ImportError:
+                pass
         portal = getToolByName(self.context, "portal_url").getPortalObject()
         vendor_key = (self.request.form.get("vendor_key", "") or "").strip().lower()
         version = (self.request.form.get("version", "") or "").strip()
 
         self.request.response.setHeader("Content-Type", "application/json")
 
+        # Vendor detection happens HERE and nowhere else. The pipeline used to
+        # run its own copy (vendor_profiles.detect_vendor) to build the lookup
+        # key, and the two implementations disagreed — the Studio saved under
+        # "waters" while the importer asked for "native", so no profile the UI
+        # wrote was ever reachable. The caller now sends the file's headers and
+        # this side, which owns the detector, resolves them.
+        if not vendor_key:
+            raw_columns = self.request.form.get("columns", "")
+            columns = []
+            if raw_columns:
+                try:
+                    columns = json.loads(raw_columns)
+                except (ValueError, TypeError):
+                    columns = [c for c in raw_columns.split("\t") if c]
+            if columns:
+                vendor_key, _confidence = _detect_vendor_py27(columns)
+
         if not vendor_key:
             self.request.response.setStatus(400)
-            return json.dumps({"error": "vendor_key parameter is required"})
+            return json.dumps({
+                "error": "vendor_key or columns parameter is required"})
 
         profile = load_vendor_profile(portal, vendor_key, version)
         if profile is not None and profile.get("retired"):
@@ -625,6 +665,9 @@ class PFASInstrumentProfileView(BrowserView):
                 "refused. Reactivate it in Import Studio if this mapping is "
                 "still valid.".format(vendor_key, version or "(any)"))})
         if profile is not None:
+            profile = dict(profile)
+            profile["resolved_vendor_key"] = vendor_key
+            profile["resolved_version"] = version
             return json.dumps(profile)
 
         # Not found — return refusal message for the pipeline
@@ -781,8 +824,10 @@ class PFASImportStudioView(BrowserView):
             url = "{0}?error=File+is+empty".format(self._self_url())
             return self._redirect(url)
 
-        # Detect software version (works on unicode lines)
-        auto_version = _detect_software_version(lines)
+        # Detect software version from the preamble ABOVE the header row.
+        # These exports start with the header, so there is normally none —
+        # which is correct, and stable, unlike scraping it out of the data.
+        auto_version = _detect_software_version(lines, header_line_index=0)
 
         # Python 2.7's csv module requires byte strings for the file content
         # and the delimiter. unicode_literals makes "," into u"," which breaks
@@ -929,8 +974,25 @@ class PFASImportStudioView(BrowserView):
 
         if not instrument_uid:
             return self._redirect("{0}?error=No+instrument+selected".format(self._self_url()))
-        if not version:
-            return self._redirect("{0}?error=Software+version+is+required".format(self._self_url()))
+        # Version may legitimately be empty: it is read from the export's
+        # preamble, and a file that begins with its header row simply does not
+        # declare one. Requiring it here would have forced the analyst to
+        # invent a value — and inventing it is what produced the "0.039" key
+        # scraped out of a concentration.
+
+        # A mapping that points two columns at one field destroys one of them
+        # on import, without an error. Refuse at the point of authoring rather
+        # than discovering it in a result months later.
+        dupes = duplicate_targets(col_map)
+        if dupes:
+            detail = "; ".join(
+                "{0}: {1}".format(FIELD_LABELS.get(t, t), ", ".join(cols))
+                for t, cols in sorted(dupes.items()))
+            return self._redirect(
+                "{0}?instrument_uid={1}&error={2}".format(
+                    self._self_url(), instrument_uid,
+                    ("Two+columns+assigned+to+the+same+field+-+one+would+be+"
+                     "discarded+on+import.+" + detail).replace(" ", "+")))
 
         catalog = getToolByName(self.context, "uid_catalog")
         brains = catalog(UID=instrument_uid)

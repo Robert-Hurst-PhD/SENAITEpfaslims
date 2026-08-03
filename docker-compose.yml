@@ -61,6 +61,10 @@ services:
       - PFAS_QC_DB=/data/qc/pfas_qc_results.db
     volumes:
       - ./pfas_pipeline:/app/pfas_pipeline
+      # The canonical instrument-column vocabulary is owned by the add-on and
+      # read by the worker through pfas_pipeline/canonical_columns.py — one
+      # definition, two runtimes (CLAUDE.md §1.3).
+      - ./src/senaite/pfas:/app/senaite_pfas:ro
       # DEV: local placeholder; replace with /mnt/pfas_share/Instrument_Output for production
       - ./data/instrument_output:/data/instrument_output:ro
       - pfas-reports:/data/reports

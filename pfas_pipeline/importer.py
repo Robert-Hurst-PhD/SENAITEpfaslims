@@ -8,6 +8,7 @@ Column mapping handles the exact headers used in the xlsm DATA table (table19).
 
 from __future__ import annotations
 import csv
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -15,60 +16,90 @@ from typing import Iterator
 
 import pandas as pd
 
-from .models import InstrumentRow
+from .models import InstrumentRow, reported_conc  # noqa: F401 (re-export)
 from .constants import INJECTION_PATTERNS, STARLIMS_RE, QC_TYPES
+from .canonical_columns import NATIVE_COLUMN_MAP, duplicate_targets
+
+logger = logging.getLogger(__name__)
 
 # Software version regex (mirrors import_studio._detect_software_version)
 _VERSION_RE = re.compile(r'\b(\d+\.\d+[\.\d]*)\b')
 
-# ── Column header → internal name (matches table19.xml column list exactly) ──
-_COL_MAP: dict[str, str] = {
-    "Compound Name":              "compound_name",
-    "Compound Type":              "compound_type",
-    "Compound Group":             "compound_group",
-    "Sample Description":         "sample_description",
-    "Injection Name":             "injection_name",
-    "Sample Group":               "sample_group",
+# ── Column header → internal name ────────────────────────────────────────────
+# Sourced from the add-on's canonical vocabulary so Import Studio can express
+# every field the importer consumes (CLAUDE.md §1.3). The extra entries below
+# are columns the importer tolerates but does not surface on InstrumentRow, so
+# they are not offered as mapping purposes.
+_COL_MAP: dict[str, str] = dict(NATIVE_COLUMN_MAP)
+_COL_MAP.update({
     "Replicates":                 "replicates",
     "Replicate Index":            "replicate_index",
-    "Injection Volume":           "injection_volume",
-    "Sample Position":            "sample_position",
-    "Sample Type":                "sample_type",
-    "Included in Calibration":    "included_in_cal",
-    "Level":                      "level",
-    "Linked Internal Standard":   "linked_is",
-    "Calibration Reference Compound": "cal_ref_compound",
-    "Observed RT (min)":          "observed_rt",
-    "RT Relative to IS":          "rt_relative_to_is",
-    "Response":                   "response",
-    "Manual Changes":             "manual_changes",
-    "IS Response":                "is_response",
-    "Response Ratio":             "response_ratio",
-    "Expected Concentration":     "expected_conc",
-    "Calculated Concentration":   "calculated_conc",
     "Concentration Units":        "conc_units",
-    "Reporting Limit":            "reporting_limit",
-    "% Deviation":                "pct_deviation",
-    "% Recovery (IS)":            "pct_recovery_is",
     "Quan Ion Transition (m/z)":  "quan_ion",
-    "Qual Ions Transitions (m/z)":"qual_ions",
-    "Ion Ratios":                 "ion_ratios",
-    "Expected Ion Ratios":        "expected_ion_ratios",
-    "R2":                         "r2",
+    "Qual Ions Transitions (m/z)": "qual_ions",
     "RF":                         "rf",
-    "Signal to Noise":            "signal_to_noise",
-    "Qual Ions Signal to Noise":  "qual_sn",
-    "Quantitation Status":        "quant_status",
-    "Measured Concentration":     "measured_conc",
-    "Acquisition Date Time":      "acq_datetime_str",
-    "Acquisition Date":           "acq_date_str",
-    "Acquisition Time":           "acq_time_str",
     "Concat ID":                  "concat_id",
-    "Sample Factor":              "sample_factor",
-}
+})
 
 # Values treated as non-detect / missing
 _ND_VALUES = {"ND", "N.D.", "N/A", "n/a", "", "NaN", "nan", "#N/A", "N.C.", "N.C"}
+
+# ── Concentration qualifier tokens ──────────────────────────────────────────
+# Instruments write these into the concentration cell, either alone ("BLoQ")
+# or as a suffix on a real number ("20.1268 (ALoQ)"). They are NOT noise: they
+# are the instrument's own statement about the result, and collapsing them to
+# None turned "detected below the quantitation limit" into "not detected" —
+# a different claim entirely under FDA/EPA reporting.
+_QUALIFIER_TOKENS = {
+    "BLOQ":         "BLoQ",          # below limit of quantitation (detected)
+    "<LOQ":         "BLoQ",
+    "ALOQ":         "ALoQ",          # above limit of quantitation
+    ">LOQ":         "ALoQ",
+    "NOT DETECTED": "N.D.",
+    "ND":           "N.D.",
+    "N.D.":         "N.D.",
+    "NOT CALCULATED": "N.C.",
+    "N.C.":         "N.C.",
+    "N.C":          "N.C.",
+}
+
+_SUFFIX_QUALIFIER_RE = re.compile(r'^\s*(?P<num>[-+0-9.eE]+)\s*\((?P<tok>[^)]+)\)\s*$')
+
+
+def parse_conc(val: str) -> "tuple[float | None, str]":
+    """Split a concentration cell into (value, qualifier).
+
+    Handles the three shapes real exports use:
+      "1.2345"            → (1.2345, "")
+      "BLoQ"              → (None,   "BLoQ")
+      "20.1268 (ALoQ)"    → (20.1268, "ALoQ")
+
+    An unrecognised non-numeric string yields (None, "") exactly as before, so
+    genuinely empty or junk cells behave unchanged.
+    """
+    if val is None:
+        return None, ""
+    text = str(val).strip()
+    if not text or text in _ND_VALUES:
+        # "N/A" and friends carry no information beyond absence
+        return None, ""
+
+    m = _SUFFIX_QUALIFIER_RE.match(text)
+    if m:
+        tok = _QUALIFIER_TOKENS.get(m.group("tok").strip().upper(), "")
+        try:
+            return float(m.group("num")), tok
+        except (ValueError, TypeError):
+            return None, tok
+
+    tok = _QUALIFIER_TOKENS.get(text.upper())
+    if tok:
+        return None, tok
+
+    try:
+        return float(text.replace(",", "")), ""
+    except (ValueError, TypeError):
+        return None, ""
 
 _FLOAT_COLS = {
     "observed_rt", "rt_relative_to_is", "response", "is_response",
@@ -79,13 +110,27 @@ _FLOAT_COLS = {
 }
 
 
-def detect_software_version(path: "str | Path") -> str:
-    """Scan the first 20 lines of *path* for a version string like X.Y.Z."""
+def detect_software_version(path: "str | Path",
+                            header_line_index: int = 0) -> str:
+    """Read a software version out of the export's PREAMBLE — the lines ABOVE
+    the header row. Returns "" when the file starts with its header, which is
+    the honest answer: that file declares no version.
+
+    Mirrors import_studio._detect_software_version deliberately; the two must
+    agree, because the value becomes half of the saved profile's lookup key.
+
+    Previously this scanned the first 20 lines unconditionally, so it read DATA:
+    on a real FDA export it returned "0.039", a concentration from row 1's
+    sample description. Every file whose first row held a different number
+    produced a different key and silently stopped matching its own profile.
+    """
+    if header_line_index <= 0:
+        return ""
     path = Path(path)
     try:
         with path.open(encoding="utf-8-sig", errors="replace") as fh:
             for i, line in enumerate(fh):
-                if i >= 20:
+                if i >= header_line_index:
                     break
                 m = _VERSION_RE.search(line)
                 if m:
@@ -104,17 +149,37 @@ def _parse_float(val: str) -> float | None:
         return None
 
 
+# Accepted acquisition-timestamp formats, most specific first.
+# The month-name forms matter: SCIEX OS and several Waters builds write
+# "Oct 08, 2025 17:55:21". Only numeric formats were accepted before, so every
+# row of a real export parsed to None — which emptied injection_results.run_date
+# and left the control charts and time-based CCV bracketing with nothing.
+_DATETIME_FORMATS = (
+    "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%m/%d/%Y %H:%M:%S",
+    "%Y-%m-%d %H:%M",    "%d/%m/%Y %H:%M",    "%m/%d/%Y %H:%M",
+    "%b %d, %Y %H:%M:%S", "%B %d, %Y %H:%M:%S",
+    "%b %d, %Y %H:%M",    "%B %d, %Y %H:%M",
+    "%d %b %Y %H:%M:%S",  "%d %B %Y %H:%M:%S",
+    "%Y/%m/%d %H:%M:%S",  "%Y/%m/%d %H:%M",
+    "%d-%b-%Y %H:%M:%S",  "%d-%b-%y %H:%M:%S",
+    "%Y-%m-%dT%H:%M:%S",
+    "%b %d, %Y",          "%B %d, %Y",
+    "%Y-%m-%d",           "%d/%m/%Y",          "%m/%d/%Y",
+    "%Y/%m/%d",           "%d-%b-%Y",
+)
+
+
 def _parse_datetime(date_str: str, time_str: str = "") -> datetime | None:
     raw = f"{date_str} {time_str}".strip()
-    for fmt in (
-        "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%m/%d/%Y %H:%M:%S",
-        "%Y-%m-%d %H:%M",    "%d/%m/%Y %H:%M",    "%m/%d/%Y %H:%M",
-        "%Y-%m-%d",          "%d/%m/%Y",           "%m/%d/%Y",
-    ):
+    if not raw:
+        return None
+    for fmt in _DATETIME_FORMATS:
         try:
             return datetime.strptime(raw, fmt)
         except ValueError:
             continue
+    logger.warning("Unparsed acquisition timestamp %r — add its format to "
+                   "importer._DATETIME_FORMATS", raw)
     return None
 
 
@@ -162,6 +227,20 @@ def load_instrument_csv(
         # Use Import Studio profile map exclusively
         col_map = profile.get("map", {})
         if col_map:
+            # Refuse rather than lose data. pandas' rename happily produces two
+            # columns with the same name and to_dict() then keeps only the last,
+            # so a mapping that points three columns at observed_rt discards two
+            # of them without a word. Guarding here protects every profile,
+            # including ones saved before the Studio validated them.
+            dupes = duplicate_targets(col_map)
+            if dupes:
+                detail = "; ".join(
+                    "{0} <- {1}".format(target, ", ".join(cols))
+                    for target, cols in sorted(dupes.items()))
+                raise ImportError(
+                    "Import mapping assigns more than one column to the same "
+                    "field, which would silently discard data: {0}. Fix the "
+                    "mapping in Import Studio.".format(detail))
             df = df.rename(columns=col_map)
     else:
         # §7: Import Studio is the SINGLE source of instrument mappings — the
@@ -205,7 +284,16 @@ def load_instrument_csv(
             val = r.get(col, "")
             parsed_floats[col] = _parse_float(str(val)) if val else None
 
+        # The two concentration columns may carry the instrument's own verdict
+        # ("BLoQ", "20.13 (ALoQ)", "Not Detected"). Keep it — the numeric
+        # columns alone cannot distinguish "below quantitation" from "absent".
+        calc_val, calc_qual = parse_conc(r.get("calculated_conc"))
+        meas_val, meas_qual = parse_conc(r.get("measured_conc"))
+        parsed_floats["calculated_conc"] = calc_val
+        parsed_floats["measured_conc"] = meas_val
+
         rows.append(InstrumentRow(
+            conc_qualifier      = calc_qual or meas_qual,
             compound_name       = str(r.get("compound_name", "")).strip(),
             compound_type       = str(r.get("compound_type", "")).strip(),
             compound_group      = str(r.get("compound_group", "")).strip(),
