@@ -1414,6 +1414,48 @@ class PFASDynamicLogbookView(_LogbookBase):
         return self._redirect_self("Saved")
 
 
+class PFASRunManifestView(BrowserView):
+    """
+    @@pfas-run-manifest?batch_id=kcp-b-001
+
+    The injection list the Run Builder planned, so the importer can reconcile
+    what was actually run against it. This replaces validating names against
+    hardcoded regexes — which rejected 8 of 20 hand-typed names and then 21 of
+    22 names this system generated itself.
+    """
+
+    def __call__(self):
+        flatten_form(self.request)
+        self.request.response.setHeader("Content-Type", "application/json")
+        batch_id = (self.request.get("batch_id") or u"").strip()
+        if not batch_id:
+            self.request.response.setStatus(400)
+            return json.dumps({"error": "batch_id parameter is required"})
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        from senaite.pfas.batch_ref import get_batch
+        batch = get_batch(portal, batch_id)
+        if batch is None:
+            self.request.response.setStatus(404)
+            return json.dumps({"error": "No batch {0}".format(batch_id)})
+        try:
+            from senaite.pfas.browser.run_builder import RUN_MANIFEST_KEY
+            raw = IAnnotations(batch).get(RUN_MANIFEST_KEY)
+        except Exception:
+            raw = None
+        if not raw:
+            return json.dumps({})
+        try:
+            manifest = json.loads(raw)
+        except (ValueError, TypeError):
+            return json.dumps({})
+        return json.dumps({
+            "built_at": manifest.get("built_at", ""),
+            "built_by": manifest.get("built_by", ""),
+            "planned": [r.get("name") for r in (manifest.get("rows") or [])
+                        if r.get("name")],
+        })
+
+
 class PFASBatchDilutionsView(BrowserView):
     """
     @@pfas-batch-dilutions?batch_id=kcp-b-001

@@ -97,6 +97,20 @@ class SenaiteConnector:
         return out.get("items", [])
 
     # ── Batch ────────────────────────────────────────────────────────────────
+    def get_run_manifest(self, batch_id: str) -> dict:
+        """The worklist the Run Builder planned for this batch, or {}."""
+        if not batch_id:
+            return {}
+        try:
+            r = self.session.get(f"{self.base}/@@pfas-run-manifest",
+                                 params={"batch_id": batch_id},
+                                 timeout=self.timeout)
+            r.raise_for_status()
+            data = r.json()
+        except (requests.HTTPError, requests.ConnectionError, ValueError):
+            return {}
+        return data if isinstance(data, dict) and "error" not in data else {}
+
     def get_batch_dilutions(self, batch_id: str) -> dict:
         """Dilution map recorded on the batch's FM-ENV-252 extraction log.
 

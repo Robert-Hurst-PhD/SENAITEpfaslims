@@ -79,12 +79,22 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         for res in batch.is_results if res.flag
     }
 
+    # Field samples AND the QC samples that are registered as samples in their
+    # own right. The method blank and the spikes were getting no result filed
+    # at all, so 96 analyses sat unsubmitted and the worksheet could not be
+    # verified. Each row carries its qc_type so reports and the EDD exclude
+    # them deliberately rather than because they happen to be empty.
+    REPORTED_ROLES = ("Sample", "MB", "LFSM", "LFSMD")
     sample_rows = [r for r in batch.injections
-                   if classify_injection(r.injection_name, dilutions) == "Sample"]
+                   if classify_injection(r.injection_name, dilutions)
+                   in REPORTED_ROLES]
 
     by_sample: dict[str, dict[str, object]] = {}
+    role_of: dict[str, str] = {}
     for r in sample_rows:
         by_sample.setdefault(r.injection_name, {})[r.compound_name] = r
+        role_of[r.injection_name] = classify_injection(
+            r.injection_name, dilutions)
 
     # Dilution injections, indexed by the sample they were diluted FROM. A
     # dilution is not a sample of its own — reporting it as one listed Egg-3
@@ -117,6 +127,15 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             _isomer_by_linear[lin] = _pair
         if rep and rep != lin:
             _isomer_by_reported[rep] = _pair
+
+    def _blank_for(analyte, sample_name):
+        """Method-blank concentration to subtract — but never from the blank
+        itself. Comparing the MB against its own result makes every blank
+        report as < LOD, which hides the very contamination the blank exists
+        to show."""
+        if role_of.get(sample_name) == "MB":
+            return None
+        return mb_conc.get(analyte)
 
     def _sum_isomer_pair(pair, compounds, sample_name):
         """Return (result, qualifier, flags) for an lr+br isomer pair."""
@@ -152,7 +171,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             if conc is None:
                 continue
             total += conc
-            blank = mb_conc.get(irow.compound_name)
+            blank = _blank_for(irow.compound_name, sample_name)
             if blank is not None:
                 blank_total += blank
             # Both isomers carry the same analyte RL; capture from either
@@ -210,7 +229,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                         qualifier = QUALIFIER_ND
                 else:
                     conc = reported_conc(row)
-                    blank = mb_conc.get(analyte)
+                    blank = _blank_for(analyte, sample_name)
 
                     if blank is not None and conc is not None and blank >= conc:
                         qualifier = QUALIFIER_LOD
@@ -261,6 +280,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             summary.append(SummaryResult(
                 analyte=reported_name,
                 sample_injection=sample_name,
+                qc_type=role_of.get(sample_name, "Sample"),
                 result_ppt=result if qualifier != QUALIFIER_LOD else None,
                 qualifier=qualifier,
                 source_injection=source_injection,
@@ -375,6 +395,21 @@ def run_pipeline(
     # the LIMS knows about. Sample injections must resolve to a sample; the
     # pattern result is kept at debug level for the StarLIMS-style
     # conventions that still rely on it.
+    planned = []
+    if senaite is not None and senaite_batch_id:
+        planned = (senaite.get_run_manifest(senaite_batch_id) or {}).get(
+            "planned") or []
+    if planned:
+        actual = {r.injection_name for r in rows}
+        unplanned = sorted(actual - set(planned))
+        not_run = [p for p in planned if p not in actual]
+        logger.info("Run vs plan: %d of %d planned injections ran",
+                    len(planned) - len(not_run), len(planned))
+        if not_run:
+            logger.info("  planned but not run: %s", not_run)
+        if unplanned:
+            logger.warning("  ran but not planned: %s", unplanned)
+
     unknown = []
     for inj_name in sorted({r.injection_name for r in rows}):
         v = validate_injection_name(inj_name)

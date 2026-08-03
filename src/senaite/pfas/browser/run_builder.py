@@ -604,6 +604,21 @@ class PFASRunBuilderView(BrowserView):
 
         spikes = [r.get("spike") for r in sample_rows if r.get("spike")]
 
+        # A QC role the batch already holds as a registered sample is NOT
+        # generated again: MB, LFSM and LFSMD were each appearing twice, once
+        # from the sequence and once from the sample list, giving 27 vial
+        # positions for a 20-injection run. An entry with no matching sample
+        # still produces its injection, so a batch that does not register its
+        # blank as a sample is not silently run without one.
+        roles_in_samples = set()
+        for r in sample_rows:
+            role = (r.get("role") or "").strip().upper()
+            if not role:
+                role = self._role_from_sample(r)
+            if role:
+                roles_in_samples.add(role)
+        supplied_by_samples = set()
+
         for tok in seq:
             if tok == "CAL":
                 if include_cal:
@@ -641,6 +656,10 @@ class PFASRunBuilderView(BrowserView):
             # instrument-cal injections (CAL/ICV/CCV/CCB) ride with the
             # calibration: they neither open the bracket nor advance the CCV
             # interval. Extraction QC (MB/LFB/LFSM/LFSMD) and field samples do.
+            if tok.upper() in roles_in_samples:
+                supplied_by_samples.add(tok.upper())
+                continue                 # the registered sample plays this role
+
             counts = state["in_body"] and tok.upper() not in noncount
             if counts:
                 open_bracket_if_needed()    # bracket opens BEFORE this row
@@ -651,7 +670,38 @@ class PFASRunBuilderView(BrowserView):
         # closing bracket (skip if the run already ended on one)
         if state["in_body"] and not state["last_bracket"]:
             emit_bracket()
+
+        # Every QC role the method's sequence asks for must end up with an
+        # injection, from the sequence or from a registered sample.
+        emitted = {r["name"] for r in rows}
+        missing = []
+        for tok in seq:
+            code = tok.upper()
+            if code == self.SAMPLES_TOKEN or code in supplied_by_samples:
+                continue
+            if not any(code in n.upper() for n in emitted):
+                missing.append(tok)
+        self._missing_roles = missing
         return rows, dom, (spikes[0] if spikes else "")
+
+    def _role_from_sample(self, row):
+        """QC role a registered sample plays, from its id. Only used to decide
+        whether a sequence entry is redundant, never to alter a result."""
+        raw = (row.get("client_sample_id") or row.get("sample_id") or "")
+        sid = raw.upper()
+        # Mirrors the pipeline's classify_injection: a duplicate is written
+        # "LFSM Mid Duplicate" at least as often as "LFSMD", and matching only
+        # the literal left the LFSMD entry un-suppressed.
+        if "LFSMD" in sid or ("LFSM" in sid and "DUP" in sid):
+            return "LFSMD"
+        if "LFSM" in sid:
+            return "LFSM"
+        if "MB" in sid.split():
+            return "MB"
+        for code in ("ICV", "CCV", "LFB", "CCB"):
+            if code in sid:
+                return code
+        return ""
 
     # ── actions ───────────────────────────────────────────────────────────
     def _handle_build(self):
@@ -695,14 +745,20 @@ class PFASRunBuilderView(BrowserView):
             "prep_date": (std.get("prepared_date") or u""),
             "rows": rows,
         }
+        missing = getattr(self, "_missing_roles", []) or []
+        if missing:
+            manifest["missing_qc_roles"] = missing
+            logger.warning("Batch %s: no injection for QC role(s) %s",
+                           batch_id, missing)
         try:
             IAnnotations(self._batch(batch_id))[RUN_MANIFEST_KEY] = \
                 json.dumps(manifest)
         except Exception as exc:
             logger.warning("manifest save failed: %s", exc)
         self.request.response.redirect(
-            "{0}/@@pfas-run-builder?batch_id={1}&built=1".format(
-                self.portal_url(), batch_id))
+            "{0}/@@pfas-run-builder?batch_id={1}&built=1{2}".format(
+                self.portal_url(), batch_id,
+                ("&warn=No+injection+for+" + "+".join(missing)) if missing else ""))
         return u""
 
     def built(self):

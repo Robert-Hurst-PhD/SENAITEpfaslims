@@ -222,6 +222,9 @@ class SummaryResult:
     # the reported value comes from the dilution instead — source_injection
     # names which injection it came from, and neat_result keeps the
     # over-range reading beside it so the substitution can be verified.
+    # "Sample" for a field sample; "MB" / "LFSM" / "LFSMD" for QC. Reports and
+    # the EDD filter on this rather than on a row happening to be empty.
+    qc_type:          str               = "Sample"
     source_injection: str               = ""
     neat_result:      Optional[float]   = None
     neat_qualifier:   str               = ""

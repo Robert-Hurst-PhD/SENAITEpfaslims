@@ -434,6 +434,17 @@ class EGADBuilder(object):
         """Convert one AnalysisRequest and all its analyses to EDD row dicts."""
         rows = []
 
+        # A dilution is not a sample of its own — it is the same extract
+        # re-injected, and its result is folded into the parent. Exporting it
+        # would report the same measurement twice to the regulator.
+        try:
+            from zope.annotation.interfaces import IAnnotations
+            if (IAnnotations(ar).get("senaite.pfas.qc_type", "") or
+                    "").strip() == "Dilution":
+                return []
+        except Exception:
+            pass
+
         # Sample-level values
         lab_sample_id = ar.getId()
         client_sample_id = (
@@ -485,14 +496,27 @@ class EGADBuilder(object):
         except AttributeError:
             pass
 
-        our_qc_type = "NA"
-        for marker, code in [
+        # The sample's own QC role, recorded on it. Sniffing the SampleType
+        # TITLE for "MATRIX SPIKE" only works when a lab registers a dedicated
+        # QC sample type; a method blank submitted as ordinary Animal Feed came
+        # out as NA, so blank contamination was exported as a client result.
+        our_qc_type = ""
+        try:
+            from zope.annotation.interfaces import IAnnotations
+            our_qc_type = (IAnnotations(ar).get(
+                "senaite.pfas.qc_type", "") or "").strip()
+        except Exception:
+            our_qc_type = ""
+
+        if not our_qc_type:
+            our_qc_type = "NA"
+        for marker, code in ([] if our_qc_type != "NA" else [
             ("METHOD BLANK", "MB"), ("LAB BLANK", "LB"),
             ("MATRIX SPIKE DUPLICATE", "LFSMD"), ("MATRIX SPIKE", "LFSM"),
             ("LFSMD", "LFSMD"), ("LFSM", "LFSM"),
             ("LCS DUPLICATE", "LCSD"), ("LCS", "LCS"),
             ("DUPLICATE", "Dup"), ("DUP", "Dup"),
-        ]:
+        ]):
             if marker in sample_type_title:
                 our_qc_type = code
                 break
