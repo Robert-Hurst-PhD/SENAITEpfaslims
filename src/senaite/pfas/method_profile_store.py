@@ -1095,6 +1095,13 @@ def save_profile(portal, method_id, data):
     Create-on-demand: if method_id has no Dexterity object yet (e.g. wizard
     creating a new method), invokeFactory is called automatically.
     """
+    # Stamp the id explicitly. It used to arrive by accident: get_profile
+    # returned {"method_id": method_id} for an unknown id, so a wizard building
+    # a brand-new profile inherited it from that stub. The stub is gone (it was
+    # truthy, which silently disabled every QC criterion), so the identity has
+    # to be written on purpose.
+    if isinstance(data, dict):
+        data["method_id"] = method_id
     # D4: connect matrices to the canonical core SampleType — persist a
     # title->UID map so each profile's matrices reference the core object.
     # Additive: supported_matrices stays a list of titles for backward compat;
