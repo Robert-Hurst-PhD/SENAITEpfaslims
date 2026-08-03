@@ -33,6 +33,7 @@ from .importer import (
 from .models import Batch, SummaryResult, reported_conc
 from .run_queue import RunQueue
 from .injection_builder import REVIEW_CHECKS
+from .analyte_alias import keyword_for
 from .barcode import ExtractionLog
 from .report import generate_batch_report
 from .constants import (
@@ -227,10 +228,19 @@ def run_pipeline(
     output_dir: str | Path = ".",
     senaite: "SenaiteConnector | None" = None,
     client_uid: str = "",
+    senaite_batch_id: str = "",
 ) -> tuple[Batch, RunQueue, Path]:
     """
     Full pipeline on one instrument export.
     Returns (batch, run_queue, report_pdf_path).
+
+    batch_id          the WORKSHEET id (e.g. "WS-0005"). Data Review joins the
+                      QC database on it, so it must be the worksheet's, not the
+                      batch's.
+    senaite_batch_id  the SENAITE Batch this run belongs to, if any. Distinct
+                      from batch_id on purpose: passing the worksheet id into
+                      the batch lookup made the connector create a SECOND Batch
+                      titled after the worksheet on every run.
     """
     # Reload QC criteria and full profile data from the exported JSON so
     # manager changes in the SENAITE UI take effect without a worker restart.
@@ -339,19 +349,78 @@ def run_pipeline(
     # 8. Push to SENAITE
     if senaite:
         try:
-            buid = senaite.create_batch(batch, client_uid)
-            senaite.push_qc_flags(buid, batch.qc_flags)
-            senaite.attach_file(buid, report_path, "Batch Report")
-            if extraction_log_path:
-                senaite.attach_file(buid, extraction_log_path,
-                                    "Extraction Log")
+            # The worksheet is the run's home in SENAITE (CLAUDE.md §3), and
+            # the only container besides Client that accepts an Attachment.
+            ws = senaite.find_worksheet(batch.batch_id)
+            ws_uid = ws["uid"] if ws else ""
+            if not ws:
+                logger.warning(
+                    "No SENAITE Worksheet %r — the report cannot be attached "
+                    "and Data Review will not find this run.", batch.batch_id)
+
+            # Never invent a Batch. Look up the one named, and say so if it is
+            # missing, rather than creating a duplicate titled after the
+            # worksheet — which is what produced the stray B-00N batches.
+            buid = ""
+            if senaite_batch_id:
+                found = senaite.find_batch(senaite_batch_id)
+                if found:
+                    buid = found["uid"]
+                else:
+                    logger.warning("No SENAITE Batch %r — QC flags not pushed.",
+                                   senaite_batch_id)
+            if buid:
+                senaite.push_qc_flags(buid, batch.qc_flags)
+            if ws_uid:
+                senaite.attach_file(ws_uid, report_path, "Batch Report")
+                if extraction_log_path:
+                    senaite.attach_file(ws_uid, extraction_log_path,
+                                        "Extraction Log")
+            # Bind each summary row to its SENAITE sample.
+            #
+            # This used to require validate_injection_name() to yield a
+            # 7-digit StarLIMS id. Real injection names carry no such number,
+            # so nothing ever matched and every sample result was discarded
+            # silently. The injection name IS the client's own name for the
+            # sample, which is exactly what ClientSampleID holds — so look it
+            # up directly, and keep the StarLIMS id as a fallback for labs
+            # that do embed one.
+            pushed = 0
+            unmatched_samples = set()
+            unmatched_analytes = set()
+            sample_cache: dict = {}
             for s in batch.summary:
-                v = validate_injection_name(s.sample_injection)
-                if v.get("starlims_id"):
-                    sample = senaite.find_sample_by_starlims(v["starlims_id"])
-                    if sample:
-                        senaite.push_result(sample["uid"], s.analyte, s)
-            logger.info("Pushed batch %s to SENAITE (%s)", batch.batch_id, buid)
+                inj = s.sample_injection
+                if inj not in sample_cache:
+                    found = senaite.find_sample_by_client_sample_id(inj)
+                    if not found:
+                        v = validate_injection_name(inj)
+                        if v.get("starlims_id"):
+                            found = senaite.find_sample_by_starlims(
+                                v["starlims_id"])
+                    sample_cache[inj] = found
+                sample = sample_cache[inj]
+                if not sample:
+                    unmatched_samples.add(inj)
+                    continue
+                keyword = keyword_for(s.analyte)
+                if senaite.push_result(sample["uid"], keyword, s):
+                    pushed += 1
+                else:
+                    unmatched_analytes.add((s.analyte, keyword))
+            logger.info("Pushed %d of %d results to SENAITE samples",
+                        pushed, len(batch.summary))
+            if unmatched_samples:
+                logger.warning(
+                    "No SENAITE sample matches these injections (set the "
+                    "sample's Client Sample ID to the injection name): %s",
+                    sorted(unmatched_samples))
+            if unmatched_analytes:
+                logger.warning(
+                    "No Analysis for these analytes (name -> keyword): %s",
+                    sorted(unmatched_analytes))
+            logger.info("Pushed run %s to SENAITE (worksheet %s, batch %s)",
+                        batch.batch_id, ws_uid or "-", buid or "-")
         except Exception as e:                       # noqa: BLE001
             logger.error("SENAITE push failed: %s", e)
 
