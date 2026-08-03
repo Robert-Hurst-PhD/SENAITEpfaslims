@@ -318,6 +318,7 @@ class EGADBuilder(object):
         # analyte parameter-naming/state-code overrides. The method still
         # supplies analytes/units/test/CAS by reference.
         from senaite.pfas.egad_store import get_edd_profile_for_client
+        self._unmapped_matrices = set()
         self._edd_profile_id, self._edd_profile = \
             get_edd_profile_for_client(self.portal, client_cfg)
         self._apply_profile_vocab(self._edd_profile)
@@ -380,6 +381,17 @@ class EGADBuilder(object):
             errs = _validate_row(full_vals, row_number, is_qc)
             all_errors.extend(errs)
             csv_rows.append([full_vals[idx[c]] for c in out_cols])
+
+        for matrix in sorted(getattr(self, "_unmapped_matrices", set())):
+            all_errors.append({
+                "row": 0,
+                "field": "SAMPLE_TYPE",
+                "message": (
+                    "No EGAD sample-type code configured for matrix {0!r} — "
+                    "set it in the EGAD profile's matrix map. Exporting "
+                    "without it would state the wrong matrix.".format(matrix)),
+                "type": "Lab",
+            })
 
         # Python 2.7 CSV: writer expects byte strings; encode unicode as utf-8
         buf = io.BytesIO()
@@ -483,9 +495,21 @@ class EGADBuilder(object):
                     sample_type_code = mm.get(st.Title() if st else "", "")
                 except Exception:
                     sample_type_code = ""
-            sample_type_code = sample_type_code or default_sample_type
+            # No silent fallback. An unmapped matrix used to become the lab
+            # default — "GW", groundwater, on every row of an Animal Feed
+            # batch. A wrong matrix code on a regulatory submission is worse
+            # than a late one, so the matrix is recorded as unmapped and the
+            # export refuses, naming it, exactly as a PLACEHOLDER CAS does.
+            if not sample_type_code:
+                st_title = ""
+                try:
+                    st = ar.getSampleType()
+                    st_title = (st.Title() or "") if st else ""
+                except Exception:
+                    st_title = ""
+                self._unmapped_matrices.add(st_title or "(no sample type)")
         except Exception:
-            sample_type_code = default_sample_type
+            sample_type_code = ""
 
         # QC type — derive from AR's sample type title
         sample_type_title = ""

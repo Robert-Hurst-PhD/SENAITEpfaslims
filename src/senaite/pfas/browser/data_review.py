@@ -186,6 +186,13 @@ class PFASDataReviewView(BrowserView):
         "batch_approved":          u"Batch approved and released.",
         "batch_rejected":          u"Batch rejected and returned for re-analysis.",
         "report_uploaded":         u"Instrument report uploaded.",
+        "spike_saved":             u"Spike level recorded on the extraction log.",
+        "spike_saved_not_method":  (u"Spike level recorded on this batch. The "
+                                    u"method's nominal level was not changed "
+                                    u"\u2014 that needs a manager."),
+        "spike_missing":           u"Enter a spike level.",
+        "spike_invalid":           u"Spike level must be a positive number.",
+        "no_batch":                u"No batch is linked to this worksheet.",
         "upload_error":            u"File upload failed.",
         "path_error":              u"Download failed — file not found.",
         "initials_required":       u"Your initials are required to sign off / correct — nothing was saved.",
@@ -311,7 +318,61 @@ class PFASDataReviewView(BrowserView):
                 "required": t in required,
                 "enabled": bool(cfg.get("enabled", True)),
             }
-        return {"rows": rows, "types": spike_types, "specs": specs}
+        return {"rows": rows, "types": spike_types, "specs": specs,
+                "pending_spikes": self.pending_spike_levels()}
+
+    def pending_spike_levels(self):
+        """Spiked injections whose spike level nobody has recorded.
+
+        Without a level the recovery cannot be computed, and it used to be
+        skipped in silence — a batch could reach release with its matrix spike
+        never evaluated. Rather than blocking, the reviewer is asked for the
+        value: these rows drive that prompt.
+        """
+        ws = self._get_worksheet()
+        batch = self._linked_batch(ws) if ws else None
+        if batch is None:
+            return []
+        try:
+            from senaite.pfas.dilution_ref import get_spikes
+        except Exception:
+            return []
+        spikes = get_spikes(batch)
+        profile = self._method_profile() or {}
+        matrix = self._batch_matrix()
+        levels = ((profile.get("spike_levels") or {}).get(matrix) or {})
+        out = []
+        for injection, entry in sorted(spikes.items()):
+            if entry.get("spike_ppt"):
+                continue
+            label = entry.get("level") or ""
+            nominal = None
+            for lv in (levels.get("LFSM") or []):
+                if not label or lv.get("label") == label:
+                    nominal = lv.get("ppt")
+                    if lv.get("label") == label:
+                        break
+            if nominal:
+                continue
+            out.append({"injection": injection,
+                        "parent": entry.get("parent", ""),
+                        "level": label,
+                        "matrix": matrix})
+        return out
+
+    def _batch_matrix(self):
+        """The batch's matrix, from its samples' SampleType."""
+        ws = self._get_worksheet()
+        if ws is None:
+            return u""
+        try:
+            for analysis in (ws.getAnalyses() or []):
+                st = analysis.getRequest().getSampleType()
+                if st:
+                    return st.Title() or u""
+        except Exception:
+            pass
+        return u""
 
     # ── Checklist data model ──────────────────────────────────────────────
 
@@ -1407,6 +1468,7 @@ class PFASDataReviewView(BrowserView):
             "upload_instrument_report": self._handle_upload_instrument_report,
             "download_report":          self._handle_download_report,
             "record_amendment_reason":  self._handle_record_amendment_reason,
+            "record_spike_level":       self._handle_record_spike_level,
         }
         handler = dispatch.get(action)
         if handler:
@@ -1528,6 +1590,85 @@ class PFASDataReviewView(BrowserView):
             return self._redirect_with_msg("workflow_error", "error")
         self._audit(ws)
         return self._redirect_with_msg("batch_rejected", "ok")
+
+    def _handle_record_spike_level(self):
+        """Record a spike level a reviewer supplies for an unevaluated spike.
+
+        Written to the batch's extraction pedigree — where "what was actually
+        spiked" already lives — attributed to whoever entered it and marked as
+        reviewer-entered, so an auditor can see it was added after the bench
+        record rather than taken from it.
+
+        Setting the METHOD's nominal level is a separate, manager-only act:
+        one batch's observation should not silently reconfigure every future
+        batch of that matrix.
+        """
+        from AccessControl import getSecurityManager
+        f = self.request.form
+        injection = (f.get("injection") or "").strip()
+        raw = (f.get("spike_ppt") or "").strip()
+        if not injection or not raw:
+            return self._redirect_with_msg("spike_missing", "error",
+                                           tab="spike_qc")
+        try:
+            spike_ppt = float(raw)
+        except (TypeError, ValueError):
+            return self._redirect_with_msg("spike_invalid", "error",
+                                           tab="spike_qc")
+        if spike_ppt <= 0:
+            return self._redirect_with_msg("spike_invalid", "error",
+                                           tab="spike_qc")
+
+        ws = self._get_worksheet()
+        batch = self._linked_batch(ws) if ws else None
+        if batch is None:
+            return self._redirect_with_msg("no_batch", "error", tab="spike_qc")
+
+        from senaite.pfas.dilution_ref import EXTRACTION_SESSION_KEY
+        ann = IAnnotations(batch)
+        try:
+            session = json.loads(ann.get(EXTRACTION_SESSION_KEY) or "{}")
+        except (ValueError, TypeError):
+            session = {}
+        pedigree = session.setdefault("pedigree", {})
+        entry = pedigree.setdefault(injection, {})
+        entry["spike_ppt"] = spike_ppt
+        entry["spike_source"] = "reviewer-entered"
+        entry["spike_entered_by"] = getSecurityManager().getUser().getId()
+        entry["spike_entered_at"] = datetime.datetime.utcnow().strftime(
+            "%Y-%m-%d %H:%M")
+        ann[EXTRACTION_SESSION_KEY] = json.dumps(session)
+
+        # Manager-only, and only when explicitly asked for.
+        if f.get("set_method_nominal") == "yes":
+            from senaite.pfas.browser.perms import require_manager
+            if not require_manager(self.context, self.request):
+                return self._redirect_with_msg("spike_saved_not_method", "ok",
+                                               tab="spike_qc")
+            try:
+                from senaite.pfas.method_profile_store import (
+                    get_profile, save_profile)
+                portal = self._portal()
+                mid = self.batch_method()
+                profile = get_profile(portal, mid) or {}
+                matrix = self._batch_matrix()
+                label = (entry.get("level")
+                         or (f.get("level") or "").strip() or "Mid")
+                levels = (profile.setdefault("spike_levels", {})
+                          .setdefault(matrix, {}).setdefault("LFSM", []))
+                for lv in levels:
+                    if lv.get("label") == label:
+                        lv["ppt"] = spike_ppt
+                        break
+                else:
+                    levels.append({"label": label, "ppt": spike_ppt})
+                save_profile(portal, mid, profile)
+            except Exception as exc:
+                logger.error("could not set the method's nominal level: %s", exc)
+                return self._redirect_with_msg("spike_saved_not_method", "ok",
+                                               tab="spike_qc")
+
+        return self._redirect_with_msg("spike_saved", "ok", tab="spike_qc")
 
     def _handle_upload_instrument_report(self):
         if not self.can_act():

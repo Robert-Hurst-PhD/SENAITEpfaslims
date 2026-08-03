@@ -56,61 +56,72 @@ def _format_val(v: Optional[float]) -> str:
 def is_raw_check(
     rows: list[InstrumentRow],
     is_compound: str,
+    dilutions: "dict | None" = None,
 ) -> list[ISRawResult]:
     """
-    For one IS compound, compute % from CAL (response_ratio / avg_standard_response)
-    for every injection.  Flag if outside ±50% of average.
+    Internal-standard response for one IS compound, against the ICAL average.
 
-    Equivalent to IS Raw sheet, and flags written to QC Log as (SUR).
+    The quantity compared is the IS PEAK AREA — which is what the method
+    profile's ``is_response: vs_ical_avg`` describes. It was comparing
+    ``response_ratio``, this IS divided by another IS, so a failure never said
+    which of the two had moved.
+
+    A DILUTION is judged on the ratio instead. Diluting an extract dilutes its
+    internal standard too, so a 1:10 dilution has a tenth of the area by
+    construction — on this run that put every dilution at 4.6–7.2% of the ICAL
+    average, failing arithmetic rather than QC. The ratio normalises it out, so
+    the dilution's IS is still verified, which is what the dilution rules
+    require.
     """
-    # Average response_ratio from Standards only (replaces C$3)
+    dilutions = dilutions or {}
+
+    def basis(row):
+        if row.injection_name in dilutions:
+            return row.response_ratio
+        return row.response
+
     std_rows = [r for r in rows
                 if r.compound_name == is_compound
-                and r.sample_type == "Standard"
-                and r.response_ratio is not None]
-    if not std_rows:
+                and r.sample_type == "Standard"]
+    std_area = [r.response for r in std_rows if r.response is not None]
+    std_ratio = [r.response_ratio for r in std_rows
+                 if r.response_ratio is not None]
+    if not std_area and not std_ratio:
         return []
 
-    avg_response = statistics.mean(r.response_ratio for r in std_rows)  # type: ignore
+    avg_area = statistics.mean(std_area) if std_area else None
+    avg_ratio = statistics.mean(std_ratio) if std_ratio else None
 
-    threshold = CRITERIA["is_response_drift_pct"]
-    lower = avg_response * (1 - threshold)
-    upper = avg_response * (1 + threshold)
+    tol = CRITERIA["is_response_drift_pct"]
 
     results: list[ISRawResult] = []
-    all_rows = [r for r in rows if r.compound_name == is_compound]
+    for r in [row for row in rows if row.compound_name == is_compound]:
+        is_dilution = r.injection_name in dilutions
+        avg = avg_ratio if is_dilution else avg_area
+        value = basis(r)
 
-    for r in all_rows:
-        rr = r.response_ratio
-        if rr is None:
-            pct_from_cal = None
-            flag = None
-        elif rr == 0:
-            pct_from_cal = None  # N.D.
-            flag = None
-        else:
-            try:
-                pct_from_cal = rr / avg_response
-            except ZeroDivisionError:
-                pct_from_cal = None
-            flag = None
-            if pct_from_cal is not None and not (lower <= rr <= upper):
+        pct_from_cal = None
+        flag = None
+        if value is not None and avg:
+            pct_from_cal = value / avg
+            if abs(pct_from_cal - 1.0) > tol:
                 flag = QCFlag(
                     source="SUR-IS Response Table",
                     analyte=is_compound,
                     injection_name=r.injection_name,
-                    value=_format_val(rr),
+                    value="{0:.1f}% of ICAL average{1}".format(
+                        pct_from_cal * 100.0,
+                        " (ratio basis — dilution)" if is_dilution else ""),
                     issue="(SUR)",
-                    link="Go",
                 )
 
         results.append(ISRawResult(
             is_compound=is_compound,
             injection_name=r.injection_name,
             concat_id=r.concat_id,
-            response=r.response,
+            response=value,
             pct_from_cal=pct_from_cal,
-            average_response=avg_response,
+            average_response=avg,
             flag=flag,
         ))
 

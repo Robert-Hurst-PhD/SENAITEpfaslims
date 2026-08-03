@@ -1414,6 +1414,62 @@ class PFASDynamicLogbookView(_LogbookBase):
         return self._redirect_self("Saved")
 
 
+class PFASRetireAttachmentView(BrowserView):
+    """
+    POST @@pfas-retire-attachment  {parent_uid, label}
+
+    Remove superseded attachments carrying *label* from a Worksheet or Client.
+
+    senaite.jsonapi cannot delete an Attachment — its delete fires a
+    "deactivate" transition the type has no workflow for, and answers HTTP 200
+    with success:false. So a re-imported batch report stacked another copy each
+    time (eight on one worksheet) and the worker could only report that it had
+    failed to replace it. Deleting from inside the add-on works.
+
+    Manager-only: this removes a controlled record.
+    """
+
+    def __call__(self):
+        flatten_form(self.request)
+        self.request.response.setHeader("Content-Type", "application/json")
+        try:
+            from plone.protect.interfaces import IDisableCSRFProtection
+            from zope.interface import alsoProvides
+            alsoProvides(self.request, IDisableCSRFProtection)
+        except ImportError:
+            pass
+
+        from senaite.pfas.browser.perms import require_manager
+        if not require_manager(self.context, self.request):
+            self.request.response.setStatus(403)
+            return json.dumps({"error": "Manager role required"})
+
+        parent_uid = (self.request.get("parent_uid") or u"").strip()
+        label = (self.request.get("label") or u"").strip()
+        if not parent_uid or not label:
+            self.request.response.setStatus(400)
+            return json.dumps({
+                "error": "parent_uid and label are both required"})
+
+        from bika.lims import api as _api
+        parent = _api.get_object_by_uid(parent_uid, None)
+        if parent is None:
+            self.request.response.setStatus(404)
+            return json.dumps({"error": "No object {0}".format(parent_uid)})
+
+        doomed = []
+        for obj in parent.objectValues("Attachment"):
+            try:
+                keys = obj.getAttachmentKeys() or u""
+            except Exception:
+                keys = u""
+            if keys == label:
+                doomed.append(obj.getId())
+        if doomed:
+            parent.manage_delObjects(doomed)
+        return json.dumps({"retired": doomed})
+
+
 class PFASRunManifestView(BrowserView):
     """
     @@pfas-run-manifest?batch_id=kcp-b-001

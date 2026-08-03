@@ -297,39 +297,26 @@ class SenaiteConnector:
         worksheet holding four identical "Batch Report" PDFs gives the reviewer
         no way to tell which one the current results came from.
         """
-        removed = 0
-        stale: list = []
-        for item in self.search(portal_type="Attachment",
-                                getParentUID=parent_uid):
-            uid = item.get("uid")
-            if not uid:
-                continue
-            # Search brains do NOT carry AttachmentKeys — filtering on the
-            # brain silently matched nothing and every re-import added another
-            # copy. Read the record to find out what this attachment is.
-            try:
-                detail = self._get(f"attachment/{uid}")
-                items = detail.get("items") or [detail]
-                keys = (items[0].get("AttachmentKeys") or "") if items else ""
-            except requests.HTTPError:
-                continue
-            if keys != label:
-                continue
-            try:
-                self._post(f"delete/{uid}", {})
-                removed += 1
-            except (requests.HTTPError, SenaiteAPIError):
-                stale.append(item.get("id"))
-        if stale:
-            # senaite.jsonapi deletes by firing a "deactivate" transition, which
-            # Attachment has no workflow for, so there is no supported way to
-            # remove one over the API. Say it once, plainly: the re-imported
-            # report is added and the previous copies stay.
-            logger.info(
-                "Kept %d previous %r attachment(s) — senaite.jsonapi cannot "
-                "remove an Attachment (no 'deactivate' transition); the newest "
-                "is last: %s", len(stale), label, ", ".join(stale))
-        return removed
+        # senaite.jsonapi cannot delete an Attachment, so the add-on exposes an
+        # endpoint that can. Falling back to the API path keeps this working
+        # against an older add-on, where it will report honestly instead.
+        try:
+            r = self.session.post(f"{self.base}/@@pfas-retire-attachment",
+                                  data={"parent_uid": parent_uid,
+                                        "label": label},
+                                  timeout=self.timeout)
+            if r.status_code == 200:
+                retired = (r.json() or {}).get("retired") or []
+                if retired:
+                    logger.info("Retired %d superseded %r attachment(s)",
+                                len(retired), label)
+                return len(retired)
+            logger.warning("Retire endpoint returned %s; leaving previous "
+                           "%r attachment(s) in place", r.status_code, label)
+        except (requests.HTTPError, requests.ConnectionError, ValueError) as e:
+            logger.warning("Could not retire previous %r attachment(s): %s",
+                           label, e)
+        return 0
 
     def attach_file(self, parent_uid: str, file_path: str | Path,
                     label: str = "", replace: bool = True) -> Optional[str]:

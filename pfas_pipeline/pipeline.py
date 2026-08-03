@@ -128,6 +128,14 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         if rep and rep != lin:
             _isomer_by_reported[rep] = _pair
 
+    # Flags raised against an isomer COMPONENT, so the summed result can carry
+    # them: a confirmation failure on br-PFOS is a failure of the PFOS number
+    # it feeds, even though br-PFOS is not reported on its own.
+    component_flags: dict = {}
+    for f in (batch.qc_flags or []):
+        component_flags.setdefault((f.injection_name, f.analyte), set()).add(
+            f.issue)
+
     def _blank_for(analyte, sample_name):
         """Method-blank concentration to subtract — but never from the blank
         itself. Comparing the MB against its own result makes every blank
@@ -197,6 +205,14 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             qualifier_out = QUALIFIER_BLOQ
         else:
             qualifier_out = ""
+        for irow in (lin_row, br_row):
+            if irow is None:
+                continue
+            for issue in sorted(component_flags.get(
+                    (sample_name, irow.compound_name), ())):
+                tag = "{0}:{1}".format(irow.compound_name, issue)
+                if tag not in flags_out:
+                    flags_out.append(tag)
         if rep in _non_iso:
             flags_out.append(QUALIFIER_NC)
         if linked_is and (linked_is, sample_name) in sur_injections:

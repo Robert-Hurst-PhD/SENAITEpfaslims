@@ -407,6 +407,13 @@
 
   <!-- AJAX: Prepared Standard lot autocomplete (lot_ref fields) -->
   <browser:page
+      name="pfas-retire-attachment"
+      for="*"
+      class=".logbooks.PFASRetireAttachmentView"
+      permission="zope2.View"
+      />
+
+  <browser:page
       name="pfas-run-manifest"
       for="*"
       class=".logbooks.PFASRunManifestView"

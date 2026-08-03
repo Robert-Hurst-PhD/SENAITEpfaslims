@@ -418,13 +418,22 @@ def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM"):
         from .analyte_alias import no_labeled_names, key_analyte_names
         no_std = no_labeled_names()
         key = key_analyte_names()
-        tight = {t.lower().strip()
-                 for t in (profile_data.get("tight_matrices") or [])}
-
+        # Canonical titles, plus the profile's own alias list. Substring
+        # matching had quietly narrowed this: "deer muscle" meets neither
+        # "Meat / Muscle" nor any other title, so a key analyte there dropped
+        # from tier 1 to tier 2. Aliases are lab-editable rather than a word
+        # list buried in code.
+        aliases = profile_data.get("matrix_aliases") or {}
         m = matrix.lower().strip()
+        tight = set()
+        for title in (profile_data.get("tight_matrices") or []):
+            tight.add(title.lower().strip())
+            for alias in (aliases.get(title) or []):
+                tight.add(alias.lower().strip())
+
         is_no_std = analyte in no_std
         is_key = analyte in key
-        is_tight = bool(tight) and any(t in m or m in t for t in tight)
+        is_tight = m in tight
 
         for tier in tiers:
             ag = tier.get("analyte_group", "all")

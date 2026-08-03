@@ -197,11 +197,28 @@ class RunQueue:
                      if _matrix else _get_analytes(_method))
         _non_iso = _get_non_iso_set(_method)
 
+        # The components of a summed analyte are measured and go into the
+        # reported result, but are not reportable themselves — so the QC loop,
+        # which walks the REPORTABLE panel, never visited them. On this run
+        # that left 49 ion-ratio failures on br-PFOS/br-PFHxS invisible while
+        # br-PFOS still contributed a fifth of the reported PFOS. Check them.
+        try:
+            from .method_profiles import get_isomer_summation
+            for pair in (get_isomer_summation(_method) or []):
+                if not pair.get("enabled", True):
+                    continue
+                for part in ("linear", "branched"):
+                    name = pair.get(part)
+                    if name and name not in _analytes:
+                        _analytes = list(_analytes) + [name]
+        except Exception as exc:                       # noqa: BLE001
+            logger.warning("could not add isomer components to QC: %s", exc)
+
         # 1. IS Raw (is_response rule)
         if _rule_enabled(toggles, "is_response"):
             for is_cmp in _get_is_list(_method):
                 # unfiltered: dilutions ARE checked for IS consistency
-                for res in is_raw_check(all_rows, is_cmp):
+                for res in is_raw_check(all_rows, is_cmp, dilutions):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                         self.batch.is_results.append(res)
