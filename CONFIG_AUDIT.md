@@ -24,6 +24,18 @@ The engine reads it; no UI writes it. The lab cannot change it.
 | `tight_matrices` | `pfas_pipeline/method_profiles.py:429`<br>`pfas_pipeline/method_profiles.py:483`<br>`src/senaite/pfas/spec_sync.py:148` |
 | `unit_map` | `pfas_pipeline/method_profiles.py:943`<br>`src/senaite/pfas/browser/qc_review_report.py:150` |
 
+## UI-only config (5)
+
+An editor writes it and reads it back; nothing downstream consumes it. Looks alive, changes nothing.
+
+| key | evidence |
+|---|---|
+| `run_template` | `src/senaite/pfas/browser/run_builder.py:194` |
+| `run_template.bracket_qc` | `src/senaite/pfas/browser/run_builder.py:199`<br>`src/senaite/pfas/browser/run_builder.py:206`<br>`src/senaite/pfas/browser/run_builder.py:562` |
+| `salt_adjustment_factors` | `src/senaite/pfas/browser/method_profiles.py:194`<br>`src/senaite/pfas/browser/method_profiles.py:206`<br>`src/senaite/pfas/browser/method_profiles.py:805` |
+| `surrogate_is` | `src/senaite/pfas/browser/method_profiles.py:477`<br>`src/senaite/pfas/browser/method_profiles.py:503`<br>`src/senaite/pfas/browser/method_profiles.py:523` |
+| `surrogate_map` | `src/senaite/pfas/browser/method_profiles.py:180`<br>`src/senaite/pfas/browser/method_profiles.py:475`<br>`src/senaite/pfas/browser/method_profiles.py:579` |
+
 ## Derived — not findings (3)
 
 | key | derived by |

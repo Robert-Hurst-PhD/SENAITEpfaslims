@@ -3993,3 +3993,43 @@ crying wolf; that trade is deliberate.
    the existing 1633A-only pane. Reuses the §6B tab layout rather than adding a
    raw key-value editor, which is the JSON authoring the drag-and-drop surrogate
    map exists to avoid.
+
+### The tenth instance, and the real answer to the surrogate notation defect
+
+Adding a fourth category — **UI-ONLY**: a setting an editor writes and reads
+back, that nothing downstream consumes — found two more, and the second one
+resolves an earlier diagnosis properly.
+
+**Salt adjustment is editable in two UIs, stored under three keys, and applied
+by nothing.** The Method Profile editor saves `salt_adjustment_factors` (with a
+CoA lot reference per analyte, exactly the §6 traceability the golden rules ask
+for); the QC Rules page writes `qc_rules.salt_factors`; the seeded profiles
+carry `extraction_corrections.salt_factors: []`. `qc/rules.py:218` (D53)
+correctly deprecated the QC-engine copy on the grounds that salt adjustment "is
+a CORE per-method sample correction (lives in the method profile, applied to
+ALL samples)" — but the replacement was never wired. The string `salt` does not
+appear anywhere in `pfas_pipeline/` except a shelf-life table. §3 lists SALT
+FACTOR as a core relation; a lab entering one today changes no reported number.
+
+**The method profile's surrogate map is never read by the analysis.** Not
+`surrogate_map`, not `surrogate_is`, not `surrogate_is_chain` — grep for all
+three across `pfas_pipeline/` returns nothing. The pipeline instead takes the
+surrogate/IS relationship from the instrument file's own `linked_is` column,
+falling back to a global `analyte_alias` table that is not method-scoped. So
+§3's "SURROGATE MAP native → quantifying IS … QUANTIFICATION link,
+drag-and-drop, never JSON" is, as built, decorative.
+
+That is the complete answer to "there is clearly a notation issue in the method
+profile which is not being carried over to the analysis." The notation was not
+merely mis-transcribed — the analysis has never consulted the method profile for
+it at all. Decision 2 above is therefore widened: the profile's surrogate map
+becomes the source of truth for the surrogate → quantifying-IS link, with the
+instrument's `linked_is` column and the global alias table demoted to fallbacks,
+and a flag raised when the instrument disagrees with the method.
+
+**Two false-positive classes worth recording**, because both cost a round trip:
+a stem keyed on the bare filename collided `pfas_pipeline/method_profiles.py`
+with `browser/method_profiles.py` and wrote off the pipeline as "the editor
+reading itself back"; and a feature that legitimately stores and consumes its
+own configuration (the Run Builder template) is indistinguishable by static
+analysis from an inert one, so UI-ONLY is a prompt to judge, not a verdict.

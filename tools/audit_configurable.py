@@ -243,8 +243,36 @@ def _ancestors(key):
     return [".".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
 
 
+def _stem(path):
+    """Identify the FEATURE a file belongs to.
+
+    browser/run_builder.py and browser/templates/run_builder.pt are one
+    feature. Keying on the bare basename instead collided
+    pfas_pipeline/method_profiles.py with browser/method_profiles.py and
+    discounted the pipeline — the actual consumer — as the editor reading
+    itself back.
+    """
+    path = path.replace("browser/templates/", "browser/")
+    return os.path.splitext(path)[0]
+
+
+def _consumers(reads, writers):
+    """Reads by something OTHER than the editor that writes the setting.
+
+    "Under browser/" is the wrong test: run_builder and extraction_guide read
+    their settings from browser/ and are genuinely the consumers — the feature
+    lives there. What marks a setting as inert is narrower: the only code that
+    ever reads it is the same file that writes it, plus that file's own
+    template. Salt adjustment is the case in point.
+    """
+    owned = {_stem(w) for w in writers}
+    return [r for r in reads
+            if _stem(r[0]) not in owned and "/migrations/" not in r[0]
+            and not r[0].endswith(("method_profile_store.py", "egad_store.py"))]
+
+
 def audit_keys(profiles_path):
-    dead, unreachable, split, derived = [], [], [], []
+    dead, unreachable, split, derived, uionly = [], [], [], [], []
     keys = profile_keys(profiles_path)
     if not keys:
         return dead, unreachable, split, 0
@@ -282,11 +310,20 @@ def audit_keys(profiles_path):
             # live setting dead.
             if not any(find_reads(a) for a in _ancestors(key)):
                 dead.append((key, writes[:3]))
+        elif reads and editable and not _consumers(
+                reads, [w[0] for w in editable]):
+            # Written by an editor and read back only BY that editor. It looks
+            # completely alive — a form, a saved value, the value redisplayed —
+            # and nothing downstream ever consumes it. Salt adjustment sat here:
+            # two UIs, three storage keys, applied by nothing.
+            inherited = [r for a in _ancestors(key) for r in find_reads(a)]
+            if not _consumers(inherited, [w[0] for w in editable]):
+                uionly.append((key, reads[:3]))
         elif reads and not editable:
             unreachable.append((key, reads[:3]))
         if "." not in key and key.lower() in nested_names:
             split.append((key, ", ".join(sorted(nested_names[key.lower()]))))
-    return dead, unreachable, split, derived, len(keys)
+    return dead, unreachable, split, derived, uionly, len(keys)
 
 
 def audit_hardcoded():
@@ -314,7 +351,7 @@ def audit_hardcoded():
     return out
 
 
-def emit_text(dead, unreachable, split, derived, hardcoded, total):
+def emit_text(dead, unreachable, split, derived, uionly, hardcoded, total):
     print("Configurability audit — CLAUDE.md §1.1")
     print("=" * 72)
     print("profile keys examined: {0}\n".format(total))
@@ -342,6 +379,15 @@ def emit_text(dead, unreachable, split, derived, hardcoded, total):
           lambda r: (print("  {0}".format(r[0])),
                      [print("      read at    {0}:{1}".format(h[0], h[1]))
                       for h in r[1]]))
+    block("UI-ONLY CONFIG",
+          "an editor writes it and reads it back; nothing downstream consumes "
+          "it. Looks alive, changes nothing. (A self-contained feature that "
+          "stores AND consumes its own config -- the Run Builder template -- "
+          "lands here legitimately; judge each one.)",
+          uionly,
+          lambda r: (print("  {0}".format(r[0])),
+                     [print("      read back at {0}:{1}".format(h[0], h[1]))
+                      for h in r[1]]))
     block("DERIVED (not a finding)",
           "read but never hand-edited by design — the system computes them.",
           derived,
@@ -357,7 +403,7 @@ def emit_text(dead, unreachable, split, derived, hardcoded, total):
           lambda r: print("  {0}:{1}  [{2}]\n      {3}".format(*r)))
 
 
-def emit_md(dead, unreachable, split, derived, hardcoded, total):
+def emit_md(dead, unreachable, split, derived, uionly, hardcoded, total):
     print("# Configurability audit\n")
     print("`tools/audit_configurable.py` · {0} profile keys examined\n".format(total))
     for title, why, rows in (
@@ -365,6 +411,8 @@ def emit_md(dead, unreachable, split, derived, hardcoded, total):
          "Editing it changes nothing.", dead),
         ("Unreachable config", "The engine reads it; no UI writes it. "
          "The lab cannot change it.", unreachable),
+        ("UI-only config", "An editor writes it and reads it back; nothing "
+         "downstream consumes it. Looks alive, changes nothing.", uionly),
     ):
         print("## {0} ({1})\n\n{2}\n".format(title, len(rows), why))
         if not rows:
@@ -405,14 +453,15 @@ def main():
     ap.add_argument("--format", choices=("text", "md"), default="text")
     args = ap.parse_args()
 
-    dead, unreachable, split, derived, total = audit_keys(args.profiles)
+    (dead, unreachable, split, derived, uionly,
+     total) = audit_keys(args.profiles)
     hardcoded = audit_hardcoded()
     if not total:
         print("No method profile JSON at {0} — key audit skipped; run with "
               "--profiles pointing at the exported file.".format(args.profiles),
               file=sys.stderr)
     (emit_md if args.format == "md" else emit_text)(
-        dead, unreachable, split, derived, hardcoded, total)
+        dead, unreachable, split, derived, uionly, hardcoded, total)
 
 
 if __name__ == "__main__":
