@@ -284,8 +284,15 @@ def get_injection_is_list():
 # Use: COMPOUND_NAME_TO_KEYWORD.get(compound_name, compound_name)
 
 def _build_compound_name_to_keyword():
+    """Display name -> keyword, for natives AND labelled compounds.
+
+    Walking only NATIVE_ANALYTES left the labelled compounds with no alias at
+    all, so nothing could tell that the profile's "M8PFOA" and the instrument's
+    "13C8-PFOA" are the same surrogate. Both spellings have been sitting in
+    INTERNAL_STANDARDS as (keyword, name, ...) the whole time.
+    """
     mapping = {}
-    for row in NATIVE_ANALYTES:
+    for row in list(NATIVE_ANALYTES) + list(INTERNAL_STANDARDS):
         keyword, display_name = row[0], row[1]
         if display_name != keyword:
             mapping[display_name] = keyword

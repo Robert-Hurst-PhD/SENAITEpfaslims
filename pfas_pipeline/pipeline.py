@@ -48,6 +48,7 @@ from .method_profiles import (
     get_non_iso_set as _get_non_iso_set,
     get_included_display_analytes as _get_included_analytes,
     get_isomer_summation as _get_isomer_summation,
+    get_surrogate_map as _get_surrogate_map,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,8 +77,10 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                for r in mb_rows}
 
     # Surrogate-flagged injections (from IS results)
+    # Keyed by KEYWORD so a surrogate failure is found whichever spelling the
+    # instrument used for it.
     sur_injections = {
-        (res.is_compound, res.injection_name)
+        (keyword_for(res.is_compound or ""), res.injection_name)
         for res in batch.is_results if res.flag
     }
 
@@ -120,6 +123,30 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     # Build isomer lookup tables from method profile.
     # by_linear: analyte IS the linear name (e.g. "lr-PFOS" in _analytes)
     # by_reported: analyte IS the reported name (e.g. "PFOA" in _analytes)
+    # The METHOD owns the surrogate -> analyte quantification link (§3). The
+    # instrument's own `linked_is` column is the fallback, not the authority:
+    # taking it as the authority meant a lab's drag-and-drop surrogate map had
+    # no effect on any result, and the method's notation never reached the
+    # analysis at all.
+    _sur_map = _get_surrogate_map(_method)
+    _is_mismatch: dict = {}
+
+    def _quantifying_is(analyte_name, irow):
+        """The surrogate this analyte is quantified against, as a keyword.
+
+        Both sides are normalised before they are compared: the profile stores
+        "M8PFOA" and the instrument exports "13C8-PFOA" for the same compound,
+        so a raw comparison called all 20 surrogates a disagreement. Returning
+        the keyword also keeps the surrogate-failure lookup spelling-agnostic.
+        """
+        configured = keyword_for(_sur_map.get(analyte_name) or "") or None
+        reported = keyword_for(getattr(irow, "linked_is", None) or "") or None
+        if configured and reported and configured != reported:
+            # A method naming one surrogate while the instrument used another
+            # is a finding for review, not something to resolve silently.
+            _is_mismatch[analyte_name] = (configured, reported)
+        return configured or reported
+
     _isomer_pairs = _get_isomer_summation(_method)
     _isomer_by_linear: dict[str, dict] = {}
     _isomer_by_reported: dict[str, dict] = {}
@@ -187,8 +214,9 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             # Both isomers carry the same analyte RL; capture from either
             if reporting_limit is None and irow.reporting_limit is not None:
                 reporting_limit = irow.reporting_limit
-            if irow.linked_is:
-                linked_is = irow.linked_is
+            resolved = _quantifying_is(rep or irow.compound_name, irow)
+            if resolved:
+                linked_is = resolved
 
         if total == 0.0:
             return None, (QUALIFIER_BLOQ if any_bloq else QUALIFIER_ND), []
@@ -263,7 +291,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                             qualifier = QUALIFIER_BLOQ
                         if analyte in _non_iso:
                             flags.append(QUALIFIER_NC)
-                        linked_is = row.linked_is
+                        linked_is = _quantifying_is(analyte, row)
                         if linked_is and (linked_is, sample_name) in sur_injections:
                             flags.append("SUR")
 
@@ -307,6 +335,21 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                 dilution_factor=dil_factor,
                 flags=flags,
             ))
+
+    # A method that names one quantifying surrogate while the instrument
+    # reported another is a review finding, not something to resolve silently
+    # in either direction. Tagged on the affected rows so it reaches Data
+    # Review rather than only the worker log.
+    if _is_mismatch:
+        for analyte, (configured, reported) in sorted(_is_mismatch.items()):
+            logger.warning(
+                "Surrogate map disagrees with the instrument for %s: method "
+                "profile says %s, %s reported %s",
+                analyte, configured, _method, reported)
+        for row in summary:
+            pair = _is_mismatch.get(row.analyte)
+            if pair and "ISMAP" not in row.flags:
+                row.flags.append("ISMAP:{0}!={1}".format(*pair))
 
     batch.summary = summary
     return summary

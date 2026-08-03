@@ -1036,5 +1036,58 @@ def get_isomer_summation(method_id: str = "FDA_32PFAS") -> list:
     return [p for p in pairs if p.get("enabled", True)]
 
 
+def get_surrogate_map(method_id: str = "FDA_32PFAS") -> dict:
+    """Which labeled surrogate quantifies each native analyte, per METHOD.
+
+    §3 makes this the method's own relation ("SURROGATE MAP native ->
+    quantifying IS ... QUANTIFICATION link"), and the profile has always stored
+    it. Nothing read it: the analysis took the relationship from the instrument
+    file's `linked_is` column instead, falling back to a global alias table
+    that is not method-scoped. So a lab editing the drag-and-drop surrogate map
+    changed nothing, and the method's notation never reached the analysis.
+
+    Keyed by BOTH the display name and the keyword, because the profile stores
+    whichever spelling the editor was given and the instrument exports display
+    names -- the mismatch that silently N.D.'d six analytes earlier.
+    """
+    out = {}
+    rows = _profile_data_cache.get(method_id, {}).get("surrogate_map", []) or []
+    try:
+        from .analyte_alias import keyword_for, NAME_TO_KEYWORD
+    except ImportError:
+        keyword_for, NAME_TO_KEYWORD = None, {}
+    # Both directions. The profile stores keywords ("8:2FTS") while the
+    # instrument exports display names ("8:2 FTS"); keying one way only left
+    # the spaced spellings unresolved -- the same gap that silently reported
+    # six analytes as N.D.
+    by_keyword = {}
+    for name, kw in (NAME_TO_KEYWORD or {}).items():
+        by_keyword.setdefault(kw, []).append(name)
+    for row in rows:
+        analyte = (row.get("analyte") or "").strip()
+        surrogate = (row.get("surrogate_is") or "").strip()
+        if not analyte or not surrogate:
+            continue
+        out[analyte] = surrogate
+        kw = keyword_for(analyte) if keyword_for else analyte
+        if kw:
+            out[kw] = surrogate
+        for alias in by_keyword.get(kw, ()):
+            out[alias] = surrogate
+    return out
+
+
+def get_surrogate_is_chain(method_id: str = "FDA_32PFAS") -> dict:
+    """Which injection IS each labeled SURROGATE is itself quantified against.
+
+    The second half of the chain: native -> surrogate (get_surrogate_map) ->
+    injection IS. Under FDA every surrogate quantifies against M4PFOA. This is
+    what distinguishes a surrogate, which is diluted with the sample, from the
+    injection IS, which is added after the dilution and must not be scaled.
+    """
+    return dict(_profile_data_cache.get(
+        method_id, {}).get("surrogate_is_chain", {}) or {})
+
+
 # Load profile data immediately if the export already exists
 reload_from_profiles()
