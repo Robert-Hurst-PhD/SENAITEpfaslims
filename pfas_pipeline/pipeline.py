@@ -37,7 +37,7 @@ from .analyte_alias import keyword_for
 from .barcode import ExtractionLog
 from .report import generate_batch_report
 from .constants import (
-    QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC,
+    QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_ALOQ,
     reload_criteria,
 )
 from .method_profiles import (
@@ -66,8 +66,10 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     summary: list[SummaryResult] = []
 
     # Identify MB injection(s) for <LOD rule (blank ≥ sample → < LOD)
+    dilutions = getattr(batch, "dilutions", None) or {}
+
     mb_rows = [r for r in batch.injections
-               if classify_injection(r.injection_name) == "MB"]
+               if classify_injection(r.injection_name, dilutions) == "MB"]
     mb_conc = {r.compound_name: reported_conc(r)
                for r in mb_rows}
 
@@ -78,11 +80,25 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     }
 
     sample_rows = [r for r in batch.injections
-                   if classify_injection(r.injection_name) == "Sample"]
+                   if classify_injection(r.injection_name, dilutions) == "Sample"]
 
     by_sample: dict[str, dict[str, object]] = {}
     for r in sample_rows:
         by_sample.setdefault(r.injection_name, {})[r.compound_name] = r
+
+    # Dilution injections, indexed by the sample they were diluted FROM. A
+    # dilution is not a sample of its own — reporting it as one listed Egg-3
+    # and Egg-4 twice, with no indication which row was the answer.
+    dil_rows: dict[str, dict[str, object]] = {}
+    dil_meta: dict[str, dict] = {}
+    for r in batch.injections:
+        entry = dilutions.get(r.injection_name)
+        if not entry:
+            continue
+        parent = entry.get("parent") or ""
+        dil_rows.setdefault(parent, {})[r.compound_name] = r
+        dil_meta[parent] = {"injection": r.injection_name,
+                            "factor": entry.get("factor")}
 
     _method = getattr(batch, "method_id", "") or "FDA_32PFAS"
     _matrix = getattr(batch, "matrix", "") or ""
@@ -126,6 +142,8 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         # understates the result.
         any_bloq = any(getattr(irow, "conc_qualifier", "") == QUALIFIER_BLOQ
                        for irow in (lin_row, br_row) if irow is not None)
+        any_aloq = any(getattr(irow, "conc_qualifier", "") == QUALIFIER_ALOQ
+                       for irow in (lin_row, br_row) if irow is not None)
 
         for irow in (lin_row, br_row):
             if irow is None:
@@ -152,9 +170,14 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
 
         flags_out: list[str] = []
         # BLoQ: the SUMMED result is below the reporting limit
-        qualifier_out = (QUALIFIER_BLOQ
-                         if reporting_limit is not None and total < reporting_limit
-                         else "")
+        if any_aloq:
+            # One isomer off the top of the curve makes the SUM an
+            # extrapolation too, so the pair is reported from the dilution.
+            qualifier_out = QUALIFIER_ALOQ
+        elif reporting_limit is not None and total < reporting_limit:
+            qualifier_out = QUALIFIER_BLOQ
+        else:
+            qualifier_out = ""
         if rep in _non_iso:
             flags_out.append(QUALIFIER_NC)
         if linked_is and (linked_is, sample_name) in sur_injections:
@@ -193,7 +216,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                         qualifier = QUALIFIER_LOD
                     else:
                         result = conc
-                        if (row.reporting_limit is not None and conc is not None
+                        if row.conc_qualifier == QUALIFIER_ALOQ:
+                            # Above the top calibrator. The number exists but is
+                            # an extrapolation, so it is not reportable as-is —
+                            # it is the trigger for using the dilution.
+                            qualifier = QUALIFIER_ALOQ
+                        elif (row.reporting_limit is not None and conc is not None
                                 and conc < row.reporting_limit):
                             qualifier = QUALIFIER_BLOQ
                         if analyte in _non_iso:
@@ -202,11 +230,43 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                         if linked_is and (linked_is, sample_name) in sur_injections:
                             flags.append("SUR")
 
+            # A neat injection that read ABOVE the quantitation limit has no
+            # usable number: the analyte is off the top of the calibration
+            # curve. That is exactly why the dilution was run, so the dilution
+            # supplies the reported value — and the over-range neat reading is
+            # kept beside it so the substitution can be checked.
+            source_injection = sample_name
+            neat_result = None
+            neat_qualifier = ""
+            dil_factor = None
+            meta = dil_meta.get(sample_name)
+            if meta and QUALIFIER_ALOQ in (qualifier or ""):
+                drow = (dil_rows.get(sample_name) or {}).get(reported_name)
+                if drow is None and iso_pair:
+                    dres, dqual, dflags = _sum_isomer_pair(
+                        iso_pair, dil_rows.get(sample_name) or {}, sample_name)
+                    if dres is not None:
+                        neat_result, neat_qualifier = result, qualifier
+                        result, qualifier, flags = dres, dqual, dflags
+                        source_injection = meta["injection"]
+                        dil_factor = meta.get("factor")
+                elif drow is not None and reported_conc(drow) is not None:
+                    neat_result, neat_qualifier = result, qualifier
+                    result = reported_conc(drow)
+                    qualifier = (drow.conc_qualifier
+                                 if drow.conc_qualifier != QUALIFIER_ALOQ else "")
+                    source_injection = meta["injection"]
+                    dil_factor = meta.get("factor")
+
             summary.append(SummaryResult(
                 analyte=reported_name,
                 sample_injection=sample_name,
                 result_ppt=result if qualifier != QUALIFIER_LOD else None,
                 qualifier=qualifier,
+                source_injection=source_injection,
+                neat_result=neat_result,
+                neat_qualifier=neat_qualifier,
+                dilution_factor=dil_factor,
                 flags=flags,
             ))
 
@@ -278,6 +338,21 @@ def run_pipeline(
     logger.info("Loaded %d rows / %d injections from %s",
                 len(rows), len(group_by_injection(rows)), csv_path.name)
 
+    # Dilution map — needed before the name check below.
+    #
+    # The dilution map comes from the batch's FM-ENV-252 extraction log, which
+    # is the only place the parent/factor relationship is recorded. Empty for
+    # any batch that logged none, so those behave exactly as before.
+    dilution_map = {}
+    if senaite is not None and senaite_batch_id:
+        dilution_map = senaite.get_batch_dilutions(senaite_batch_id)
+        if dilution_map:
+            logger.info("FM-ENV-252 records %d dilution(s): %s",
+                        len(dilution_map),
+                        ", ".join("%s <- %s" % (v.get("parent"), k)
+                                  for k, v in sorted(dilution_map.items())))
+
+
     # 2. Injection-name check.
     #
     # This used to warn whenever a name failed INJECTION_PATTERNS, a hardcoded
@@ -297,7 +372,8 @@ def run_pipeline(
         if not v["valid"]:
             logger.debug("Injection name matches no configured pattern: %r",
                          inj_name)
-        if senaite is None or classify_injection(inj_name) != "Sample":
+        if senaite is None or classify_injection(
+                inj_name, dilution_map) != "Sample":
             continue
         if not senaite.find_sample_by_client_sample_id(inj_name):
             if not (v.get("starlims_id")
@@ -319,14 +395,15 @@ def run_pipeline(
         method_id=method_id,
         instrument_file=csv_path.name,
         injections=rows,
+        dilutions=dilution_map,
     )
 
     # 4. Review plan (derived from the injections actually present)
     review_plan = [
         {
             "injection_name": name,
-            "qc_type": classify_injection(name),
-            "checks": REVIEW_CHECKS.get(classify_injection(name),
+            "qc_type": classify_injection(name, dilution_map),
+            "checks": REVIEW_CHECKS.get(classify_injection(name, dilution_map),
                                         REVIEW_CHECKS["Sample"]),
         }
         for name in sorted({r.injection_name for r in rows})

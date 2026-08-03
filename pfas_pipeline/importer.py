@@ -364,11 +364,22 @@ def validate_injection_name(name: str) -> dict:
     }
 
 
-def classify_injection(name: str) -> str:
+def classify_injection(name: str, dilutions: "dict | None" = None) -> str:
     """
     Return the QC type code for an injection name.
     Used to classify each row in the DATA table without re-running full validation.
+
+    *dilutions* is the map recorded on FM-ENV-252 (see
+    senaite.pfas.dilution_ref). An injection listed there is a DILUTION of
+    another sample, not a sample in its own right — so it stops being counted
+    and reported twice, and QC rules can skip it.
+
+    The relationship is never inferred from the name. `"…; Dil. 1:10"` is one
+    lab's typing convention, and encoding conventions in code is what produced
+    a validator that rejected this system's own output.
     """
+    if dilutions and name in dilutions:
+        return "Dilution"
     upper = name.upper()
     if "LFSMD" in name or "DUP" in upper:
         return "LFSMD"

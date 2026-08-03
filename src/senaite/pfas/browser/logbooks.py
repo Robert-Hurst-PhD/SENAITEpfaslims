@@ -1414,6 +1414,45 @@ class PFASDynamicLogbookView(_LogbookBase):
         return self._redirect_self("Saved")
 
 
+class PFASBatchDilutionsView(BrowserView):
+    """
+    @@pfas-batch-dilutions?batch_id=kcp-b-001
+
+    The dilution map recorded on FM-ENV-252, as JSON, for the pipeline worker:
+
+        {"KCP Silage \"Egg-3\"; Dil. 1:10": {"parent": "KCP Silage \"Egg-3\" Sample",
+                                             "factor": 10.0}}
+
+    Empty object when the batch records no dilutions — which is every batch
+    logged before the columns existed, so the worker's behaviour is unchanged
+    for them.
+    """
+
+    def __call__(self):
+        flatten_form(self.request)
+        self.request.response.setHeader("Content-Type", "application/json")
+        try:
+            from plone.protect.interfaces import IDisableCSRFProtection
+            from zope.interface import alsoProvides
+            alsoProvides(self.request, IDisableCSRFProtection)
+        except ImportError:
+            pass
+
+        batch_id = (self.request.get("batch_id") or u"").strip()
+        if not batch_id:
+            self.request.response.setStatus(400)
+            return json.dumps({"error": "batch_id parameter is required"})
+
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        from senaite.pfas.batch_ref import get_batch
+        from senaite.pfas.dilution_ref import get_dilutions
+        batch = get_batch(portal, batch_id)
+        if batch is None:
+            self.request.response.setStatus(404)
+            return json.dumps({"error": "No batch {0}".format(batch_id)})
+        return json.dumps(get_dilutions(batch))
+
+
 # ── AJAX: Prepared Standard lot autocomplete ──────────────────────────────────
 
 class PFASLotAutocompleteView(BrowserView):

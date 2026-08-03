@@ -97,6 +97,29 @@ class SenaiteConnector:
         return out.get("items", [])
 
     # ── Batch ────────────────────────────────────────────────────────────────
+    def get_batch_dilutions(self, batch_id: str) -> dict:
+        """Dilution map recorded on the batch's FM-ENV-252 extraction log.
+
+        {dilution_injection: {"parent": ..., "factor": float}} — empty when the
+        batch records none. The logbook is the only source of this
+        relationship; the pipeline never infers it from injection names.
+        """
+        if not batch_id:
+            return {}
+        try:
+            r = self.session.get(f"{self.base}/@@pfas-batch-dilutions",
+                                 params={"batch_id": batch_id},
+                                 timeout=self.timeout)
+            r.raise_for_status()
+            data = r.json()
+        except (requests.HTTPError, requests.ConnectionError, ValueError) as e:
+            logger.warning("Could not read the dilution log for %s: %s",
+                           batch_id, e)
+            return {}
+        if not isinstance(data, dict) or "error" in data:
+            return {}
+        return data
+
     def find_worksheet(self, worksheet_id: str) -> Optional[dict]:
         """The Worksheet with this id, or None."""
         if not worksheet_id:

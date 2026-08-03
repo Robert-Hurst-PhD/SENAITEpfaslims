@@ -218,6 +218,14 @@ class SummaryResult:
     result_ppt:       Optional[float]   # None = ND or < LOD
     qualifier:        str               # "N.D.", "< LOD", "BLoQ", "N.C.", ""
     flags:            list[str]         = field(default_factory=list)
+    # Provenance. When the neat injection read above the quantitation limit,
+    # the reported value comes from the dilution instead — source_injection
+    # names which injection it came from, and neat_result keeps the
+    # over-range reading beside it so the substitution can be verified.
+    source_injection: str               = ""
+    neat_result:      Optional[float]   = None
+    neat_qualifier:   str               = ""
+    dilution_factor:  Optional[float]   = None
 
     def display(self) -> str:
         """Replicate the Summary Sheet display format from row 5 of Sheet 5."""
@@ -256,6 +264,9 @@ class Batch:
     # Linked extraction log + reagents (from barcode scan)
     reagents:           list[dict]           = field(default_factory=list)
     extraction_log:     Optional[dict]       = None
+    # Dilution map from FM-ENV-252: {dilution_injection: {parent, factor}}.
+    # Empty for a batch that recorded none, which is every historical batch.
+    dilutions:          dict                 = field(default_factory=dict)
     # SENAITE IDs once uploaded
     senaite_batch_uid:  Optional[str]        = None
 

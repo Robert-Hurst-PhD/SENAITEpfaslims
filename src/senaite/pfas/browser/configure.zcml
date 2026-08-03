@@ -407,6 +407,13 @@
 
   <!-- AJAX: Prepared Standard lot autocomplete (lot_ref fields) -->
   <browser:page
+      name="pfas-batch-dilutions"
+      for="*"
+      class=".logbooks.PFASBatchDilutionsView"
+      permission="zope2.View"
+      />
+
+  <browser:page
       name="pfas-lot-autocomplete"
       for="*"
       class=".logbooks.PFASLotAutocompleteView"

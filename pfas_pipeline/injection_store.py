@@ -70,13 +70,14 @@ def persist_injection_results(batch, db_path: str = None) -> int:
         key = (fl.injection_name, fl.analyte)
         flags.setdefault(key, []).append(fl.issue)
 
+    dilutions = getattr(batch, "dilutions", None) or {}
     now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
     method = getattr(batch, "method_id", "") or ""
     rows_out = []
     for r in getattr(batch, "injections", []) or []:
         inj = r.injection_name
         analyte = r.compound_name
-        qc_type = classify_injection(inj)
+        qc_type = classify_injection(inj, dilutions)
         # sample id: prefer the parsed STARLIMS/sample id, else the injection
         sample_id = inj
         try:

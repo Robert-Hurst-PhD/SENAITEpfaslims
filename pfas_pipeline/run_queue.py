@@ -12,6 +12,7 @@ persisted so review can resume from home (your remote-review requirement).
 
 from __future__ import annotations
 import json
+import logging
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
@@ -20,7 +21,10 @@ from typing import Optional
 
 import re
 
+from .importer import classify_injection
 from .models import Batch, QCFlag, LFSMResult, LFSMDResult, reported_conc
+
+logger = logging.getLogger(__name__)
 from .qc_engine import (
     is_raw_check, rt_deviation_check, qual_quan_check,
     calibration_check, signal_to_noise_check,
@@ -163,7 +167,27 @@ class RunQueue:
           ccv_recovery  → calibration_check (run block if EITHER cal_r2 or ccv_recovery enabled)
           sn_min        → signal_to_noise_check
         """
-        rows = self.batch.injections
+        all_rows = self.batch.injections
+
+        # A dilution is the same extract re-injected at a known factor, run to
+        # bring an over-range analyte back onto the curve. It is not an
+        # independent measurement, so the acceptance rules do not apply to it:
+        # its retention times, ion ratios, calibration agreement and recovery
+        # would all be judged against criteria that assume a neat extract.
+        #
+        # The ONE thing a dilution must still demonstrate is that the internal
+        # standard behaved — that is what shows the dilution itself was made
+        # correctly — so is_raw_check below is given the unfiltered rows.
+        dilutions = getattr(self.batch, "dilutions", None) or {}
+        rows = [r for r in all_rows
+                if classify_injection(r.injection_name, dilutions) != "Dilution"]
+        if dilutions:
+            skipped = len({r.injection_name for r in all_rows}) - \
+                len({r.injection_name for r in rows})
+            logger.info("QC rules skip %d dilution injection(s); internal "
+                        "standard consistency is still checked on them",
+                        skipped)
+
         flags_by_injection: dict[str, list[QCFlag]] = {}
         toggles = _load_rule_toggles(self.method_id)
 
@@ -176,7 +200,8 @@ class RunQueue:
         # 1. IS Raw (is_response rule)
         if _rule_enabled(toggles, "is_response"):
             for is_cmp in _get_is_list(_method):
-                for res in is_raw_check(rows, is_cmp):
+                # unfiltered: dilutions ARE checked for IS consistency
+                for res in is_raw_check(all_rows, is_cmp):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                         self.batch.is_results.append(res)

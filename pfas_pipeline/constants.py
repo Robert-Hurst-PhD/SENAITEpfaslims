@@ -32,7 +32,8 @@ QC_TYPES = {
 # ── Result qualifier flags (matching Summary Sheet output) ────────────────────
 QUALIFIER_ND   = "N.D."     # non-detect (below MDL)
 QUALIFIER_LOD  = "< LOD"    # below limit of detection
-QUALIFIER_BLOQ = "BLoQ"     # below limit of quantitation
+QUALIFIER_BLOQ = "BLoQ"     # below limit of quantitation (detected)
+QUALIFIER_ALOQ = "ALoQ"     # above limit of quantitation — report the dilution
 QUALIFIER_NC   = "N.C."     # not calculated (no IS)
 QUALIFIER_SUR  = "SUR"      # surrogate flag
 QUALIFIER_REC  = "REC"      # review recovery

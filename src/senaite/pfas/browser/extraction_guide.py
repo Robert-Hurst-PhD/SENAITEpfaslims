@@ -417,8 +417,13 @@ class PFASExtractionGuideView(BrowserView):
 
         # Write a summary stub into logbook 252 so the logbook index shows it as filled
         try:
-            from senaite.pfas.browser.logbooks import _save_logbook
-            _save_logbook(b, "252", {
+            from senaite.pfas.browser.logbooks import _save_logbook, _get_logbook
+            # MERGE onto what is already stored. _save_logbook replaces the
+            # annotation wholesale, so writing this summary flat would erase
+            # the samples table (and its dilution rows) that the analyst filled
+            # in on the FM-ENV-252 form.
+            data = dict(_get_logbook(b, "252") or {})
+            data.update({
                 "analyst":         sess.get("analyst", ""),
                 "extraction_date": (sess.get("started_at") or "")[:10],
                 "method":          sess.get("method_id", ""),
@@ -426,6 +431,33 @@ class PFASExtractionGuideView(BrowserView):
                 "finalized_at":    sess.get("finalized_at", ""),
                 "finalized_by":    sess.get("finalized_by", ""),
             })
+            # Carry the per-stage reagent and standard lots the guide collected
+            # into the shape Data Review's traceability gate reads. They were
+            # captured in the session and then dropped on the floor.
+            reagents, standards = [], []
+            for _order in sorted((sess.get("stages") or {}), key=lambda k: int(k)):
+                for rg in (sess["stages"][_order].get("reagents") or []):
+                    entry = {
+                        "name": rg.get("name") or "",
+                        "lot": rg.get("lot") or "",
+                        "supplier": rg.get("supplier") or "",
+                        "volume": rg.get("volume") or "",
+                    }
+                    if not entry["lot"]:
+                        continue
+                    bucket = standards if (rg.get("supplier") == "In-house"
+                                           or "standard" in entry["name"].lower()
+                                           or "spike" in entry["name"].lower()) \
+                        else reagents
+                    if entry not in bucket:
+                        bucket.append(entry)
+            if reagents and not data.get("reagents"):
+                data["reagents"] = reagents
+            if standards and not data.get("standards"):
+                data["standards"] = [
+                    {"name": e["name"], "lot": e["lot"],
+                     "conc": "", "volume": e["volume"]} for e in standards]
+            _save_logbook(b, "252", data)
         except Exception as exc:
             logger.warning("_handle_finalize: could not write logbook 252 stub: %s", exc)
 
