@@ -267,6 +267,10 @@ class Batch:
     # Dilution map from FM-ENV-252: {dilution_injection: {parent, factor}}.
     # Empty for a batch that recorded none, which is every historical batch.
     dilutions:          dict                 = field(default_factory=dict)
+    # Matrix-spike pedigree from the extraction log:
+    # {injection: {parent, spike_ppt, level}}. Identifies an LFSM by what the
+    # bench recorded rather than by a substring in its name.
+    spikes:             dict                 = field(default_factory=dict)
     # SENAITE IDs once uploaded
     senaite_batch_uid:  Optional[str]        = None
 

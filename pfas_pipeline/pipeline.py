@@ -344,8 +344,17 @@ def run_pipeline(
     # is the only place the parent/factor relationship is recorded. Empty for
     # any batch that logged none, so those behave exactly as before.
     dilution_map = {}
+    spike_map = {}
     if senaite is not None and senaite_batch_id:
-        dilution_map = senaite.get_batch_dilutions(senaite_batch_id)
+        prep = senaite.get_batch_dilutions(senaite_batch_id) or {}
+        spike_map = prep.pop("_spikes", {}) or {}
+        dilution_map = prep
+        if spike_map:
+            logger.info("Extraction pedigree records %d matrix spike(s): %s",
+                        len(spike_map),
+                        ", ".join("%s <- %s @ %s ppt" % (v.get("parent"), k,
+                                                        v.get("spike_ppt"))
+                                  for k, v in sorted(spike_map.items())))
         if dilution_map:
             logger.info("FM-ENV-252 records %d dilution(s): %s",
                         len(dilution_map),
@@ -396,6 +405,7 @@ def run_pipeline(
         instrument_file=csv_path.name,
         injections=rows,
         dilutions=dilution_map,
+        spikes=spike_map,
     )
 
     # 4. Review plan (derived from the injections actually present)
@@ -424,6 +434,18 @@ def run_pipeline(
         logger.info("Persisted %d per-injection rows to injection_results", n_inj)
     except Exception as e:                            # noqa: BLE001
         logger.error("injection_results persist failed: %s", e)
+
+    # 5c. Persist the QC verdicts and calibration curves. Data Review's QC
+    # Summary gate and the control charts read these; nothing wrote them, so a
+    # successful import still left the gate reporting "no_batch_record".
+    try:
+        from .qc_store import persist_qc_results, persist_calibrations
+        n_qc = persist_qc_results(batch)
+        n_cal = persist_calibrations(batch)
+        logger.info("Persisted %d QC results and %d calibration curves",
+                    n_qc, n_cal)
+    except Exception as e:                            # noqa: BLE001
+        logger.error("qc_results persist failed: %s", e)
 
     # 6. Extraction log
     ext_log = None

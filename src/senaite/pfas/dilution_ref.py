@@ -125,3 +125,52 @@ def get_dilutions(batch):
             "factor": parse_factor(row.get(FACTOR_COLUMN)),
         }
     return out
+
+
+# ── Matrix-spike pedigree ────────────────────────────────────────────────────
+# The guided extraction records, per spiked injection, which sample it was
+# fortified from and at what level. That is the same shape of fact as a
+# dilution: something the bench did, recorded where the bench records it.
+#
+# It exists because the pipeline otherwise identifies an LFSM by looking for
+# the literal substring "; LFSM " in the injection name — another hardcoded
+# naming convention, and one this lab's names do not follow, so no LFSM was
+# ever evaluated.
+
+EXTRACTION_SESSION_KEY = u"senaite.pfas.extraction_session"
+
+
+def get_spikes(batch):
+    """{injection: {"parent": str, "spike_ppt": float|None, "level": str}}."""
+    out = {}
+    if batch is None:
+        return out
+    try:
+        from zope.annotation.interfaces import IAnnotations
+        raw = IAnnotations(batch).get(EXTRACTION_SESSION_KEY)
+    except Exception:
+        return out
+    if not raw:
+        return out
+    try:
+        session = json.loads(raw)
+    except (ValueError, TypeError):
+        return out
+
+    for injection, entry in (session.get("pedigree") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        parent = (entry.get("parent_sample") or u"").strip()
+        if not parent:
+            continue
+        ppt = entry.get("spike_ppt")
+        try:
+            ppt = float(ppt) if ppt not in (None, u"") else None
+        except (TypeError, ValueError):
+            ppt = None
+        out[injection] = {
+            "parent": parent,
+            "spike_ppt": ppt,
+            "level": (entry.get("level") or u"").strip(),
+        }
+    return out

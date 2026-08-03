@@ -256,26 +256,48 @@ class RunQueue:
                 conc_lookup.setdefault(row.injection_name, []).append(row)
 
             # Identify unique LFSM injection names (not duplicates)
+            # The extraction pedigree says which injections are matrix spikes
+            # and what they were fortified from. Falling back to the name only
+            # when there is no pedigree: matching the literal substring
+            # "; LFSM " meant that a lab whose names read
+            # 'KCP Silage "Egg-2" LFSM Mid' had no LFSM evaluated at all.
+            spikes = getattr(self.batch, "spikes", None) or {}
             seen_lfsm = set()
             lfsm_inj_names = []
             for row in rows:
                 name = row.injection_name
-                if "; LFSM " in name and not name.rstrip().endswith(" Dup."):
-                    if name not in seen_lfsm:
-                        seen_lfsm.add(name)
-                        lfsm_inj_names.append(name)
+                if name in seen_lfsm:
+                    continue
+                if spikes:
+                    if name not in spikes:
+                        continue
+                    if classify_injection(name, dilutions) != "LFSM":
+                        continue
+                elif "; LFSM " not in name or name.rstrip().endswith(" Dup."):
+                    continue
+                seen_lfsm.add(name)
+                lfsm_inj_names.append(name)
 
             # Per-LFSM-injection evaluation
             lfsm_results_by_inj = {}   # lfsm_inj → {analyte: LFSMResult}
 
             if lfsm_enabled and profile is not None:
                 for lfsm_inj in lfsm_inj_names:
-                    level_label = _lfsm_level_label(lfsm_inj)
-                    spike_ppt = profile.resolve_spike_ppt("LFSM", level_label, matrix=matrix)
+                    pedigree = spikes.get(lfsm_inj) or {}
+                    level_label = (pedigree.get("level")
+                                   or _lfsm_level_label(lfsm_inj))
+                    # What was actually spiked beats the nominal level.
+                    spike_ppt = pedigree.get("spike_ppt")
+                    if spike_ppt in (None, 0):
+                        spike_ppt = profile.resolve_spike_ppt(
+                            "LFSM", level_label, matrix=matrix)
                     if spike_ppt is None or spike_ppt == 0:
-                        continue  # spike concentration not configured — stays PENDING
+                        logger.info("No spike level for %s — LFSM recovery "
+                                    "stays pending", lfsm_inj)
+                        continue
 
-                    parent_inj = _lfsm_parent_name(lfsm_inj)
+                    parent_inj = (pedigree.get("parent")
+                                  or _lfsm_parent_name(lfsm_inj))
                     lfsm_results_by_inj[lfsm_inj] = {}
 
                     for analyte in _analytes:

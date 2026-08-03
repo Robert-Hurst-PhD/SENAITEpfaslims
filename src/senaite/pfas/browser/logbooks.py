@@ -1445,12 +1445,19 @@ class PFASBatchDilutionsView(BrowserView):
 
         portal = getToolByName(self.context, "portal_url").getPortalObject()
         from senaite.pfas.batch_ref import get_batch
-        from senaite.pfas.dilution_ref import get_dilutions
+        from senaite.pfas.dilution_ref import get_dilutions, get_spikes
         batch = get_batch(portal, batch_id)
         if batch is None:
             self.request.response.setStatus(404)
             return json.dumps({"error": "No batch {0}".format(batch_id)})
-        return json.dumps(get_dilutions(batch))
+        payload = get_dilutions(batch)
+        # Spike pedigree rides along under a reserved key. A dilution id can
+        # never collide with it: NAME_RE forbids a leading underscore.
+        spikes = get_spikes(batch)
+        if spikes:
+            payload = dict(payload)
+            payload["_spikes"] = spikes
+        return json.dumps(payload)
 
 
 # ── AJAX: Prepared Standard lot autocomplete ──────────────────────────────────
