@@ -3902,3 +3902,75 @@ visible.
 Py2 trap as the cookie value earlier), and TAL evaluates `tal:define` before
 `tal:repeat` on the same element, so a cell lookup beside a loop variable never
 sees it.
+
+---
+
+## 2026-08-03 — Configurability audit: the ninth instance, found by tooling
+
+**Context.** "We need to really scrape the site for these nested defaults. As
+per our directive. We need everything to be configurable. Imagine we are a high
+intensity lab with 10,000 samples a year."
+
+Eight times this session a fact was recorded correctly in one place and never
+carried to where it was used. Answering that with a list would have found the
+ninth and missed the tenth, so the deliverable is `tools/audit_configurable.py`
+— run it, and the shape is caught mechanically. Output: `CONFIG_AUDIT.md`.
+
+It reports four things: DEAD (UI writes, nothing reads), UNREACHABLE (engine
+reads, no UI writes), SPLIT KEY (same setting at a flat and a nested path), and
+hardcoded lab values. Three iterations were needed before the output was worth
+acting on, and each correction is itself the finding:
+
+- classifying by **directory** called `run_template` and `master_analyte_set`
+  dead when both are read, just not by the worker. Classify by access pattern.
+- a walk that descended only into `instrument_verification` examined 36 keys and
+  **never reached `qc_acceptance`** — the container the retired flat keys were
+  rehomed into, and therefore where a split was most likely to survive. SPLIT
+  KEY (0) meant "did not look". It now means clean: the deep walk agrees.
+- naming the data-keyed containers by hand produced 679 keys and 404 false DEAD
+  entries, nearly all one `analyte × matrix` cell. The data-vs-schema test is
+  now content-based, so a lab adding analytes doesn't degrade the audit.
+
+### Confirmed findings
+
+**`surrogate_is_chain` is dead — and it is the notation defect diagnosed by
+hand.** The FDA profile records which injection IS each labeled surrogate
+quantifies against; `method_profile_store.py:366` writes it and **nothing, in
+Python or TAL, ever reads it**. The engine instead asks a global
+`analyte_alias` table. That is why the surrogate/IS distinction did not carry
+into the analysis: "There is clearly a notation issue in the method profile
+which is not being carried over to the analysis." The profile was right; the
+consumer never looked. Ninth instance, same shape.
+
+**Seven settings the lab cannot reach**, ranked by whether the gap silently
+changes a reported number rather than by how easy the UI is:
+
+| Setting | Consequence | Only writer today |
+|---|---|---|
+| `tight_matrices` + `matrix_aliases` | selects the recovery tier — 80–120% vs 65–135%. Wrong tier = wrong pass/fail on a CoA | a migration script / nothing |
+| `unit_map` | reporting unit per method × matrix; §3 names it explicitly | seed constant |
+| `eis_matrix_overrides` | 1633A EIS limits, which §3 requires per analyte × matrix | seed constant |
+| `supported_matrices` | which matrices a method offers at all | seed constant |
+| `spec_overrides` | reverse-synced from core Specifications, not editable as PFAS config | `spec_reverse` |
+| `extraction_corrections.salt_factors` | per-analyte salt correction | seed constant |
+
+`master_analyte_set`, `display_analyte_set` and `matrix_uid_map` are **derived
+on purpose** (from the Method's services and the Sample Type UIDs). A UI writer
+for those would create the second source of truth §1.3 forbids; the tool now
+records them as derived rather than reporting them each run.
+
+**A live defect, not a style issue.** `method_profiles.py:466` ends the tier
+resolver with an unconditional `return QCRule(65.0, 135.0, rsd_max=25.0)`, and
+~59 sibling `tier.get("recovery_min", 40.0)` fallbacks do the same in miniature:
+when the profile is silent the code substitutes a plausible limit and nothing
+says so. `verify_against_method` exists as the "a human must check this"
+channel, but `qc_engine.py:618` only appends it to an issue that has **already
+failed** — so a substituted limit that the result PASSES against is invisible.
+That is the CCV bug's shape with the failure mode inverted: not a wrong number
+shown, but a wrong criterion silently met.
+
+**Known limit of the tool, stated so it isn't mistaken for coverage.** Where an
+engine iterates a container (`for key in qc_acceptance`), no literal-name scan
+can tell which leaves the loop body touches, so leaves under an iterated
+container are credited as read. The tool under-reports there rather than
+crying wolf; that trade is deliberate.
