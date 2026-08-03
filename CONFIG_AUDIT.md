@@ -1,6 +1,6 @@
 # Configurability audit
 
-`tools/audit_configurable.py` · 36 profile keys examined
+`tools/audit_configurable.py` · 109 profile keys examined
 
 ## Dead config (1)
 
@@ -10,13 +10,14 @@ The UI writes it; no engine code reads it. Editing it changes nothing.
 |---|---|
 | `surrogate_is_chain` | `src/senaite/pfas/method_profile_store.py:366` |
 
-## Unreachable config (6)
+## Unreachable config (7)
 
 The engine reads it; no UI writes it. The lab cannot change it.
 
 | key | evidence |
 |---|---|
 | `eis_matrix_overrides` | `pfas_pipeline/method_profiles.py:797` |
+| `extraction_corrections.salt_factors` | `src/senaite/pfas/browser/qcrules.py:165` |
 | `matrix_aliases` | `pfas_pipeline/method_profiles.py:426` |
 | `spec_overrides` | `src/senaite/pfas/spec_reverse.py:10`<br>`src/senaite/pfas/spec_reverse.py:138`<br>`src/senaite/pfas/spec_sync.py:179` |
 | `supported_matrices` | `src/senaite/pfas/matrix_ref.py:125`<br>`src/senaite/pfas/method_profile_store.py:108`<br>`src/senaite/pfas/method_profile_store.py:109` |

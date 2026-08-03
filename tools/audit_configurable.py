@@ -105,16 +105,25 @@ SKIP_FILES = {"seed_calibrations.py", "audit_configurable.py",
               "derive_qc_coherent_fixture.py", "relabel_run_from_worklist.py"}
 
 
-def walk(dirs):
+def walk(dirs, exts=(".py",)):
+    """Templates and JS read configuration too.
+
+    A Python-only scan overstates DEAD: a key consumed by a TAL template or by
+    the drag-and-drop surrogate-map editor has no Python reader and would be
+    reported as write-only.
+    """
     for d in dirs:
         base = os.path.join(ROOT, d)
         for dirpath, _dirnames, filenames in os.walk(base):
             if "__pycache__" in dirpath or "/tests" in dirpath:
                 continue
             for name in sorted(filenames):
-                if not name.endswith(".py") or name in SKIP_FILES:
+                if not name.endswith(exts) or name in SKIP_FILES:
                     continue
                 yield os.path.join(dirpath, name)
+
+
+READ_EXTS = (".py", ".pt", ".js")
 
 
 def read(path):
@@ -126,9 +135,9 @@ def rel(path):
     return os.path.relpath(path, ROOT)
 
 
-def _scan(dirs, patterns):
+def _scan(dirs, patterns, exts=(".py",)):
     hits = []
-    for path in walk(dirs):
+    for path in walk(dirs, exts):
         for n, line in enumerate(read(path).splitlines(), 1):
             stripped = line.strip()
             if stripped.startswith("#"):
@@ -149,7 +158,7 @@ def find_reads(key):
     return _scan(ALL_DIRS, [
         re.compile(r'\.get\(\s*["\']{0}["\']'.format(re.escape(key))),
         re.compile(r'\[\s*["\']{0}["\']\s*\](?!\s*=)'.format(re.escape(key))),
-    ])
+    ], exts=READ_EXTS)
 
 
 def find_writes(key):
@@ -161,22 +170,77 @@ def find_writes(key):
     ])
 
 
+MAX_DEPTH = 3
+
+# Containers whose keys are DATA, not settings — analyte names, matrix names,
+# lot codes. Descending into them enumerates the lab's content as if it were
+# schema and buries the real findings.
+DATA_KEYED = {
+    "spike_levels", "salt_factors", "matrix_factors", "cas_map", "unit_map",
+    "matrix_aliases", "matrix_uid_map", "eis_matrix_overrides",
+    "spec_overrides", "surrogate_map", "surrogate_is_chain", "isomer_sums",
+    "analyte_matrix_inclusion",
+}
+
+# Names alone can't keep up with a growing lab, so judge the CONTENTS too: a
+# dict keyed by analyte or matrix names is the lab's data, and enumerating it
+# as schema buries the findings. Naming only the containers I happened to know
+# produced 679 "keys" and 404 false DEAD entries, nearly all of them one
+# analyte x matrix cell.
+def _is_data_keyed(name, node):
+    if name in DATA_KEYED:
+        return True
+    if not isinstance(node, dict) or len(node) < 4:
+        return False
+    if len(node) > 12:
+        return True
+    lab_like = sum(1 for k in node
+                   if re.search(r"[ :/]|^\d", str(k)))
+    return lab_like * 2 > len(node)
+
+
 def profile_keys(profiles_path):
-    """Every settable key in the method profiles, flat and nested."""
+    """Every settable path in the method profiles, to MAX_DEPTH.
+
+    Descending only into instrument_verification examined 36 keys and never
+    reached qc_acceptance — the container migrate_profile_structure rehomed the
+    retired flat keys into, and therefore the one place a flat-vs-nested split
+    is most likely to survive. A shallow walk reports SPLIT KEY (0) by
+    construction, which reads as "clean" when it means "did not look".
+    """
     keys = {}
     data = {}
     if profiles_path and os.path.exists(profiles_path):
         with open(profiles_path, encoding="utf-8") as fh:
             data = json.load(fh)
+
+    def descend(node, prefix, method, depth):
+        if depth > MAX_DEPTH:
+            return
+        if isinstance(node, dict):
+            for key, value in node.items():
+                path = "{0}.{1}".format(prefix, key) if prefix else key
+                keys.setdefault(path, set()).add(method)
+                if _is_data_keyed(key, value):
+                    continue
+                descend(value, path, method, depth + 1)
+        elif isinstance(node, list):
+            # A list of settings objects (recovery tiers, calibration levels):
+            # the members share a shape, so collapse the index.
+            for item in node:
+                if isinstance(item, dict):
+                    descend(item, "{0}[]".format(prefix), method, depth)
+
     for method, profile in (data or {}).items():
-        if not isinstance(profile, dict):
-            continue
-        for key, value in profile.items():
-            keys.setdefault(key, set()).add(method)
-            if key == "instrument_verification" and isinstance(value, dict):
-                for sub in value:
-                    keys.setdefault("{0}.{1}".format(key, sub), set()).add(method)
+        if isinstance(profile, dict):
+            descend(profile, "", method, 1)
     return keys
+
+
+def _ancestors(key):
+    """Container paths above a key, nearest first."""
+    parts = key.replace("[]", "").split(".")
+    return [".".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
 
 
 def audit_keys(profiles_path):
@@ -185,7 +249,10 @@ def audit_keys(profiles_path):
     if not keys:
         return dead, unreachable, split, 0
 
-    nested_names = {k.split(".", 1)[1] for k in keys if "." in k}
+    nested_names = {}
+    for k in keys:
+        if "." in k:
+            nested_names.setdefault(k.rsplit(".", 1)[1].lower(), []).append(k)
 
     for key in sorted(keys):
         leaf = key.split(".")[-1]
@@ -199,12 +266,26 @@ def audit_keys(profiles_path):
         # A write inside a default/seed table is not the lab configuring it.
         editable = [w for w in writes
                     if "browser/" in w[0] and "method_profile_store" not in w[0]]
+        # An editor that writes the whole container back — `for key in qca:
+        # qca[key]["enabled"] = ...; profile["qc_acceptance"] = qca` — makes
+        # every leaf under it reachable without naming any of them. Matching
+        # leaf names alone would call those settings unreachable.
+        if not editable:
+            for ancestor in _ancestors(key):
+                if any("browser/" in w[0] for w in find_writes(ancestor)):
+                    editable = [("via the {0} editor".format(ancestor), 0, "")]
+                    break
         if writes and not reads:
-            dead.append((key, writes[:3]))
+            # The mirror of the container-writer case: an engine that iterates
+            # `for key in qc_acceptance` reads every leaf under it without
+            # naming one, so a literal-name scan sees no reader and calls a
+            # live setting dead.
+            if not any(find_reads(a) for a in _ancestors(key)):
+                dead.append((key, writes[:3]))
         elif reads and not editable:
             unreachable.append((key, reads[:3]))
-        if "." not in key and key in nested_names:
-            split.append((key, "instrument_verification.{0}".format(key)))
+        if "." not in key and key.lower() in nested_names:
+            split.append((key, ", ".join(sorted(nested_names[key.lower()]))))
     return dead, unreachable, split, derived, len(keys)
 
 
