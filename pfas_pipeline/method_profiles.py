@@ -411,22 +411,20 @@ def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM"):
 
     # New structure: tiers have analyte_group and matrix_scope keys
     if tiers and "analyte_group" in tiers[0]:
-        _FDA_NO_STD = {
-            "9Cl-PF3ONS", "11Cl-PF3OUdS", "PFDoS", "PFDS",
-            "PFNS", "PFODA", "PFPeS", "PFTrDA", "PFTrDS", "PFUnDS",
-        }
-        _FDA_KEY = {
-            "PFOS", "PFOA", "PFHxS", "PFNA",
-            "lr-PFOS", "br-PFOS", "lr-PFHxS", "br-PFHxS",
-        }
-        _FDA_TIGHT = {
-            "egg", "eggs", "meat", "muscle", "beef", "pork",
-            "poultry", "deer", "seafood", "fish", "shellfish",
-        }
+        # Membership comes from the analyte reference table and the method's
+        # own tight_matrices — not from lists hardcoded here. The hardcoded
+        # sets disagreed with the reference table on DONA and PFHpS, so both
+        # were judged at 65-135% when the method allows 40-140%.
+        from .analyte_alias import no_labeled_names, key_analyte_names
+        no_std = no_labeled_names()
+        key = key_analyte_names()
+        tight = {t.lower().strip()
+                 for t in (profile_data.get("tight_matrices") or [])}
+
         m = matrix.lower().strip()
-        is_no_std = analyte in _FDA_NO_STD
-        is_key = analyte in _FDA_KEY
-        is_tight = any(t in m for t in _FDA_TIGHT)
+        is_no_std = analyte in no_std
+        is_key = analyte in key
+        is_tight = bool(tight) and any(t in m or m in t for t in tight)
 
         for tier in tiers:
             ag = tier.get("analyte_group", "all")
@@ -935,16 +933,17 @@ def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
     Reads ``no_std_analytes`` from tier 3 of the method's recovery_tiers.
     Falls back to tier 3 of the inline FDA default if the profile isn't loaded.
     """
-    tiers = _profile_data_cache.get(method_id, {}).get("recovery_tiers", [])
-    if not tiers and method_id == "FDA_32PFAS":
-        # _DEFAULT_PROFILE_CACHE carries no recovery_tiers key, so indexing it
-        # raised KeyError and aborted the whole run for any profile whose
-        # recovery_tiers list is empty — which is the shipped FDA profile.
-        tiers = _DEFAULT_PROFILE_CACHE["FDA_32PFAS"].get("recovery_tiers", [])
-    for tier in tiers:
-        if tier.get("tier") == 3:
-            return frozenset(tier.get("no_std_analytes", []))
-    return frozenset()
+    # Membership is a property of the ANALYTE, not of a QC profile, so it is
+    # read from the analyte reference table. This used to read the retired
+    # `recovery_tiers` key — retired by migrate_profile_structure, hence always
+    # empty — so the N.C. qualifier never fired from this path at all.
+    from .analyte_alias import no_labeled_names
+    names = no_labeled_names()
+    if not names:
+        return frozenset()
+    # Scope to the method's own panel so 1633A-only analytes do not leak in.
+    panel = set(get_analyte_list(method_id) or [])
+    return frozenset(names & panel) if panel else frozenset(names)
 
 
 def get_is_list(method_id: str = "FDA_32PFAS") -> list:

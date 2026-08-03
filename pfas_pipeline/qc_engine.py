@@ -185,69 +185,121 @@ def rt_deviation_check(
 #   Flags if outside ±30% of expected (ion_ratio_tol_pct)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _ratio_pairs(observed, expected):
+    """[(obs, exp), ...] from the ion-ratio columns.
+
+    A compound with two qualifier ions reports both, pipe-separated
+    ("0.484|0.507" against "0.509|0.477"), so each transition is compared on
+    its own. Returns [] when either side is absent or unparseable.
+    """
+    NOT_CALCULATED = ("not calculated", "n.c.", "nc")
+
+    def split(v):
+        if v is None:
+            return []
+        out = []
+        for part in str(v).split("|"):
+            part = part.strip()
+            if part.lower() in NOT_CALCULATED:
+                out.append("uncalculable")
+                continue
+            try:
+                out.append(float(part))
+            except (TypeError, ValueError):
+                out.append(None)
+        return out
+
+    obs, exp = split(observed), split(expected)
+    if not obs or not exp:
+        return []
+    return [(o, e) for o, e in zip(obs, exp)
+            if o is not None and (e not in (None, 0) or o == "uncalculable")]
+
+
 def qual_quan_check(
     rows: list[InstrumentRow],
     analyte: str,
     non_iso_set: frozenset | None = None,
 ) -> list[QualQuanResult]:
     """
-    Compute Qual/Quan response ratio relative to calibration average.
-    Non-ISO analytes get N.C. qualifier.
-    Pass non_iso_set from get_non_iso_set(method_id) for method-aware behaviour.
+    Ion-ratio confirmation: the OBSERVED qualifier/quantifier ratio against the
+    EXPECTED one, within the method's tolerance.
+
+    This previously compared ``response_ratio`` — analyte area over IS area,
+    which tracks CONCENTRATION — against the mean of that quantity across every
+    calibration level, a span of 20 to 0.039 ng/mL. Any sample differing from
+    that arbitrary mean by more than the tolerance was flagged, which on a real
+    run meant 658 of 1254 rows. It was not an ion-ratio check at all.
+
+    Comparing the columns actually meant for it reproduces the instrument's own
+    Ion Ratio Check verdict exactly (474 pass / 23 fail on the 497 rows where
+    both are present). Rows carrying no ratio data are left unjudged rather
+    than silently passed.
     """
-    if non_iso_set is None:
-        from .method_profiles import get_non_iso_set
-        non_iso_set = get_non_iso_set()
-    is_non_iso = analyte in non_iso_set
-
-    std_rows = [r for r in rows
-                if r.compound_name == analyte
-                and r.sample_type == "Standard"
-                and r.response_ratio is not None]
-    if not std_rows:
-        return []
-
-    avg_rr = statistics.mean(r.response_ratio for r in std_rows)  # type: ignore
+    # non_iso_set is accepted for signature compatibility but no longer used:
+    # "no labelled standard" is a reporting qualifier applied in build_summary,
+    # not an ion-ratio verdict.
     tol = CRITERIA["ion_ratio_tol_pct"] / 100.0
 
     results: list[QualQuanResult] = []
     for r in [row for row in rows if row.compound_name == analyte]:
-        rr = r.response_ratio
-        if rr is None or rr == 0:
-            pct_of_cal = None
-            flag = None
-        else:
-            try:
-                pct_of_cal = rr / avg_rr
-            except ZeroDivisionError:
-                pct_of_cal = None
-            flag = None
-            if is_non_iso:
-                qualifier = QUALIFIER_NC
-                flag = QCFlag(
-                    source="Qual-Quan Table",
-                    analyte=analyte,
-                    injection_name=r.injection_name,
-                    value=_format_val(rr),
-                    issue="(N.C.)",
-                )
-            elif pct_of_cal is not None:
-                if abs(pct_of_cal - 1.0) > tol:
-                    flag = QCFlag(
-                        source="Qual-Quan Table",
-                        analyte=analyte,
-                        injection_name=r.injection_name,
-                        value=_format_val(pct_of_cal),
-                        issue="(QQ)",
-                    )
+        pairs = _ratio_pairs(r.ion_ratios, r.expected_ion_ratios)
+        flag = None
+        worst = None
+
+        if not pairs:
+            # No ion-ratio data for this row — say nothing rather than pass it.
+            results.append(QualQuanResult(
+                analyte=analyte, injection_name=r.injection_name,
+                concat_id=r.concat_id, response_ratio=None,
+                avg_response_ratio=None, pct_of_cal=None, flag=None))
+            continue
+
+        uncalculable = any(o == "uncalculable" for o, _e in pairs)
+        for obs, exp in pairs:
+            if obs == "uncalculable":
+                continue
+            dev = obs / exp
+            if worst is None or abs(dev - 1.0) > abs(worst - 1.0):
+                worst = dev
+        if worst is None:
+            worst = 1.0
+
+        if uncalculable:
+            # "Not calculated" means the qualifier ion was too small to
+            # integrate. That is a confirmation FAILURE when the analyte was
+            # actually detected — and nothing at all when it was not, because
+            # there is no peak to confirm. The instrument draws exactly this
+            # distinction: Fail on a detection, N/A on a blank.
+            detected = (reported_conc(r) is not None
+                        or getattr(r, "conc_qualifier", "") in ("BLoQ", "ALoQ"))
+            if not detected:
+                results.append(QualQuanResult(
+                    analyte=analyte, injection_name=r.injection_name,
+                    concat_id=r.concat_id, response_ratio=None,
+                    avg_response_ratio=None, pct_of_cal=None, flag=None))
+                continue
+            flag = QCFlag(
+                source="Qual-Quan Table", analyte=analyte,
+                injection_name=r.injection_name,
+                value="qualifier ion not calculable", issue="(QQ)",
+            )
+        elif abs(worst - 1.0) > tol:
+            flag = QCFlag(
+                source="Qual-Quan Table", analyte=analyte,
+                injection_name=r.injection_name,
+                value="{0:+.1f}% from expected ion ratio".format(
+                    (worst - 1.0) * 100.0),
+                issue="(QQ)",
+            )
 
         results.append(QualQuanResult(
             analyte=analyte,
             injection_name=r.injection_name,
             concat_id=r.concat_id,
-            response_ratio=rr,
-            avg_response_ratio=avg_rr,
-            pct_of_cal=pct_of_cal,
+            response_ratio=(pairs[0][0] if pairs[0][0] != "uncalculable" else None),
+            avg_response_ratio=(pairs[0][1] if pairs[0][1] not in (None, 0) else None),
+            pct_of_cal=worst,
             flag=flag,
         ))
 

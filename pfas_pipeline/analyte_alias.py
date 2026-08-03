@@ -49,6 +49,24 @@ _mod = _load()
 NAME_TO_KEYWORD = dict(getattr(_mod, "COMPOUND_NAME_TO_KEYWORD", {}) or {})
 
 
+def no_labeled_names() -> set:
+    """Display names of analytes with no commercially matched labelled standard.
+
+    This is the tier-3 (40-140%) membership. It used to be a hardcoded set in
+    method_profiles._resolve_fda_tier that disagreed with this table on DONA
+    and PFHpS — both in the FDA 32 panel, both judged at the stricter 65-135%
+    as a result.
+    """
+    fn = getattr(_mod, "get_no_labeled_names", None)
+    return set(fn()) if fn else set()
+
+
+def key_analyte_names() -> set:
+    """Display names of the regulatory priority analytes (tier 1)."""
+    fn = getattr(_mod, "get_key_analyte_names", None)
+    return set(fn()) if fn else set()
+
+
 def keyword_for(analyte_name: str) -> str:
     """SENAITE keyword for an instrument analyte name.
 
