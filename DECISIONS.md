@@ -3974,3 +3974,22 @@ engine iterates a container (`for key in qc_acceptance`), no literal-name scan
 can tell which leaves the loop body touches, so leaves under an iterated
 container are credited as read. The tool under-reports there rather than
 crying wolf; that trade is deliberate.
+
+**Decisions taken (2026-08-03).**
+
+1. **A missing tier refuses to judge.** Rather than substituting a plausible
+   limit, resolution of an unconfigured method × matrix raises. Chosen over
+   flagging-but-proceeding with the trade stated: this hard-blocks runs against
+   any profile that is not fully populated. That is the point — a criterion
+   nothing configured must not be quietly met. Landed LAST, after the settings
+   below are reachable, so a blocked lab has somewhere to go.
+2. **The engine reads `surrogate_is_chain` per method**, with the global
+   `analyte_alias` table demoted to fallback. The profile becomes the source of
+   truth for which IS quantifies each surrogate, which is what §3's surrogate
+   map requires and what the hand-diagnosed notation defect was about.
+3. **A "Matrices & Units" tab** in the Method Profile editor holds
+   `tight_matrices`, `matrix_aliases`, `supported_matrices`, `unit_map` and
+   `salt_factors` — all method × matrix facts. `eis_matrix_overrides` goes in
+   the existing 1633A-only pane. Reuses the §6B tab layout rather than adding a
+   raw key-value editor, which is the JSON authoring the drag-and-drop surrogate
+   map exists to avoid.
