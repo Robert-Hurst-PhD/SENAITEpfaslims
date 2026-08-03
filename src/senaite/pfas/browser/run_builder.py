@@ -91,11 +91,9 @@ class PFASRunBuilderView(BrowserView):
         return _first(self.request.form.get("batch_id", ""))
 
     def _batch(self, batch_id=None):
-        bid = batch_id or self.selected_batch()
-        try:
-            return self._portal()["batches"][bid]
-        except Exception:
-            return None
+        """Resolve a Batch by id, wherever it lives (see senaite.pfas.batch_ref)."""
+        from senaite.pfas.batch_ref import get_batch
+        return get_batch(self._portal(), batch_id or self.selected_batch())
 
     # ── method / extraction-log resolution (all dynamic) ─────────────────
     def batch_method(self, batch=None):
@@ -369,19 +367,27 @@ class PFASRunBuilderView(BrowserView):
                 pass
         # enrich: rows without a matrix resolve it from the sample's REAL
         # core SampleType (matrix varies per sample — §3 link, not a form input)
-        missing = [r for r in rows if not r.get("matrix")]
-        if missing:
-            try:
-                cat = getToolByName(self._portal(), "senaite_catalog_sample")
-                for r in missing:
-                    for br in cat(portal_type="AnalysisRequest",
-                                  getId=r["sample_id"]):
-                        st = br.getObject().getSampleType()
+        # Also pick up each sample's Client Sample ID. That is the field the
+        # importer joins an instrument export on, so a worklist that proposes
+        # anything else cannot round-trip: the analyst types the proposed name
+        # at the instrument and the result then matches no sample.
+        try:
+            cat = getToolByName(self._portal(), "senaite_catalog_sample")
+            for r in rows:
+                for br in cat(portal_type="AnalysisRequest",
+                              getId=r["sample_id"]):
+                    ar = br.getObject()
+                    if not r.get("matrix"):
+                        st = ar.getSampleType()
                         if st:
                             r["matrix"] = st.Title()
-                        break
-            except Exception:
-                pass
+                    try:
+                        r["client_sample_id"] = ar.getClientSampleID() or ""
+                    except Exception:
+                        r["client_sample_id"] = ""
+                    break
+        except Exception:
+            pass
         if not rows:
             # fallback: batch-linked samples; matrix = the REAL SampleType
             try:
@@ -393,6 +399,7 @@ class PFASRunBuilderView(BrowserView):
                         "sample_id": ar.getId(),
                         "matrix": st.Title() if st else "",
                         "spike": "",
+                        "client_sample_id": (ar.getClientSampleID() or ""),
                     })
             except Exception:
                 pass
@@ -428,7 +435,8 @@ class PFASRunBuilderView(BrowserView):
     def batches(self):
         out = []
         try:
-            for b in self._portal()["batches"].objectValues():
+            from senaite.pfas.batch_ref import list_batches
+            for b in list_batches(self._portal()):
                 out.append({"id": b.getId(), "title": b.Title() or b.getId()})
         except Exception as exc:
             logger.warning("batches: %s", exc)
@@ -605,7 +613,13 @@ class PFASRunBuilderView(BrowserView):
                 for i, r in enumerate(sample_rows):
                     mtx = r.get("matrix") or dom
                     sid = r["sample_id"]
-                    add(u"{0}-{1}".format(method_code, sid), "Sample",
+                    # Prefer the sample's Client Sample ID: it is what the
+                    # importer matches on, so this is the name that makes the
+                    # run round-trip. Fall back to the method-prefixed lab id
+                    # for samples that have none.
+                    csid = (r.get("client_sample_id") or "").strip()
+                    name = csid or u"{0}-{1}".format(method_code, sid)
+                    add(name, "Sample",
                         u"{0} · Sample {1} · {2} · {3}".format(
                             initials, sid, mtx or u"Lab", sample_date))
                     body_tick()

@@ -489,7 +489,8 @@ class PFASEGADExportView(BrowserView):
             # Batches are not reliably indexed in portal_catalog (SENAITE 2.x
             # uses its own catalogs) — resolve directly from the folder.
             try:
-                batch_obj = portal["batches"].get(batch_id)
+                from senaite.pfas.batch_ref import get_batch
+                batch_obj = get_batch(portal, batch_id)
             except Exception:
                 batch_obj = None
         if batch_obj is None:

@@ -507,7 +507,8 @@ class PFASDataReviewView(BrowserView):
             raw = IAnnotations(ws).get(u"senaite.pfas.logbook.coc")
             bid = (json.loads(raw).get("batch_id") or "").strip() if raw else ""
             if bid:
-                return self._portal()["batches"].get(bid)
+                from senaite.pfas.batch_ref import get_batch
+                return get_batch(self._portal(), bid)
         except Exception:
             pass
         return None
@@ -869,7 +870,8 @@ class PFASDataReviewView(BrowserView):
             if bid:
                 portal = getToolByName(self.context,
                                        "portal_url").getPortalObject()
-                batch = portal["batches"].get(bid)
+                from senaite.pfas.batch_ref import get_batch
+                batch = get_batch(portal, bid)
                 if batch is not None:
                     ars = [b.getObject() for b in cat(
                         portal_type="AnalysisRequest",
