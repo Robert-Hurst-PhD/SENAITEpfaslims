@@ -370,9 +370,26 @@ class RunQueue:
                         unfort = _get_conc(parent_inj, analyte, conc_lookup) or 0.0
                         recovery_pct = (fortified - unfort) / spike_ppt * 100.0
 
-                        raw_flag = recovery_check_profiled(
-                            profile, analyte, matrix, "LFSM", recovery_pct, lfsm_inj
-                        )
+                        if recovery_pct < 0:
+                            # Physically impossible: the fortified sample
+                            # measured LESS than the unfortified one. Reporting
+                            # it as "outside 65-135%" sends a reviewer to look
+                            # at recovery when the real question is whether the
+                            # spike went in, or whether the LFSM is paired with
+                            # the right parent.
+                            raw_flag = QCFlag(
+                                source="LFSM & LFSMD", analyte=analyte,
+                                injection_name=lfsm_inj,
+                                value="{0:.1f}%".format(recovery_pct),
+                                issue=("(REC) negative recovery — the spiked "
+                                       "sample measured lower than its "
+                                       "unspiked parent {0}".format(parent_inj)),
+                            )
+                        else:
+                            raw_flag = recovery_check_profiled(
+                                profile, analyte, matrix, "LFSM",
+                                recovery_pct, lfsm_inj
+                            )
                         flag = None
                         if raw_flag is not None:
                             # Normalise source so _CHECK_SOURCES mapping picks it up

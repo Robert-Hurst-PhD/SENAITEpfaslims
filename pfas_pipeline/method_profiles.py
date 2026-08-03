@@ -936,6 +936,34 @@ def get_analyte_list(method_id: str = "FDA_32PFAS") -> list:
     return []
 
 
+def get_reporting_unit(method_id: str, matrix: str) -> str:
+    """The unit results are reported in for this method x matrix, from the
+    profile's unit_map (Animal Feed -> ng/kg, Milk -> ng/mL)."""
+    data = _profile_data_cache.get(method_id, {}) or {}
+    return (data.get("unit_map") or {}).get(matrix, "") or ""
+
+
+def get_matrix_factor(method_id: str, matrix: str) -> "float | None":
+    """The method's configured multiplier for this matrix, or None.
+
+    Converts the concentration the instrument reports in the EXTRACT to the
+    concentration reported for the SAMPLE. It is per matrix because the
+    sample-size-to-final-volume ratio is, and it is configured in the Method
+    Profile rather than derived, because that ratio is the lab's SOP.
+
+    ``MethodProfile.sample_factor`` has resolved this correctly all along and
+    had no caller: the factor was configured, resolvable, and never applied.
+    """
+    try:
+        profile = get_profile(method_id)
+    except KeyError:
+        return None
+    try:
+        return profile.sample_factor(matrix)
+    except Exception:
+        return None
+
+
 def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
     """Return the frozenset of analyte display names that have no labeled std.
 

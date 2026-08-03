@@ -3745,3 +3745,52 @@ and how it converts to the extract concentration the instrument reports —
 2.5 g of sample into 1 mL of final extract, so a ppt-in-sample figure and a
 ng/mL-in-extract figure differ by the mass/volume ratio. Until that is settled
 the LFSM cannot be evaluated, and the review screen now says so.
+
+---
+
+## 2026-08-03 (units) — the matrix multiplier, applied to native analytes only
+
+**Rule from the lab:** every matrix has a set multiplier, configured under the
+method profile. Once data comes off the instrument the multiplier is applied to
+the concentration **for native analytes only**; everything else the instrument
+reports is already on its final basis.
+
+**The configuration already existed and had no caller.** `matrix_factors` is on
+the FDA profile, tied to core SampleType UIDs — Animal Feed 2.0, Eggs / Meat /
+Fish / Milk 0.5 — and `MethodProfile.sample_factor()` resolved it correctly.
+Nothing in the pipeline ever called it. Same shape as the dilution
+relationship, the tier membership, the analyte aliases and the pfas_role: a
+fact recorded properly in one place and never carried to where it is used.
+
+**Applied at import**, immediately after the CSV is read, so every consumer
+downstream — the summary, injection_results, the QC engine, the EDD — sees one
+consistent basis:
+
+* multiplied: `calculated_conc`, `measured_conc` and `reporting_limit` on rows
+  whose Compound Type is `Analyte`. The reporting limit has to move with the
+  concentration or every BLoQ verdict flips;
+* NOT multiplied: internal standards and surrogates, which are judged on their
+  own response, and the instrument's own `Total` rows, which are sums of
+  natives — multiplying those would double-count;
+* the converted row records its new unit from the profile's `unit_map`
+  (Animal Feed → ng/kg), so anything comparing against it knows what it is
+  looking at. That is what closed the LFSM unit mismatch: ng/kg and ppt are the
+  same scale, so a spike recorded in ppt is now directly comparable.
+
+A matrix with no configured factor is warned about rather than silently left on
+the extract basis.
+
+**What it changed on this run.** 748 native analyte rows converted; LFSM
+recovery now computes rather than reporting "not evaluated"; and the
+ground-truth check still passes, now asserting that a summed isomer pair equals
+the instrument's Total **times the factor** — which is a stronger check than
+before, because it verifies the conversion as well as the summation.
+
+**One more review-process fix it exposed.** Every LFSM recovery came out
+NEGATIVE — the fortified sample measuring less than its unfortified parent,
+which is physically impossible. Reporting that as "outside 65–135%" sends a
+reviewer to look at recovery when the real question is whether the spike went
+in, or whether the LFSM is paired with the right parent. It is now flagged as
+its own condition, naming the parent. On this dataset it is the fixture (the
+synthetic file does not model spiking); on real data it would be a genuine
+pairing or preparation failure.

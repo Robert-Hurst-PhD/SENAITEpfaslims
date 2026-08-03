@@ -42,6 +42,8 @@ from .constants import (
 )
 from .method_profiles import (
     reload_from_profiles,
+    get_matrix_factor as _get_matrix_factor,
+    get_reporting_unit as _get_unit,
     get_analyte_list as _get_analytes,
     get_non_iso_set as _get_non_iso_set,
     get_included_display_analytes as _get_included_analytes,
@@ -373,6 +375,42 @@ def run_pipeline(
     rows = load_instrument_csv(csv_path, profile=import_profile)
     logger.info("Loaded %d rows / %d injections from %s",
                 len(rows), len(group_by_injection(rows)), csv_path.name)
+
+    # Convert extract concentrations to the reported sample basis, using the
+    # method's configured per-matrix multiplier. Applied to NATIVE ANALYTES
+    # ONLY: internal standards and surrogates are judged on their own response
+    # and instrument-computed Total rows are sums of natives, so multiplying
+    # either would double-count. Everything else the instrument reports is
+    # already on its final basis.
+    matrix_factor = None
+    if method_id and matrix:
+        matrix_factor = _get_matrix_factor(method_id, matrix)
+    if matrix_factor and matrix_factor != 1.0:
+        converted = 0
+        for row in rows:
+            if (row.compound_type or "").strip() != "Analyte":
+                continue
+            for field in ("calculated_conc", "measured_conc",
+                          "reporting_limit"):
+                value = getattr(row, field, None)
+                if value is not None:
+                    setattr(row, field, value * matrix_factor)
+            # The row now carries a SAMPLE-basis concentration, so it must say
+            # so: everything downstream that compares against it — the spike
+            # level above all — reads this to know what it is looking at.
+            reported_unit = _get_unit(method_id, matrix)
+            if reported_unit:
+                row.conc_units = reported_unit
+            converted += 1
+        logger.info("Applied the %s matrix factor %.4g to %d native analyte "
+                    "rows; results are now on the sample basis (%s)",
+                    matrix, matrix_factor, converted,
+                    _get_unit(method_id, matrix) or "per method unit map")
+    elif method_id and matrix:
+        logger.warning("No matrix factor configured for %s / %s — results stay "
+                       "on the extract basis the instrument reported, which "
+                       "will not match a spike level recorded per sample.",
+                       method_id, matrix)
 
     # Dilution map — needed before the name check below.
     #
