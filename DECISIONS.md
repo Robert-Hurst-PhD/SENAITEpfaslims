@@ -3597,3 +3597,58 @@ when the caller has no security context, which is indistinguishable from "no suc
 batch". And `run_builder.sample_rows` matches a sample by Client Sample ID as well as
 lab id: filling in the extraction log had broken worklist naming, because the log
 names samples the way the bench writes them and the lookup only matched lab ids.
+
+---
+
+## 2026-08-03 (later) — six decisions arising from the implementation round
+
+**① Internal-standard check: ratio for dilutions, peak area for everything else.**
+The profile field says "% of ICAL average", which conventionally means the IS PEAK
+AREA; the check was using `Response Ratio`, which for an IS row is that IS divided
+by another IS. Both find real problems in the KCP run, but they disagree on scope:
+ratio flags 20 of 440, area flags 64 of 462 — and the extra 44 are almost entirely
+the dilutions, at 4.6–7.2% of the ICAL average. That is arithmetic, not a QC
+failure: a 1:10 dilution dilutes the internal standard too. Area is the right
+quantity for a neat injection; a dilution is judged on the ratio (equivalently,
+area corrected by the recorded factor), so it is still verified — which is what the
+dilution rules require — without failing by construction.
+
+**② Tight matrices: canonical title, plus an editable alias list on the profile.**
+Removing the hardcoded analyte sets also removed a hardcoded MATRIX set
+(`_FDA_TIGHT` = egg, meat, muscle, deer, …), and matching the profile's
+`tight_matrices` by substring narrowed behaviour: "deer muscle" no longer meets
+"Meat / Muscle", so a key analyte there dropped from tier 1 (80–120%) to tier 2
+(65–135%). `test_profiles.py` catches it. Matching is now exact against the
+method's own matrices, with an alias list per matrix that the lab edits — a tier is
+never assigned on a fuzzy string match, and the aliases are visible rather than
+buried in Python.
+
+**③ Components of a summed analyte are QC-checked; a component failure qualifies
+the sum.** `br-PFOS` and `br-PFHxS` are measured and summed into the reported
+PFOS/PFHxS, but the QC loop iterates the REPORTABLE panel, which they are not in —
+so 49 ion-ratio failures the instrument raised on them were invisible while their
+values still went into the reported result. On Egg-1, `br-PFOS` is 0.303 of the
+1.554 reported for PFOS: a fifth of the number, unconfirmed. The panel does not
+change; the components are checked and their flags carry onto the sum.
+
+**④ The EDD refuses to export when a matrix has no EGAD code.**
+`SAMPLE_TYPE` was `GW` on every field row of an Animal Feed batch — a hardcoded
+default reached because the profile's SampleType→code map is empty. The fallback is
+removed and an unmapped matrix blocks the export, naming the matrices, exactly as a
+PLACEHOLDER CAS already does. A wrong matrix code on a regulatory submission is
+worse than a late one. **The Animal Feed code is to be supplied by the lab.**
+
+**⑤ A manager-only add-on endpoint retires a superseded report.**
+`senaite.jsonapi` cannot delete an Attachment — the type has no `deactivate`
+transition — so every re-import stacked another copy (eight on WS-0005) and the
+worker could only say so. The add-on can delete where the API cannot, so the worker
+retires the previous "Batch Report" and the worksheet carries one current PDF.
+
+**⑥ A missing spike level is PROMPTED FOR, not skipped and not a hard block.**
+When neither the extraction pedigree nor the method carries a level, the LFSM was
+skipped — silently, until this round added a log line. Instead the reviewer is
+prompted to enter it and the data is still evaluated once it is there. The entered
+value is written to the batch's extraction pedigree with who and when, alongside a
+separate manager action to also set it as the method's nominal level — so the batch
+records what THIS run was spiked with, and fixing the method-wide gap stays a
+deliberate, permissioned act rather than a side effect of one batch's review.
