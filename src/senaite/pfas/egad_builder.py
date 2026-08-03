@@ -548,9 +548,13 @@ class EGADBuilder(object):
         egad_qc_type = self._translate_qc_type(our_qc_type)
         is_qc_sample = egad_qc_type != "NA"
 
-        # For QC samples: AQ (aqueous), SAMPLE_POINT_NAME="QC", SCM="NA"
+        # A QC sample carries the matrix of the batch it belongs to. It was
+        # hardcoded to AQ (aqueous) regardless — so a matrix spike extracted
+        # from feed alongside the field samples was submitted as aqueous while
+        # those samples went as FE. QC_TYPE is what marks a row as QC; the
+        # matrix column should say what the matrix was.
         if is_qc_sample:
-            edd_sample_type = "AQ"
+            edd_sample_type = sample_type_code
             edd_spn = "QC"
             edd_scm = "NA"
             edd_location = "NA"

@@ -3794,3 +3794,60 @@ in, or whether the LFSM is paired with the right parent. It is now flagged as
 its own condition, naming the parent. On this dataset it is the fixture (the
 synthetic file does not model spiking); on real data it would be a genuine
 pairing or preparation failure.
+
+---
+
+## 2026-08-03 (final) — QC matrix code, and a fixture that can prove the QC path
+
+**QC rows carry the batch's matrix code.** `egad_builder` forced `AQ` on any row
+with a QC type, so a matrix spike extracted from feed alongside the field
+samples was submitted as aqueous while those samples went as `FE`. The QC_TYPE
+column is what marks a row as QC; the matrix column should say what the matrix
+was. All 224 rows now carry `FE`, with QC_TYPE `LB` / `MS` / `MSD` identifying
+them. Animal Feed is `FE` in both EDD profiles, confirmed.
+
+**A QC-coherent companion fixture.** The training export cannot demonstrate any
+rule that relates one injection to another — spiking, recovery, RPD, dilution
+agreement, IS stability — because it was produced by scaling values rather than
+simulating chemistry:
+
+    spiking       LFSM higher than its parent for 11 analytes, LOWER for 12
+    dilution      median dil/neat 7.18 (target ~1.0), range 6x to 514x
+    injection IS  13C4-PFOA neat/dil 9.71 (target ~1.0)
+
+`tools/derive_qc_coherent_fixture.py` rewrites ONLY those relationships and
+leaves the chromatography, retention times, ion ratios, qualifiers and every
+calibration injection untouched: LFSM = parent + spike, the duplicate + 3%, a
+dilution that agrees with its neat once the sample factor is applied,
+surrogates diluted by the factor and the injection IS held constant. Both files
+are kept — the original proves import and reporting, the derived one proves QC.
+
+**Three defects it immediately exposed, none of which the original data could
+have shown:**
+
+* **LFSMD was never evaluated.** The duplicate had to match the literal
+  `"; LFSM " … " Dup."` naming — the same hardcoded convention that had stopped
+  LFSM being evaluated. It is now paired with its LFSM through the extraction
+  pedigree: the two spiked injections that share a parent.
+* **The IS row could never pass.** Only FLAGGED internal-standard results were
+  recorded on the batch, so `qc_results` held failures and nothing else — the
+  QC Summary's IS row was structurally incapable of showing a pass however good
+  the run was. Every sibling check (RT, ion ratio, calibration) records all its
+  results; IS was the odd one out. 462 results now, 436 passing.
+* **A `(ALoQ)`-suffixed value broke the derivation itself**, which is worth
+  recording because it is the same parsing trap the importer had: a bare
+  `float()` on `"20.1268 (ALoQ)"` returns nothing, so five analytes silently got
+  the spike amount with no parent contribution.
+
+**Where the QC path now stands on the coherent fixture:**
+
+| | results | passing |
+|---|---|---|
+| LFSM | 34 | 34 |
+| LFSMD | 34 | 34 (RPD 3.9–7.6%) |
+| MB | 34 | 34 |
+| IS | 462 | 436 |
+
+The QC Summary gate reads **FAIL — 5 failing QC result(s) across IS**, which is
+correct: those failures are real, inherited from the original chromatography,
+and were never touched by the derivation.
