@@ -1,0 +1,44 @@
+<tal:report>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       PFAS QC Review Report — the reviewer and auditor counterpart to the
+       Certificate of Analysis. Registered through the same plone:static
+       resource directory, so it appears in the impress picker as
+       "senaite.pfas:QCReviewReport.pt" and is chosen instead of the CoA when
+       an in-depth record is wanted.
+
+       Where the CoA answers "what was the result", this answers "why should
+       anyone believe it": the criteria actually applied, every QC result
+       against them, the reagent chain behind each number, the run against its
+       plan, and every per-injection measurement.
+
+       Built ON core impress the same way the CoA is — the controls, JS, CSS,
+       header and footer come from core verbatim. The body is supplied by
+       @@pfas-qc-review-report, which delegates to the Data Review view rather
+       than recomputing anything, so screen and paper cannot drift apart.
+       ══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- REPORT CONTROLS -->
+  <tal:t replace="structure python:view.render_controls(context, **options)" />
+
+  <!-- REPORT JS -->
+  <tal:t replace="structure python:view.render_js(context, **options)" />
+
+  <!-- REPORT CSS -->
+  <tal:t replace="structure python:view.render_css(context, **options)" />
+
+  <!-- REPORT HEADER -->
+  <tal:t replace="structure python:view.render_header(context, **options)" />
+
+  <!-- THE REVIEW BODY -->
+  <tal:t replace="structure python:context.restrictedTraverse('@@pfas-qc-review-report')()" />
+
+  <!-- REPORT FOOTER -->
+  <tal:t replace="structure python:view.render_footer(context, **options)" />
+
+  <!-- CONTROLLED-DOCUMENT STAMP — same identity block the CoA carries, so a
+       reviewer copy is as traceable to its revision as the client's is. -->
+  <tal:stamp define="att python:context.restrictedTraverse('@@pfas-coa-attestation');"
+             replace="structure python:att.render_stamp(context)" />
+
+</tal:report>

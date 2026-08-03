@@ -88,6 +88,17 @@ def record_publication(ar):
     }
     log.append(entry)
     ann[PUBLICATION_LOG_KEY] = log
+
+    # Freeze the reviewer report against this revision. Regenerating it later
+    # would show the data as it is THEN; an auditor asking about a certificate
+    # issued months ago needs what was true when it was issued.
+    try:
+        from senaite.pfas.browser.qc_review_report import (
+            snapshot_for_publication)
+        snapshot_for_publication(ar, revision)
+    except Exception as exc:      # never break the publish transition
+        logger.error("controlled-pub: QC review snapshot failed for %s: %s",
+                     api.get_id(ar), exc)
     logger.info("controlled-pub: %s issued (rev %s%s)",
                 entry["report_id"], revision,
                 ", reason not recorded" if reason_missing else "")

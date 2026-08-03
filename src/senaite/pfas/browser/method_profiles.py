@@ -142,18 +142,30 @@ class PFASMethodProfileEditView(BrowserView):
     def portal_url(self):
         return _portal(self.context).absolute_url()
 
-    # Convenience accessors for individual profile sections
+    # Convenience accessors for individual profile sections.
+    #
+    # These read the NESTED instrument_verification structure, which is what
+    # the engine enforces. They used to read the retired flat keys, so the
+    # editor showed — and saved — values nothing applied: the CCV window said
+    # 72-128% here while every run was judged against the nested 70-130%.
+    def _iv_section(self, nested, legacy):
+        profile = self.profile()
+        section = (profile.get("instrument_verification") or {}).get(nested)
+        if section:
+            return section
+        return profile.get(legacy, {})
+
     def cal(self):
-        return self.profile().get("calibration", {})
+        return self._iv_section("calibration", "calibration")
 
     def ccv(self):
-        return self.profile().get("ccv", {})
+        return self._iv_section("ccv", "ccv")
 
     def is_section(self):
-        return self.profile().get("is", {})
+        return self._iv_section("is_response", "is")
 
     def confirmation(self):
-        return self.profile().get("confirmation", {})
+        return self._iv_section("confirmation", "confirmation")
 
     def duplicate(self):
         return self.profile().get("duplicate", {})
@@ -672,7 +684,8 @@ class PFASMethodProfileEditView(BrowserView):
                                          profile.get("surrogate_is", "")).strip()
 
         # Calibration
-        cal = profile.setdefault("calibration", {})
+        cal = profile.setdefault(
+            "instrument_verification", {}).setdefault("calibration", {})
         r2 = _float("cal_r2_min")
         if r2 is not None:
             cal["r2_min"] = r2
@@ -680,8 +693,13 @@ class PFASMethodProfileEditView(BrowserView):
         cal["point_pct_dev_max"]     = _float("cal_point_pct_dev_max")
         cal["low_point_pct_dev_max"] = _float("cal_low_point_pct_dev_max")
 
+        # Every section below is written into instrument_verification, which is
+        # the structure the engine reads. Writing the flat keys meant an edit
+        # here never reached a QC decision.
+        iv = profile.setdefault("instrument_verification", {})
+
         # CCV
-        ccv = profile.setdefault("ccv", {})
+        ccv = iv.setdefault("ccv", {})
         freq = _int("ccv_frequency")
         if freq is not None:
             ccv["frequency"] = freq
@@ -691,7 +709,7 @@ class PFASMethodProfileEditView(BrowserView):
         ccv["low_level_max"] = _float("ccv_low_level_max")
 
         # IS / surrogate response
-        is_ = profile.setdefault("is", {})
+        is_ = iv.setdefault("is_response", {})
         is_["vs_ical_avg_min"] = _float("is_vs_ical_avg_min")
         is_["vs_ical_avg_max"] = _float("is_vs_ical_avg_max")
         is_["vs_last_ccv_min"] = _float("is_vs_last_ccv_min")
@@ -699,7 +717,7 @@ class PFASMethodProfileEditView(BrowserView):
         is_["notes"]           = f.get("is_notes", "").strip()
 
         # Chromatographic confirmation
-        conf = profile.setdefault("confirmation", {})
+        conf = iv.setdefault("confirmation", {})
         conf["rrt_tol_pct"]              = _float("conf_rrt_tol_pct")
         conf["rt_tol_abs_min"]           = _float("conf_rt_tol_abs_min")
         conf["ion_ratio_tol_pct"]        = _float("conf_ion_ratio_tol_pct")

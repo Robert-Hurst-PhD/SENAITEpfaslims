@@ -181,6 +181,16 @@
       permission="zope2.View"
       />
 
+  <!-- QC Review Report — the reviewer/auditor counterpart to the client CoA.
+       Same permission as Data Review: it shows the same information that
+       screen already shows, to the same people. -->
+  <browser:page
+      name="pfas-qc-review-report"
+      for="*"
+      class=".qc_review_report.PFASQCReviewReportView"
+      permission="zope2.View"
+      />
+
   <!-- PFAS Data Review — analyst checklist for batch release sign-off -->
   <browser:page
       name="pfas-data-review"

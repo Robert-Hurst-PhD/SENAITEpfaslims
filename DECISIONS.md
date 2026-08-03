@@ -3851,3 +3851,54 @@ have shown:**
 The QC Summary gate reads **FAIL — 5 failing QC result(s) across IS**, which is
 correct: those failures are real, inherited from the original chromatography,
 and were never touched by the derivation.
+
+---
+
+## 2026-08-03 (reporting) — a reviewer/auditor report, and the last half of the config disconnect
+
+**Decisions taken:** the in-depth report is generated at publish time and
+retained against that revision; it is readable by anyone who can already see
+Data Review; and it carries the full per-injection appendix, not a summary.
+
+**No new machinery was needed.** `templates/reports/` is already registered as a
+`senaite.impress.reports` resource directory, so a sibling `.pt` appears in the
+publish picker automatically — that is the toggle:
+
+    senaite.pfas:CertificateOfAnalysis.pt     the client's certificate
+    senaite.pfas:QCReviewReport.pt            the reviewer's record
+
+**Every section delegates to the Data Review view** — `checklist_status`,
+`get_qc_summary`, `spike_qc_page`, `get_traceability_tree`, `get_final_data`,
+`_injection_rows`. Deliberately: this project's recurring defect has been a fact
+recorded correctly in one place and never carried to where it is used, and a
+report that recomputed the QC matrix would have become the next instance of it
+the first moment one side changed.
+
+Ten sections plus two appendices: run identity (including the matrix factor and
+reporting unit), the criteria applied, the release gates with verdicts and
+reasons, calibration curves against the r² criterion, the QC matrix, spike QC,
+the reagent/standard chain, run against plan, reported results, publication
+history and deviations — then every flagged measurement, then all 1254.
+
+At publish time `record_publication` freezes the rendered report against the
+revision, so revision 1 keeps showing what was true when the client's
+certificate was issued rather than what is true now.
+
+**Building it exposed the other half of the migration-residue defect, still
+live.** The engine reads `instrument_verification.*`; the Method Profile
+**editor read and wrote the retired FLAT keys**. So the CCV window displayed and
+saved in the UI was 72–128% while every run was judged against the nested
+70–130% — a manager editing an acceptance limit changed a value nothing
+enforced. The editor now reads and writes the enforced structure, and the lab's
+72–128% has been carried across rather than lost.
+
+That is the eighth instance of the same shape, and the first one where the UI
+was the half that was wrong. The report printing "Method Profile ·
+instrument_verification.ccv" beside each criterion is what makes the next one
+visible.
+
+**Two small defects the render caught:** `restrictedTraverse` on a
+`unicode_literals` string walks the view name one character at a time (the same
+Py2 trap as the cookie value earlier), and TAL evaluates `tal:define` before
+`tal:repeat` on the same element, so a cell lookup beside a loop variable never
+sees it.
