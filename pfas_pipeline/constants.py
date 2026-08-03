@@ -48,7 +48,10 @@ QUALIFIER_REC  = "REC"      # review recovery
 
 _DEFAULT_CRITERIA = {
     # Calibration curve
-    "cal_r2_min":            0.995,
+    # No global default: Q-005 established r2 is per-method, set in the Method
+    # Profile UI. 0.990 is FDA 32-PFAS's value and is only a floor for a
+    # profile that somehow carries none.
+    "cal_r2_min":            0.990,
     "cal_pct_dev_max":       0.20,    # ±20% as fraction
     # CCV / ICV
     "ccv_pct_dev_max":       0.20,    # ±20% as fraction (not yet used by basic engine)

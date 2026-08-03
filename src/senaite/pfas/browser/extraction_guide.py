@@ -451,9 +451,14 @@ class PFASExtractionGuideView(BrowserView):
                         else reagents
                     if entry not in bucket:
                         bucket.append(entry)
-            if reagents and not data.get("reagents"):
+            # The guide OWNS these two tables — they are derived from its own
+            # per-stage scans, so replaying the stages must refresh them.
+            # Preserving them instead left stale lots behind after a correction.
+            # What must survive untouched is `samples`, which the analyst fills
+            # in on the FM-ENV-252 form.
+            if reagents:
                 data["reagents"] = reagents
-            if standards and not data.get("standards"):
+            if standards:
                 data["standards"] = [
                     {"name": e["name"], "lot": e["lot"],
                      "conc": "", "volume": e["volume"]} for e in standards]

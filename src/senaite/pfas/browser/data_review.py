@@ -502,7 +502,28 @@ class PFASDataReviewView(BrowserView):
         }
 
     def _linked_batch(self, ws):
-        """The SENAITE Batch this worksheet's CoC names (D44#5 join)."""
+        """The SENAITE Batch this worksheet's analyses belong to.
+
+        Derived structurally: every analysis knows its sample, and every sample
+        knows its batch. This used to read a `batch_id` out of the CoC logbook
+        — a field the CoC schema does not define, so the join was always None
+        and the traceability gate saw nothing however carefully the logbooks
+        had been filled in.
+        """
+        try:
+            counts = {}
+            for analysis in (ws.getAnalyses() or []):
+                try:
+                    batch = analysis.getRequest().getBatch()
+                except Exception:
+                    continue
+                if batch is not None:
+                    counts[batch] = counts.get(batch, 0) + 1
+            if counts:
+                return max(counts, key=counts.get)
+        except Exception:
+            pass
+        # Legacy: a CoC that does carry a batch_id still resolves.
         try:
             raw = IAnnotations(ws).get(u"senaite.pfas.logbook.coc")
             bid = (json.loads(raw).get("batch_id") or "").strip() if raw else ""
