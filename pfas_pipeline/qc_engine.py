@@ -59,59 +59,76 @@ def is_raw_check(
     dilutions: "dict | None" = None,
 ) -> list[ISRawResult]:
     """
-    Internal-standard response for one IS compound, against the ICAL average.
+    Labelled-compound response against the ICAL average.
 
-    The quantity compared is the IS PEAK AREA — which is what the method
-    profile's ``is_response: vs_ical_avg`` describes. It was comparing
-    ``response_ratio``, this IS divided by another IS, so a failure never said
-    which of the two had moved.
+    The quantity is the PEAK AREA, which is what the method profile's
+    ``is_response: vs_ical_avg`` describes. It was comparing ``response_ratio``
+    — this compound divided by another — so a failure never said which of the
+    two had moved.
 
-    A DILUTION is judged on the ratio instead. Diluting an extract dilutes its
-    internal standard too, so a 1:10 dilution has a tenth of the area by
-    construction — on this run that put every dilution at 4.6–7.2% of the ICAL
-    average, failing arithmetic rather than QC. The ratio normalises it out, so
-    the dilution's IS is still verified, which is what the dilution rules
-    require.
+    Dilution is handled by ROLE, not by injection type, because the two kinds
+    of labelled compound behave differently:
+
+      * a SURROGATE (extracted internal standard) is added before extraction,
+        so a 1:10 dilution dilutes it with the sample and its area falls by the
+        factor. Its area is corrected by the recorded factor before comparison,
+        recovering what it would have read undiluted.
+
+      * the INJECTION INTERNAL STANDARD is added at reconstitution, AFTER the
+        dilution, so its area does NOT scale. It is compared as measured, and a
+        drop in a dilution is a real finding rather than arithmetic.
+
+    Both roles are recorded on the AnalysisService (`pfas_role`) and in
+    analyte_reference; the pipeline previously held a flat list with no roles
+    and applied one rule to all of them.
     """
-    dilutions = dilutions or {}
+    from .analyte_alias import injection_is_names
 
-    def basis(row):
-        if row.injection_name in dilutions:
-            return row.response_ratio
+    dilutions = dilutions or {}
+    is_injection_standard = is_compound in injection_is_names()
+
+    def corrected(row):
+        """Area, undiluted-equivalent."""
+        if row.response is None:
+            return None
+        entry = dilutions.get(row.injection_name)
+        if entry and not is_injection_standard:
+            factor = entry.get("factor")
+            if factor:
+                return row.response * factor
         return row.response
 
     std_rows = [r for r in rows
                 if r.compound_name == is_compound
-                and r.sample_type == "Standard"]
-    std_area = [r.response for r in std_rows if r.response is not None]
-    std_ratio = [r.response_ratio for r in std_rows
-                 if r.response_ratio is not None]
-    if not std_area and not std_ratio:
+                and r.sample_type == "Standard"
+                and r.response is not None]
+    if not std_rows:
         return []
-
-    avg_area = statistics.mean(std_area) if std_area else None
-    avg_ratio = statistics.mean(std_ratio) if std_ratio else None
+    avg_response = statistics.mean(r.response for r in std_rows)
+    if not avg_response:
+        return []
 
     tol = CRITERIA["is_response_drift_pct"]
 
     results: list[ISRawResult] = []
     for r in [row for row in rows if row.compound_name == is_compound]:
-        is_dilution = r.injection_name in dilutions
-        avg = avg_ratio if is_dilution else avg_area
-        value = basis(r)
-
+        value = corrected(r)
         pct_from_cal = None
         flag = None
-        if value is not None and avg:
-            pct_from_cal = value / avg
+        if value is not None:
+            pct_from_cal = value / avg_response
             if abs(pct_from_cal - 1.0) > tol:
+                note = ""
+                if r.injection_name in dilutions:
+                    note = (" (injection IS — not diluted)"
+                            if is_injection_standard
+                            else " (surrogate, dilution-corrected)")
                 flag = QCFlag(
                     source="SUR-IS Response Table",
                     analyte=is_compound,
                     injection_name=r.injection_name,
                     value="{0:.1f}% of ICAL average{1}".format(
-                        pct_from_cal * 100.0,
-                        " (ratio basis — dilution)" if is_dilution else ""),
+                        pct_from_cal * 100.0, note),
                     issue="(SUR)",
                 )
 
@@ -121,7 +138,7 @@ def is_raw_check(
             concat_id=r.concat_id,
             response=value,
             pct_from_cal=pct_from_cal,
-            average_response=avg,
+            average_response=avg_response,
             flag=flag,
         ))
 

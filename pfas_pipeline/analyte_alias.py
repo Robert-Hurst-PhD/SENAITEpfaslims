@@ -67,6 +67,35 @@ def key_analyte_names() -> set:
     return set(fn()) if fn else set()
 
 
+def _labelled_by_role(role: str) -> set:
+    """Display names of labelled compounds with the given pfas_role.
+
+    analyte_reference.INTERNAL_STANDARDS rows are
+    (keyword, display_name, quantifies, role) — the role has been recorded all
+    along, and SENAITE carries it on the AnalysisService too (13C4-PFOA is
+    injection_is, the other 26 are surrogate). The pipeline kept a flat list
+    with no roles and so treated them identically.
+    """
+    rows = getattr(_mod, "INTERNAL_STANDARDS", None) or []
+    out = set()
+    for row in rows:
+        if len(row) > 3 and (row[3] or "").strip().lower() == role:
+            out.add(row[1])
+    return out
+
+
+def injection_is_names() -> set:
+    """The injection internal standard(s): added at reconstitution, AFTER any
+    dilution, so their response does not scale with the dilution factor."""
+    return _labelled_by_role("injection_is")
+
+
+def surrogate_names() -> set:
+    """Extracted internal standards / surrogates: added BEFORE extraction, so
+    they are diluted along with the sample."""
+    return _labelled_by_role("surrogate")
+
+
 def keyword_for(analyte_name: str) -> str:
     """SENAITE keyword for an instrument analyte name.
 

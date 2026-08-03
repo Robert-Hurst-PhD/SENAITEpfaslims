@@ -84,20 +84,28 @@ def _build_criteria_from_profile(profile):
     """Map a method profile dict onto the flat CRITERIA keys the engine uses."""
     crit = dict(_DEFAULT_CRITERIA)
 
-    cal = profile.get("calibration", {})
+    # Read the NESTED instrument_verification structure first. The flat keys
+    # (calibration, is, confirmation) were retired by
+    # migrate_profile_structure and are all null on a migrated profile, so
+    # every threshold silently fell back to _DEFAULT_CRITERIA — which happened
+    # to carry the same numbers, masking the disconnect. Editing the value in
+    # the Method Profile UI had no effect on the engine at all.
+    iv = profile.get("instrument_verification") or {}
+
+    cal = iv.get("calibration") or profile.get("calibration", {})
     if cal.get("r2_min") is not None:
         crit["cal_r2_min"] = float(cal["r2_min"])
     if cal.get("point_pct_dev_max") is not None:
         # Profile stores %, engine expects fraction
         crit["cal_pct_dev_max"] = float(cal["point_pct_dev_max"]) / 100.0
 
-    is_ = profile.get("is", {})
+    is_ = iv.get("is_response") or profile.get("is", {})
     if is_.get("vs_ical_avg_max") is not None and is_.get("vs_ical_avg_min") is not None:
         # Engine uses a symmetric ±drift fraction; derive from the wider bound
         avg_max = float(is_["vs_ical_avg_max"])
         crit["is_response_drift_pct"] = (avg_max - 100.0) / 100.0
 
-    conf = profile.get("confirmation", {})
+    conf = iv.get("confirmation") or profile.get("confirmation", {})
     if conf.get("ion_ratio_tol_pct") is not None:
         crit["ion_ratio_tol_pct"] = float(conf["ion_ratio_tol_pct"])
     if conf.get("rt_tol_abs_min") is not None:
