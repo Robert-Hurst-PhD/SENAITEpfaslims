@@ -4248,3 +4248,25 @@ after: LFSM tier 1 80–120, Dup RPD 20, CCV 72–128 (the lab's configured valu
 
 **Audit now: DEAD 0, UNREACHABLE 0, SPLIT KEY 0, UI-ONLY 2** (both the Run
 Builder's own template, judged legitimate), LEGACY 0, DERIVED 3.
+
+**Re-verified after the migration mutated live profiles.** The migration deleted
+`ccv`, `is`, `calibration` and `confirmation` from all three stored profiles, and
+`_ccv_rule` now raises rather than defaulting — so the two-state sweep was re-run
+rather than inferred from three spot checks: **4251 combinations configured, 153
+on the default cache, 0 refused in either**, now including `ccv_rule`,
+`calibration_rule` and `is_rule`. `instrument_verification.ccv/calibration/is`
+confirmed present for all three methods afterwards.
+
+One behaviour change worth stating: the migration now iterates `list_method_ids`,
+which returns Dexterity ids when that folder exists, so a method present ONLY in
+the annotation store would be skipped. Verified today that both stores hold the
+same three ids, so nothing is orphaned — but that is a fact about current data,
+not a guarantee.
+
+**Remaining hardcoded lab values: 118.** 86 are module-level tables (EDD column
+sets, calibration ladders, qualifier maps), 31 are inline acceptance fallbacks.
+Of those 31, the ones that can still change a reported verdict are in
+`confirmation_rule()` — `ion_ratio_tol_pct` 50.0, `sn_quan_min` 3.0,
+`sn_confirm_min` 1.0 — the same silent-substitution shape as the recovery
+fallbacks, not yet converted. The rest are facility-QC thresholds (evaluated
+independently of batch release, §10) and setup-form defaults.
