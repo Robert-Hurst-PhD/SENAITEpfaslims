@@ -4407,3 +4407,18 @@ generic send failure, because those need different people to fix them.
 
 The deviation is raised and the report is held either way. Notification is the
 only part that waits on configuration; the hold does not.
+
+## 2026-08-04 — direction after the E2E re-run
+
+1. **Reissue affected certificates.** The salt correction makes every PFOA
+   result issued before 2026-08-04 3.6% high; this is treated as a reportable
+   error rather than a change of method in force. Scope has to be established
+   first (which published CoAs contain a salted analyte), then recompute and
+   republish through the controlled-document revision path.
+2. **The ORIGINAL instrument export is canonical for testing.** Its quirks are
+   what real data does — three CCVs sharing one injection name is what exposed
+   the QC persistence defect, and the relabelled fixture masked it. The
+   relabelled file is retained only for Run Builder naming tests. SENAITE
+   ClientSampleIDs stay as they are.
+3. **Next: close F2, then complete CoA and EDD** — one method validated from
+   instrument file to published certificate and electronic deliverable.
