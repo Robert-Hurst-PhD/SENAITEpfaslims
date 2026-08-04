@@ -233,6 +233,12 @@ class SummaryResult:
     neat_result:      Optional[float]   = None
     neat_qualifier:   str               = ""
     dilution_factor:  Optional[float]   = None
+    # A reviewer finding, deliberately NOT in `flags`: flags are folded into
+    # the displayed value by display() below and pushed to Analysis Remarks,
+    # both of which reach the client certificate. "the method profile named a
+    # different surrogate than the instrument used" is a question for the
+    # reviewer, which is what the QC Review Report exists to carry.
+    is_mismatch:      str               = ""
 
     def display(self) -> str:
         """Replicate the Summary Sheet display format from row 5 of Sheet 5."""

@@ -64,7 +64,10 @@ def test_mismatch_is_detected_not_silently_resolved():
         return P.build_summary(batch)
 
     def ismap_flags(summary):
-        return {f for r in summary for f in r.flags if f.startswith("ISMAP")}
+        # is_mismatch, NOT flags: flags are folded into the displayed value and
+        # pushed to Analysis Remarks, both of which reach the client CoA. A
+        # reviewer finding must not print on the client's certificate.
+        return {r.is_mismatch for r in summary if r.is_mismatch}
 
     assert not ismap_flags(summarise()), "profile and instrument should agree"
 
@@ -75,6 +78,10 @@ def test_mismatch_is_detected_not_silently_resolved():
                                      "surrogate_is": "M5PFNA"}]
         flags = ismap_flags(summarise())
         assert any("M5PFNA" in f for f in flags), flags
+        # and never on the client surface
+        batch_summary = summarise()
+        assert not [f for r in batch_summary for f in r.flags
+                    if "ISMAP" in f], "mismatch leaked into the value string"
     finally:
         profile["surrogate_map"] = original
 

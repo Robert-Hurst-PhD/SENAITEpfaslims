@@ -574,10 +574,10 @@ class FDA32PFASProfile(MethodProfile):
 
     def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
         if qc_type in ("SUR", "surrogate"):
-            return QCRule(50.0, 150.0,
-                          notes="Surrogate recovery is guidance only "
-                                "(FDA §2024.10.1(5))",
-                          is_guidance_only=True)
+            return _method_text_rule(
+                self._profile_data(), self.method_id,
+                "Surrogate recovery is guidance only (FDA §2024.10.1(5))",
+                50.0, 150.0, is_guidance_only=True)
         if qc_type in ("Dup", "duplicate"):
             return _resolve_fda_tier(analyte, matrix,
                                      self._profile_data(), qc_type="Dup",
@@ -600,14 +600,7 @@ class FDA32PFASProfile(MethodProfile):
         )
 
     def ccv_rule(self):
-        ccv = self._iv().get("ccv", {})
-        return CCVRule(
-            recovery_min=float(ccv.get("recovery_min", 70.0)),
-            recovery_max=float(ccv.get("recovery_max", 130.0)),
-            frequency=int(ccv.get("frequency", 6)),
-            low_level_min=ccv.get("low_level_min"),
-            low_level_max=ccv.get("low_level_max"),
-        )
+        return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
 
     def is_rule(self):
         is_ = self._iv().get("is_response") or self._iv().get("is", {})
@@ -672,27 +665,27 @@ class EPA537Profile(MethodProfile):
     def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
         qa = self._profile_data().get("qc_acceptance", {})
         if qc_type in ("SUR", "surrogate"):
-            return QCRule(70.0, 130.0, notes="§9.3.5 surrogates 70–130%")
+            return _method_text_rule(
+                self._profile_data(), self.method_id,
+                "§9.3.5 surrogates 70–130%", 70.0, 130.0)
         entry = qa.get(qc_type)
         if entry is None or not entry.get("enabled", True):
             return None
         tiers = entry.get("tiers", [])
         if not tiers:
-            # Legacy fallback
-            lo, hi = 70.0, 130.0
-            legacy = self._profile_data().get("recovery_tiers", [])
-            for t in legacy:
-                if t.get("tier") == 2:
-                    lo = float(t.get("recovery_min", 70.0))
-                    hi = float(t.get("recovery_max", 130.0))
-            return QCRule(lo, hi)
+            raise UnconfiguredCriterion(
+                "{0} has no tiers configured for {1}. Set them in Method "
+                "Profiles -> QC Types -> {1}, or disable that QC type.".format(
+                    self.method_id, qc_type))
         t = tiers[0]
+        rule = _tier_rule(t, t.get("description", ""), self.method_id,
+                          analyte, matrix, qc_type)
         return QCRule(
-            recovery_min=t.get("recovery_min"),
-            recovery_max=t.get("recovery_max"),
-            rsd_max=t.get("rsd_max"),
-            rpd_max=t.get("rpd_max"),
-            notes=t.get("description", ""),
+            recovery_min=rule.recovery_min,
+            recovery_max=rule.recovery_max,
+            rsd_max=rule.rsd_max,
+            rpd_max=rule.rpd_max,
+            notes=rule.notes,
         )
 
     def calibration_rule(self, analyte=""):
@@ -705,14 +698,9 @@ class EPA537Profile(MethodProfile):
         )
 
     def ccv_rule(self):
-        ccv = self._iv().get("ccv", {})
-        return CCVRule(
-            recovery_min=float(ccv.get("recovery_min", 70.0)),
-            recovery_max=float(ccv.get("recovery_max", 130.0)),
-            frequency=int(ccv.get("frequency", 10)),
-            low_level_min=ccv.get("low_level_min", 50.0),
-            low_level_max=ccv.get("low_level_max", 150.0),
-        )
+        return _ccv_rule(self._iv().get("ccv", {}), self.method_id,
+                         default_frequency=10,
+                         low_level_default=(50.0, 150.0))
 
     def is_rule(self):
         is_ = self._iv().get("is_response") or self._iv().get("is", {})
@@ -823,6 +811,53 @@ def _tier_rule(tier, notes, method_id, analyte, matrix, qc_type):
     )
 
 
+def _method_text_rule(profile_data, method_id, citation, low, high, **kw):
+    """A limit the METHOD TEXT states, overridable by the profile.
+
+    Distinct from the substituted defaults this session removed. Those were
+    invented when configuration was silent; these are published values with a
+    citation, and §8 says never to fabricate a regulatory value -- so refusing
+    would be wrong here. What was wrong was that they could not be overridden
+    at all: a lab whose SOP is tighter than the method floor had nowhere to say
+    so. `qc_acceptance.SUR` now wins when it is configured.
+    """
+    entry = (profile_data.get("qc_acceptance") or {}).get("SUR") or {}
+    tiers = entry.get("tiers") or []
+    if entry.get("enabled", True) and tiers:
+        rule = _tier_rule(tiers[0], "Surrogate recovery (lab-configured)",
+                          method_id, "", "", "SUR")
+        if rule.recovery_min is not None:
+            return QCRule(rule.recovery_min, rule.recovery_max,
+                          rsd_max=rule.rsd_max, rpd_max=rule.rpd_max,
+                          notes=rule.notes, **kw)
+    return QCRule(low, high, notes=citation, **kw)
+
+
+def _ccv_rule(ccv, method_id, default_frequency=6, low_level_default=(None, None)):
+    """CCV limits from the profile, or refuse.
+
+    The CCV window is the original instance of this whole class of defect: the
+    editor saved 72-128% while every run was judged against a nested 70-130%,
+    and nothing said so. Substituting 70/130 when the profile is silent is the
+    same failure with the UI half removed.
+    """
+    low, high = ccv.get("recovery_min"), ccv.get("recovery_max")
+    if low is None or high is None:
+        raise UnconfiguredCriterion(
+            "{0} has no CCV recovery window configured. Set it in Method "
+            "Profiles -> Calibration & CCV.".format(method_id))
+    return CCVRule(
+        recovery_min=float(low),
+        recovery_max=float(high),
+        # Frequency and the low-level window are not verdicts on a result:
+        # frequency governs sequence layout, and an absent low-level window
+        # means the method sets no separate limit at the MRL.
+        frequency=int(ccv.get("frequency", default_frequency)),
+        low_level_min=ccv.get("low_level_min", low_level_default[0]),
+        low_level_max=ccv.get("low_level_max", low_level_default[1]),
+    )
+
+
 def _1633a_matrix_class(matrix: str) -> str:
     """Map a 1633A matrix name to the EIS table class used in eis_matrix_overrides."""
     m = matrix.lower().strip()
@@ -851,9 +886,24 @@ class EPA1633AProfile(MethodProfile):
         if qc_type in ("EIS", "SUR", "surrogate"):
             qa = profile.get("qc_acceptance", {})
             lfsm_entry = qa.get("LFSM", {})
-            t = (lfsm_entry.get("tiers") or [{}])[0]
-            default_lo = float(t.get("recovery_min", 40.0))
-            default_hi = float(t.get("recovery_max", 130.0))
+            tiers = lfsm_entry.get("tiers") or []
+            if not tiers:
+                raise UnconfiguredCriterion(
+                    "{0} has no qc_acceptance.LFSM.tiers to base EIS recovery "
+                    "on. Configure it in Method Profiles -> QC Types -> "
+                    "LFSM.".format(self.method_id))
+            # Refuse rather than substituting 40/130. This is the method whose
+            # limits are explicitly placeholders pending a purchased-method
+            # check, so it is the last place a silent default belongs.
+            base = _tier_rule(tiers[0], "", self.method_id, analyte, matrix,
+                              "EIS")
+            if base.recovery_min is None:
+                raise UnconfiguredCriterion(
+                    "{0} / {1}: EIS recovery needs a recovery window on "
+                    "qc_acceptance.LFSM, which specifies none.".format(
+                        self.method_id, analyte))
+            default_lo = float(base.recovery_min)
+            default_hi = float(base.recovery_max)
             override = eis_overrides.get(analyte, {})
             lo = float(override.get("recovery_min", default_lo))
             hi = float(override.get("recovery_max", default_hi))
@@ -878,16 +928,22 @@ class EPA1633AProfile(MethodProfile):
             return None
         tiers = entry.get("tiers", [])
         if not tiers:
-            return QCRule(70.0, 130.0, verify_against_method=True,
-                          notes="MS recovery per-analyte (1633A) — verify")
+            raise UnconfiguredCriterion(
+                "{0} has no tiers configured for {1}. Set them in Method "
+                "Profiles -> QC Types -> {1}, or disable that QC type.".format(
+                    self.method_id, mapped))
         t = tiers[0]
+        rule = _tier_rule(
+            t, t.get("description",
+                     "1633A per-analyte (verify against method)"),
+            self.method_id, analyte, matrix, mapped)
         return QCRule(
-            recovery_min=t.get("recovery_min"),
-            recovery_max=t.get("recovery_max"),
-            rsd_max=t.get("rsd_max"),
-            rpd_max=t.get("rpd_max"),
+            recovery_min=rule.recovery_min,
+            recovery_max=rule.recovery_max,
+            rsd_max=rule.rsd_max,
+            rpd_max=rule.rpd_max,
             verify_against_method=bool(t.get("verify_against_method", False)),
-            notes=t.get("description", "1633A per-analyte (verify against method)"),
+            notes=rule.notes,
         )
 
     def calibration_rule(self, analyte=""):
@@ -901,12 +957,8 @@ class EPA1633AProfile(MethodProfile):
         )
 
     def ccv_rule(self):
-        ccv = self._iv().get("ccv", {})
-        return CCVRule(
-            recovery_min=float(ccv.get("recovery_min", 70.0)),
-            recovery_max=float(ccv.get("recovery_max", 130.0)),
-            frequency=int(ccv.get("frequency", 10)),
-        )
+        return _ccv_rule(self._iv().get("ccv", {}), self.method_id,
+                         default_frequency=10)
 
     def is_rule(self):
         is_ = self._iv().get("is_response") or self._iv().get("is", {})

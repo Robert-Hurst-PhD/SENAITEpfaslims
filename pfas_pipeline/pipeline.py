@@ -30,7 +30,7 @@ from .importer import (
     validate_injection_name, classify_injection,
     group_by_injection,
 )
-from .models import Batch, SummaryResult, reported_conc
+from .models import Batch, QCFlag, SummaryResult, reported_conc
 from .run_queue import RunQueue
 from .injection_builder import REVIEW_CHECKS
 from .analyte_alias import keyword_for
@@ -425,8 +425,20 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                 analyte, configured, _method, reported)
         for row in summary:
             pair = _is_mismatch.get(row.analyte)
-            if pair and "ISMAP" not in row.flags:
-                row.flags.append("ISMAP:{0}!={1}".format(*pair))
+            if pair:
+                row.is_mismatch = ("method profile names {0}; instrument "
+                                   "reported {1}".format(*pair))
+        # Also raised as a QC flag so it reaches Data Review and the QC Review
+        # Report through the same channel as every other reviewer finding.
+        for analyte, (configured, reported) in sorted(_is_mismatch.items()):
+            batch.qc_flags.append(QCFlag(
+                source="Surrogate Map",
+                analyte=analyte,
+                injection_name="",
+                value=reported,
+                issue="(ISMAP) method profile names {0}; instrument reported "
+                      "{1}".format(configured, reported),
+            ))
 
     batch.summary = summary
     return summary

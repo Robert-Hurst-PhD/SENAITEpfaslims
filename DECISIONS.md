@@ -4100,3 +4100,45 @@ while an emptied tier still refuses (pinned in `test_unconfigured_criteria`).
   path. Without it the tests silently exercise `_DEFAULT_PROFILE_CACHE` — which
   has no `tight_matrices`, so tier 1 never resolves and the suite passes on
   defaults rather than on the profile. Worth making explicit.
+
+### Three gaps the first pass left
+
+**The 1633A and 537.1 paths still substituted.** Replacing the FDA fallbacks
+left `EPA1633AProfile.qc_rules` with `t.get("recovery_min", 40.0)` and a bare
+`QCRule(70.0, 130.0)`, 537.1 with a legacy `recovery_tiers` fallback, and all
+three `ccv_rule()` implementations with `ccv.get("recovery_min", 70.0)`. 1633A
+is the method whose limits are explicitly placeholders pending a
+purchased-method check, and the CCV window is the defect this whole thread
+started from — the last two places a silent default belongs. All now refuse.
+
+The two surrogate rules are deliberately NOT refusals. `QCRule(50.0, 150.0)`
+(FDA §2024.10.1(5)) and `QCRule(70.0, 130.0)` (537.1 §9.3.5) are published
+values with a citation, and §8 forbids fabricating a regulatory value — but
+equally they could not be overridden, so a lab whose SOP is tighter than the
+method floor had nowhere to say so. `qc_acceptance.SUR` now wins when
+configured, the cited value stands otherwise.
+
+**The sweep only proved the configured case.** 3030 combinations came from the
+fully-populated live export — the state where nothing should refuse. Re-run
+against `_DEFAULT_PROFILE_CACHE` (no export, as on a fresh container): that
+cache does carry populated `qc_acceptance` tiers, so a fresh deployment
+degrades to the wrong tier — the pre-existing `tight_matrices` gap — rather
+than hard-blocking. Now swept in both states: **4248 combinations configured,
+150 on defaults, 0 refused in either**, CCV, SUR, EIS and calibration included.
+
+**The Matrices & Units tab orphaned data on rename.** `matrix_factors`,
+`spike_levels` and `analyte_matrix_inclusion` are all keyed by matrix TITLE, so
+renaming "Meat / Muscle" silently stranded them — including the matrix factor
+that multiplies every native concentration on the certificate. §3 rule 4
+requires surfacing what a rename would orphan, so the save now refuses and
+names it: *"Removing or renaming Meat / Muscle would orphan matrix factors for
+Meat / Muscle; spike levels for Meat / Muscle; analyte x matrix inclusion for
+Meat / Muscle."* Deciding that lab data is disposable because a title changed
+is not the form's call.
+
+**And the mismatch was on the wrong surface.** `ISMAP:...` went into
+`SummaryResult.flags`, which `display()` folds into the reported value string
+and `senaite_connector` pushes to Analysis **Remarks** — both client-facing. A
+surrogate-map disagreement is a reviewer question, which is what the QC Review
+Report exists to carry. It now travels as `SummaryResult.is_mismatch` plus a
+QCFlag, and a test asserts it never reaches `flags`.

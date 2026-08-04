@@ -291,6 +291,38 @@ class PFASMethodProfileEditView(BrowserView):
             })
         return rows
 
+    def _matrix_references(self, profile, removed):
+        """What still points at a matrix title that is going away.
+
+        Reported as a refusal rather than cleaned up silently: a matrix factor
+        or a spike level is lab data, and deciding it is disposable because a
+        title changed is not this form's call.
+        """
+        removed = set(removed)
+        found = []
+
+        factors = [e.get("matrix") for e in (profile.get("matrix_factors") or [])
+                   if isinstance(e, dict)]
+        hit = sorted(set(f for f in factors if f in removed))
+        if hit:
+            found.append("matrix factors for {0}".format(", ".join(hit)))
+
+        spikes = profile.get("spike_levels") or {}
+        hit = sorted(m for m in spikes if m in removed)
+        if hit:
+            found.append("spike levels for {0}".format(", ".join(hit)))
+
+        inclusion = profile.get("analyte_matrix_inclusion") or {}
+        included = set()
+        for per_matrix in inclusion.values():
+            if isinstance(per_matrix, dict):
+                included.update(m for m in per_matrix if m in removed)
+        if included:
+            found.append("analyte x matrix inclusion for {0}".format(
+                ", ".join(sorted(included))))
+
+        return found
+
     def unit_options(self):
         """Reporting units offered for a matrix. Every unit already in use is
         included, so an existing choice is never silently dropped from the list
@@ -911,9 +943,22 @@ class PFASMethodProfileEditView(BrowserView):
                 if unit:
                     units[name] = unit
             if names:
-                # A renamed matrix keeps its UID link only if the title still
-                # matches; anything orphaned is dropped rather than left
-                # pointing at a Sample Type that no longer corresponds.
+                # §3 rule 4: surface what a rename or delete would orphan
+                # rather than dropping it. matrix_factors, spike_levels and
+                # the analyte x matrix inclusion map are all keyed by matrix
+                # TITLE, so renaming "Meat / Muscle" silently strands them --
+                # including the matrix factor that multiplies every native
+                # concentration on the certificate.
+                removed = [m for m in (profile.get("supported_matrices") or [])
+                           if m not in names]
+                if removed:
+                    orphans = self._matrix_references(profile, removed)
+                    if orphans:
+                        raise ValueError(
+                            "Removing or renaming {0} would orphan {1}. Move "
+                            "or clear that data first, or restore the matrix "
+                            "name.".format(", ".join(sorted(removed)),
+                                           "; ".join(orphans)))
                 uid_map = profile.get("matrix_uid_map", {}) or {}
                 profile["matrix_uid_map"] = {
                     k: v for k, v in uid_map.items() if k in names}
