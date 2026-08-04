@@ -4422,3 +4422,31 @@ only part that waits on configuration; the hold does not.
    ClientSampleIDs stay as they are.
 3. **Next: close F2, then complete CoA and EDD** — one method validated from
    instrument file to published certificate and electronic deliverable.
+
+## 2026-08-04 — qualified release: F4 resolved by decision
+
+Results MAY be released while failing a QC criterion, provided the certificate
+carries a concise, accurate statement of what failed and what it means, approved
+by the QAO. The system implemented the prohibition without the exception; ISO
+17025 §7.8.4 permits releasing non-conforming work when it is authorised,
+justified and recorded.
+
+1. **Scope: the affected analytes on the affected samples.** A surrogate failure
+   on one sample qualifies only the analytes that surrogate quantifies, on that
+   sample. The certificate stays clean where the data is sound — a blanket
+   qualification devalues the warning it is trying to make.
+2. **Cause: the system proposes, the QAO decides.** CCV, calibration, RT, S/N
+   and blank contamination default to LABORATORY; spike recovery, duplicate RPD
+   and in-sample surrogate failures default to MATRIX. The QAO always sees the
+   proposal and may override with a reason — because a surrogate failure that
+   really is a lab error is exactly the case where a retest should be offered.
+3. **On the CoA: a flag beside each affected result, full wording in a QC
+   Qualifications section.** A number must not be readable off the table without
+   the reader noticing it is qualified.
+4. **Messages: a lab-wide, UI-editable library owned by the QAO**, keyed by
+   failure type and cause. No lab wording hardcoded (§1.1), and phrasing stays
+   under QA control rather than being retyped per case.
+
+Wording follows the cause: a LABORATORY failure states that accuracy cannot be
+guaranteed for the named analytes and offers a retest; a MATRIX failure states
+plainly that the sample matrix altered the result.
