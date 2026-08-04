@@ -57,6 +57,7 @@ def is_raw_check(
     rows: list[InstrumentRow],
     is_compound: str,
     dilutions: "dict | None" = None,
+    method_id: str = "",
 ) -> list[ISRawResult]:
     """
     Labelled-compound response against the ICAL average.
@@ -82,10 +83,25 @@ def is_raw_check(
     analyte_reference; the pipeline previously held a flat list with no roles
     and applied one rule to all of them.
     """
-    from .analyte_alias import injection_is_names
+    from .analyte_alias import injection_is_names, keyword_for
+    from .method_profiles import get_surrogate_is_chain
 
     dilutions = dilutions or {}
-    is_injection_standard = is_compound in injection_is_names()
+    # The METHOD decides which labelled compound is the injection standard.
+    # surrogate_is_chain maps each surrogate to the IS it is quantified
+    # against, so a compound that appears only as a VALUE is the injection
+    # standard and every KEY is a surrogate. The global analyte_reference table
+    # is the fallback: it is not method-scoped, and under a method that uses a
+    # different injection standard it would scale the wrong compound.
+    chain = get_surrogate_is_chain(method_id) if method_id else {}
+    if chain:
+        keyword = keyword_for(is_compound) or is_compound
+        surrogates = {keyword_for(k) or k for k in chain}
+        injection_stds = {keyword_for(v) or v for v in chain.values()}
+        is_injection_standard = (keyword in injection_stds
+                                 and keyword not in surrogates)
+    else:
+        is_injection_standard = is_compound in injection_is_names()
 
     def corrected(row):
         """Area, undiluted-equivalent."""

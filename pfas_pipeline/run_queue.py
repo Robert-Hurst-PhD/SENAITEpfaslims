@@ -235,7 +235,8 @@ class RunQueue:
         if _rule_enabled(toggles, "is_response"):
             for is_cmp in _get_is_list(_method):
                 # unfiltered: dilutions ARE checked for IS consistency
-                for res in is_raw_check(all_rows, is_cmp, dilutions):
+                for res in is_raw_check(all_rows, is_cmp, dilutions,
+                                        method_id=_method):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     # Record EVERY result, not only the failures. The RT,

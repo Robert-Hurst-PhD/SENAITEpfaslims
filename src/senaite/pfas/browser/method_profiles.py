@@ -492,6 +492,47 @@ class PFASMethodProfileEditView(BrowserView):
     def show_eis_overrides(self):
         return self.method_id() == "EPA_1633A"
 
+    def surrogate_chain_rows(self):
+        """Which injection IS each labelled SURROGATE is quantified against.
+
+        The second half of the quantification chain: native -> surrogate
+        (the drag-and-drop map) -> injection IS. It is what distinguishes a
+        surrogate, which is diluted along with the sample, from the injection
+        standard, which is added at reconstitution and must not be scaled --
+        the distinction that made a dilution's surrogates look like failures.
+
+        Rows come from the surrogate map, so the two halves cannot disagree
+        about which compounds are surrogates.
+        """
+        profile = self.profile()
+        chain = profile.get("surrogate_is_chain", {}) or {}
+        surrogates = []
+        for row in (profile.get("surrogate_map") or []):
+            name = (row.get("surrogate_is") or "").strip()
+            if name and name not in surrogates:
+                surrogates.append(name)
+        for name in sorted(chain):
+            if name not in surrogates:
+                surrogates.append(name)
+        return [{"surrogate": name, "injection_is": chain.get(name, "")}
+                for name in surrogates]
+
+    def injection_is_options(self):
+        """Candidate injection standards: the labelled compounds this method
+        knows about, so the choice cannot name something that is not in the run."""
+        options = []
+        for row in (self.profile().get("surrogate_map") or []):
+            name = (row.get("surrogate_is") or "").strip()
+            if name and name not in options:
+                options.append(name)
+        for name in (self.profile().get("surrogate_is_chain") or {}).values():
+            if name and name not in options:
+                options.append(name)
+        current = (self.profile().get("surrogate_is") or "").strip()
+        if current and current not in options:
+            options.append(current)
+        return sorted(options)
+
     # ── Surrogate IS lane data ────────────────────────────────────────────────
 
     def _pfas_service_index(self):
@@ -910,6 +951,17 @@ class PFASMethodProfileEditView(BrowserView):
                 if entries:
                     out[key] = entries
             profile["eis_matrix_overrides"] = out
+
+        # Surrogate -> injection IS. Saved from named per-surrogate fields so
+        # the chain is edited as a choice per row, not as JSON.
+        if f.get("surrogate_chain_present"):
+            chain = {}
+            for row in self.surrogate_chain_rows():
+                name = row["surrogate"]
+                chosen = (f.get("surchain.%s" % name, "") or "").strip()
+                if chosen:
+                    chain[name] = chosen
+            profile["surrogate_is_chain"] = chain
 
         raw_eis = f.get("eis_overrides_json", "").strip()
         if raw_eis:

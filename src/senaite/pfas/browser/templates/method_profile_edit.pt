@@ -476,7 +476,52 @@
           </details>
 
         </div>
-      </div><!-- /pane-sur -->
+      
+          <details>
+            <summary>Surrogate &#8594; Injection Internal Standard</summary>
+            <div class="section-body">
+              <p class="json-hint">
+                The second half of the quantification chain: native &#8594;
+                surrogate (above) &#8594; injection internal standard. A
+                <strong>surrogate</strong> is added before extraction, so it is
+                diluted along with the sample; the <strong>injection
+                standard</strong> is added at reconstitution, after any
+                dilution, so its response must not be scaled. Getting this
+                backwards makes a dilution&#8217;s surrogates look like
+                recovery failures. Under FDA 32-PFAS every surrogate quantifies
+                against 13C4-PFOA.
+              </p>
+              <input type="hidden" name="surrogate_chain_present" value="1" />
+              <table class="factor-table">
+                <thead>
+                  <tr>
+                    <th style="width:50%">Surrogate</th>
+                    <th style="width:50%">Quantified against</th>
+                  </tr>
+                </thead>
+                <tbody tal:define="opts view/injection_is_options">
+                  <tr tal:repeat="row view/surrogate_chain_rows">
+                    <td>
+                      <span tal:content="row/surrogate"
+                            style="font-family:'Fira Code',monospace;font-size:12px;">M8PFOA</span>
+                    </td>
+                    <td>
+                      <select style="width:100%;"
+                              tal:attributes="name string:surchain.${row/surrogate}">
+                        <option value="">&#8212; not set &#8212;</option>
+                        <option tal:repeat="o opts"
+                                tal:attributes="value o;
+                                                selected python:o == row['injection_is']"
+                                tal:content="o">M4PFOA</option>
+                      </select>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+</div><!-- /pane-sur -->
 
       <!-- ── Tab: Recovery Tiers ────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-rt">
