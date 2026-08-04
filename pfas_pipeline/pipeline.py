@@ -544,6 +544,17 @@ def run_pipeline(
     # any batch that logged none, so those behave exactly as before.
     dilution_map = {}
     spike_map = {}
+    if senaite is not None and not senaite_batch_id:
+        # A connector without a batch id silently skips the extraction
+        # pedigree, so matrix spikes and dilutions both vanish and the run
+        # still looks complete -- it just reports "required QC not evaluated"
+        # and folds no dilution into its parent. That cost a full E2E
+        # misdiagnosis; say so instead.
+        logger.warning(
+            "senaite_batch_id was not supplied, so FM-ENV-252 is not read: "
+            "matrix spikes and dilutions will be absent, LFSM/LFSMD cannot be "
+            "evaluated, and dilution injections will be reported as samples in "
+            "their own right. Pass the SENAITE Batch id to use the pedigree.")
     if senaite is not None and senaite_batch_id:
         prep = senaite.get_batch_dilutions(senaite_batch_id) or {}
         spike_map = prep.pop("_spikes", {}) or {}

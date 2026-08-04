@@ -341,6 +341,25 @@ class PFASDataReviewView(BrowserView):
         profile = self._method_profile() or {}
         matrix = self._batch_matrix()
         levels = ((profile.get("spike_levels") or {}).get(matrix) or {})
+
+        # Spiked injections the RUN contains but the extraction pedigree does
+        # not. Driving the prompt from the pedigree alone meant that when
+        # FM-ENV-252 was never filled in, `spikes` was empty, the loop yielded
+        # nothing, and the reviewer was offered no way to supply a level — while
+        # the QC gate blocked on "required QC not evaluated: LFSM, LFSMD". A
+        # gate with no exit is worse than no gate: it cannot be satisfied and it
+        # cannot be understood.
+        #
+        # The run is the evidence of what was injected; the pedigree is the
+        # record of what was intended. Where they disagree, ask about what was
+        # actually run.
+        for qc_type in ("LFSM", "LFSMD"):
+            for row in (self._injection_rows(qc_type=qc_type) or []):
+                name = row.get("injection_name")
+                if name and name not in spikes:
+                    spikes[name] = {"parent": "", "level": "",
+                                    "spike_ppt": None, "from_run": True}
+
         out = []
         for injection, entry in sorted(spikes.items()):
             if entry.get("spike_ppt"):
@@ -357,7 +376,11 @@ class PFASDataReviewView(BrowserView):
             out.append({"injection": injection,
                         "parent": entry.get("parent", ""),
                         "level": label,
-                        "matrix": matrix})
+                        "matrix": matrix,
+                        # True when the pedigree does not know this injection at
+                        # all, so the prompt can say "not in FM-ENV-252" rather
+                        # than "level missing".
+                        "unrecorded": bool(entry.get("from_run"))})
         return out
 
     def _batch_matrix(self):
