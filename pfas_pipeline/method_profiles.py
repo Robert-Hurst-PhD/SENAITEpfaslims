@@ -391,7 +391,8 @@ def reload_from_profiles(profiles_path=None):
 # Helper: resolve recovery tier from profile data
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM"):
+def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM",
+                      method_id="FDA_32PFAS"):
     """
     Resolve recovery tier for an FDA analyte × matrix combination.
 
@@ -439,67 +440,39 @@ def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM"):
             ag = tier.get("analyte_group", "all")
             ms = tier.get("matrix_scope", "all")
             if ag == "no_std" and is_no_std:
-                return QCRule(
-                    tier.get("recovery_min", 40.0),
-                    tier.get("recovery_max", 140.0),
-                    rsd_max=tier.get("rsd_max", 30.0),
-                    rpd_max=tier.get("rpd_max"),
-                    notes="No matched labeled standard (Table 10-1 footnote a)",
-                )
+                return _tier_rule(
+                    tier, "No matched labeled standard (Table 10-1 footnote a)",
+                    method_id, analyte, matrix, qc_type)
             if ag == "key" and ms == "tight" and is_key and is_tight:
-                return QCRule(
-                    tier.get("recovery_min", 80.0),
-                    tier.get("recovery_max", 120.0),
-                    rsd_max=tier.get("rsd_max", 20.0),
-                    rpd_max=tier.get("rpd_max"),
-                    notes="PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood (Table 10-1 tier 1)",
-                )
+                return _tier_rule(
+                    tier,
+                    "PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood "
+                    "(Table 10-1 tier 1)",
+                    method_id, analyte, matrix, qc_type)
         # Fall through to the "linked" / default tier
         for tier in tiers:
             ag = tier.get("analyte_group", "all")
             if ag in ("linked", "all"):
-                return QCRule(
-                    tier.get("recovery_min", 65.0),
-                    tier.get("recovery_max", 135.0),
-                    rsd_max=tier.get("rsd_max", 25.0),
-                    rpd_max=tier.get("rpd_max"),
-                    notes="Table 10-1 tier 2 (other matrices / other analytes)",
-                )
-        return QCRule(65.0, 135.0, rsd_max=25.0)
+                return _tier_rule(
+                    tier,
+                    "Table 10-1 tier 2 (other matrices / other analytes)",
+                    method_id, analyte, matrix, qc_type)
+        raise UnconfiguredCriterion(
+            "No tier matches {0} / {1} / {2} / {3}: the configured tiers cover "
+            "neither this analyte group nor a default. Add a tier with "
+            "analyte_group 'all' in Method Profiles -> QC Types -> {3}.".format(
+                method_id, analyte, matrix or "(no matrix)", qc_type))
 
-    # Legacy structure: tiers have numeric "tier" key
-    tier3_analytes = set()
-    tier1_analytes = set()
-    tight_matrices = set()
-    t1 = {"recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0}
-    t2 = {"recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0}
-    t3 = {"recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0}
-
-    legacy_tiers = profile_data.get("recovery_tiers", [])
-    for tier in legacy_tiers:
-        n = tier.get("tier")
-        if n == 1:
-            tier1_analytes = set(tier.get("key_analytes", []))
-            tight_matrices = set(tier.get("tight_matrices", []))
-            t1 = tier
-        elif n == 2:
-            t2 = tier
-        elif n == 3:
-            tier3_analytes = set(tier.get("no_std_analytes", []))
-            t3 = tier
-
-    m = matrix.lower().strip()
-    if analyte in tier3_analytes:
-        return QCRule(t3.get("recovery_min", 40.0), t3.get("recovery_max", 140.0),
-                      rsd_max=t3.get("rsd_max", 30.0),
-                      notes="No matched labeled standard (Table 10-1 footnote a)")
-    if analyte in tier1_analytes and any(t in m for t in tight_matrices):
-        return QCRule(t1.get("recovery_min", 80.0), t1.get("recovery_max", 120.0),
-                      rsd_max=t1.get("rsd_max", 20.0),
-                      notes="PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood (Table 10-1 tier 1)")
-    return QCRule(t2.get("recovery_min", 65.0), t2.get("recovery_max", 135.0),
-                  rsd_max=t2.get("rsd_max", 25.0),
-                  notes="Table 10-1 tier 2 (other matrices / other analytes)")
+    # The legacy `recovery_tiers` branch that stood here was retired by
+    # migrate_profile_structure and could only ever mask a missing config with
+    # a second, divergent copy of the tier logic -- the §1.3 duplication that
+    # this session traced ten defects to. A profile that has not been migrated
+    # now says so instead of quietly judging against stale numbers.
+    raise UnconfiguredCriterion(
+        "{0} has no qc_acceptance.{1}.tiers. This profile predates "
+        "migrate_profile_structure; run the migration so its acceptance "
+        "criteria are read from the structure the engine enforces.".format(
+            method_id, qc_type))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -607,9 +580,11 @@ class FDA32PFASProfile(MethodProfile):
                           is_guidance_only=True)
         if qc_type in ("Dup", "duplicate"):
             return _resolve_fda_tier(analyte, matrix,
-                                     self._profile_data(), qc_type="Dup")
+                                     self._profile_data(), qc_type="Dup",
+                                     method_id=self.method_id)
         return _resolve_fda_tier(analyte, matrix,
-                                 self._profile_data(), qc_type=qc_type)
+                                 self._profile_data(), qc_type=qc_type,
+                                 method_id=self.method_id)
 
     def calibration_rule(self, analyte=""):
         cal = self._iv().get("calibration", {})
@@ -771,6 +746,82 @@ class EPA537Profile(MethodProfile):
 # ─────────────────────────────────────────────────────────────────────────────
 # EPA 1633A  (aqueous / solid / biosolid / tissue)
 # ─────────────────────────────────────────────────────────────────────────────
+
+class UnconfiguredCriterion(Exception):
+    """No acceptance criterion is configured for this combination.
+
+    Raised instead of substituting a plausible default. The resolver used to
+    end with an unconditional QCRule(65.0, 135.0) and carried ~59 inline
+    fallbacks of the form tier.get("recovery_min", 40.0), so a profile that was
+    silent produced a believable limit and nothing said so. A criterion that
+    nothing configured must not be quietly met -- that is the same failure as
+    the CCV window, inverted: not a wrong number displayed, but a wrong
+    criterion silently satisfied.
+
+    The trade is deliberate and was chosen explicitly: this hard-blocks a run
+    against a profile that is not fully populated. The message names what to
+    configure and where.
+    """
+
+
+# Keys that describe WHICH rows a tier applies to, rather than what it judges.
+_TIER_STRUCTURAL_KEYS = frozenset([
+    "name", "analyte_group", "matrix_scope", "description",
+    "verify_against_method", "tier", "key_analytes", "no_std_analytes",
+    "tight_matrices",
+])
+
+
+def _tier_rule(tier, notes, method_id, analyte, matrix, qc_type):
+    """Build a QCRule from a configured tier, or refuse.
+
+    A tier is configured when it carries AT LEAST ONE criterion. Which one
+    depends on the QC type and it is not this function's business to say:
+    a duplicate is judged by RPD and legitimately has no recovery window, so
+    demanding recovery limits everywhere refuses a correctly configured Dup
+    tier. What must never happen is a tier that specifies nothing at all
+    yielding a verdict anyway.
+
+    Downstream already skips a check whose criterion is None
+    (recovery_check_profiled returns early on recovery_min is None), so an
+    absent criterion means "this QC type is not judged that way", while an
+    empty tier now means "nobody configured this" and says so.
+    """
+    low = tier.get("recovery_min")
+    high = tier.get("recovery_max")
+    rsd = tier.get("rsd_max")
+    rpd = tier.get("rpd_max")
+    # "Configured" is the absence of nothing, not the presence of one of a
+    # list I happened to think of. Enumerating recovery/RSD/RPD refused every
+    # method blank, whose criterion is max_conc_x_rl -- a blank is judged
+    # against the reporting limit, not against a recovery window. Anything
+    # beyond the structural keys is a criterion.
+    criteria = set(tier) - _TIER_STRUCTURAL_KEYS
+    if not criteria:
+        raise UnconfiguredCriterion(
+            "No acceptance criteria configured for {0} / {1} / {2} / {3}: "
+            "tier {4!r} specifies no recovery window, RSD or RPD limit. "
+            "Set one in Method Profiles -> QC Types -> {3}, or disable that "
+            "QC type.".format(
+                method_id, analyte, matrix or "(no matrix)", qc_type,
+                tier.get("name") or tier.get("analyte_group") or "default"))
+    # A half-configured recovery window is a different failure: someone meant
+    # to set a limit and left one end blank, which would judge against an open
+    # interval.
+    if (low is None) != (high is None):
+        raise UnconfiguredCriterion(
+            "Incomplete recovery window for {0} / {1} / {2} / {3}: "
+            "only {4} is set. Set both ends, or neither.".format(
+                method_id, analyte, matrix or "(no matrix)", qc_type,
+                "recovery_min" if low is not None else "recovery_max"))
+    return QCRule(
+        None if low is None else float(low),
+        None if high is None else float(high),
+        rsd_max=rsd,
+        rpd_max=rpd,
+        notes=notes,
+    )
+
 
 def _1633a_matrix_class(matrix: str) -> str:
     """Map a 1633A matrix name to the EIS table class used in eis_matrix_overrides."""

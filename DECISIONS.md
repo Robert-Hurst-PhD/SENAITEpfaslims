@@ -4033,3 +4033,70 @@ with `browser/method_profiles.py` and wrote off the pipeline as "the editor
 reading itself back"; and a feature that legitimately stores and consumes its
 own configuration (the Run Builder template) is indistinguishable by static
 analysis from an inert one, so UI-ONLY is a prompt to judge, not a verdict.
+
+### 2026-08-03 — the four fixes, and what the audit says now
+
+| | before | after |
+|---|---|---|
+| DEAD | 1 | **0** |
+| UNREACHABLE | 7 | **2** |
+| UI-ONLY | 3 real | **0 real** |
+| SPLIT KEY | 0 (detector blind) | 0 (deep walk, genuine) |
+
+**1. The surrogate map drives the analysis.** The profile is authoritative;
+the instrument's `linked_is` column and the global alias table are fallbacks; a
+genuine disagreement is flagged `ISMAP` rather than resolved silently. Two
+spelling gaps had to close first — the alias table was built by walking only
+`NATIVE_ANALYTES`, so nothing could tell that `M8PFOA` and `13C8-PFOA` are one
+compound, and comparing raw names called all 20 surrogates a disagreement.
+`surrogate_is_chain` now decides which labelled compound is the injection
+standard, per method, and is populated for FDA per Table 10-1: all 20
+surrogates against 13C4-PFOA. That is the distinction between a surrogate,
+diluted with the sample, and the injection standard, added afterwards — the one
+that made a dilution's surrogates look like failures.
+
+**2. Salt correction is applied.** `salt_adjustment_factors` is authoritative,
+resolved through the aliases and expanded to isomer components, because lr-/br-
+rows come from the same salt-form standard as the analyte they sum to. Both
+corrections now live in one named `apply_extract_corrections()`. FDA_32PFAS
+carries 0.9636 for PFOA: every PFOA result issued before this was 3.6% high.
+
+**3. Matrices & Units.** One table, because `supported_matrices`,
+`tight_matrices`, `matrix_aliases` and `unit_map` are one fact about one matrix
+and editing them apart is how they drifted. EIS limits are editable per matrix
+CLASS, matching what the engine looks them up by. Verified by round-trip
+against the running instance: render, change, save, read back from the exported
+profile the worker consumes, revert.
+
+**4. A missing criterion refuses to judge.** `UnconfiguredCriterion` replaces
+the unconditional `QCRule(65.0, 135.0)` and the ~59 inline fallbacks, and the
+legacy `recovery_tiers` branch — a second, divergent copy of the tier logic —
+is gone.
+
+Getting the refusal right took two corrections, both instructive. Demanding
+recovery limits everywhere refused a correctly configured **Dup** tier, which
+is judged by RPD; then enumerating recovery/RSD/RPD refused every **method
+blank**, whose criterion is `max_conc_x_rl` — a blank is judged against the
+reporting limit. "Configured" cannot be the presence of one of a list someone
+thought of; it is the absence of nothing. A tier now counts as configured when
+it carries any key beyond the structural ones, so a criterion type added later
+does not silently start refusing.
+
+Swept across all three methods: **3030 analyte × matrix × QC-type combinations,
+3030 resolved, 0 refused** — the refusal blocks nothing properly configured,
+while an emptied tier still refuses (pinned in `test_unconfigured_criteria`).
+
+### Still open
+
+- `extraction_corrections.salt_factors` is a dead seed key, and the QC Rules
+  page still shows a salt pane backed by `qc_rules.salt_factors`, deprecated by
+  D53 and applied by nothing. Two UIs for salt, one inert. Removing a visible
+  pane is a user-facing deletion, so it is flagged rather than done.
+- `spec_overrides` is written by `spec_reverse` from core SENAITE
+  Specifications, so it has an edit path — just not a PFAS one.
+- `duplicate` under `instrument_verification` is read only by the profile
+  editor; it looks like residue of the QC-type merge and wants a decision.
+- The test suite reads `PFAS_PROFILES_PATH`, which defaults to the container
+  path. Without it the tests silently exercise `_DEFAULT_PROFILE_CACHE` — which
+  has no `tight_matrices`, so tier 1 never resolves and the suite passes on
+  defaults rather than on the profile. Worth making explicit.
