@@ -33,6 +33,7 @@ matrix names, agency codes.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -131,6 +132,42 @@ def read(path):
         return fh.read()
 
 
+def _blank_docstrings(text):
+    """Blank docstring bodies, keeping line numbers and doctest lines.
+
+    Prose that quotes code reads as code: a docstring saying `this read
+    profile["recovery_tiers"]` was reported as a live read of a retired key.
+    String literals in general CANNOT be blanked -- the keys being searched for
+    live inside them (`.get("unit_map")`) -- but a docstring is a string
+    standing alone as a statement, which the parser can identify exactly.
+
+    Doctest lines are preserved: `>>> profile["unit_map"]` is a real read, and
+    a scanner that skipped whole docstrings would miss it.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return text
+    lines = text.splitlines()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef,
+                                 ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if not (isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            continue
+        end = getattr(first, "end_lineno", first.lineno)
+        for n in range(first.lineno - 1, min(end, len(lines))):
+            if ">>>" not in lines[n]:
+                lines[n] = ""
+    return "\n".join(lines)
+
+
 def rel(path):
     return os.path.relpath(path, ROOT)
 
@@ -138,7 +175,10 @@ def rel(path):
 def _scan(dirs, patterns, exts=(".py",)):
     hits = []
     for path in walk(dirs, exts):
-        for n, line in enumerate(read(path).splitlines(), 1):
+        text = read(path)
+        if path.endswith(".py"):
+            text = _blank_docstrings(text)
+        for n, line in enumerate(text.splitlines(), 1):
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
@@ -243,6 +283,41 @@ def _ancestors(key):
     return [".".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
 
 
+def _subscriber_modules():
+    """Modules registered as ZCML event handlers.
+
+    A write from one of these is UI-driven even though it is not under
+    browser/: spec_reverse.on_spec_modified fires when a manager edits a core
+    SENAITE AnalysisSpec and writes the result into the method profile. Judging
+    editability by directory alone reported spec_overrides as unreachable when
+    it has a perfectly good editor -- core's, rather than one of ours.
+    """
+    mods = set()
+    for dirpath, _d, filenames in os.walk(os.path.join(ROOT, "src")):
+        for name in filenames:
+            if not name.endswith(".zcml"):
+                continue
+            text = read(os.path.join(dirpath, name))
+            for match in re.finditer(r'handler="\.?([\w.]+)\.\w+"', text):
+                mods.add(match.group(1).split(".")[-1])
+    return mods
+
+
+SUBSCRIBER_MODULES = None
+
+
+def _is_ui_writer(path):
+    """Does a write at this path originate from a user action?"""
+    global SUBSCRIBER_MODULES
+    if SUBSCRIBER_MODULES is None:
+        SUBSCRIBER_MODULES = _subscriber_modules()
+    if "method_profile_store" in path:
+        return False          # a seed table, not the lab configuring anything
+    if "browser/" in path:
+        return True
+    return _stem(path).split("/")[-1] in SUBSCRIBER_MODULES
+
+
 def _stem(path):
     """Identify the FEATURE a file belongs to.
 
@@ -272,7 +347,7 @@ def _consumers(reads, writers):
 
 
 def audit_keys(profiles_path):
-    dead, unreachable, split, derived, uionly = [], [], [], [], []
+    dead, unreachable, split, derived, uionly, legacy = [], [], [], [], [], []
     keys = profile_keys(profiles_path)
     if not keys:
         return dead, unreachable, split, 0
@@ -292,8 +367,7 @@ def audit_keys(profiles_path):
         reads = find_reads(leaf)
         writes = find_writes(leaf)
         # A write inside a default/seed table is not the lab configuring it.
-        editable = [w for w in writes
-                    if "browser/" in w[0] and "method_profile_store" not in w[0]]
+        editable = [w for w in writes if _is_ui_writer(w[0])]
         # An editor that writes the whole container back — `for key in qca:
         # qca[key]["enabled"] = ...; profile["qc_acceptance"] = qca` — makes
         # every leaf under it reachable without naming any of them. Matching
@@ -320,10 +394,18 @@ def audit_keys(profiles_path):
             if not _consumers(inherited, [w[0] for w in editable]):
                 uionly.append((key, reads[:3]))
         elif reads and not editable:
-            unreachable.append((key, reads[:3]))
+            # A key read ONLY by a migration is legacy, not unreachable: the
+            # migration exists to carry its value into the current structure
+            # and then drop it. Reporting it as a configurability gap invites
+            # someone to build a UI for a key that is on its way out.
+            live = [r for r in reads if "/migrations/" not in r[0]]
+            if live:
+                unreachable.append((key, live[:3]))
+            else:
+                legacy.append((key, reads[:3]))
         if "." not in key and key.lower() in nested_names:
             split.append((key, ", ".join(sorted(nested_names[key.lower()]))))
-    return dead, unreachable, split, derived, uionly, len(keys)
+    return dead, unreachable, split, derived, uionly, legacy, len(keys)
 
 
 def audit_hardcoded():
@@ -351,7 +433,7 @@ def audit_hardcoded():
     return out
 
 
-def emit_text(dead, unreachable, split, derived, uionly, hardcoded, total):
+def emit_text(dead, unreachable, split, derived, uionly, legacy, hardcoded, total):
     print("Configurability audit — CLAUDE.md §1.1")
     print("=" * 72)
     print("profile keys examined: {0}\n".format(total))
@@ -388,6 +470,13 @@ def emit_text(dead, unreachable, split, derived, uionly, hardcoded, total):
           lambda r: (print("  {0}".format(r[0])),
                      [print("      read back at {0}:{1}".format(h[0], h[1]))
                       for h in r[1]]))
+    block("LEGACY — migration-only (not a finding)",
+          "read only by a migration, which carries the value forward and drops "
+          "the key. Do not build a UI for these.",
+          legacy,
+          lambda r: (print("  {0}".format(r[0])),
+                     [print("      carried at {0}:{1}".format(h[0], h[1]))
+                      for h in r[1]]))
     block("DERIVED (not a finding)",
           "read but never hand-edited by design — the system computes them.",
           derived,
@@ -403,7 +492,7 @@ def emit_text(dead, unreachable, split, derived, uionly, hardcoded, total):
           lambda r: print("  {0}:{1}  [{2}]\n      {3}".format(*r)))
 
 
-def emit_md(dead, unreachable, split, derived, uionly, hardcoded, total):
+def emit_md(dead, unreachable, split, derived, uionly, legacy, hardcoded, total):
     print("# Configurability audit\n")
     print("`tools/audit_configurable.py` · {0} profile keys examined\n".format(total))
     for title, why, rows in (
@@ -453,7 +542,7 @@ def main():
     ap.add_argument("--format", choices=("text", "md"), default="text")
     args = ap.parse_args()
 
-    (dead, unreachable, split, derived, uionly,
+    (dead, unreachable, split, derived, uionly, legacy,
      total) = audit_keys(args.profiles)
     hardcoded = audit_hardcoded()
     if not total:
@@ -461,7 +550,7 @@ def main():
               "--profiles pointing at the exported file.".format(args.profiles),
               file=sys.stderr)
     (emit_md if args.format == "md" else emit_text)(
-        dead, unreachable, split, derived, uionly, hardcoded, total)
+        dead, unreachable, split, derived, uionly, legacy, hardcoded, total)
 
 
 if __name__ == "__main__":

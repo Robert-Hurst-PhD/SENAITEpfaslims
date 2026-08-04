@@ -200,6 +200,50 @@ UI edit → enforced structure → engine verdict (120 → 118 → reverted).
 
 ---
 
+## 3d. §8 — Migrate configured data, do not merely define the schema
+
+**Obligation.** When the model changes, existing configured data moves into the
+new structure without loss. A lab's limits are its own; a schema change is not
+permission to reset them.
+
+**Three defects in one script**, `migrate_profile_structure.py`, found while
+closing out the `duplicate` key:
+
+1. **It listed `salt_adjustment_factors` as obsolete.** That key is
+   authoritative — applied since 2026-08-03, and it carries the CoA lot behind
+   every factor. Running the migration would have deleted a lab's salt
+   corrections *and* their §6.6 traceability. The `UnconfiguredCriterion`
+   message points users straight at this script, so the instruction to run it
+   was itself the hazard.
+2. **It deleted `duplicate` and `recovery_tiers` without carrying their
+   values.** A profile configured only on the flat key was silently reset to
+   the seed.
+3. **It operated on the wrong store.** Live profiles are Dexterity objects
+   under `/senaite/pfas_method_profiles`; the migration read the legacy
+   annotation mapping. It cleaned a stale copy, printed "saved", and left every
+   real profile untouched. The annotation store held `salt=0` while the live
+   store held `salt=2`.
+
+The third is the interesting one. `get_profile_store()`'s own docstring says
+*"use get_profile() / save_profile() for all live read/write"*, and the sibling
+migration `backfill_matrix_uid_map.py` does exactly that. **The correct pattern
+already existed in the same directory.** This was not unknown territory — it
+was inconsistency, which is harder to see precisely because nothing looks
+wrong in the file you are reading.
+
+**Where it is enforced.** `carry_legacy_values()` is extracted and named so the
+step that decides whether a lab keeps its limits can be tested directly
+(`tests/test_profile_migration.py`, including idempotence and never
+overwriting a newer value). The migration now reads and writes through
+`list_method_ids` / `get_profile` / `save_profile`.
+
+**Verify a migration against live data, not against its own output.** This one
+printed a clean success report while doing nothing. What proved the fix was
+reading the Dexterity objects before and after and confirming the salt factors
+survived — not the script's summary line.
+
+---
+
 ## 4. §3 rule 4 — Referential integrity on rename and delete
 
 **Obligation.** Deleting or renaming an analyte, IS, method or matrix must

@@ -4188,3 +4188,63 @@ One audit false positive worth noting: the scanner matched
 unreachable. Prose that quotes code reads as code. Reworded rather than
 suppressed — a scanner that ignores docstrings would miss real reads in
 doctests.
+
+## 2026-08-04 — closing the last audit findings, and three defects in the migration
+
+Both remaining findings are closed, and the second one opened a much larger
+problem.
+
+**`duplicate` was a legacy mirror, not residue.** D56 fixed a disconnected RPD
+field by writing BOTH the flat `duplicate` key and `qc_acceptance.Dup`. Only the
+latter is read, so the mirror was two places holding one number, free to
+diverge — the split-key shape. The mirror is gone, the value is carried into the
+enforced structure by the migration, and `dup_rpd()` no longer falls back to a
+20.0 default: an unmigrated profile now shows an empty field, with
+`UnconfiguredCriterion` making the gap loud on the next run rather than
+silently judging duplicates against 20%.
+
+**The audit's docstring false positive is fixed properly.** String literals
+cannot be blanked — the keys being searched for live inside them
+(`.get("unit_map")`) — but a docstring is a string standing alone as a
+statement, which `ast` identifies exactly. Doctest lines are preserved, because
+`>>> profile["unit_map"]` is a real read.
+
+Two further categories were added, both of which turned findings into
+non-findings honestly rather than by suppression:
+
+- **LEGACY (migration-only)** — a key read only by a migration is on its way
+  out, not a configurability gap. Building a UI for it would be wrong.
+- **Subscriber writes count as UI writes.** `spec_overrides` was reported
+  unreachable because its writer is not under `browser/`. It is written by
+  `spec_reverse.on_spec_modified`, a registered ZCML subscriber that fires when
+  a manager edits a core SENAITE AnalysisSpec. It has an editor — core's.
+
+### Three defects in migrate_profile_structure.py
+
+Found while carrying `duplicate` forward. Recorded in full in
+`docs/ISO17025_DESIGN.md` §3d:
+
+1. `salt_adjustment_factors` was listed as obsolete. It is authoritative, and
+   deleting it would have taken the CoA lot traceability with it. The
+   `UnconfiguredCriterion` message sends users to this script, so the advice
+   was the hazard.
+2. `duplicate` and `recovery_tiers` were deleted without their values being
+   carried anywhere.
+3. **It read the wrong store.** Live profiles are Dexterity objects; the
+   migration read the legacy annotation mapping, cleaned a stale copy, and
+   printed "saved". The annotation store held `salt=0`; the live store held
+   `salt=2`.
+
+`get_profile_store()`'s docstring already said "use get_profile() /
+save_profile() for all live read/write", and the sibling migration
+`backfill_matrix_uid_map.py` already did. The correct pattern was in the same
+directory. This was inconsistency rather than ignorance, which is harder to
+notice because the file you are reading looks fine on its own.
+
+Run against live data afterwards: flat keys gone from all three profiles,
+`Dup.rpd` (30/30/20) and `LFSM.tiers` (1/1/3) preserved, and
+`salt_adjustment_factors` intact — PFOA 0.9636 against lot MXA-2453-A. Engine
+after: LFSM tier 1 80–120, Dup RPD 20, CCV 72–128 (the lab's configured value).
+
+**Audit now: DEAD 0, UNREACHABLE 0, SPLIT KEY 0, UI-ONLY 2** (both the Run
+Builder's own template, judged legitimate), LEGACY 0, DERIVED 3.

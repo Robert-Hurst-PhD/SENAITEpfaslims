@@ -167,9 +167,6 @@ class PFASMethodProfileEditView(BrowserView):
     def confirmation(self):
         return self._iv_section("confirmation", "confirmation")
 
-    def duplicate(self):
-        return self.profile().get("duplicate", {})
-
     # The QC type whose tiers the Recovery Tiers grid edits. Recovery tiers are
     # an LFSM concept: LFSMD carries RPD as well, Dup carries only RPD, and MB
     # is judged against the reporting limit.
@@ -239,13 +236,20 @@ class PFASMethodProfileEditView(BrowserView):
         return rows
 
     def dup_rpd(self):
-        """Sample-duplicate (Dup) RPD limit — sourced from qc_acceptance.Dup
-        (what the pipeline evaluates), falling back to legacy duplicate.rpd_max."""
+        """Sample-duplicate RPD limit, from the structure the engine evaluates.
+
+        The fallback to the legacy flat key is gone, and so is the 20.0 default
+        behind it. migrate_profile_structure carries a legacy value into
+        qc_acceptance.Dup, and an unmigrated profile now shows an empty field
+        rather than a plausible number the engine would not enforce -- with
+        UnconfiguredCriterion making the gap loud on the next run instead of
+        silently judging duplicates against 20%.
+        """
         qca = self.profile().get("qc_acceptance", {}) or {}
         tiers = (qca.get("Dup", {}) or {}).get("tiers", []) or []
         if tiers and tiers[0].get("rpd_max") is not None:
             return tiers[0]["rpd_max"]
-        return self.profile().get("duplicate", {}).get("rpd_max", 20.0)
+        return ""
 
     def matrix_adjustment_rows(self):
         """One row per SUPPORTED MATRIX (from the Analyte × Matrix map, which
@@ -901,13 +905,16 @@ class PFASMethodProfileEditView(BrowserView):
                 entry.setdefault("enabled", True)
                 entry["tiers"] = tiers
 
-        # Sample Duplicate (Dup) RPD — the pipeline reads qc_acceptance.Dup
-        # (via _resolve_fda_tier), NOT profile.duplicate. Write BOTH so the
-        # editable field actually drives QC (D56 — was disconnected before).
-        dup = profile.setdefault("duplicate", {})
+        # Sample Duplicate (Dup) RPD. D56 fixed a disconnection here by writing
+        # BOTH the flat `duplicate` key and qc_acceptance.Dup. Only the latter
+        # is read by the engine, so the mirror was two places holding one number
+        # and free to diverge — the split-key shape four defects came out of.
+        # The value is migrated into the enforced structure and the mirror
+        # dropped; dup_rpd() still READS the legacy key so an unmigrated profile
+        # keeps its value until its first save.
         rpd = _float("dup_rpd_max")
         if rpd is not None:
-            dup["rpd_max"] = rpd
+            profile.pop("duplicate", None)
             qca = profile.setdefault("qc_acceptance", {})
             dup_qc = qca.setdefault("Dup", {"enabled": True})
             tiers = dup_qc.setdefault("tiers", [{}])
