@@ -34,11 +34,9 @@ flat list (see `CLAUDE.md` §3):
 | EPA 1633A | 40 | 9 |
 
 The 27 labeled compounds are **26 surrogates + 1 injection internal standard**
-(13C4-PFOA under FDA). That distinction is load-bearing, not bookkeeping: a
-surrogate is added before extraction and is diluted with the sample, while the
-injection standard is added at reconstitution and must not be scaled. Which
-compound plays which role is owned by the method (`surrogate_is_chain`), not by
-a global table.
+(13C4-PFOA under FDA). Which compound plays which role is owned by the method
+(`surrogate_is_chain`); the roles are treated differently under dilution — see
+`docs/ISO17025_DESIGN.md` §5.
 
 Each native analyte is pre-linked to its surrogate per the FDA Table 9-1
 mapping (e.g. PFOA→M8PFOA, PFTrDA→MPFDoA), and the 19 analytes with no

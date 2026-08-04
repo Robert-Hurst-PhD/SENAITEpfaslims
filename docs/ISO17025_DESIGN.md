@@ -3,7 +3,11 @@
 `CLAUDE.md` states the law. `DECISIONS.md` records what happened, in order.
 This document is the layer in between: for each accreditation obligation, what
 the data model must therefore own, the shape of defect that violates it, how
-that defect was actually caught, and the line of code that now prevents it.
+that defect was actually caught, and the code that now prevents it.
+
+Anchors below name **symbols, not line numbers** — deliberately. Line numbers
+in `method_profiles.py` moved three times while this work was in progress, and
+a reference doc with stale anchors teaches readers not to trust it.
 
 It exists because the obligations in CLAUDE.md §10 are stated but not derived.
 A reader who knows *that* reagent traceability is required still cannot tell,
@@ -51,11 +55,10 @@ this key?* That is the UI-ONLY check in `tools/audit_configurable.py`.
 **Cost.** FDA_32PFAS carries 0.9636 for PFOA against lot MXA-2453-A. Every PFOA
 result issued before 2026-08-03 was 3.6% high.
 
-**Where it is enforced.** `pfas_pipeline/pipeline.py:62`
-`apply_extract_corrections()` — one named function, because "which corrections
+**Where it is enforced.** `pfas_pipeline/pipeline.apply_extract_corrections()` — one named function, because "which corrections
 were applied, in what order" is a question a reviewer asks of every result and
 it should have exactly one answer to read. Factors resolve through
-`method_profiles.get_salt_factors()` (`:1195`) and expand to isomer components,
+`method_profiles.get_salt_factors()` and expand to isomer components,
 because `lr-`/`br-` rows come from the same salt-form standard as the analyte
 they sum to.
 
@@ -84,8 +87,7 @@ genuine disagreement.
 fixture had no mismatch. The question that found it was structural: *which
 fields on this object are client-visible?*
 
-**Where it is enforced.** `pfas_pipeline/models.py:241`
-`SummaryResult.is_mismatch`, a field the QC Review Report reads, plus a
+**Where it is enforced.** `pfas_pipeline/models.SummaryResult.is_mismatch`, a field the QC Review Report reads, plus a
 `QCFlag` so the finding reaches Data Review through the same channel as every
 other reviewer finding. `tests/test_surrogate_map.py` asserts it never reaches
 `flags`.
@@ -117,9 +119,8 @@ result is measured against a criterion no one chose, and it *passes*. A wrong
 result draws scrutiny; a passing result never does. That asymmetry is why this
 was worth hard-blocking over.
 
-**Where it is enforced.** `pfas_pipeline/method_profiles.py:738`
-`UnconfiguredCriterion`, raised from `_tier_rule()` (`:763`), `_ccv_rule()`
-(`:836`), and the 1633A and 537.1 paths. The legacy `recovery_tiers` branch — a
+**Where it is enforced.** `pfas_pipeline/method_profiles.UnconfiguredCriterion`, raised from
+`_tier_rule()`, `_ccv_rule()`, and the 1633A and 537.1 paths. The legacy `recovery_tiers` branch — a
 second, divergent copy of the tier logic — was deleted with it, because a
 fallback copy can only ever mask the absence it is compensating for.
 
@@ -142,7 +143,7 @@ could not see from inside it. The rule that finally held:
 > you thought of.**
 
 A tier counts as configured when it carries any key beyond the structural ones
-(`_TIER_STRUCTURAL_KEYS`, `:756`) — name, analyte group, matrix scope. A
+(`_TIER_STRUCTURAL_KEYS`) — name, analyte group, matrix scope. A
 criterion type added next year does not silently start refusing.
 
 This generalises past QC: whenever you are about to write "valid if it has one
@@ -168,7 +169,7 @@ is not obvious:
 The published limits were never the problem. The problem was that they could
 not be overridden, so a lab whose SOP is tighter than the method floor had
 nowhere to say so. `qc_acceptance.SUR` now wins when configured
-(`_method_text_rule`, `:814`); the cited value stands otherwise.
+(`_method_text_rule`); the cited value stands otherwise.
 
 Without this distinction the next person applies refuse-to-judge to the
 published limits and breaks every 537.1 run.
@@ -189,8 +190,7 @@ matrix **title**. The first version of the Matrices & Units editor pruned
 its matrix factor, the multiplier applied to every native concentration on the
 certificate.
 
-**Where it is enforced.** `src/senaite/pfas/browser/method_profiles.py:294`
-`_matrix_references()`; the save refuses and names what would be stranded:
+**Where it is enforced.** `src/senaite/pfas/browser/method_profiles._matrix_references()`; the save refuses and names what would be stranded:
 
 > Removing or renaming Meat / Muscle would orphan matrix factors for
 > Meat / Muscle; spike levels for Meat / Muscle; analyte × matrix inclusion for
@@ -233,11 +233,11 @@ both silently produced *plausible* output:
   a mismatch detector that fires on everything is as useless as one that never
   fires, and rather more convincing.
 
-**Where it is enforced.** `pfas_pipeline/pipeline.py:211` `_quantifying_is()`
+**Where it is enforced.** `pfas_pipeline/pipeline._quantifying_is()`
 (profile authoritative, instrument column and alias table as fallbacks,
-disagreement flagged); `pfas_pipeline/qc_engine.py:96` (the method's
-`surrogate_is_chain` decides which compound is the injection standard);
-`method_profiles.get_surrogate_map()` (`:1142`) keys both spellings.
+disagreement flagged); `pfas_pipeline/qc_engine.is_raw_check()` (the method's `surrogate_is_chain`
+decides which compound is the injection standard);
+`method_profiles.get_surrogate_map()` keys both spellings.
 
 ---
 

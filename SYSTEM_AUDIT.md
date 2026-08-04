@@ -71,10 +71,8 @@ The fact was in the right place; nothing read it.
   engine-read and UI-unwritable — owned by a seed constant in practice, not by
   the lab. Now editable (Method Profiles → Matrices & Units).
 
-**A single-source-of-truth map is a claim about consumers, not about storage.**
-Listing an owner proves nothing if no reader consults it; that is precisely how
-a fact ends up recorded in one place and used from another.
-`tools/audit_configurable.py` tests the claim mechanically — see
+Each row here is a claim about **consumers**, not just storage — verify it with
+`tools/audit_configurable.py` rather than by reading. Rationale:
 `docs/ISO17025_DESIGN.md`.
 
 ---
