@@ -138,8 +138,14 @@ def _qc_rows(batch) -> list:
 
     # Internal standard response
     for res in (getattr(batch, "is_results", None) or []):
+        # concat_id, not injection_name. A real run repeats an injection NAME:
+        # this export has three CCVs all called FDA-CCV-251020, distinguished
+        # only by acquisition time. qc_level is part of the row's unique key,
+        # so using the bare name collided and rolled the whole QC persist back.
+        # concat_id is documented as "injection_name|yyyymmddHHMMSS (unique
+        # key)" and existed for exactly this.
         rows.append(dict(common, analyte=res.is_compound, qc_type="IS",
-                         qc_level=res.injection_name,
+                         qc_level=(res.concat_id or res.injection_name),
                          value=(res.pct_from_cal * 100.0
                                 if res.pct_from_cal is not None else None),
                          units="% of ICAL avg",
@@ -211,6 +217,23 @@ def persist_qc_results(batch, db_path: str = None) -> int:
                     ",".join(keys), ",".join("?" * len(keys))),
                 [r[k] for k in keys])
         conn.commit()
+    except Exception:
+        # A failed insert rolls back, which would leave the PREVIOUS run's rows
+        # in place looking current -- Data Review would gate on stale QC and
+        # say nothing. Clear the batch instead: "no QC record" blocks the gate,
+        # which is the honest state, and re-raise so the run reports it.
+        conn.rollback()
+        try:
+            conn.execute("DELETE FROM qc_results WHERE batch_id=?",
+                         (batch.batch_id,))
+            conn.commit()
+            logger.error("QC persist failed for %s; cleared its rows rather "
+                         "than leaving the previous run's in place.",
+                         batch.batch_id)
+        except Exception:                                   # noqa: BLE001
+            logger.exception("could not clear stale QC rows for %s",
+                             batch.batch_id)
+        raise
     finally:
         conn.close()
     return len(rows) + len(unevaluated)
