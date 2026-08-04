@@ -4304,3 +4304,35 @@ rather than dropping it silently.
 Re-verified after the purge: 8/8 suites, **4251 combinations configured / 57 on
 defaults, 0 refused**, audit **DEAD 0, UNREACHABLE 0, SPLIT 0, LEGACY 0,
 UI-ONLY 2** (both the Run Builder's own template).
+
+### 2026-08-04 — the rest of the fallback family
+
+`confirmation_rule()` was asked for; `calibration_rule()` and `is_rule()` carry
+the identical defect and were converted with it rather than left to a third
+round. Each decides a verdict — r2_min gates whether a calibration is acceptable
+at all, the ion-ratio window passes or fails a confirmation, the IS-response
+window gates the run — and each substituted a literal when the profile was
+silent.
+
+**The key-level distinction that made it safe.** A key PRESENT with value
+`null` is a decision; a key ABSENT is a gap. EPA 537.1 stores
+`ion_ratio_tol_pct: null` because 537.1 has no qual-ion ratio criterion; FDA
+stores `low_point_pct_dev_max: null` and `vs_last_ccv_min/max: null` likewise.
+The editor always writes every key, so absence genuinely means never-configured.
+Had `null` been treated as missing, all three methods would have refused — the
+same mistake as demanding a recovery window from a duplicate, one level down.
+
+`_iv_section()` / `_required()` generalise the confirmation-only helpers, so a
+fourth rule family does not get a fourth variant.
+
+Verified: **4263 combinations configured / 69 on defaults, 0 refused** (now
+including `calibration_rule` for both native and labelled analytes,
+`is_rule`, `confirmation_rule`, `sequence_rule`); 8/8 suites; both fixtures
+still 288 rows / 198 values with **0 ion-ratio flags** — unchanged, but the 30%
+window is now read from the profile rather than written in code.
+
+**Hardcoded lab values: 118 → 96.** No acceptance criterion in
+`pfas_pipeline/method_profiles.py` falls back to a literal any more. What
+remains is module tables (EDD columns, calibration ladders, qualifier maps),
+facility-QC thresholds — evaluated independently of batch release per §10 — and
+setup-form defaults.

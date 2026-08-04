@@ -95,6 +95,107 @@ def test_half_configured_window_refuses():
         tiers[:] = saved
 
 
+def test_confirmation_criteria_resolve_from_the_profile():
+    """The ion-ratio window, RT tolerance and S/N minima were inline fallbacks
+    (`conf.get("ion_ratio_tol_pct", 30.0)`) — an ion-ratio check against a
+    window nobody chose passes or fails on a number the lab never set."""
+    from pfas_pipeline.method_profiles import available_profiles
+    for mid in available_profiles():
+        profile = get_profile(mid)
+        if not profile._profile_data().get("instrument_verification"):
+            print("  (skipped %s: no profile export loaded)" % mid)
+            continue
+        profile.confirmation_rule()          # must not raise
+
+
+def test_a_deliberately_absent_criterion_is_not_a_gap():
+    """EPA 537.1 stores ion_ratio_tol_pct: null because the method HAS no
+    qual-ion ratio criterion. Present-but-null is a decision; absent is a gap.
+    The same distinction the Dup and MB tiers turned on."""
+    profile = get_profile("EPA_537_1")
+    conf = (profile._profile_data().get("instrument_verification")
+            or {}).get("confirmation")
+    if not conf:
+        print("  (skipped: no profile export loaded)")
+        return
+    assert "ion_ratio_tol_pct" in conf, "the editor should write the key"
+    assert conf["ion_ratio_tol_pct"] is None, conf
+    assert profile.confirmation_rule().ion_ratio_tol_pct is None
+
+
+def test_absent_confirmation_criterion_refuses():
+    profile, data = _fda()
+    conf = (data.get("instrument_verification") or {}).get("confirmation")
+    if not conf:
+        print("  (skipped: no profile export loaded)")
+        return
+    saved = dict(conf)
+    try:
+        del conf["ion_ratio_tol_pct"]
+        try:
+            profile.confirmation_rule()
+        except UnconfiguredCriterion as exc:
+            assert "ion_ratio_tol_pct" in str(exc), exc
+        else:
+            raise AssertionError("substituted an ion-ratio window")
+        # and a wholly missing section refuses too
+        data["instrument_verification"]["confirmation"] = {}
+        try:
+            profile.confirmation_rule()
+        except UnconfiguredCriterion as exc:
+            assert "confirmation" in str(exc), exc
+        else:
+            raise AssertionError("substituted a whole confirmation section")
+    finally:
+        data["instrument_verification"]["confirmation"] = saved
+
+
+def test_calibration_and_is_criteria_resolve_from_the_profile():
+    """r2_min gates whether a calibration is acceptable at all, and the IS
+    response window gates the run. Both were inline fallbacks."""
+    from pfas_pipeline.method_profiles import available_profiles
+    for mid in available_profiles():
+        profile = get_profile(mid)
+        if not profile._profile_data().get("instrument_verification"):
+            print("  (skipped %s: no profile export loaded)" % mid)
+            continue
+        assert profile.calibration_rule().r2_min is not None
+        assert profile.is_rule().vs_ical_avg_min is not None
+        # a labelled compound uses a different fit but the same criteria
+        profile.calibration_rule("M8PFOA")
+
+
+def test_absent_r2_min_refuses():
+    profile, data = _fda()
+    cal = (data.get("instrument_verification") or {}).get("calibration")
+    if not cal:
+        print("  (skipped: no profile export loaded)")
+        return
+    saved = dict(cal)
+    try:
+        del cal["r2_min"]
+        try:
+            profile.calibration_rule()
+        except UnconfiguredCriterion as exc:
+            assert "r2_min" in str(exc), exc
+        else:
+            raise AssertionError("substituted an r2 threshold")
+    finally:
+        data["instrument_verification"]["calibration"] = saved
+
+
+def test_null_is_window_is_a_decision_not_a_gap():
+    """FDA records vs_last_ccv_min/max as null: the method sets no numeric
+    IS-area limit against the last CCV. That must resolve, not refuse."""
+    profile, data = _fda()
+    if not data.get("instrument_verification"):
+        print("  (skipped: no profile export loaded)")
+        return
+    rule = profile.is_rule()
+    assert rule.vs_ical_avg_min is not None
+    assert rule.vs_last_ccv_min is None, rule
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

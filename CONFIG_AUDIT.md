@@ -35,7 +35,7 @@ An editor writes it and reads it back; nothing downstream consumes it. Looks ali
 
 None.
 
-## Hardcoded lab values (118)
+## Hardcoded lab values (96)
 
 | location | kind | line |
 |---|---|---|
@@ -50,33 +50,11 @@ None.
 | `pfas_pipeline/injection_builder.py:39` | lab table in code | `EPA537_CAL_LEVELS = [` |
 | `pfas_pipeline/injection_builder.py:48` | lab table in code | `EPA537_QCS = [("537-QCS-1", "80/320 ppt"), ("537-QCS-2", "20/80 ppt")]` |
 | `pfas_pipeline/method_profiles.py:162` | lab table in code | `_DEFAULT_PROFILE_CACHE = {` |
-| `pfas_pipeline/method_profiles.py:594` | acceptance value inlined as a fallback | `r2_min=float(cal.get("r2_min", 0.990)),` |
-| `pfas_pipeline/method_profiles.py:608` | acceptance value inlined as a fallback | `vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),` |
-| `pfas_pipeline/method_profiles.py:609` | acceptance value inlined as a fallback | `vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),` |
-| `pfas_pipeline/method_profiles.py:618` | acceptance value inlined as a fallback | `ion_ratio_tol_pct=conf.get("ion_ratio_tol_pct", 30.0),` |
-| `pfas_pipeline/method_profiles.py:619` | acceptance value inlined as a fallback | `rrt_tol_pct=conf.get("rrt_tol_pct", 1.0),` |
-| `pfas_pipeline/method_profiles.py:621` | acceptance value inlined as a fallback | `sn_min_quant=conf.get("sn_quan_min", 3.0),` |
-| `pfas_pipeline/method_profiles.py:622` | acceptance value inlined as a fallback | `sn_min_confirm=conf.get("sn_confirm_min", 3.0),` |
-| `pfas_pipeline/method_profiles.py:694` | acceptance value inlined as a fallback | `r2_min=float(cal.get("r2_min", 0.990)),` |
-| `pfas_pipeline/method_profiles.py:695` | acceptance value inlined as a fallback | `point_pct_dev_max=cal.get("point_pct_dev_max", 30.0),` |
-| `pfas_pipeline/method_profiles.py:696` | acceptance value inlined as a fallback | `low_point_pct_dev_max=cal.get("low_point_pct_dev_max", 50.0),` |
-| `pfas_pipeline/method_profiles.py:708` | acceptance value inlined as a fallback | `vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),` |
-| `pfas_pipeline/method_profiles.py:709` | acceptance value inlined as a fallback | `vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),` |
-| `pfas_pipeline/method_profiles.py:710` | acceptance value inlined as a fallback | `vs_last_ccv_min=is_.get("vs_last_ccv_min", 70.0),` |
-| `pfas_pipeline/method_profiles.py:711` | acceptance value inlined as a fallback | `vs_last_ccv_max=is_.get("vs_last_ccv_max", 140.0),` |
-| `pfas_pipeline/method_profiles.py:719` | acceptance value inlined as a fallback | `rt_tol_abs_min=conf.get("rt_tol_abs_min", 0.05),` |
-| `pfas_pipeline/method_profiles.py:743` | acceptance value inlined as a fallback | `fallbacks of the form tier.get("recovery_min", 40.0), so a profile that was` |
-| `pfas_pipeline/method_profiles.py:756` | lab table in code | `_TIER_STRUCTURAL_KEYS = frozenset([` |
-| `pfas_pipeline/method_profiles.py:952` | acceptance value inlined as a fallback | `r2_min=float(cal.get("r2_min", 0.990)),` |
-| `pfas_pipeline/method_profiles.py:953` | acceptance value inlined as a fallback | `point_pct_dev_max=cal.get("point_pct_dev_max", 30.0),` |
-| `pfas_pipeline/method_profiles.py:954` | acceptance value inlined as a fallback | `low_point_pct_dev_max=cal.get("low_point_pct_dev_max", 50.0),` |
-| `pfas_pipeline/method_profiles.py:966` | acceptance value inlined as a fallback | `vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),` |
-| `pfas_pipeline/method_profiles.py:967` | acceptance value inlined as a fallback | `vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),` |
-| `pfas_pipeline/method_profiles.py:974` | acceptance value inlined as a fallback | `ion_ratio_tol_pct=conf.get("ion_ratio_tol_pct", 50.0),` |
-| `pfas_pipeline/method_profiles.py:975` | acceptance value inlined as a fallback | `sn_min_quant=conf.get("sn_quan_min", 3.0),` |
-| `pfas_pipeline/method_profiles.py:976` | acceptance value inlined as a fallback | `sn_min_confirm=conf.get("sn_confirm_min", 1.0),` |
-| `pfas_pipeline/method_profiles.py:994` | lab table in code | `_PROFILES = {` |
-| `pfas_pipeline/method_profiles.py:1001` | lab table in code | `_ALIASES = {` |
+| `pfas_pipeline/method_profiles.py:633` | acceptance value inlined as a fallback | `confirm_pct_diff_max=conf.get("confirm_pct_diff_max", 20.0),` |
+| `pfas_pipeline/method_profiles.py:757` | acceptance value inlined as a fallback | `fallbacks of the form tier.get("recovery_min", 40.0), so a profile that was` |
+| `pfas_pipeline/method_profiles.py:770` | lab table in code | `_TIER_STRUCTURAL_KEYS = frozenset([` |
+| `pfas_pipeline/method_profiles.py:1079` | lab table in code | `_PROFILES = {` |
+| `pfas_pipeline/method_profiles.py:1086` | lab table in code | `_ALIASES = {` |
 | `pfas_pipeline/models.py:318` | lab table in code | `BATCH_QC_REQUIREMENTS = [` |
 | `pfas_pipeline/vendor_profiles.py:25` | lab table in code | `WATERS_MASSLYNX = {` |
 | `pfas_pipeline/vendor_profiles.py:55` | lab table in code | `AGILENT_MASSHUNTER = {` |

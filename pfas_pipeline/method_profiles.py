@@ -587,11 +587,12 @@ class FDA32PFASProfile(MethodProfile):
                                  method_id=self.method_id)
 
     def calibration_rule(self, analyte=""):
-        cal = self._iv().get("calibration", {})
+        cal = _calibration(self._profile_data(), self.method_id)
         fit = ("mean_response_factor"
                if analyte.startswith(("M", "13C")) else "linear")
         return CalibrationRule(
-            r2_min=float(cal.get("r2_min", 0.990)),
+            r2_min=float(_required(cal, "r2_min", self.method_id,
+                                   "calibration", " -> Calibration & CCV")),
             point_pct_dev_max=cal.get("point_pct_dev_max"),
             low_point_pct_dev_max=cal.get("low_point_pct_dev_max"),
             force_origin=bool(cal.get("force_origin", False)),
@@ -603,25 +604,33 @@ class FDA32PFASProfile(MethodProfile):
         return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
 
     def is_rule(self):
-        is_ = self._iv().get("is_response") or self._iv().get("is", {})
+        is_ = _is_section(self._profile_data(), self.method_id)
+        req = lambda k: _required(is_, k, self.method_id, "is_response",
+                                  " -> Calibration & CCV -> IS Response")
         return ISRule(
-            vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),
-            vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),
+            vs_ical_avg_min=req("vs_ical_avg_min"),
+            vs_ical_avg_max=req("vs_ical_avg_max"),
             vs_last_ccv_min=is_.get("vs_last_ccv_min"),
             vs_last_ccv_max=is_.get("vs_last_ccv_max"),
             notes="Lab SOP screen (Excel legacy); FDA method sets no numeric IS-area limit",
         )
 
     def confirmation_rule(self):
-        conf = self._iv().get("confirmation", {})
+        conf = _confirmation(self._profile_data(), self.method_id)
+        # single_transition_analytes and confirm_pct_diff_max are METHOD TEXT
+        # (FDA: PFBA/PFPeA have one usable transition and positives need
+        # orthogonal LC-HRMS confirmation within 20%), so they keep their cited
+        # values rather than refusing -- but they are overridable, which they
+        # were not.
         return ConfirmationRule(
-            ion_ratio_tol_pct=conf.get("ion_ratio_tol_pct", 30.0),
-            rrt_tol_pct=conf.get("rrt_tol_pct", 1.0),
+            ion_ratio_tol_pct=_conf_value(conf, "ion_ratio_tol_pct", self.method_id),
+            rrt_tol_pct=_conf_value(conf, "rrt_tol_pct", self.method_id),
             rt_tol_abs_min=conf.get("rt_tol_abs_min"),
-            sn_min_quant=conf.get("sn_quan_min", 3.0),
-            sn_min_confirm=conf.get("sn_confirm_min", 3.0),
-            single_transition_analytes=("PFBA", "PFPeA"),
-            confirm_pct_diff_max=20.0,
+            sn_min_quant=_conf_value(conf, "sn_quan_min", self.method_id),
+            sn_min_confirm=_conf_value(conf, "sn_confirm_min", self.method_id),
+            single_transition_analytes=tuple(
+                conf.get("single_transition_analytes") or ("PFBA", "PFPeA")),
+            confirm_pct_diff_max=conf.get("confirm_pct_diff_max", 20.0),
             notes="PFBA/PFPeA positives require LC-HRMS confirmation; "
                   "cholic acid (TDCA/TCDCA/TUDCA) interference transitions "
                   "monitored for PFOS (§2024.8.5)",
@@ -689,11 +698,13 @@ class EPA537Profile(MethodProfile):
         )
 
     def calibration_rule(self, analyte=""):
-        cal = self._iv().get("calibration", {})
+        cal = _calibration(self._profile_data(), self.method_id)
+        req = lambda k: _required(cal, k, self.method_id, "calibration",
+                                  " -> Calibration & CCV")
         return CalibrationRule(
-            r2_min=float(cal.get("r2_min", 0.990)),
-            point_pct_dev_max=cal.get("point_pct_dev_max", 30.0),
-            low_point_pct_dev_max=cal.get("low_point_pct_dev_max", 50.0),
+            r2_min=float(req("r2_min")),
+            point_pct_dev_max=req("point_pct_dev_max"),
+            low_point_pct_dev_max=req("low_point_pct_dev_max"),
             force_origin=bool(cal.get("force_origin", True)),
         )
 
@@ -703,20 +714,23 @@ class EPA537Profile(MethodProfile):
                          low_level_default=(50.0, 150.0))
 
     def is_rule(self):
-        is_ = self._iv().get("is_response") or self._iv().get("is", {})
+        is_ = _is_section(self._profile_data(), self.method_id)
+        req = lambda k: _required(is_, k, self.method_id, "is_response",
+                                  " -> Calibration & CCV -> IS Response")
         return ISRule(
-            vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),
-            vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),
-            vs_last_ccv_min=is_.get("vs_last_ccv_min", 70.0),
-            vs_last_ccv_max=is_.get("vs_last_ccv_max", 140.0),
+            vs_ical_avg_min=req("vs_ical_avg_min"),
+            vs_ical_avg_max=req("vs_ical_avg_max"),
+            vs_last_ccv_min=req("vs_last_ccv_min"),
+            vs_last_ccv_max=req("vs_last_ccv_max"),
             notes="Both conditions must hold (§9.3.4); on failure "
                   "re-inject a second aliquot in a fresh vial",
         )
 
     def confirmation_rule(self):
-        conf = self._iv().get("confirmation", {})
+        conf = _confirmation(self._profile_data(), self.method_id)
         return ConfirmationRule(
-            rt_tol_abs_min=conf.get("rt_tol_abs_min", 0.05),
+            rt_tol_abs_min=_conf_value(conf, "rt_tol_abs_min", self.method_id),
+            sn_min_quant=conf.get("sn_quan_min"),
             notes="RT within ±0.05 min of expected; "
                   "no qual-ion ratio criterion in 537.1",
         )
@@ -858,6 +872,73 @@ def _ccv_rule(ccv, method_id, default_frequency=6, low_level_default=(None, None
     )
 
 
+def _iv_section(profile_data, method_id, section, aliases=(), where=""):
+    """A configured instrument_verification section, or refuse.
+
+    Generalised from the confirmation-only version: calibration (r2_min,
+    per-point %dev), IS response (vs ICAL average, vs last CCV) and
+    confirmation all carried the same inline fallbacks, and all three decide a
+    verdict. r2_min in particular gates whether a calibration is acceptable at
+    all.
+    """
+    iv = profile_data.get("instrument_verification") or {}
+    data = iv.get(section)
+    for alias in aliases:
+        if not data:
+            data = iv.get(alias)
+    if not isinstance(data, dict) or not data:
+        raise UnconfiguredCriterion(
+            "{0} has no instrument_verification.{1} section. Configure it in "
+            "Method Profiles{2}.".format(method_id, section, where))
+    return data
+
+
+def _required(section_data, key, method_id, section, where=""):
+    """One criterion. Absent refuses; an explicit None means not applicable."""
+    if key not in section_data:
+        raise UnconfiguredCriterion(
+            "{0} has no '{1}' configured under instrument_verification.{2}. "
+            "Set it in Method Profiles{3}, or clear the field to record that "
+            "this method has no such criterion.".format(
+                method_id, key, section, where))
+    return section_data[key]
+
+
+def _confirmation(profile_data, method_id):
+    """The configured chromatographic-confirmation section, or refuse.
+
+    Same silent-substitution shape as the recovery limits: `conf.get(
+    "ion_ratio_tol_pct", 30.0)` supplied a plausible window when the profile
+    said nothing, and an ion-ratio check against a window nobody chose passes
+    or fails on a number the lab never set.
+
+    A key PRESENT with value None is not the same as a key ABSENT. EPA 537.1
+    stores `ion_ratio_tol_pct: null` deliberately -- the method has no qual-ion
+    ratio criterion at all -- and the editor always writes every key, so an
+    absent key means the section was never configured. That is the same
+    distinction the Dup and MB tiers turned on: a criterion the method does not
+    use is configured, not missing.
+    """
+    return _iv_section(profile_data, method_id, "confirmation",
+                       where=" -> Calibration & CCV -> Chromatographic "
+                             "Confirmation")
+
+
+def _conf_value(conf, key, method_id):
+    return _required(conf, key, method_id, "confirmation",
+                     " -> Calibration & CCV")
+
+
+def _calibration(profile_data, method_id):
+    return _iv_section(profile_data, method_id, "calibration",
+                       where=" -> Calibration & CCV")
+
+
+def _is_section(profile_data, method_id):
+    return _iv_section(profile_data, method_id, "is_response", ("is",),
+                       where=" -> Calibration & CCV -> IS Response")
+
+
 def _1633a_matrix_class(matrix: str) -> str:
     """Map a 1633A matrix name to the EIS table class used in eis_matrix_overrides."""
     m = matrix.lower().strip()
@@ -947,11 +1028,13 @@ class EPA1633AProfile(MethodProfile):
         )
 
     def calibration_rule(self, analyte=""):
-        cal = self._iv().get("calibration", {})
+        cal = _calibration(self._profile_data(), self.method_id)
+        req = lambda k: _required(cal, k, self.method_id, "calibration",
+                                  " -> Calibration & CCV")
         return CalibrationRule(
-            r2_min=float(cal.get("r2_min", 0.990)),
-            point_pct_dev_max=cal.get("point_pct_dev_max", 30.0),
-            low_point_pct_dev_max=cal.get("low_point_pct_dev_max", 50.0),
+            r2_min=float(req("r2_min")),
+            point_pct_dev_max=req("point_pct_dev_max"),
+            low_point_pct_dev_max=req("low_point_pct_dev_max"),
             default_fit="linear",
             default_weighting="1/x",
         )
@@ -961,19 +1044,21 @@ class EPA1633AProfile(MethodProfile):
                          default_frequency=10)
 
     def is_rule(self):
-        is_ = self._iv().get("is_response") or self._iv().get("is", {})
+        is_ = _is_section(self._profile_data(), self.method_id)
+        req = lambda k: _required(is_, k, self.method_id, "is_response",
+                                  " -> Calibration & CCV -> IS Response")
         return ISRule(
-            vs_ical_avg_min=is_.get("vs_ical_avg_min", 50.0),
-            vs_ical_avg_max=is_.get("vs_ical_avg_max", 150.0),
+            vs_ical_avg_min=req("vs_ical_avg_min"),
+            vs_ical_avg_max=req("vs_ical_avg_max"),
             notes="NIS screen; EIS uses per-analyte limits",
         )
 
     def confirmation_rule(self):
-        conf = self._iv().get("confirmation", {})
+        conf = _confirmation(self._profile_data(), self.method_id)
         return ConfirmationRule(
-            ion_ratio_tol_pct=conf.get("ion_ratio_tol_pct", 50.0),
-            sn_min_quant=conf.get("sn_quan_min", 3.0),
-            sn_min_confirm=conf.get("sn_confirm_min", 1.0),
+            ion_ratio_tol_pct=_conf_value(conf, "ion_ratio_tol_pct", self.method_id),
+            sn_min_quant=_conf_value(conf, "sn_quan_min", self.method_id),
+            sn_min_confirm=_conf_value(conf, "sn_confirm_min", self.method_id),
             notes="Ion-ratio window wider in 1633A (50–150% of expected typical)",
         )
 

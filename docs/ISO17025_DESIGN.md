@@ -151,6 +151,34 @@ of A, B, or C", ask whether you can instead write "valid unless it has nothing
 at all." The second form survives extension; the first fails closed on
 precisely the cases nobody anticipated.
 
+### 3a-ii. The same conversion, applied to the rest of the family
+
+Recovery limits were only one of four rule families carrying inline fallbacks.
+`confirmation_rule()` supplied a 30% ion-ratio window, `calibration_rule()` an
+r2 of 0.990 and per-point %dev, `is_rule()` a 50–150% IS-response window. Each
+decides a verdict: r2 gates whether a calibration is acceptable at all, the
+ion-ratio window passes or fails a confirmation, the IS window gates the run.
+All now resolve from `instrument_verification.{calibration,is_response,
+confirmation}` or refuse.
+
+The distinction that made this safe is the one the Dup and MB tiers taught,
+applied at key level rather than tier level:
+
+> **A key PRESENT with value `null` is a decision. A key ABSENT is a gap.**
+
+EPA 537.1 stores `ion_ratio_tol_pct: null` because the method *has* no qual-ion
+ratio criterion; FDA stores `low_point_pct_dev_max: null` and
+`vs_last_ccv_min/max: null` for the same reason. The profile editor always
+writes every key, so absence genuinely means never-configured. Treating `null`
+as missing would have refused three correctly configured methods — the same
+mistake as demanding a recovery window from a duplicate.
+
+After this pass no acceptance criterion in `pfas_pipeline/method_profiles.py`
+falls back to a literal. Verified by sweep in both profile states: **4263
+combinations configured, 69 on the default cache, 0 refused**, and the
+ion-ratio check still raises 0 flags on the real run — the window in force is
+now 30% read from the profile rather than 30% written in code.
+
 ### 3b. Where refusal is right, and where it is wrong
 
 This call was made three times with two different answers, and the discriminator
