@@ -4142,3 +4142,17 @@ and `senaite_connector` pushes to Analysis **Remarks** — both client-facing. A
 surrogate-map disagreement is a reviewer question, which is what the QC Review
 Report exists to carry. It now travels as `SummaryResult.is_mismatch` plus a
 QCFlag, and a test asserts it never reaches `flags`.
+
+**The tool immediately caught an instance this work created.** Removing the
+legacy `recovery_tiers` branch from the pipeline left the Method Profile
+editor still exposing a `recovery_tiers` JSON field that nothing now consumes,
+and the next audit run reported it as UI-ONLY. That is the tool doing the job
+it was built for — on its author. Added to the list below rather than removed,
+because deleting a visible field is user-facing.
+
+Still open, unchanged in kind: `extraction_corrections.salt_factors` (dead seed
+key), the QC Rules salt pane backed by D53-deprecated `qc_rules.salt_factors`,
+`recovery_tiers` in the profile editor, `duplicate` under
+`instrument_verification`, and `spec_overrides` (edited through core
+Specifications rather than a PFAS form). All are removals or decisions rather
+than defects, so they are flagged, not actioned.
