@@ -36,6 +36,17 @@ logger = logging.getLogger("senaite.pfas.qc_qualification")
 
 LIBRARY_KEY = "senaite.pfas.qc_qualification.library"
 
+# Shown when a QC failure has no qualifier configured. Deliberately names the
+# page to fix it: an unexplained hold wastes the QAO's time working out what
+# the system wanted.
+UNMAPPED_PROMPT = (
+    u"This batch failed a quality control check ({failure}) for which no "
+    u"certificate qualifier has been configured. The certificate cannot be "
+    u"issued until the QAO defines the wording for this failure type under "
+    u"Configuration \u2192 Print Settings \u2192 QC Qualifiers, or records a "
+    u"decision to hold the batch."
+)
+
 # ── Disposition ──────────────────────────────────────────────────────────────
 # What the system DOES with a failure, decided without a human in the loop.
 #
@@ -332,11 +343,26 @@ def qualifier_for(portal, failure_type, injection_role=u""):
     """
     library = get_library(portal)
     entry = library.get(failure_type)
-    if not entry:
-        # Unrecognised failures hold. Releasing one under a qualifier chosen by
-        # nobody is exactly the silent-substitution failure this codebase has
-        # spent the day removing.
-        return None
+
+    # A failure nobody has mapped, or one mapped with no wording. It must not
+    # pass silently in either direction: releasing it under a qualifier chosen
+    # by nobody is the silent-substitution shape removed elsewhere, and holding
+    # it with no explanation leaves the QAO guessing why a batch will not go
+    # out. Say what is missing and where to fix it.
+    if not entry or (entry.get("disposition") == QUALIFY
+                     and not (entry.get("statement") or u"").strip()):
+        return {
+            "failure_type": failure_type or u"(unrecognised)",
+            "label": (entry or {}).get("label")
+                     or FAILURE_LABELS.get(failure_type, u"Unmapped QC failure"),
+            "code": u"",
+            "statement": u"",
+            "needs_config": True,
+            "prompt": UNMAPPED_PROMPT.format(
+                failure=(entry or {}).get("label")
+                        or failure_type or u"an unrecognised check"),
+        }
+
     disposition = disposition_for(failure_type, injection_role, library)
     if disposition == BLOCK:
         return None
@@ -345,6 +371,7 @@ def qualifier_for(portal, failure_type, injection_role=u""):
         "label": entry["label"],
         "code": entry["code"],
         "statement": entry["statement"],
+        "needs_config": False,
     }
 
 

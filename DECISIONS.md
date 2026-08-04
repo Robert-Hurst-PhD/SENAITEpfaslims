@@ -4450,3 +4450,21 @@ justified and recorded.
 Wording follows the cause: a LABORATORY failure states that accuracy cannot be
 guaranteed for the named analytes and offers a retest; a MATRIX failure states
 plainly that the sample matrix altered the result.
+
+**Qualifier associations are report configuration, and a gap must be loud.**
+The failure → disposition → code → wording table is edited on the report editor
+(Configuration → Print Settings → QC Qualifiers), because what a certificate
+says when QC fails is part of how the certificate is written, not a separate
+subsystem. Only edits are stored, so seed improvements still reach wordings the
+lab has not overridden.
+
+A failure with no qualifier configured resolves to neither release nor a silent
+hold. It returns a prompt naming the failure and the page that fixes it: *"The
+certificate cannot be issued until the QAO defines the wording for this failure
+type under Configuration → Print Settings → QC Qualifiers, or records a decision
+to hold the batch."* An unexplained hold wastes the QAO's time working out what
+the system wanted; a silent release is the substitution defect in a new place.
+
+Three outcomes, all verified against the running instance: **QUALIFY** (mapped,
+client material), **HELD** (laboratory control material, always, whatever is
+configured), **NEEDS CONFIG** (unmapped).

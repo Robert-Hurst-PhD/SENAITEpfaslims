@@ -129,6 +129,75 @@
       </button>
     </form>
 
+
+    <!-- ── QC QUALIFIERS ────────────────────────────────────────────────────
+         What a certificate says when a QC criterion fails. Report
+         configuration, so it belongs on the report editor.
+         ─────────────────────────────────────────────────────────────────── -->
+    <h2 id="qualifiers" style="margin-top:28px;">QC Qualifiers on Certificates</h2>
+    <p class="form-note" style="max-width:70em;">
+      A result that fails a QC criterion may still be released, provided the
+      certificate says so. Each failure type below either <strong>qualifies</strong>
+      &#8212; the result is issued with the code and wording shown &#8212; or is
+      <strong>held</strong> for laboratory resolution and never reaches a client.
+      <br /><br />
+      A failure on laboratory control material (a blank, a calibration standard,
+      a CCV) is <strong>always held</strong> whatever is set here: those are
+      known inputs that must pass every time, so a failure is a laboratory
+      problem and there is no client matrix to attribute it to.
+      <br /><br />
+      <strong>The wording below is a draft written from common certificate
+      practice, not transcribed from a standard.</strong> Review and edit it
+      before issuing certificates &#8212; it is the laboratory&#8217;s statement,
+      not the software&#8217;s.
+    </p>
+
+    <form method="post" class="ps-form"
+          tal:attributes="action string:${view/portal_url}/@@pfas-print-settings">
+      <input type="hidden" name="action" value="save_qualifiers" />
+      <table class="pfas-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="width:16%">Failure</th>
+            <th style="width:15%">Disposition</th>
+            <th style="width:8%">Code</th>
+            <th>Statement printed on the certificate</th>
+          </tr>
+        </thead>
+        <tbody tal:define="disps view/qualifier_dispositions">
+          <tr tal:repeat="row view/qualifier_rows">
+            <td>
+              <strong tal:content="row/label">Surrogate recovery</strong>
+              <div style="font-size:11px;color:var(--s-secondary);"
+                   tal:condition="row/customised">edited by the lab</div>
+            </td>
+            <td>
+              <select style="width:100%;"
+                      tal:attributes="name string:qual_disp.${row/key}">
+                <option tal:repeat="d disps"
+                        tal:attributes="value d/key;
+                                        selected python:d['key'] == row['disposition']"
+                        tal:content="d/label">Qualify</option>
+              </select>
+            </td>
+            <td>
+              <input type="text" maxlength="6" style="width:100%;"
+                     tal:attributes="name string:qual_code.${row/key};
+                                     value row/code" />
+            </td>
+            <td>
+              <textarea rows="4" style="width:100%;font-size:12px;"
+                        tal:attributes="name string:qual_text.${row/key}"
+                        tal:content="row/statement"></textarea>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn btn-primary" type="submit" style="margin-top:8px;">
+        Save QC Qualifiers
+      </button>
+    </form>
+
   </div>
   </div><!-- /content slot -->
 </body>
