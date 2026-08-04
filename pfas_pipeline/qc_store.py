@@ -171,8 +171,27 @@ def persist_qc_results(batch, db_path: str = None) -> int:
     `persist_injection_results` already honours."""
     path = db_path or DB_PATH
     rows = _qc_rows(batch)
+
+    # A criterion the method never configured is filed as an UNEVALUATED QC
+    # result rather than omitted. Omission is indistinguishable from "this QC
+    # type was not run", and Data Review's gate already understands
+    # `unevaluated` — it just had no producer. Filing it is what holds the
+    # report and names the gap instead of releasing on silence.
+    unevaluated = []
+    for gap in (getattr(batch, "unconfigured", None) or []):
+        unevaluated.append({
+            "batch_id": batch.batch_id,
+            "run_date": getattr(batch, "date", "") and str(batch.date) or "",
+            "analyte": gap.get("analyte") or "",
+            "qc_type": gap.get("qc_type") or "",
+            "method": gap.get("method_id") or "",
+            "flag": gap.get("reason") or "",
+            "passed": 0,
+            "_status": "unevaluated",
+        })
+
     persist_batch_row(batch, path)
-    if not rows:
+    if not rows and not unevaluated:
         return 0
     conn = _connect(path)
     try:
@@ -181,8 +200,9 @@ def persist_qc_results(batch, db_path: str = None) -> int:
             return 0
         conn.execute("DELETE FROM qc_results WHERE batch_id=?", (batch.batch_id,))
         now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-        for r in rows:
-            r = dict(r, result_status="active", created_at=now)
+        for r in list(rows) + unevaluated:
+            status = r.pop("_status", "active")
+            r = dict(r, result_status=status, created_at=now)
             for name in _required_columns(conn, "qc_results"):
                 r.setdefault(name, "")
             keys = [k for k in r if k in have]
@@ -193,7 +213,7 @@ def persist_qc_results(batch, db_path: str = None) -> int:
         conn.commit()
     finally:
         conn.close()
-    return len(rows)
+    return len(rows) + len(unevaluated)
 
 
 def persist_calibrations(batch, db_path: str = None) -> int:

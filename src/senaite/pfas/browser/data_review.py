@@ -531,6 +531,12 @@ class PFASDataReviewView(BrowserView):
                 parts.append(
                     u"{0} result(s) could not be evaluated ({1})".format(
                         len(unevaluated), u", ".join(sorted(set(unevaluated)))))
+                # An unevaluated result means a criterion was never configured,
+                # which is an ISO 17025 deviation: the batch was measured
+                # against no standard. Raise it against the worksheet so the
+                # QAO is told and a reviewer has something to resolve, rather
+                # than a gate reason that disappears when the page is closed.
+                self._raise_unconfigured_deviation(ws, summary)
             # A QC type the method requires every run, that produced no
             # result at all, was not evaluated — silence here is how a batch
             # reaches release with its matrix spike never checked.
@@ -549,6 +555,35 @@ class PFASDataReviewView(BrowserView):
                 return "blocked", u"; ".join(parts)
             return "fail", u""
         return "pending", u""
+
+    def _raise_unconfigured_deviation(self, ws, summary):
+        """File/refresh the deviation for criteria this method never set.
+
+        Idempotent by gap signature, so rendering Data Review repeatedly does
+        not file duplicates. Never allowed to break the gate: a notification
+        problem must not stop a reviewer seeing why the batch is held.
+        """
+        try:
+            from senaite.pfas.qc_deviation import ensure_deviation
+            gaps = []
+            for row in (summary.get("rows") or []):
+                for qc_type, cell in (row.get("cells") or {}).items():
+                    if not cell or cell.get("status") != "unevaluated":
+                        continue
+                    reason = u""
+                    for value in (cell.get("values") or []):
+                        if value.get("flag"):
+                            reason = value["flag"]
+                            break
+                    entry = {"qc_type": qc_type, "reason": reason}
+                    if entry not in gaps:
+                        gaps.append(entry)
+            if gaps:
+                ensure_deviation(_portal(self.context), ws.getId(), gaps,
+                                 filed_by=u"system (QC evaluation)")
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("could not raise the unconfigured-criteria "
+                         "deviation: %s", exc)
 
     def all_items_pass(self):
         return all(i.get("checked") for i in self.checklist_status())
@@ -916,7 +951,13 @@ class PFASDataReviewView(BrowserView):
                         except (TypeError, ZeroDivisionError):
                             recovery = None
 
-                    if not passed:
+                    if rec.get("result_status") == "unevaluated":
+                        # A criterion the method never configured. Distinct
+                        # from a failure -- nothing was judged -- and it must
+                        # hold the report rather than read as a pass.
+                        cell_status = "unevaluated"
+                        overall_pass = False
+                    elif not passed:
                         cell_status = "fail"
                         overall_pass = False
                     elif rec.get("result_status") == "flagged_reanalysis":

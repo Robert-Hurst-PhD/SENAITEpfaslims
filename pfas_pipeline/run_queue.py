@@ -50,6 +50,7 @@ from .qc_engine import (
 )
 from .constants import CRITERIA
 from .method_profiles import (
+    UnconfiguredCriterion,
     get_profile as _get_method_profile,
     get_analyte_list as _get_analytes,
     get_is_list as _get_is_list,
@@ -232,12 +233,42 @@ class RunQueue:
         except Exception as exc:                       # noqa: BLE001
             logger.warning("could not add isomer components to QC: %s", exc)
 
+        # A criterion the method never configured must not be silently skipped
+        # and must not stop the run: the batch still imports, the gap is
+        # recorded against the QC type it belongs to, and Data Review holds the
+        # report until someone sets the value. `unconfigured` is read by
+        # qc_store (which files it as an `unevaluated` QC result) and by the
+        # deviation raised on the worksheet.
+        if not hasattr(self.batch, "unconfigured"):
+            self.batch.unconfigured = []
+        seen_gaps = set()
+
+        def _guard(qc_type, analyte, fn, *args):
+            """Run a profiled check; record rather than raise when unconfigured."""
+            try:
+                return fn(*args)
+            except UnconfiguredCriterion as exc:
+                key = (qc_type, str(exc))
+                if key not in seen_gaps:
+                    seen_gaps.add(key)
+                    self.batch.unconfigured.append({
+                        "qc_type": qc_type,
+                        "analyte": analyte,
+                        "method_id": self.method_id or "",
+                        "reason": str(exc),
+                    })
+                    logger.error("%s not evaluated — %s", qc_type, exc)
+                return []
+
+        def _guard_is(rows_, is_cmp, dils, method):
+            return _guard("IS Response", is_cmp, is_raw_check,
+                          rows_, is_cmp, dils, method)
+
         # 1. IS Raw (is_response rule)
         if _rule_enabled(toggles, "is_response"):
             for is_cmp in _get_is_list(_method):
                 # unfiltered: dilutions ARE checked for IS consistency
-                for res in is_raw_check(all_rows, is_cmp, dilutions,
-                                        method_id=_method):
+                for res in _guard_is(all_rows, is_cmp, dilutions, _method):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     # Record EVERY result, not only the failures. The RT,
@@ -277,7 +308,8 @@ class RunQueue:
 
         for analyte in _analytes:
             if rt_enabled:
-                for res in (rrt_check_profiled(profile, rows, analyte)
+                for res in (_guard("RT", analyte, rrt_check_profiled,
+                                   profile, rows, analyte)
                             if profile else rt_deviation_check(rows, analyte)):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
@@ -288,7 +320,9 @@ class RunQueue:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.qual_quan_results.append(res)
             if cal_enabled:
-                for res in (calibration_check_profiled(profile, rows, analyte)
+                for res in (_guard("Calibration", analyte,
+                                   calibration_check_profiled,
+                                   profile, rows, analyte)
                             if profile else calibration_check(rows, analyte)):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
@@ -297,7 +331,8 @@ class RunQueue:
                 # linearity and had no check of its own: the lab's configured
                 # 72-128% window was enforced by nothing.
                 if profile and _rule_enabled(toggles, "ccv_recovery"):
-                    for flag in ccv_check_profiled(profile, rows, analyte):
+                    for flag in _guard("CCV", analyte, ccv_check_profiled,
+                                       profile, rows, analyte):
                         flags_by_injection.setdefault(
                             flag.injection_name, []).append(flag)
             if sn_enabled:

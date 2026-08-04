@@ -52,9 +52,15 @@ def _one(contact):
             sig_url = contact.absolute_url() + "/Signature"
     except Exception:
         pass
+    email = u""
+    try:
+        email = (contact.getEmailAddress() or u"").strip()
+    except Exception:
+        pass
     return {
         "fullname": full,
         "initials": initials,
+        "email": email,
         "signature_url": sig_url,
         "job_title": getattr(contact, "getJobTitle", lambda: u"")() or u"",
         "placeholder": "PLACEHOLDER" in full.upper(),
@@ -63,7 +69,7 @@ def _one(contact):
 
 
 def list_staff(portal):
-    """All lab contacts as [{fullname, initials, signature_url, ...}]."""
+    """All lab contacts as [{fullname, initials, email, signature_url, ...}]."""
     folder = _contacts_folder(portal)
     if folder is None:
         return []
