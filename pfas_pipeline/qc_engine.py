@@ -124,16 +124,50 @@ def is_raw_check(
     if not avg_response:
         return []
 
-    tol = CRITERIA["is_response_drift_pct"]
+    # Limits from the METHOD, not from the constants table. The two agreed
+    # numerically for FDA (CRITERIA's ±50% drift is the profile's 50-150%
+    # window), which is why enforcing the constant went unnoticed -- but 537.1
+    # §9.3.4 requires the IS to hold against BOTH the ICAL average AND the most
+    # recent CCV, and `vs_last_ccv` was consumed only by a function nothing
+    # called. This merges the profile's dual conditions into the check that
+    # already knows the surrogate/injection-IS distinction, rather than
+    # swapping in the profiled variant, which does not handle dilutions.
+    rule = None
+    if method_id:
+        try:
+            from .method_profiles import get_profile
+            rule = get_profile(method_id).is_rule()
+        except Exception:                                  # noqa: BLE001
+            rule = None
+    lo = rule.vs_ical_avg_min if rule else None
+    hi = rule.vs_ical_avg_max if rule else None
+    if lo is None or hi is None:
+        tol = CRITERIA["is_response_drift_pct"]
+        lo, hi = (1.0 - tol) * 100.0, (1.0 + tol) * 100.0
+    ccv_lo = rule.vs_last_ccv_min if rule else None
+    ccv_hi = rule.vs_last_ccv_max if rule else None
 
     results: list[ISRawResult] = []
+    last_ccv_response = None
     for r in [row for row in rows if row.compound_name == is_compound]:
         value = corrected(r)
         pct_from_cal = None
         flag = None
         if value is not None:
             pct_from_cal = value / avg_response
-            if abs(pct_from_cal - 1.0) > tol:
+            fails = []
+            if not (lo <= pct_from_cal * 100.0 <= hi):
+                fails.append("{0:.0f}% of ICAL average (limit {1:.0f}-{2:.0f}%)"
+                             .format(pct_from_cal * 100.0, lo, hi))
+            # 537.1's second condition. Only applied once a CCV has been seen,
+            # and only when the method configures the window.
+            if ccv_lo is not None and ccv_hi is not None and last_ccv_response:
+                pct_ccv = value / last_ccv_response * 100.0
+                if not (ccv_lo <= pct_ccv <= ccv_hi):
+                    fails.append(
+                        "{0:.0f}% of last CCV (limit {1:.0f}-{2:.0f}%)".format(
+                            pct_ccv, ccv_lo, ccv_hi))
+            if fails:
                 note = ""
                 if r.injection_name in dilutions:
                     note = (" (injection IS — not diluted)"
@@ -143,10 +177,11 @@ def is_raw_check(
                     source="SUR-IS Response Table",
                     analyte=is_compound,
                     injection_name=r.injection_name,
-                    value="{0:.1f}% of ICAL average{1}".format(
-                        pct_from_cal * 100.0, note),
+                    value="; ".join(fails) + note,
                     issue="(SUR)",
                 )
+        if "CCV" in (r.injection_name or "").upper() and value:
+            last_ccv_response = value
 
         results.append(ISRawResult(
             is_compound=is_compound,

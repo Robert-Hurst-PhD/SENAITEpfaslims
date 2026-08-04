@@ -59,6 +59,15 @@ logger = logging.getLogger(__name__)
 # Summary builder  (BuildSummary VBA macro → Sheet 5)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Injection kinds with no sample basis. The instrument's own sample_type is the
+# right authority here: it states what was in the vial.
+_NO_SAMPLE_BASIS = frozenset(["Standard", "Quality Control"])
+
+
+def _has_sample_basis(row):
+    return (row.sample_type or "").strip() not in _NO_SAMPLE_BASIS
+
+
 def apply_extract_corrections(rows, method_id, matrix):
     """Put every concentration on the reported sample basis, in one place.
 
@@ -70,6 +79,14 @@ def apply_extract_corrections(rows, method_id, matrix):
     Both apply to NATIVE ANALYTES ONLY. Internal standards and surrogates are
     judged on their own response, and the instrument's Total rows are sums of
     natives, so correcting either would double-count.
+
+    Both also apply ONLY to injections that HAVE a sample basis. A calibration
+    standard or a CCV is a prepared solution: there is no sample weight behind
+    it, so converting it to a sample basis is meaningless. Scaling them made
+    every CCV read ~200% of its expected concentration, which stayed invisible
+    for as long as nothing checked CCV recovery -- wiring that check is what
+    exposed it. The method blank keeps the corrections: it is taken through the
+    extraction like a sample and is reported on the same basis.
 
     Named and extracted rather than left inline because "which corrections were
     applied, in what order" is a question a reviewer asks of every result, and
@@ -84,6 +101,8 @@ def apply_extract_corrections(rows, method_id, matrix):
         salted = 0
         for row in rows:
             if (row.compound_type or "").strip() != "Analyte":
+                continue
+            if not _has_sample_basis(row):
                 continue
             factor = salt_factors.get(row.compound_name)
             if not factor:
@@ -110,6 +129,8 @@ def apply_extract_corrections(rows, method_id, matrix):
         converted = 0
         for row in rows:
             if (row.compound_type or "").strip() != "Analyte":
+                continue
+            if not _has_sample_basis(row):
                 continue
             for field in ("calculated_conc", "measured_conc",
                           "reporting_limit"):

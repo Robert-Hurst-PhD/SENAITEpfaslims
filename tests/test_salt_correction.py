@@ -60,10 +60,14 @@ def test_correction_is_applied_and_composes_with_the_matrix_factor():
         return
 
     rows = load_instrument_csv(csv_path)
+    # A SAMPLE row. This used to take whichever PFOA row came first, which was
+    # a calibration standard — and asserted that a standard gets corrected to a
+    # sample basis, which is precisely the defect the CCV check later exposed.
     target = next((r for r in rows
                    if r.compound_name == "PFOA"
-                   and r.calculated_conc is not None), None)
-    assert target is not None, "no PFOA row with a concentration"
+                   and r.calculated_conc is not None
+                   and (r.sample_type or "").strip() == "Unknown"), None)
+    assert target is not None, "no PFOA sample row with a concentration"
     key = (target.injection_name, target.compound_name)
 
     def value(rs):
@@ -78,6 +82,30 @@ def test_correction_is_applied_and_composes_with_the_matrix_factor():
     matrix_factor = mp.get_matrix_factor("FDA_32PFAS", "Animal Feed")
     expected = 0.9636 * matrix_factor
     assert abs(after / before - expected) < 1e-9, (before, after, expected)
+
+
+def test_standards_and_ccvs_are_never_corrected():
+    """A calibration standard or CCV is a prepared solution — there is no
+    sample weight behind it, so converting it to a sample basis is meaningless.
+    Scaling them made every CCV read ~200% of expected, invisible for as long
+    as nothing checked CCV recovery."""
+    from pfas_pipeline.importer import load_instrument_csv
+    from pfas_pipeline.pipeline import apply_extract_corrections
+
+    csv_path = os.environ.get("PFAS_TEST_RUN_CSV")
+    if not csv_path or not os.path.exists(csv_path):
+        print("  (skipped: set PFAS_TEST_RUN_CSV to an instrument export)")
+        return
+
+    rows = load_instrument_csv(csv_path)
+    no_basis = ("Standard", "Quality Control")
+    before = {(r.injection_name, r.compound_name): r.calculated_conc
+              for r in rows if (r.sample_type or "").strip() in no_basis}
+    assert before, "fixture has no standard/CCV rows"
+    apply_extract_corrections(rows, "FDA_32PFAS", "Animal Feed")
+    after = {(r.injection_name, r.compound_name): r.calculated_conc
+             for r in rows if (r.sample_type or "").strip() in no_basis}
+    assert before == after, "a standard or CCV was put on a sample basis"
 
 
 def test_surrogates_and_internal_standards_are_not_corrected():

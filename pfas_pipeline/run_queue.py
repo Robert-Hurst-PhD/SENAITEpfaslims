@@ -44,7 +44,8 @@ def _units_compatible(a, b):
     return any(a in fam and b in fam for fam in _UNIT_FAMILIES)
 from .qc_engine import (
     is_raw_check, rt_deviation_check, qual_quan_check,
-    calibration_check, signal_to_noise_check,
+    calibration_check, calibration_check_profiled,
+    ccv_check_profiled, rrt_check_profiled, signal_to_noise_check,
     recovery_check_profiled, rpd_check_profiled,
 )
 from .constants import CRITERIA
@@ -245,6 +246,23 @@ class RunQueue:
                     # and the gate could never pass however good the run was.
                     self.batch.is_results.append(res)
 
+        # The METHOD PROFILE drives the per-analyte checks below. Until
+        # 2026-08-04 four of them called the non-profiled variants, which judge
+        # against the hardcoded CRITERIA table: the CCV window, calibration r2,
+        # the IS response window and the RT tolerance were all configurable in
+        # the UI and enforced from code. The numbers coincided with the FDA
+        # profile, which is why it went unseen -- but EPA 537.1 §9.3.4 requires
+        # the IS to hold against BOTH the ICAL average and the last CCV, and the
+        # second condition was never evaluated.
+        profile = None
+        if self.method_id:
+            try:
+                profile = _get_method_profile(self.method_id)
+            except KeyError:
+                logger.warning("no method profile for %s — per-analyte checks "
+                               "fall back to the legacy criteria table",
+                               self.method_id)
+
         # 2. RT Deviation (rrt_deviation rule)
         rt_enabled  = _rule_enabled(toggles, "rrt_deviation")
         # 3. Qual-Quan (ion_ratio rule)
@@ -259,7 +277,8 @@ class RunQueue:
 
         for analyte in _analytes:
             if rt_enabled:
-                for res in rt_deviation_check(rows, analyte):
+                for res in (rrt_check_profiled(profile, rows, analyte)
+                            if profile else rt_deviation_check(rows, analyte)):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.rt_results.append(res)
@@ -269,10 +288,18 @@ class RunQueue:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.qual_quan_results.append(res)
             if cal_enabled:
-                for res in calibration_check(rows, analyte):
+                for res in (calibration_check_profiled(profile, rows, analyte)
+                            if profile else calibration_check(rows, analyte)):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
                     self.batch.cal_results.append(res)
+                # CCV recovery is a separate criterion from calibration
+                # linearity and had no check of its own: the lab's configured
+                # 72-128% window was enforced by nothing.
+                if profile and _rule_enabled(toggles, "ccv_recovery"):
+                    for flag in ccv_check_profiled(profile, rows, analyte):
+                        flags_by_injection.setdefault(
+                            flag.injection_name, []).append(flag)
             if sn_enabled:
                 for flag in signal_to_noise_check(rows, analyte):
                     flags_by_injection.setdefault(flag.injection_name, []).append(flag)
@@ -282,13 +309,7 @@ class RunQueue:
         lfsmd_evaluated = set()
 
         if lfsm_enabled or lfsmd_enabled:
-            profile = None
-            if self.method_id:
-                try:
-                    profile = _get_method_profile(self.method_id)
-                except KeyError:
-                    pass
-
+            # profile is resolved once above; re-fetching here used to shadow it
             matrix = self.batch.matrix or ""
             conc_lookup = {}
             for row in rows:
