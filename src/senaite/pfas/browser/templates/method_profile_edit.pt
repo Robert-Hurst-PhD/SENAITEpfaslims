@@ -563,11 +563,11 @@
                 <strong>No-Std Analytes</strong> &#8212; analytes that always fall to this tier (no labeled IS).
                 Leave all three pickers empty for a catch-all default tier.
               </p>
+              <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
+                     tal:attributes="value view/recovery_tiers_json" />
               <div id="recoveryTiersContainer"></div>
               <button type="button" class="btn-add-row" style="margin-top:4px"
                       onclick="addRecoveryTier()">+ Add Tier</button>
-              <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
-                     tal:attributes="value view/recovery_tiers_json" />
             </div>
           </details>
 

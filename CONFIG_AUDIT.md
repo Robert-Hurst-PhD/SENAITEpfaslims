@@ -8,23 +8,21 @@ The UI writes it; no engine code reads it. Editing it changes nothing.
 
 None.
 
-## Unreachable config (2)
+## Unreachable config (1)
 
 The engine reads it; no UI writes it. The lab cannot change it.
 
 | key | evidence |
 |---|---|
-| `extraction_corrections.salt_factors` | `src/senaite/pfas/browser/qcrules.py:165` |
 | `spec_overrides` | `src/senaite/pfas/spec_reverse.py:10`<br>`src/senaite/pfas/spec_reverse.py:138`<br>`src/senaite/pfas/spec_sync.py:179` |
 
-## UI-only config (4)
+## UI-only config (3)
 
 An editor writes it and reads it back; nothing downstream consumes it. Looks alive, changes nothing.
 
 | key | evidence |
 |---|---|
-| `duplicate` | `src/senaite/pfas/browser/method_profiles.py:171`<br>`src/senaite/pfas/browser/method_profiles.py:229` |
-| `recovery_tiers` | `src/senaite/pfas/browser/method_profiles.py:174`<br>`src/senaite/pfas/browser/method_profiles.py:894` |
+| `duplicate` | `src/senaite/pfas/browser/method_profiles.py:171`<br>`src/senaite/pfas/browser/method_profiles.py:248` |
 | `run_template` | `src/senaite/pfas/browser/run_builder.py:194` |
 | `run_template.bracket_qc` | `src/senaite/pfas/browser/run_builder.py:199`<br>`src/senaite/pfas/browser/run_builder.py:206`<br>`src/senaite/pfas/browser/run_builder.py:562` |
 
@@ -40,7 +38,7 @@ An editor writes it and reads it back; nothing downstream consumes it. Looks ali
 
 None.
 
-## Hardcoded lab values (120)
+## Hardcoded lab values (119)
 
 | location | kind | line |
 |---|---|---|
@@ -144,8 +142,8 @@ None.
 | `src/senaite/pfas/browser/egad_publish.py:48` | agency / matrix code inlined | `def get_ar_sample_type(ar_obj, default="GW"):` |
 | `src/senaite/pfas/browser/import_studio.py:210` | lab table in code | `_FALLBACK_PATTERNS = [` |
 | `src/senaite/pfas/browser/label_print.py:35` | lab table in code | `LABEL_SIZES = [` |
-| `src/senaite/pfas/browser/method_profiles.py:229` | acceptance value inlined as a fallback | `return self.profile().get("duplicate", {}).get("rpd_max", 20.0)` |
-| `src/senaite/pfas/browser/method_profiles.py:340` | lab table in code | `EIS_MATRIX_CLASSES = [` |
+| `src/senaite/pfas/browser/method_profiles.py:248` | acceptance value inlined as a fallback | `return self.profile().get("duplicate", {}).get("rpd_max", 20.0)` |
+| `src/senaite/pfas/browser/method_profiles.py:359` | lab table in code | `EIS_MATRIX_CLASSES = [` |
 | `src/senaite/pfas/browser/method_wizard.py:43` | lab table in code | `STEP_META = [` |
 | `src/senaite/pfas/browser/prep_logbooks.py:251` | lab table in code | `_BUILTIN_DEFS = [` |
 | `src/senaite/pfas/browser/qc_grid.py:44` | lab table in code | `_DEFAULT_TIERS = {` |
@@ -153,7 +151,6 @@ None.
 | `src/senaite/pfas/browser/qc_grid.py:67` | lab table in code | `_METHOD_SHORT_LABELS = {` |
 | `src/senaite/pfas/browser/qcrules.py:23` | lab table in code | `GLOBAL_PARAM_META = {` |
 | `src/senaite/pfas/browser/qcrules.py:40` | lab table in code | `QC_TYPE_FIELD_META = {` |
-| `src/senaite/pfas/browser/qcrules.py:176` | acceptance value inlined as a fallback | `"default":   mdict.get("default", 1.0),` |
 | `src/senaite/pfas/browser/reagents.py:71` | lab table in code | `EXPIRY_DEFAULTS = {` |
 | `src/senaite/pfas/browser/setuprefs.py:43` | lab table in code | `QC_REF_SPEC = {` |
 | `src/senaite/pfas/browser/setuprefs.py:188` | acceptance value inlined as a fallback | `lo = qt.get("recovery_min", 40.0)` |

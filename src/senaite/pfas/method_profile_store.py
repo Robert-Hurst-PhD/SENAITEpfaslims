@@ -387,7 +387,6 @@ DEFAULT_PROFILES = {
         },
         "per_analyte": _fda_per_analyte(),
         "extraction_corrections": {
-            "salt_factors": [],
         },
         "isomer_summation": [
             {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
@@ -589,7 +588,6 @@ DEFAULT_PROFILES = {
         "surrogate_is": "",
         "per_analyte": [],
         "extraction_corrections": {
-            "salt_factors": [],
         },
         "isomer_summation": [
             {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
@@ -892,7 +890,6 @@ DEFAULT_PROFILES = {
         "surrogate_is": "",
         "per_analyte": [],
         "extraction_corrections": {
-            "salt_factors": [],
         },
         "isomer_summation": [
             {"linear": "lr-PFOA",      "branched": "br-PFOA",      "reported": "PFOA",      "enabled": True},

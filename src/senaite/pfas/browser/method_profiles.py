@@ -170,8 +170,27 @@ class PFASMethodProfileEditView(BrowserView):
     def duplicate(self):
         return self.profile().get("duplicate", {})
 
+    # The QC type whose tiers the Recovery Tiers grid edits. Recovery tiers are
+    # an LFSM concept: LFSMD carries RPD as well, Dup carries only RPD, and MB
+    # is judged against the reporting limit.
+    RECOVERY_TIER_QC_TYPE = "LFSM"
+
     def recovery_tiers_json(self):
-        return json.dumps(self.profile().get("recovery_tiers", []), indent=2)
+        """The tiers the ENGINE enforces, not the retired flat key.
+
+        This read the retired flat recovery-tiers key, which
+        migrate_profile_structure superseded and which is empty in every live
+        profile -- so the Recovery Tiers
+        tab rendered EMPTY while 80-120 / 65-135 / 40-140 sat in
+        `qc_acceptance.LFSM.tiers`, and any tier a manager added there was
+        written to a key nothing reads.
+
+        Same shape as the CCV defect, in the one editor where it matters most:
+        the recovery window is the pass/fail gate on a certificate.
+        """
+        qca = self.profile().get("qc_acceptance", {}) or {}
+        entry = qca.get(self.RECOVERY_TIER_QC_TYPE, {}) or {}
+        return json.dumps(entry.get("tiers", []), indent=2)
 
     def matrix_factors_json(self):
         return json.dumps(self.profile().get("matrix_factors", []), indent=2)
@@ -871,6 +890,17 @@ class PFASMethodProfileEditView(BrowserView):
         conf["sn_confirm_min"]           = _float("conf_sn_confirm_min")
         conf["require_confirm_ion_check"] = _bool("conf_require_confirm_ion_check")
 
+        # Recovery tiers are written back to the structure the engine reads.
+        # Guarded by the field's presence so a POST from another pane cannot
+        # blank the tiers -- which, with refuse-to-judge, would stop every run.
+        if "recovery_tiers_json" in f:
+            tiers = _json_field("recovery_tiers_json", None)
+            if isinstance(tiers, list) and tiers:
+                qca = profile.setdefault("qc_acceptance", {})
+                entry = qca.setdefault(self.RECOVERY_TIER_QC_TYPE, {})
+                entry.setdefault("enabled", True)
+                entry["tiers"] = tiers
+
         # Sample Duplicate (Dup) RPD — the pipeline reads qc_acceptance.Dup
         # (via _resolve_fda_tier), NOT profile.duplicate. Write BOTH so the
         # editable field actually drives QC (D56 — was disconnected before).
@@ -890,8 +920,6 @@ class PFASMethodProfileEditView(BrowserView):
             tiers[0].setdefault("matrix_scope", "all")
 
         # Complex JSON sections (textareas)
-        profile["recovery_tiers"] = _json_field(
-            "recovery_tiers_json", profile.get("recovery_tiers", []))
         # Matrix adjustment is now per-supported-matrix named fields
         # (matrix_factor.<title>), each tied to a core SampleType via
         # matrix_uid_map (D55). Only non-default (!=1.0) rows persist.

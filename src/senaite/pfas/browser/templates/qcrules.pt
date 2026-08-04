@@ -142,8 +142,6 @@
          onclick="qcTabSwitch('pane-global'); return false;">Global Criteria</a>
       <a class="pfas-tab" data-pane="pane-qctypes" href="#pane-qctypes"
          onclick="qcTabSwitch('pane-qctypes'); return false;">QC Types</a>
-      <a class="pfas-tab" data-pane="pane-matrix" href="#pane-matrix"
-         onclick="qcTabSwitch('pane-matrix'); return false;">Matrix Factors</a>
       <a class="pfas-tab" data-pane="pane-toggles" href="#pane-toggles"
          onclick="qcTabSwitch('pane-toggles'); return false;">Rule Toggles</a>
       <a class="pfas-tab" data-pane="pane-limits" href="#pane-limits"
@@ -239,51 +237,6 @@
         </div>
       </div>
 
-      <!-- ── MATRIX FACTORS ─────────────────────────────────────────────── -->
-      <div class="tab-pane" id="pane-matrix">
-          <p class="form-note">
-            <strong>Formula:</strong>
-            C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor<br/>
-            Values of 1.00 apply no correction. Adjust after validating with spike-recovery
-            data for each matrix and extraction procedure.
-          </p>
-          <tal:srows tal:repeat="mrow view/salt_factor_rows">
-            <div class="matrix-card">
-              <div class="matrix-card-title" tal:content="mrow/matrix">Drinking Water</div>
-              <input type="hidden"
-                     tal:attributes="name string:salt_note.${mrow/matrix}; value mrow/note" />
-              <div class="field-grid">
-                <div class="field-row">
-                  <label>Default Factor</label>
-                  <div class="field-with-unit">
-                    <input type="number" step="0.0001" min="0.01" max="100"
-                           tal:attributes="name string:salt_factors.${mrow/matrix}.default; value mrow/default" />
-                    <span class="unit-label">&#215;</span>
-                  </div>
-                  <span class="hint">Applied to all analytes unless an analyte-class override is set</span>
-                </div>
-                <tal:ov tal:repeat="ov mrow/overrides">
-                  <div class="field-row">
-                    <label tal:content="ov/key">pfca_c4_c8</label>
-                    <div class="field-with-unit">
-                      <input type="number" step="0.0001" min="0.01" max="100"
-                             tal:attributes="name string:salt_factors.${mrow/matrix}.${ov/key}; value ov/value" />
-                      <span class="unit-label">&#215;</span>
-                    </div>
-                  </div>
-                </tal:ov>
-              </div>
-              <div style="font-size:10px;color:var(--s-secondary);margin-top:6px"
-                   tal:condition="mrow/note">
-                <em tal:content="mrow/note">note</em>
-              </div>
-            </div>
-          </tal:srows>
-        <div class="pane-footer">
-          <span>Salt/matrix correction factors; C&#8209;reported = C&#8209;instrument &#215; factor</span>
-          <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
-        </div>
-      </div>
 
       <!-- ── RULE TOGGLES ───────────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-toggles">
@@ -421,7 +374,7 @@
   /* Restore tab from URL hash or default to first tab */
   (function() {
     var hash = location.hash.replace('#', '');
-    var validPanes = ['pane-global','pane-qctypes','pane-matrix','pane-toggles','pane-limits','pane-json'];
+    var validPanes = ['pane-global','pane-qctypes','pane-toggles','pane-limits','pane-json'];
     var target = validPanes.indexOf(hash) >= 0 ? hash : 'pane-global';
     qcTabSwitch(target);
   })();
@@ -486,7 +439,7 @@
   });
 
   function buildRulesFromForm() {
-    var rules = { "version": 1, "global": {}, "qc_types": {}, "salt_factors": {},
+    var rules = { "version": 1, "global": {}, "qc_types": {},
                   "method_rule_toggles": {}, "method_overrides": {} };
     document.querySelectorAll('#rulesForm input[name]').forEach(function(inp) {
       var name = inp.name, val = inp.value;
@@ -500,16 +453,6 @@
         if (!rules.qc_types[qtype]) rules.qc_types[qtype] = {};
         var fval = parseFloat(val);
         rules.qc_types[qtype][field] = isNaN(fval) ? val : fval;
-      } else if (name.indexOf('salt_factors.') === 0) {
-        var sfParts = name.slice(13).split('.');
-        var matrix = sfParts[0], sfKey = sfParts.slice(1).join('.');
-        if (!rules.salt_factors[matrix]) rules.salt_factors[matrix] = {};
-        var fval = parseFloat(val);
-        rules.salt_factors[matrix][sfKey] = isNaN(fval) ? val : fval;
-      } else if (name.indexOf('salt_note.') === 0) {
-        var matrix = name.slice(10);
-        if (!rules.salt_factors[matrix]) rules.salt_factors[matrix] = {};
-        rules.salt_factors[matrix]['note'] = val;
       }
     });
     document.querySelectorAll('.toggle-cb').forEach(function(cb) {
@@ -574,7 +517,7 @@
 
   function resetDefaults() {
     document.getElementById('rules_json').value =
-      '{"version":1,"global":{},"qc_types":{},"salt_factors":{},"method_rule_toggles":{},"method_overrides":{}}';
+      '{"version":1,"global":{},"qc_types":{},"method_rule_toggles":{},"method_overrides":{}}';
     document.getElementById('rulesForm').submit();
   }
 

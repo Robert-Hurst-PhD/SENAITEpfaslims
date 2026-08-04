@@ -4156,3 +4156,35 @@ key), the QC Rules salt pane backed by D53-deprecated `qc_rules.salt_factors`,
 `instrument_verification`, and `spec_overrides` (edited through core
 Specifications rather than a PFAS form). All are removals or decisions rather
 than defects, so they are flagged, not actioned.
+
+### 2026-08-03 — two removals, one of which was the wrong call
+
+Agreed: remove the inert QC Rules salt pane and the `recovery_tiers` field in
+the Method Profile editor.
+
+**The salt pane is gone**, together with `qc_rules.salt_factors` (verified
+empty first — nothing was lost) and the seeded
+`extraction_corrections.salt_factors`. Salt now has exactly one editor, on the
+method profile, where D53 said it belongs.
+
+**The `recovery_tiers` removal was wrong, and reading the JavaScript before
+deleting is what caught it.** The Recovery Tiers grid is driven by that hidden
+field, and the live value is `[]` — so the tab rendered EMPTY while the real
+tiers sat in `qc_acceptance.LFSM.tiers`, and any tier a manager added was
+written to a key nothing reads. Not residue: the CCV defect again, in the
+editor that sets the pass/fail gate on a certificate. The eleventh instance.
+
+The grid now reads and writes the enforced structure. Verified end to end
+against the running instance: tier 1 max 120 → 118 → engine judges
+PFOA/deer muscle/LFSM at 80–118 → reverted to 80–120.
+
+Audit after: **DEAD 0, UNREACHABLE 1** (`spec_overrides`, edited through core
+Specifications), **UI-ONLY 3** — all three judged legitimate (`run_template` and
+`run_template.bracket_qc` are the Run Builder's own config; `duplicate` under
+`instrument_verification` is residue of the QC-type merge, still open).
+
+One audit false positive worth noting: the scanner matched
+`profile["recovery_tiers"]` inside a **docstring** and reported the key as
+unreachable. Prose that quotes code reads as code. Reworded rather than
+suppressed — a scanner that ignores docstrings would miss real reads in
+doctests.

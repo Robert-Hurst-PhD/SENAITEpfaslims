@@ -174,6 +174,30 @@ nowhere to say so. `qc_acceptance.SUR` now wins when configured
 Without this distinction the next person applies refuse-to-judge to the
 published limits and breaks every 537.1 run.
 
+### 3c. The eleventh instance — found while deleting the wrong thing
+
+`recovery_tiers` was reported as UI-ONLY and looked like migration residue: a
+retired key with an editor still attached. The agreed action was to delete the
+field. Reading the JavaScript first showed the Recovery Tiers **grid** is driven
+by it — and that the live value is `[]`, so **the tab rendered empty** while
+80–120 / 65–135 / 40–140 sat in `qc_acceptance.LFSM.tiers`. Any tier a manager
+added there was written to a key nothing reads.
+
+So it was not residue. It was the CCV defect again, in the one editor where it
+matters most: the recovery window is the pass/fail gate on a certificate. The
+grid now reads and writes `qc_acceptance.{qc_type}.tiers`, verified end to end —
+UI edit → enforced structure → engine verdict (120 → 118 → reverted).
+
+**Two lessons, both about method rather than PFAS:**
+
+- *A finding's classification is a hypothesis.* "Residue" and "disconnected
+  editor" look identical from the audit output and call for opposite actions.
+  The distinguishing evidence was one file the audit does not read.
+- *Deleting is not the safe default.* Removing the field would have destroyed a
+  UI that should exist, and the resulting profile would have looked correct.
+  Before removing something that appears dead, establish what would have to be
+  true for it to be alive, then check that.
+
 ---
 
 ## 4. §3 rule 4 — Referential integrity on rename and delete

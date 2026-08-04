@@ -149,37 +149,11 @@ class PFASQCRulesView(BrowserView):
         r = self.rules()
         return r.get("qc_types", {}).get(qtype, {}).get("chart_type", "levey_jennings")
 
-    # ── Salt factor helpers ───────────────────────────────────────────────────
-
-    def salt_matrices(self):
-        """Return sorted list of matrix keys."""
-        from senaite.pfas.qc.rules import get_store
-        return get_store().matrix_names()
-
-    def salt_factor_rows(self):
-        """
-        Return a list of dicts suitable for TAL iteration.
-        Each dict: {matrix, default, note, overrides: [{key, value}, ...]}
-        """
-        r = self.rules()
-        sf = r.get("salt_factors", {})
-        rows = []
-        for matrix in sorted(sf.keys()):
-            mdict = sf[matrix]
-            overrides = [
-                {"key": k, "value": v}
-                for k, v in sorted(mdict.items())
-                if k not in ("default", "note")
-            ]
-            rows.append({
-                "matrix":    matrix,
-                "default":   mdict.get("default", 1.0),
-                "note":      mdict.get("note", ""),
-                "overrides": overrides,
-            })
-        return rows
-
-    # ── Toggle grid helpers ───────────────────────────────────────────────────
+    # Salt correction is NOT a QC-engine concept (D53): it is a core
+    # per-method sample correction that applies to every sample, so it lives on
+    # the method profile with the CoA lot it came from. The editor that stood
+    # here wrote qc_rules.salt_factors, which nothing applied — see
+    # docs/ISO17025_DESIGN.md §1.
 
     def methods(self):
         from senaite.pfas.qc.rules import METHODS
