@@ -1089,5 +1089,63 @@ def get_surrogate_is_chain(method_id: str = "FDA_32PFAS") -> dict:
         method_id, {}).get("surrogate_is_chain", {}) or {})
 
 
+def get_salt_factors(method_id: str = "FDA_32PFAS") -> dict:
+    """Per-analyte salt (counter-ion) correction, keyed by analyte.
+
+    §3 lists SALT FACTOR as a core method relation: "per analyte x method
+    (decimal < 1, from CoA)". The Method Profile editor has always collected it,
+    complete with the reference-standard lot it came from -- and nothing applied
+    it. The string "salt" did not appear anywhere in this package. FDA_32PFAS
+    carries 0.9636 for PFOA against lot MXA-2453-A; every PFOA result issued so
+    far was 3.6% high.
+
+    `salt_adjustment_factors` is the authoritative key -- it is what the editor
+    writes and where the data is. `extraction_corrections.salt_factors` is a
+    seeded empty list read only by the QC Rules pane, and
+    `qc_rules.salt_factors` was deprecated by D53; neither is consulted here.
+    """
+    rows = _profile_data_cache.get(
+        method_id, {}).get("salt_adjustment_factors", []) or []
+    try:
+        from .analyte_alias import keyword_for, NAME_TO_KEYWORD
+    except ImportError:
+        keyword_for, NAME_TO_KEYWORD = None, {}
+    by_keyword = {}
+    for name, kw in (NAME_TO_KEYWORD or {}).items():
+        by_keyword.setdefault(kw, []).append(name)
+
+    out = {}
+    for row in rows:
+        analyte = (row.get("analyte") or "").strip()
+        try:
+            factor = float(row.get("factor"))
+        except (TypeError, ValueError):
+            continue
+        # 1.0 is "no correction"; storing it is how the editor records that a
+        # lot was linked without a numeric adjustment.
+        if not analyte or factor == 1.0 or factor <= 0:
+            continue
+        out[analyte] = factor
+        kw = keyword_for(analyte) if keyword_for else analyte
+        if kw:
+            out[kw] = factor
+        for alias in by_keyword.get(kw, ()):
+            out[alias] = factor
+
+    # An isomer pair is quantified from the same salt-form standard as the
+    # analyte it sums to, but the instrument reports it as lr-/br- rows. Naming
+    # only the reported analyte would leave both components uncorrected and the
+    # sum along with them.
+    for pair in get_isomer_summation(method_id):
+        factor = out.get(pair.get("reported"))
+        if not factor:
+            continue
+        for part in ("linear", "branched"):
+            name = pair.get(part)
+            if name:
+                out[name] = factor
+    return out
+
+
 # Load profile data immediately if the export already exists
 reload_from_profiles()

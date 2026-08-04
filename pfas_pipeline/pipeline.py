@@ -43,6 +43,7 @@ from .constants import (
 from .method_profiles import (
     reload_from_profiles,
     get_matrix_factor as _get_matrix_factor,
+    get_salt_factors as _get_salt_factors,
     get_reporting_unit as _get_unit,
     get_analyte_list as _get_analytes,
     get_non_iso_set as _get_non_iso_set,
@@ -57,6 +58,82 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary builder  (BuildSummary VBA macro → Sheet 5)
 # ─────────────────────────────────────────────────────────────────────────────
+
+def apply_extract_corrections(rows, method_id, matrix):
+    """Put every concentration on the reported sample basis, in one place.
+
+    Two multiplicative corrections, both configured per method: the per-analyte
+    SALT factor (the standard was supplied as a salt, so the curve reads the
+    counter-ion too) and the per-matrix factor that converts an extract
+    concentration to the sample basis.
+
+    Both apply to NATIVE ANALYTES ONLY. Internal standards and surrogates are
+    judged on their own response, and the instrument's Total rows are sums of
+    natives, so correcting either would double-count.
+
+    Named and extracted rather than left inline because "which corrections were
+    applied, in what order" is a question a reviewer asks of every result, and
+    it should have exactly one answer to read.
+    """
+    # Salt (counter-ion) correction first: it corrects the standard the curve
+    # was built from, so it belongs on the extract basis, before the extract is
+    # converted to the sample basis. The two are multiplicative and commute,
+    # but keeping the order meaningful keeps the log readable.
+    salt_factors = _get_salt_factors(method_id) if method_id else {}
+    if salt_factors:
+        salted = 0
+        for row in rows:
+            if (row.compound_type or "").strip() != "Analyte":
+                continue
+            factor = salt_factors.get(row.compound_name)
+            if not factor:
+                continue
+            for field in ("calculated_conc", "measured_conc",
+                          "reporting_limit"):
+                value = getattr(row, field, None)
+                if value is not None:
+                    setattr(row, field, value * factor)
+            salted += 1
+        logger.info("Applied per-analyte salt correction to %d rows (%s)",
+                    salted, ", ".join(
+                        "{0} x {1:g}".format(a, f)
+                        for a, f in sorted(salt_factors.items())
+                        if not a.startswith("M")))
+    elif method_id:
+        logger.info("No salt correction configured for %s — standards are "
+                    "treated as free acids.", method_id)
+
+    matrix_factor = None
+    if method_id and matrix:
+        matrix_factor = _get_matrix_factor(method_id, matrix)
+    if matrix_factor and matrix_factor != 1.0:
+        converted = 0
+        for row in rows:
+            if (row.compound_type or "").strip() != "Analyte":
+                continue
+            for field in ("calculated_conc", "measured_conc",
+                          "reporting_limit"):
+                value = getattr(row, field, None)
+                if value is not None:
+                    setattr(row, field, value * matrix_factor)
+            # The row now carries a SAMPLE-basis concentration, so it must say
+            # so: everything downstream that compares against it — the spike
+            # level above all — reads this to know what it is looking at.
+            reported_unit = _get_unit(method_id, matrix)
+            if reported_unit:
+                row.conc_units = reported_unit
+            converted += 1
+        logger.info("Applied the %s matrix factor %.4g to %d native analyte "
+                    "rows; results are now on the sample basis (%s)",
+                    matrix, matrix_factor, converted,
+                    _get_unit(method_id, matrix) or "per method unit map")
+    elif method_id and matrix:
+        logger.warning("No matrix factor configured for %s / %s — results stay "
+                       "on the extract basis the instrument reported, which "
+                       "will not match a spike level recorded per sample.",
+                       method_id, matrix)
+    return rows
+
 
 def build_summary(batch: Batch) -> list[SummaryResult]:
     """
@@ -425,35 +502,7 @@ def run_pipeline(
     # and instrument-computed Total rows are sums of natives, so multiplying
     # either would double-count. Everything else the instrument reports is
     # already on its final basis.
-    matrix_factor = None
-    if method_id and matrix:
-        matrix_factor = _get_matrix_factor(method_id, matrix)
-    if matrix_factor and matrix_factor != 1.0:
-        converted = 0
-        for row in rows:
-            if (row.compound_type or "").strip() != "Analyte":
-                continue
-            for field in ("calculated_conc", "measured_conc",
-                          "reporting_limit"):
-                value = getattr(row, field, None)
-                if value is not None:
-                    setattr(row, field, value * matrix_factor)
-            # The row now carries a SAMPLE-basis concentration, so it must say
-            # so: everything downstream that compares against it — the spike
-            # level above all — reads this to know what it is looking at.
-            reported_unit = _get_unit(method_id, matrix)
-            if reported_unit:
-                row.conc_units = reported_unit
-            converted += 1
-        logger.info("Applied the %s matrix factor %.4g to %d native analyte "
-                    "rows; results are now on the sample basis (%s)",
-                    matrix, matrix_factor, converted,
-                    _get_unit(method_id, matrix) or "per method unit map")
-    elif method_id and matrix:
-        logger.warning("No matrix factor configured for %s / %s — results stay "
-                       "on the extract basis the instrument reported, which "
-                       "will not match a spike level recorded per sample.",
-                       method_id, matrix)
+    rows = apply_extract_corrections(rows, method_id, matrix)
 
     # Dilution map — needed before the name check below.
     #
