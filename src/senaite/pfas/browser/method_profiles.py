@@ -261,6 +261,79 @@ class PFASMethodProfileEditView(BrowserView):
             })
         return rows
 
+    def matrix_settings_rows(self):
+        """One row per supported matrix, carrying every setting keyed BY matrix.
+
+        These four were readable by the engine and writable by nobody:
+        supported_matrices, tight_matrices, matrix_aliases and unit_map. A lab
+        could not add a matrix, could not say which matrices take the tighter
+        80-120% tier, could not teach the system that "deer muscle" is
+        Meat / Muscle, and could not set a reporting unit -- all four were seed
+        constants or, in the case of the aliases, written by nothing at all.
+
+        They are one table rather than four because they are one fact about one
+        matrix, and editing them apart is how they drifted.
+        """
+        profile = self.profile()
+        matrices = profile.get("supported_matrices", []) or []
+        uid_map = profile.get("matrix_uid_map", {}) or {}
+        tight = set((profile.get("tight_matrices") or []))
+        aliases = profile.get("matrix_aliases", {}) or {}
+        units = profile.get("unit_map", {}) or {}
+        rows = []
+        for mtx in matrices:
+            rows.append({
+                "matrix": mtx,
+                "linked": bool(uid_map.get(mtx)),
+                "tight": mtx in tight,
+                "aliases": ", ".join(aliases.get(mtx) or []),
+                "unit": units.get(mtx, ""),
+            })
+        return rows
+
+    def unit_options(self):
+        """Reporting units offered for a matrix. Every unit already in use is
+        included, so an existing choice is never silently dropped from the list
+        it was chosen from."""
+        common = ["ng/kg", "ug/kg", "ng/L", "ng/mL", "ug/L", "mg/kg", "pg/g"]
+        used = [u for u in sorted(
+            set((self.profile().get("unit_map", {}) or {}).values()))
+            if u and u not in common]
+        return common + used
+
+    # The 1633A EIS tables are published per MATRIX CLASS, not per matrix
+    # title: Sediment and Soil are both "solid". Mirrors
+    # pfas_pipeline.method_profiles._1633a_matrix_class, which is what the
+    # engine looks the overrides up by.
+    EIS_MATRIX_CLASSES = [
+        ("solid", "Solid (soil, sediment)"),
+        ("biosolid", "Biosolid"),
+        ("leachate", "Landfill leachate"),
+        ("tissue", "Tissue"),
+    ]
+
+    def eis_matrix_rows(self):
+        """Per-analyte EIS recovery limits for each 1633A matrix class.
+
+        `eis_matrix_overrides` was read by the engine and written by nobody:
+        seeded from the published tables and then frozen. §3 requires EIS
+        recovery to be configurable per analyte x matrix, and a lab that
+        verifies a limit against its purchased method copy has to be able to
+        record what it found.
+        """
+        profile = self.profile()
+        overrides = profile.get("eis_matrix_overrides", {}) or {}
+        groups = []
+        for key, label in self.EIS_MATRIX_CLASSES:
+            entries = overrides.get(key, {}) or {}
+            rows = [{"analyte": analyte,
+                     "recovery_min": (entries[analyte] or {}).get("recovery_min", ""),
+                     "recovery_max": (entries[analyte] or {}).get("recovery_max", "")}
+                    for analyte in sorted(entries)]
+            groups.append({"key": key, "label": label, "rows": rows,
+                           "count": len(rows), "blank_start": len(rows)})
+        return groups
+
     def standard_lot_options(self):
         """Standard / Reference-Material lots from the reagent inventory, for
         the CoA-lot dropdown. Expired lots are flagged so they aren't picked."""
@@ -770,6 +843,73 @@ class PFASMethodProfileEditView(BrowserView):
             "surrogate_map_json",  profile.get("surrogate_map", []))
         profile["per_analyte"]    = _json_field(
             "per_analyte_json",    profile.get("per_analyte", []))
+
+        # Matrices & Units — the four settings keyed by matrix, saved together
+        # because they are one fact about one matrix. Guarded by the marker
+        # field so a POST from another pane, which omits these inputs, cannot
+        # wipe the matrix list (an unchecked checkbox submits nothing).
+        if f.get("matrix_settings_present"):
+            names, tight, aliases, units = [], [], {}, {}
+            index = 0
+            while True:
+                key = "mtx_name.%d" % index
+                if key not in f:
+                    break
+                name = (f.get(key, "") or "").strip()
+                index += 1
+                if not name:
+                    continue  # cleared row = matrix removed
+                names.append(name)
+                if f.get("mtx_tight.%d" % (index - 1)):
+                    tight.append(name)
+                raw = (f.get("mtx_aliases.%d" % (index - 1), "") or "").strip()
+                parts = [a.strip() for a in raw.split(",") if a.strip()]
+                if parts:
+                    aliases[name] = parts
+                unit = (f.get("mtx_unit.%d" % (index - 1), "") or "").strip()
+                if unit:
+                    units[name] = unit
+            if names:
+                # A renamed matrix keeps its UID link only if the title still
+                # matches; anything orphaned is dropped rather than left
+                # pointing at a Sample Type that no longer corresponds.
+                uid_map = profile.get("matrix_uid_map", {}) or {}
+                profile["matrix_uid_map"] = {
+                    k: v for k, v in uid_map.items() if k in names}
+                profile["supported_matrices"] = names
+                profile["tight_matrices"] = tight
+                profile["matrix_aliases"] = aliases
+                profile["unit_map"] = units
+
+        # EIS limits per analyte x matrix class. Named fields rather than a
+        # JSON blob, so the value a lab verified against its method copy is
+        # edited as a number in a cell.
+        if f.get("eis_matrix_present"):
+            out = {}
+            for key, _label in self.EIS_MATRIX_CLASSES:
+                entries = {}
+                index = 0
+                while True:
+                    name_key = "eismtx.%s.%d.analyte" % (key, index)
+                    if name_key not in f:
+                        break
+                    analyte = (f.get(name_key, "") or "").strip()
+                    lo = (f.get("eismtx.%s.%d.min" % (key, index), "") or "").strip()
+                    hi = (f.get("eismtx.%s.%d.max" % (key, index), "") or "").strip()
+                    index += 1
+                    if not analyte:
+                        continue  # cleared name = row removed
+                    entry = {}
+                    for field, raw in (("recovery_min", lo), ("recovery_max", hi)):
+                        try:
+                            entry[field] = float(raw)
+                        except (TypeError, ValueError):
+                            continue
+                    if entry:
+                        entries[analyte] = entry
+                if entries:
+                    out[key] = entries
+            profile["eis_matrix_overrides"] = out
 
         raw_eis = f.get("eis_overrides_json", "").strip()
         if raw_eis:

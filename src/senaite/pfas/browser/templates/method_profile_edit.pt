@@ -214,6 +214,8 @@
          onclick="pfasTabSwitch('pane-qct'); return false;">QC Types</a>
       <a class="pfas-tab" data-pane="pane-rt" href="#pane-rt"
          onclick="pfasTabSwitch('pane-rt'); return false;">Recovery Tiers</a>
+      <a class="pfas-tab" data-pane="pane-mtx" href="#pane-mtx"
+         onclick="pfasTabSwitch('pane-mtx'); return false;">Matrices &amp; Units</a>
       <a class="pfas-tab" data-pane="pane-corr" href="#pane-corr"
          onclick="pfasTabSwitch('pane-corr'); return false;">Sample Corrections</a>
       <a class="pfas-tab" data-pane="pane-ami" href="#pane-ami"
@@ -552,6 +554,106 @@
       </div><!-- /pane-rt -->
 
       <!-- ── Tab: Sample Corrections (per-method, applied to ALL samples) ── -->
+      <div class="tab-pane" id="pane-mtx">
+        <div class="page-body">
+          <p class="pane-intro">
+            Which matrices this method supports, and everything the engine
+            decides <strong>from the matrix</strong>. All four of these were
+            read by the QC engine and writable by nobody &#8212; seeded in code,
+            or in the case of the aliases, written by nothing at all.
+          </p>
+
+          <details open="open">
+            <summary>Matrices, Recovery Tier, Aliases and Reporting Units</summary>
+            <div class="section-body">
+              <p class="json-hint">
+                <strong>Tier&nbsp;1</strong> marks the matrices where the key
+                analytes (PFOS, PFOA, PFHxS, PFNA) are held to the tighter
+                80&ndash;120% recovery window instead of 65&ndash;135%. Ticking
+                the wrong box changes pass/fail on a certificate.<br />
+                <strong>Aliases</strong> are the other names a sample may
+                arrive under, comma-separated. Matching used to be a substring
+                test, so &#8220;deer muscle&#8221; matched no title and silently
+                dropped from tier&nbsp;1 to tier&nbsp;2 &#8212; list it here
+                instead.<br />
+                <strong>Unit</strong> is the reporting unit for this method
+                &#215; matrix.<br />
+                Clear a matrix&#8217;s name to remove it. Blank rows at the
+                bottom add new matrices.
+              </p>
+              <input type="hidden" name="matrix_settings_present" value="1" />
+              <table class="factor-table" id="matrixSettingsTable">
+                <thead>
+                  <tr>
+                    <th style="width:24%">Matrix</th>
+                    <th style="width:10%">Tier&nbsp;1</th>
+                    <th style="width:44%">Aliases (comma-separated)</th>
+                    <th style="width:22%">Reporting Unit</th>
+                  </tr>
+                </thead>
+                <tbody tal:define="units view/unit_options">
+                  <tal:rows repeat="row view/matrix_settings_rows">
+                    <tr>
+                      <td>
+                        <input type="text" style="width:100%;"
+                               tal:attributes="name string:mtx_name.${repeat/row/index};
+                                               value row/matrix" />
+                      </td>
+                      <td style="text-align:center;">
+                        <input type="checkbox" value="1"
+                               tal:attributes="name string:mtx_tight.${repeat/row/index};
+                                               checked python:row['tight']" />
+                      </td>
+                      <td>
+                        <input type="text" style="width:100%;"
+                               placeholder="deer muscle, venison, beef"
+                               tal:attributes="name string:mtx_aliases.${repeat/row/index};
+                                               value row/aliases" />
+                      </td>
+                      <td>
+                        <select style="width:100%;"
+                                tal:attributes="name string:mtx_unit.${repeat/row/index}">
+                          <option value="">&#8212; none &#8212;</option>
+                          <option tal:repeat="u units"
+                                  tal:attributes="value u;
+                                                  selected python:u == row['unit']"
+                                  tal:content="u">ng/kg</option>
+                        </select>
+                      </td>
+                    </tr>
+                  </tal:rows>
+                  <tal:blank repeat="n python:range(3)">
+                    <tr tal:define="idx python:len(view.matrix_settings_rows()) + n">
+                      <td>
+                        <input type="text" style="width:100%;"
+                               placeholder="new matrix"
+                               tal:attributes="name string:mtx_name.${idx}" />
+                      </td>
+                      <td style="text-align:center;">
+                        <input type="checkbox" value="1"
+                               tal:attributes="name string:mtx_tight.${idx}" />
+                      </td>
+                      <td>
+                        <input type="text" style="width:100%;"
+                               tal:attributes="name string:mtx_aliases.${idx}" />
+                      </td>
+                      <td>
+                        <select style="width:100%;"
+                                tal:attributes="name string:mtx_unit.${idx}">
+                          <option value="">&#8212; none &#8212;</option>
+                          <option tal:repeat="u units"
+                                  tal:attributes="value u" tal:content="u">ng/kg</option>
+                        </select>
+                      </td>
+                    </tr>
+                  </tal:blank>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </div>
+
       <div class="tab-pane" id="pane-corr">
         <div class="page-body">
           <p class="pane-intro">
@@ -702,6 +804,71 @@
                 <button type="button" class="btn-add-row" onclick="addEisRow()">+ Add row</button>
                 <input type="hidden" name="eis_overrides_json" id="eis_overrides_json"
                        tal:attributes="value view/eis_overrides_json" />
+              </div>
+            </details>
+
+            <details>
+              <summary>EIS Recovery Limits per Matrix Class
+                <span style="font-size:11px;color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span>
+              </summary>
+              <div class="section-body">
+                <p class="json-hint">
+                  1633A publishes EIS recovery limits per matrix CLASS, not per
+                  matrix title &#8212; Sediment and Soil are both
+                  <em>solid</em>. A limit set here overrides the per-analyte
+                  limit above for that class. Clear an analyte name to remove
+                  the row; the blank rows at the end of each class add new ones.
+                </p>
+                <input type="hidden" name="eis_matrix_present" value="1" />
+                <tal:group repeat="grp view/eis_matrix_rows">
+                  <h4 style="margin:14px 0 6px;font-size:13px;"
+                      tal:content="string:${grp/label} (${grp/count})">Solid</h4>
+                  <table class="factor-table">
+                    <thead>
+                      <tr>
+                        <th style="width:50%">EIS / Surrogate Analyte</th>
+                        <th style="width:25%">Recovery Min (%)</th>
+                        <th style="width:25%">Recovery Max (%)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr tal:repeat="row grp/rows">
+                        <td>
+                          <input type="text" style="width:100%;"
+                                 tal:attributes="name string:eismtx.${grp/key}.${repeat/row/index}.analyte;
+                                                 value row/analyte" />
+                        </td>
+                        <td>
+                          <input type="number" step="0.1" style="width:100%;"
+                                 tal:attributes="name string:eismtx.${grp/key}.${repeat/row/index}.min;
+                                                 value row/recovery_min" />
+                        </td>
+                        <td>
+                          <input type="number" step="0.1" style="width:100%;"
+                                 tal:attributes="name string:eismtx.${grp/key}.${repeat/row/index}.max;
+                                                 value row/recovery_max" />
+                        </td>
+                      </tr>
+                      <tal:blank repeat="n python:range(2)">
+                        <tr tal:define="idx python:grp['blank_start'] + n">
+                          <td>
+                            <input type="text" style="width:100%;"
+                                   placeholder="new analyte"
+                                   tal:attributes="name string:eismtx.${grp/key}.${idx}.analyte" />
+                          </td>
+                          <td>
+                            <input type="number" step="0.1" style="width:100%;"
+                                   tal:attributes="name string:eismtx.${grp/key}.${idx}.min" />
+                          </td>
+                          <td>
+                            <input type="number" step="0.1" style="width:100%;"
+                                   tal:attributes="name string:eismtx.${grp/key}.${idx}.max" />
+                          </td>
+                        </tr>
+                      </tal:blank>
+                    </tbody>
+                  </table>
+                </tal:group>
               </div>
             </details>
           </tal:eis>
