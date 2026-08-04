@@ -4270,3 +4270,37 @@ Of those 31, the ones that can still change a reported verdict are in
 `sn_confirm_min` 1.0 — the same silent-substitution shape as the recovery
 fallbacks, not yet converted. The rest are facility-QC thresholds (evaluated
 independently of batch release, §10) and setup-form defaults.
+
+### 2026-08-04 — the legacy annotation store: refuse, then purge
+
+Decision: make the fallback refuse and remove the stale copy.
+
+Method profiles live in Dexterity objects under `/senaite/pfas_method_profiles`.
+The annotation mapping at `senaite.pfas.method_profiles` predates that store and
+had not been kept in step. `method_profile_store` fell back to it whenever the
+Dexterity folder was absent — after an upgrade, a restore, or a rename — and
+would then have served stale config silently.
+
+**What the purge log showed it would have served.** FDA_32PFAS differed in 11
+keys, including `instrument_verification` (the acceptance limits),
+`matrix_factors` (the multiplier applied to every native concentration) and
+`analyte_matrix_inclusion` (the reportable panel). EPA_1633A differed in 5,
+including `salt_adjustment_factors`, `matrix_aliases` and `tight_matrices`.
+Not a dormant duplicate — a second, wrong answer to every question that matters.
+
+`StaleProfileStore` now raises at the four read/write fallbacks, with a message
+naming what to restore. The distinction that makes this safe: it fires only when
+the folder is missing AND a legacy copy exists. A genuinely fresh install has
+NEITHER and still falls through to `DEFAULT_PROFILES`. Verified in-container
+across all three states — folder present, fresh install, and stale — the middle
+one being the case that would have broken every new deployment had the refusal
+been written as "no folder → raise".
+
+`purge_legacy_profile_annotations.py` removes the copy, and **refuses** if the
+Dexterity folder is absent or if any method exists only in the annotation store:
+a purge must never remove the only copy. It prints the drift it is discarding
+rather than dropping it silently.
+
+Re-verified after the purge: 8/8 suites, **4251 combinations configured / 57 on
+defaults, 0 refused**, audit **DEAD 0, UNREACHABLE 0, SPLIT 0, LEGACY 0,
+UI-ONLY 2** (both the Run Builder's own template).

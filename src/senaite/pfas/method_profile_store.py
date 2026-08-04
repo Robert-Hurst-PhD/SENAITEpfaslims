@@ -1003,6 +1003,39 @@ def get_profile_store(portal):
     return annotations[PFAS_METHOD_PROFILES_KEY]
 
 
+class StaleProfileStore(RuntimeError):
+    """The Dexterity profile folder is gone but the legacy annotation copy is not.
+
+    The annotation mapping predates the Dexterity store and is no longer kept in
+    step: on 2026-08-04 it held salt=0 while the live profiles held salt=2, so
+    falling back to it silently served a profile with no salt correction and
+    stale acceptance limits. That is the same failure as judging against an
+    unconfigured criterion — a plausible answer nobody chose — so it refuses for
+    the same reason.
+
+    A genuinely fresh install has NEITHER store and is unaffected: it falls
+    through to DEFAULT_PROFILES as before. This fires only when the folder has
+    disappeared from a site that had one, which means a restore or upgrade went
+    wrong and the right response is to say so, not to carry on.
+    """
+
+
+def _refuse_if_stale(portal):
+    """Raise when the live store is missing but a legacy copy could mask it."""
+    if _get_profiles_folder(portal) is not None:
+        return
+    from zope.annotation.interfaces import IAnnotations
+    legacy = IAnnotations(portal).get(PFAS_METHOD_PROFILES_KEY)
+    if legacy:
+        raise StaleProfileStore(
+            "pfas_method_profiles is missing but the legacy annotation store "
+            "still holds {0} profile(s). Reading it would serve stale "
+            "acceptance limits and drop salt corrections. Restore the "
+            "pfas_method_profiles folder, or clear the annotation store at {1} "
+            "if it is known to be obsolete.".format(
+                len(legacy), PFAS_METHOD_PROFILES_KEY))
+
+
 def _get_profiles_folder(portal):
     """Return pfas_method_profiles Folder at portal root, or None (pre-migration)."""
     return portal.get("pfas_method_profiles")
@@ -1061,7 +1094,9 @@ def get_profile(portal, method_id):
             return _unknown_profile(method_id)
         return copy.deepcopy(dflt)
 
-    # Annotation fallback (pre-migration / fresh install)
+    # Annotation fallback (fresh install only — refuses if it would mask a
+    # vanished Dexterity store)
+    _refuse_if_stale(portal)
     store = get_profile_store(portal)
     raw = store.get(method_id)
     if raw is None:
@@ -1134,7 +1169,7 @@ def save_profile(portal, method_id, data):
         except Exception:
             pass
     else:
-        # Annotation fallback (pre-migration)
+        _refuse_if_stale(portal)
         store = get_profile_store(portal)
         store[method_id] = json.dumps(data)
 
@@ -1169,6 +1204,7 @@ def list_method_ids(portal):
     folder = _get_profiles_folder(portal)
     if folder is not None:
         return list(folder.objectIds())
+    _refuse_if_stale(portal)
     store = get_profile_store(portal)
     return list(store.keys())
 
@@ -1205,7 +1241,7 @@ def export_profiles_to_file(portal, path=None):
             except (ValueError, TypeError):
                 pass
     else:
-        # Annotation fallback
+        _refuse_if_stale(portal)
         store = get_profile_store(portal)
         for method_id, raw in store.items():
             try:

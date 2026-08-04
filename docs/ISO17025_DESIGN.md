@@ -237,6 +237,16 @@ step that decides whether a lab keeps its limits can be tested directly
 overwriting a newer value). The migration now reads and writes through
 `list_method_ids` / `get_profile` / `save_profile`.
 
+**The same shape lived one layer down.** The annotation mapping the migration
+had been reading was not merely unused — it was a divergent copy of live
+config. Purging it reported FDA_32PFAS differing in 11 keys including the
+acceptance limits, the matrix factor applied to every concentration, and the
+reportable panel. The fallback that would have served it now raises
+`StaleProfileStore`, and the distinction that keeps that safe is worth copying:
+it fires only when the live store is missing AND a legacy copy exists. Written
+as the obvious "no folder → raise", it would have broken every fresh install,
+which has neither store and must fall through to defaults.
+
 **Verify a migration against live data, not against its own output.** This one
 printed a clean success report while doing nothing. What proved the fix was
 reading the Dexterity objects before and after and confirming the salt factors
