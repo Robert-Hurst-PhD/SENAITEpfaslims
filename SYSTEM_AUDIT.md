@@ -49,6 +49,33 @@ Every fact should live in exactly one of these and be referenced elsewhere.
 | Data-review 5-item checklist | `senaite.pfas.data_review.checklist` (per worksheet) | annotation |
 | **AnalysisSpec sync (NEW)** | core `AnalysisSpec` objects + `senaite.pfas.spec_sync_audit` | core object + annotation |
 | EGAD CAS/DEP map + EDD | `egad_store` (`analyte_cas_json`, `DEFAULT_ANALYTE_CAS`) | annotation + Python constant |
+| **Salt correction (per analyte × method, + CoA lot)** | method profile `salt_adjustment_factors` | Dexterity + file |
+| **Matrix aliases, tight matrices, supported matrices, reporting units** | method profile (`matrix_aliases`, `tight_matrices`, `supported_matrices`, `unit_map`) | Dexterity + file |
+| **Surrogate → quantifying IS, and surrogate → injection IS** | method profile `surrogate_map`, `surrogate_is_chain` | Dexterity + file |
+
+### Corrections to this map — 2026-08-03
+
+Three rows above were **aspirational rather than descriptive** when written.
+The fact was in the right place; nothing read it.
+
+- **Salt correction** was stored in three places (`salt_adjustment_factors`,
+  `qc_rules.salt_factors`, `extraction_corrections.salt_factors`), editable in
+  two UIs, and applied by none. Now applied in
+  `pipeline.apply_extract_corrections()`. `qc_rules.salt_factors` is deprecated
+  by D53 and its QC Rules pane is still visible — **an inert second editor for
+  a fact this table says lives in the method profile.**
+- **Surrogate map** — the row said the method profile owns it. The analysis
+  read the instrument's `linked_is` column and a global `analyte_reference`
+  table instead. The profile is now authoritative.
+- **`unit_map`, `tight_matrices`, `matrix_aliases`, `supported_matrices`** were
+  engine-read and UI-unwritable — owned by a seed constant in practice, not by
+  the lab. Now editable (Method Profiles → Matrices & Units).
+
+**A single-source-of-truth map is a claim about consumers, not about storage.**
+Listing an owner proves nothing if no reader consults it; that is precisely how
+a fact ends up recorded in one place and used from another.
+`tools/audit_configurable.py` tests the claim mechanically — see
+`docs/ISO17025_DESIGN.md`.
 
 ---
 

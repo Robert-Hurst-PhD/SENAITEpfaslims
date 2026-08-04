@@ -151,20 +151,56 @@ senaite_pfas/
 ├── requirements.txt
 ├── run_worker.py               watcher entry point
 ├── extraction_api.py           FastAPI tablet app (port 9000)
-├── pfas_pipeline/
-│   ├── constants.py            21 IS + 34 analytes + criteria + patterns + col map
-│   ├── models.py               InstrumentRow, QCFlag, Batch, Reagent, …
-│   ├── importer.py             CSV → typed rows; name validation; grouping
-│   ├── qc_engine.py            all 6 QC checks + MDL  (the xlsm formulas)
+├── pfas_pipeline/                 (Py3 worker — talks to SENAITE only via jsonapi)
+│   ├── constants.py            QC types, injection patterns, column indices
+│   ├── models.py               InstrumentRow, QCFlag, Batch, SummaryResult, …
+│   ├── importer.py             CSV → typed rows; qualifier parsing; grouping
+│   ├── qc_engine.py            the QC checks + MDL  (the xlsm formulas)
+│   ├── method_profiles.py      per-method criteria; UnconfiguredCriterion
+│   ├── analyte_alias.py        display-name ⇄ keyword; surrogate vs injection IS
+│   ├── canonical_columns.py    Py3 loader for the add-on's column vocabulary
 │   ├── injection_builder.py    sequence builder (Sample_Injection_List port)
+│   ├── injection_store.py      per-injection persistence
 │   ├── run_queue.py            review prompts + persistence
+│   ├── qc_store.py             batches / qc_results / calibrations → SQLite
 │   ├── barcode.py              GS1/vendor parsing, lot registry, ZPL labels
+│   ├── egad_edd.py             Maine EGAD electronic data deliverable
 │   ├── report.py               PDF generation + merge (replaces Adobe COM)
 │   ├── senaite_connector.py    jsonapi REST client
-│   └── pipeline.py             orchestrator + directory watcher
-└── tests/
-    └── test_pipeline.py        end-to-end smoke test (passing)
+│   └── pipeline.py             orchestrator; apply_extract_corrections()
+├── src/senaite/pfas/              (Py2.7 add-on — on the Zope path)
+│   ├── analyte_reference.py    THE analyte/IS reference table (both spellings)
+│   ├── instrument_columns.py   canonical instrument-column vocabulary
+│   ├── method_profile_store.py profile seeds + ZODB persistence
+│   ├── method_bridge.py        profile ⇄ core Method/AnalysisService
+│   ├── batch_ref.py            batch lookup (a client-owned batch moves)
+│   ├── dilution_ref.py         FM-ENV-252 dilution + spike pedigree
+│   ├── matrix_ref.py           matrix ⇄ core SampleType
+│   ├── spec_sync.py / spec_reverse.py   core Specifications sync
+│   └── browser/                the workspaces (§5) — Method Profiles, Data
+│                               Review, Run Builder, Logbooks, QC Review Report
+├── tools/
+│   ├── audit_configurable.py   §1.1 audit — run after any profile-schema change
+│   ├── relabel_run_from_worklist.py     fixture: LIMS-named injections
+│   └── derive_qc_coherent_fixture.py    fixture: arithmetically coherent QC
+└── tests/                      run with PFAS_PROFILES_PATH set — see below
+    ├── test_pipeline.py            end-to-end smoke test
+    ├── test_profiles.py            tier resolution per analyte × matrix
+    ├── test_dilution_reporting.py  dilution substitution + reporting
+    ├── test_surrogate_map.py       method owns the surrogate → IS link
+    ├── test_salt_correction.py     salt factor reaches the result
+    ├── test_unconfigured_criteria.py  refuse-to-judge
+    └── test_logbook_schema.py      logbook template integrity
 ```
+
+> **`PFAS_PROFILES_PATH` defaults to the container path `/data/qc/method_profiles.json`.**
+> Run the tests without it and they silently exercise `_DEFAULT_PROFILE_CACHE`,
+> which has no `tight_matrices` — so tier 1 never resolves and the suite passes
+> on defaults rather than on the lab's profile. Set it explicitly:
+>
+> ```bash
+> export PFAS_PROFILES_PATH="$PWD/data/qc/method_profiles.json"
+> ```
 
 ---
 
@@ -258,9 +294,28 @@ CCV interval is no longer hardcoded; `ccv_interval=None` (default) inherits the 
 
 ---
 
+## 11a. Configurability — the recurring defect shape
+
+Ten defects in this system have shared one shape: **a fact recorded correctly
+in one place and never carried to where it is used** (a dilution relationship,
+an analyte alias, a salt factor, the surrogate map). `tools/audit_configurable.py`
+finds them mechanically; `docs/ISO17025_DESIGN.md` derives why each one is a
+compliance failure and not merely untidy.
+
+Run the audit after any change to the profile schema:
+
+```bash
+python3 tools/audit_configurable.py --profiles data/qc/method_profiles.json
+```
+
+A clean run is evidence, not proof — see `docs/ISO17025_DESIGN.md` §6 for the
+three things it structurally cannot see.
+
+---
+
 ## 12. Still outstanding (honest status)
 
-1. **EPA 1633A per-analyte tables** — structure complete; representative limits in place but every value is `verify_against_method=True`. Populate `_1633A_EIS_OVERRIDES_AQUEOUS` (and add solid/biosolid/tissue tables) from your purchased method copy before production.
+1. **EPA 1633A per-analyte tables** — structure complete; every value still carries `verify_against_method=True`. Solid / biosolid / leachate / tissue tables are now present AND editable in the UI (Method Profiles → EIS Limits, per matrix class), so a verified value can be recorded where it is enforced. An unconfigured limit no longer falls back to 40/130 — it raises `UnconfiguredCriterion` and stops the run.
 2. **SENAITE workflow event chain** (CoC received → run creation → extraction log → injection build) — designed in §4 but the Plone subscriber wiring is not yet written; this was deferred from the 5-pass scope.
 3. **Waters LIMS port specifics** — sequence export is a swappable template; exact MassLynx sample-list import schema per version still needs the Waters support-portal spec.
 4. **537.1 / 1633A injection ladders** for the builder — FDA + 537 ladders present; 1633A ladder not yet added.

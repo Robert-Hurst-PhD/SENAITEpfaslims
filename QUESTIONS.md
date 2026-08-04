@@ -31,6 +31,13 @@
   dead code; flat CRITERIA values remain for `LFSMResult.passes` only.
   False AUTO_PASS bug (LFSM always passing silently) also fixed: checks stay
   PENDING until spike levels are configured in the profile.
+- **Superseded in part — 2026-08-03.** "Flat CRITERIA values remain for
+  `LFSMResult.passes`" is no longer true, and the reasoning is worth keeping:
+  a flat fallback beside a profile-driven path is the shape that produced the
+  CCV defect. An unconfigured criterion now raises `UnconfiguredCriterion`
+  rather than falling back to a plausible number, and the legacy
+  `recovery_tiers` branch — a second, divergent copy of the tier logic — was
+  deleted. See `docs/ISO17025_DESIGN.md` §3.
 - **Raised:** 2026-06-18 during Item 8 parentage audit.
 
 ## Q-010  Plan B — How does a dropped file get identified with an instrument + software version?
@@ -191,3 +198,23 @@
   (e.g. `13C8-PFOS`) as the surrogate_is field values.
 - **Status:** closed — 2026-06-19
 - **Raised:** 2026-06-11
+- **REOPENED AND RE-CLOSED — 2026-08-03.** The 2026-06-19 resolution was
+  correct about the instrument and wrong about the system. It concluded "the
+  pipeline uses the Title column, correct as-is" and recommended that the
+  surrogate map store 13C display names. In practice the Method Profile stores
+  the **M-prefix keywords** (`M8PFOA`, `M8PFOS`), the instrument exports the
+  **13C names**, and `COMPOUND_NAME_TO_KEYWORD` was built by walking only
+  `NATIVE_ANALYTES` — so **nothing in the system could tell that `M8PFOA` and
+  `13C8-PFOA` are the same compound.** Both spellings had been sitting in
+  `INTERNAL_STANDARDS` the whole time, unused.
+
+  This is why the question mattered more than it looked: as long as the
+  surrogate map was decorative (nothing read it), the ambiguity was harmless.
+  The moment the method profile became authoritative for the surrogate → IS
+  link, a raw name comparison reported **all 20 surrogates as disagreements**.
+
+  Resolution: neither spelling is canonical at the boundary. Both are keyed,
+  and every comparison normalises through `analyte_alias.keyword_for()` first.
+  A resolution that depends on everyone agreeing to use one spelling is not a
+  resolution — it is an assumption with no enforcement.
+  See `docs/ISO17025_DESIGN.md` §5.

@@ -406,6 +406,13 @@ Profile pages:
 These are the regulatory obligations the system exists to enforce. A feature
 that undermines one of these is a defect, not a design choice.
 
+> **Read `docs/ISO17025_DESIGN.md` before changing anything in this section's
+> scope.** This section states the obligations; that document derives them —
+> for each one, what the model must own, the defect shape that violates it, how
+> it was caught, and the file:line that now prevents it. Every entry is a real
+> defect found in this system. It also records where refusing to proceed is
+> correct and where it is wrong, which is not inferable from the rules alone.
+
 **Chain of Custody as a sample acceptance prerequisite.** Under EPA 537.1,
 EPA 1633A, and FDA PFAS methods, a sample without a completed CoC is formally
 unreceivable. CoC records: client, project, collection date, field sampler,

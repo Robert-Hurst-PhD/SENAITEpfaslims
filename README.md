@@ -14,8 +14,8 @@ setup automatically from the CSV files in `src/senaite/pfas/setupdata/`:
 
 | Setup area | Count | Source file |
 |---|---|---|
-| Native target analytes (AnalysisServices) | 34 | `analysis_services.csv` |
-| Isotopically-labeled IS / surrogates | 21 | `internal_standards.csv` |
+| Native target analytes (AnalysisServices) | 47 | `analysis_services.csv` |
+| Isotopically-labeled IS / surrogates | 27 | `internal_standards.csv` |
 | Methods (FDA 32-PFAS, EPA 537.1, EPA 1633A) | 3 | `methods.csv` |
 | Sample types (matrices) | 14 | `sample_types.csv` |
 | Sample containers (PFAS-safe) | 7 | `containers.csv` |
@@ -23,14 +23,40 @@ setup automatically from the CSV files in `src/senaite/pfas/setupdata/`:
 | Preservations | 5 | `preservations.csv` |
 | Sample points (placeholder) | 5 | `sample_points.csv` |
 
-Each native analyte is pre-linked to its surrogate/internal standard per the
-FDA Table 9-1 mapping (e.g. PFOA→M8PFOA, PFTrDA→MPFDoA), and the 12 analytes
-with no commercially matched labeled standard are flagged `NC` so the QC
-engine applies the N.C. qualifier and the 40–140% recovery tier automatically.
+The 47 analytes are the UNION across all three methods; each method reports a
+subset, and the reportable panel is the Method × Matrix intersection, never the
+flat list (see `CLAUDE.md` §3):
 
-> **Placeholders:** values marked `PLACEHOLDER` (e.g. PFTrDS CAS) and the
-> EPA 1633A per-analyte limits must be confirmed against your standard COAs
-> and your purchased copy of the method before production use.
+| Method | Panel | Matrices |
+|---|---|---|
+| FDA 32-PFAS | 32 | 6 |
+| EPA 537.1 | 18 | 3 |
+| EPA 1633A | 40 | 9 |
+
+The 27 labeled compounds are **26 surrogates + 1 injection internal standard**
+(13C4-PFOA under FDA). That distinction is load-bearing, not bookkeeping: a
+surrogate is added before extraction and is diluted with the sample, while the
+injection standard is added at reconstitution and must not be scaled. Which
+compound plays which role is owned by the method (`surrogate_is_chain`), not by
+a global table.
+
+Each native analyte is pre-linked to its surrogate per the FDA Table 9-1
+mapping (e.g. PFOA→M8PFOA, PFTrDA→MPFDoA), and the 19 analytes with no
+commercially matched labeled standard are flagged `NC` so the QC engine applies
+the N.C. qualifier and the 40–140% recovery tier automatically.
+
+> **Placeholders are now enforced, not merely advised.** Values marked
+> `PLACEHOLDER` (e.g. PFTrDS CAS) must still be confirmed against your standard
+> COAs. But an acceptance criterion that is **not configured no longer falls
+> back to a plausible default** — the run raises `UnconfiguredCriterion` and
+> stops, naming the method, analyte, matrix, QC type and where to set it. This
+> applies to recovery tiers, CCV windows and the EPA 1633A EIS limits.
+>
+> A limit the METHOD TEXT states (FDA §2024.10.1(5) surrogates 50–150%,
+> EPA 537.1 §9.3.5 surrogates 70–130%) is *not* a placeholder: it is a cited
+> regulatory value, it stands as the default, and it can be overridden from
+> `qc_acceptance.SUR`. See `docs/ISO17025_DESIGN.md` §3b for why those two
+> cases are treated differently.
 
 ---
 
