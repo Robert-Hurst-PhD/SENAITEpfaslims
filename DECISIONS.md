@@ -4380,3 +4380,30 @@ tidiness issue.
    unconfigured criterion is precisely an ISO 17025 deviation; the deviations
    module already carries the worksheet link and sign-off, so this is reuse
    rather than a new notification subsystem.
+
+### 2026-08-04 — "will this correct itself once a QA role is assigned?"
+
+It would not have, and the question found a defect I had just written.
+
+`ensure_deviation` is idempotent by gap signature, and the early return that
+makes it idempotent happened **before** `_notify_qao`. So a deviation raised
+while no QAO address existed would have stayed un-notified permanently:
+configuring the QAO afterwards would have changed nothing, and the record would
+have sat there looking filed. "We'll tell the QAO" would have been a promise the
+system kept only if the QAO happened to be set up first — which, on a new
+install, is exactly the case where it isn't.
+
+The idempotent path now retries the notification when `qao_notified` is false,
+updates the record and clears the closure note. Verified: raised un-notified,
+QAO then configured, same `dev_id` returned, `qao_notified` flips to true, note
+cleared, registry still one entry, mail sent.
+
+**Two prerequisites remain, and neither is self-correcting because neither is
+ours to set.** `MailHost.smtp_host` is empty, and `email_from_address` is unset,
+so nothing can send even once a QAO address exists. The failure is now
+diagnosed specifically — "no email address on the QAO LabContact" versus "no
+SMTP host configured; the QAO address is set" — rather than reported as a
+generic send failure, because those need different people to fix them.
+
+The deviation is raised and the report is held either way. Notification is the
+only part that waits on configuration; the hold does not.

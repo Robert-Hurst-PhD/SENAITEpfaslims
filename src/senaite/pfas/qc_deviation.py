@@ -87,6 +87,19 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
 
     for dev in registry:
         if dev.get(SIGNATURE_KEY) == signature and dev.get("status") != "closed":
+            # Already filed. Retry the notification if it never got through:
+            # a deviation raised while no QAO address existed would otherwise
+            # stay un-notified forever, because this early return happens
+            # before _notify_qao. Configuring the QAO afterwards has to be
+            # enough to close the loop, or "we'll tell the QAO" is a promise
+            # the system only keeps if the QAO happened to be set up first.
+            if not dev.get("qao_notified"):
+                if _notify_qao(portal, dev, worksheet_id, gaps):
+                    dev["qao_notified"] = True
+                    dev["closure_notes"] = u""
+                    _save(portal, registry)
+                    logger.info("QAO notified retrospectively for %s",
+                                dev.get("dev_id"))
             return dev
 
     dev_id = _next_id(registry)
@@ -130,9 +143,11 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
     record["qao_notified"] = bool(notified)
     if not notified:
         record["closure_notes"] = (
-            u"QAO was NOT notified automatically — no email address is set on "
-            u"the QAO LabContact (Print Settings → QAO initials). Tell them "
-            u"directly, or set the address so the next one sends.")
+            u"QAO was NOT notified automatically: {0} Tell them directly. "
+            u"Once it is configured the notification is retried the next time "
+            u"Data Review renders this worksheet — no need to re-file "
+            u"this deviation.".format(
+                record.get("qao_notify_error") or u"reason unrecorded."))
     registry.append(record)
     _save(portal, registry)
     return record
@@ -154,9 +169,23 @@ def _notify_qao(portal, record, worksheet_id, gaps):
     address = qao_email(portal)
     if not address:
         logger.warning(
-            "%s raised but no QAO email is configured — set the QAO's "
-            "initials in Print Settings and an email address on that "
-            "LabContact.", record["dev_id"])
+            "%s: no QAO email — set the QAO's initials in Print Settings and "
+            "an email address on that LabContact. The notification is retried "
+            "the next time Data Review renders.", record["dev_id"])
+        record["qao_notify_error"] = (
+            u"No email address on the QAO LabContact "
+            u"(Print Settings \u2192 QAO initials).")
+        return False
+
+    # A MailHost with no SMTP host silently accepts nothing. Say so up front
+    # rather than reporting a generic send failure.
+    if not (getattr(getattr(portal, "MailHost", None), "smtp_host", "") or ""):
+        logger.warning("%s: QAO is %s but no SMTP host is configured in "
+                       "MailHost — nothing can be sent.",
+                       record["dev_id"], address)
+        record["qao_notify_error"] = (
+            u"No SMTP host configured in MailHost; "
+            u"the QAO address ({0}) is set.".format(address))
         return False
 
     subject = "[PFAS LIMS] {0}: QC criteria not configured on {1}".format(
@@ -175,4 +204,5 @@ def _notify_qao(portal, record, worksheet_id, gaps):
     except Exception as exc:                                # noqa: BLE001
         logger.error("QAO notification failed for %s: %s",
                      record["dev_id"], exc)
+        record["qao_notify_error"] = u"Send failed: {0}".format(exc)
         return False
