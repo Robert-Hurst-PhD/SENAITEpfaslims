@@ -36,176 +36,169 @@ logger = logging.getLogger("senaite.pfas.qc_qualification")
 
 LIBRARY_KEY = "senaite.pfas.qc_qualification.library"
 
-# ── Causes ───────────────────────────────────────────────────────────────────
-# The distinction drives the wording AND whether a retest is offered: a
-# laboratory failure is ours to repeat, a matrix effect is not.
-LABORATORY = "laboratory"
-MATRIX = "matrix"
+# ── Disposition ──────────────────────────────────────────────────────────────
+# What the system DOES with a failure, decided without a human in the loop.
+#
+# QUALIFY  the failure is attributable to the sample, so the result is released
+#          with a qualifier and standard wording. Repeating the analysis would
+#          give the same answer.
+# BLOCK    the failure occurred on material the LABORATORY prepared and
+#          controls — a blank, a calibration standard, a CCV. Those are known
+#          inputs that should always pass, so a failure is a laboratory problem.
+#          It is not excusable as a matrix effect and must not be caveated onto
+#          a client certificate; the batch is held and the lab resolves it.
+QUALIFY = "qualify"
+BLOCK = "block"
 
-CAUSES = (
-    (LABORATORY, u"Laboratory", u"Attributable to the analysis — instrument, "
-                                u"calibration, reagents or process."),
-    (MATRIX, u"Sample matrix", u"Attributable to the sample itself; repeating "
-                               u"the analysis would not change the outcome."),
+DISPOSITIONS = (
+    (QUALIFY, u"Qualify and release",
+     u"Attributable to the sample. Released with a qualifier and standard "
+     u"wording; re-analysis would not change the outcome."),
+    (BLOCK, u"Hold for laboratory resolution",
+     u"Occurred on laboratory control material that should always pass. Held "
+     u"for investigation or re-analysis; never qualified onto a certificate."),
 )
+
+# Injection roles that are LABORATORY control material. A failure on any of
+# these blocks regardless of failure type: the lab made the sample, so the lab
+# owns the failure. Client material — samples, and the spikes and duplicates
+# prepared FROM them — can carry a matrix qualifier.
+CONTROL_ROLES = frozenset([
+    "MB", "MxB", "LRB", "LFB", "LCS", "CCB", "CAL", "CCV", "ICV", "Standard",
+    "Blank", "Quality Control",
+])
 
 # ── Failure taxonomy ─────────────────────────────────────────────────────────
 # Keyed to what the QC engine actually emits. `default_cause` is a PROPOSAL the
 # QAO confirms or overrides — never a verdict, because a surrogate failure that
 # really is a lab error is exactly the case where a retest should be offered.
+# (key, label, default disposition, qualifier code)
+#
+# Codes extend the set the EDD already emits (U, J, B, NC, EMPC) rather than
+# starting a second vocabulary. They are DRAFTS for the QAO to confirm — the
+# library editor owns them, and nothing here is authoritative until approved.
 FAILURE_TYPES = [
-    ("calibration",  u"Calibration curve",        LABORATORY),
-    ("ccv",          u"Continuing calibration verification", LABORATORY),
-    ("is_response",  u"Internal standard response", LABORATORY),
-    ("rt",           u"Retention time",           LABORATORY),
-    ("ion_ratio",    u"Ion ratio / confirmation", LABORATORY),
-    ("sn",           u"Signal to noise",          LABORATORY),
-    ("blank",        u"Blank contamination",      LABORATORY),
-    ("surrogate",    u"Surrogate recovery",       MATRIX),
-    ("lfsm",         u"Matrix spike recovery",    MATRIX),
-    ("lfsmd",        u"Matrix spike duplicate (RPD)", MATRIX),
-    ("duplicate",    u"Sample duplicate (RPD)",   MATRIX),
+    ("calibration",  u"Calibration curve",                   BLOCK,   u""),
+    ("ccv",          u"Continuing calibration verification", BLOCK,   u""),
+    ("blank",        u"Blank contamination",                 BLOCK,   u"B"),
+    ("is_response",  u"Internal standard response",          BLOCK,   u""),
+    ("surrogate",    u"Surrogate recovery",                  QUALIFY, u"M"),
+    ("lfsm",         u"Matrix spike recovery",               QUALIFY, u"M"),
+    ("lfsmd",        u"Matrix spike duplicate (RPD)",        QUALIFY, u"P"),
+    ("duplicate",    u"Sample duplicate (RPD)",              QUALIFY, u"P"),
+    ("ion_ratio",    u"Ion ratio / confirmation",            QUALIFY, u"NC"),
+    ("sn",           u"Signal to noise",                     QUALIFY, u"J"),
+    ("rt",           u"Retention time",                      QUALIFY, u"NC"),
 ]
 
-FAILURE_LABELS = dict((k, label) for k, label, _c in FAILURE_TYPES)
-DEFAULT_CAUSE = dict((k, cause) for k, _l, cause in FAILURE_TYPES)
+FAILURE_LABELS = dict((k, label) for k, label, _d, _c in FAILURE_TYPES)
+DEFAULT_DISPOSITION = dict((k, d) for k, _l, d, _c in FAILURE_TYPES)
+DEFAULT_CODE = dict((k, code) for k, _l, _d, code in FAILURE_TYPES)
 
 
-def _msg(statement, offer_retest):
-    return {"statement": statement, "offer_retest": offer_retest}
+def disposition_for(failure_type, injection_role=u"", library=None):
+    """QUALIFY or BLOCK for a failure, given where it happened.
+
+    Two rules, in order:
+
+    1. A failure on LABORATORY CONTROL MATERIAL always blocks. A method blank,
+       a calibration standard and a CCV are inputs the laboratory prepared and
+       controls; they are supposed to pass every time, so a failure means
+       something is wrong here, not in the client's sample. Excusing it as a
+       matrix effect would be false — there is no client matrix in a blank.
+    2. Otherwise the failure type's configured disposition applies.
+    """
+    if injection_role and injection_role in CONTROL_ROLES:
+        return BLOCK
+    if library and failure_type in library:
+        configured = (library[failure_type] or {}).get("disposition")
+        if configured in (QUALIFY, BLOCK):
+            return configured
+    return DEFAULT_DISPOSITION.get(failure_type, BLOCK)
 
 
-# Seed wordings. Concise, and they say what the reader needs: which results are
-# affected, why, and what it means for them. LABORATORY variants offer a
-# retest; MATRIX variants state that the sample itself is the cause, because
-# offering to repeat an analysis that would give the same answer is misleading.
+# Draft wordings, in the style commercial certificates use: what failed, which
+# results it affects, and what the reader should conclude. Written from
+# convention rather than transcribed from a standard — the QAO edits and
+# approves them in the library editor, and that approval is what makes them
+# authoritative. No clause is cited because none has been verified here.
+#
+# BLOCK entries carry an INTERNAL note instead of client wording: they never
+# reach a certificate, so what matters is telling the analyst what to do.
 DEFAULT_LIBRARY = {
-    "calibration": {
-        LABORATORY: _msg(
-            u"The calibration curve for the affected analytes did not meet the "
-            u"method's acceptance criteria for this run. The accuracy of these "
-            u"results cannot be guaranteed. A re-analysis is available on "
-            u"request.", True),
-        MATRIX: _msg(
-            u"The calibration response for the affected analytes was altered by "
-            u"the sample matrix. Reported values should be treated as "
-            u"indicative for these analytes.", False),
-    },
-    "ccv": {
-        LABORATORY: _msg(
-            u"The continuing calibration verification bracketing these samples "
-            u"fell outside the method's acceptance window. The accuracy of the "
-            u"affected results cannot be guaranteed. A re-analysis is available "
-            u"on request.", True),
-        MATRIX: _msg(
-            u"Instrument response drifted across this sequence for the affected "
-            u"analytes. Reported values should be treated as indicative.", False),
-    },
-    "is_response": {
-        LABORATORY: _msg(
-            u"The internal standard response for the affected analytes fell "
-            u"outside the method's acceptance window, indicating an analytical "
-            u"rather than sample cause. The accuracy of these results cannot be "
-            u"guaranteed. A re-analysis is available on request.", True),
-        MATRIX: _msg(
-            u"The internal standard response was suppressed or enhanced by the "
-            u"sample matrix. Reported values for the affected analytes are "
-            u"matrix-influenced and should be treated as indicative.", False),
-    },
-    "rt": {
-        LABORATORY: _msg(
-            u"Retention times for the affected analytes fell outside the "
-            u"method's tolerance. Identification confidence is reduced and the "
-            u"accuracy of these results cannot be guaranteed. A re-analysis is "
-            u"available on request.", True),
-        MATRIX: _msg(
-            u"Chromatography for the affected analytes was altered by the "
-            u"sample matrix. Reported values should be treated as indicative.",
-            False),
-    },
-    "ion_ratio": {
-        LABORATORY: _msg(
-            u"The qualifier-to-quantifier ion ratio for the affected analytes "
-            u"fell outside the method's tolerance, so identification could not "
-            u"be confirmed. The accuracy of these results cannot be guaranteed. "
-            u"A re-analysis is available on request.", True),
-        MATRIX: _msg(
-            u"The qualifier ion ratio for the affected analytes was affected by "
-            u"co-eluting sample matrix, so identification could not be "
-            u"confirmed. Reported values should be treated as indicative.",
-            False),
-    },
-    "sn": {
-        LABORATORY: _msg(
-            u"The signal-to-noise ratio for the affected analytes fell below "
-            u"the method's minimum. The accuracy of these results near the "
-            u"reporting limit cannot be guaranteed. A re-analysis is available "
-            u"on request.", True),
-        MATRIX: _msg(
-            u"Sample matrix raised the baseline for the affected analytes, "
-            u"reducing the signal-to-noise ratio below the method's minimum. "
-            u"Reported values should be treated as indicative.", False),
-    },
-    "blank": {
-        LABORATORY: _msg(
-            u"The method blank contained the affected analytes above the "
-            u"reporting limit, indicating laboratory contamination. Reported "
-            u"values may be biased high and their accuracy cannot be "
-            u"guaranteed. A re-analysis is available on request.", True),
-        MATRIX: _msg(
-            u"The affected analytes were detected in the blank at levels "
-            u"consistent with the sample matrix or containers. Reported values "
-            u"may be biased high.", False),
-    },
     "surrogate": {
-        LABORATORY: _msg(
-            u"Surrogate recovery for the affected analytes fell outside the "
-            u"method's acceptance window for analytical reasons. The accuracy "
-            u"of these results cannot be guaranteed. A re-analysis is available "
-            u"on request.", True),
-        MATRIX: _msg(
-            u"Surrogate recovery for the affected analytes fell outside the "
-            u"method's acceptance window because of the sample matrix. This is "
-            u"a characteristic of the sample type rather than of the analysis; "
-            u"reported values for these analytes should be treated as "
-            u"indicative.", False),
+        "statement": u"Surrogate recovery for the affected analytes fell "
+                     u"outside the method acceptance window. This is "
+                     u"attributable to the sample matrix rather than to the "
+                     u"analysis; re-analysis would be expected to give the "
+                     u"same outcome. The accuracy of the affected results "
+                     u"cannot be guaranteed and they should be treated as "
+                     u"indicative.",
     },
     "lfsm": {
-        LABORATORY: _msg(
-            u"Matrix spike recovery for the affected analytes fell outside the "
-            u"method's acceptance window for analytical reasons. The accuracy "
-            u"of these results cannot be guaranteed. A re-analysis is available "
-            u"on request.", True),
-        MATRIX: _msg(
-            u"Matrix spike recovery for the affected analytes fell outside the "
-            u"method's acceptance window because of the sample matrix. This is "
-            u"a characteristic of the sample type rather than of the analysis; "
-            u"reported values for these analytes should be treated as "
-            u"indicative.", False),
+        "statement": u"Matrix spike recovery for the affected analytes fell "
+                     u"outside the method acceptance window, indicating that "
+                     u"the sample matrix suppresses or enhances the response "
+                     u"of these analytes. The accuracy of the affected results "
+                     u"cannot be guaranteed and they should be treated as "
+                     u"indicative.",
     },
     "lfsmd": {
-        LABORATORY: _msg(
-            u"Agreement between the matrix spike and its duplicate exceeded the "
-            u"method's precision limit for analytical reasons. The precision of "
-            u"the affected results cannot be guaranteed. A re-analysis is "
-            u"available on request.", True),
-        MATRIX: _msg(
-            u"Agreement between the matrix spike and its duplicate exceeded the "
-            u"method's precision limit owing to sample heterogeneity. Reported "
-            u"values for the affected analytes should be treated as "
-            u"indicative.", False),
+        "statement": u"Agreement between the matrix spike and its duplicate "
+                     u"exceeded the method precision limit, consistent with "
+                     u"sample heterogeneity. The precision of the affected "
+                     u"results cannot be guaranteed.",
     },
     "duplicate": {
-        LABORATORY: _msg(
-            u"Agreement between duplicate analyses exceeded the method's "
-            u"precision limit for analytical reasons. The precision of the "
-            u"affected results cannot be guaranteed. A re-analysis is available "
-            u"on request.", True),
-        MATRIX: _msg(
-            u"Agreement between duplicate analyses exceeded the method's "
-            u"precision limit owing to sample heterogeneity. Reported values "
-            u"for the affected analytes should be treated as indicative.",
-            False),
+        "statement": u"Agreement between duplicate analyses exceeded the "
+                     u"method precision limit, consistent with sample "
+                     u"heterogeneity. The precision of the affected results "
+                     u"cannot be guaranteed.",
+    },
+    "ion_ratio": {
+        "statement": u"The qualifier-to-quantifier ion ratio for the affected "
+                     u"analytes fell outside the method tolerance, most "
+                     u"commonly caused by co-eluting sample matrix. "
+                     u"Identification could not be confirmed and the affected "
+                     u"results should be treated as presumptive.",
+    },
+    "sn": {
+        "statement": u"Sample matrix raised the baseline for the affected "
+                     u"analytes, reducing the signal-to-noise ratio below the "
+                     u"method minimum. The affected results are estimated and "
+                     u"their accuracy near the reporting limit cannot be "
+                     u"guaranteed.",
+    },
+    "rt": {
+        "statement": u"Retention time for the affected analytes fell outside "
+                     u"the method tolerance, consistent with matrix effects on "
+                     u"the chromatography. Identification could not be "
+                     u"confirmed and the affected results should be treated as "
+                     u"presumptive.",
+    },
+    # Held, never issued. The text is for the analyst.
+    "calibration": {
+        "statement": u"Calibration did not meet method criteria. Held for "
+                     u"laboratory resolution: review the curve, recalibrate "
+                     u"and re-analyse the affected sequence.",
+    },
+    "ccv": {
+        "statement": u"Continuing calibration verification fell outside the "
+                     u"method window. Held for laboratory resolution: "
+                     u"recalibrate and re-analyse the samples bracketed by "
+                     u"this CCV.",
+    },
+    "blank": {
+        "statement": u"Analytes were detected in a laboratory blank above the "
+                     u"reporting limit. Held for laboratory resolution: "
+                     u"identify the contamination source and re-extract the "
+                     u"affected batch.",
+    },
+    "is_response": {
+        "statement": u"Injection internal standard response fell outside the "
+                     u"method window, indicating an instrument or injection "
+                     u"problem. Held for laboratory resolution: re-inject and "
+                     u"investigate before release.",
     },
 }
 
@@ -213,11 +206,11 @@ DEFAULT_LIBRARY = {
 # ── Library storage (lab-wide, QAO-editable) ─────────────────────────────────
 
 def get_library(portal):
-    """The lab's approved wordings, seeded from DEFAULT_LIBRARY when unset.
+    """The lab's qualifier library, seeded where it has not been customised.
 
-    Saved edits win per (failure type, cause); anything the lab has not
-    customised falls through to the seed, so adding a failure type later does
-    not leave a blank certificate statement.
+    One entry per failure type: its disposition, its certificate code and its
+    wording. Saved edits win field by field, so a seed improvement still
+    reaches anything the QAO has not overridden.
     """
     saved = {}
     raw = IAnnotations(portal).get(LIBRARY_KEY)
@@ -225,38 +218,37 @@ def get_library(portal):
         try:
             saved = json.loads(raw)
         except (ValueError, TypeError):
-            logger.warning("QC qualification library unreadable; using defaults")
+            logger.warning("QC qualifier library unreadable; using defaults")
     out = {}
-    for key, _label, _cause in FAILURE_TYPES:
-        out[key] = {}
-        for cause, _clabel, _cdesc in CAUSES:
-            seed = (DEFAULT_LIBRARY.get(key) or {}).get(cause) or _msg(u"", False)
-            entry = ((saved.get(key) or {}).get(cause) or {})
-            out[key][cause] = {
-                "statement": entry.get("statement") or seed["statement"],
-                "offer_retest": bool(entry.get("offer_retest",
-                                               seed["offer_retest"])),
-                "customised": bool(entry.get("statement")),
-            }
+    for key, label, disposition, code in FAILURE_TYPES:
+        entry = saved.get(key) or {}
+        seed = DEFAULT_LIBRARY.get(key) or {}
+        out[key] = {
+            "key": key,
+            "label": label,
+            "disposition": entry.get("disposition") or disposition,
+            "code": entry.get("code", code),
+            "statement": entry.get("statement") or seed.get("statement", u""),
+            "customised": bool(entry),
+        }
     return out
 
 
 def save_library(portal, data):
-    """Persist only what differs from the seed, so seed improvements reach a
-    lab that never customised a given wording."""
+    """Store only what differs from the seed."""
     trimmed = {}
-    for key, per_cause in (data or {}).items():
-        for cause, entry in (per_cause or {}).items():
-            statement = (entry or {}).get("statement") or u""
-            seed = (DEFAULT_LIBRARY.get(key) or {}).get(cause) or _msg(u"", False)
-            retest = bool((entry or {}).get("offer_retest"))
-            if statement.strip() == seed["statement"].strip() \
-                    and retest == seed["offer_retest"]:
-                continue
-            trimmed.setdefault(key, {})[cause] = {
-                "statement": statement,
-                "offer_retest": retest,
-            }
+    for key, _label, disposition, code in FAILURE_TYPES:
+        entry = (data or {}).get(key) or {}
+        seed_text = (DEFAULT_LIBRARY.get(key) or {}).get("statement", u"")
+        diff = {}
+        if (entry.get("disposition") or disposition) != disposition:
+            diff["disposition"] = entry["disposition"]
+        if entry.get("code", code) != code:
+            diff["code"] = entry.get("code", code)
+        if (entry.get("statement") or u"").strip() != seed_text.strip():
+            diff["statement"] = entry.get("statement") or u""
+        if diff:
+            trimmed[key] = diff
     IAnnotations(portal)[LIBRARY_KEY] = json.dumps(trimmed)
     return trimmed
 
@@ -331,8 +323,29 @@ def _labelled_role(analyte, method_id):
     return u""
 
 
-def propose_cause(failure_type):
-    return DEFAULT_CAUSE.get(failure_type, LABORATORY)
+def qualifier_for(portal, failure_type, injection_role=u""):
+    """The qualifier to apply, or None when the failure must be held.
+
+    No human in the loop: the QAO's control is the library, not a per-result
+    approval. Returns the code, the wording and why it was chosen, so the
+    certificate and the audit trail say the same thing.
+    """
+    library = get_library(portal)
+    entry = library.get(failure_type)
+    if not entry:
+        # Unrecognised failures hold. Releasing one under a qualifier chosen by
+        # nobody is exactly the silent-substitution failure this codebase has
+        # spent the day removing.
+        return None
+    disposition = disposition_for(failure_type, injection_role, library)
+    if disposition == BLOCK:
+        return None
+    return {
+        "failure_type": failure_type,
+        "label": entry["label"],
+        "code": entry["code"],
+        "statement": entry["statement"],
+    }
 
 
 # ── Scoping ──────────────────────────────────────────────────────────────────
