@@ -4336,3 +4336,47 @@ window is now read from the profile rather than written in code.
 remains is module tables (EDD columns, calibration ladders, qualifier maps),
 facility-QC thresholds — evaluated independently of batch release per §10 — and
 setup-form defaults.
+
+## 2026-08-04 — "will the QAO be notified?" — the question exposed four unwired checks
+
+Asked whether a result that hits a default notifies the QAO, whether the report
+can be held, and whether a reviewer can resolve it. Answers as found:
+
+1. **No notification.** No QC notification path exists; the only MailHost use is
+   EGAD publish to clients.
+2. **Hold: partial.** Data Review's `qc_summary` gate has `blocked` and
+   `unevaluated` verdicts and blocks submission — a real hold for the two
+   profile-driven checks. `UnconfiguredCriterion` is caught nowhere, so it would
+   surface as an unhandled worker exception, not a gate.
+3. **No link.** The message names method/analyte/matrix/QC-type and where to fix
+   it, but it is a log string — not on the worksheet, not in Data Review.
+
+**And the question exposed something larger.** `ccv_check_profiled`,
+`calibration_check_profiled`, `is_check_profiled` and `rrt_check_profiled` have
+**zero call sites**. Those four checks run against `CRITERIA`, a hardcoded
+table. For them a result never "hits a default" at all — it is judged against a
+constant and reported as an ordinary pass/fail, which means **the four
+refuse-to-judge conversions made earlier today have no effect on a run.**
+
+The numbers coincide with the FDA profile (`cal_r2_min` 0.99, ion-ratio 30%, IS
+drift ±50% → 50–150%), which is why it went unnoticed. Coincidence, not linkage:
+editing `r2_min` or the CCV window changes nothing. One gap is not coincidental —
+**EPA 537.1 §9.3.4 requires BOTH the ICAL-average and last-CCV conditions to
+hold; `vs_last_ccv` (70–140%) is configured, editable, and consumed only inside
+the unwired `is_check_profiled`.** That is a method non-compliance, not a
+tidiness issue.
+
+### Decisions
+
+1. **Wire all four profiled checks.** The profile becomes authoritative for CCV,
+   calibration, IS response and RRT, and 537.1's second IS condition starts
+   being enforced. Needs the two-state sweep, because it also makes the
+   refusals live.
+2. **A missing criterion is recorded as an `unevaluated` QC result and holds the
+   report.** The Data Review gate already understands that verdict, so the batch
+   still imports, the gap is named, and submission is blocked — rather than the
+   import failing and nothing being filed.
+3. **Raise a Deviation against the worksheet and email the QAO.** An
+   unconfigured criterion is precisely an ISO 17025 deviation; the deviations
+   module already carries the worksheet link and sign-off, so this is reuse
+   rather than a new notification subsystem.
