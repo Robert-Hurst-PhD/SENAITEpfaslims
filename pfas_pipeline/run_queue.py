@@ -43,6 +43,8 @@ def _units_compatible(a, b):
         return True
     return any(a in fam and b in fam for fam in _UNIT_FAMILIES)
 from .qc_engine import (
+    KIND_CALIBRATION, KIND_CCV, KIND_ION_RATIO, KIND_IS_RESPONSE,
+    KIND_LFSM, KIND_LFSMD, KIND_RT, KIND_SN,
     is_raw_check, rt_deviation_check, qual_quan_check,
     calibration_check, calibration_check_profiled,
     ccv_check_profiled, rrt_check_profiled, signal_to_noise_check,
@@ -440,6 +442,7 @@ class RunQueue:
                             # the right parent.
                             raw_flag = QCFlag(
                                 source="LFSM & LFSMD", analyte=analyte,
+                                check_kind=KIND_LFSM,
                                 injection_name=lfsm_inj,
                                 value="{0:.1f}%".format(recovery_pct),
                                 issue=("(REC) negative recovery — the spiked "
@@ -453,9 +456,11 @@ class RunQueue:
                             )
                         flag = None
                         if raw_flag is not None:
-                            # Normalise source so _CHECK_SOURCES mapping picks it up
+                            # The source string is for the reader; check_kind is
+                            # what the review queue matches on.
                             flag = QCFlag(
                                 source="LFSM & LFSMD",
+                                check_kind=KIND_LFSM,
                                 analyte=raw_flag.analyte,
                                 injection_name=raw_flag.injection_name,
                                 value=raw_flag.value,
@@ -536,6 +541,7 @@ class RunQueue:
                         if raw_flag is not None:
                             flag = QCFlag(
                                 source="LFSM & LFSMD",
+                                check_kind=KIND_LFSMD,
                                 analyte=raw_flag.analyte,
                                 injection_name=raw_flag.injection_name,
                                 value=raw_flag.value,
@@ -560,27 +566,36 @@ class RunQueue:
             f for fl in flags_by_injection.values() for f in fl
         ]
 
-        # Map flags onto review checks
-        _CHECK_SOURCES = {
-            "is_response":         {"SUR-IS Response Table"},
-            "rt_deviation":        {"RT Deviation"},
-            "ion_ratio":           {"Qual-Quan Table"},
-            "calibration_pct_dev": {"Calibration %"},
-            "r_squared":           {"Calibration %"},
-            "ccv_pct_dev":         {"Calibration %"},
-            "signal_to_noise":     {"Signal-to-Noise"},
-            "lfsm_recovery":       {"LFSM & LFSMD"},
-            "lfsmd_rpd":           {"LFSM & LFSMD"},
+        # Map flags onto review checks BY CHECK IDENTITY, not by display text.
+        #
+        # This matched `QCFlag.source` exactly until 2026-08-05. Wiring the
+        # profiled checks changed those strings to carry the method id, so
+        # calibration, r2, CCV and RT silently stopped matching and every one of
+        # them reported AUTO_PASS while the run carried their flags. Only
+        # is_response and LFSM/LFSMD escaped, because someone had hand-
+        # normalised those two source strings.
+        _CHECK_KINDS = {
+            "is_response":         {KIND_IS_RESPONSE},
+            "rt_deviation":        {KIND_RT},
+            "ion_ratio":           {KIND_ION_RATIO},
+            "calibration_pct_dev": {KIND_CALIBRATION},
+            "r_squared":           {KIND_CALIBRATION},
+            "ccv_pct_dev":         {KIND_CCV},
+            "signal_to_noise":     {KIND_SN},
+            "lfsm_recovery":       {KIND_LFSM},
+            "lfsmd_rpd":           {KIND_LFSMD},
         }
 
         for chk in self.checks:
             inj_flags = flags_by_injection.get(chk.injection_name, [])
-            relevant_sources = _CHECK_SOURCES.get(chk.check_name, set())
-            relevant = [f for f in inj_flags if f.source in relevant_sources]
+            relevant_kinds = _CHECK_KINDS.get(chk.check_name, set())
+            relevant = [f for f in inj_flags
+                        if getattr(f, "check_kind", "") in relevant_kinds
+                        and getattr(f, "check_kind", "")]
             if relevant:
                 chk.status = CheckStatus.AUTO_FAIL
                 chk.flags = [f.as_dict() for f in relevant]
-            elif chk.check_name in _CHECK_SOURCES:
+            elif chk.check_name in _CHECK_KINDS:
                 # LFSM/LFSMD checks: only AUTO_PASS if the engine actually ran them.
                 # If the toggle is ON but spike ppt is not yet configured, stay PENDING
                 # so the reviewer sees the check rather than a silent pass.

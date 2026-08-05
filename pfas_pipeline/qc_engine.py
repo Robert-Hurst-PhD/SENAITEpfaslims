@@ -25,6 +25,23 @@ from .models import (
     LFSMResult, LFSMDResult, MDLResult,
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Check identities.
+#
+# These name WHICH CHECK raised a flag, independently of the human-readable
+# `source` string. The review queue matches on these; nothing matches on the
+# display text. Renaming a source label is now cosmetic -- previously it
+# silently turned four review checks into permanent passes.
+# ─────────────────────────────────────────────────────────────────────────────
+KIND_IS_RESPONSE = "is_response"
+KIND_RT          = "rt"
+KIND_ION_RATIO   = "ion_ratio"
+KIND_CALIBRATION = "calibration"
+KIND_CCV         = "ccv"
+KIND_SN          = "sn"
+KIND_LFSM        = "lfsm"
+KIND_LFSMD       = "lfsmd"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -175,6 +192,7 @@ def is_raw_check(
                             else " (surrogate, dilution-corrected)")
                 flag = QCFlag(
                     source="SUR-IS Response Table",
+                check_kind=KIND_IS_RESPONSE,
                     analyte=is_compound,
                     injection_name=r.injection_name,
                     value="; ".join(fails) + note,
@@ -237,6 +255,7 @@ def rt_deviation_check(
             if dev_abs > tol:
                 flag = QCFlag(
                     source="RT Deviation",
+                check_kind=KIND_RT,
                     analyte=analyte,
                     injection_name=r.injection_name,
                     value=_format_val(rt),
@@ -359,13 +378,15 @@ def qual_quan_check(
                     avg_response_ratio=None, pct_of_cal=None, flag=None))
                 continue
             flag = QCFlag(
-                source="Qual-Quan Table", analyte=analyte,
+                source="Qual-Quan Table",
+                check_kind=KIND_ION_RATIO, analyte=analyte,
                 injection_name=r.injection_name,
                 value="qualifier ion not calculable", issue="(QQ)",
             )
         elif abs(worst - 1.0) > tol:
             flag = QCFlag(
-                source="Qual-Quan Table", analyte=analyte,
+                source="Qual-Quan Table",
+                check_kind=KIND_ION_RATIO, analyte=analyte,
                 injection_name=r.injection_name,
                 value="{0:+.1f}% from expected ion ratio".format(
                     (worst - 1.0) * 100.0),
@@ -420,6 +441,7 @@ def calibration_check(
         if issues:
             flag = QCFlag(
                 source="Calibration %",
+                check_kind=KIND_CALIBRATION,
                 analyte=analyte,
                 injection_name=r.injection_name,
                 value=_format_val(r.pct_deviation),
@@ -478,6 +500,7 @@ def lfsm_check(
     if not (min_r <= recovery_pct <= max_r):
         flag = QCFlag(
             source="LFSM & LFSMD",
+                check_kind=KIND_LFSM,
             analyte=analyte,
             injection_name=lfsm_injection,
             value=f"{recovery_pct:.1f}%",
@@ -528,6 +551,7 @@ def lfsmd_check(
     if rpd_pct > CRITERIA["rpd_max_pct"]:
         flag = QCFlag(
             source="LFSM & LFSMD",
+                check_kind=KIND_LFSM,
             analyte=analyte,
             injection_name=lfsmd_injection,
             value=f"RPD={rpd_pct:.1f}%",
@@ -617,6 +641,7 @@ def signal_to_noise_check(rows: list[InstrumentRow], analyte: str) -> list[QCFla
         if sn is not None and sn < sn_min:
             flags.append(QCFlag(
                 source="Signal-to-Noise",
+                check_kind=KIND_SN,
                 analyte=analyte,
                 injection_name=r.injection_name,
                 value=f"{sn:.2f}",
@@ -625,6 +650,7 @@ def signal_to_noise_check(rows: list[InstrumentRow], analyte: str) -> list[QCFla
         elif qual_sn is not None and qual_sn < sn_min:
             flags.append(QCFlag(
                 source="Signal-to-Noise",
+                check_kind=KIND_SN,
                 analyte=analyte,
                 injection_name=r.injection_name,
                 value=f"{qual_sn:.2f}",
@@ -724,6 +750,7 @@ def ccv_check_profiled(
         if not (lo <= rec <= hi):
             flags.append(QCFlag(
                 source=f"{profile.method_id} CCV",
+                check_kind=KIND_CCV,
                 analyte=analyte,
                 injection_name=r.injection_name,
                 value=f"{rec:.1f}%",
@@ -758,6 +785,7 @@ def calibration_check_profiled(
         if issues:
             flag = QCFlag(
                 source=f"{profile.method_id} Calibration",
+                check_kind=KIND_CALIBRATION,
                 analyte=analyte,
                 injection_name=r.injection_name,
                 value=_format_val(r.pct_deviation),
@@ -820,6 +848,7 @@ def is_check_profiled(
             if fails:
                 flag = QCFlag(
                     source=f"{profile.method_id} IS Response",
+                check_kind=KIND_IS_RESPONSE,
                     analyte=is_compound,
                     injection_name=r.injection_name,
                     value=f"{resp:.4g}",
@@ -869,6 +898,7 @@ def rrt_check_profiled(
                 if abs(pct_dev) * 100 > conf.rrt_tol_pct:
                     flag = QCFlag(
                         source=f"{profile.method_id} RRT",
+                check_kind=KIND_RT,
                         analyte=analyte, injection_name=r.injection_name,
                         value=f"{rt:.3f}",
                         issue=f"(RT) RRT dev {pct_dev*100:+.2f}% "
@@ -878,6 +908,7 @@ def rrt_check_profiled(
                 if abs(rt - avg_rt) > conf.rt_tol_abs_min:
                     flag = QCFlag(
                         source=f"{profile.method_id} RT",
+                check_kind=KIND_RT,
                         analyte=analyte, injection_name=r.injection_name,
                         value=f"{rt:.3f}",
                         issue=f"(RT) dev {rt-avg_rt:+.3f} min "
@@ -885,7 +916,8 @@ def rrt_check_profiled(
                     )
             elif abs(rt - avg_rt) > CRITERIA["rt_dev_abs_min"]:
                 flag = QCFlag(
-                    source="RT Deviation", analyte=analyte,
+                    source="RT Deviation",
+                check_kind=KIND_RT, analyte=analyte,
                     injection_name=r.injection_name, value=f"{rt:.3f}",
                     issue=f"(RT) dev {rt-avg_rt:+.3f} min (legacy ±0.10)",
                 )

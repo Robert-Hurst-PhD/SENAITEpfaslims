@@ -94,6 +94,14 @@ class QCFlag:
     value:          str     # displayed value (numeric or N.D. etc.)
     issue:          str     # "(SUR)", "(CAL)", "(REC)", "(N.C.)", etc.
     link:           str = ""
+    # WHICH CHECK RAISED THIS, as an identity rather than as display text.
+    #
+    # `source` is shown to a human and reads better with the method in it
+    # ("FDA_32PFAS Calibration"). Control flow used to match on `source`
+    # exactly, so the moment the profiled checks started prefixing the method,
+    # every calibration / r2 / CCV / RT review check began reporting AUTO_PASS
+    # while carrying flags. One field cannot be both a label and a key.
+    check_kind:     str = ""
 
     def as_dict(self) -> dict:
         return {
