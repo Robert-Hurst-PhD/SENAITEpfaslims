@@ -187,7 +187,11 @@ def persist_qc_results(batch, db_path: str = None) -> int:
     for gap in (getattr(batch, "unconfigured", None) or []):
         unevaluated.append({
             "batch_id": batch.batch_id,
-            "run_date": getattr(batch, "date", "") and str(batch.date) or "",
+            # _run_date(), NOT str(batch.date). The latter yields
+            # "2026-08-05 07:33:12.481922" while every other row and the
+            # batches row the gate queries on use "%Y-%m-%d", so the
+            # WHERE run_date=? predicate could never match these rows.
+            "run_date": _run_date(batch),
             "analyte": gap.get("analyte") or "",
             "qc_type": gap.get("qc_type") or "",
             "method": gap.get("method_id") or "",

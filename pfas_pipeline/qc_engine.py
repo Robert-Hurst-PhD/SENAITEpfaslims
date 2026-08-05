@@ -800,73 +800,12 @@ def calibration_check_profiled(
     return results
 
 
-def is_check_profiled(
-    profile: MethodProfile,
-    rows: list[InstrumentRow],
-    is_compound: str,
-) -> list[ISRawResult]:
-    """
-    IS response check honoring the profile's dual conditions.
-    537.1: within ±50% of ICAL average AND 70–140% of the most recent CCV.
-    FDA/lab SOP: ±50% of batch Standards average only.
-    """
-    rule = profile.is_rule()
-    all_rows = sorted(
-        [r for r in rows if r.compound_name == is_compound],
-        key=lambda r: r.acquisition_datetime or datetime.min,
-    )
-    std_resp = [r.response for r in all_rows
-                if r.sample_type == "Standard" and r.response]
-    if not std_resp:
-        return []
-    ical_avg = statistics.mean(std_resp)
-
-    results: list[ISRawResult] = []
-    last_ccv_resp: Optional[float] = None
-    for r in all_rows:
-        resp = r.response
-        flag = None
-        pct_of_avg = (resp / ical_avg) if (resp and ical_avg) else None
-        if resp:
-            fails = []
-            if rule.vs_ical_avg_min is not None and pct_of_avg is not None:
-                if not (rule.vs_ical_avg_min <= pct_of_avg * 100
-                        <= rule.vs_ical_avg_max):
-                    fails.append(
-                        f"{pct_of_avg*100:.0f}% of ICAL avg "
-                        f"(limit {rule.vs_ical_avg_min:.0f}–"
-                        f"{rule.vs_ical_avg_max:.0f}%)")
-            if (rule.vs_last_ccv_min is not None
-                    and last_ccv_resp):
-                pct_ccv = resp / last_ccv_resp * 100
-                if not (rule.vs_last_ccv_min <= pct_ccv
-                        <= rule.vs_last_ccv_max):
-                    fails.append(
-                        f"{pct_ccv:.0f}% of last CCV "
-                        f"(limit {rule.vs_last_ccv_min:.0f}–"
-                        f"{rule.vs_last_ccv_max:.0f}%)")
-            if fails:
-                flag = QCFlag(
-                    source=f"{profile.method_id} IS Response",
-                check_kind=KIND_IS_RESPONSE,
-                    analyte=is_compound,
-                    injection_name=r.injection_name,
-                    value=f"{resp:.4g}",
-                    issue="(SUR) " + "; ".join(fails),
-                )
-        if "CCV" in r.injection_name.upper() and resp:
-            last_ccv_resp = resp
-        results.append(ISRawResult(
-            is_compound=is_compound,
-            injection_name=r.injection_name,
-            concat_id=r.concat_id,
-            response=resp,
-            pct_from_cal=pct_of_avg,
-            average_response=ical_avg,
-            flag=flag,
-        ))
-    return results
-
+# is_check_profiled was removed on 2026-08-05. Its profile logic was MERGED into
+# is_raw_check (which alone knows the surrogate-vs-injection-IS distinction and
+# the dilution correction), leaving this a dead twin of live code. A merge that
+# leaves the original in place is the §1.3 duplication this project keeps
+# rediscovering -- delete the twin, do not leave it for the next reader to
+# choose between.
 
 def rrt_check_profiled(
     profile: MethodProfile,

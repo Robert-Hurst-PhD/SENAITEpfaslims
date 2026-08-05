@@ -777,11 +777,19 @@ class QCResultStore(object):
         return [dict(r) for r in rows]
 
     def get_qc_for_run(self, run_date, analyte=None, batch_id=None,
-                       qc_types=None):
-        """Return active QC results for a run date, optionally filtered."""
+                       qc_types=None, statuses=None):
+        """QC results for a run date, optionally filtered.
+
+        `statuses` defaults to active AND unevaluated. An unevaluated row
+        records a criterion the method never configured; hiding it behind an
+        'active'-only filter is what made the whole hold-the-report path inert
+        — the row was written, and the only reader could not see it.
+        """
+        statuses = list(statuses or ("active", "unevaluated"))
         sql = ("SELECT * FROM qc_results "
-               "WHERE run_date=? AND result_status='active'")
-        params = [run_date]
+               "WHERE run_date=? AND result_status IN ({0})".format(
+                   ",".join("?" * len(statuses))))
+        params = [run_date] + statuses
         if analyte:
             sql += " AND analyte=?"
             params.append(analyte)

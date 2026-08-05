@@ -4503,3 +4503,47 @@ sorts first, which would have drawn every control chart against a method the lab
 may not run. A selector on the Setup Reference Definitions page chooses it, and
 unset it falls back to the QC rules store exactly as before — no silent change
 to an existing installation.
+
+## 2026-08-05 — Phase 1: three mechanisms built this week did not execute
+
+A survey found that several things shipped on 08-03/04 look complete and do
+nothing. Each is now fixed and verified against the running instance.
+
+**A1 — 20 review checks reported a clean pass on a run carrying 326 flags.**
+`RunQueue.auto_evaluate` mapped engine flags onto review checks by
+`QCFlag.source` — the human-readable label. Wiring the profiled checks on 08-04
+changed those labels to carry the method id, so calibration, r², CCV and RT
+stopped matching and fell to `AUTO_PASS`. Measured before/after on the same
+file: `calibration_pct_dev` and `r_squared` AUTO_PASS ×10 → AUTO_FAIL ×10;
+`rt_deviation` AUTO_PASS ×20 → 17 pass / 3 fail.
+
+`is_response` and LFSM/LFSMD escaped only because someone had hand-normalised
+those two source strings — the workaround was what hid the coupling. **One field
+cannot be both a label and a key.** `QCFlag.check_kind` is now the identity;
+`source` is free to read however it reads. A flag with no kind matches nothing,
+so the fallback is "unattributed" rather than "attributed to whatever sorts
+first". This was my own regression, introduced by the 08-04 wiring.
+
+**A2 — the hold-the-report path was inert three ways**, and fixing any one alone
+still yielded nothing: `get_qc_for_run` hardcoded `result_status='active'`;
+Data Review requested a qc_type list that excluded the four types a gap row
+carries; and gap rows wrote `run_date` as `str(batch.date)`
+(`"2026-08-05 07:33:12.481922"`) while the query keys on `"%Y-%m-%d"`.
+
+**A3 — the QAO deviation was unreachable three ways.** `data_review.py:605`
+called `_portal(self.context)` where `_portal` is a **bound method** → NameError,
+swallowed by the surrounding except. Its `gaps` came from the cells A2 made
+invisible. And it wrote annotation `senaite.pfas.deviations` while **both**
+readers use `senaite.pfas.deviations.registry`.
+
+The three interlock: fixing A2 made the gap row visible, which immediately
+surfaced A3's NameError in the log for the first time. Verified end to end —
+criterion removed → gap row with a matching run_date → gate reports "1 result(s)
+could not be evaluated" → `DEV-2026-003` filed → visible in **both** the
+Deviations workspace and Data Review's per-worksheet lookup.
+
+**A4 — `is_check_profiled` deleted.** Its logic was merged into `is_raw_check`
+on 08-04 (the only place that knows the surrogate/injection-IS distinction and
+the dilution correction), leaving a dead twin. I described that work as "wiring
+four checks"; three were wired and one was merged. A merge that leaves the
+original in place is the §1.3 duplication this project keeps rediscovering.

@@ -28,7 +28,11 @@ from zope.annotation.interfaces import IAnnotations
 
 logger = logging.getLogger("senaite.pfas.qc_deviation")
 
-_ANN_REGISTRY = "senaite.pfas.deviations"
+# The SAME key the Deviations workspace and Data Review read
+# (browser/deviations.py, data_review.active_deviations_for_worksheet).
+# This module wrote "senaite.pfas.deviations" while both readers used
+# "...registry", so a successfully filed deviation was invisible everywhere.
+_ANN_REGISTRY = u"senaite.pfas.deviations.registry"
 
 # Marks the deviations this module owns, so re-opening Data Review updates the
 # existing record rather than filing a duplicate on every page load.

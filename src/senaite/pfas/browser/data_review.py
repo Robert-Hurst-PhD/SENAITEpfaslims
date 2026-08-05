@@ -602,7 +602,12 @@ class PFASDataReviewView(BrowserView):
                     if entry not in gaps:
                         gaps.append(entry)
             if gaps:
-                ensure_deviation(_portal(self.context), ws.getId(), gaps,
+                # self._portal() -- `_portal` is a method on this view, not a
+                # module function. Calling it bare raised NameError on every
+                # attempt, swallowed by the except below, so no deviation was
+                # ever filed. It only surfaced once the gap rows it depends on
+                # became visible at all.
+                ensure_deviation(self._portal(), ws.getId(), gaps,
                                  filed_by=u"system (QC evaluation)")
         except Exception as exc:                            # noqa: BLE001
             logger.error("could not raise the unconfigured-criteria "
@@ -908,9 +913,14 @@ class PFASDataReviewView(BrowserView):
         run_date = batch_row["run_date"] if hasattr(batch_row, "__getitem__") else batch_row.get("run_date", "")
 
         try:
+            # The last four are the qc_types an UNEVALUATED gap row carries
+            # (run_queue names the check, not a QC sample type). Omitting them
+            # filtered out every gap row before the gate could see it.
             qc_results = list(store.get_qc_for_run(
                 run_date,
-                qc_types=["LCS", "LFSM", "LFB", "LFSMD", "Dup", "MB", "IS"],
+                qc_types=["LCS", "LFSM", "LFB", "LFSMD", "Dup", "MB", "IS",
+                          "MxB", "LRB", "CCV", "Calibration", "RT",
+                          "IS Response"],
             ))
         except Exception as exc:
             logger.error("_get_qc_summary.get_qc_for_run: %s", exc)
