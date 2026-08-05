@@ -189,6 +189,56 @@ def setup_handler(context):
     logger.info("=== senaite.pfas: setup data load complete ===")
 
 
+REFERENCE_METHOD_KEY = "senaite.pfas.reference_definition_method"
+
+
+def get_reference_method(portal):
+    """Which method's limits the global Reference Definitions use, or ""."""
+    try:
+        from zope.annotation.interfaces import IAnnotations
+        return IAnnotations(portal).get(REFERENCE_METHOD_KEY) or ""
+    except Exception:                                       # noqa: BLE001
+        return ""
+
+
+def set_reference_method(portal, method_id):
+    from zope.annotation.interfaces import IAnnotations
+    IAnnotations(portal)[REFERENCE_METHOD_KEY] = method_id or ""
+
+
+def _primary_method_profile(portal):
+    """The method profile Reference Definitions are built from.
+
+    SENAITE Reference Definitions are GLOBAL — one per QC code — while PFAS
+    acceptance limits are per METHOD, so one method has to supply them. That
+    choice is CONFIGURED, not inferred: picking "the first configured method"
+    selected EPA_1633A purely because it sorts first, which would have drawn
+    every control chart against a method the lab may not even run.
+
+    Unset, this returns {} and the QC rules store is used exactly as before —
+    no silent change to an existing installation.
+    """
+    method_id = get_reference_method(portal)
+    if not method_id:
+        logger.info(
+            "No reference-definition method configured; QC reference ranges "
+            "come from the QC rules store. Set one under Configuration -> "
+            "Setup Reference Definitions so control charts match the limits "
+            "the QC engine enforces.")
+        return {}
+    try:
+        from senaite.pfas.method_profile_store import get_profile
+        profile = get_profile(portal, method_id) or {}
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("reference-definition method %s unreadable: %s",
+                       method_id, exc)
+        return {}
+    if not profile:
+        logger.warning("reference-definition method %s has no profile; "
+                       "falling back to the QC rules store", method_id)
+    return profile
+
+
 def create_reference_definitions(portal):
     """
     Create or update SENAITE ReferenceDefinition objects for all PFAS QC types.
@@ -203,6 +253,13 @@ def create_reference_definitions(portal):
     from senaite.pfas.qc.rules import get_rules
 
     rules = get_rules()
+
+    # Reference Definitions are GLOBAL in SENAITE — one per QC code — while
+    # acceptance limits are per METHOD. They are built from the primary method's
+    # profile so the control charts match what the engine enforces for it; a lab
+    # running methods with different windows for the same QC code needs
+    # per-method definitions, which the object model does not yet carry.
+    ref_profile = _primary_method_profile(portal)
 
     # Collect AnalysisService (uid, keyword) pairs
     try:
@@ -234,7 +291,8 @@ def create_reference_definitions(portal):
     for code, (title, is_blank, _strategy) in sorted(QC_REF_SPEC.items()):
         try:
             obj, is_new = _get_or_create_ref_def(folder, title, is_blank=is_blank)
-            records = _build_reference_results(code, rules, analyte_uids)
+            records = _build_reference_results(code, rules, analyte_uids,
+                                               profile=ref_profile)
             obj.setReferenceResults(records)
             obj.setBlank(is_blank)
             try:

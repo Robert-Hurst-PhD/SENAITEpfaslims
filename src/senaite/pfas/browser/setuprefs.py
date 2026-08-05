@@ -154,7 +154,31 @@ def _stamp_pfas_fields(obj, qc_code, category, acceptance_schema):
                            obj.Title(), attr, value, exc)
 
 
-def _build_reference_results(qc_code, rules, analyte_uids):
+def _profile_limits(profile, qc_code):
+    """Per-tier recovery limits from the METHOD PROFILE, or None.
+
+    The profile's qc_acceptance is what the QC engine enforces. Reference
+    Definitions were built from qc_rules.qc_types instead, which carries its own
+    numbers: on this system LFSM reads 40-140 there while the engine judges at
+    65-135 (tier 2) and 80-120 (tier 1). A control chart drawn at limits the
+    engine does not use misleads the reviewer looking at it.
+    """
+    if not profile:
+        return None, None
+    try:
+        from senaite.pfas.spec_sync import _tier_limits, _build_kw_to_tier
+    except Exception:                                       # noqa: BLE001
+        return None, None
+    try:
+        limits = _tier_limits(profile.get("qc_acceptance") or {}, qc_code)
+        return limits, (_build_kw_to_tier(profile) or {})
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("could not resolve %s limits from the method profile: "
+                       "%s", qc_code, exc)
+        return None, None
+
+
+def _build_reference_results(qc_code, rules, analyte_uids, profile=None):
     """
     Build the list of ReferenceResults dicts for one QC type.
 
@@ -164,6 +188,8 @@ def _build_reference_results(qc_code, rules, analyte_uids):
     from senaite.pfas.analytes import KEY_ANALYTES
     qt = rules.get("qc_types", {}).get(qc_code, {})
     strategy = QC_REF_SPEC.get(qc_code, ("", False, "blank", "", ""))[2]
+    prof_limits, kw_to_tier = _profile_limits(profile, qc_code)
+    skipped = 0
 
     records = []
     for uid, keyword in analyte_uids:
@@ -174,8 +200,17 @@ def _build_reference_results(qc_code, rules, analyte_uids):
                    "max": "0", "error": "100"}
 
         elif strategy in ("cal_dev", "cal_dev_tight"):
-            default_pct = 20.0 if strategy == "cal_dev_tight" else 25.0
-            pct = qt.get("pct_deviation_max") or default_pct
+            # The profile's own calibration tolerance, then the QC rules store.
+            pct = None
+            if profile:
+                cal = ((profile.get("instrument_verification") or {})
+                       .get("calibration") or {})
+                pct = cal.get("point_pct_dev_max")
+            if pct is None:
+                pct = qt.get("pct_deviation_max")
+            if pct is None:
+                skipped += 1
+                continue
             rec = {
                 "uid": uid,
                 "result": "100",
@@ -185,11 +220,27 @@ def _build_reference_results(qc_code, rules, analyte_uids):
             }
 
         elif strategy in ("recovery", "recovery_dup"):
-            lo = qt.get("recovery_min", 40.0)
-            hi = qt.get("recovery_max", 140.0)
-            if is_key:
-                lo = qt.get("recovery_min_key_matrix", lo)
-                hi = qt.get("recovery_max_key_matrix", hi)
+            lo = hi = None
+            # The method profile first: it is what the engine enforces, and it
+            # resolves per analyte (key / linked / no-labelled-standard) rather
+            # than by a single key-vs-not split.
+            if prof_limits:
+                tier = (kw_to_tier or {}).get(keyword, 2)
+                lims = prof_limits.get(tier) or prof_limits.get(2)
+                if lims:
+                    lo, hi = lims.get("min"), lims.get("max")
+            if lo is None or hi is None:
+                lo = qt.get("recovery_min")
+                hi = qt.get("recovery_max")
+                if is_key:
+                    lo = qt.get("recovery_min_key_matrix", lo)
+                    hi = qt.get("recovery_max_key_matrix", hi)
+            if lo is None or hi is None:
+                # No configured limits anywhere. Inventing a window here would
+                # draw a control chart against a criterion nobody chose --
+                # the substitution defect, one layer out.
+                skipped += 1
+                continue
             mid = (lo + hi) / 2.0
             err = round((hi - mid) / mid * 100.0, 2) if mid else 50.0
             rec = {
@@ -201,7 +252,14 @@ def _build_reference_results(qc_code, rules, analyte_uids):
             }
 
         elif strategy == "rpd":
-            rpd = qt.get("rpd_max") or 30.0
+            rpd = qt.get("rpd_max")
+            if rpd is None and profile:
+                tiers = ((profile.get("qc_acceptance") or {})
+                         .get(qc_code, {}) or {}).get("tiers") or []
+                rpd = tiers[0].get("rpd_max") if tiers else None
+            if rpd is None:
+                skipped += 1
+                continue
             rec = {
                 "uid": uid,
                 "result": "0",
@@ -214,6 +272,11 @@ def _build_reference_results(qc_code, rules, analyte_uids):
             rec = {"uid": uid, "result": "", "min": "", "max": "", "error": ""}
 
         records.append(rec)
+    if skipped:
+        logger.warning(
+            "%s: %d analyte(s) have no configured acceptance limits, so no "
+            "reference range was written for them. Set them in Method "
+            "Profiles -> QC Types.", qc_code, skipped)
     return records
 
 
@@ -228,19 +291,60 @@ class PFASSetupRefsView(BrowserView):
 
     template = ViewPageTemplateFile("templates/setuprefs.pt")
 
+    def _ref_profile(self):
+        """Method profile the reference ranges are derived from (see
+        setuphandlers._primary_method_profile for why one is chosen)."""
+        try:
+            from senaite.pfas.setuphandlers import _primary_method_profile
+            from bika.lims import api
+            return _primary_method_profile(api.get_portal())
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("reference ranges falling back to the QC rules "
+                           "store: %s", exc)
+            return {}
+
     def __call__(self):
         flatten_form(self.request)
         if self.request.method == "POST":
             if not _is_manager(self.context):
                 self.request.response.setStatus(403)
                 return "Forbidden"
+            if self.request.form.get("action") == "save_ref_method":
+                return self._save_ref_method()
             return self._handle_post()
         return self.template()
 
     # ── Template helpers ──────────────────────────────────────────────────────
 
+    def portal_url(self):
+        from bika.lims import api
+        return api.get_portal().absolute_url()
+
     def is_manager(self):
         return _is_manager(self.context)
+
+    # ── Which method supplies the (global) reference ranges ──────────────────
+
+    def reference_method(self):
+        from senaite.pfas.setuphandlers import get_reference_method
+        from bika.lims import api
+        return get_reference_method(api.get_portal())
+
+    def method_options(self):
+        from senaite.pfas.method_profile_store import list_method_ids
+        from bika.lims import api
+        try:
+            return sorted(list_method_ids(api.get_portal()) or [])
+        except Exception:                                   # noqa: BLE001
+            return []
+
+    def _save_ref_method(self):
+        from senaite.pfas.setuphandlers import set_reference_method
+        from bika.lims import api
+        set_reference_method(api.get_portal(),
+                             (self.request.form.get("ref_method") or "").strip())
+        return self.request.response.redirect(
+            "%s/@@pfas-setup-references?saved=1" % api.get_portal().absolute_url())
 
     def qc_type_specs(self):
         """Return list of dicts for the preview table."""
@@ -347,7 +451,8 @@ class PFASSetupRefsView(BrowserView):
             try:
                 obj, is_new = _get_or_create_ref_def(folder, code, title,
                                                      is_blank=is_blank)
-                records = _build_reference_results(code, rules, analyte_uids)
+                records = _build_reference_results(
+                    code, rules, analyte_uids, profile=self._ref_profile())
                 obj.setReferenceResults(records)
                 obj.setBlank(is_blank)
                 _stamp_pfas_fields(obj, code, category, acceptance_schema)

@@ -4468,3 +4468,38 @@ the system wanted; a silent release is the substitution defect in a new place.
 Three outcomes, all verified against the running instance: **QUALIFY** (mapped,
 client material), **HELD** (laboratory control material, always, whatever is
 configured), **NEEDS CONFIG** (unmapped).
+
+## 2026-08-05 — setuprefs and facility QC made configurable
+
+**Facility QC.** Balance weight points and tolerances, the eyewash temperature
+range, the Type 1 water conductivity/TOC limits, the mapping-study tolerance and
+the fallback balance tolerance were module constants. Per-unit values were
+already editable; the DEFAULTS were not, so a lab with a different weight set or
+water specification retyped them on every unit. They are seeds now, merged under
+the lab's overrides by `get_facility_defaults()`, edited on the Facility Units
+page. Only differences are stored. A malformed weight-point line is skipped and
+logged rather than parsed to a zero tolerance, which would pass every weighing.
+
+**setuprefs was not just hardcoded — it was a second source.** Reference
+Definitions (which drive control charts) were built from `qc_rules.qc_types`
+with 40/140 and 20/25 fallbacks, while the QC engine judges against the method
+profile's `qc_acceptance`. They now resolve per analyte through
+`spec_sync._tier_limits` / `_build_kw_to_tier`, the same resolver spec_sync
+uses, so a chart is drawn against the limits that actually decided pass or fail:
+PFOA 80–120 (key), PFBA 65–135 (linked), PFTrDA 40–140 (no labelled standard).
+Where no limit is configured anywhere, no range is written and the count is
+logged — inventing one would draw a chart against a criterion nobody chose.
+
+**A correction to an earlier claim.** I said control charts sat at 40–140 while
+the engine judged 65–135. That was too broad: `qc_rules` carries
+`recovery_min_key_matrix`, so PFOA already read 65–135 there. The real defect is
+that the two stores resolve differently — by a key/non-key split rather than by
+the method's three tiers — not that every number was wrong.
+
+**Which method supplies the global ranges is now CONFIGURED, not inferred.**
+Reference Definitions are global in SENAITE; acceptance limits are per method.
+An initial "first configured method" rule selected EPA_1633A purely because it
+sorts first, which would have drawn every control chart against a method the lab
+may not run. A selector on the Setup Reference Definitions page chooses it, and
+unset it falls back to the QC rules store exactly as before — no silent change
+to an existing installation.

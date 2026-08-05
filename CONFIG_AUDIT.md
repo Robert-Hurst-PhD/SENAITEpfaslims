@@ -35,7 +35,7 @@ An editor writes it and reads it back; nothing downstream consumes it. Looks ali
 
 None.
 
-## Hardcoded lab values (96)
+## Hardcoded lab values (95)
 
 | location | kind | line |
 |---|---|---|
@@ -82,11 +82,8 @@ None.
 | `src/senaite/pfas/egad_store.py:367` | lab table in code | `DEFAULT_QUALIFIER_MAP = [` |
 | `src/senaite/pfas/egad_store.py:384` | lab table in code | `DEFAULT_QC_TYPE_MAP = [` |
 | `src/senaite/pfas/facility_qc.py:32` | lab table in code | `UNIT_TYPES = [` |
-| `src/senaite/pfas/facility_qc.py:43` | lab table in code | `BALANCE_DEFAULTS = {` |
-| `src/senaite/pfas/facility_qc.py:62` | lab table in code | `WATER_QC_DEFAULTS = {` |
-| `src/senaite/pfas/facility_qc.py:261` | acceptance value inlined as a fallback | `_f(data.get("study_tolerance", 1.0)),` |
-| `src/senaite/pfas/facility_qc.py:279` | acceptance value inlined as a fallback | `_f(data.get("study_tolerance", 1.0)),` |
-| `src/senaite/pfas/facility_qc.py:451` | acceptance value inlined as a fallback | `tol = float(p.get("tolerance_g", 0.001))` |
+| `src/senaite/pfas/facility_qc.py:60` | lab table in code | `BALANCE_DEFAULTS = {` |
+| `src/senaite/pfas/facility_qc.py:79` | lab table in code | `WATER_QC_DEFAULTS = {` |
 | `src/senaite/pfas/instrument_columns.py:99` | lab table in code | `NATIVE_COLUMN_MAP = {` |
 | `src/senaite/pfas/method_profile_store.py:141` | lab table in code | `_FDA_MATRIX_EXCLUSIONS = {` |
 | `src/senaite/pfas/method_profile_store.py:148` | lab table in code | `_EPA537_MATRICES = ["Drinking Water", "Groundwater", "Surface Water"]` |
@@ -96,6 +93,10 @@ None.
 | `src/senaite/pfas/method_profile_store.py:185` | lab table in code | `_EPA1633A_ANALYTE_KEYWORDS = [` |
 | `src/senaite/pfas/method_profile_store.py:229` | lab table in code | `DEFAULT_PROFILES = {` |
 | `src/senaite/pfas/print_settings.py:23` | lab table in code | `DEFAULTS = {` |
+| `src/senaite/pfas/qc_qualification.py:77` | lab table in code | `CONTROL_ROLES = frozenset([` |
+| `src/senaite/pfas/qc_qualification.py:91` | lab table in code | `FAILURE_TYPES = [` |
+| `src/senaite/pfas/qc_qualification.py:139` | lab table in code | `DEFAULT_LIBRARY = {` |
+| `src/senaite/pfas/qc_qualification.py:270` | lab table in code | `_SOURCE_HINTS = [` |
 | `src/senaite/pfas/qc/qc_types.py:27` | lab table in code | `_ALIASES = {` |
 | `src/senaite/pfas/qc/rules.py:40` | lab table in code | `_METHOD_SHORT_LABELS = {` |
 | `src/senaite/pfas/qc/rules.py:45` | lab table in code | `METHODS = [{"id": mid, "label": _METHOD_SHORT_LABELS.get(mid, mid)}` |
@@ -127,10 +128,8 @@ None.
 | `src/senaite/pfas/browser/qcrules.py:40` | lab table in code | `QC_TYPE_FIELD_META = {` |
 | `src/senaite/pfas/browser/reagents.py:71` | lab table in code | `EXPIRY_DEFAULTS = {` |
 | `src/senaite/pfas/browser/setuprefs.py:43` | lab table in code | `QC_REF_SPEC = {` |
-| `src/senaite/pfas/browser/setuprefs.py:188` | acceptance value inlined as a fallback | `lo = qt.get("recovery_min", 40.0)` |
-| `src/senaite/pfas/browser/setuprefs.py:189` | acceptance value inlined as a fallback | `hi = qt.get("recovery_max", 140.0)` |
-| `src/senaite/pfas/browser/setuprefs.py:259` | acceptance value inlined as a fallback | `lo = qt.get("recovery_min", 40.0)` |
-| `src/senaite/pfas/browser/setuprefs.py:260` | acceptance value inlined as a fallback | `hi = qt.get("recovery_max", 140.0)` |
+| `src/senaite/pfas/browser/setuprefs.py:363` | acceptance value inlined as a fallback | `lo = qt.get("recovery_min", 40.0)` |
+| `src/senaite/pfas/browser/setuprefs.py:364` | acceptance value inlined as a fallback | `hi = qt.get("recovery_max", 140.0)` |
 | `src/senaite/pfas/browser/sop_documents.py:34` | lab table in code | `_METHOD_ID_TO_SLUG = {` |
 | `src/senaite/pfas/browser/sop_documents.py:39` | lab table in code | `_METHOD_SHORT_LABELS = {` |
 | `src/senaite/pfas/browser/system_map.py:41` | lab table in code | `NODES = [` |
