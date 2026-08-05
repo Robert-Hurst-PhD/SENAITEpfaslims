@@ -24,6 +24,19 @@ def _portal(context):
     return getToolByName(context, "portal_url").getPortalObject()
 
 
+def _facility_defaults():
+    """Lab-wide facility defaults — saved values over the seed.
+
+    Module level, because eight views need it and none of them owns it. Falls
+    back to the seed when there is no portal (headless callers).
+    """
+    try:
+        from bika.lims import api
+        return db.get_facility_defaults(api.get_portal())
+    except Exception:                                       # noqa: BLE001
+        return db.get_facility_defaults(None)
+
+
 class PFASFacilityDashboardView(BrowserView):
     """Daily checklist — one status row per unit."""
     _template = ViewPageTemplateFile("templates/facility_dashboard.pt")
@@ -84,6 +97,8 @@ class PFASFacilityUnitsView(BrowserView):
                 self._save()
             elif action == "delete":
                 db.delete_unit(req.form.get("unit_id", ""))
+            elif action == "save_defaults":
+                self._save_defaults()
             elif action == "save_api_key":
                 db.set_api_key(_portal(self.context), req.form.get("api_key", ""))
             self.request.response.redirect(
@@ -97,10 +112,10 @@ class PFASFacilityUnitsView(BrowserView):
         uid = f.get("unit_id") or None
         unit_type = f.get("unit_type", "")
         weight_points = None
-        if unit_type in db.BALANCE_DEFAULTS:
+        if unit_type in _facility_defaults()["balance_points"]:
             # Rebuild weight points from posted form fields
             pts = []
-            defaults = db.BALANCE_DEFAULTS[unit_type]
+            defaults = _facility_defaults()["balance_points"][unit_type]
             for i, d in enumerate(defaults):
                 nom = f.get("wp_nominal_{}".format(i))
                 lbl = f.get("wp_label_{}".format(i))
@@ -115,8 +130,10 @@ class PFASFacilityUnitsView(BrowserView):
                 weight_points = json.dumps(pts)
         extra = {}
         if unit_type == "water_system":
-            extra["conductivity_max"] = f.get("conductivity_max", "1.0")
-            extra["toc_max"] = f.get("toc_max", "500")
+            d = _facility_defaults()
+            extra["conductivity_max"] = f.get(
+                "conductivity_max", str(d["water_conductivity_max"]))
+            extra["toc_max"] = f.get("toc_max", str(d["water_toc_max"]))
         if unit_type in ("eyewash",):
             extra["temp_min"] = f.get("temp_min", "15")
             extra["temp_max"] = f.get("temp_max", "25")
@@ -145,7 +162,7 @@ class PFASFacilityUnitsView(BrowserView):
         return db.UNIT_TYPES
 
     def balance_defaults_json(self):
-        return _safe_json(db.BALANCE_DEFAULTS)
+        return _safe_json(_facility_defaults()["balance_points"])
 
     def api_key(self):
         return db.get_api_key(_portal(self.context))
@@ -153,6 +170,67 @@ class PFASFacilityUnitsView(BrowserView):
     def portal_url(self):
         return _portal(self.context).absolute_url()
 
+    # ── Lab-wide defaults ────────────────────────────────────────────────────
+
+    def facility_defaults(self):
+        """Current lab-wide defaults, with weight points as editable text."""
+        d = dict(_facility_defaults())
+        d["balance_points_text"] = dict(
+            (k, _points_to_text(v)) for k, v in
+            (d.get("balance_points") or {}).items())
+        return d
+
+    def balance_unit_types(self):
+        # Dicts, not tuples: TAL's string: expression takes a simple path, so
+        # ${bt/key} works where ${python:bt[0]} does not.
+        return [{"key": k, "label": label} for k, label in db.UNIT_TYPES
+                if k.startswith("balance_")]
+
+    def _save_defaults(self):
+        f = self.request.form
+        points = {}
+        for bt in self.balance_unit_types():
+            key = bt["key"]
+            parsed = _points_from_text(f.get("bal_points.%s" % key, u""))
+            if parsed:
+                points[key] = parsed
+        data = {"balance_points": points}
+        for field in ("eyewash_temp_min", "eyewash_temp_max",
+                      "water_conductivity_max", "water_toc_max",
+                      "study_tolerance", "balance_tolerance"):
+            raw = (f.get(field) or "").strip()
+            if raw:
+                try:
+                    data[field] = float(raw)
+                except ValueError:
+                    logger.warning("facility defaults: %s=%r not a number, "
+                                   "left unchanged", field, raw)
+        db.save_facility_defaults(_portal(self.context), data)
+
+
+
+
+
+def _points_to_text(points):
+    """Weight points as editable text: one per line, `nominal, label, tol`."""
+    return u"\n".join(
+        u"{0}, {1}, {2}".format(p[0], p[1], p[2]) for p in (points or []))
+
+
+def _points_from_text(text):
+    """Parse the editable form back. A malformed line is skipped rather than
+    silently zeroing a tolerance, which would make every weighing pass."""
+    out = []
+    for line in (text or u"").splitlines():
+        parts = [x.strip() for x in line.split(",")]
+        if len(parts) < 3 or not parts[0]:
+            continue
+        try:
+            out.append([float(parts[0]), parts[1], float(parts[2])])
+        except ValueError:
+            logger.warning("facility defaults: skipping unparseable weight "
+                           "point %r", line)
+    return out
 
 class PFASTemperatureLogView(BrowserView):
     """Time-series chart for a single temp/humidity unit."""
@@ -306,7 +384,8 @@ class PFASBalanceLogView(BrowserView):
                 return json.loads(wp_json)
             except (ValueError, TypeError):
                 pass
-        return db.BALANCE_DEFAULTS.get(unit["unit_type"], [])
+        return _facility_defaults()["balance_points"].get(
+            unit["unit_type"], [])
 
     def history(self):
         unit = self.unit()
@@ -346,7 +425,9 @@ class PFASWaterLogView(BrowserView):
         return db.list_water_qc(limit=60)
 
     def defaults(self):
-        return db.WATER_QC_DEFAULTS
+        d = _facility_defaults()
+        return {"conductivity_max": d["water_conductivity_max"],
+                "toc_max": d["water_toc_max"]}
 
     def portal_url(self):
         return _portal(self.context).absolute_url()
@@ -408,8 +489,10 @@ class PFASEyeWashLogView(BrowserView):
                 temperature=_ff(f.get("temperature")),
                 log_date=f.get("log_date") or None,
                 log_time=f.get("log_time") or None,
-                temp_min=_ff(extra.get("temp_min")) or db.EYEWASH_TEMP_MIN,
-                temp_max=_ff(extra.get("temp_max")) or db.EYEWASH_TEMP_MAX,
+                temp_min=(_ff(extra.get("temp_min"))
+                          or _facility_defaults()["eyewash_temp_min"]),
+                temp_max=(_ff(extra.get("temp_max"))
+                          or _facility_defaults()["eyewash_temp_max"]),
                 notes=f.get("notes") or None,
             )
             self.request.response.redirect(

@@ -202,6 +202,72 @@
   </div>
 
   </tal:def>
+
+  <!-- ── LAB-WIDE DEFAULTS ─────────────────────────────────────────────────
+       Applied when a unit is created and wherever a unit records no value of
+       its own. Seeded, then owned by the lab.
+       ──────────────────────────────────────────────────────────────────── -->
+  <h2 id="defaults" style="margin-top:30px;">Facility Defaults</h2>
+  <p class="form-note" style="max-width:70em;">
+    These apply when a new unit is created, and wherever a unit carries no
+    value of its own. Changing one here does not alter units already
+    configured &#8212; edit those on the unit itself.
+  </p>
+  <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-facility-units"
+        tal:define="d view/facility_defaults">
+    <input type="hidden" name="action" value="save_defaults" />
+
+    <h3 style="font-size:14px;margin-top:14px;">Balance weight points</h3>
+    <p class="form-note">
+      One point per line: <code>nominal_g, label, tolerance_g</code>.
+      A line that cannot be parsed is skipped and logged rather than applied
+      with a zero tolerance.
+    </p>
+    <tal:b repeat="bt view/balance_unit_types">
+      <div style="margin-bottom:10px;">
+        <label style="font-weight:600;" tal:content="bt/label">Balance</label>
+        <textarea rows="5" style="width:100%;font-family:monospace;font-size:12px;"
+                  tal:attributes="name string:bal_points.${bt/key}"
+                  tal:content="python:d['balance_points_text'].get(bt['key'], '')"></textarea>
+      </div>
+    </tal:b>
+
+    <h3 style="font-size:14px;margin-top:14px;">Acceptance defaults</h3>
+    <table class="pfas-table" style="max-width:640px;">
+      <tr>
+        <td>Eye wash temperature range (&#176;C)</td>
+        <td><input type="number" step="0.1" name="eyewash_temp_min" style="width:90px;"
+                   tal:attributes="value d/eyewash_temp_min" /> to
+            <input type="number" step="0.1" name="eyewash_temp_max" style="width:90px;"
+                   tal:attributes="value d/eyewash_temp_max" /></td>
+      </tr>
+      <tr>
+        <td>Type 1 water &#8212; max conductivity (&#181;S/cm)</td>
+        <td><input type="number" step="0.01" name="water_conductivity_max" style="width:120px;"
+                   tal:attributes="value d/water_conductivity_max" /></td>
+      </tr>
+      <tr>
+        <td>Type 1 water &#8212; max TOC (ppb)</td>
+        <td><input type="number" step="1" name="water_toc_max" style="width:120px;"
+                   tal:attributes="value d/water_toc_max" /></td>
+      </tr>
+      <tr>
+        <td>Temperature-mapping study tolerance (&#176;C)</td>
+        <td><input type="number" step="0.1" name="study_tolerance" style="width:120px;"
+                   tal:attributes="value d/study_tolerance" /></td>
+      </tr>
+      <tr>
+        <td>Balance tolerance when a point specifies none (g)</td>
+        <td><input type="number" step="0.0001" name="balance_tolerance" style="width:120px;"
+                   tal:attributes="value d/balance_tolerance" /></td>
+      </tr>
+    </table>
+    <button class="btn btn-primary" type="submit" style="margin-top:10px;">
+      Save Facility Defaults
+    </button>
+  </form>
+
+
 </metal:content>
 
 <tal:scripts metal:fill-slot="scripts">

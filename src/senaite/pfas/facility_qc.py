@@ -39,6 +39,23 @@ UNIT_TYPES = [
     ("room_sensor",        "Room Sensor"),
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Lab-wide facility defaults.
+#
+# These are LABORATORY VALUES, not code constants: a lab with a different
+# weight set, a different water specification or a local eyewash requirement
+# has to be able to change them once, not retype them on every unit it creates.
+# The tables below are SEEDS. get_facility_defaults() merges the lab's saved
+# overrides over them, and every consumer reads through that rather than
+# importing the table directly.
+#
+# Facility QC is an independent compliance obligation (§10) reviewed by the QAO
+# on its own cadence, so these do not gate batch release — but they do decide
+# whether a balance or a water system passes, which is a lab decision.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FACILITY_DEFAULTS_KEY = "senaite.pfas.facility_defaults"
+
 # Default balance weight points per type: [nominal_g, label, tolerance_g]
 BALANCE_DEFAULTS = {
     "balance_analytical": [
@@ -63,6 +80,66 @@ WATER_QC_DEFAULTS = {
     "conductivity_max": 1.0,   # μS/cm
     "toc_max": 500.0,           # ppb
 }
+
+# Fallbacks used when a unit records none of its own.
+STUDY_TOLERANCE_DEFAULT = 1.0   # °C, temperature-mapping study
+BALANCE_TOLERANCE_DEFAULT = 0.001  # g, when a weight point carries no tolerance
+
+
+def _defaults_seed():
+    return {
+        "balance_points": dict(
+            (k, [list(p) for p in v]) for k, v in BALANCE_DEFAULTS.items()),
+        "eyewash_temp_min": EYEWASH_TEMP_MIN,
+        "eyewash_temp_max": EYEWASH_TEMP_MAX,
+        "water_conductivity_max": WATER_QC_DEFAULTS["conductivity_max"],
+        "water_toc_max": WATER_QC_DEFAULTS["toc_max"],
+        "study_tolerance": STUDY_TOLERANCE_DEFAULT,
+        "balance_tolerance": BALANCE_TOLERANCE_DEFAULT,
+    }
+
+
+def get_facility_defaults(portal=None):
+    """Lab-wide facility defaults: saved values over the seed.
+
+    `portal` is optional so the pure-SQLite layer keeps working headlessly
+    (the worker and the migration scripts have no portal); without one the seed
+    is returned, which is the same behaviour as before this was configurable.
+    """
+    out = _defaults_seed()
+    if portal is None:
+        return out
+    try:
+        from zope.annotation.interfaces import IAnnotations
+        raw = IAnnotations(portal).get(FACILITY_DEFAULTS_KEY)
+    except Exception:                                       # noqa: BLE001
+        return out
+    if not raw:
+        return out
+    try:
+        saved = json.loads(raw)
+    except (ValueError, TypeError):
+        logger.warning("facility defaults unreadable; using seed values")
+        return out
+    for key, value in (saved or {}).items():
+        if key in out and value not in (None, "", {}, []):
+            out[key] = value
+    return out
+
+
+def save_facility_defaults(portal, data):
+    """Store only what differs from the seed, so seed corrections still reach a
+    lab that never overrode a given value."""
+    seed = _defaults_seed()
+    trimmed = {}
+    for key, value in (data or {}).items():
+        if key not in seed or value in (None, ""):
+            continue
+        if value != seed[key]:
+            trimmed[key] = value
+    from zope.annotation.interfaces import IAnnotations
+    IAnnotations(portal)[FACILITY_DEFAULTS_KEY] = json.dumps(trimmed)
+    return trimmed
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS facility_units (
@@ -258,7 +335,7 @@ def save_unit(data):
                 data.get("serial_number"), data.get("sensor_id") or None,
                 _f(data.get("temp_min")), _f(data.get("temp_max")),
                 _f(data.get("humidity_min")), _f(data.get("humidity_max")),
-                _f(data.get("study_tolerance", 1.0)),
+                _f(data.get("study_tolerance", STUDY_TOLERANCE_DEFAULT)),
                 data.get("weight_points_json"), data.get("extra_config_json"),
                 1 if data.get("active", True) else 0,
                 uid,
@@ -276,7 +353,7 @@ def save_unit(data):
                 data.get("sensor_id") or None,
                 _f(data.get("temp_min")), _f(data.get("temp_max")),
                 _f(data.get("humidity_min")), _f(data.get("humidity_max")),
-                _f(data.get("study_tolerance", 1.0)),
+                _f(data.get("study_tolerance", STUDY_TOLERANCE_DEFAULT)),
                 data.get("weight_points_json"), data.get("extra_config_json"),
                 1 if data.get("active", True) else 0,
                 now,
@@ -448,7 +525,9 @@ def save_balance_verification(unit_id, operator, verified_date, points, notes=No
     for p in points:
         actual = _f(p.get("actual_g"))
         nominal = float(p["nominal_g"])
-        tol = float(p.get("tolerance_g", 0.001))
+        # A weight point with no tolerance falls back to the lab's configured
+        # default rather than a literal, so one place sets it.
+        tol = float(p.get("tolerance_g") or BALANCE_TOLERANCE_DEFAULT)
         dev = round(actual - nominal, 6) if actual is not None else None
         passed = (1 if dev is not None and abs(dev) <= tol else 0) if dev is not None else None
         if passed == 0:
