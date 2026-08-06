@@ -4761,3 +4761,13 @@ impress-side change; re-render a qualified certificate after any impress upgrade
 reader beside each other. The stamp remains the record — the code is not
 recomputed at render time — so a certificate cannot drift from the review that
 authorised it.
+
+**Amendment (same day).** The report view must DISCARD the `context` the
+three-way adapter passes it. The first version assigned `self.context = context`;
+because Five binds TAL `context` to `view.context`, and the CoA passes that into
+`render_css` / `render_alerts` / `render_results` / `@@pfas-coa-attestation`,
+this changed what every core section received depending on where the user
+published from. The certificate rendered **empty from the client folder and the
+samples listing** — the two production entry points — while rendering correctly
+from a sample, which was the only context being tested. Only
+`get_formatted_result` may differ from core.

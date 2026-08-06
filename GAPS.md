@@ -185,7 +185,19 @@ Verified on the re-rendered certificate: **5 markers, on exactly the five
 natives the Qualifications section names** —
 `4:2 FTS BLoQ [M]`, `6:2FTS 1.006 [M]`, `PFBA 104.432 [M]`,
 `PFHxDA 0.032 [M]`, `PFTeDA 0.189 [M]` — and 10 markers across two samples
-rendered together.
+rendered together. Byte-identical output from **all four publish entry points**
+(sample, client folder, samples listing, portal root), and the decoded document
+grew by exactly the 708 bytes the markers and their stylesheet account for, with
+every section count unchanged against the pre-change baseline.
+
+One trap worth recording, because the first version of this fix fell into it:
+the view accepts `context` from the three-way adapter and must **discard** it.
+Core's `ReportView.__init__` sets `self.context = api.get_portal()`, and Five
+binds TAL `context` to `view.context` — which the CoA passes to every core
+section and to `@@pfas-coa-attestation`. Assigning the traversed object instead
+made the certificate render **empty from the client folder and the samples
+listing** while still rendering correctly from a sample, i.e. broken at the two
+entry points production actually uses and working at the one being tested.
 
 Still never exercised:
 

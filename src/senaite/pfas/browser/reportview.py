@@ -88,12 +88,22 @@ def _as_pfas_model(model):
 
 
 class PFASSingleReportView(BaseSingle):
-    """Single-sample certificate. Adapts (context, model, request)."""
+    """Single-sample certificate. Adapts (context, model, request).
+
+    `context` is accepted because the three-way adapter passes it, and then
+    deliberately DISCARDED. Core's `ReportView.__init__` sets
+    `self.context = api.get_portal()`, and Five binds TAL `context` to
+    `view.context` — which the CoA hands to every core section
+    (`render_css`, `render_alerts`, `render_results`) and to
+    `@@pfas-coa-attestation`. Assigning the traversed object here would change
+    what all of them receive, differently depending on whether the user
+    published from a sample, a client folder or the samples listing. Only
+    `get_formatted_result` may differ from core.
+    """
 
     def __init__(self, context, model, request):
-        model = _as_pfas_model(model)
-        super(PFASSingleReportView, self).__init__(model, request)
-        self.context = context
+        super(PFASSingleReportView, self).__init__(_as_pfas_model(model),
+                                                   request)
 
 
 class PFASMultiReportView(BaseMulti):
@@ -105,9 +115,10 @@ class PFASMultiReportView(BaseMulti):
     reports, each going through `PFASSingleReportView` — verified. Registered so
     that adding a multi template later does not silently lose the qualifier
     markers, which is precisely how they were lost the first time.
+
+    `context` is discarded for the same reason as in the single view above.
     """
 
     def __init__(self, context, collection, request):
-        collection = [_as_pfas_model(m) for m in (collection or [])]
-        super(PFASMultiReportView, self).__init__(collection, request)
-        self.context = context
+        super(PFASMultiReportView, self).__init__(
+            [_as_pfas_model(m) for m in (collection or [])], request)
