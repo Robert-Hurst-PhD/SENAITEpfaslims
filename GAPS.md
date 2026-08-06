@@ -122,7 +122,7 @@ Also open:
 On 2026-08-06 WS-0005 was driven through the full ISO 17025 §7.8.4 review and
 one sample was published. This had never happened before; two entries that
 previously sat here as "never exercised" are now closed, and running it exposed
-two defects that only a real release could reveal.
+two defects that only a real release could reveal — both since fixed.
 
 **Closed:**
 
@@ -139,18 +139,44 @@ two defects that only a real release could reveal.
   qualifier"` — the publication carries the state of the review that authorised
   it.
 
-**Exposed, and open:**
+**Exposed by the run:**
 
 | # | Defect | Evidence |
 |---|---|---|
 | G1 | **The Data Review release path had never worked.** `doActionFor(ws, "submit")` failed with *"No workflow provides the '${action_id}' action"*: the pipeline pushes results without submitting them, so all 288 analyses sat in `assigned`, and the worksheet's `submit` guard only opens once its analyses are submitted. The same was true of `verify`, which is available on the analyses and not the worksheet. **Fixed** — both handlers now cascade to the analyses first. | WS-0005 reached `verified`; without the cascade no worksheet in this system could ever have been released. |
-| G2 | **The per-result qualifier codes never reach the certificate.** `_stamp_qualifier_remarks` writes `QC: M` onto each affected analysis, justified in its own docstring by *"Remarks is the one per-analysis field core already prints"*. **Core prints no such thing.** `senaite/impress/.../results.pt` has no remarks cell at all, and `remarks.pt` renders only SAMPLE-level `model.getRemarks()` — a different field from the one being stamped. 14 analyses on `FEED-0002` carry the stamp; the rendered certificate contains none of them. | Rendered twice: default options (57,345 bytes) and **with `show_remarks: true`** (57,411 bytes). `QC: M` absent from both — so this is not an option left switched off, it is an unreachable field. |
+| G2 | **The per-result qualifier codes never reached the certificate.** `_stamp_qualifier_remarks` writes `QC: M` onto each affected analysis, justified in its own docstring by *"Remarks is the one per-analysis field core already prints"*. **Core prints no such thing.** `senaite/impress/.../results.pt` has no remarks cell at all, and `remarks.pt` renders only SAMPLE-level `model.getRemarks()` — a different field from the one being stamped. 14 analyses on `FEED-0002` carried the stamp; the rendered certificate contained none of them. **Fixed** — see below. | Rendered twice before the fix: default options (57,345 bytes) and **with `show_remarks: true`** (57,411 bytes). `QC: M` absent from both — so this was not an option left switched off, it was an unreachable field. |
 
-G2 is the project's recurring defect shape once more: **a fact recorded
+G2 was the project's recurring defect shape once more: **a fact recorded
 correctly in one place and never carried to where it is used.** The blanket
-statement in the Qualifications section survives, so the client is told the
-release is qualified and which analytes are affected — but cannot see the code
-beside the number, which is what the design called for.
+statement in the Qualifications section had always survived, so the client was
+told the release was qualified and which analytes were affected — but could not
+see the code beside the number, which is what the design called for.
+
+**How G2 was fixed, without forking core.** `results.pt` formats each value
+through `model.get_formatted_result(analysis)` and takes its models from
+`view.collection` — so the formatter is reachable by supplying our own models,
+leaving the core template alone (CLAUDE.md §6C).
+`PublishView.get_report_view_controller` queries a **three-way** multiadapter on
+`(context, model, request)` before falling back to impress's own two-way one;
+impress registers no three-way adapter itself and its comment says the form
+exists "to allow 3rd party overriding with a browser layer". `browser/
+reportview.py` registers there, scoped to `ISenaitePFASLayer` — unlike the
+`ISuperModel` adapter, which is registered `for="*"` with no request and could
+only have been replaced site-wide.
+
+The marker format now lives once, in `qc_qualification.REMARK_PREFIX`, with
+`format_remark_codes` writing and `parse_remark_codes` reading. The stamp — not
+a recomputation at render time — remains the record, so a certificate cannot
+drift from the review that authorised it. `tests/test_qualifier_stamp.py` pins
+the round trip, that unrelated remarks (`SUR`, `N.C.`, `br-PFOS:(QQ)`, all
+present on FEED-0002) never become a qualifier, that no other module formats the
+marker inline, and that the reader stays registered.
+
+Verified on the re-rendered certificate: **5 markers, on exactly the five
+natives the Qualifications section names** —
+`4:2 FTS BLoQ [M]`, `6:2FTS 1.006 [M]`, `PFBA 104.432 [M]`,
+`PFHxDA 0.032 [M]`, `PFTeDA 0.189 [M]` — and 10 markers across two samples
+rendered together.
 
 Still never exercised:
 

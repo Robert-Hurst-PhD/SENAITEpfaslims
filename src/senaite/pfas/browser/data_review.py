@@ -35,6 +35,7 @@ from senaite.pfas.logbook_schema import active_rows
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.qc_qualification import format_remark_codes
 
 logger = logging.getLogger("senaite.pfas.browser.data_review")
 
@@ -524,11 +525,13 @@ class PFASDataReviewView(BrowserView):
     def _stamp_qualifier_remarks(self, ws):
         """Write each qualifier code onto the analyses it applies to.
 
-        The certificate's results table is rendered by SENAITE core, which the
-        add-on must not fork (§6C). Remarks is the one per-analysis field core
-        already prints, so the short code travels with the value — a reader
-        cannot take a number off the table without seeing that it is qualified.
-        The full wording lives once, in the QC Qualifications section.
+        Remarks is the durable per-analysis record of the qualification. The
+        code is rendered beside the value on the certificate by the add-on's
+        report view (`browser/reportview.py`), which reads this stamp back
+        through `parse_remark_codes` — core's results table has no remarks cell
+        of its own, and an earlier version of this docstring wrongly claimed it
+        did, so the stamps were written and never shown. The full wording lives
+        once, in the QC Qualifications section.
 
         Done at APPROVE time rather than during a render: it is a write, and it
         should have a named user and a moment behind it.
@@ -555,7 +558,9 @@ class PFASDataReviewView(BrowserView):
             codes = codes_by_analyte.get(keyword)
             if not codes:
                 continue
-            marker = u"QC: {0}".format(u", ".join(sorted(codes)))
+            marker = format_remark_codes(codes)
+            if not marker:
+                continue
             try:
                 existing = analysis.getRemarks() or u""
                 if marker in existing:

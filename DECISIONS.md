@@ -4719,3 +4719,45 @@ Running all 18 also produced the configuration picture: **only 1 of 18
 combinations is fully configured**. 13 have no matrix factor, so results stay on
 the extract basis; 17 have no spike level, so LFSM cannot be evaluated. Recorded
 in `GAPS.md` with the rest of the register.
+
+## 2026-08-06 — Per-result QC qualifier codes are rendered via an add-on report view, not core Remarks
+
+**Status:** confirmed.
+
+**Context.** Qualified release stamps a code (`M`, `P`, `NC`, `J`, `B`) onto each
+affected analysis at approve time. The original implementation wrote it to the
+analysis Remarks field on the stated belief that "Remarks is the one
+per-analysis field core already prints". It is not: senaite.impress'
+`analysisrequest/templates/results.pt` has no remarks cell, and `remarks.pt`
+renders SAMPLE-level `model.getRemarks()`. Verified against a real published
+certificate with `show_remarks` both off and on — 14 stamped analyses, zero
+markers rendered.
+
+**Decision.** Render the code beside the value through an add-on report view
+registered as a THREE-way multiadapter on `(context, model, request)`, scoped to
+`ISenaitePFASLayer` (`src/senaite/pfas/browser/reportview.py`). Core's
+`results.pt` is not forked; it renders values through
+`model.get_formatted_result(analysis)` and takes its models from
+`view.collection`, so supplying our own SuperModel subclass is sufficient.
+
+**Why not the alternatives.**
+- *Override the `ISuperModel` adapter*: registered `for="*"` with no request, so
+  it is not layer-scopable — it would have to be replaced site-wide via
+  `overrides.zcml`, affecting every impress template in the site.
+- *Fork `results.pt` or build an add-on results table*: forbidden by CLAUDE.md
+  §6C, and it would fork the one part of the certificate core maintains.
+
+**Upgrade fragility.** This depends on two senaite.impress internals: that
+`PublishView.get_report_view_controller` queries the three-way multiadapter
+first (its own comment says the form exists "to allow 3rd party overriding with
+a browser layer"), and that `results.pt` formats values through
+`model.get_formatted_result`. If either changes on upgrade, the markers vanish
+SILENTLY — the certificate still renders, just without them. `tests/
+test_qualifier_stamp.py` asserts the wiring is present but cannot detect an
+impress-side change; re-render a qualified certificate after any impress upgrade.
+
+**Format ownership.** `qc_qualification.REMARK_PREFIX` +
+`format_remark_codes` / `parse_remark_codes` own the stamp's shape, writer and
+reader beside each other. The stamp remains the record — the code is not
+recomputed at render time — so a certificate cannot drift from the review that
+authorised it.

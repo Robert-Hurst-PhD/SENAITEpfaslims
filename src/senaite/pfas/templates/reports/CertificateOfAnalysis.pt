@@ -22,6 +22,21 @@
   <!-- REPORT CSS -->
   <tal:t replace="structure python:view.render_css(context, **options)" />
 
+  <!-- Per-result QC qualifier marker, emitted beside the value by
+       browser/reportview.py on a qualified release. Deliberately understated:
+       it must be legible next to the number without competing with it, and the
+       wording it points at is in the QC Qualifications section below. -->
+  <style type="text/css">
+    .qc-qualifier {
+      font-size: 0.8em;
+      font-weight: 600;
+      vertical-align: super;
+      margin-left: 0.15em;
+      color: #8a5a00;
+      white-space: nowrap;
+    }
+  </style>
+
   <!-- REPORT HEADER -->
   <tal:t replace="structure python:view.render_header(context, **options)" />
 

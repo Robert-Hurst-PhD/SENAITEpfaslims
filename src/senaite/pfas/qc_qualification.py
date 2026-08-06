@@ -61,6 +61,47 @@ UNMAPPED_PROMPT = (
 QUALIFY = "qualify"
 BLOCK = "block"
 
+# ── The per-analysis qualifier stamp ─────────────────────────────────────────
+# When a qualified release is approved, each affected analysis is stamped with
+# the codes that apply to it, so the code travels with the value rather than
+# living only in a summary the reader has to cross-reference.
+#
+# The format is defined HERE, once, with its writer and its reader beside each
+# other. It was previously formatted inline in `data_review` and read nowhere at
+# all: the certificate's results table is rendered by SENAITE core, which prints
+# no per-analysis remarks anywhere, so 45 stamped analyses were invisible. The
+# reader now lives in `browser/reportview.py`. Keeping both ends against this
+# one definition is what stops a stamp being written in a shape nothing parses.
+REMARK_PREFIX = u"QC: "
+
+
+def format_remark_codes(codes):
+    """Render qualifier codes as the remark line stamped onto an analysis."""
+    clean = sorted({(c or u"").strip() for c in (codes or ()) if (c or u"").strip()})
+    if not clean:
+        return u""
+    return u"{0}{1}".format(REMARK_PREFIX, u", ".join(clean))
+
+
+def parse_remark_codes(remarks):
+    """Recover the qualifier codes from an analysis' remarks.
+
+    Remarks are free text and carry other things (`SUR`, `N.C.`, instrument
+    notes), so only a line beginning with the prefix is read. Returns [] for
+    anything else — an unrecognised remark must never become a qualifier on a
+    certificate.
+    """
+    found = []
+    for line in (remarks or u"").splitlines():
+        line = line.strip()
+        if not line.startswith(REMARK_PREFIX):
+            continue
+        for code in line[len(REMARK_PREFIX):].split(u","):
+            code = code.strip()
+            if code and code not in found:
+                found.append(code)
+    return found
+
 DISPOSITIONS = (
     (QUALIFY, u"Qualify and release",
      u"Attributable to the sample. Released with a qualifier and standard "

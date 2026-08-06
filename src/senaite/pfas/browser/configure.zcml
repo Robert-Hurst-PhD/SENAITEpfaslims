@@ -330,6 +330,34 @@
       permission="zope2.View"
       />
 
+  <!-- Report views that render the per-result QC qualifier code beside the
+       value (e.g. "12.4 [M]") on a qualified release.
+
+       Registered as THREE-way multiadapters on (context, model, request).
+       senaite.impress' PublishView.get_report_view_controller queries that form
+       first and falls back to its own two-way registration — its comment says
+       the three-way form exists "to allow 3rd party overriding with a browser
+       layer". So this is the sanctioned seam, it is scoped to
+       ISenaitePFASLayer, and no core template is forked (CLAUDE.md §6C).
+       See browser/reportview.py for why the remarks route did not work. -->
+  <adapter
+      for="zope.interface.Interface
+           zope.interface.Interface
+           senaite.pfas.interfaces.ISenaitePFASLayer"
+      name="AnalysisRequest"
+      factory=".reportview.PFASSingleReportView"
+      provides="senaite.impress.interfaces.IReportView"
+      permission="zope2.View"/>
+
+  <adapter
+      for="zope.interface.Interface
+           zope.interface.Interface
+           senaite.pfas.interfaces.ISenaitePFASLayer"
+      name="AnalysisRequest"
+      factory=".reportview.PFASMultiReportView"
+      provides="senaite.impress.interfaces.IMultiReportView"
+      permission="zope2.View"/>
+
   <!-- Generate EGAD EDD and email client when government-agency AR is published -->
   <subscriber
       for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
