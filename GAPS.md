@@ -138,6 +138,15 @@ two defects that only a real release could reveal — both since fixed.
   `qc_snapshot: ok`, and `review_state: "qualified: 26 result(s) released with a
   qualifier"` — the publication carries the state of the review that authorised
   it.
+- **The full client flow produces a real artifact.** `FEED-0003` was taken
+  through the intended order — render at prospective R1 → store → transition →
+  log R1 — via impress `save_reports`. A **61,635-byte PDF** is stored as
+  `arreport-4` against the sample, and `FEED-0003-R1` is registered with
+  `qc_snapshot: ok`. The certificate a client would actually receive carries
+  **5 qualifier markers beside the values** (`BLoQ [M]`, `2.466 [M]`,
+  `117.423 [M]`, `0.008 [M]`, `0.130 [M]`) plus the Qualifications section
+  naming the same five analytes — confirmed by extracting the text back out of
+  the stored PDF, not from the HTML it was rendered from.
 
 **Exposed by the run:**
 
@@ -184,9 +193,6 @@ Still never exercised:
   at `is_egad_enabled(client_obj)` — KCP is a food client, not a Maine state
   agency, so no EDD is correct here. Neither the generate nor the refuse branch
   has run from a real publish.
-- **A publish that stores a report artifact.** The transition was driven
-  directly, so no `ARReport` PDF was created for `FEED-0002-R1`. The register
-  entry therefore names a certificate that has no stored rendering.
 - `tests/` covers the pipeline well and the add-on barely: no test exercises
   `data_review`'s gates, `qc_store`, `control_chart` or `facility_qc`.
 
