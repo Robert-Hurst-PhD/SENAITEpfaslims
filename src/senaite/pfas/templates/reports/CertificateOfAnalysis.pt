@@ -56,6 +56,42 @@
   <!-- REPORT DISCREETER -->
   <tal:t replace="structure python:view.render_discreeter(context, **options)" />
 
+
+  <!-- QC QUALIFICATIONS (PFAS) — results released despite a failing QC
+       criterion, with the laboratory's statement of what it means. Rendered
+       here because core owns the results table; the short code travels with
+       each affected analysis so a value cannot be read off the table without
+       it. ISO 17025 §7.8.4: releasing non-conforming work is permitted when
+       the deviation is authorised, justified and RECORDED — this is the
+       client's half of that record. -->
+  <tal:quals define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
+                     quals python:att.qc_qualifications(view.collection);"
+             condition="quals">
+    <div style="margin-top:14px; padding:8px 10px; border:1px solid #bbb;">
+      <div style="font-weight:bold; font-size:12px; margin-bottom:4px;"
+           i18n:translate="">Quality control qualifications</div>
+      <div style="font-size:10px; color:#444; margin-bottom:6px;"
+           i18n:translate="">
+        The results below were released although a quality control criterion was
+        not met. Each qualified result carries the code shown.
+      </div>
+      <table style="width:100%; font-size:10px; border-collapse:collapse;">
+        <tr tal:repeat="q quals" style="vertical-align:top;">
+          <td style="width:34px; font-weight:bold; padding:3px 4px;"
+              tal:content="q/code">M</td>
+          <td style="padding:3px 4px;">
+            <div tal:content="q/statement">statement</div>
+            <div style="color:#666; margin-top:2px;"
+                 tal:condition="q/analytes">
+              <span i18n:translate="">Affected analytes:</span>
+              <span tal:content="q/analytes">PFOA</span>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </tal:quals>
+
   <!-- REPORT FOOTER -->
   <tal:t replace="structure python:view.render_footer(context, **options)" />
 

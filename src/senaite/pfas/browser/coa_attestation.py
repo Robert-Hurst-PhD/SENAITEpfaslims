@@ -23,12 +23,16 @@ Python 2.7 compatible (no f-strings / annotations).
 """
 from __future__ import absolute_import
 
+import logging
+
 from collections import OrderedDict
 
 from bika.lims import api
 from DateTime import DateTime
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+
+logger = logging.getLogger("senaite.pfas.coa_attestation")
 
 
 class PFASCoAAttestationView(BrowserView):
@@ -69,6 +73,55 @@ class PFASCoAAttestationView(BrowserView):
         except Exception:
             pass
         return meta
+
+    def qc_qualifications(self, collection=None):
+        """Qualifiers that apply to the sample(s) on this certificate.
+
+        A qualified release means a failing QC result was issued anyway because
+        the QAO's library says the failure is attributable to the sample. That
+        is only defensible if the certificate SAYS so — ISO 17025 §7.8.4 permits
+        releasing non-conforming work when the deviation is authorised,
+        justified and recorded, and the certificate is where the client's half
+        of that record lives.
+
+        Grouped by code so the statement appears once, with the analytes it
+        applies to — a blanket caveat on every result devalues the warning.
+        """
+        collection = collection if collection is not None else getattr(
+            self, "collection", [])
+        if not collection:
+            return []
+        try:
+            from senaite.pfas.browser.qc_review_report import _worksheet_for
+            sample = api.get_object(collection[0])
+            worksheet = _worksheet_for(sample)
+            if worksheet is None:
+                return []
+            review = worksheet.restrictedTraverse(str("@@pfas-data-review"))
+            summary = review._get_qc_summary(worksheet) or {}
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("could not resolve QC qualifications: %s", exc)
+            return []
+
+        grouped = {}
+        for entry in (summary.get("qualifiers") or []):
+            code = entry.get("code") or u"?"
+            row = grouped.setdefault(code, {
+                "code": code,
+                "statement": entry.get("statement") or u"",
+                "analytes": set(),
+            })
+            if entry.get("analyte"):
+                row["analytes"].add(entry["analyte"])
+        out = []
+        for code in sorted(grouped):
+            row = grouped[code]
+            out.append({
+                "code": row["code"],
+                "statement": row["statement"],
+                "analytes": u", ".join(sorted(row["analytes"])),
+            })
+        return out
 
     def render_stamp(self, context=None):
         """The controlled-document stamp, as markup.

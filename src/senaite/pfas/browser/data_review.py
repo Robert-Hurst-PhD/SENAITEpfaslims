@@ -521,6 +521,67 @@ class PFASDataReviewView(BrowserView):
             logger.error("qualifier_for(%s, %s): %s", failure, role, exc)
             return None
 
+    def _stamp_qualifier_remarks(self, ws):
+        """Write each qualifier code onto the analyses it applies to.
+
+        The certificate's results table is rendered by SENAITE core, which the
+        add-on must not fork (§6C). Remarks is the one per-analysis field core
+        already prints, so the short code travels with the value — a reader
+        cannot take a number off the table without seeing that it is qualified.
+        The full wording lives once, in the QC Qualifications section.
+
+        Done at APPROVE time rather than during a render: it is a write, and it
+        should have a named user and a moment behind it.
+        """
+        try:
+            summary = self._get_qc_summary(ws) or {}
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("qualifier remarks: %s", exc)
+            return
+        codes_by_analyte = {}
+        for entry in (summary.get("qualifiers") or []):
+            analyte = entry.get("analyte")
+            code = entry.get("code")
+            if analyte and code:
+                codes_by_analyte.setdefault(analyte, set()).add(code)
+        if not codes_by_analyte:
+            return
+        stamped = 0
+        for analysis in (ws.getAnalyses() or []):
+            try:
+                keyword = analysis.getKeyword()
+            except Exception:                               # noqa: BLE001
+                continue
+            codes = codes_by_analyte.get(keyword)
+            if not codes:
+                continue
+            marker = u"QC: {0}".format(u", ".join(sorted(codes)))
+            try:
+                existing = analysis.getRemarks() or u""
+                if marker in existing:
+                    continue
+                analysis.setRemarks(
+                    (existing + u"\n" + marker).strip() if existing else marker)
+                stamped += 1
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("could not stamp %s: %s", keyword, exc)
+        if stamped:
+            logger.info("Stamped a QC qualifier onto %d analysis result(s) on "
+                        "%s", stamped, ws.getId())
+
+    def _affected_analytes(self, failure_type, analyte):
+        """Reported analytes a failure touches, scoped as narrowly as it is."""
+        try:
+            from senaite.pfas.qc_qualification import analytes_for_failure
+            found = analytes_for_failure(
+                failure_type or u"", analyte or u"",
+                self._method_id_for_qualification())
+            return found or ([analyte] if analyte else [])
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("analytes_for_failure(%s, %s): %s",
+                           failure_type, analyte, exc)
+            return [analyte] if analyte else []
+
     def _method_id_for_qualification(self):
         profile = self._method_profile() or {}
         return profile.get("method_id") or u""
@@ -1094,12 +1155,21 @@ class PFASDataReviewView(BrowserView):
                         if qual and not qual.get("needs_config"):
                             if cell_status in ("ok", "warn"):
                                 cell_status = "qualified"
-                            qualifiers.append({
-                                "qc_type": qc_type,
-                                "analyte": rec.get("analyte") or u"",
-                                "code": qual.get("code") or u"",
-                                "statement": qual.get("statement") or u"",
-                            })
+                            # The NATIVES the failure actually affects, not the
+                            # compound the failure was recorded against. A
+                            # surrogate failure is recorded on 13C2-PFHxDA; the
+                            # client's certificate is about PFHxDA. Listing the
+                            # labelled compound would name something that does
+                            # not appear in the results table at all.
+                            for affected in self._affected_analytes(
+                                    qual.get("failure_type"),
+                                    rec.get("analyte") or u""):
+                                qualifiers.append({
+                                    "qc_type": qc_type,
+                                    "analyte": affected,
+                                    "code": qual.get("code") or u"",
+                                    "statement": qual.get("statement") or u"",
+                                })
                         elif qual and qual.get("needs_config"):
                             cell_status = "unevaluated"
                             overall_pass = False
@@ -1835,6 +1905,7 @@ class PFASDataReviewView(BrowserView):
         cl["approved_by"] = user.getId()
         cl["approved_at"] = now
         self._save_checklist(ws, cl)
+        self._stamp_qualifier_remarks(ws)
         self._audit(ws)
         return self._redirect_with_msg("batch_approved", "ok")
 

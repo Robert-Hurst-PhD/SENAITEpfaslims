@@ -66,6 +66,30 @@ def on_after_transition(instance, event):
                      api.get_id(instance), exc)
 
 
+def _review_state_at_issue(ar):
+    """"passed" / "qualified" / "not passed" / "unknown" for the sample's
+    worksheet checklist, evaluated at the moment of issue."""
+    try:
+        from senaite.pfas.browser.qc_review_report import _worksheet_for
+        worksheet = _worksheet_for(ar)
+        if worksheet is None:
+            return u"unknown: no worksheet"
+        review = worksheet.restrictedTraverse(str("@@pfas-data-review"))
+        if review.all_items_pass():
+            summary = review._get_qc_summary(worksheet) or {}
+            if summary.get("qualifiers"):
+                return u"qualified: {0} result(s) released with a qualifier".format(
+                    len(summary["qualifiers"]))
+            return u"passed"
+        outstanding = [i.get("key") for i in review.checklist_status()
+                       if not i.get("checked")]
+        return u"NOT PASSED: {0}".format(u", ".join(outstanding) or u"unknown")
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("could not evaluate the review state for %s: %s",
+                       getattr(ar, "getId", lambda: "?")(), exc)
+        return u"unknown"
+
+
 def record_publication(ar):
     """Append an immutable issuance entry to the sample's publication log."""
     ann = IAnnotations(ar)
@@ -92,6 +116,11 @@ def record_publication(ar):
         # log said nothing, and an auditor would have assumed a snapshot
         # existed. A guarantee that fails silently is not a guarantee.
         "qc_snapshot": u"pending",
+        # Whether the §7.8.4 technical review had actually passed when this was
+        # issued. Publication is NOT blocked on it — that was a deliberate
+        # decision — but an auditor must be able to see that a certificate went
+        # out ahead of its review, rather than having to infer it.
+        "review_state": _review_state_at_issue(ar),
     }
 
     # Freeze the reviewer report against this revision. Regenerating it later

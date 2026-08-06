@@ -400,6 +400,13 @@ DEFAULT_QUALIFIER_MAP = [
     {"our_qualifier": "TIC",    "egad_code": "N",    "description": "Tentatively identified"},
     {"our_qualifier": "*",      "egad_code": "*",    "description": "QC outside control limits"},
     {"our_qualifier": "J*",     "egad_code": "J*",   "description": "Estimated + QC out of limits"},
+    # Qualified-release codes (qc_qualification.FAILURE_TYPES). They are OUR
+    # vocabulary for the certificate; the EDD carries the nearest EGAD code
+    # that already exists rather than a new one invented here. Without these
+    # entries `_translate_qualifier` passes an unknown code through unchanged
+    # and "M" would land in LAB_QUALIFIER, which is not a valid EGAD value.
+    {"our_qualifier": "M",      "egad_code": "*",    "description": "Matrix effect — QC outside control limits"},
+    {"our_qualifier": "P",      "egad_code": "*",    "description": "Precision (RPD) outside control limits"},
 ]
 
 # ── Default QC type mapping ───────────────────────────────────────────────────

@@ -4660,3 +4660,29 @@ One subtlety cost a round trip: a qc_type of `IS` covers both surrogates and the
 injection standard, and they need opposite causes. `classify_failure` could not
 resolve it because it matches on a source string and `"IS"` alone matches
 nothing — the compound's ROLE in the method decides, via `_labelled_role`.
+
+### Phase 4 completed — the certificate now says what was qualified
+
+**Decisions taken.** The CoA gets a PFAS-authored *QC Qualifications* section
+plus the short code on each affected result via Remarks — core owns the results
+table and §6C forbids forking it, and Remarks is the one per-analysis field core
+already prints, so the code travels with the value. Publication is **not**
+blocked when the review has not passed; the publication entry records
+`review_state` instead, so an auditor sees a certificate issued ahead of its
+review rather than having to infer it.
+
+**Scoping was wrong on the first pass and the certificate caught it.** The
+qualification listed the compounds the failure was *recorded* against —
+`13C2,D4-4:2FTS`, `13C2-PFHxDA` — which appear nowhere in a client's results
+table. `analytes_for_failure` reverses the surrogate map for exactly this, so it
+now names the natives: `4:2FTS, 6:2FTS, PFBA, PFHxDA, PFTeDA`.
+
+**E6 — `M` and `P` are ours, not EGAD's.** They are mapped to the existing valid
+EGAD code `*` ("QC outside control limits") rather than being invented as new
+regulatory values. Without the entries, `_translate_qualifier` passes an unknown
+code through unchanged and `M` would have landed in `LAB_QUALIFIER`.
+
+Verified live: 45 analyses carry `QC: M` (appended to any existing remark), the
+CoA resolves one qualification group naming five native analytes, and the gate
+reports *"released with 26 qualified result(s) [M] — the certificate carries the
+corresponding statement"*.
