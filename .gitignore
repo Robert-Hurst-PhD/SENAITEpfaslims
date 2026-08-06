@@ -1,29 +1,29 @@
+
+build/
+check_*.py
+.coverage
+data/extraction_logs/*
+!data/extraction_logs/.gitkeep
+data/instrument_output/*
+!data/instrument_output/.gitkeep
+data/qc/*
+!data/qc/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
+data/synthetic/
+# Development/debug probe scripts (local use only)
+dist/
+*.egg
+*.egg-info/
+.eggs/
+.installed.cfg
+# Lab data — keep directory stubs (.gitkeep) but never commit real run data
+.mr.developer.cfg
+parts/
+probe_*.py
 __pycache__/
 *.py[cod]
 *.pyo
-*.egg-info/
-*.egg
-.eggs/
-dist/
-build/
-.installed.cfg
-parts/
-var/
-.mr.developer.cfg
-.tox/
-.coverage
 .pytest_cache/
-
-# Lab data — keep directory stubs (.gitkeep) but never commit real run data
-data/instrument_output/*
-!data/instrument_output/.gitkeep
-data/reports/*
-!data/reports/.gitkeep
-data/qc/*
-!data/qc/.gitkeep
-data/extraction_logs/*
-!data/extraction_logs/.gitkeep
-
-# Development/debug probe scripts (local use only)
-probe_*.py
-check_*.py
+.tox/
+var/
