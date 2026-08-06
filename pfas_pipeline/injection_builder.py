@@ -71,6 +71,12 @@ REVIEW_CHECKS: dict[str, list[str]] = {
     "ICV":    ["ccv_pct_dev", "is_response", "rt_deviation"],
     "CCV":    ["ccv_pct_dev", "is_response", "rt_deviation", "ion_ratio"],
     "MB":     ["blank_contamination", "is_response", "lod_check"],
+    # The other blanks. Without these, classify_injection's new roles fell back
+    # to REVIEW_CHECKS["Sample"] and a blank was given the CHECKS OF A CLIENT
+    # SAMPLE — bloq/lod qualifiers instead of a contamination check.
+    "MxB":    ["blank_contamination", "is_response"],
+    "LRB":    ["blank_contamination", "is_response"],
+    "CCB":    ["blank_contamination", "is_response"],
     "LFB":    ["recovery", "is_response"],
     "LFSM":   ["lfsm_recovery", "is_response", "ion_ratio", "rt_deviation"],
     "LFSMD":  ["lfsmd_rpd", "lfsm_recovery", "is_response"],

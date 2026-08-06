@@ -4547,3 +4547,45 @@ on 08-04 (the only place that knows the surrogate/injection-IS distinction and
 the dilution correction), leaving a dead twin. I described that work as "wiring
 four checks"; three were wired and one was merged. A merge that leaves the
 original in place is the §1.3 duplication this project keeps rediscovering.
+
+## 2026-08-05 — Phase 2: control material was not recognised as control material
+
+`classify_injection` defaults to `"Sample"`, and that default swallowed every
+blank whose name did not contain `MB` as a whitespace-delimited token. Verified
+before the fix: `MxB-260805`, `LRB-01`, `LFB-01` and even `MB-01` all classified
+as `Sample`; `Dup-01` classified as `LFSMD`, a different QC type with different
+acceptance criteria.
+
+**A correction to how I first reported this.** I said a blank would be "reported
+as client material". That was too strong — the push requires a matching SENAITE
+sample (`pipeline.py:742`), so an oddly-named blank is not filed. The real
+consequences are quieter and, for QC, worse:
+
+- its contamination was never judged, because the check keys on the role
+- it was not used for `< LOD` blank subtraction
+- it appeared as a reportable row in the batch PDF
+- under qualified release it would count as CLIENT material, so its failures
+  would be excused as a matrix effect rather than holding the batch
+
+**The plan said to change the default to a non-reportable `"Unknown"`. That would
+have been wrong, and testing found it.** A client sample has no positive marker:
+`KCP Silage "Egg-1" Sample`, `FDA_32PFAS-FEED-0002` and `2518592` all reach the
+fallback. A strict fallback would have stopped reporting every genuine sample.
+The safety therefore comes from recognising control material exhaustively, not
+from tightening the default — and `classification_rule()` now lets a caller tell
+a positive identification from a default, which is what the existing
+"matches no SENAITE sample" warning needs to be meaningful.
+
+Ordering matters twice in the new table: LFSMD before LFSM (the longer token
+contains the shorter), and both before Dup. `"LFSM Mid Duplicate"` is the real
+convention, so the Dup marker can sit any distance after the LFSM token — an
+adjacency test failed on the actual fixture.
+
+Three consumers had to follow, or the roles would have been renamed and nothing
+else: `REVIEW_CHECKS` gained MxB/LRB/CCB (without them a blank inherited
+`REVIEW_CHECKS["Sample"]` — a client sample's checks); the contamination check in
+`qc_store` now covers every blank role rather than only MB; and the new roles sit
+outside `REPORTED_ROLES`, so blanks stop appearing as reportable rows.
+
+Regression: the real run is byte-identical — 582 flags, same breakdown, 224/224
+pushed, pedigree and dilutions intact.

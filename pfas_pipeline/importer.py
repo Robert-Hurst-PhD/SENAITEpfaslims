@@ -381,22 +381,63 @@ def classify_injection(name: str, dilutions: "dict | None" = None) -> str:
     """
     if dilutions and name in dilutions:
         return "Dilution"
-    upper = name.upper()
-    if "LFSMD" in name or "DUP" in upper:
-        return "LFSMD"
-    if "LFSM" in name:
-        return "LFSM"
-    if "MB" in name.split():
-        return "MB"
-    if "CCV" in upper:
-        return "CCV"
-    if "ICV" in upper:
-        return "ICV"
-    if "-CAL-" in upper or " CAL " in upper:
-        return "CAL"
-    if "LCS" in upper:
-        return "LFB"   # LCS folds into the canonical LFB code
-    return "Sample"
+    role, _rule = _classify(name)
+    return role
+
+
+# Control material, recognised POSITIVELY and in this order. Everything here is
+# laboratory-prepared: getting one wrong means it is treated as client material,
+# so its contamination is never judged as a blank, it is not used for blank
+# subtraction, and under qualified release its failures would be excused as a
+# matrix effect instead of holding the batch.
+#
+# Order matters twice over: LFSMD before LFSM (the longer token contains the
+# shorter), and both before Dup — a plain sample duplicate used to be swallowed
+# by a bare "DUP" substring test and reported as a matrix-spike duplicate, which
+# is a different QC type with different acceptance criteria.
+_ROLE_PATTERNS = [
+    # "LFSM Mid Duplicate" is the real convention — the Dup marker can sit any
+    # distance after the LFSM token, so this cannot be an adjacency test.
+    ("LFSMD", re.compile(r"(?i)\bLFSMD\b|\bLFSM\b.*\bDup")),
+    ("LFSM",  re.compile(r"(?i)\bLFSM\b")),
+    ("MxB",   re.compile(r"(?i)\bMxB\b|\bmatrix\s+blank\b")),
+    ("LRB",   re.compile(r"(?i)\bLRB\b|\b(?:lab(?:oratory)?\s+)?reagent\s+blank\b")),
+    ("CCB",   re.compile(r"(?i)\bCCB\b|\bcontinuing\s+calibration\s+blank\b")),
+    ("LFB",   re.compile(r"(?i)\bLFB\b|\bLCS\b|\b(?:lab(?:oratory)?\s+)?"
+                         r"(?:fortified|control)\s+(?:blank|sample)\b")),
+    ("MB",    re.compile(r"(?i)\bMB\b|\bmethod\s+blank\b")),
+    ("CCV",   re.compile(r"(?i)\bCCV\b")),
+    ("ICV",   re.compile(r"(?i)\bICV\b")),
+    ("CAL",   re.compile(r"(?i)\bCAL\b|-CAL-")),
+    ("Dup",   re.compile(r"(?i)\bDup\.?\b|\bduplicate\b")),
+]
+
+
+def _classify(name):
+    """(role, rule) for an injection name. rule is "" when nothing matched.
+
+    A client sample has NO positive marker — every real one falls through here.
+    That is why the fallback is "Sample" and not something stricter: making the
+    fallback strict would stop reporting every genuine sample. The safety comes
+    from recognising control material exhaustively above, and from naming the
+    injections that reached the fallback without matching a SENAITE sample.
+    """
+    for role, pattern in _ROLE_PATTERNS:
+        if pattern.search(name or ""):
+            return role, role
+    return "Sample", ""
+
+
+def classification_rule(name, dilutions=None):
+    """Which rule classified this injection, or "" if it fell through.
+
+    Lets a caller tell a POSITIVELY identified injection from one that merely
+    defaulted — the difference between "this is a sample" and "nothing here
+    looked like anything".
+    """
+    if dilutions and name in dilutions:
+        return "Dilution"
+    return _classify(name)[1]
 
 
 # ── Group rows by injection ───────────────────────────────────────────────────

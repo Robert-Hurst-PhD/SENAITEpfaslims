@@ -123,15 +123,20 @@ def _qc_rows(batch) -> list:
 
     # Method blank — the measured concentration IS the result being judged
     flagged = {(f.injection_name, f.analyte) for f in (batch.qc_flags or [])}
+    # EVERY blank is checked for contamination, not only the method blank. A
+    # matrix blank or reagent blank above the reporting limit is the same
+    # finding and was previously never judged at all — those roles did not
+    # exist, so they classified as client samples.
     for r in (batch.injections or []):
-        if classify_injection(r.injection_name, dilutions) != "MB":
+        blank_role = classify_injection(r.injection_name, dilutions)
+        if blank_role not in ("MB", "MxB", "LRB", "CCB"):
             continue
         if r.compound_type and r.compound_type != "Analyte":
             continue
         conc = reported_conc(r)
         over = (conc is not None and r.reporting_limit is not None
                 and conc >= r.reporting_limit)
-        rows.append(dict(common, analyte=r.compound_name, qc_type="MB",
+        rows.append(dict(common, analyte=r.compound_name, qc_type=blank_role,
                          qc_level="", value=conc, units="ng/mL",
                          flag=("over reporting limit" if over else ""),
                          passed=0 if over else 1))
