@@ -502,6 +502,48 @@ def run_pipeline(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # ── Run parameters from the extraction sidecar ───────────────────────────
+    #
+    # The sidecar has always carried batch_id, analyst and matrix — but it was
+    # read at step 6, AFTER the import, the corrections, the QC engine and the
+    # summary had all run without them. The watcher passes none of these, so
+    # every automated run silently produced results with no matrix factor, no
+    # salt correction, no dilution handling, no spike evaluation and no unit,
+    # under a batch_id Data Review could not join. Everything validated on this
+    # project used manual invocation with the arguments supplied by hand.
+    #
+    # An EXPLICIT argument always wins: the sidecar fills gaps, it does not
+    # override a caller who knows better.
+    sidecar = {}
+    if extraction_log_path and Path(extraction_log_path).exists():
+        import json as _json
+        try:
+            sidecar = _json.loads(Path(extraction_log_path).read_text()) or {}
+        except (ValueError, OSError) as exc:
+            logger.error("extraction sidecar %s is unreadable (%s); the run "
+                         "continues with whatever arguments were passed",
+                         extraction_log_path, exc)
+            sidecar = {}
+    if sidecar:
+        batch_id = batch_id or sidecar.get("batch_id") or None
+        analyst = analyst or sidecar.get("analyst") or ""
+        matrix = matrix or sidecar.get("matrix") or ""
+        method_id = method_id or sidecar.get("method_id") or ""
+        client_uid = client_uid or sidecar.get("client_uid") or ""
+        senaite_batch_id = (senaite_batch_id
+                            or sidecar.get("senaite_batch_id") or "")
+        logger.info("Sidecar %s supplied: batch_id=%s method=%s matrix=%s "
+                    "senaite_batch_id=%s",
+                    Path(extraction_log_path).name, batch_id or "-",
+                    method_id or "-", matrix or "-", senaite_batch_id or "-")
+    elif not method_id or not matrix:
+        logger.warning(
+            "No method_id/matrix supplied and no extraction sidecar found for "
+            "%s. Results will stay on the extract basis with no salt or matrix "
+            "correction, and LFSM/LFSMD cannot be evaluated. Provide a "
+            "<stem>_extraction.json sidecar, or call run_pipeline with the "
+            "arguments.", csv_path.name)
+
     # 1. Import — resolve column-mapping profile from Import Studio REST bridge
     #    then load the CSV using that profile.  Strict mode: if SENAITE is
     #    offline or no profile is saved, refuse with an informative error.
@@ -674,11 +716,12 @@ def run_pipeline(
 
     # 6. Extraction log
     ext_log = None
-    if extraction_log_path and Path(extraction_log_path).exists():
-        import json
-        data = json.loads(Path(extraction_log_path).read_text())
-        ext_log = ExtractionLog(data["batch_id"], data["analyst"],
-                                data["matrix"])
+    if sidecar:
+        # Already parsed above — read once, not twice.
+        data = sidecar
+        ext_log = ExtractionLog(data.get("batch_id") or batch.batch_id,
+                                data.get("analyst") or analyst,
+                                data.get("matrix") or matrix)
         ext_log.steps = data.get("steps", [])
         ext_log.reagent_scans = data.get("reagent_scans", [])
         ext_log.signoffs = data.get("signoffs", [])
@@ -808,11 +851,23 @@ def start_watcher(
             seen.add(p.name)
             logger.info("New instrument file: %s", p.name)
 
+            # The sidecar carries the run parameters, so look for it beside
+            # the CSV as well as in a configured directory — a generator or an
+            # instrument PC can then drop both files together.
             ext_log = None
+            candidates = [p.with_name(f"{p.stem}_extraction.json")]
             if extraction_log_dir:
-                candidate = Path(extraction_log_dir) / f"{p.stem}_extraction.json"
+                candidates.insert(
+                    0, Path(extraction_log_dir) / f"{p.stem}_extraction.json")
+            for candidate in candidates:
                 if candidate.exists():
                     ext_log = candidate
+                    break
+            if ext_log is None:
+                logger.warning(
+                    "%s has no %s_extraction.json sidecar — the run will have "
+                    "no method, matrix, batch id or extraction pedigree.",
+                    p.name, p.stem)
 
             try:
                 run_pipeline(p, output_dir=output_dir, senaite=senaite,

@@ -4589,3 +4589,30 @@ outside `REPORTED_ROLES`, so blanks stop appearing as reportable rows.
 
 Regression: the real run is byte-identical — 582 flags, same breakdown, 224/224
 pushed, pedigree and dilutions intact.
+
+## 2026-08-05 — Phase 3: the production path now matches the tested one
+
+`start_watcher` called `run_pipeline(csv, output_dir, senaite,
+extraction_log_path)` and nothing else. Every file processed automatically got
+no matrix factor, no reporting unit, no salt correction, no dilution map, no
+extraction pedigree — so LFSM/LFSMD could not be evaluated — and a `batch_id`
+defaulted from the filename that Data Review cannot join. **Every validation on
+this project had used manual invocation with the arguments supplied by hand, so
+the path a lab actually uses was never the path that was tested.**
+
+The sidecar the watcher already looked for carried `batch_id`, `analyst` and
+`matrix` all along. It was read at **step 6** — after the import, the
+corrections, the QC engine and the summary had already run without them. It is
+now read first, extended with `method_id` and `senaite_batch_id`, and an
+explicit argument always wins so the sidecar fills gaps rather than overriding a
+caller. The watcher also looks for it beside the CSV, so a generator or an
+instrument PC can drop both files together, and warns when a file arrives
+without one.
+
+Verified two ways. Sidecar-driven and argument-driven runs of the same file
+produce an **identical summary digest** (940a8ccaf436c051), same batch id,
+same 224 rows, same 509 flags, same 2 dilutions and 2 spikes. And a real file
+dropped into the watched directory was picked up by the running watcher and
+logged the salt correction, the Animal Feed matrix factor, both spikes, both
+dilutions and **224 of 224 results pushed** — none of which it would have done
+the day before.
