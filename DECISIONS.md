@@ -4686,3 +4686,36 @@ Verified live: 45 analyses carry `QC: M` (appended to any existing remark), the
 CoA resolves one qualification group naming five native analytes, and the gate
 reports *"released with 26 qualified result(s) [M] — the certificate carries the
 corresponding statement"*.
+
+## 2026-08-06 — Phases 5–8: synthetic data, fault injection, gap register
+
+`tools/generate_synthetic_runs.py` builds a run for each of the 18 method ×
+matrix combinations. It reads matrices and units from `sample_types.csv`,
+ladders from `methods.csv`, and the reportable panel from
+`analyte_matrix_inclusion` rather than the flat master set — FDA × Eggs comes
+out at **31** analytes, not 32, because PFODA is excluded there. Each run ships
+a manifest naming the deviations injected and what the system must do about
+each.
+
+`tests/test_fault_injection.py` asserts the flags raised equal that manifest, in
+both directions. **All 18 clean runs raise zero flags**, and all eight
+deviations are detected — CCV, calibration r², surrogate, LFSM, LFSMD RPD, ion
+ratio and S/N as flags, and a contaminated blank as a failing QC *result*, which
+is the mechanism that check actually uses. Without the zero-false-positive
+baseline the detection results would mean nothing.
+
+**Two fixture bugs had to be fixed first, and both would have read as system
+defects.** A random retention time per ROW made every injection disagree with
+itself and manufactured ~475 RT flags per run — a fixture that produces its own
+false positives cannot prove their absence. And emitting SENAITE keywords
+(`M2-4:2FTS`) where an instrument emits display names (`13C2,D4-4:2FTS`) gave
+**zero overlap** with the engine's IS list, so an injected surrogate failure
+raised nothing at all. That is the same keyword/display duality that has bitten
+this codebase repeatedly, and it is now resolved once in the generator.
+
+**EPA 537.1 and EPA 1633A have processed a run for the first time.**
+
+Running all 18 also produced the configuration picture: **only 1 of 18
+combinations is fully configured**. 13 have no matrix factor, so results stay on
+the extract basis; 17 have no spike level, so LFSM cannot be evaluated. Recorded
+in `GAPS.md` with the rest of the register.

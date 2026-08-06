@@ -35,7 +35,7 @@ An editor writes it and reads it back; nothing downstream consumes it. Looks ali
 
 None.
 
-## Hardcoded lab values (95)
+## Hardcoded lab values (96)
 
 | location | kind | line |
 |---|---|---|
@@ -55,7 +55,8 @@ None.
 | `pfas_pipeline/method_profiles.py:770` | lab table in code | `_TIER_STRUCTURAL_KEYS = frozenset([` |
 | `pfas_pipeline/method_profiles.py:1079` | lab table in code | `_PROFILES = {` |
 | `pfas_pipeline/method_profiles.py:1086` | lab table in code | `_ALIASES = {` |
-| `pfas_pipeline/models.py:318` | lab table in code | `BATCH_QC_REQUIREMENTS = [` |
+| `pfas_pipeline/models.py:326` | lab table in code | `BATCH_QC_REQUIREMENTS = [` |
+| `pfas_pipeline/run_queue.py:577` | lab table in code | `_CHECK_KINDS = {` |
 | `pfas_pipeline/vendor_profiles.py:25` | lab table in code | `WATERS_MASSLYNX = {` |
 | `pfas_pipeline/vendor_profiles.py:55` | lab table in code | `AGILENT_MASSHUNTER = {` |
 | `pfas_pipeline/vendor_profiles.py:86` | lab table in code | `SCIEX_OS = {` |
@@ -78,9 +79,9 @@ None.
 | `src/senaite/pfas/egad_builder.py:71` | lab table in code | `_QC_REQUIRED = frozenset([` |
 | `src/senaite/pfas/egad_store.py:40` | lab table in code | `DEFAULT_LAB = {` |
 | `src/senaite/pfas/egad_store.py:53` | lab table in code | `DEFAULT_METHOD_EGAD = {` |
-| `src/senaite/pfas/egad_store.py:159` | lab table in code | `_DEFAULT_MATRIX_MAP = {` |
-| `src/senaite/pfas/egad_store.py:367` | lab table in code | `DEFAULT_QUALIFIER_MAP = [` |
-| `src/senaite/pfas/egad_store.py:384` | lab table in code | `DEFAULT_QC_TYPE_MAP = [` |
+| `src/senaite/pfas/egad_store.py:182` | lab table in code | `_DEFAULT_MATRIX_MAP = {` |
+| `src/senaite/pfas/egad_store.py:390` | lab table in code | `DEFAULT_QUALIFIER_MAP = [` |
+| `src/senaite/pfas/egad_store.py:414` | lab table in code | `DEFAULT_QC_TYPE_MAP = [` |
 | `src/senaite/pfas/facility_qc.py:32` | lab table in code | `UNIT_TYPES = [` |
 | `src/senaite/pfas/facility_qc.py:60` | lab table in code | `BALANCE_DEFAULTS = {` |
 | `src/senaite/pfas/facility_qc.py:79` | lab table in code | `WATER_QC_DEFAULTS = {` |
