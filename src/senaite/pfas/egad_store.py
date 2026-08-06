@@ -127,10 +127,33 @@ _EGAD_ANALYTE_OVERLAY = {
 
 
 def _build_default_analyte_cas():
-    """Layer the EGAD overlay over the single-source master CAS (undashed),
-    preserving the {keyword: {cas_no, parameter_name, override_note}} shape."""
+    """CAS for EVERY analyte the master table knows, with the EGAD overlay
+    applied on top.
+
+    This used to iterate the OVERLAY, so the overlay was the source rather than
+    an override: an analyte absent from its 34 FDA-era entries got no CAS entry
+    at all, `egad_builder` then read `cas_no = ""`, and `egad_edd` treated that
+    as BLOCKING. **No EPA 1633A or EPA 537.1 batch could produce a submittable
+    EDD** — 13 of 40 and 2 of 18 analytes respectively — while every one of
+    those 15 had a valid CAS sitting in `analyte_reference.NATIVE_ANALYTES` the
+    whole time.
+
+    The EGAD PARAMETER_NAME is deliberately NOT invented for analytes the
+    overlay does not cover. `egad_builder` already falls back to the analyte
+    title, and guessing Maine's exact parameter spelling would be fabricating a
+    regulatory identifier (§8). Those entries carry a verify note instead, so
+    the gap is visible rather than silently wrong.
+    """
     master = _get_cas_by_keyword(dashed=False)   # {keyword: undashed CAS}
     out = {}
+    for kw, cas in master.items():
+        out[kw] = {
+            "cas_no": cas or "",
+            "parameter_name": "",     # builder falls back to the analyte title
+            "override_note": ("VERIFY the EGAD PARAMETER_NAME for this analyte "
+                              "against the Maine EGAD parameter list before "
+                              "submission."),
+        }
     for kw, ov in _EGAD_ANALYTE_OVERLAY.items():
         cas = ov.get("cas_override") or master.get(kw, "")
         out[kw] = {

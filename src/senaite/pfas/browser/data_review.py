@@ -463,6 +463,68 @@ class PFASDataReviewView(BrowserView):
             logger.error("_compute_traceability_status: %s", exc)
             return False
 
+    # ── Qualified release ────────────────────────────────────────────────────
+    #
+    # A failing QC result may still be released, provided the certificate says
+    # so (ISO 17025 §7.8.4). Whether it may is not a judgement made here: the
+    # QAO owns the library, and `qc_qualification.disposition_for` decides,
+    # with the rule that a failure on LABORATORY CONTROL MATERIAL always
+    # blocks whatever the library says — there is no client matrix in a blank
+    # to attribute it to.
+
+    #: qc_results.qc_type -> the failure type the qualifier library is keyed on
+    _QC_TYPE_TO_FAILURE = {
+        "LFSM": "lfsm", "LFSMD": "lfsmd", "Dup": "duplicate",
+        "MB": "blank", "MxB": "blank", "LRB": "blank", "CCB": "blank",
+        "LFB": "blank", "LCS": "blank",
+        "CCV": "ccv", "Calibration": "calibration", "RT": "rt",
+        "IS": "is_response", "IS Response": "is_response",
+    }
+
+    #: qc_types that ARE laboratory control material. Everything else is
+    #: client-derived (a sample, or a spike/duplicate prepared from one).
+    _CONTROL_QC_TYPES = frozenset([
+        "MB", "MxB", "LRB", "CCB", "LFB", "LCS", "CCV", "ICV", "CAL",
+        "Calibration",
+    ])
+
+    def _qualify_failure(self, qc_type, analyte):
+        """The qualifier for a failing QC result, or None when it must hold.
+
+        Returns the dict `qc_qualification.qualifier_for` produces (which may
+        carry `needs_config`), or None when the disposition is BLOCK.
+        """
+        try:
+            from senaite.pfas.qc_qualification import qualifier_for, classify_failure
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("qualifier library unavailable: %s", exc)
+            return None
+        failure = self._QC_TYPE_TO_FAILURE.get(qc_type)
+        if failure == "is_response":
+            # A qc_type of "IS" covers BOTH surrogates and the injection
+            # standard, and they need opposite causes: a surrogate travels with
+            # the sample so its recovery reflects the matrix, while the
+            # injection standard is added at reconstitution so its response
+            # reflects the instrument. The compound's ROLE in the method
+            # decides. classify_failure cannot help here — it matches on a
+            # source string, and "IS" on its own matches nothing.
+            from senaite.pfas.qc_qualification import _labelled_role
+            role_kind = _labelled_role(analyte or u"",
+                                       self._method_id_for_qualification())
+            failure = role_kind or failure
+        if not failure:
+            return None
+        role = qc_type if qc_type in self._CONTROL_QC_TYPES else u""
+        try:
+            return qualifier_for(self._portal(), failure, role)
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("qualifier_for(%s, %s): %s", failure, role, exc)
+            return None
+
+    def _method_id_for_qualification(self):
+        profile = self._method_profile() or {}
+        return profile.get("method_id") or u""
+
     def _compute_qc_status(self, ws):
         try:
             summary = self._get_qc_summary(ws)
@@ -512,11 +574,23 @@ class PFASDataReviewView(BrowserView):
     def _auto_verdict(self, ws, key, item):
         """(verdict, reason) for an automatic gate.
 
-        verdict is "pass", "fail" or "blocked" — blocked meaning the check
-        could not run, which is not the same as failing it and must not be
-        presented as though it were.
+        verdict is "pass", "qualified", "fail" or "blocked".
+
+        "blocked" means the check could not run, which is not the same as
+        failing it. "qualified" means it passed WITH released-but-failing
+        results carrying a certificate qualifier — a pass that has something to
+        say, and saying it is the whole point of a qualified release.
         """
         if item.get("checked"):
+            if key == "qc_summary":
+                summary = self._get_qc_summary(ws) or {}
+                applied = summary.get("qualifiers") or []
+                if applied:
+                    codes = sorted({(q.get("code") or "?") for q in applied})
+                    return "qualified", (
+                        u"released with {0} qualified result(s) [{1}] — the "
+                        u"certificate carries the corresponding statement"
+                        .format(len(applied), u", ".join(codes)))
             return "pass", u""
         if key == "traceability":
             tree = self._build_traceability_tree(ws) or {}
@@ -538,6 +612,7 @@ class PFASDataReviewView(BrowserView):
                         summary.get("error")))
             failing = []
             unevaluated = []
+            qualified = []
             for row in (summary.get("rows") or []):
                 for qc_type, cell in (row.get("cells") or {}).items():
                     if not cell:
@@ -546,7 +621,19 @@ class PFASDataReviewView(BrowserView):
                         failing.append(qc_type)
                     elif cell.get("status") == "unevaluated":
                         unevaluated.append(qc_type)
+                    elif cell.get("status") == "qualified":
+                        qualified.append(qc_type)
             parts = []
+            # A qualified release is a PASS with something to say, not a
+            # failure. It must still be stated: releasing a failing result
+            # without the certificate saying so is the thing §7.8.4 forbids.
+            if qualified and not failing:
+                summary_q = summary.get("qualifiers") or []
+                codes = sorted({(q.get("code") or "?") for q in summary_q})
+                parts.append(
+                    u"released with {0} qualified result(s) [{1}] across "
+                    u"{2}".format(len(summary_q), u", ".join(codes),
+                                  u", ".join(sorted(set(qualified)))))
             if failing:
                 parts.append(u"{0} failing QC result(s) across {1}".format(
                     len(failing), u", ".join(sorted(set(failing)))))
@@ -576,6 +663,8 @@ class PFASDataReviewView(BrowserView):
                 return "fail", u"; ".join(parts)
             if unevaluated or missing:
                 return "blocked", u"; ".join(parts)
+            if qualified:
+                return "qualified", u"; ".join(parts)
             return "fail", u""
         return "pending", u""
 
@@ -961,6 +1050,11 @@ class PFASDataReviewView(BrowserView):
             by_analyte[analyte][qc_type].append(r)
 
         overall_pass = True
+        # Qualifiers applied to released-but-failing results, and prompts for
+        # failures the QAO has not mapped. Both are surfaced: a qualified
+        # release must be visible, and an unmapped one must be actionable.
+        qualifiers = []
+        unmapped = []
         rows = []
         for analyte in sorted(by_analyte.keys()):
             cells = {}
@@ -991,8 +1085,28 @@ class PFASDataReviewView(BrowserView):
                         cell_status = "unevaluated"
                         overall_pass = False
                     elif not passed:
-                        cell_status = "fail"
-                        overall_pass = False
+                        # A failure the QAO's library says may be released is
+                        # QUALIFIED, not a block: the result goes out with a
+                        # code and a statement on the certificate. Control
+                        # material can never reach this branch as qualifiable —
+                        # disposition_for blocks it regardless of the library.
+                        qual = self._qualify_failure(qc_type, rec.get("analyte"))
+                        if qual and not qual.get("needs_config"):
+                            if cell_status in ("ok", "warn"):
+                                cell_status = "qualified"
+                            qualifiers.append({
+                                "qc_type": qc_type,
+                                "analyte": rec.get("analyte") or u"",
+                                "code": qual.get("code") or u"",
+                                "statement": qual.get("statement") or u"",
+                            })
+                        elif qual and qual.get("needs_config"):
+                            cell_status = "unevaluated"
+                            overall_pass = False
+                            unmapped.append(qual.get("prompt") or u"")
+                        else:
+                            cell_status = "fail"
+                            overall_pass = False
                     elif rec.get("result_status") == "flagged_reanalysis":
                         if cell_status == "ok":
                             cell_status = "warn"
@@ -1018,6 +1132,8 @@ class PFASDataReviewView(BrowserView):
             "qc_types":    qc_type_set,
             "rows":        rows,
             "overall_pass": overall_pass,
+            "qualifiers":  qualifiers,
+            "unmapped":    unmapped,
             "result_count": sum(len(by_analyte[a].get(qt, []) or []) for a in by_analyte for qt in qc_type_set),
             "run_date":    run_date,
         }

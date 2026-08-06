@@ -4616,3 +4616,47 @@ dropped into the watched directory was picked up by the running watcher and
 logged the salt correction, the Animal Feed matrix factor, both spikes, both
 dilutions and **224 of 224 results pushed** — none of which it would have done
 the day before.
+
+## 2026-08-06 — Phase 4 (part): reporting path and qualified release wired
+
+**A correction to a finding I reported.** I said "every publish silently stores
+no reviewer snapshot" because `QCReviewReport.pt` calls a `render_stamp` that did
+not exist. Testing the committed state proved the snapshot worked all along —
+identical 934,535 bytes before and after. `snapshot_for_publication` renders the
+BODY view (`@@pfas-qc-review-report`), which never touches `render_stamp`. The
+real defect is narrower: the **impress-rendered reviewer PDF** could not render.
+`render_stamp` now exists (one definition, §6C — the CoA's inline TAL equivalent
+should call it too), and the publication entry records `qc_snapshot` so a
+missing snapshot is visible rather than assumed.
+
+**E2 — no EPA method could produce a submittable EDD.**
+`_build_default_analyte_cas` iterated the EGAD *overlay*, so the overlay was the
+source rather than an override: 13 of 40 EPA_1633A and 2 of 18 EPA_537_1
+analytes got no CAS entry, which `egad_edd` treats as BLOCKING — while all 15
+had a valid CAS in `analyte_reference` the whole time. The map is now built from
+the master table with the overlay applied on top: **0 BLOCKING across all three
+panels**. The EGAD PARAMETER_NAME is deliberately NOT invented for the 15;
+`egad_builder` already falls back to the analyte title, and they carry a verify
+note instead of a guessed regulatory identifier (§8).
+
+**E3 — `egad_publish` stored an unsubmittable EDD and only logged**, while the
+other two exits refuse. A file sitting on the batch reads as "the EDD is ready",
+and the one path that publishes automatically was the one making that claim
+untruthfully. It now refuses and stores nothing.
+
+**E5 — qualified release is wired into the gate.** Verified live on WS-0005:
+`qc_summary` now reports **qualified** — "released with 26 qualified result(s)
+[M] — the certificate carries the corresponding statement" — where it previously
+read a flat `fail`. And the inverse holds:
+
+| failing QC | disposition |
+|---|---|
+| LFSM, LFSMD, Dup | QUALIFY [M] / [P] |
+| surrogate `13C2,D4-4:2FTS` | QUALIFY [M] |
+| injection standard `13C4-PFOA` | **BLOCK** |
+| MB, MxB, LRB, CCV, Calibration | **BLOCK** |
+
+One subtlety cost a round trip: a qc_type of `IS` covers both surrogates and the
+injection standard, and they need opposite causes. `classify_failure` could not
+resolve it because it matches on a source string and `"IS"` alone matches
+nothing — the compound's ROLE in the method decides, via `_labelled_role`.

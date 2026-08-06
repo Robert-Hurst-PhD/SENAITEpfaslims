@@ -70,6 +70,37 @@ class PFASCoAAttestationView(BrowserView):
             pass
         return meta
 
+    def render_stamp(self, context=None):
+        """The controlled-document stamp, as markup.
+
+        QCReviewReport.pt has called this since D65 and it did not exist —
+        repo-wide grep found the call and no definition. The report therefore
+        could not render, and because BOTH the publish subscriber
+        (`controlled_publications.record_publication`) and
+        `qc_review_report.snapshot_for_publication` wrap the snapshot in a bare
+        `except` that only logs, **every publish silently stored no reviewer
+        snapshot at all.** The "freeze the reviewer report against this
+        revision" guarantee has never once happened.
+
+        The CoA inlines the same markup in TAL. This is now the one definition
+        (§6C: define UI once) and the CoA template calls it too, so the two
+        cannot drift.
+        """
+        collection = getattr(self, "collection", None)
+        if not collection and context is not None:
+            collection = [context]
+        meta = self.controlled_doc_meta(collection)
+        report_id = meta.get("report_id") or u""
+        parts = [u"Controlled documentation publication"]
+        if report_id:
+            parts.append(report_id)
+        parts.append(u"uncontrolled when printed")
+        return (
+            u'<div style="margin-top:10px; padding-top:6px; '
+            u'border-top:1px solid #ccc; font-size:10px; color:#666; '
+            u'text-align:center;">{0}</div>'
+        ).format(u" &middot; ".join(parts))
+
     # ── resolution ────────────────────────────────────────────────────────
 
     def resolve_signatories(self, collection):

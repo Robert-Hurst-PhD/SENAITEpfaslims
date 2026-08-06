@@ -85,9 +85,14 @@ def record_publication(ar):
         "amendment_reason": reason or u"",
         "reason_missing": reason_missing,
         "supersedes": prev["report_id"] if prev else None,
+        # Whether the reviewer snapshot was actually taken. Recorded, because
+        # for weeks it never was: QCReviewReport.pt called a render_stamp that
+        # did not exist, and both this handler and snapshot_for_publication
+        # caught the failure and logged it. The certificate issued fine, the
+        # log said nothing, and an auditor would have assumed a snapshot
+        # existed. A guarantee that fails silently is not a guarantee.
+        "qc_snapshot": u"pending",
     }
-    log.append(entry)
-    ann[PUBLICATION_LOG_KEY] = log
 
     # Freeze the reviewer report against this revision. Regenerating it later
     # would show the data as it is THEN; an auditor asking about a certificate
@@ -95,10 +100,15 @@ def record_publication(ar):
     try:
         from senaite.pfas.browser.qc_review_report import (
             snapshot_for_publication)
-        snapshot_for_publication(ar, revision)
+        taken = snapshot_for_publication(ar, revision)
+        entry["qc_snapshot"] = u"ok" if taken else u"failed: not stored"
     except Exception as exc:      # never break the publish transition
+        entry["qc_snapshot"] = u"failed: {0}".format(exc)
         logger.error("controlled-pub: QC review snapshot failed for %s: %s",
                      api.get_id(ar), exc)
+
+    log.append(entry)
+    ann[PUBLICATION_LOG_KEY] = log
     logger.info("controlled-pub: %s issued (rev %s%s)",
                 entry["report_id"], revision,
                 ", reason not recorded" if reason_missing else "")

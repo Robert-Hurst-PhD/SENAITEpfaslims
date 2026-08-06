@@ -158,18 +158,24 @@ def _handle_publish(ar):
                      batch_obj.getId(), exc)
         return
 
-    # Store on batch
-    _store_batch_edd(batch_obj, csv_str, filename, errors)
-
     blocking = [e for e in errors if e.get("type") == "BLOCKING"]
     if blocking:
-        logger.warning(
-            "EGAD EDD generated with %d BLOCKING errors for batch %s — "
-            "file cannot be submitted to Maine DEP until resolved. "
-            "Download from @@pfas-egad-export?batch_id=%s",
-            len(blocking), batch_obj.getId(), batch_obj.getId()
+        # Do NOT store an unsubmittable file on the batch. The other two exits
+        # refuse outright — @@pfas-egad-export returns a JSON error and
+        # edd_email declines to attach — while this one stored the bad CSV and
+        # only logged. A file sitting on the batch reads as "the EDD is ready",
+        # and the one place that publishes automatically was the one place that
+        # made that claim untruthfully.
+        _store_batch_edd(batch_obj, u"", filename, errors)
+        logger.error(
+            "EGAD EDD REFUSED for batch %s: %d BLOCKING validation error(s). "
+            "No file stored. Resolve them and regenerate from "
+            "@@pfas-egad-export?batch_id=%s. First: %s",
+            batch_obj.getId(), len(blocking), batch_obj.getId(),
+            blocking[0].get("message", "")
         )
     else:
+        _store_batch_edd(batch_obj, csv_str, filename, errors)
         logger.info(
             "EGAD EDD generated for batch %s (%s, %d errors). "
             "Download from @@pfas-egad-export?batch_id=%s",
