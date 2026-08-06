@@ -1871,8 +1871,39 @@ class PFASDataReviewView(BrowserView):
         if not self.all_items_pass():
             return self._redirect_with_msg("checklist_incomplete", "error")
         wf_tool = getToolByName(self.context, "portal_workflow")
+        # Submit the RESULTS this review just signed off, then the worksheet.
+        #
+        # The pipeline pushes results but leaves each analysis `assigned`, and
+        # the worksheet's `submit` guard only opens once its analyses are
+        # submitted. So this handler called a transition that could never fire
+        # ("No workflow provides the action"), and the release path was
+        # unreachable — which is why no sample on this system has ever reached
+        # `verified`. The checklist IS the technical review; completing it is
+        # what submits the results it reviewed.
+        #
+        # `api` is NOT a module-level name in this module; it is imported
+        # locally where needed. Reaching for a bare `api` here raises NameError
+        # at request time, not import time.
+        from bika.lims import api as _bapi
+        submitted = 0
+        for analysis in (ws.getAnalyses() or []):
+            try:
+                if _bapi.get_review_status(analysis) != "assigned":
+                    continue
+                if analysis.getResult() in (None, ""):
+                    continue
+                wf_tool.doActionFor(analysis, "submit")
+                submitted += 1
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("submit_for_review: %s could not submit: %s",
+                               getattr(analysis, "getKeyword", lambda: "?")(),
+                               exc)
+        if submitted:
+            logger.info("submit_for_review: submitted %d analysis result(s) on "
+                        "%s", submitted, ws.getId())
         try:
-            wf_tool.doActionFor(ws, "submit")
+            if _bapi.get_review_status(ws) == "open":
+                wf_tool.doActionFor(ws, "submit")
         except Exception as exc:
             logger.error("submit_for_review: %s", exc)
             return self._redirect_with_msg("workflow_error", "error")
@@ -1894,8 +1925,28 @@ class PFASDataReviewView(BrowserView):
         if self.ws_state() != "to_be_verified":
             return self._redirect_with_msg("wrong_state", "error")
         wf_tool = getToolByName(self.context, "portal_workflow")
+        # Verify the RESULTS, and the worksheet follows. `verify` is available
+        # on the analyses, not on the worksheet — the same cascade as submit.
+        # Calling it on the worksheet raised "No workflow provides the action"
+        # and the release could never complete.
+        from bika.lims import api as _bapi
+        verified = 0
+        for analysis in (ws.getAnalyses() or []):
+            try:
+                if _bapi.get_review_status(analysis) != "to_be_verified":
+                    continue
+                wf_tool.doActionFor(analysis, "verify")
+                verified += 1
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("approve_release: %s could not verify: %s",
+                               getattr(analysis, "getKeyword", lambda: "?")(),
+                               exc)
+        if verified:
+            logger.info("approve_release: verified %d analysis result(s) on %s",
+                        verified, ws.getId())
         try:
-            wf_tool.doActionFor(ws, "verify")
+            if _bapi.get_review_status(ws) == "to_be_verified":
+                wf_tool.doActionFor(ws, "verify")
         except Exception as exc:
             logger.error("approve_release: %s", exc)
             return self._redirect_with_msg("workflow_error", "error")

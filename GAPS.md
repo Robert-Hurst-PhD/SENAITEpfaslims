@@ -117,12 +117,50 @@ Also open:
 
 ---
 
-## 5. Never exercised
+## 5. First end-to-end release — what it proved and what it exposed
 
-- **CoA publication and EDD export have never completed end to end.** Blocked
-  behind the QC gate throughout; the qualified-release path now makes it
-  reachable but it has not been run.
-- **No sample has ever reached `verified`.** 8 published samples are demo data.
+On 2026-08-06 WS-0005 was driven through the full ISO 17025 §7.8.4 review and
+one sample was published. This had never happened before; two entries that
+previously sat here as "never exercised" are now closed, and running it exposed
+two defects that only a real release could reveal.
+
+**Closed:**
+
+- **A sample reached `verified` and published.** WS-0005 → `to_be_verified` →
+  `verified`, 288 analyses verified, `FEED-0002` → `published`. The 8 previously
+  published samples were demo data.
+- **The CoA renders the qualified release.** The certificate carries the QC
+  Qualifications section with code `M`, its client-facing statement, and the
+  affected native analytes (`4:2FTS, 6:2FTS, PFBA, PFHxDA, PFTeDA`) — resolved
+  through the surrogate map, so it names the natives the client sees rather than
+  the labelled compound.
+- **The controlled-publication entry is written and complete.** `FEED-0002-R1`,
+  `qc_snapshot: ok`, and `review_state: "qualified: 26 result(s) released with a
+  qualifier"` — the publication carries the state of the review that authorised
+  it.
+
+**Exposed, and open:**
+
+| # | Defect | Evidence |
+|---|---|---|
+| G1 | **The Data Review release path had never worked.** `doActionFor(ws, "submit")` failed with *"No workflow provides the '${action_id}' action"*: the pipeline pushes results without submitting them, so all 288 analyses sat in `assigned`, and the worksheet's `submit` guard only opens once its analyses are submitted. The same was true of `verify`, which is available on the analyses and not the worksheet. **Fixed** — both handlers now cascade to the analyses first. | WS-0005 reached `verified`; without the cascade no worksheet in this system could ever have been released. |
+| G2 | **The per-result qualifier codes never reach the certificate.** `_stamp_qualifier_remarks` writes `QC: M` onto each affected analysis, justified in its own docstring by *"Remarks is the one per-analysis field core already prints"*. **Core prints no such thing.** `senaite/impress/.../results.pt` has no remarks cell at all, and `remarks.pt` renders only SAMPLE-level `model.getRemarks()` — a different field from the one being stamped. 14 analyses on `FEED-0002` carry the stamp; the rendered certificate contains none of them. | Rendered twice: default options (57,345 bytes) and **with `show_remarks: true`** (57,411 bytes). `QC: M` absent from both — so this is not an option left switched off, it is an unreachable field. |
+
+G2 is the project's recurring defect shape once more: **a fact recorded
+correctly in one place and never carried to where it is used.** The blanket
+statement in the Qualifications section survives, so the client is told the
+release is qualified and which analytes are affected — but cannot see the code
+beside the number, which is what the design called for.
+
+Still never exercised:
+
+- **EGAD EDD export.** The publish subscriber is registered and fires, but exits
+  at `is_egad_enabled(client_obj)` — KCP is a food client, not a Maine state
+  agency, so no EDD is correct here. Neither the generate nor the refuse branch
+  has run from a real publish.
+- **A publish that stores a report artifact.** The transition was driven
+  directly, so no `ARReport` PDF was created for `FEED-0002-R1`. The register
+  entry therefore names a certificate that has no stored rendering.
 - `tests/` covers the pipeline well and the add-on barely: no test exercises
   `data_review`'s gates, `qc_store`, `control_chart` or `facility_qc`.
 
