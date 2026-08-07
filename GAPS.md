@@ -107,14 +107,14 @@ Also open:
 |---|---|---|
 | ~~**Holding time is a manual checkbox**~~ | `data_review.py` | **Fixed 2026-08-06** — see §7. |
 | Publication is not gated on the review | no guard registered | A sample can publish while its worksheet checklist fails. **Decided: warn and record**, not block — the entry now carries `review_state`. |
-| `qc/control_chart.py` is entirely dead | ~700 lines, zero callers | Westgard rules, control limits, chart build, PNG render. `browser/controlchart.py` reimplements it inline. Neither is tested. |
-| `calculate_mdl`, `single_transition_confirm_needed` | `qc_engine.py` | Zero call sites; the latter's docstring claims the run queue uses it. |
-| `lfsm_check` / `lfsmd_check` | `qc_engine.py` | Re-implemented inline in `run_queue`. |
+| ~~`qc/control_chart.py` is entirely dead~~ | — | **Removed 2026-08-07.** 584 lines, zero importers; `browser/controlchart.py` implements the same six Westgard rules (1-3S, 1-2S, 2-2S, R-4S, 4-1S, 10X) inline. Only `render_to_png_bytes` was unique, and it had no caller either. Control-chart page still renders. |
+| `calculate_mdl`, `single_transition_confirm_needed` | `qc_engine.py` | Still zero call sites — **kept deliberately, now labelled NOT WIRED.** `single_transition_confirm_needed` implements FDA §10.2(4) (PFBA/PFPeA positives need LC-HRMS confirmation) and its docstring falsely claimed the run queue used it; that claim is corrected. Deleting either would erase the only record that a real obligation is unmet. **See §12.** |
+| ~~`lfsm_check` / `lfsmd_check`~~ | — | **Removed 2026-08-07** as dead twins of the inline `run_queue` implementation (§1.3: a merged twin must be removed, not left). |
 | `QCResultStore.add_results_bulk` / `add_result` / `flag_for_reanalysis` / `void_batch` | `qc/store.py` | Zero external callers; the Py3 pipeline writes raw SQL. So `voided`, `flagged_reanalysis` and `superseded` are read by Data Review and never produced. |
 | `sn_min` toggle defaults **OFF** | `qc/rules.py:90,95` | Signal-to-noise is not evaluated for FDA_32PFAS or EPA_537_1. |
 | `ccv_frequency`, `mdl_check` toggles | `RULE_LIBRARY` | Honoured nowhere. |
 | ~~`lfsm_recovery`, `lfsmd_rpd` toggles~~ | `run_queue` | **Fixed 2026-08-06** — they now gate on the method profile's `qc_acceptance[QC].enabled`, the producer that already existed. See §8. |
-| `qq_ratio_*_pct` (three knobs) | `RULE_LIBRARY` | `qual_quan_check` reads one flat value. `sn_quan_min` is mapped onto `sn_min`, substituting the quantitation threshold for the detection one. |
+| `qq_ratio_*_pct` (three knobs) | `RULE_LIBRARY` | `qual_quan_check` still reads one flat value — the per-group knobs (isotopically matched / key / non-iso) are not honoured. The `sn_quan_min` half of this entry is **fixed, see §11**, and the register's framing of it was wrong. |
 | ~~Facility QC: eyewash dashboard reads the wrong table~~ | `facility_qc.py` | **Fixed 2026-08-07 — see §10.** The "waste units always show green" half of this entry was **wrong**: there is no `waste` unit type, so that branch was unreachable. The real catch-all defect was different and is also fixed. |
 | 96 hardcoded lab values remain | mostly module tables | None decides a reported result. |
 
@@ -481,3 +481,53 @@ them.
 `PFAS_FACILITY_QC_DB` and never touches the live one; all seven facility pages
 were confirmed rendering (HTTP 200) and the live database confirmed still empty
 afterwards.
+
+---
+
+## 11. Signal-to-noise — two limits, two questions, 2026-08-07
+
+`sn_quan_min` is the minimum S/N to **quantitate**: below it the peak is real
+but the number is an estimate, which is exactly what the `sn` failure type
+means — code **J**, statement *"the affected results are estimated"*.
+`sn_confirm_min` is the minimum S/N on the **confirmation (qualifier) ion**:
+below it the identification is not confirmed, **N.C.**
+
+`constants.py` mapped only the first, into a key named `sn_min`, and **both**
+branches of `signal_to_noise_check` compared against it — reporting `(N.C.)`
+for both. Two consequences:
+
+- a low quantitation ion was labelled *"not confirmed"* while the taxonomy, the
+  qualifier code and the certificate statement all say *"estimated"*;
+- the qualifier ion was judged against the **quantitation** limit. On EPA
+  1633A — the one method with this check enabled — that is 3.0 against a
+  configured confirmation limit of **1.0**, so qualifier ions between 1 and 3
+  were failed by a criterion the method does not apply to them.
+  `sn_confirm_min` was configured and read by nothing.
+
+Both limits now reach the engine under their own names and each branch uses its
+own. An **unconfigured `sn_confirm_min` means the qualifier ion is not judged**
+— it does not borrow the other threshold.
+
+**The register's framing of this was wrong** and is corrected here. It said
+`sn_quan_min` was "substituting the quantitation threshold for the detection
+one", which assumed the check was a detection check. The failure taxonomy says
+otherwise: the `sn` check yields J, so the quantitation limit was the right
+source for that branch all along. The real defect was the qualifier-ion branch
+sharing it, and the verdict string contradicting the code.
+
+---
+
+## 12. Regulatory obligations implemented but never wired
+
+Two functions in `qc_engine` are correct and have **zero call sites**. Both are
+kept rather than deleted, and now say so in their own docstrings — deleting
+them would erase the only record that a real obligation is unmet.
+
+| Function | Obligation | Why not wired |
+|---|---|---|
+| `single_transition_confirm_needed` | **FDA §10.2(4)** — a PFBA or PFPeA positive is a single-MS/MS-transition detection and must be confirmed by LC-HRMS (%diff < 20%). | Returns a review-prompt string. Its docstring **falsely claimed "used by the run queue"**; nothing calls it, so the confirmation is never prompted for. Wiring it means adding a review-queue prompt — new behaviour, needing verification against a run with PFBA/PFPeA positives. |
+| `calculate_mdl` | MDL per 40 CFR 136 App B. | An MDL comes from a **periodic study over ≥7 replicates**, not from one run, and no such feature exists. The `mdl_check` toggle is declared UI-only for the same reason. The arithmetic is correct and kept for when that study is built. |
+
+This is the same shape as the holding time was before §7: a requirement the
+system can state but does not enforce. The difference is that these two are now
+labelled at the point a maintainer will read them.

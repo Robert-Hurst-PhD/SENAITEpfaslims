@@ -5,7 +5,9 @@ Sheet 1: IS Raw          → is_raw_check()
 Sheet 2: RT Deviation    → rt_deviation_check()
 Sheet 3: Qual-Quan Ratio → qual_quan_check()
 Sheet 4: Calibration %   → calibration_check()
-Sheet 5: LFSM & LFSMD   → lfsm_check(), lfsmd_check()
+Sheet 5: LFSM & LFSMD   → evaluated inline in run_queue.auto_evaluate()
+                          (the lfsm_check/lfsmd_check twins here were dead
+                           and were removed 2026-08-07)
 Sheet 6: QC Log          → consolidated from above
 
 All formulas are translated from the Excel FILTER/CHOOSECOLS patterns observed
@@ -460,120 +462,6 @@ def calibration_check(
 
     return results
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Sheet 5 — LFSM & LFSMD   (AppendLFSM_LFSMD_ToData VBA macro)
-# Recovery = (fortified - unfortified) / spike × 100
-# RPD = |A - B| / ((A+B)/2) × 100
-# ─────────────────────────────────────────────────────────────────────────────
-
-def lfsm_check(
-    analyte: str,
-    lfsm_injection: str,
-    parent_injection: str,
-    spike_value_ppt: float,
-    rows: list[InstrumentRow],
-) -> LFSMResult | None:
-    """
-    Calculate LFSM % recovery for one analyte.
-    lfsm_injection:   the LFSM injection (fortified)
-    parent_injection: the matched parent (unfortified)
-    spike_value_ppt:  spike added in ppt (from user input)
-    """
-    def get_conc(inj_name: str) -> float | None:
-        for r in rows:
-            if r.injection_name == inj_name and r.compound_name == analyte:
-                return reported_conc(r)
-        return None
-
-    fortified   = get_conc(lfsm_injection)
-    unfortified = get_conc(parent_injection)
-
-    if fortified is None or spike_value_ppt == 0:
-        return None
-
-    unfort = unfortified or 0.0
-    recovery_pct = (fortified - unfort) / spike_value_ppt * 100.0
-
-    flag = None
-    min_r, max_r = CRITERIA["recovery_min_pct"], CRITERIA["recovery_max_pct"]
-    if not (min_r <= recovery_pct <= max_r):
-        flag = QCFlag(
-            source="LFSM & LFSMD",
-                check_kind=KIND_LFSM,
-            analyte=analyte,
-            injection_name=lfsm_injection,
-            value=f"{recovery_pct:.1f}%",
-            issue="(REC)",
-        )
-
-    return LFSMResult(
-        analyte=analyte,
-        lfsm_injection=lfsm_injection,
-        parent_injection=parent_injection,
-        spike_value_ppt=spike_value_ppt,
-        fortified_conc=fortified,
-        unfortified_conc=unfort,
-        recovery_pct=recovery_pct,
-        flag=flag,
-    )
-
-
-def lfsmd_check(
-    analyte: str,
-    lfsm_injection: str,
-    lfsmd_injection: str,
-    lfsm_result: LFSMResult,
-    rows: list[InstrumentRow],
-) -> LFSMDResult | None:
-    """
-    Calculate RPD between LFSM and its duplicate (LFSMD).
-    """
-    def get_conc(inj_name: str) -> float | None:
-        for r in rows:
-            if r.injection_name == inj_name and r.compound_name == analyte:
-                return reported_conc(r)
-        return None
-
-    fortified_dup = get_conc(lfsmd_injection)
-    unfort = lfsm_result.unfortified_conc
-
-    if fortified_dup is None:
-        return None
-
-    rec_dup = (fortified_dup - unfort) / lfsm_result.spike_value_ppt * 100.0
-    rec_lfsm = lfsm_result.recovery_pct
-
-    mean_rec = (rec_lfsm + rec_dup) / 2.0
-    rpd_pct = abs(rec_lfsm - rec_dup) / mean_rec * 100.0 if mean_rec else 0.0
-
-    flag = None
-    if rpd_pct > CRITERIA["rpd_max_pct"]:
-        flag = QCFlag(
-            source="LFSM & LFSMD",
-                check_kind=KIND_LFSM,
-            analyte=analyte,
-            injection_name=lfsmd_injection,
-            value=f"RPD={rpd_pct:.1f}%",
-            issue="(RPD)",
-        )
-
-    return LFSMDResult(
-        analyte=analyte,
-        lfsm_injection=lfsm_injection,
-        lfsmd_injection=lfsmd_injection,
-        recovery_lfsm=rec_lfsm,
-        recovery_lfsmd=rec_dup,
-        rpd_pct=rpd_pct,
-        flag=flag,
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MDL calculation  (CalculateMDL VBA macro)
-# Standard MDL = t(n-1, 0.99) × stdev
-# MDLb = MDL using blank-subtracted values
-# Requires ≥ 7 replicates
 # ─────────────────────────────────────────────────────────────────────────────
 
 def calculate_mdl(
@@ -586,6 +474,12 @@ def calculate_mdl(
     Calculate Method Detection Limit per EPA/FDA guidance.
     replicate_concs: list of spike replicate concentrations (n ≥ 7).
     blank_values:    corresponding blank concentrations (may contain None = ND).
+
+    NOT WIRED -- no caller. An MDL is determined by a PERIODIC study over >=7
+    replicates, not per run, and no such feature exists; the `mdl_check` rule
+    toggle is declared UI-only in LIBRARY_KEY_TO_ENGINE_CHECKS for the same
+    reason. The arithmetic (40 CFR 136 App B) is correct and is kept for
+    whenever that study is built. See GAPS.md.
     """
     n = len(replicate_concs)
     min_n = CRITERIA["mdl_min_replicates"]
@@ -630,24 +524,45 @@ def calculate_mdl(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def signal_to_noise_check(rows: list[InstrumentRow], analyte: str) -> list[QCFlag]:
-    """Flag any injection where S/N < 3 (or qual ion S/N < 3) as (N.C.)."""
+    """Judge the QUANTITATION ion and the CONFIRMATION ion on their own limits.
+
+    Two thresholds answering two questions, and until 2026-08-07 both branches
+    used one of them:
+
+      * quantitation ion below `sn_quan_min` -> the peak is there but the value
+        is an estimate. That is what the `sn` failure type means: it carries
+        code J, and its certificate statement says "the affected results are
+        estimated". Both branches used to report "(N.C.)", which says something
+        different -- that the identification was not confirmed.
+      * qualifier ion below `sn_confirm_min` -> the identification is NOT
+        confirmed, "(N.C.)". This limit was configured (EPA 1633A sets it to
+        1.0) and read by nothing, so the qualifier ion was judged against the
+        quantitation threshold of 3.0 instead -- failing ions between 1 and 3
+        against a criterion the method does not apply to them.
+
+    An unconfigured `sn_confirm_min` means the qualifier ion is NOT judged. It
+    is not silently given the quantitation limit; that substitution is the bug
+    this docstring exists to prevent coming back.
+    """
     flags: list[QCFlag] = []
-    sn_min = CRITERIA["sn_min"]
+    quan_min = CRITERIA.get("sn_quan_min", CRITERIA["sn_min"])
+    confirm_min = CRITERIA.get("sn_confirm_min")
     for r in rows:
         if r.compound_name != analyte:
             continue
         sn = r.signal_to_noise
         qual_sn = r.qual_sn
-        if sn is not None and sn < sn_min:
+        if sn is not None and quan_min is not None and sn < quan_min:
             flags.append(QCFlag(
                 source="Signal-to-Noise",
                 check_kind=KIND_SN,
                 analyte=analyte,
                 injection_name=r.injection_name,
                 value=f"{sn:.2f}",
-                issue="(N.C.)",
+                issue="(J)",
             ))
-        elif qual_sn is not None and qual_sn < sn_min:
+        elif (qual_sn is not None and confirm_min is not None
+                and qual_sn < confirm_min):
             flags.append(QCFlag(
                 source="Signal-to-Noise",
                 check_kind=KIND_SN,
@@ -876,7 +791,14 @@ def single_transition_confirm_needed(
     """
     FDA §10.2(4): PFBA/PFPeA positives must be confirmed by LC-HRMS
     (%diff < 20%).  Returns a review-prompt string when confirmation is
-    required, used by the run queue.
+    required.
+
+    NOT WIRED. This docstring used to end "used by the run queue"; nothing
+    calls it, so the confirmation FDA §10.2(4) requires is never prompted for.
+    Kept rather than deleted because the rule is correct and the obligation is
+    real -- deleting it would erase the only record that the requirement is
+    unmet. See GAPS.md; wiring it means adding a review-queue prompt, which is
+    new behaviour and needs verifying against a run with PFBA/PFPeA positives.
     """
     conf = profile.confirmation_rule()
     if detected and analyte in conf.single_transition_analytes:

@@ -65,7 +65,14 @@ _DEFAULT_CRITERIA = {
     # RT deviation from batch average
     "rt_dev_abs_min":         0.10,   # ±0.10 min
     # Signal-to-noise
-    "sn_min":                 3.0,
+    "sn_min":                 3.0,   # alias of sn_quan_min
+    # Minimum S/N for QUANTITATION -- below it a result is estimated (J).
+    "sn_quan_min":            3.0,
+    # Minimum S/N on the CONFIRMATION (qualifier) ion -- below it the
+    # identification is not confirmed (N.C.). None = not configured, and
+    # the qualifier-ion branch then refuses to judge rather than borrowing
+    # the quantitation threshold, which is what it used to do.
+    "sn_confirm_min":         None,
     # Qual/Quan ion ratio tolerance (±30% of expected ratio)
     "ion_ratio_tol_pct":     30.0,
     # MDL — EPA 40 CFR Part 136 Appendix B statistical constants, NOT lab choices.
@@ -114,8 +121,24 @@ def _build_criteria_from_profile(profile):
         # RRT % tolerance used by the profiled check; legacy engine uses abs minutes
         # Keep the default abs value — the profiled check supersedes it for matched batches
         pass
+    # Two DIFFERENT signal-to-noise thresholds, and they answer different
+    # questions. `sn_quan_min` is the minimum S/N for QUANTITATION -- below it a
+    # peak is detected but its value is only an estimate, which is why the
+    # `sn` failure type carries code J ("estimated"). `sn_confirm_min` is the
+    # minimum S/N on the CONFIRMATION (qualifier) ion -- below it the
+    # identification itself is not confirmed.
+    #
+    # Only the first was mapped, into a key named `sn_min`, and BOTH branches of
+    # signal_to_noise_check then compared against it -- so the qualifier ion was
+    # judged against the quantitation threshold. On EPA 1633A, the one method
+    # with the check enabled, that is 3.0 against a configured confirmation
+    # limit of 1.0: qualifier ions between 1 and 3 were failed by a criterion
+    # the method does not apply to them.
     if conf.get("sn_quan_min") is not None:
-        crit["sn_min"] = float(conf["sn_quan_min"])
+        crit["sn_quan_min"] = float(conf["sn_quan_min"])
+        crit["sn_min"] = crit["sn_quan_min"]   # back-compat alias, same value
+    if conf.get("sn_confirm_min") is not None:
+        crit["sn_confirm_min"] = float(conf["sn_confirm_min"])
 
     return crit
 
