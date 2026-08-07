@@ -409,6 +409,12 @@ DEFAULT_PROFILES = {
         # Spike level options for LFSM (and LFB) injections — keyed by matrix.
         # ppt values left as null — the lab enters them via the Method Profile UI.
         "spike_levels": _per_matrix_spike_levels(_FDA_MATRICES),
+        # Holding time (days, collection → extraction) deliberately UNSET. The
+        # FDA methods specify per-matrix holding times, but this project has no
+        # documented value for them and §8 forbids inventing one. Unset means
+        # refuse to judge, not pass — the Data Review CoC gate says so, and a
+        # lab enters its own from the method copy. See holding_time.py.
+        "holding_times": {m: None for m in _FDA_MATRICES},
         "extraction_stages": [
             {
                 "id": "pre_setup",
@@ -603,6 +609,12 @@ DEFAULT_PROFILES = {
             _EPA537_ANALYTE_KEYWORDS, _EPA537_MATRICES
         ),
         "unit_map": {m: "ng/L" for m in _EPA537_MATRICES},
+        # Holding time, days from collection to EXTRACTION. The ONLY method for
+        # which a value is seeded: EPA 537.1 specifies 14 days for drinking
+        # water PFAS, and CLAUDE.md §10 states it. FDA and 1633A are left unset
+        # rather than guessed (§8 — never fabricate a regulatory value); an
+        # unset limit refuses to judge instead of passing. See holding_time.py.
+        "holding_times": {m: 14 for m in _EPA537_MATRICES},
         "spike_levels": _per_matrix_spike_levels(_EPA537_MATRICES),
         "extraction_stages": [
             {
@@ -907,6 +919,11 @@ DEFAULT_PROFILES = {
             _EPA1633A_ANALYTE_KEYWORDS, _EPA1633A_MATRICES
         ),
         "unit_map": dict(_EPA1633A_UNIT_MAP),
+        # Holding time (days, collection → extraction) deliberately UNSET —
+        # 1633A's limits differ by matrix (aqueous vs solid vs tissue) and this
+        # project has no documented value. §8: never fabricate a regulatory
+        # value. Unset refuses to judge. See holding_time.py.
+        "holding_times": {m: None for m in _EPA1633A_MATRICES},
         "spike_levels": _per_matrix_spike_levels(_EPA1633A_MATRICES),
         "extraction_stages": [
             {

@@ -4771,3 +4771,67 @@ published from. The certificate rendered **empty from the client folder and the
 samples listing** — the two production entry points — while rendering correctly
 from a sample, which was the only context being tested. Only
 `get_formatted_result` may differ from core.
+
+## 2026-08-06 — Holding time is computed; the checkbox is kept but can no longer overrule it
+
+**Status:** confirmed.
+
+**Context.** CLAUDE.md §10 calls holding times "a hard acceptance criterion" and
+names EPA 537.1's 14 days. Nothing computed one. `holding_time_ok` was a
+checkbox on the CoC and no method profile carried a limit, so the only evidence
+a sample had been extracted in time was that somebody had ticked a box. Both
+dates were already being recorded — `sample_collection_date` on the Chain of
+Custody, `extraction_date` on FM-ENV-252 — and never read together.
+
+**Decision.** `src/senaite/pfas/holding_time.py` computes elapsed days from
+collection to EXTRACTION (not to receipt — that is what the methods specify)
+against a per-matrix limit on the method profile. The checkbox stays, because
+§10 requires it and this is additive; what changes is that `EXCEEDED` and
+`INVALID` block the CoC gate whether or not the box is ticked.
+
+**Refuse, do not guess — twice.**
+- An unset limit is `UNCONFIGURED`, not a pass. 17 of 18 method × matrix
+  combinations have none, and reporting those as "fine" is how a silent default
+  becomes a released result.
+- Ambiguous date formats are rejected. `03/04/2025` is 3 April or 4 March
+  depending on who typed it, and it decides whether a result is defensible.
+  Only unambiguous ISO forms parse.
+
+**Only EPA 537.1 is seeded, at 14 days**, because §10 documents it. FDA and
+1633A ship every matrix explicitly `None` — §8 forbids fabricating a regulatory
+value. The limit lives as a column in Matrices & Units next to the reporting
+unit and tier-1 flag, because it is one more fact about one matrix.
+
+**Source of truth:** the CoC field, not `AnalysisRequest.getDateSampled()`. The
+gate is about the custody record, and two sources for one date is how they
+drift. `_logbook_json` reads worksheet-then-batch: on the one worksheet with
+real data the CoC is on both and FM-ENV-252 is on the BATCH only, so a
+worksheet-only read would have reported `no_dates` forever.
+
+---
+
+## 2026-08-06 — Every writing pane of the method-profile form must be marker-guarded
+
+**Status:** confirmed. Found by causing it.
+
+**Context.** The method-profile save handler assigns rather than merges:
+`_float("cal_point_pct_dev_max")` returns `None` for an absent field and that
+`None` is stored. A POST carrying only the Matrices & Units pane — sent while
+verifying the holding-time work — nulled seven live QC criteria on the FDA
+profile (calibration % deviation, ion-ratio tolerance, RRT tolerance, both S/N
+minimums, the confirm-ion flag and the whole IS-response window), plus
+`tight_matrices` and every matrix alias. All were restored from a pre-session
+copy of the export, verified key by key.
+
+**Decision.** The instrument-verification block is now gated on
+`instrument_verification_present`, the same pattern `matrix_settings_present`
+and the recovery tiers already used. `tests/test_profile_form_guards.py`
+asserts the property structurally — every marker the handler reads is emitted by
+the form, every marker the form emits is honoured by the handler, and the seven
+criteria sit inside the guard — so a pane added later is covered without anyone
+remembering to.
+
+**The transferable rule.** On a multi-pane form whose handler assigns rather
+than merges, **absent is not "unchanged" — absent is "clear it."** Normal use
+never exposes this, because the real form always submits every pane; that is
+precisely why it survived. Any partial, AJAX or scripted POST is the hazard.

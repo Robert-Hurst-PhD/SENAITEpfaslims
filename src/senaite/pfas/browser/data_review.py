@@ -36,6 +36,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.qc_qualification import format_remark_codes
+from senaite.pfas import holding_time
 
 logger = logging.getLogger("senaite.pfas.browser.data_review")
 
@@ -180,6 +181,9 @@ class PFASDataReviewView(BrowserView):
         "invalid_item":            u"Invalid checklist item.",
         "coc_holding_time_fail":   u"Cannot mark CoC as reviewed: Holding Times OK is not checked. "
                                     u"Samples received past holding time must be documented before releasing.",
+        "coc_holding_time_computed_fail":
+                                   u"Cannot mark CoC as reviewed — the recorded dates say "
+                                   u"otherwise, regardless of the checkbox.",
         "checklist_incomplete":    u"All checklist items must pass before submitting.",
         "submitted_for_review":    u"Submitted for manager review.",
         "workflow_error":          u"Workflow transition failed — check worksheet state.",
@@ -202,8 +206,18 @@ class PFASDataReviewView(BrowserView):
     }
 
     def save_message_text(self):
+        """The banner text, plus any computed detail carried with it.
+
+        A gate that refuses without saying WHY gets worked around, so a refusal
+        whose reason is calculated (the holding time is "18 days against a limit
+        of 14", not a fixed sentence) passes that sentence through `detail`.
+        """
         key = self.request.form.get("msg", "")
-        return self._MSG_TEXTS.get(key, key)
+        text = self._MSG_TEXTS.get(key, key)
+        detail = (self.request.form.get("detail") or "").strip()
+        if detail:
+            return u"{0} {1}".format(text, detail)
+        return text
 
     def portal_url(self):
         return getToolByName(self.context, "portal_url")()
@@ -820,6 +834,39 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:
             logger.error("coc_summary: %s", exc)
         return {}
+
+    def holding_time_summary(self):
+        """Computed holding time for this worksheet's batch.
+
+        Two dates that were both already being recorded and never read
+        together: `sample_collection_date` on the Chain of Custody, and
+        `extraction_date` on FM-ENV-252. Read through `_logbook_json`, which
+        looks on the worksheet then the linked batch — on the one worksheet
+        with real data the CoC is on both and 252 is on the BATCH only, so a
+        worksheet-only read would have found nothing and reported `no_dates`
+        forever.
+
+        The limit comes from the method profile keyed by matrix, resolved the
+        same way the matrix factor is. Unset means refuse to judge.
+        """
+        ws = self._get_worksheet()
+        if ws is None:
+            return holding_time.evaluate(None, None, None)
+        try:
+            coc = self._logbook_json(ws, u"senaite.pfas.logbook.coc") or {}
+            ext = self._logbook_json(ws, u"senaite.pfas.logbook.252") or {}
+            limit = holding_time.limit_for(self._method_profile() or {},
+                                           self._batch_matrix())
+            verdict = holding_time.evaluate(
+                coc.get("sample_collection_date"),
+                ext.get("extraction_date"),
+                limit)
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("holding_time_summary: %s", exc)
+            return holding_time.evaluate(None, None, None)
+        verdict["matrix"] = self._batch_matrix()
+        verdict["blocking"] = verdict["status"] in holding_time.BLOCKING
+        return verdict
 
     # ── Traceability ──────────────────────────────────────────────────────
 
@@ -1629,7 +1676,7 @@ class PFASDataReviewView(BrowserView):
 
     # ── POST dispatch ─────────────────────────────────────────────────────
 
-    def _redirect_with_msg(self, msg, msg_type="ok", tab=None):
+    def _redirect_with_msg(self, msg, msg_type="ok", tab=None, detail=None):
         ws = self._get_worksheet()
         if ws:
             base = ws.absolute_url() + "/@@pfas-data-review"
@@ -1638,6 +1685,9 @@ class PFASDataReviewView(BrowserView):
         url = "{0}?msg={1}&msg_type={2}".format(base, msg, msg_type)
         if tab:
             url += "&tab={0}".format(tab)
+        if detail:
+            from six.moves.urllib.parse import quote
+            url += "&detail={0}".format(quote(detail.encode("utf-8"), safe=""))
         self.request.response.redirect(url)
         return u""
 
@@ -1841,11 +1891,19 @@ class PFASDataReviewView(BrowserView):
         manual_keys = {"coc", "final_data", "instrument_report"}
         if item_key not in manual_keys:
             return self._redirect_with_msg("invalid_item", "error")
-        # ISO 17025 §10: holding_time_ok must be confirmed before CoC can pass
+        # ISO 17025 §10: holding_time_ok must be confirmed before CoC can pass.
+        # The tick is necessary and NOT sufficient — a measured breach blocks
+        # the gate whether or not somebody ticked the box. Until 2026-08-06 the
+        # tick was the only evidence in the system that a sample was in time.
         if item_key == "coc":
             coc = self.coc_summary()
             if not coc.get("holding_time_ok"):
                 return self._redirect_with_msg("coc_holding_time_fail", "error", tab="coc")
+            verdict = self.holding_time_summary()
+            if verdict.get("status") in holding_time.BLOCKING:
+                return self._redirect_with_msg(
+                    "coc_holding_time_computed_fail", "error", tab="coc",
+                    detail=verdict.get("message", u""))
         # E-sign style: sign-off requires typed initials (initial + date shown
         # in the checklist and carried into the final review).
         initials = (self.request.form.get("initials") or "").strip()

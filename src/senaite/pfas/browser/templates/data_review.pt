@@ -529,9 +529,18 @@
                     tal:content="python:'Yes' if coc.get('labels_legible') else 'No'">No</span>
             </div>
             <div class="coc-field">
-              <span class="coc-label">Holding Times OK</span>
+              <span class="coc-label">Holding Times OK (declared)</span>
               <span tal:attributes="class python:'coc-value coc-bool-ok' if coc.get('holding_time_ok') else 'coc-value coc-bool-fail'"
                     tal:content="python:'Yes' if coc.get('holding_time_ok') else 'No'">No</span>
+            </div>
+            <!-- Computed from the two recorded dates. The declared checkbox
+                 above is still required; this is what stops a tick overruling
+                 the record. -->
+            <div class="coc-field" style="grid-column:1/-1;"
+                 tal:define="ht view/holding_time_summary">
+              <span class="coc-label">Holding Time (calculated)</span>
+              <span tal:attributes="class python:'coc-value coc-bool-fail' if ht.get('blocking') else ('coc-value coc-bool-ok' if ht.get('status') == 'ok' else 'coc-value')"
+                    tal:content="ht/message">—</span>
             </div>
             <div class="coc-field">
               <span class="coc-label">Containers / Transfers</span>

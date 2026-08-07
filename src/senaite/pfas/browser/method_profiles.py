@@ -303,14 +303,19 @@ class PFASMethodProfileEditView(BrowserView):
         tight = set((profile.get("tight_matrices") or []))
         aliases = profile.get("matrix_aliases", {}) or {}
         units = profile.get("unit_map", {}) or {}
+        holding = profile.get("holding_times", {}) or {}
         rows = []
         for mtx in matrices:
+            # Blank, not 0, when unset: 0 days would read as "extract the same
+            # day", and the review must refuse to judge rather than fail.
+            days = holding.get(mtx)
             rows.append({
                 "matrix": mtx,
                 "linked": bool(uid_map.get(mtx)),
                 "tight": mtx in tight,
                 "aliases": ", ".join(aliases.get(mtx) or []),
                 "unit": units.get(mtx, ""),
+                "holding_days": "" if days in (None, "") else days,
             })
         return rows
 
@@ -852,47 +857,61 @@ class PFASMethodProfileEditView(BrowserView):
         profile["surrogate_is"] = f.get("surrogate_is",
                                          profile.get("surrogate_is", "")).strip()
 
-        # Calibration
-        cal = profile.setdefault(
-            "instrument_verification", {}).setdefault("calibration", {})
-        r2 = _float("cal_r2_min")
-        if r2 is not None:
-            cal["r2_min"] = r2
-        cal["force_origin"]          = _bool("cal_force_origin")
-        cal["point_pct_dev_max"]     = _float("cal_point_pct_dev_max")
-        cal["low_point_pct_dev_max"] = _float("cal_low_point_pct_dev_max")
+        # Instrument verification — calibration, CCV, IS response and
+        # chromatographic confirmation. Every value below is assigned
+        # UNCONDITIONALLY: `_float` returns None for an absent field and that
+        # None is stored, so a POST that omits these inputs does not "leave
+        # them alone", it NULLS them.
+        #
+        # Guarded by a marker field for the same reason as matrix_settings and
+        # the recovery tiers below. This was found by doing it: a partial POST
+        # carrying only the Matrices & Units pane wiped point_pct_dev_max,
+        # ion_ratio_tol_pct, rrt_tol_pct, sn_quan_min, sn_confirm_min,
+        # require_confirm_ion_check and the whole IS-response window off the
+        # live FDA profile. The full form always submits every pane, so normal
+        # use never hit it -- which is exactly why it survived.
+        if f.get("instrument_verification_present"):
+            # Calibration
+            cal = profile.setdefault(
+                "instrument_verification", {}).setdefault("calibration", {})
+            r2 = _float("cal_r2_min")
+            if r2 is not None:
+                cal["r2_min"] = r2
+            cal["force_origin"]          = _bool("cal_force_origin")
+            cal["point_pct_dev_max"]     = _float("cal_point_pct_dev_max")
+            cal["low_point_pct_dev_max"] = _float("cal_low_point_pct_dev_max")
 
-        # Every section below is written into instrument_verification, which is
-        # the structure the engine reads. Writing the flat keys meant an edit
-        # here never reached a QC decision.
-        iv = profile.setdefault("instrument_verification", {})
+            # Every section below is written into instrument_verification, which
+            # is the structure the engine reads. Writing the flat keys meant an
+            # edit here never reached a QC decision.
+            iv = profile.setdefault("instrument_verification", {})
 
-        # CCV
-        ccv = iv.setdefault("ccv", {})
-        freq = _int("ccv_frequency")
-        if freq is not None:
-            ccv["frequency"] = freq
-        ccv["recovery_min"]  = _float("ccv_recovery_min", ccv.get("recovery_min"))
-        ccv["recovery_max"]  = _float("ccv_recovery_max", ccv.get("recovery_max"))
-        ccv["low_level_min"] = _float("ccv_low_level_min")
-        ccv["low_level_max"] = _float("ccv_low_level_max")
+            # CCV
+            ccv = iv.setdefault("ccv", {})
+            freq = _int("ccv_frequency")
+            if freq is not None:
+                ccv["frequency"] = freq
+            ccv["recovery_min"]  = _float("ccv_recovery_min", ccv.get("recovery_min"))
+            ccv["recovery_max"]  = _float("ccv_recovery_max", ccv.get("recovery_max"))
+            ccv["low_level_min"] = _float("ccv_low_level_min")
+            ccv["low_level_max"] = _float("ccv_low_level_max")
 
-        # IS / surrogate response
-        is_ = iv.setdefault("is_response", {})
-        is_["vs_ical_avg_min"] = _float("is_vs_ical_avg_min")
-        is_["vs_ical_avg_max"] = _float("is_vs_ical_avg_max")
-        is_["vs_last_ccv_min"] = _float("is_vs_last_ccv_min")
-        is_["vs_last_ccv_max"] = _float("is_vs_last_ccv_max")
-        is_["notes"]           = f.get("is_notes", "").strip()
+            # IS / surrogate response
+            is_ = iv.setdefault("is_response", {})
+            is_["vs_ical_avg_min"] = _float("is_vs_ical_avg_min")
+            is_["vs_ical_avg_max"] = _float("is_vs_ical_avg_max")
+            is_["vs_last_ccv_min"] = _float("is_vs_last_ccv_min")
+            is_["vs_last_ccv_max"] = _float("is_vs_last_ccv_max")
+            is_["notes"]           = f.get("is_notes", "").strip()
 
-        # Chromatographic confirmation
-        conf = iv.setdefault("confirmation", {})
-        conf["rrt_tol_pct"]              = _float("conf_rrt_tol_pct")
-        conf["rt_tol_abs_min"]           = _float("conf_rt_tol_abs_min")
-        conf["ion_ratio_tol_pct"]        = _float("conf_ion_ratio_tol_pct")
-        conf["sn_quan_min"]              = _float("conf_sn_quan_min")
-        conf["sn_confirm_min"]           = _float("conf_sn_confirm_min")
-        conf["require_confirm_ion_check"] = _bool("conf_require_confirm_ion_check")
+            # Chromatographic confirmation
+            conf = iv.setdefault("confirmation", {})
+            conf["rrt_tol_pct"]              = _float("conf_rrt_tol_pct")
+            conf["rt_tol_abs_min"]           = _float("conf_rt_tol_abs_min")
+            conf["ion_ratio_tol_pct"]        = _float("conf_ion_ratio_tol_pct")
+            conf["sn_quan_min"]              = _float("conf_sn_quan_min")
+            conf["sn_confirm_min"]           = _float("conf_sn_confirm_min")
+            conf["require_confirm_ion_check"] = _bool("conf_require_confirm_ion_check")
 
         # Recovery tiers are written back to the structure the engine reads.
         # Guarded by the field's presence so a POST from another pane cannot
@@ -957,7 +976,7 @@ class PFASMethodProfileEditView(BrowserView):
         # field so a POST from another pane, which omits these inputs, cannot
         # wipe the matrix list (an unchecked checkbox submits nothing).
         if f.get("matrix_settings_present"):
-            names, tight, aliases, units = [], [], {}, {}
+            names, tight, aliases, units, holding = [], [], {}, {}, {}
             index = 0
             while True:
                 key = "mtx_name.%d" % index
@@ -977,6 +996,22 @@ class PFASMethodProfileEditView(BrowserView):
                 unit = (f.get("mtx_unit.%d" % (index - 1), "") or "").strip()
                 if unit:
                     units[name] = unit
+                # Holding time, days from collection to extraction. Cleared =
+                # None, kept as an explicit key so the matrix still appears in
+                # the table as deliberately unset rather than absent. A
+                # non-positive or unparseable entry is stored as None: the
+                # review must refuse to judge, never judge on a bad number.
+                raw_days = (f.get("mtx_holding.%d" % (index - 1), "") or "").strip()
+                days = None
+                if raw_days:
+                    try:
+                        days = float(raw_days)
+                        days = int(days) if days == int(days) else days
+                        if days <= 0:
+                            days = None
+                    except (TypeError, ValueError):
+                        days = None
+                holding[name] = days
             if names:
                 # §3 rule 4: surface what a rename or delete would orphan
                 # rather than dropping it. matrix_factors, spike_levels and
@@ -1001,6 +1036,7 @@ class PFASMethodProfileEditView(BrowserView):
                 profile["tight_matrices"] = tight
                 profile["matrix_aliases"] = aliases
                 profile["unit_map"] = units
+                profile["holding_times"] = holding
 
         # EIS limits per analyte x matrix class. Named fields rather than a
         # JSON blob, so the value a lab verified against its method copy is

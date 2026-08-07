@@ -102,7 +102,7 @@ Also open:
 
 | Gap | Where | Effect |
 |---|---|---|
-| **Holding time is a manual checkbox** | `data_review.py` `holding_time_ok` | Nothing computes elapsed time; no profile carries a holding limit. CLAUDE.md §10 states EPA 537.1 = 14 days. |
+| ~~**Holding time is a manual checkbox**~~ | `data_review.py` | **Fixed 2026-08-06** — see §7. |
 | Publication is not gated on the review | no guard registered | A sample can publish while its worksheet checklist fails. **Decided: warn and record**, not block — the entry now carries `review_state`. |
 | `qc/control_chart.py` is entirely dead | ~700 lines, zero callers | Westgard rules, control limits, chart build, PNG render. `browser/controlchart.py` reimplements it inline. Neither is tested. |
 | `calculate_mdl`, `single_transition_confirm_needed` | `qc_engine.py` | Zero call sites; the latter's docstring claims the run queue uses it. |
@@ -221,3 +221,85 @@ run is evidence, not proof. Three limits are structural:
 3. it only sees keys the exported profile actually contains.
 
 See `docs/ISO17025_DESIGN.md` §6.
+
+---
+
+## 7. Holding time — computed, 2026-08-06
+
+CLAUDE.md §10 calls holding times "a hard acceptance criterion" and names EPA
+537.1's 14 days. Nothing computed one. `holding_time_ok` was a checkbox, no
+method profile carried a limit, and the only evidence a sample had been
+extracted in time was that somebody had ticked a box.
+
+Both dates were **already being recorded and never read together** —
+`sample_collection_date` on the Chain of Custody and `extraction_date` on
+FM-ENV-252. The recurring shape again: a fact recorded correctly in one place
+and never carried to where it is used.
+
+`src/senaite/pfas/holding_time.py` computes it. Imports nothing from Plone, so
+the arithmetic is testable outside the container and a test enforces that.
+
+| Verdict | When | Effect on the CoC gate |
+|---|---|---|
+| `OK` | within the limit | tick still required |
+| `EXCEEDED` | past the limit | **blocks, whether or not the box is ticked** |
+| `INVALID` | extraction recorded before collection | **blocks** |
+| `UNCONFIGURED` | no limit set for this method × matrix | refuse to judge |
+| `NO_DATES` | either date missing or unreadable | refuse to judge, naming which |
+
+The checkbox is kept — §10 requires it, and this is additive. What changed is
+that a tick can no longer overrule the record.
+
+**Only EPA 537.1 is seeded, at 14 days**, because §10 documents it. FDA and
+1633A ship every matrix explicitly `None`: §8 forbids fabricating a regulatory
+value, and refuse-to-judge already handles the blank correctly. The limit is
+per matrix, edited as a column in Method Profiles → **Matrices & Units**,
+alongside the reporting unit and tier-1 flag — one more fact about one matrix.
+
+Ambiguous dates are refused rather than guessed: `03/04/2025` is 3 April or
+4 March depending on who typed it, and it decides whether a result is
+defensible. Only unambiguous ISO forms parse.
+
+Live-verified on WS-0005 (FDA × Animal Feed, the one worksheet with real data):
+unset → `unconfigured`; with a limit set through the real form POST →
+`exceeded, 292 days against a limit of 14, blocking`. The test value was then
+removed, because 14 days for animal feed is documented nowhere.
+
+### 7.1 Found while verifying it: a partial POST nulls the instrument criteria
+
+The verification POST carried only the Matrices & Units pane. The save handler
+writes every instrument criterion **unconditionally** — `_float()` returns
+`None` for an absent field and that `None` is stored — so the POST wiped, off
+the **live** FDA profile:
+
+```
+calibration.point_pct_dev_max            20.0  -> None
+confirmation.ion_ratio_tol_pct           30.0  -> None
+confirmation.rrt_tol_pct                  1.0  -> None
+confirmation.sn_quan_min                  3.0  -> None
+confirmation.sn_confirm_min               3.0  -> None
+confirmation.require_confirm_ion_check   True  -> False
+is_response.vs_ical_avg_min / _max     50/150  -> None
+```
+
+plus `tight_matrices` (the 80–120% tier for meat, eggs and seafood) and all six
+matrices' aliases. Every one of those decides whether a result passes QC.
+
+All values were restored from a pre-session copy of the export; the profile now
+differs from it by exactly the new `holding_times` key, verified key by key.
+
+The codebase already knew this hazard — `matrix_settings_present` guards the
+matrix list "so a POST from another pane cannot wipe it", and the recovery
+tiers are guarded because blanking them "would stop every run". The instrument
+block was simply missed. It is now behind `instrument_verification_present`,
+and the same partial POST re-run against the guard changes **nothing**.
+
+`tests/test_profile_form_guards.py` asserts the property structurally rather
+than replaying one POST — every marker the handler reads is emitted by the
+form, every marker the form emits is honoured by the handler, and the seven
+criteria above sit inside the guard. A pane added later is covered without
+anyone remembering to.
+
+**The general rule, worth carrying:** on a multi-pane form whose handler
+assigns rather than merges, *absent is not "unchanged" — absent is "clear it"*.
+Normal use never exposes it, because the real form always submits every pane.

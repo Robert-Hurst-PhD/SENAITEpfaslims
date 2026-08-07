@@ -630,10 +630,11 @@
               <table class="factor-table" id="matrixSettingsTable">
                 <thead>
                   <tr>
-                    <th style="width:24%">Matrix</th>
-                    <th style="width:10%">Tier&nbsp;1</th>
-                    <th style="width:44%">Aliases (comma-separated)</th>
-                    <th style="width:22%">Reporting Unit</th>
+                    <th style="width:22%">Matrix</th>
+                    <th style="width:8%">Tier&nbsp;1</th>
+                    <th style="width:36%">Aliases (comma-separated)</th>
+                    <th style="width:18%">Reporting Unit</th>
+                    <th style="width:16%">Holding Time (days)</th>
                   </tr>
                 </thead>
                 <tbody tal:define="units view/unit_options">
@@ -665,6 +666,13 @@
                                   tal:content="u">ng/kg</option>
                         </select>
                       </td>
+                      <td>
+                        <input type="number" min="0" step="1" style="width:100%;"
+                               placeholder="not set"
+                               title="Days from sample collection to extraction. Leave blank if your method document does not state one -- blank means the review refuses to judge, not that it passes."
+                               tal:attributes="name string:mtx_holding.${repeat/row/index};
+                                               value row/holding_days" />
+                      </td>
                     </tr>
                   </tal:rows>
                   <tal:blank repeat="n python:range(3)">
@@ -689,6 +697,10 @@
                           <option tal:repeat="u units"
                                   tal:attributes="value u" tal:content="u">ng/kg</option>
                         </select>
+                      </td>
+                      <td>
+                        <input type="number" min="0" step="1" style="width:100%;"
+                               tal:attributes="name string:mtx_holding.${idx}" />
                       </td>
                     </tr>
                   </tal:blank>
@@ -939,6 +951,15 @@
                    style="color:var(--s-primary);">QC Type Grid</a>
             before the criteria below take effect for this method.
           </div>
+
+          <!-- Marker guard, same purpose as matrix_settings_present: every
+               instrument criterion below is written UNCONDITIONALLY, so a POST
+               that does not carry these inputs would null the calibration,
+               CCV, IS-response and confirmation limits. Verified by doing it:
+               a partial POST wiped point_pct_dev_max, ion_ratio_tol_pct,
+               rrt_tol_pct, sn_quan_min and the IS window on the live FDA
+               profile. -->
+          <input type="hidden" name="instrument_verification_present" value="1" />
 
           <details>
             <summary>Calibration</summary>
