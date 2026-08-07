@@ -303,3 +303,10 @@ anyone remembering to.
 **The general rule, worth carrying:** on a multi-pane form whose handler
 assigns rather than merges, *absent is not "unchanged" — absent is "clear it"*.
 Normal use never exposes it, because the real form always submits every pane.
+
+**Live-state check after the restore.** ZODB, the exported profile and the
+pre-session copy were compared key by key across all three methods: the only
+differences are the new `holding_times` key and `display_analyte_set`, which
+`method_profile_store` **derives at export time** from the service-derived
+master set (D60) rather than storing — so an empty stored value is by design,
+and the exported list the worker reads is byte-identical to pre-session.

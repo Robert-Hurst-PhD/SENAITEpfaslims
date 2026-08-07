@@ -36,6 +36,10 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.qc_qualification import format_remark_codes
+# Safe at module scope BECAUSE holding_time imports nothing from Plone -- there
+# is no import-order hazard. Most add-on helpers in this file are imported
+# locally inside the method that needs them (see _bapi, analytes_for_failure,
+# get_batch); do not copy this pattern for a module that does touch Plone.
 from senaite.pfas import holding_time
 
 logger = logging.getLogger("senaite.pfas.browser.data_review")
