@@ -705,7 +705,7 @@ def dashboard_summary():
     for u in units:
         row = dict(u)
         ut = u["unit_type"]
-        if ut in ("refrigerator", "freezer", "room_sensor", "eyewash"):
+        if ut in ("refrigerator", "freezer", "room_sensor"):
             reading = latest_reading(u["id"])
             row["last_reading"] = reading
             if not reading:
@@ -714,6 +714,39 @@ def dashboard_summary():
                 row["status"] = "overdue"
             elif not reading["in_range"]:
                 row["status"] = "out_of_range"
+            else:
+                row["status"] = "ok"
+        elif ut == "eyewash":
+            # Eye wash stations are logged in `eyewash_logs`, NOT in
+            # `temperature_readings`. Until 2026-08-07 they were grouped with
+            # the temperature sensors above, so `latest_reading()` queried a
+            # table an eye wash station never writes to and every station
+            # reported `no_data` forever -- while `save_eyewash_log` was
+            # computing and storing a `passed` verdict (the station runs AND
+            # its water is tepid, ISO 17025 §6.3) that nothing ever read.
+            #
+            # Periodic, not daily: §6.4 puts eye wash on its own cadence, so an
+            # older entry is reported as `pending` for review rather than
+            # `overdue` against the 25-hour sensor window.
+            with _connect() as conn:
+                # `id DESC` is a REQUIRED tiebreak, not decoration: log_time is
+                # only HH:MM, so two entries in the same minute tie and SQLite
+                # returns them in rowid order -- i.e. the FIRST one. Re-testing
+                # a station after a failed check would then have reported the
+                # earlier passing entry as current.
+                ew = conn.execute("""
+                    SELECT * FROM eyewash_logs
+                    WHERE unit_id=?
+                    ORDER BY log_date DESC, log_time DESC, id DESC
+                    LIMIT 1
+                """, (u["id"],)).fetchone()
+            row["last_eyewash"] = dict(ew) if ew else None
+            if not ew:
+                row["status"] = "no_data"
+            elif not ew["passed"]:
+                row["status"] = "out_of_range"
+            elif ew["log_date"] < today:
+                row["status"] = "pending"
             else:
                 row["status"] = "ok"
         elif ut in ("balance_analytical", "balance_prep"):
@@ -744,7 +777,14 @@ def dashboard_summary():
             else:
                 row["status"] = "out_of_range"
         else:
-            row["status"] = "ok"
+            # A unit type this dashboard does not know how to check must not
+            # claim compliance. Every type in UNIT_TYPES is handled above, so
+            # reaching here means one was added without a check -- reporting it
+            # green would hide exactly that.
+            logger.warning(
+                "facility QC: unit %s has type %r with no status check; "
+                "reporting no_data rather than OK", u.get("id"), ut)
+            row["status"] = "no_data"
         result.append(row)
     return result
 

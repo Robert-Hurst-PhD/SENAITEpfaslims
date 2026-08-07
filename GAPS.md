@@ -115,7 +115,7 @@ Also open:
 | `ccv_frequency`, `mdl_check` toggles | `RULE_LIBRARY` | Honoured nowhere. |
 | ~~`lfsm_recovery`, `lfsmd_rpd` toggles~~ | `run_queue` | **Fixed 2026-08-06** — they now gate on the method profile's `qc_acceptance[QC].enabled`, the producer that already existed. See §8. |
 | `qq_ratio_*_pct` (three knobs) | `RULE_LIBRARY` | `qual_quan_check` reads one flat value. `sn_quan_min` is mapped onto `sn_min`, substituting the quantitation threshold for the detection one. |
-| Facility QC: eyewash dashboard reads the wrong table | `facility_qc.py:707` | Its computed `passed` never surfaces; waste units always show green. |
+| ~~Facility QC: eyewash dashboard reads the wrong table~~ | `facility_qc.py` | **Fixed 2026-08-07 — see §10.** The "waste units always show green" half of this entry was **wrong**: there is no `waste` unit type, so that branch was unreachable. The real catch-all defect was different and is also fixed. |
 | 96 hardcoded lab values remain | mostly module tables | None decides a reported result. |
 
 ---
@@ -418,3 +418,66 @@ twice, the second run reports nothing to do. Confirmed against the live
 instance: `EPA_1633A 25 entries already - left alone`, `FDA_32PFAS 21 entries
 already - left alone`, `EPA_537_1 EMPTY -> 15`. The refreshed export differs
 from its pre-migration copy by `surrogate_map` on EPA_537_1 and nothing else.
+
+---
+
+## 10. Facility QC — the eye wash dashboard, 2026-08-07
+
+`dashboard_summary()` grouped eye wash stations with the temperature sensors:
+
+```python
+if ut in ("refrigerator", "freezer", "room_sensor", "eyewash"):
+    reading = latest_reading(u["id"])      # SELECT ... FROM temperature_readings
+```
+
+An eye wash station never writes to `temperature_readings`. Every station
+therefore reported `no_data` forever — while `save_eyewash_log` was computing
+and storing a `passed` verdict (the station runs **and** its water is tepid) that
+nothing ever read. The recurring shape once more: recorded correctly in one
+place, never carried to where it is used.
+
+Eye wash now reads `eyewash_logs`, and is judged on its own §6.4 cadence:
+`out_of_range` when the stored verdict failed, `pending` when the last check
+predates today, `ok` only when it passed today.
+
+| State | Reported |
+|---|---|
+| never checked | `no_data` |
+| runs, water tepid, checked today | `ok` |
+| water at 40 °C | `out_of_range` |
+| station does not run | `out_of_range` |
+| passed, but the check is old | `pending` |
+| a temperature reading filed against it | `no_data` — it is not consulted |
+
+### 10.1 Two further defects found while fixing it
+
+- **`log_time` is only `HH:MM`, so entries in the same minute tie.** Without an
+  `id DESC` tiebreak SQLite returns the first by rowid — so **re-testing a
+  station after a failure showed the earlier PASSING entry as current**. The
+  first version of this fix had exactly that bug; the test caught it.
+- **The `else` branch reported `status = "ok"`.** Every type in `UNIT_TYPES` is
+  handled, so reaching it means a type was added with no check — and green
+  would hide precisely that. It now reports `no_data` and logs a warning.
+
+### 10.2 The correction to the previous entry
+
+The old register said *"waste units always show green"*. That was **wrong**:
+there is no `waste` unit type in `UNIT_TYPES`, so no unit could reach that
+branch. Waste is recorded via `waste_logs` against a unit of some other type,
+and `waste_logs` has no `passed` column at all — there is nothing for the
+dashboard to judge. Whether SAA waste containers should carry a pass/fail
+condition is a lab decision, not a code defect; it is not one today.
+
+### 10.3 The subsystem has never held data
+
+`/data/qc/facility_monitoring.db` is **empty** — the schema exists and every
+one of its nine tables has **zero rows**, including `facility_units`. So no
+temperature, balance, water, waste or eye wash record has ever been entered on
+this instance, and none of the §6.4 monitoring the design calls for is
+happening yet. The defects above were real but had never had data flow through
+them.
+
+`tests/test_facility_dashboard.py` runs against a scratch database via
+`PFAS_FACILITY_QC_DB` and never touches the live one; all seven facility pages
+were confirmed rendering (HTTP 200) and the live database confirmed still empty
+afterwards.
