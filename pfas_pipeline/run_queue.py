@@ -144,8 +144,32 @@ def _load_rule_toggles(method_id: str, rules_path: str = "/data/qc/qc_rules.json
 
 
 def _rule_enabled(toggles: dict, library_key: str) -> bool:
-    """True if the rule is enabled (default ON when key absent)."""
+    """True if the rule is enabled (default ON when key absent).
+
+    Only for keys that exist in `qc/rules.py RULE_LIBRARY`. The default-ON
+    fallback means a key that is absent EVERYWHERE looks permanently enabled
+    and is indistinguishable from one a lab deliberately switched on, which is
+    how `lfsm_recovery` and `lfsmd_rpd` survived with no library entry, no
+    default and no UI. `tests/test_rule_toggles.py` pins the three-way
+    agreement so it cannot recur.
+    """
     return bool(toggles.get(library_key, True))
+
+
+def _qc_type_enabled(profile, qc_type: str) -> bool:
+    """True if this method's extraction/matrix QC type is switched on.
+
+    Extraction and matrix QC (LFSM, LFSMD, MB, Dup, ...) is owned by the method
+    profile, not by the instrument RULE_LIBRARY. `profile` is a MethodProfile
+    object, NOT a dict — it holds the answer, this is a None-safe wrapper. No
+    profile means no configuration to consult, so the check runs.
+    """
+    if profile is None:
+        return True
+    try:
+        return profile.qc_type_enabled(qc_type)
+    except AttributeError:                       # a profile predating the method
+        return True
 
 
 class RunQueue:
@@ -304,9 +328,32 @@ class RunQueue:
         cal_enabled  = _rule_enabled(toggles, "cal_r2") or _rule_enabled(toggles, "ccv_recovery")
         # 5. Signal-to-Noise (sn_min rule)
         sn_enabled   = _rule_enabled(toggles, "sn_min")
-        # 6. LFSM/LFSMD (lfsm_recovery / lfsmd_rpd rules)
-        lfsm_enabled  = _rule_enabled(toggles, "lfsm_recovery")
-        lfsmd_enabled = _rule_enabled(toggles, "lfsmd_rpd")
+        # 6. LFSM/LFSMD. These gate on the METHOD PROFILE's qc_acceptance
+        # entry, not on a rule toggle. `RULE_LIBRARY` is explicitly
+        # instrument-level -- its own header says extraction and matrix QC
+        # (LCS, LFB, LFSM, LFSMD, MB, LRB, Dup, MxB) is owned by the method
+        # profile -- and `qc_acceptance.LFSM.enabled` already exists, is
+        # editable in the Method Profile UI, and is where the limits live.
+        #
+        # Until 2026-08-06 this read `_rule_enabled(toggles, "lfsm_recovery")`
+        # against keys that appear in NO library, NO defaults table and NO UI.
+        # `_rule_enabled` defaults absent keys to True, so both checks always
+        # ran and a lab that switched LFSM off in the Method Profile was
+        # ignored: the switch it was given did nothing, and the switch that
+        # worked did not exist.
+        lfsm_enabled  = _qc_type_enabled(profile, "LFSM")
+        lfsmd_enabled = _qc_type_enabled(profile, "LFSMD")
+        if lfsmd_enabled and not lfsm_enabled:
+            # The spike/duplicate RPD is computed FROM the LFSM recovery
+            # (lfsm_res.recovery_pct, .unfortified_conc, .spike_value_ppt), so
+            # with LFSM off there is nothing to compare the duplicate against
+            # and LFSMD silently evaluates nothing. Say so rather than leave the
+            # Method Profile showing an enabled check that can never fire.
+            logger.warning(
+                "%s: LFSMD is enabled but LFSM is disabled in the method "
+                "profile. The spike/duplicate RPD is derived from the LFSM "
+                "recovery, so NO LFSMD result will be evaluated. Enable LFSM "
+                "or disable LFSMD.", self.method_id or "method")
 
         for analyte in _analytes:
             if rt_enabled:

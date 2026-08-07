@@ -517,6 +517,25 @@ class MethodProfile:
         # Backward compat: old profiles have flat keys at top level
         return p
 
+    def qc_type_enabled(self, qc_code):
+        """Is this extraction/matrix QC type switched on for this method?
+
+        `qc_acceptance[qc_code].enabled` is the lab's switch, set in the Method
+        Profile UI beside the limits it governs. This method exists so the
+        answer has ONE definition: `qc_acceptance_rule` below already applied
+        the same flag, and `run_queue` used to gate LFSM/LFSMD on a
+        `method_rule_toggles` key that appeared in no library, no defaults
+        table and no UI — so the switch a lab was given did nothing.
+
+        Absent defaults to True. A missing entry must not silently switch a
+        check off; if its criteria are unconfigured the check refuses to judge,
+        which is louder than skipping.
+        """
+        entry = (self._profile_data().get("qc_acceptance") or {}).get(qc_code)
+        if not isinstance(entry, dict):
+            return True
+        return bool(entry.get("enabled", True))
+
     def qc_acceptance_rule(self, qc_code, analyte="", matrix=""):
         """
         Return a QCRule for a specific QC type from qc_acceptance.

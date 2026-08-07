@@ -110,7 +110,7 @@ Also open:
 | `QCResultStore.add_results_bulk` / `add_result` / `flag_for_reanalysis` / `void_batch` | `qc/store.py` | Zero external callers; the Py3 pipeline writes raw SQL. So `voided`, `flagged_reanalysis` and `superseded` are read by Data Review and never produced. |
 | `sn_min` toggle defaults **OFF** | `qc/rules.py:90,95` | Signal-to-noise is not evaluated for FDA_32PFAS or EPA_537_1. |
 | `ccv_frequency`, `mdl_check` toggles | `RULE_LIBRARY` | Honoured nowhere. |
-| `lfsm_recovery`, `lfsmd_rpd` toggles | read by `run_queue` | **Absent from `RULE_LIBRARY`** — no UI can set them. |
+| ~~`lfsm_recovery`, `lfsmd_rpd` toggles~~ | `run_queue` | **Fixed 2026-08-06** — they now gate on the method profile's `qc_acceptance[QC].enabled`, the producer that already existed. See §8. |
 | `qq_ratio_*_pct` (three knobs) | `RULE_LIBRARY` | `qual_quan_check` reads one flat value. `sn_quan_min` is mapped onto `sn_min`, substituting the quantitation threshold for the detection one. |
 | Facility QC: eyewash dashboard reads the wrong table | `facility_qc.py:707` | Its computed `passed` never surfaces; waste units always show green. |
 | 96 hardcoded lab values remain | mostly module tables | None decides a reported result. |
@@ -310,3 +310,54 @@ differences are the new `holding_times` key and `display_analyte_set`, which
 `method_profile_store` **derives at export time** from the service-derived
 master set (D60) rather than storing — so an empty stored value is by design,
 and the exported list the worker reads is byte-identical to pre-session.
+
+---
+
+## 8. QC rule toggles — reconciled, 2026-08-06
+
+There are two switch stores and they own different things:
+
+- **`qc/rules.py RULE_LIBRARY`** — INSTRUMENT-level rules (IS response, RT, ion
+  ratio, calibration r², CCV, S/N, MDL). Its own header says so.
+- **the method profile's `qc_acceptance[QC_TYPE].enabled`** — EXTRACTION and
+  matrix QC (LFSM, LFSMD, MB, LRB, LFB, Dup, MxB), where the limits also live.
+
+`run_queue` gated LFSM and LFSMD on `_rule_enabled(toggles, "lfsm_recovery")`
+and `"lfsmd_rpd"` — keys present in **no library, no defaults table and no UI**.
+`_rule_enabled` defaults an absent key to `True`, which is the right default but
+makes an unreachable key indistinguishable from one a lab deliberately enabled.
+So both checks always ran, **and a lab that switched LFSM off in the Method
+Profile was ignored**: the switch it was given did nothing, and the switch that
+worked did not exist.
+
+They now read `MethodProfile.qc_type_enabled()`, which applies the same flag
+`qc_acceptance_rule` already honoured — one definition, on the object that owns
+the data.
+
+Live-verified on a synthetic FDA × Animal Feed run with `lfsm_low` injected:
+
+| Profile state | Flags |
+|---|---|
+| LFSM enabled (as shipped) | **32 lfsm + 32 lfsmd** |
+| LFSM disabled | **0** |
+| LFSM + LFSMD disabled | **0** |
+
+**A dependency worth knowing:** disabling LFSM alone also silences LFSMD. That
+is real — the spike/duplicate RPD is computed *from* the LFSM recovery
+(`recovery_pct`, `unfortified_conc`, `spike_value_ppt`), so with LFSM off there
+is nothing to compare against. A Method Profile showing LFSMD enabled while it
+can never fire is the silent-no-op shape again, so the run now logs a warning
+naming the consequence rather than quietly evaluating nothing.
+
+**Not a defect, checked:** `cal_r2` is present in all three tables — an earlier
+survey reported it missing because the regex required `"label"` and the entry
+reads `u"Calibration r²"`. And `ccv_frequency` / `mdl_check` gate no engine
+check, but that is **declared** in `LIBRARY_KEY_TO_ENGINE_CHECKS` as an empty
+list with a comment — a documented gap, not a lying switch. What each would
+need is in §4.
+
+`tests/test_rule_toggles.py` pins the three-way agreement — library ↔ mapping ↔
+every method's defaults ↔ what the engine actually reads — by parsing the AST,
+because the first version of the reconciliation matched
+`_rule_enabled(toggles, "lfsm_recovery")` inside a *comment describing the fix*
+and reported the defect as still present.
