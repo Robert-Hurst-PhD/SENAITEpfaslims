@@ -51,12 +51,12 @@ NATIVE_ANALYTES = [
     ("PFDoS",  "PFDoS",  "79780-39-5", "Perfluorododecanesulfonic acid",                  "PFSA",    12, "",                 True,  False),
     ("PFTrDS", "PFTrDS", "PLACEHOLDER","Perfluorotridecanesulfonic acid",                 "PFSA",    13, "",                 True,  False),
     ("PFUnDS", "PFUnDS", "749786-16-1","Perfluoroundecanesulfonic acid",                  "PFSA",    11, "",                 True,  False),
-    ("4:2FTS", "4:2 FTS","757124-72-4","1H,1H,2H,2H-perfluorohexane sulfonic acid",       "FTS",     6,  "13C2,D4-4:2FTS",   False, False),
-    ("6:2FTS", "6:2FTS", "27619-97-2", "1H,1H,2H,2H-perfluorooctane sulfonic acid",       "FTS",     8,  "13C2,D4-6:2FTS",   False, False),
-    ("8:2FTS", "8:2 FTS","39108-34-4", "1H,1H,2H,2H-perfluorodecane sulfonic acid",       "FTS",     10, "13C2,D4-8:2FTS",   False, False),
-    ("10:2FTS","10:2 FTS","120226-60-0","1H,1H,2H,2H-perfluorododecane sulfonic acid",    "FTS",     12, "13C2,D4-10:2FTS",  False, False),
-    ("FOSA",   "FOSA",   "754-91-6",   "Perfluorooctanesulfonamide",                      "FOSA",    8,  "13C8-FOSA",        False, False),
-    ("GenX",   "GenX (HFPO-DA)","13252-13-6","Hexafluoropropylene oxide dimer acid",      "PFECA",   6,  "13C3-GenX (HFPO-DA)",False,False),
+    ("4:2FTS", "4:2 FTS","757124-72-4","1H,1H,2H,2H-perfluorohexane sulfonic acid",       "FTS",     6,  "M2-4:2FTS",        False, False),
+    ("6:2FTS", "6:2FTS", "27619-97-2", "1H,1H,2H,2H-perfluorooctane sulfonic acid",       "FTS",     8,  "M2-6:2FTS",        False, False),
+    ("8:2FTS", "8:2 FTS","39108-34-4", "1H,1H,2H,2H-perfluorodecane sulfonic acid",       "FTS",     10, "M2-8:2FTS",        False, False),
+    ("10:2FTS","10:2 FTS","120226-60-0","1H,1H,2H,2H-perfluorododecane sulfonic acid",    "FTS",     12, "M2-10:2FTS",       False, False),
+    ("FOSA",   "FOSA",   "754-91-6",   "Perfluorooctanesulfonamide",                      "FOSA",    8,  "M8FOSA",           False, False),
+    ("GenX",   "GenX (HFPO-DA)","13252-13-6","Hexafluoropropylene oxide dimer acid",      "PFECA",   6,  "M3HFPO",           False,False),
     ("DONA",   "DONA",   "919005-14-4","4,8-dioxa-3H-perfluorononanoic acid (ADONA)",     "PFECA",   7,  "",                 True,  False),
     ("9ClPF3ONS","9Cl-PF3ONS","756426-58-1","9-chlorohexadecafluoro-3-oxanonane-1-sulfonic acid (F-53B major)","Cl-PFAES",8,"",True,False),
     ("11ClPF3OUdS","11Cl-PF3OUdS","763051-92-9","11-chloroeicosafluoro-3-oxaundecane-1-sulfonic acid (F-53B minor)","Cl-PFAES",10,"",True,False),
@@ -260,6 +260,28 @@ def get_method_ids():
 def get_surrogate_map_by_keyword():
     """Dict of {native_keyword: surrogate_is_keyword} for analytes with a matched IS."""
     return {row[0]: row[6] for row in NATIVE_ANALYTES if row[6]}
+
+
+def derive_surrogate_map(analyte_keywords):
+    """A method profile's `surrogate_map`, derived for one analyte panel.
+
+    Returns the stored shape -- `[{"analyte": kw, "surrogate_is": kw}, ...]` --
+    ordered by the given panel so two methods sharing an analyte agree.
+
+    Which labelled compound quantifies a native is a property of the ANALYTE,
+    not of the method, and it is already recorded once in `NATIVE_ANALYTES`.
+    The FDA and 1633A profiles carried hand-maintained copies of it; both were
+    verified byte-identical to this derivation before it was introduced, and
+    EPA 537.1 carried an EMPTY list -- so `qc_qualification.analytes_for_failure`
+    had no map to reverse and named the labelled compound on the certificate
+    instead of the natives the client actually reads.
+
+    A lab may still override the map in the Method Profile editor; this is the
+    default it starts from, not a value imposed at read time.
+    """
+    mapping = get_surrogate_map_by_keyword()
+    return [{"analyte": kw, "surrogate_is": mapping[kw]}
+            for kw in (analyte_keywords or []) if mapping.get(kw)]
 
 
 def get_surrogate_map_by_name():

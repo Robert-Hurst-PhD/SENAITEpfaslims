@@ -43,6 +43,7 @@ from senaite.pfas.analyte_reference import (
     NATIVE_ANALYTES as _NATIVE_ANALYTES,
     INTERNAL_STANDARDS as _INTERNAL_STANDARDS,
     get_surrogate_map_by_name as _get_surrogate_map_by_name,
+    derive_surrogate_map as _derive_surrogate_map,
 )
 
 # Native analyte (display name) → surrogate IS keyword — derived from
@@ -335,31 +336,14 @@ DEFAULT_PROFILES = {
             {"matrix": "feed",        "factor": 2.0},
             {"matrix": "animal feed", "factor": 2.0},
         ],
-        "surrogate_map": [
-            {"analyte": "PFBA",           "surrogate_is": "M3PFBA"},
-            {"analyte": "PFPeA",          "surrogate_is": "M3PFPeA"},
-            {"analyte": "PFHxA",          "surrogate_is": "M5PFHxA"},
-            {"analyte": "PFHpA",          "surrogate_is": "M4PFHpA"},
-            {"analyte": "PFOA",           "surrogate_is": "M8PFOA"},
-            {"analyte": "PFNA",           "surrogate_is": "M5PFNA"},
-            {"analyte": "PFDA",           "surrogate_is": "M2PFDA"},
-            {"analyte": "PFUDA",          "surrogate_is": "MPFUdA"},
-            {"analyte": "PFDoA",          "surrogate_is": "MPFDoA"},
-            {"analyte": "PFTrDA",         "surrogate_is": "MPFDoA"},
-            {"analyte": "PFTeDA",         "surrogate_is": "M2PFTeDA"},
-            {"analyte": "PFHxDA",         "surrogate_is": "M2PFHxDA"},
-            {"analyte": "PFBS",           "surrogate_is": "M3PFBS"},
-            {"analyte": "lr-PFHxS",       "surrogate_is": "M3PFHxS"},
-            {"analyte": "br-PFHxS",       "surrogate_is": "M3PFHxS"},
-            {"analyte": "lr-PFOS",        "surrogate_is": "M8PFOS"},
-            {"analyte": "br-PFOS",        "surrogate_is": "M8PFOS"},
-            {"analyte": "GenX (HFPO-DA)", "surrogate_is": "M3HFPO"},
-            {"analyte": "FOSA",           "surrogate_is": "M8FOSA"},
-            {"analyte": "4:2 FTS",        "surrogate_is": "13C2,D4 4:2 FTS"},
-            {"analyte": "6:2FTS",         "surrogate_is": "13C2,D4 6:2 FTS"},
-            {"analyte": "8:2 FTS",        "surrogate_is": "13C2,D4 8:2 FTS"},
-            {"analyte": "10:2 FTS",       "surrogate_is": "13C2,D4 10:2 FTS"},
-        ],
+        # Derived from analyte_reference.NATIVE_ANALYTES -- which labelled
+        # compound quantifies a native is a property of the ANALYTE, not of
+        # the method, and was previously hand-copied here. The copy had also
+        # drifted: four FTS entries and FOSA/GenX held DISPLAY NAMES where the
+        # rest held keywords, so the per_analyte surrogate column resolved
+        # empty for those six. Verified identical (same entries, same order)
+        # to the live FDA and 1633A maps before this replaced them.
+        "surrogate_map": _derive_surrogate_map(_FDA_MASTER_ANALYTE_KEYWORDS),
         "surrogate_is": "M4PFOA",
         # surrogate_is_chain: which injection IS each labeled surrogate quantifies against
         # For FDA 32-PFAS all 20 surrogates quantify against M4PFOA (FDA Table 9-1)
@@ -590,7 +574,7 @@ DEFAULT_PROFILES = {
         },
         "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
         "matrix_factors": [],
-        "surrogate_map": [],
+        "surrogate_map": _derive_surrogate_map(_EPA537_ANALYTE_KEYWORDS),
         "surrogate_is": "",
         "per_analyte": [],
         "extraction_corrections": {
@@ -898,7 +882,7 @@ DEFAULT_PROFILES = {
             },
         },
         "matrix_factors": [],
-        "surrogate_map": [],
+        "surrogate_map": _derive_surrogate_map(_EPA1633A_ANALYTE_KEYWORDS),
         "surrogate_is": "",
         "per_analyte": [],
         "extraction_corrections": {

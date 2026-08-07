@@ -86,6 +86,107 @@ def test_mismatch_is_detected_not_silently_resolved():
         profile["surrogate_map"] = original
 
 
+
+
+# ── The map's CONTENTS, derived rather than hand-copied (2026-08-06) ─────────
+#
+# Which labelled compound quantifies a native is a property of the ANALYTE, not
+# of the method, and is recorded once in `analyte_reference.NATIVE_ANALYTES`.
+# The FDA and 1633A profiles carried hand-maintained copies of it. EPA 537.1
+# carried an EMPTY list, so `qc_qualification.analytes_for_failure` had no map
+# to reverse and named the LABELLED compound on the certificate -- a compound
+# the client never ordered and never sees -- instead of the natives.
+
+def _analyte_reference():
+    """Load the add-on's master table without importing the Plone package."""
+    import importlib.util
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "src", "senaite", "pfas", "analyte_reference.py")
+    spec = importlib.util.spec_from_file_location("pfas_analyte_reference", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_surrogate_link_names_an_IS_KEYWORD_not_a_display_name():
+    """Six entries -- the four FTS analytes, FOSA and GenX -- held a DISPLAY
+    NAME where the other 21 held a keyword. The single consumer does
+    `_IS_KW_TO_NAME.get(value, "")`, so those six resolved to an EMPTY
+    surrogate column in the FDA profile's per_analyte table."""
+    ar = _analyte_reference()
+    keywords = {row[0] for row in ar.INTERNAL_STANDARDS}
+    names = {row[1] for row in ar.INTERNAL_STANDARDS}
+    wrong = [(row[0], row[6]) for row in ar.NATIVE_ANALYTES
+             if row[6] and row[6] not in keywords]
+    assert not wrong, (
+        "these natives link to something that is not an IS keyword %s "
+        "(display names in that column resolve to an empty surrogate): %s"
+        % ("-- and they ARE display names" if all(v in names for _, v in wrong)
+           else "", wrong))
+
+
+def test_the_derivation_reproduces_the_hand_maintained_maps():
+    """The evidence that deriving EPA 537.1 applies an existing validated
+    relation rather than inventing a regulatory value (CLAUDE.md §8): the same
+    derivation reproduces the two maps a human already maintained, entry for
+    entry AND in the same order."""
+    import json
+    ar = _analyte_reference()
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "data", "qc", "method_profiles.json")) as fh:
+        profiles = json.load(fh)
+    for method_id in ("FDA_32PFAS", "EPA_1633A"):
+        stored = profiles[method_id].get("surrogate_map") or []
+        derived = ar.derive_surrogate_map(
+            profiles[method_id].get("master_analyte_set") or [])
+        assert stored == derived, (
+            "%s's stored surrogate_map no longer matches the derivation -- "
+            "either the master table changed or the profile was hand-edited. "
+            "stored=%d derived=%d" % (method_id, len(stored), len(derived)))
+
+
+def test_epa_537_has_a_surrogate_map():
+    """It shipped empty. With no map, a surrogate failure named the labelled
+    compound on the client's certificate."""
+    import json
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "data", "qc", "method_profiles.json")) as fh:
+        profiles = json.load(fh)
+    mapping = profiles["EPA_537_1"].get("surrogate_map") or []
+    assert len(mapping) >= 15, "EPA 537.1 surrogate_map is %d entries" % len(mapping)
+    by_analyte = {e["analyte"]: e["surrogate_is"] for e in mapping}
+    assert by_analyte.get("PFOA") == "M8PFOA", by_analyte.get("PFOA")
+    assert by_analyte.get("PFHpA") == "M4PFHpA", by_analyte.get("PFHpA")
+    # one surrogate may quantify several natives -- that is the many-to-one
+    # relation CLAUDE.md §3 describes, not a duplicate
+    assert by_analyte.get("PFDoA") == by_analyte.get("PFTrDA") == "MPFDoA"
+
+
+def test_the_defaults_are_derived_not_copied():
+    """A hand-copy is free to drift from the table, and did."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    store = os.path.join(root, "src", "senaite", "pfas", "method_profile_store.py")
+    with open(store) as fh:
+        body = fh.read()
+    assert '"surrogate_map": [],' not in body, "a method still ships an empty map"
+    assert body.count('"surrogate_map": _derive_surrogate_map(') == 3, (
+        "all three methods should derive their surrogate map")
+
+
+def test_the_epa_is_chain_is_left_unset_on_purpose():
+    """`surrogate_is_chain` needs the injection IS each surrogate quantifies
+    against. `INTERNAL_STANDARDS` has no such column -- only a prose comment
+    that FDA's quantify against M4PFOA per Table 9-1 -- and `surrogate_is` is
+    empty on both EPA methods. Asserting one would be fabricating a regulatory
+    value (§8); EPA 537.1 quantifies by isotope dilution against the labelled
+    analog, not one shared injection standard. This test exists so the gap is
+    a decision on record, not an oversight someone 'fixes' by guessing."""
+    ar = _analyte_reference()
+    assert len(ar.INTERNAL_STANDARDS[0]) == 4, (
+        "INTERNAL_STANDARDS gained a column -- if it is a quantitation IS, the "
+        "chain can now be derived for the EPA methods; see GAPS.md")
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

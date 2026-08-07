@@ -85,10 +85,13 @@ repeated:
 
 Also open:
 
-- **`EPA_537_1.surrogate_map` is empty** and `surrogate_is_chain` is absent on
-  both EPA methods. `qc_qualification.analytes_for_failure` therefore degrades
-  to the labelled compound instead of the natives it quantifies — a certificate
-  would name a compound the client never sees.
+- ~~**`EPA_537_1.surrogate_map` is empty**~~ — **fixed 2026-08-06, see §9.**
+  `surrogate_is_chain` remains absent on both EPA methods and is **deliberately
+  left unset**: it needs the injection IS each surrogate quantifies against,
+  `INTERNAL_STANDARDS` carries no such column, and `surrogate_is` is empty for
+  both. Asserting one would fabricate a regulatory value (§8) — EPA 537.1
+  quantifies by isotope dilution against the labelled analog, not against one
+  shared injection standard. A lab must enter it from its method copy.
 - **Spike units vs result units.** A spike recorded in `ppt` against results in
   `ng/g` stops LFSM evaluation with an explicit message. Either record the spike
   in result units or configure the conversion.
@@ -361,3 +364,57 @@ every method's defaults ↔ what the engine actually reads — by parsing the AS
 because the first version of the reconciliation matched
 `_rule_enabled(toggles, "lfsm_recovery")` inside a *comment describing the fix*
 and reported the defect as still present.
+
+---
+
+## 9. Surrogate maps — derived, not hand-copied, 2026-08-06
+
+`qc_qualification.analytes_for_failure` reverses a method's `surrogate_map` to
+work out which **natives** a surrogate failure affects. EPA 537.1 shipped with
+`surrogate_map: []`, so it fell through to `[analyte]` — and a certificate would
+have named `13C4-PFHpA` as the affected analyte, a compound the client never
+ordered and never sees, instead of PFHpA.
+
+Which labelled compound quantifies a native is a property of the **analyte**,
+not of the method, and was already recorded once in
+`analyte_reference.NATIVE_ANALYTES`. FDA and 1633A carried hand-maintained
+copies of it in their profiles.
+
+**The evidence this is derivation and not fabrication** (§8 forbids inventing a
+regulatory value): the same `derive_surrogate_map()` reproduces both
+hand-maintained maps **entry for entry and in the same order** — FDA 21/21,
+1633A 25/25 — and a test now asserts it stays that way. Applying it to EPA
+537.1 yields 15 entries from its 18-analyte panel.
+
+| Method | Before | After |
+|---|---|---|
+| FDA_32PFAS | 21 (hand-copied) | 21, derived — identical |
+| EPA_1633A | 25 (hand-copied) | 25, derived — identical |
+| **EPA_537_1** | **0** | **15, derived** |
+
+Verified live, per method, on a surrogate failure raised against the labelled
+compound:
+
+```
+EPA_537_1   M4PFHpA   -> PFHpA
+EPA_537_1   MPFDoA    -> PFDoA, PFTrDA     (one surrogate, two natives)
+EPA_537_1   M8PFOS    -> PFOS
+FDA_32PFAS  M8FOSA    -> FOSA
+EPA_1633A   M2-6:2FTS -> 6:2FTS
+```
+
+### 9.1 The hand-copy had already drifted
+
+Six of the 27 links in `NATIVE_ANALYTES` — the four FTS analytes, FOSA and GenX
+— held a **display name** where the other 21 held a keyword
+(`"13C8-FOSA"` rather than `"M8FOSA"`). The single consumer does
+`_IS_KW_TO_NAME.get(value, "")`, so all six resolved to an **empty surrogate
+column** in the FDA profile's `per_analyte` table. Normalised, and a test now
+asserts every link names an IS keyword.
+
+The migration `migrations/backfill_surrogate_maps.py` fills only **empty** maps,
+so a lab's edit in the Method Profile editor always outranks the default; run
+twice, the second run reports nothing to do. Confirmed against the live
+instance: `EPA_1633A 25 entries already - left alone`, `FDA_32PFAS 21 entries
+already - left alone`, `EPA_537_1 EMPTY -> 15`. The refreshed export differs
+from its pre-migration copy by `surrogate_map` on EPA_537_1 and nothing else.
