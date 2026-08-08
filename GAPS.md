@@ -14,7 +14,7 @@ python3 tools/audit_configurable.py --profiles data/qc/method_profiles.json
 python3 tools/generate_synthetic_runs.py --out /tmp/synth --list
 ```
 
-Last updated: 2026-08-06.
+Last updated: 2026-08-07.
 
 ---
 
@@ -531,3 +531,91 @@ them would erase the only record that a real obligation is unmet.
 This is the same shape as the holding time was before §7: a requirement the
 system can state but does not enforce. The difference is that these two are now
 labelled at the point a maintainer will read them.
+
+---
+
+## 13. Where this stands — final review, 2026-08-07
+
+**Verification as of this entry:** 144 assertions across 18 test files, all
+passing; `audit_configurable` reports DEAD 0 / UNREACHABLE 0 / SPLIT 0; the
+generator plans all 18 method × matrix runs with none skipped; a clean synthetic
+run raises zero flags on every combination and each injected deviation is caught
+with no false positives.
+
+### Closed since the register opened
+
+Detection (§1), the mechanisms that shipped and did not run (§2), the first
+end-to-end release (§5), holding time (§7), the rule toggles (§8), the surrogate
+maps (§9), the facility QC eye wash (§10), signal-to-noise (§11).
+
+### What still needs to be addressed, in the order I would take it
+
+**1 — Lab data entry, blocking real use.** *Nothing here is a code defect.*
+- **17 of 18 method × matrix combinations have no spike level**, so LFSM cannot
+  be evaluated for them. FDA × Animal Feed is the only complete one.
+- **13 of 18 have no matrix factor**, so results stay on the extract basis.
+- **No holding time is configured** for FDA or EPA 1633A (§7). Until a lab
+  enters its own, every batch on those methods reports `unconfigured`.
+- **EPA 1633A acceptance is one placeholder tier**, 40–130, still flagged
+  `verify_against_method: true`.
+- **EPA 537.1 has never been edited by a human** — its profile still carries
+  `_seeded: True`.
+
+**2 — Decisions only the lab can make.**
+- **`sn_min` defaults OFF for FDA_32PFAS and EPA_537_1.** Signal-to-noise is
+  therefore not evaluated on two of three methods. Whether that is correct is a
+  method question, not a code one — I have not changed it.
+- **`surrogate_is_chain` is unset on both EPA methods** (§9). It needs the
+  injection IS each surrogate quantifies against; asserting one would fabricate
+  a regulatory value.
+- **FDA `MxB` is `enabled: false`** — matrix-blank QC is off.
+- **Spike units vs result units**: a spike in `ppt` against results in `ng/g`
+  stops LFSM evaluation with an explicit message.
+
+**3 — Obligations the system states but does not enforce** (§12).
+- **FDA §10.2(4)**: PFBA/PFPeA positives require LC-HRMS confirmation.
+  `single_transition_confirm_needed` computes the prompt; nothing calls it.
+  This is the most consequential remaining code gap.
+- **MDL** has no periodic-study feature; `calculate_mdl` is correct and unused.
+- **`ccv_frequency`** is declared UI-only: nothing verifies that a run actually
+  carried a CCV every N injections. Implementing it needs one definition of
+  which injections count toward the interval — the add-on has one
+  (`run_builder._noncount_codes`, RefDef-driven) and the pipeline has none.
+
+**4 — Smaller code gaps.**
+- **`qq_ratio_matching_pct` / `_key_pct` / `_non_iso_pct`**: three UI knobs,
+  `qual_quan_check` reads one flat value.
+- **`water_qc_logs` orders by `log_time` only** — the same `HH:MM` tie that
+  showed a stale PASS for eye wash (§10.1). No data yet, so no failing case.
+- **`QCResultStore.add_results_bulk` / `add_result` / `flag_for_reanalysis` /
+  `void_batch`** have no external callers; the Py3 pipeline writes raw SQL. So
+  `voided`, `flagged_reanalysis` and `superseded` are read by Data Review and
+  never produced.
+- **96 hardcoded lab values** remain, mostly module tables. None decides a
+  reported result.
+- **Publication is not gated on the review** — decided: warn and record, and
+  the publication entry now carries `review_state`.
+
+**5 — Never exercised.**
+- **The EGAD EDD** has never run from a real publish. The subscriber fires but
+  exits at `is_egad_enabled()`; KCP is a food client, not a state agency.
+  Neither the generate nor the refuse branch has been seen end to end.
+- **Facility QC holds no data at all** (§10.3) — nine tables, zero rows,
+  including `facility_units`. None of the §6.4 monitoring is happening.
+- `tests/` covers the pipeline well and the add-on unevenly: `data_review`'s
+  gates and `qc_store` still have no direct tests.
+
+### The pattern worth carrying forward
+
+Almost every defect in this register is one of two shapes, and both are
+cheap to look for:
+
+- **a fact recorded correctly in one place and never carried to where it is
+  used** — the qualifier codes, the holding-time dates, the surrogate map, the
+  eye wash verdict, `sn_confirm_min`;
+- **a consumer with no producer, or a producer with no consumer** — the
+  `unevaluated` status, the LFSM toggle keys, `single_transition_confirm_needed`.
+
+The audit tool catches the second shape for method-profile keys only. The first
+shape has no tool; it was found each time by running the thing end to end and
+checking whether the value arrived.
