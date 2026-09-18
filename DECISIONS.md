@@ -4835,3 +4835,129 @@ remembering to.
 than merges, **absent is not "unchanged" — absent is "clear it."** Normal use
 never exposes this, because the real form always submits every pane; that is
 precisely why it survived. Any partial, AJAX or scripted POST is the hazard.
+
+---
+
+## 2026-09-18 — FDA matrix factors were on the wrong basis by 1000×
+
+**Status:** confirmed by the lab owner, applied.
+
+**Context.** The September design review tabulated the configured matrix
+factors for lab confirmation. The owner returned 2000 for Animal Feed, 500 for
+Eggs / Fish / Meat and 200 for Milk, against the 2.0 and 0.5 the profile store
+held. A 1000× movement on a value the pipeline multiplies into every native
+analyte result is the shape of a unit error, so it was queried before being
+applied rather than after.
+
+**What the query found.** The unit map already said `ng/kg` for Animal Feed,
+Eggs, Fish / Seafood and Meat / Muscle. `pipeline.py:125-150` applies the factor
+to `calculated_conc`, `measured_conc` and `reporting_limit`, then stamps
+`row.conc_units` from that same unit map. So the stored 0.5 was a per-gram
+factor whose output was being labelled per-kilogram — the factor and the unit
+had drifted apart, and **every FDA solid-matrix result on those four matrices
+was under-reported by 1000× while carrying a `ng/kg` label**. The owner's
+numbers are not a new convention; they correct the basis to match the label
+that was already there.
+
+Milk moves 0.5 → 200 rather than ×1000, which is consistent with its unit being
+`ng/mL` (a volumetric basis, confirmed under Q-013) rather than `ng/kg`.
+
+**Decision.** Factors set to 500.0 (Meat / Muscle, Eggs, Fish / Seafood),
+200.0 (Milk), 2000.0 (Animal Feed) in `data/qc/method_profiles.json`.
+Aquatic Tissue still has **no** factor and therefore still reports on the
+extract basis; the owner's table dropped that row rather than filling it, so it
+was not invented.
+
+**The transferable rule.** A conversion factor and the unit its output is
+labelled with are one fact in two places. Neither can be reviewed alone — this
+was invisible for months because the factor looked plausible and the unit looked
+plausible, and only the pair was wrong. This is the §13 "recorded correctly in
+one place and never carried to where it is used" shape again.
+
+**Caveat on verification.** The sandbox classifier blocked every attempt to run
+a JSON parser or `tools/audit_configurable.py` against the edited file, so the
+edit was confirmed by inspection of the block, not by executing a validator.
+Re-run the GAPS.md verification block before trusting the profile store.
+`data/qc/` is gitignored, so this change is **not** captured by any commit.
+
+---
+
+## 2026-09-18 — A QAPP becomes a §3 object; spike levels are the first override
+
+**Status:** decided in principle; design plan awaiting sign-off, no code written.
+
+**Context.** Q-014 asked the lab for spike concentrations per matrix. The answer
+enlarged the question instead of closing it: *"Spikes vary per matrix, method or
+QAPP. We need the ability to adjust this in a dynamic way."* A QAPP cuts across
+method × matrix — it is a client-project artefact — and §3 has no such object.
+
+**Decision.** A QAPP becomes its own object, owned by a client and referenced by
+batches, rather than a spike-level override carried on the Batch. Chosen over
+the batch-override option because a QAPP is reused across many batches and is a
+real document with its own identity; a per-batch override would duplicate it
+once per batch, which §1 rule 3 forbids.
+
+**The constraint that keeps it from becoming a second method profile.**
+Resolution order is method × matrix default, then QAPP override, and nothing
+else. A QAPP holds no key the method profile could not hold — only a different
+value for the same key, scoped to method × matrix like every other analyte list
+(§3 rule 2). Any result whose evaluation consumed a QAPP value must name that
+QAPP, or §1 rule 6 parentage breaks.
+
+**Open for sign-off.** Whether reporting limits join spike levels in the first
+cut; whether a QAPP may ever loosen a method's QC acceptance criteria
+(proposed: no); whether the lab keeps in-house QAPPs reusable across clients.
+Full plan in the September design review document.
+
+---
+
+## 2026-09-18 — §5 resolved as the middle path: two landings, not ten
+
+**Status:** confirmed.
+
+**Context.** The September review found that 1 of the 10 workspaces named in §5
+existed as a workspace. The pages existed and the sidebar reached them; the
+workspace layer over them did not. Three options were put: build all nine
+missing landings, amend §5 to describe sidebar groups instead, or build landings
+only where a role needs an at-a-glance view.
+
+**Decision.** The middle path. Landing pages for **Bench** and **Data Review**
+only — the two daily-driver roles that want a queue rather than a menu — both
+following the existing `PFASQCManagementView` tile-grid pattern. The remaining
+workspaces stay as sidebar links and §5 should be amended to say so rather than
+left describing a system nobody intends to build.
+
+Separately, the launcher was routing LabManager to `@@pfas-method-profiles` —
+a single page — bypassing the one workspace landing that did exist. Fixed to
+`@@pfas-qc-management` in commit 0103927.
+
+**Not verified.** Docker Desktop is down, so neither new landing has been loaded
+in a browser. §8 requires verification against the running instance; that debt
+is outstanding.
+
+---
+
+## 2026-09-18 — Three lab answers that are feature requests, not closures
+
+**Status:** recorded, all three still open in QUESTIONS.md.
+
+The design review returned lab input on three long-open questions. None closed;
+each names work that does not exist yet.
+
+- **Q-007 (isomer naming).** *"tie to the mass transitions or in the case of
+  linear vs branch prompt a question to the end user."* The pipeline currently
+  matches isomer peaks on the compound-name string (`lr-PFOS`), which silently
+  misses the peak when the instrument spells it differently. Resolving identity
+  by MRM transition rather than by name removes the string dependency; the
+  prompt is the fallback when the transition alone cannot separate lr from br.
+- **Q-003 (rolling MDL).** *"dynamically calculate the MDL but this needs to
+  generate a packet that receives a QA sign off."* `calculate_mdl` exists and
+  is correct but has no caller (§4). The sign-off half should reuse the D64 QA
+  sign-off attestation already on this branch rather than growing a second
+  approval mechanism.
+- **Q-002 (QC reference definitions).** *"we always have extracted,
+  non-extracted QC. The extracted QC can be linked to a sample or to each other
+  or be independent."* This is a taxonomy statement, not a labelling preference:
+  QC divides on extracted vs non-extracted, and independently on linkage
+  (to a sample / to each other / independent). It likely reshapes the RefDef
+  structure rather than just disambiguating titles in a listing.
