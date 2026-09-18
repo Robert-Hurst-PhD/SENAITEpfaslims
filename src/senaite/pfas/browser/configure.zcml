@@ -387,6 +387,24 @@
       permission="zope2.View"
       />
 
+  <!-- Bench workspace landing page (Bench Chemist / LabClerk default) -->
+  <browser:page
+      name="pfas-bench"
+      for="*"
+      class=".workspace_home.PFASBenchHomeView"
+      permission="zope2.View"
+      />
+
+  <!-- Data Review workspace landing page (Analyst/Verifier default) — links
+       to the existing @@pfas-data-review queue plus related review surfaces.
+       Do not confuse with @@pfas-data-review itself, which is unchanged. -->
+  <browser:page
+      name="pfas-data-review-home"
+      for="*"
+      class=".workspace_home.PFASDataReviewHomeView"
+      permission="zope2.View"
+      />
+
   <!-- Logbook definition manager (portal-level) -->
   <browser:page
       name="pfas-logbook-admin"
