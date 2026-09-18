@@ -16,6 +16,8 @@
   - Once answered, enter via Method Profile UI → Spike Levels section.
 - **Status:** open — spike concentrations must be entered by the lab. UI is ready.
 - **Raised:** 2026-06-18 / restructured to per-matrix 2026-06-19 / 1633A matrices corrected 2026-06-19
+- **Lab input — 2026-09-18:** "Spikes vary per matrix, method or QAPP. We need the ability to adjust this in a dynamic way."
+  This adds a QAPP dimension to spike-level configuration that the current per-method/per-matrix data model does not have.
 
 ## Q-013  FDA_32PFAS Milk unit — ng/kg or ng/mL?
 
@@ -121,6 +123,8 @@
   will silently miss the peak.
 - **Status:** open — MRM values confirmed from EPA method; blocked on lab MassLynx export names.
 - **Raised:** 2026-06-13 / updated 2026-06-19
+- **Lab input — 2026-09-18:** "This is a thing that I think we need to tie to the mass transitions or in the case of linear vs branch prompt a question to the end user to clarify this."
+  Still needed: the exact MassLynx export compound names (or a user-prompt fallback) so recovery checks can match lr-/br- peaks.
 
 ---
 
@@ -167,6 +171,8 @@
   concentrations (minimum 7 replicates in one study).
 - **Status:** open — deferred after Stage 1
 - **Raised:** 2026-06-11
+- **Lab input — 2026-09-18:** "Yes we need to dynamically calculate the MDL but this needs to generate a packet that receives a QA sign off."
+  Still needed: a dynamic MDL calculation path plus a QA sign-off packet artifact, neither of which exists yet.
 
 ---
 
@@ -181,6 +187,8 @@
   Which approach does the lab prefer?
 - **Status:** open
 - **Raised:** 2026-06-11
+- **Lab input — 2026-09-18:** "Not sure, I know that we always have extracted, non-extracted QC. The extracted QC can be linked to a sample or to each other or be independent. This applies to the non-extracted QC aswell."
+  Still needed: the grouping/colour-coding approach itself, plus a way to represent extracted-vs-non-extracted QC linkage (to a sample, to each other, or independent) in the Reference Definitions model.
 
 ---
 
