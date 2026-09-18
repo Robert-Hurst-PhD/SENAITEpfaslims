@@ -734,7 +734,10 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-prep-standards"/></svg></span>
           <span class="pfas-si-label">Prepared Standards</span>
         </a>
-        <a class="pfas-si" title="Prep Logbooks"
+        <!-- Manager only: prep_logbooks.py returns 403 to everyone else, so
+             showing this to bench staff is a guaranteed dead end. Same
+             reasoning as Logbook Setup below. -->
+        <a class="pfas-si" title="Prep Logbooks" tal:condition="is_mgr"
            tal:attributes="href string:${purl}/@@pfas-prep-logbooks;
                            class python:'pfas-si si-active' if '@@pfas-prep-logbooks' in path else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-book-open"/></svg></span>
