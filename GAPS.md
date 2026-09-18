@@ -619,3 +619,88 @@ cheap to look for:
 The audit tool catches the second shape for method-profile keys only. The first
 shape has no tool; it was found each time by running the thing end to end and
 checking whether the value arrived.
+
+---
+
+## 14. Check-in — 2026-09-18
+
+Six weeks since the last commit (8819e24, 2026-08-07). Working tree clean.
+**This entry is a static read of code and documents — Docker Desktop is down,
+so nothing below was re-verified against a running instance.** The stack must
+not be brought up on the system daemon to check: that creates empty volumes and
+a bare Plone site (see the infra restore procedure).
+
+### 14.1 Repository risk — the top line, and not a design question
+
+`d63-state-edd-profiles` @ 8819e24 carries everything from mid-July through
+2026-08-07: D63 state EDD profiles, D64 QA sign-off attestation, D65 CoA
+controlled publication, the Run Builder template work, the visual logbook
+builder, the real-instrument E2E fixes, the first sample ever verified and
+published, and all eight §7–§11 closures. `master` is still at D62 (015fc86).
+No branch has an upstream — `git branch -vv` shows no remote tracking at all.
+
+Six weeks of the highest-value work in this project exists on one disk, in one
+branch, unmerged and unpushed. Merging and establishing a remote are both
+decisions for the lab, not for me; this entry records the exposure.
+
+### 14.2 Design conformance (CLAUDE.md §5/§6) — a previously unmeasured axis
+
+This register has always been a QC-correctness instrument. The workspace and
+layout architecture had never been audited against the spec. Doing so now:
+
+| §6A site-wide sidebar | Status |
+|---|---|
+| One persistent sidebar on every page | **built** — `PFASSidebarManager` overrides core `SidebarViewletManager` by layer specificity |
+| All seven accordion groups | **built** — Operations, QC & Methods, Bench, Facility QC, Instruments & Import, Reporting, Configuration all present in `pfas_sidebar.pt` |
+| §6C: every core override documented in DECISIONS.md with upgrade fragility | **satisfied** — all three overrides (`lims-setup`, `senaite.sidebar`, `@@email`) carry inline upgrade notes *and* DECISIONS.md entries |
+| §6C: Client Tracker carve-out, no sidebar, no chrome | **satisfied** — `templates/tracker.pt` pulls neither `render_sidebar` nor `pfas_macros` |
+
+**§6B tabs conversion is effectively complete.** §6B flags itself unfinished
+("finish converting the remaining collapsible-section pages to tabs"); that
+instruction is now stale. Of 56 templates, only `qcrules.pt` still carries
+collapse markup, and it carries tab markup too — one page to inspect, not a
+programme of work. (`pfas_sidebar.pt`'s accordion is §6A by design.)
+
+**§5 workspaces are the real divergence: 1 of 10 exists as a workspace.**
+Only QC Management has a landing view (`PFASQCManagementView`, an 8-tile grid).
+Data Review, Facility QC, Bench, Sample Workflow, Method & Analyte Setup,
+Instrument & Import, Reporting & EDD have *pages* in `browser/` reachable from
+the sidebar, but no unified role-scoped view over them. `PFASWorkspaceHomeView`
+routes each role to a single page, not to a workspace:
+
+```
+LabManager/Manager → @@pfas-method-profiles   (a page, not QC Management)
+Analyst/Verifier   → @@pfas-data-review
+LabClerk           → @@pfas-reagents          (a page, not Bench)
+Client             → @@pfas-track
+```
+
+So the launcher's Manager landing bypasses the one workspace that does exist.
+The finding in one line: **the pages exist; the workspace layer as §5 defines
+it does not.** Whether that matters is a lab decision — the sidebar may already
+deliver the navigation §5 was reaching for, in which case §5 should be amended
+rather than implemented. Three ways to resolve it, none chosen here:
+
+1. Build the remaining workspace landings on the QC Management pattern.
+2. Keep sidebar-only navigation and amend §5 to describe groups, not workspaces.
+3. Build landings only where a role needs an at-a-glance view (Bench, Data
+   Review), leave the rest as sidebar links.
+
+At minimum the launcher should route Manager to QC Management rather than past
+it — that one is a plain inconsistency, not a design choice.
+
+### 14.3 What has not changed
+
+§13's ranked list stands unaltered; no code has moved since it was written.
+Restating it by **who can act**, since that is what decides what happens next:
+
+- **Only the lab can move these** — §13 items 1 and 2, plus Q-014 (spike
+  concentrations per matrix), Q-007 (MassLynx lr-/br- export names), Q-002,
+  Q-003. 17 of 18 method × matrix combinations still cannot evaluate LFSM and
+  13 of 18 still report on the extract basis because no number has been
+  entered. **This, not any code gap, is what blocks production use.**
+- **Code work remaining** — §13 items 3 and 4, with FDA §10.2(4)
+  (`single_transition_confirm_needed`, computed and never called) the most
+  consequential.
+- **Never exercised** — §13 item 5: the EGAD EDD end to end, and Facility QC,
+  which still holds zero rows across nine tables.
