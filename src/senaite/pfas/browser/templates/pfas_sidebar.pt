@@ -765,11 +765,11 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-extraction"/></svg></span>
           <span class="pfas-si-label">Extraction Guide</span>
         </a>
-        <a class="pfas-si" title="SOPs"
+        <a class="pfas-si" title="Controlled Documents — QAM, SOPs, job aids, supplemental"
            tal:attributes="href string:${purl}/@@pfas-sop;
                            class python:'pfas-si si-active' if '@@pfas-sop' in path else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-book-open"/></svg></span>
-          <span class="pfas-si-label">SOPs</span>
+          <span class="pfas-si-label">Controlled Documents</span>
         </a>
         <a class="pfas-si" title="Deviations &amp; CARs"
            tal:attributes="href string:${purl}/@@pfas-deviations;

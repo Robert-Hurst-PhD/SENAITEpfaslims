@@ -101,8 +101,8 @@ class PFASQCManagementView(BrowserView):
             {
                 "url":   u"{0}/@@pfas-sop".format(base),
                 "icon":  u"❐",
-                "title": u"SOPs",
-                "desc":  u"Standard operating procedures — revisions and sign-off",
+                "title": u"Controlled Documents",
+                "desc":  u"QAM, SOPs, job aids and supplemental — revisions and sign-off",
             },
         ]
 
@@ -143,8 +143,8 @@ class PFASBenchHomeView(BrowserView):
             {
                 "url":   u"{0}/@@pfas-sop".format(base),
                 "icon":  u"❐",
-                "title": u"SOPs",
-                "desc":  u"Standard operating procedures — revisions and sign-off",
+                "title": u"Controlled Documents",
+                "desc":  u"QAM, SOPs, job aids and supplemental — revisions and sign-off",
             },
             {
                 "url":   u"{0}/@@pfas-deviations".format(base),
