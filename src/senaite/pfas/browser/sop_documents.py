@@ -69,13 +69,17 @@ METHOD_LABELS[""] = "General Lab"
 # "prefix" is the id prefix used by _next_sop_id (e.g. "SOP-001", "JA-001").
 # "label" is the display label.
 #
-# A fifth type, QAPP (client-owned), is coming in a later phase — adding it
-# is a data change to this list, nothing else.
+# QAPP is client-owned rather than lab-owned, but it is the SAME kind of
+# controlled document (revision-controlled, sign-off, numbered) — it just
+# governs one client's project instead of the whole lab. A Project (see
+# senaite.pfas.content.project) points at a QAPP document id; the document
+# itself carries no knowledge of which project(s) reference it.
 DOC_TYPES = [
-    {"code": "QAM",          "prefix": "QAM", "label": "Quality Assurance Manual"},
-    {"code": "SOP",          "prefix": "SOP", "label": "SOP"},
-    {"code": "JOB_AID",      "prefix": "JA",  "label": "Job Aid"},
-    {"code": "SUPPLEMENTAL", "prefix": "SUP", "label": "Supplemental"},
+    {"code": "QAM",          "prefix": "QAM",  "label": "Quality Assurance Manual"},
+    {"code": "SOP",          "prefix": "SOP",  "label": "SOP"},
+    {"code": "JOB_AID",      "prefix": "JA",   "label": "Job Aid"},
+    {"code": "SUPPLEMENTAL", "prefix": "SUP",  "label": "Supplemental"},
+    {"code": "QAPP",         "prefix": "QAPP", "label": "QAPP (client project)"},
 ]
 
 # Legacy/default: registry entries written before doc_type existed have no

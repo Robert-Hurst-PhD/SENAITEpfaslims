@@ -335,6 +335,39 @@ def setup_reagents_catalog(portal):
     return folder
 
 
+def setup_projects_catalog(portal):
+    """Register PFASProject portal_type in senaite_catalog_setup and create
+    container.
+
+    Must run after the PFASProject FTI is installed (i.e. in post_install,
+    not setup_handler).  Idempotent.  No annotation-based legacy store exists
+    for Project, so unlike Reagent there is no migration step to pair with
+    this.
+    """
+    try:
+        from senaite.core.catalog import set_catalogs, SETUP_CATALOG
+    except ImportError:
+        logger.warning("setup_projects_catalog: senaite.core.catalog unavailable; skipping")
+        return None
+
+    set_catalogs("PFASProject", [SETUP_CATALOG])
+    logger.info("PFASProject registered in %s", SETUP_CATALOG)
+
+    # Create pfas_projects Folder at portal root if not yet present.
+    # PFASProject.xml uses global_allow=True because this SENAITE environment's
+    # Plone Folder does not support ISelectableConstrainTypes.
+    if "pfas_projects" not in portal:
+        from bika.lims import api as bika_api
+        folder = bika_api.create(portal, "Folder",
+                                 id="pfas_projects",
+                                 title="PFAS Projects")
+        logger.info("Created pfas_projects folder at portal root")
+    else:
+        folder = portal["pfas_projects"]
+
+    return folder
+
+
 def migrate_reagents_from_annotations(portal):
     """Migrate reagent records from portal.annotations into Reagent content objects.
 
@@ -753,6 +786,12 @@ def post_install(context):
         logger.info("Reagent migration: %d migrated, %d already present", migrated, skipped)
     except Exception as exc:
         logger.error("Failed to set up Reagent catalog / migration: %s", exc)
+
+    # ── Project catalog integration (no legacy data to migrate) ───────────
+    try:
+        setup_projects_catalog(portal)
+    except Exception as exc:
+        logger.error("Failed to set up Project catalog: %s", exc)
 
     # ── LogbookDef catalog integration + migration ────────────────────────
     try:

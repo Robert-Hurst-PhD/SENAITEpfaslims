@@ -7,4 +7,5 @@
   <object name="EGADConfig" meta_type="Dexterity FTI"/>
   <object name="PrepLogbookDef" meta_type="Dexterity FTI"/>
   <object name="PreparedStandard" meta_type="Dexterity FTI"/>
+  <object name="PFASProject" meta_type="Dexterity FTI"/>
 </object>
