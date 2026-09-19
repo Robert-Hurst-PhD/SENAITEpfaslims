@@ -704,3 +704,59 @@ Restating it by **who can act**, since that is what decides what happens next:
   consequential.
 - **Never exercised** — §13 item 5: the EGAD EDD end to end, and Facility QC,
   which still holds zero rows across nine tables.
+
+---
+
+## 15. Three-tier criterion resolution — built, tested, unwired (2026-09-18)
+
+`method_baselines.py` and `ruleset.py` are new, additive, and have **zero call
+sites**, in the same spirit as §12's `calculate_mdl` and
+`single_transition_confirm_needed` — kept and labelled rather than left to be
+rediscovered, since §12's own entry exists because one of those two carried a
+docstring that falsely claimed a consumer. Neither new module's docstring
+claims one; both say plainly that nothing calls them yet.
+
+What is built: `method_baselines.py` declares, per method and criterion key,
+the value the PUBLISHED METHOD itself specifies (not what the lab currently
+uses), tagged with a comparison shape — `SHAPE_MIN` (a floor), `SHAPE_MAX` (a
+ceiling), or `SHAPE_WINDOW` (two-sided, each end judged independently) — and a
+citation. `ruleset.py` resolves one criterion through project QAPP ruleset →
+lab method profile → that baseline, and reports which tier answered, the
+controlled-document provenance for a project-tier answer, and whether the
+resolved value CONFORMS to, or DEPARTS from, the baseline (UNKNOWN if no
+baseline was ever verified for that key — which is most of them; see below).
+`tests/test_ruleset.py` pins the shape taxonomy, the tier fall-through, and
+the provenance rules in 25 test functions / 93 assertions; all pass under
+`python3 tests/test_ruleset.py`.
+
+Only ONE criterion is seeded with a real baseline: EPA_1633A's per-analyte
+`eis_recovery` window, from EPA 1633A (EPA 820-R-24-007, December 2024, Tables
+6 and 8) — the same data QUESTIONS.md Q-004 closed on 2026-06-19 after
+checking it against the official PDF. Every other criterion this project
+tracks (`cal_r2_min`, `dup_rpd_max`, `ccv_recovery`, and anything else a later
+phase registers) resolves fine through the project/lab tiers but reports
+`UNKNOWN` conformance, because nothing else in this system has a closed,
+citable verification against method text — Q-005 (`cal_r2_min`) was closed as
+lab-owned, not method-derived, which is a different answer, not a gap. Adding
+a new baseline means adding a new closed Q-xxx citation first, not a number
+that "looks right."
+
+Found while seeding, left alone (both in `data/qc/method_profiles.json`,
+read-only, not touched here): EPA_1633A's `qc_acceptance.LFSMD` tier carries
+the identical 40/130 recovery window as `LFB`/`LFSM`, which are explicitly
+flagged `verify_against_method: true` — LFSMD carries no such flag, which
+reads as a placeholder that lost its flag rather than a second verification.
+And the out-of-process worker's own `EPA1633AProfile.qc_rules()` (Python 3,
+`pfas_pipeline/method_profiles.py`) still returns `verify_against_method=True`
+with a "VERIFY against purchased method copy" note on its EIS branch — D62
+(2026-07-21) made that intentional for a reason unrelated to Q-004, but it now
+sits beside a closed verification that says the opposite. Neither is this
+module's data to fix; both are flagged here so the next phase does not have to
+rediscover them.
+
+Why not wired: this deliverable was scoped explicitly as build-and-prove, not
+build-and-connect — the certificate-facing non-conformance statement this
+enables (CLAUDE.md's "the sample leaves accreditation scope and the
+certificate must state exactly how it departs") is a deliberate, separate
+phase, so that wiring it can be verified against a real departing run rather
+than assumed correct because the unit tests pass.
