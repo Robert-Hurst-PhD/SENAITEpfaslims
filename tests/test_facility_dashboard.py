@@ -26,6 +26,7 @@ Runs against a scratch database via `PFAS_FACILITY_QC_DB`; it never touches
 import importlib.util
 import os
 import tempfile
+from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODULE = os.path.join(ROOT, "src", "senaite", "pfas", "facility_qc.py")
@@ -84,11 +85,20 @@ def test_a_failing_station_is_reported_failing():
 def test_the_latest_entry_wins_even_within_the_same_minute():
     """`log_time` is HH:MM. Re-testing a station after a failed check writes a
     second entry in the same minute; without a deterministic tiebreak the
-    dashboard showed the FIRST one."""
+    dashboard showed the FIRST one.
+
+    The stamp is TODAY's date, deliberately. The subject here is the tiebreak,
+    not recency — but the final assertion expects `ok`, and `dashboard_summary`
+    reports any eye wash entry older than today as `pending` (§6.4 cadence,
+    pinned by the next test). A frozen date therefore passes on the day it is
+    written and fails ever after: this file was written 2026-08-07 and began
+    failing once that date went stale.
+    """
     fq = _fresh_module()
     _unit(fq, "eyewash", "EW")
     uid = fq.list_units()[0]["id"]
-    stamp = {"log_date": "2026-08-07", "log_time": "09:15"}
+    stamp = {"log_date": datetime.utcnow().strftime("%Y-%m-%d"),
+             "log_time": "09:15"}
 
     fq.save_eyewash_log(uid, "KP", working=True, temperature=20.0, **stamp)
     fq.save_eyewash_log(uid, "KP", working=False, temperature=20.0, **stamp)

@@ -6,15 +6,24 @@ instance, not by reading it.
 
 Re-verify with:
 
+**Run it as ONE shell invocation.** The exports are not decoration: without
+them four files fail in ways that look like real regressions and are not —
+FDA drops to tier 2 (no `tight_matrices`), `deer muscle` stops resolving (no
+matrix aliases), `br-PFOS` vanishes (no isomer summation) and `lfsm_low` goes
+undetected (no spike levels). Four unrelated-looking failures with one shared
+cause is the signature. See §16.
+
 ```bash
-export PFAS_PROFILES_PATH="$PWD/data/qc/method_profiles.json"
-export PFAS_ALLOW_LEGACY_VENDOR_MAP=1
-for t in tests/*.py; do python3 "$t"; done
-python3 tools/audit_configurable.py --profiles data/qc/method_profiles.json
+cd "$(git rev-parse --show-toplevel)" && \
+export PFAS_PROFILES_PATH="$PWD/data/qc/method_profiles.json" && \
+export PFAS_ALLOW_LEGACY_VENDOR_MAP=1 && \
+for t in tests/*.py; do echo "=== $t"; python3 "$t"; done && \
+python3 tools/audit_configurable.py --profiles data/qc/method_profiles.json && \
 python3 tools/generate_synthetic_runs.py --out /tmp/synth --list
 ```
 
-Last updated: 2026-08-07.
+Last updated: 2026-09-19 — 19/19 test files pass, audit DEAD 0 / UNREACHABLE 0
+/ SPLIT 0, 18 runs planned / 0 skipped.
 
 ---
 
@@ -760,3 +769,66 @@ enables (CLAUDE.md's "the sample leaves accreditation scope and the
 certificate must state exactly how it departs") is a deliberate, separate
 phase, so that wiring it can be verified against a real departing run rather
 than assumed correct because the unit tests pass.
+
+---
+
+## 16. The verification block lied, two different ways (2026-09-19)
+
+Running the suite for the first time since 2026-08-07 produced a failure and
+then four more. None was a regression. Both causes are defects in **how this
+register verifies itself**, which makes them worth more than the tests they
+broke.
+
+### 16.1 A date-anchored test rots
+
+`tests/test_facility_dashboard.py::test_the_latest_entry_wins_even_within_the_same_minute`
+stamped its entries `2026-08-07` — the day it was written. `dashboard_summary`
+reports any eye wash entry older than today as `pending`, deliberately (§6.4
+cadence). So the final assertion, that a repair logged after a failure reads
+`ok`, held on the day of writing and has been false every day since.
+
+The production code is correct. The very next test in the same file asserts
+that an old passing check **must** read `pending` — the file pins the right
+behaviour and then trips over it. Fixed by stamping today, which is what the
+test meant: its subject is the same-minute tiebreak, not recency.
+
+**§13 claimed "144 assertions across 18 test files, all passing."** That was
+true when written and silently false from roughly the next day. A verification
+result whose truth depends on the date it is read is not a verification result.
+
+### 16.2 The documented command sequence produces four false failures
+
+The block at the top of this file was three lines assuming a persistent shell.
+Run the exports separately from the loop — the obvious thing to do, and what
+happened here — and the tests fall back to the seeded built-in defaults instead
+of the lab's configured profile. Result: `test_profiles`, `test_fault_injection`,
+`test_salt_correction` and `test_unconfigured_criteria` fail with confident,
+specific, entirely meaningless assertions.
+
+Proven by running the loop twice, once with the exports and once without:
+**19/19 pass with them, 15/19 without, and nothing fails with them set.** The
+block is now a single `&&`-chained invocation.
+
+### 16.3 Two stale flags found on the way
+
+- **`EPA_1633A.qc_acceptance.LFSMD` carried the same 40–130 placeholder window
+  as `LFB` and `LFSM` but had lost its `verify_against_method` flag** — so two
+  unverified tiers announced themselves and the third looked verified. The flag
+  is advisory only (it appends `[VERIFY limits vs method tables]` to a failing
+  recovery; `qc_engine.py:610`) and changes no pass/fail outcome, so flagging it
+  restores what §8 requires of a placeholder without altering evaluation.
+  Applied. `data/qc/` is gitignored, so no commit captures it.
+- **`pfas_pipeline/method_profiles.py` still hardcodes `verify_against_method=True`
+  on its EIS branch** with a "VERIFY against purchased method copy" note, stale
+  since Q-004 closed that verification on 2026-06-19 against EPA 820-R-24-007.
+  The add-on profile no longer carries the flag there; the Py3 worker does.
+  Left alone, recorded — it is a divergence between the two halves of §7's
+  "one system, not two."
+
+### The transferable rule
+
+Both 16.1 and 16.2 are the same shape as everything else in this register: a
+fact recorded correctly in one place and not carried to where it is used. Here
+the fact was *"these tests pass"* — recorded without recording what it depended
+on. A passing state has preconditions, and a register that states the state
+without stating the preconditions will eventually be lying.
