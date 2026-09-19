@@ -60,6 +60,49 @@ METHOD_LABELS[None] = "General Lab"
 METHOD_LABELS[""] = "General Lab"
 
 
+# ── Document type taxonomy ──────────────────────────────────────────────────
+# The lab's quality system is a hierarchy of controlled document types, not
+# just SOPs. Defined ONCE here; every label, id-prefix and option list in this
+# module is derived from this list — do not scatter these strings elsewhere.
+#
+# "code" is the stable value stored in a registry entry's "doc_type" key.
+# "prefix" is the id prefix used by _next_sop_id (e.g. "SOP-001", "JA-001").
+# "label" is the display label.
+#
+# A fifth type, QAPP (client-owned), is coming in a later phase — adding it
+# is a data change to this list, nothing else.
+DOC_TYPES = [
+    {"code": "QAM",          "prefix": "QAM", "label": "Quality Assurance Manual"},
+    {"code": "SOP",          "prefix": "SOP", "label": "SOP"},
+    {"code": "JOB_AID",      "prefix": "JA",  "label": "Job Aid"},
+    {"code": "SUPPLEMENTAL", "prefix": "SUP", "label": "Supplemental"},
+]
+
+# Legacy/default: registry entries written before doc_type existed have no
+# such key. They are lazily resolved as SOP at read time — see _entry_doc_type.
+_DEFAULT_DOC_TYPE = "SOP"
+
+_DOC_TYPE_BY_CODE = dict((dt["code"], dt) for dt in DOC_TYPES)
+
+
+def _doc_type_info(code):
+    return _DOC_TYPE_BY_CODE.get(code, _DOC_TYPE_BY_CODE[_DEFAULT_DOC_TYPE])
+
+
+def _doc_type_label(code):
+    return _doc_type_info(code)["label"]
+
+
+def _doc_type_prefix(code):
+    return _doc_type_info(code)["prefix"]
+
+
+def _entry_doc_type(entry):
+    """Lazy migration: a registry entry with no doc_type key resolves as SOP
+    at read time. Existing SOP-nnn records are never rewritten to add one."""
+    return entry.get("doc_type") or _DEFAULT_DOC_TYPE
+
+
 # ── Annotation helpers ────────────────────────────────────────────────────────
 
 def _get_registry(portal):
@@ -103,16 +146,24 @@ def _save_signoffs(portal, sop_id, data):
     ann[_sig_key(sop_id)] = json.dumps(data)
 
 
-def _next_sop_id(registry):
-    if not registry:
-        return "SOP-001"
+def _next_sop_id(registry, doc_type=_DEFAULT_DOC_TYPE):
+    """Next id for doc_type, numbered PER TYPE off that type's prefix (e.g.
+    the first job aid is JA-001 even though SOP-007 already exists).
+
+    Matches existing ids by PREFIX, not by stored doc_type — so legacy
+    entries with no doc_type key (all of them resolve to SOP, but their
+    sop_id already starts with "SOP-") are counted correctly without needing
+    a doc_type key at all. Existing SOP numbering is therefore unaffected."""
+    prefix = _doc_type_prefix(doc_type)
     nums = []
     for entry in registry:
-        try:
-            nums.append(int(entry["sop_id"].split("-")[1]))
-        except (IndexError, ValueError):
-            pass
-    return "SOP-{:03d}".format(max(nums) + 1 if nums else 1)
+        parts = (entry.get("sop_id") or "").split("-")
+        if len(parts) == 2 and parts[0] == prefix:
+            try:
+                nums.append(int(parts[1]))
+            except ValueError:
+                pass
+    return "{0}-{1:03d}".format(prefix, max(nums) + 1 if nums else 1)
 
 
 # ── View class ────────────────────────────────────────────────────────────────
@@ -208,8 +259,10 @@ class PFASSOPView(BrowserView):
                 signers = []
                 user_signed = False
             result.append({
-                "sop_id":       sop_id,
-                "title":        entry.get("title", ""),
+                "sop_id":        sop_id,
+                "title":         entry.get("title", ""),
+                "doc_type":      _entry_doc_type(entry),
+                "doc_type_label": _doc_type_label(_entry_doc_type(entry)),
                 "method_slug":  entry.get("method_slug") or "",
                 "method_label": METHOD_LABELS.get(entry.get("method_slug"), "General Lab"),
                 "category":     entry.get("category", ""),
@@ -238,6 +291,8 @@ class PFASSOPView(BrowserView):
         return {
             "sop_id":      sop_id,
             "title":       entry.get("title", ""),
+            "doc_type":       _entry_doc_type(entry),
+            "doc_type_label": _doc_type_label(_entry_doc_type(entry)),
             "method_slug": entry.get("method_slug") or "",
             "method_label": METHOD_LABELS.get(entry.get("method_slug"), "General Lab"),
             "category":    entry.get("category", ""),
@@ -271,6 +326,7 @@ class PFASSOPView(BrowserView):
             result.append({
                 "sop_id":       entry["sop_id"],
                 "title":        entry.get("title", ""),
+                "doc_type_label": _doc_type_label(_entry_doc_type(entry)),
                 "method_label": METHOD_LABELS.get(entry.get("method_slug"), "General Lab"),
                 "category":     entry.get("category", ""),
                 "archived_by":  entry.get("archived_by", ""),
@@ -297,6 +353,27 @@ class PFASSOPView(BrowserView):
     def active_tab(self):
         return self.request.form.get("method", "")
 
+    def doc_type_options(self):
+        """Document-type choices for the create/upload form — derived from
+        the single module-level taxonomy (DOC_TYPES). is_default flags the
+        type pre-selected in the form, so the template need not hardcode
+        which code that is."""
+        return [{"code":       dt["code"],
+                 "label":      dt["label"],
+                 "is_default": dt["code"] == _DEFAULT_DOC_TYPE}
+                for dt in DOC_TYPES]
+
+    def type_filter_tabs(self):
+        """Tabs for filtering the document list by type, alongside the
+        existing method tabs — derived from the taxonomy."""
+        tabs = [{"key": "", "label": "All Types"}]
+        for dt in DOC_TYPES:
+            tabs.append({"key": dt["code"], "label": dt["label"]})
+        return tabs
+
+    def active_type_tab(self):
+        return self.request.form.get("doc_type", "")
+
     # ── POST handlers ─────────────────────────────────────────────────────────
 
     def _handle_upload(self):
@@ -305,6 +382,7 @@ class PFASSOPView(BrowserView):
         form = self.request.form
         sop_id   = (form.get("sop_id") or "").strip()
         title    = (form.get("title") or "").strip()
+        doc_type = (form.get("doc_type") or "").strip()
         method   = (form.get("method_slug") or "").strip()
         category = (form.get("category") or "").strip()
         desc     = (form.get("description") or "").strip()
@@ -314,22 +392,27 @@ class PFASSOPView(BrowserView):
         if not upload or not getattr(upload, "filename", None):
             return self._redirect("?msg=no_file&msg_type=error")
 
-        # Controlled documents are PDF-only (fixed/immutable). This module is
-        # exclusive to SOPs — other documentation (logbooks) has its own home.
+        # Controlled documents are PDF-only (fixed/immutable). This module
+        # holds the whole controlled-document hierarchy (QAM/SOP/Job Aid/
+        # Supplemental) — other documentation (logbooks) has its own home.
         if os.path.splitext(getattr(upload, "filename", "") or "")[1].lower() != ".pdf":
             return self._redirect("?msg=not_pdf&msg_type=error")
+
+        if doc_type not in _DOC_TYPE_BY_CODE:
+            doc_type = _DEFAULT_DOC_TYPE
 
         portal = self._portal()
         registry = _get_registry(portal)
 
         if not sop_id:
-            # new SOP
+            # new document
             if not title:
                 return self._redirect("?msg=no_title&msg_type=error")
-            sop_id = _next_sop_id(registry)
+            sop_id = _next_sop_id(registry, doc_type)
             registry.append({
                 "sop_id":      sop_id,
                 "title":       title,
+                "doc_type":    doc_type,
                 "method_slug": method or None,
                 "category":    category,
                 "description": desc,
@@ -556,19 +639,19 @@ class PFASSOPView(BrowserView):
         return self.request.form.get("sop_id", "")
 
     MSG_TEXTS = {
-        "uploaded":         "SOP revision uploaded successfully (draft — activate when ready).",
+        "uploaded":         "Document revision uploaded successfully (draft — activate when ready).",
         "activated":        "Revision activated. All users must re-sign.",
         "signed":           "Sign-off recorded.",
         "permission_denied":"You do not have permission to perform this action.",
         "no_file":          "No file was attached.",
-        "no_title":         "A title is required for new SOPs.",
+        "no_title":         "A title is required for new documents.",
         "bad_request":      "Invalid request.",
         "rev_not_found":    "Revision not found.",
         "no_active_rev":    "No active revision to sign.",
-        "not_pdf":          "SOPs must be uploaded as PDF files.",
-        "not_found":        "SOP not found.",
-        "archived":         "SOP deleted — moved to Archived.",
-        "restored":         "SOP restored to the active list.",
+        "not_pdf":          "Documents must be uploaded as PDF files.",
+        "not_found":        "Document not found.",
+        "archived":         "Document deleted — moved to Archived.",
+        "restored":         "Document restored to the active list.",
     }
 
     def msg_text(self):

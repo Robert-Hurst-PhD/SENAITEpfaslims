@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Standard Operating Procedures</title>
+  <title metal:fill-slot="title">Controlled Documents</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     /* ── layout ── */
@@ -101,7 +101,7 @@
   </tal:styles>
 </head>
 <body>
-<tal:t metal:fill-slot="header-title">Standard Operating Procedures</tal:t>
+<tal:t metal:fill-slot="header-title">Controlled Documents</tal:t>
 <metal:content metal:fill-slot="content">
 <tal:def tal:define="
   purl      view/portal_url;
@@ -115,14 +115,17 @@
   tabs      view/filter_tabs;
   methods   view/method_options;
   unsigned  view/unsigned_sops;
+  doc_types view/doc_type_options;
+  type_tabs view/type_filter_tabs;
+  active_type_tab view/active_type_tab;
 ">
 
-  <!-- ── Unsigned SOP banner ──────────────────────────────────────────────── -->
+  <!-- ── Unsigned document banner ─────────────────────────────────────────── -->
   <tal:unsigned tal:condition="python:unsigned and not msg">
     <div class="sop-banner warn">
       &#9888;
       You have <strong tal:content="python:len(unsigned)">0</strong>
-      SOP<tal:pl tal:condition="python:len(unsigned)!=1">s</tal:pl>
+      document<tal:pl tal:condition="python:len(unsigned)!=1">s</tal:pl>
       requiring your sign-off.
       Scroll down or use the filter to find them.
     </div>
@@ -136,10 +139,10 @@
 
   <!-- ── Toolbar ──────────────────────────────────────────────────────────── -->
   <div class="sop-toolbar">
-    <strong style="font-size:15px;color:var(--s-body)">SOPs</strong>
+    <strong style="font-size:15px;color:var(--s-body)">Documents</strong>
     <span style="flex:1"></span>
     <tal:mgr tal:condition="can_mgr">
-      <button class="btn-primary" onclick="openSOPModal()">+ New SOP</button>
+      <button class="btn-primary" onclick="openSOPModal()">+ New Document</button>
     </tal:mgr>
   </div>
 
@@ -153,13 +156,24 @@
     </tal:each>
   </div>
 
-  <!-- ── SOP table ────────────────────────────────────────────────────────── -->
+  <!-- ── Document type filter tabs ────────────────────────────────────────── -->
+  <div class="sop-tabs">
+    <tal:each tal:repeat="ttab type_tabs">
+      <a class="sop-tab"
+         tal:attributes="href string:${purl}/@@pfas-sop?doc_type=${ttab/key};
+                         class python:'sop-tab active' if active_type_tab == ttab['key'] else 'sop-tab'"
+         tal:content="ttab/label">Tab</a>
+    </tal:each>
+  </div>
+
+  <!-- ── Document table ───────────────────────────────────────────────────── -->
   <div class="table-wrap">
   <table class="sop-table">
     <thead>
       <tr>
-        <th>SOP ID</th>
+        <th>ID</th>
         <th>Title</th>
+        <th>Type</th>
         <th>Category</th>
         <th>Method</th>
         <th>Rev</th>
@@ -171,11 +185,11 @@
     <tbody>
       <tal:nosops tal:condition="python:not sops">
         <tr>
-          <td colspan="8" style="text-align:center;padding:32px;color:var(--s-secondary)">
-            No SOPs yet.
+          <td colspan="9" style="text-align:center;padding:32px;color:var(--s-secondary)">
+            No documents yet.
             <tal:mgr tal:condition="can_mgr">
               <a href="#" onclick="openSOPModal(); return false;"
-                 style="color:var(--s-primary)">Upload the first SOP.</a>
+                 style="color:var(--s-primary)">Upload the first document.</a>
             </tal:mgr>
           </td>
         </tr>
@@ -186,14 +200,17 @@
           (active_tab and active_tab != 'general' and sop['method_slug'] != active_tab)">
         </tal:skip>
         <tal:show tal:condition="python:
-          not active_tab or
-          (active_tab == 'general' and not sop['method_slug']) or
-          (active_tab and active_tab != 'general' and sop['method_slug'] == active_tab)">
+          (not active_tab or
+           (active_tab == 'general' and not sop['method_slug']) or
+           (active_tab and active_tab != 'general' and sop['method_slug'] == active_tab))
+          and
+          (not active_type_tab or sop['doc_type'] == active_type_tab)">
           <tr class="sop-row-toggle"
               tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
               tal:attributes="onclick string:sopToggle('detail-${sop_id_js}')">
             <td><strong tal:content="sop/sop_id">SOP-001</strong></td>
             <td tal:content="sop/title">Title</td>
+            <td><span class="badge badge-method" tal:content="sop/doc_type_label">SOP</span></td>
             <td tal:content="sop/category">—</td>
             <td><span class="badge badge-method" tal:content="sop/method_label">General</span></td>
             <td>
@@ -250,7 +267,7 @@
                           >New Revision</button>
                   <form method="POST" style="display:inline"
                         tal:attributes="action string:${purl}/@@pfas-sop"
-                        onsubmit="return confirm('Delete this SOP? It will be moved to Archived; its number is not reused.');">
+                        onsubmit="return confirm('Delete this document? It will be moved to Archived; its number is not reused.');">
                     <input type="hidden" name="action" value="delete_sop"/>
                     <input type="hidden" name="sop_id" tal:attributes="value sop/sop_id"/>
                     <button type="submit" class="btn-sm"
@@ -262,7 +279,7 @@
           </tr>
           <!-- ── Detail panel ─────────────────────────────────────────────── -->
           <tr>
-            <td colspan="8" style="padding:0">
+            <td colspan="9" style="padding:0">
               <div class="sop-detail"
                    tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
                    tal:attributes="id string:detail-${sop_id_js}">
@@ -301,7 +318,7 @@
                           <input type="hidden" name="sop_id"
                                  tal:attributes="value sop/sop_id"/>
                           <button type="submit" class="btn-sign">
-                            &#10003; I have read and will follow this SOP to the best of my abilities
+                            &#10003; I have read and will follow this document to the best of my abilities
                           </button>
                         </form>
                       </div>
@@ -378,22 +395,23 @@
   </table>
   </div>
 
-  <!-- ── Archived SOPs (Manager) ──────────────────────────────────────────── -->
+  <!-- ── Archived Documents (Manager) ─────────────────────────────────────── -->
   <tal:archived tal:condition="python:can_mgr and view.archived_sops()"
                 tal:define="arch python:view.archived_sops()">
     <details class="sop-archived" style="margin-top:22px">
       <summary style="cursor:pointer;font-weight:600;color:var(--s-secondary,#6c757d)">
-        Archived SOPs (<tal:n tal:replace="python:len(arch)">0</tal:n>)
+        Archived Documents (<tal:n tal:replace="python:len(arch)">0</tal:n>)
       </summary>
       <table class="sop-table" style="margin-top:10px;opacity:.85">
         <thead>
-          <tr><th>SOP</th><th>Title</th><th>Category</th><th>Method</th>
+          <tr><th>ID</th><th>Title</th><th>Type</th><th>Category</th><th>Method</th>
               <th>Deleted</th><th>By</th><th></th></tr>
         </thead>
         <tbody>
           <tr tal:repeat="a arch">
             <td><strong tal:content="a/sop_id">SOP-002</strong></td>
             <td tal:content="a/title">Title</td>
+            <td><span class="badge badge-method" tal:content="a/doc_type_label">SOP</span></td>
             <td tal:content="a/category">—</td>
             <td tal:content="a/method_label">General</td>
             <td tal:content="python:a['archived_at'] or '—'">—</td>
@@ -410,8 +428,8 @@
         </tbody>
       </table>
       <p style="font-size:11px;color:var(--s-secondary,#6c757d);margin-top:6px">
-        Deleted SOP numbers are never reused — the next new SOP always takes the
-        next number in sequence.
+        Deleted document numbers are never reused — the next new document of
+        that type always takes the next number in its sequence.
       </p>
     </details>
   </tal:archived>
@@ -421,15 +439,26 @@
   <div class="sop-modal-overlay" id="sopModalOverlay"
        onclick="if(event.target===this) closeSopModal()">
     <div class="sop-modal">
-      <h3 id="sopModalTitle">Upload SOP</h3>
+      <h3 id="sopModalTitle">Upload Document</h3>
       <form method="POST" enctype="multipart/form-data"
             tal:attributes="action string:${purl}/@@pfas-sop">
         <input type="hidden" name="action" value="upload_sop"/>
         <input type="hidden" name="sop_id" id="sopModalSopId" value=""/>
 
-        <div class="fld" id="sopNewFields">
-          <label>Title *</label>
-          <input type="text" name="title" id="sopTitle" placeholder="e.g. PFAS Extraction Procedure"/>
+        <div id="sopNewFields">
+          <div class="fld">
+            <label>Title *</label>
+            <input type="text" name="title" id="sopTitle" placeholder="e.g. PFAS Extraction Procedure"/>
+          </div>
+          <div class="fld">
+            <label>Document Type</label>
+            <select name="doc_type">
+              <tal:each tal:repeat="dt doc_types">
+                <option tal:attributes="value dt/code; selected dt/is_default"
+                        tal:content="dt/label">Option</option>
+              </tal:each>
+            </select>
+          </div>
         </div>
         <div class="fld">
           <label>Method</label>
@@ -445,7 +474,7 @@
         </div>
         <div class="fld">
           <label>Description</label>
-          <textarea name="description" placeholder="Brief description of this SOP's scope"></textarea>
+          <textarea name="description" placeholder="Brief description of this document's scope"></textarea>
         </div>
         <div class="fld">
           <label>Release Notes</label>
@@ -500,7 +529,7 @@ function openSOPModal(sopId) {
   } else {
     idInput.value = '';
     if (newFields) newFields.style.display = 'block';
-    title.textContent = 'Upload New SOP';
+    title.textContent = 'Upload New Document';
   }
   overlay.classList.add('open');
 }
@@ -510,7 +539,7 @@ function closeSopModal() {
   if (overlay) overlay.classList.remove('open');
 }
 
-// Auto-open detail panel for selected SOP after redirect
+// Auto-open detail panel for selected document after redirect
 (function() {
   var qs = new URLSearchParams(window.location.search);
   var sel = qs.get('sop_id');
