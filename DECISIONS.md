@@ -4961,3 +4961,95 @@ each names work that does not exist yet.
   QC divides on extracted vs non-extracted, and independently on linkage
   (to a sample / to each other / independent). It likely reshapes the RefDef
   structure rather than just disambiguating titles in a listing.
+
+---
+
+## 2026-09-20 — A QAPP varies what QC is RUN, not mainly what its limits are
+
+**Status:** confirmed. Supersedes the override priority recorded on 2026-09-19.
+
+**Context.** The governance model assumed criteria overrides were the cheap,
+obvious first class and reporting limits the natural second. Asked directly,
+the lab said reporting limits *"don't matter"* and gave a different list of what
+a QAPP actually demands: **all samples run in duplicate, an additional surrogate
+used, LFSMs run at more regular intervals**, and separately that *"QAPPs can run
+different LFSM spikes."*
+
+**Decision.** The first override class to build is **QC composition** — what QC
+exists in a run and how often — together with LFSM spike levels. Reporting-limit
+overrides are **out of scope**, not deferred.
+
+**Why the correction matters.** Composition is structurally harder than a value
+swap: a QAPP that says "every sample in duplicate" changes the run's shape, not
+a number in a table, and a QAPP that adds a surrogate touches the analyte
+relationships §3 makes method-owned. The original sequencing would have built
+the easy class first and called the hard one "later" — while the easy class was
+the one the lab does not need.
+
+**Unchanged.** Criteria resolution (task 3) still comes first and still holds:
+spike levels resolve through the same three tiers, and composition overrides
+resolve through the same chain. The rule was worth proving on values before it
+carries structure.
+
+---
+
+## 2026-09-20 — Method baselines are the QA manager's to populate; the system's job is to flag correctly
+
+**Status:** confirmed.
+
+**Context.** `method_baselines.py` seeds only EPA 1633A EIS recovery, the one
+criterion with a closed, citable verification (Q-004, EPA 820-R-24-007 Tables
+6/8). Everything else resolves UNKNOWN. I raised the per-criterion question of
+which remaining profile values came from the published method and which are the
+lab's own choice.
+
+**Decision.** That classification belongs to the **QA manager**, not to this
+build. The instruction is to *"verify that this works and values exceeding
+tolerances are flagged correctly"* — i.e. prove the mechanism, and let the
+baselines arrive later through the people who own them.
+
+**What that changes.** The accreditation-disclosure work is no longer gated on
+lab data entry. It ships with one seeded baseline and a proof that a populated
+criterion plus a QC call produces the right flag — and the right absence of a
+flag. The disclosure is correct and simply quiet until baselines exist, which is
+the honest behaviour: UNKNOWN never reads as CONFORMS (§15).
+
+**Same for spike levels.** The lab declined to fix specific numbers, asking
+instead that the path be proven for whatever values are entered. The 200/400/600
+figures from the September review are therefore **not** written into the method
+profile — mapping them onto Low/Mid/High was an inference, and it conflicted
+with the Mid value of 100.0 already stored. Spikes are a QAPP override target,
+so the method profile is likely the wrong permanent home for them anyway.
+
+---
+
+## 2026-09-20 — A QAPP is client-owned but reusable across clients
+
+**Status:** confirmed.
+
+**Decision.** QAPPs are owned by the client whose project they govern, and the
+lab may still reuse one in house across clients.
+
+**Implementation consequence.** `PFASProject.qapp_document_id` is a free
+reference to a controlled document of type QAPP, and **no same-client constraint
+is enforced** between a project and the QAPP it points at. That is deliberate:
+adding the obvious `project.client == qapp.client` check would have looked like
+correctness and would have blocked the reuse the lab asked for.
+
+Ownership is therefore provenance, not a permission boundary — the QAPP records
+whose it is, and reuse is a lab decision rather than something the model forbids.
+
+---
+
+## 2026-09-20 — Remaining answers from the September review
+
+**Status:** confirmed, recorded for the record.
+
+- **Aquatic Tissue has no matrix factor and that is accepted.** It continues to
+  report on the extract basis. Not a gap to close.
+- **FDA §10.2(4) deprioritisation is deliberate.** It left the recommended
+  sequence on purpose. It remains recorded in GAPS.md §12 as an implemented,
+  unwired regulatory obligation — leaving the sequence does not discharge it.
+- **`d63-state-edd-profiles` merged to `master`** (fast-forward, 142 commits,
+  master now at 2492bc9). No git remote exists, so nothing is pushed; creating
+  one remains an explicit, separate decision.
