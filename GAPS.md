@@ -832,3 +832,87 @@ fact recorded correctly in one place and not carried to where it is used. Here
 the fact was *"these tests pass"* — recorded without recording what it depended
 on. A passing state has preconditions, and a register that states the state
 without stating the preconditions will eventually be lying.
+
+---
+
+## 17. The resolution ↔ QC-engine JOIN is now proven; crossing the process
+##     boundary still is not (2026-09-20)
+
+The lab asked, in their own words, to "verify that this works and values
+exceeding tolerances are flagged correctly" once "the QC is called." §15
+proved tier resolution in isolation (`test_ruleset.py`); `test_fault_injection.py`
+proved the QC engine flags an injected deviation in isolation. Neither proved
+the JOIN: a criterion resolved through the tiers, handed to a real QC check,
+produces the right flag AND the right absence of one.
+
+`tests/test_resolved_criteria_flag.py` (7 test functions, all passing) now
+proves that join, in-process, in one Python 3 interpreter:
+
+1. A value inside a lab-tier `dup_rpd_max` → not flagged.
+2. A value outside it → flagged, `(RPD)` issue, right source/value text.
+3. A project QAPP LOOSENS `dup_rpd_max`: a value that fails at the lab tier
+   passes at the project tier, and resolution reports `tier=project` with
+   the supplied `source_doc`/`source_rev`.
+4. A project QAPP TIGHTENS it: a lab-tier pass becomes a project-tier fail.
+5. `eis_recovery` (the one seeded baseline, EPA 1633A Table 6/8): a project
+   value loosens the floor below the method baseline. The QC engine correctly
+   applies the resolved (project) window — a value between the project floor
+   and the method floor passes — while resolution independently reports
+   `DEPARTS` with `departure["ends"]` naming only the loosened end and
+   carrying the baseline citation. Confirms conformance and QC pass/fail are
+   genuinely separate axes, not two views of the same check.
+6. `dup_rpd_max` has no seeded baseline anywhere → `conformance=UNKNOWN`
+   regardless of whether the same resolved value is then flagged or not by
+   the real check — UNKNOWN neither suppresses nor manufactures a flag.
+7. Boundary values pinned against the engine's OWN comparisons, not assumed:
+   `rpd_check_profiled` is `rpd_pct <= limit` (inclusive pass);
+   `recovery_check_profiled` is `min <= pct <= max` (inclusive both ends).
+
+**How the join was made, and what that costs.** `ruleset.resolve()` returns a
+plain value (a float, or a `{"min":, "max":}` dict) plus provenance — it knows
+nothing about `pfas_pipeline`'s `MethodProfile` interface, correctly, since
+wiring the two live is explicitly out of scope (§15). `recovery_check_profiled()`
+/ `rpd_check_profiled()` only ever call `profile.qc_rules(...)` and read
+`profile.method_id`. The test bridges this with a duck-typed adapter
+(`_ResolvedProfile`) carrying just the resolved value — not a stub of
+qc_engine itself; every comparison and flag/no-flag decision in a passing run
+is produced by the real, unmodified functions on both sides. The adapter's
+narrowness has one traceable cost: a live `MethodProfile.qc_rules()` also
+sets `is_guidance_only` / `verify_against_method` / `notes` on its `QCRule`,
+which the real checks append to a failing message (e.g. "[VERIFY limits vs
+method tables]"); the adapter leaves those at their dataclass defaults, so
+the test proves the comparison and the base message, not that decoration.
+
+**What this does NOT prove — the delivery gap.** `senaite.pfas.ruleset` is
+Python-2.7 add-on code; `pfas_pipeline.qc_engine` is Python-3 worker code.
+They are one system (CLAUDE.md §7) but two processes that share no memory —
+a resolved criterion crosses that boundary only as JSON, and today NOTHING
+performs that crossing. `resolve_for_batch()` has zero call sites (§15); the
+worker reads only `data/qc/method_profiles.json` (the lab tier) and has no
+channel to receive a project ruleset at all. Concretely: a project QAPP
+override entered through the add-on today would be resolved by nobody and
+delivered nowhere — the running pipeline would evaluate every sample against
+the lab tier regardless of what a project's ruleset says. This is a
+*delivery* gap, not a correctness gap — the two halves this file joins are
+both individually correct and correctly composable; nothing yet carries the
+composed answer to where a live run would use it.
+
+**A second, independent, pre-existing wiring gap found while building case
+5, left alone (not this task's to fix):** `EPA1633AProfile.qc_rules(analyte,
+matrix, qc_type="EIS")` (`pfas_pipeline/method_profiles.py:986`) is real,
+working code — it reads `eis_overrides` / `eis_matrix_overrides` (the same
+data `method_baselines.py`'s seeded baseline cites) and returns a correct
+per-analyte recovery window. **No call site in `pfas_pipeline/run_queue.py`
+ever invokes it with `qc_type="EIS"`.** Live EIS monitoring instead runs
+through `is_raw_check()` / `profile.is_rule()`, which applies ONE blanket
+vs-ICAL-average window to every internal standard — not the per-analyte
+Tables 6/8 windows this baseline verifies against. `is_rule()`'s own note
+even says "EIS uses per-analyte limits," describing the very branch nothing
+calls. Net effect: `eis_recovery` — the only criterion in this whole system
+with a closed, citable method-text verification (Q-004) — has no live
+consumer in the pipeline today. test_resolved_criteria_flag.py's case 5
+proves the window-comparison mechanism is correct for that criterion's
+shape; it does not and cannot prove that mechanism runs against real EIS
+results, because nothing currently calls it that way. Older than, and
+independent of, the ruleset.py wiring gap above — flagged here so the next
+phase does not have to rediscover it either.
