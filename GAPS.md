@@ -1081,3 +1081,73 @@ recorded in a test docstring.
 and FDA_32PFAS are byte-for-byte unchanged. The dead `qc_type="EIS"` branch
 and the dead `pct_recovery_is` field both remain dead, now for a recorded
 reason instead of a silent one.
+
+---
+
+## 19. No IS check runs on either EPA method, and §1 could not have seen it (2026-09-20)
+
+Established while investigating §18, verified directly against the live profile
+store and the run queue.
+
+### 19.1 The loop iterates nothing
+
+`internal_standards` is **absent from all three method profiles**. `get_is_list`
+(`pfas_pipeline/method_profiles.py:1193-1205`) falls back to a hardcoded inline
+list for FDA and returns an empty list for everything else:
+
+```python
+if method_id == "FDA_32PFAS":
+    return list(_FDA_IS_DISPLAY_NAMES)
+return []
+```
+
+`run_queue.py:295` then does `for is_cmp in _get_is_list(_method)`. For
+**EPA 537.1 and EPA 1633A that loop body never executes.** The `is_response`
+rule is enabled, the toggle check passes, zero compounds are examined, and no
+flag is raised. Silence is indistinguishable from "everything passed."
+
+So §18's framing — that 1633A EIS is judged by a blanket window instead of the
+per-analyte tables — was too generous. **Neither window is applied. No
+internal-standard or surrogate response monitoring happens on either EPA method
+at all.** FDA works, and only because of a fallback constant that the other two
+methods have no equivalent of.
+
+### 19.2 Why the known-answer harness never caught it
+
+`tests/test_fault_injection.py:61` — every deviation-detection case runs against
+one combination:
+
+```python
+def _generate(deviations, method="FDA_32PFAS", matrix="Animal Feed"):
+```
+
+The file's own docstring says as much. `test_every_method_and_matrix_imports`
+covers all 18 combinations, but it asserts only that they **import** — not that
+any deviation injected into them is detected.
+
+**§1's detection table is therefore proven for FDA_32PFAS × Animal Feed alone.**
+The clean-run baseline genuinely spans all 18 combinations; the detection half
+does not, and the table does not say so. A reader — including me, yesterday —
+takes "Surrogate suppressed in a sample → `is_response` flags" as a property of
+the system. It is a property of one method.
+
+That entry is still true. It is just narrower than it reads, and the missing
+scope is exactly where the defect lives: inject a suppressed surrogate into a
+1633A run today and nothing would flag it, because there is no compound list to
+iterate.
+
+### 19.3 What this costs
+
+Surrogate and internal-standard recovery is how a PFAS method detects matrix
+suppression and extraction loss per sample. On EPA 537.1 and EPA 1633A that
+signal is currently not evaluated. No result is wrong as a consequence — nothing
+is miscalculated — but a class of failure that should qualify a result `[M]` is
+not being looked for.
+
+### The transferable rule, again
+
+§13 named two defect shapes. This is both at once: a producer with no consumer
+(`pct_recovery_is`, parsed and read by nothing, §18), and a claim recorded
+without its precondition (§1's detection table, true for one method, written as
+though true for all). The harness did not fail — it was never asked the
+question, and the register did not record which question it had been asked.
