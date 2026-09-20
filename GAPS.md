@@ -916,3 +916,168 @@ shape; it does not and cannot prove that mechanism runs against real EIS
 results, because nothing currently calls it that way. Older than, and
 independent of, the ruleset.py wiring gap above — flagged here so the next
 phase does not have to rediscover it either.
+
+---
+
+## 18. EIS recovery wiring investigated, NOT implemented — the producer chain
+##     does not exist for EPA 1633A (2026-09-20)
+
+§17 flagged that `EPA1633AProfile.qc_rules(qc_type="EIS")`
+(`pfas_pipeline/method_profiles.py:986`) has no caller. This entry is the
+follow-up investigation into whether it can safely be wired, per three
+questions. Short answer: **no — stop and report, per the task's own
+condition.** Wiring it now would mean inventing a compound list, a role map,
+and a name-alias table that does not exist anywhere in this codebase, then
+building a synthetic fixture that validates against those inventions. That is
+the "confident, wrong regulatory verdict" shape this project exists to catch,
+one layer up. Nothing in `qc_engine.py`, `run_queue.py`, `method_profiles.py`,
+`analyte_alias.py`, `analyte_reference.py`, or the synthetic generator was
+changed.
+
+**Q1 — does the pipeline compute an EIS recovery percent anywhere?**
+No, but it already **imports** one, and that import is itself a second,
+independent dead field. The real SCIEX OS export used for the FDA E2E test
+(`/media/robin/STORAGE/PFAS Work/Test Sample.csv`) carries a native
+`% Recovery (IS)` column, mapped straight through to `InstrumentRow
+.pct_recovery_is` (`src/senaite/pfas/instrument_columns.py:124` →
+`pfas_pipeline/constants.py:242` → `pfas_pipeline/importer.py:317`). It is
+populated on **462/462** `Internal Standard` rows in that file, across all
+four sample types (Standard, Unknown, Quality Control, Blank) — every row
+carries `Expected Concentration = 1` and a computed `Calculated
+Concentration`. Spot-checking 10 rows: `calculated_conc / expected_conc *
+100` reproduces the vendor's own `% Recovery (IS)` value to full floating-
+point precision — the exact pattern already trusted elsewhere in this file
+for `ccv_check_profiled` (`pfas_pipeline/qc_engine.py:658-660`,
+`rec = r.calculated_conc / r.expected_conc * 100.0`). So the *formula* and
+the *fields* (`calculated_conc`, `expected_conc`) both exist on
+`InstrumentRow` and both get populated by real instrument output — for
+FDA_32PFAS, on the one real export this system has ever processed.
+`pct_recovery_is` itself is parsed by `importer.py` and then **read by
+nothing** downstream — the same dead-field shape as the `EIS` qc_type,
+just one layer closer to the wire. That is a cheap, low-risk fix on its own
+and is recorded here as a distinct finding, not folded into the EIS work
+below.
+
+**Q2 — what would be required to compute/consume a genuine EIS recovery
+for EPA 1633A, and do those requirements hold today?** No, on four
+independent counts, each a hard blocker on its own:
+
+1. **No compound list to iterate.** `get_is_list("EPA_1633A")`
+   (`pfas_pipeline/method_profiles.py:1193-1205`) reads
+   `internal_standards` from the profile; that key is absent from the live
+   `EPA_1633A` block in `data/qc/method_profiles.json`, so the function
+   falls through to `return []`. Consequence, verified by reading
+   `run_queue.py:295` (`for is_cmp in _get_is_list(_method): ...`): **no
+   internal-standard check of any kind — not the existing NIS area screen,
+   not a hypothetical EIS recovery check — currently executes for EPA
+   1633A.** This is a bigger gap than the one named in the task: it is not
+   "the wrong check runs," it is "no check runs."
+2. **No EIS/NIS role map.** `get_surrogate_is_chain("EPA_1633A")`
+   (`method_profiles.py:1287`) returns `{}` — the live profile's
+   `surrogate_is_chain` key is empty. `tests/test_surrogate_map.py
+   ::test_the_epa_is_chain_is_left_unset_on_purpose` confirms this is a
+   **recorded decision, not an oversight**: EPA 537.1 and EPA 1633A quantify
+   every labelled compound by isotope dilution against its own calibration
+   curve, not against one shared injection standard the way FDA's surrogates
+   quantify against M4PFOA — so there is no "chain" to encode, and asserting
+   one would fabricate a regulatory value. Practical effect on
+   `is_raw_check()`: with an empty chain it falls back to the global
+   `injection_is_names()`, which knows exactly one compound (FDA's
+   `13C4-PFOA`/`M4PFOA`) — a fallback that happens not to misfire for 1633A
+   today only because 1633A's own surrogate list doesn't collide with it,
+   not because the role split is actually represented for this method.
+3. **No join key between the Table 6/8 window table and any compound name
+   the pipeline would see on a row.** `eis_overrides` in the live
+   `EPA_1633A` profile carries 24 analyte names verified verbatim against
+   EPA 820-R-24-007 Tables 6/8 (Q-004: closed, citable). Running all 24
+   through `analyte_alias.keyword_for()` — the exact resolver
+   `is_raw_check()` uses to reconcile a surrogate's instrument-export name
+   with its profile identity — leaves **10 of 24 unresolved** (passthrough,
+   meaning "unknown to `analyte_reference.COMPOUND_NAME_TO_KEYWORD`"):
+   `13C4-PFBA`, `13C5-PFPeA`, `13C9-PFNA`, `13C6-PFDA`, `13C7-PFUnA`,
+   `13C2-4:2FTS`, `13C2-6:2FTS`, `13C2-8:2FTS`, `13C8-PFOSA`,
+   `13C3-HFPO-DA`. Splitting those 10 by what they actually diverge on:
+   - **5 are genuine isotopologue divergences, not spelling** — the EPA
+     table and `analyte_reference.INTERNAL_STANDARDS`
+     (`src/senaite/pfas/analyte_reference.py:81-109`) name *different*
+     labelled reference materials for the same native analyte: `13C4-PFBA`
+     (EPA) vs `13C3-PFBA` (this codebase's table); `13C5-PFPeA` vs
+     `13C3-PFPeA`; `13C9-PFNA` vs `13C5-PFNA`; `13C6-PFDA` vs `13C2-PFDA`;
+     `13C7-PFUnA` vs `13C2-PFUDA` (also a PFUnA/PFUDA abbreviation
+     difference on top of the isotope-count difference). Since Q-004 says
+     the EPA names are read verbatim off the official method PDF, the
+     inference is that `INTERNAL_STANDARDS` — a single table shared across
+     all three methods — holds **FDA's own SIL standard list** for these
+     five analytes, not 1633A's. Aliasing `13C4-PFBA` to `13C3-PFBA` in code
+     would silently treat two different physical reference materials as
+     the same compound. Not done.
+   - **5 look like notational variants of the same compound, unconfirmed**:
+     `13C2-4:2FTS` / `13C2-6:2FTS` / `13C2-8:2FTS` (EPA) vs this codebase's
+     `13C2,D4-4:2FTS` / `13C2,D4-6:2FTS` / `13C2,D4-8:2FTS` (the D4 co-label
+     is standard on commercial fluorotelomer sulfonate surrogates, so the
+     EPA table may just be abbreviating); `13C8-PFOSA` (EPA) vs `13C8-FOSA`
+     (this codebase, same isotope count, "P"-prefix convention only);
+     `13C3-HFPO-DA` (EPA) vs `13C3-GenX (HFPO-DA)` (this codebase, same
+     isotope count, parenthetical naming only). These were NOT merged in
+     code either — a wrong guess here has the same blast radius as #1, just
+     lower probability — but they are named separately so whoever edits
+     `method_profiles.json` next knows which 5 need a brand-new
+     `INTERNAL_STANDARDS` row for 1633A and which 5 might only need an
+     alias entry.
+   The remaining 14 of 24 `eis_overrides` names do resolve today
+   (`13C5-PFHxA`→`M5PFHxA`, `13C8-PFOA`→`M8PFOA`, `D3-NMeFOSA`→
+   `MD3NMeFOSA`, etc.) — but a window table that is right for 14/24 analytes
+   and silently falls back to a generic LFSM-tier default for the other 10
+   is exactly the "confident, wrong verdict" failure mode the task warned
+   against.
+4. **No real EPA 1633A instrument export exists anywhere to confirm the
+   producer chain holds for this method at all.** Q1's cross-check
+   (`calculated_conc`/`expected_conc` populated and correct) was verified
+   against FDA_32PFAS/SCIEX data only — the one real export this system has
+   ever processed. `pfas_pipeline/vendor_profiles.py`'s own module
+   docstring says 537.1/1633A labs commonly export from Waters
+   MassLynx/TargetLynx or Agilent MassHunter, not SCIEX; those two vendor
+   profiles map generic `Exp. Conc.`/`Std. Conc.` and `Conc.`/`Final
+   Conc.` columns that WOULD carry a labelled-compound recovery if the
+   vendor software populates them for `Internal Standard`-type rows — but
+   there is no 1633A file on this machine, real or synthetic (the
+   synthetic generator does not set `calculated`/`expected` on surrogate
+   rows either — see below), to confirm that inference rather than assume
+   it.
+
+**Q3 — is the EIS-vs-NIS role distinction represented in the data at
+all?** For FDA: yes, exactly once, via `INTERNAL_STANDARDS`'s fourth column
+(`analyte_reference.py:81-109`) — 26 rows role `surrogate`, one
+(`M4PFOA`/`13C4-PFOA`) role `injection_is`. For EPA 1633A: no. Per
+`test_the_epa_is_chain_is_left_unset_on_purpose`, 1633A has no injection-IS
+concept at all in this method's own chemistry (isotope dilution against each
+compound's own curve) — so the FDA-shaped role split does not even apply,
+and there is no method-specific column recording that fact; it is only
+recorded in a test docstring.
+
+**What a real fix needs, in order (none attempted — `data/qc/method_profiles
+.json` is read-only in this session, and `analyte_reference.py`/
+`method_profiles.py` changes without it would be unverifiable guesses):**
+1. Populate `internal_standards` and (if the EPA methods ever need one)
+   `surrogate_is_chain` for the `EPA_1633A` block in the profile store.
+2. Reconcile the 10 `eis_overrides` names against `INTERNAL_STANDARDS` —
+   add 1633A-specific SIL rows for the 5 genuine isotopologue divergences
+   (do not alias them to FDA's compounds); confirm the other 5 are
+   notational and add aliases only after that confirmation.
+3. Obtain one real EPA 1633A instrument export (Waters or Agilent, per the
+   vendor-profile module's own expectation) to confirm `calculated_conc`/
+   `expected_conc` are actually populated on `Internal Standard` rows the
+   way they are on the FDA/SCIEX file — the same kind of proof Q1 relied on,
+   not an assumption.
+4. Only then wire `qc_type="EIS"` into `run_queue.py`, and only then extend
+   `generate_synthetic_runs.py` / `test_fault_injection.py` — a fixture
+   authored against unverified assumptions about all three of the above
+   would produce a "0 false positives across 18 combinations" result that
+   proves the test author's assumptions are self-consistent, not that the
+   check is correct.
+
+**Flag behaviour change from this task: none.** No file under
+`pfas_pipeline/` was modified. Live QC verdicts for EPA 1633A, EPA 537.1,
+and FDA_32PFAS are byte-for-byte unchanged. The dead `qc_type="EIS"` branch
+and the dead `pct_recovery_is` field both remain dead, now for a recorded
+reason instead of a silent one.
