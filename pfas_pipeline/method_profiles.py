@@ -340,12 +340,29 @@ _DEFAULT_PROFILE_CACHE = {
 _profile_data_cache = copy.deepcopy(_DEFAULT_PROFILE_CACHE)
 
 
-def reload_from_profiles(profiles_path=None):
+def reload_from_profiles(profiles_path=None, batch_id=None):
     """
     Reload _profile_data_cache from the exported method profile JSON.
     Called at the start of each batch run so changes made in the SENAITE
     Method Profile control panel take effect without a worker restart.
     Falls back to _DEFAULT_PROFILE_CACHE values for any key not in the file.
+
+    `batch_id`, when given, additionally overlays that batch's RESOLVED
+    criteria (senaite.pfas.resolved_criteria_store, project -> lab ->
+    baseline) on top of whatever this reload just loaded from the global
+    file. This module does NOT decide which tier wins -- that resolution
+    already happened, in the add-on, before the file was written; this is
+    plumbing the already-resolved numbers into the same cache shape the
+    rest of this module reads, nothing more (see
+    _apply_resolved_overlay()'s docstring).
+
+    THE SAFETY PROPERTY: `batch_id=None` (every call site that predates
+    project support, and every batch with no linked project) makes this
+    function behave BYTE-FOR-BYTE as it did before batch_id existed --
+    the overlay branch below is never entered. A batch_id with no resolved
+    file on disk (the overwhelming common case even once batch_id IS
+    passed, since the file only exists for a project-linked batch) is
+    likewise a silent no-op: no warning, no fallback, nothing.
     """
     if profiles_path is None:
         profiles_path = PROFILES_PATH
@@ -385,6 +402,234 @@ def reload_from_profiles(profiles_path=None):
                 "reload_from_profiles: %r not in %s; using defaults",
                 method_id, profiles_path,
             )
+
+    if batch_id:
+        _apply_resolved_overlay(batch_id, profiles_path)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-batch resolved-criteria overlay (project QAPP -> lab -> baseline)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The add-on (senaite.pfas.ruleset) does the actual tier resolution and
+# writes ONE JSON file per project-linked batch, alongside the global
+# method_profiles.json this module already reads
+# (senaite.pfas.resolved_criteria_store.export_resolved_criteria). This
+# section reads that file back and injects each already-resolved value into
+# _profile_data_cache at the same key paths reload_from_profiles() itself
+# fills from the global file. It performs NO resolution of its own -- no
+# tier comparison, no fallthrough logic -- only translates {key, value} rows
+# into the profile-dict shape the rest of this module already expects. That
+# tier logic living exactly once, in the add-on, is deliberate (a second
+# copy here would be the "dead twin" shape this project has removed twice;
+# see GAPS.md Sec2 A4 and Sec4).
+#
+# Key -> path mapping is a SMALL, DELIBERATE duplicate of
+# senaite.pfas.ruleset.SHAPES_BY_KEY / _LAB_EXTRACTORS -- not a resolution
+# copy, a location copy: "where does this key live in the profile dict",
+# the exact same shape method_baselines.matrix_class() already keeps
+# duplicated across this process boundary for the same reason (that module's
+# comment explains it: the worker is Python-3-only pipeline code and must
+# stay dependency-free of the Python-2.7 add-on package).
+_OVERLAY_PATHS = {
+    "cal_r2_min":  ("instrument_verification", "calibration", "r2_min"),
+    "sn_quan_min": ("instrument_verification", "confirmation", "sn_quan_min"),
+    "dup_rpd_max": ("qc_acceptance", "Dup", "tiers", 0, "rpd_max"),
+}
+
+# ── The CRITERIA wrinkle ─────────────────────────────────────────────────────
+#
+# `_profile_data_cache` is not the only live reader of cal_r2_min/sn_quan_min.
+# constants.CRITERIA (a flat dict `reload_criteria()` builds by re-reading
+# the global profiles file DIRECTLY, never through this cache) still has two
+# real consumers that never migrated to the profiled path Decision C
+# (2026-06-17, this module's own docstring) declared authoritative:
+# qc_engine.signal_to_noise_check() reads CRITERIA["sn_quan_min"]
+# unconditionally (there is no profiled variant to call instead), and
+# qc_engine.calibration_check() -- the FALLBACK run_queue.py uses only when
+# no profile resolved at all -- reads CRITERIA["cal_r2_min"]. Overlaying
+# _profile_data_cache alone would leave those two consumers seeing the
+# un-overridden lab value for a project-linked batch: the exact "merged
+# half-way" inconsistency this feature's tests exist to rule out, one
+# consumer layer down. So the resolved values for these two keys are ALSO
+# written into CRITERIA here, from the same rows, no new resolution.
+#
+# Scope of this fix, and its limit: reload_criteria() is called with NO
+# method_id argument anywhere in this codebase, so it ALWAYS builds CRITERIA
+# from FDA_32PFAS's profile, regardless of the run's actual method -- a
+# pre-existing behaviour, not introduced here (GAPS.md Sec20 records it).
+# Overlaying CRITERIA is therefore only applied when the resolved payload's
+# own method_id is "FDA_32PFAS", matching what CRITERIA already represents
+# today; a resolved EPA_537_1/EPA_1633A payload does not touch CRITERIA; it
+# already does not reflect the batch's real method regardless of any project
+# link, which is that pre-existing gap, not this one.
+_CRITERIA_METHOD_SCOPE = "FDA_32PFAS"
+
+_CRITERIA_KEYS_BY_OVERLAY_KEY = {
+    "cal_r2_min":  ("cal_r2_min",),
+    "sn_quan_min": ("sn_quan_min", "sn_min"),   # sn_min is the back-compat alias
+}
+
+
+def _apply_resolved_criteria(rows, method_id):
+    """Overlay the resolved cal_r2_min / sn_quan_min values (if any) onto
+    constants.CRITERIA -- see "The CRITERIA wrinkle" above for why this is
+    necessary at all and why it is scoped to method_id == FDA_32PFAS."""
+    if method_id != _CRITERIA_METHOD_SCOPE:
+        return 0
+    from .constants import CRITERIA
+    applied = 0
+    for row in rows:
+        key = row.get("key")
+        value = row.get("value")
+        if value is None or key not in _CRITERIA_KEYS_BY_OVERLAY_KEY:
+            continue
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            continue
+        for criteria_key in _CRITERIA_KEYS_BY_OVERLAY_KEY[key]:
+            CRITERIA[criteria_key] = value
+        applied += 1
+    return applied
+
+
+def _set_path(data, path, value):
+    cur = data
+    for step in path[:-1]:
+        if isinstance(step, int):
+            while len(cur) <= step:
+                cur.append({})
+            cur = cur[step]
+        else:
+            cur = cur.setdefault(step, {})
+    last = path[-1]
+    if isinstance(last, int):
+        while len(cur) <= last:
+            cur.append({})
+        cur[last] = value
+    else:
+        cur[last] = value
+
+
+def _apply_resolved_row(data, row):
+    """Inject one already-resolved criterion row into `data` (one method's
+    entry in _profile_data_cache). Returns True if applied, False if the
+    row's value is absent (nothing to overlay -- e.g. tier=baseline with no
+    seeded baseline) or its key is not one this worker maps anywhere
+    (forward-compatible: a criterion key ruleset.py registers that this
+    worker does not yet consume for anything is a no-op here, not an
+    error -- it simply is not applied, exactly as if the file never
+    mentioned it)."""
+    key = row.get("key")
+    value = row.get("value")
+    if value is None:
+        return False
+    if key == "ccv_recovery":
+        if not isinstance(value, dict):
+            return False
+        iv = data.setdefault("instrument_verification", {})
+        ccv = iv.setdefault("ccv", {})
+        ccv["recovery_min"] = value.get("min")
+        ccv["recovery_max"] = value.get("max")
+        return True
+    if key == "eis_recovery":
+        analyte = row.get("analyte")
+        if not analyte or not isinstance(value, dict):
+            return False
+        eis = data.setdefault("eis_overrides", {})
+        if not isinstance(eis, dict):
+            eis = {}
+            data["eis_overrides"] = eis
+        eis[analyte] = {"recovery_min": value.get("min"),
+                        "recovery_max": value.get("max")}
+        return True
+    path = _OVERLAY_PATHS.get(key)
+    if path is None:
+        return False
+    _set_path(data, path, value)
+    return True
+
+
+def _row_is_well_formed(row):
+    """Structural check only -- NOT a resolution check. A row is well-formed
+    if it is a dict naming a criterion key; whether that key means anything
+    to THIS worker (or its value is None) is decided per-row in
+    _apply_resolved_row() and is not a validity question."""
+    return isinstance(row, dict) and isinstance(row.get("key"), str) and row.get("key")
+
+
+def _load_resolved_payload(batch_id, profiles_path):
+    """The parsed, structurally-validated resolved-criteria payload for
+    batch_id, or None for every case that must leave the global profile
+    untouched: no file (the default for any batch with no linked project),
+    an unreadable/corrupt file, or a file whose shape cannot be trusted.
+
+    Deliberately all-or-nothing (GAPS.md Sec7.1's partial-write shape, one
+    layer over): if the file's top-level shape is wrong, or ANY row in it is
+    not even structurally a criterion row, the WHOLE file is rejected and
+    logged once -- never applied row-by-row such that some criteria end up
+    overridden and others silently do not because of what amounts to a
+    corrupt record. A row that IS well-formed but names a key/value this
+    worker does not apply anywhere is a normal per-row no-op, not a reason
+    to reject the file (see _row_is_well_formed's docstring)."""
+    if not batch_id:
+        return None
+    path = os.path.join(os.path.dirname(profiles_path), "resolved",
+                         "%s.json" % batch_id)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as fh:
+            payload = json.load(fh)
+    except (IOError, OSError, ValueError) as exc:
+        logger.warning(
+            "resolved criteria file %s is unreadable (%s) -- ignoring it "
+            "entirely; batch %s runs on the lab-tier profile only",
+            path, exc, batch_id)
+        return None
+
+    if not isinstance(payload, dict):
+        logger.warning(
+            "resolved criteria file %s is not a JSON object -- ignoring it "
+            "entirely", path)
+        return None
+    method_id = payload.get("method_id")
+    if not method_id or method_id not in _profile_data_cache:
+        logger.warning(
+            "resolved criteria file %s names method_id %r, not a known "
+            "profile -- ignoring it entirely", path, method_id)
+        return None
+    criteria = payload.get("criteria")
+    if not isinstance(criteria, list):
+        logger.warning(
+            "resolved criteria file %s has no 'criteria' list -- ignoring "
+            "it entirely", path)
+        return None
+    if not all(_row_is_well_formed(row) for row in criteria):
+        logger.warning(
+            "resolved criteria file %s contains a malformed row -- "
+            "ignoring the WHOLE file rather than applying it half-way",
+            path)
+        return None
+    return payload
+
+
+def _apply_resolved_overlay(batch_id, profiles_path):
+    payload = _load_resolved_payload(batch_id, profiles_path)
+    if payload is None:
+        return
+    method_id = payload["method_id"]
+    data = _profile_data_cache[method_id]
+    applied = 0
+    for row in payload["criteria"]:
+        if _apply_resolved_row(data, row):
+            applied += 1
+    applied_criteria = _apply_resolved_criteria(payload["criteria"], method_id)
+    logger.info(
+        "Applied %d resolved (project-aware) criteria for batch %s (%s); "
+        "%d also overlaid onto CRITERIA",
+        applied, batch_id, method_id, applied_criteria)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

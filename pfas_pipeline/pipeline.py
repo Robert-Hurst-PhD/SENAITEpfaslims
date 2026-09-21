@@ -493,15 +493,6 @@ def run_pipeline(
                       the batch lookup made the connector create a SECOND Batch
                       titled after the worksheet on every run.
     """
-    # Reload QC criteria and full profile data from the exported JSON so
-    # manager changes in the SENAITE UI take effect without a worker restart.
-    reload_criteria()
-    reload_from_profiles()
-
-    csv_path = Path(csv_path)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     # ── Run parameters from the extraction sidecar ───────────────────────────
     #
     # The sidecar has always carried batch_id, analyst and matrix — but it was
@@ -514,6 +505,12 @@ def run_pipeline(
     #
     # An EXPLICIT argument always wins: the sidecar fills gaps, it does not
     # override a caller who knows better.
+    #
+    # Read BEFORE the profile reload below (moved ahead of it so
+    # senaite_batch_id is known in time to overlay that batch's resolved
+    # criteria — see reload_from_profiles(batch_id=...) just below): both
+    # blocks only ever read function arguments/the sidecar file, so this
+    # reordering changes nothing else about either one.
     sidecar = {}
     if extraction_log_path and Path(extraction_log_path).exists():
         import json as _json
@@ -543,6 +540,20 @@ def run_pipeline(
             "correction, and LFSM/LFSMD cannot be evaluated. Provide a "
             "<stem>_extraction.json sidecar, or call run_pipeline with the "
             "arguments.", csv_path.name)
+
+    # Reload QC criteria and full profile data from the exported JSON so
+    # manager changes in the SENAITE UI take effect without a worker restart.
+    # senaite_batch_id (now known, from an explicit argument or the sidecar
+    # above) additionally overlays that batch's RESOLVED (project-aware)
+    # criteria, if senaite.pfas has ever exported any for it — see
+    # reload_from_profiles()'s docstring for the safety property this
+    # preserves when there is none, which is every run today.
+    reload_criteria()
+    reload_from_profiles(batch_id=senaite_batch_id or None)
+
+    csv_path = Path(csv_path)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Import — resolve column-mapping profile from Import Studio REST bridge
     #    then load the CSV using that profile.  Strict mode: if SENAITE is

@@ -14,8 +14,12 @@ from, the published-method baseline (senaite.pfas.method_baselines). That
 provenance is what lets a later phase derive an accurate non-conformance
 statement for a certificate instead of someone hand-writing one.
 
-Nothing in this add-on calls this module yet -- see GAPS.md. Do not add a
-docstring anywhere that claims a consumer exists until one does.
+`resolve_for_batch()` now has a call site: senaite.pfas.resolved_criteria_store
+(export_resolved_criteria), invoked from project_ref.set_project_uid when a
+batch's project link is set. See GAPS.md Sec20 for what that does and does not
+close -- the export only fires when a caller supplies a method_id/matrix, and
+no UI yet calls set_project_uid at all with either. `resolve()` itself remains
+called only via that shell and via tests.
 
 Design: pure core, thin ZODB shell
 -----------------------------------
@@ -428,8 +432,9 @@ def resolve_for_batch(portal, batch, method_id, matrix, key, analyte=None):
     resolve() does for any other caller; nothing here special-cases that
     path, which is rule 3.
 
-    Zero call sites today; see GAPS.md for the entry recording that and which
-    phase is expected to wire this in.
+    Called by senaite.pfas.resolved_criteria_store.export_resolved_criteria(),
+    itself called from project_ref.set_project_uid() when a batch's project
+    link is set and a method_id/matrix are known. See GAPS.md Sec20.
     """
     from senaite.pfas import project_ref
     from senaite.pfas import method_profile_store

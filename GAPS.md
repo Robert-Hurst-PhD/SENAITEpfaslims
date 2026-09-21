@@ -1151,3 +1151,201 @@ not being looked for.
 without its precondition (§1's detection table, true for one method, written as
 though true for all). The harness did not fail — it was never asked the
 question, and the register did not record which question it had been asked.
+
+---
+
+## 20. The resolution/delivery gap (§17) is closed for the mechanism; the UI
+##     that would actually trigger it does not exist (2026-09-20)
+
+§17 named the gap precisely: `ruleset.resolve_for_batch()` had zero call
+sites, the worker read only the lab tier from `method_profiles.json`, and "a
+project QAPP override entered through the add-on today would be resolved by
+nobody and delivered nowhere." This entry closes the mechanism the same way
+D59-era work always has here — as a FILE bridge, not a second REST channel,
+because profiles already cross the add-on/worker process boundary that way
+(`method_profile_store.export_profiles_to_file()` -> `method_profiles.
+reload_from_profiles()`) and a second mechanism for the same kind of data is
+the duplication CLAUDE.md §1 rule 3 forbids.
+
+**What is built.**
+
+- `senaite.pfas.resolved_criteria_store` (new module, not folded into
+  ruleset.py) — mirrors method_profile_store.py's own split: ruleset.py stays
+  pure resolution + a thin ZODB shell, exactly as its docstring already
+  promised; this module is the file bridge for the RESOLVED (project-aware)
+  answer, one batch at a time. `build_resolved_rows()` / `write_resolved_file()`
+  / `_analytes_for_key()` are pure (already-fetched `profile` /
+  `project_ruleset` dicts in, JSON-ready rows out) and are exercised directly
+  by `tests/test_resolved_criteria_store.py` under plain Python 3, the same
+  way `test_ruleset.py` exercises `resolve()`. `export_resolved_criteria()` /
+  `remove_resolved_criteria()` are the thin shells — not exercised by the
+  plain-Python-3 harness (no Zope there to fetch from), proven live instead
+  (below). The file lands at
+  `{dirname(PFAS_PROFILES_PATH)}/resolved/{batch_id}.json` — the directory is
+  DERIVED from the same env var the existing export already honours, per the
+  task's instruction, not a second hardcoded `/data/qc` path.
+- Every criterion in `ruleset.SHAPES_BY_KEY` is resolved and written, with
+  tier, source doc/rev, and the full CONFORMS/DEPARTS/UNKNOWN + departure
+  detail — nothing in the file's shape drops provenance the disclosure work
+  will need later.
+- The call site: `senaite.pfas.project_ref.set_project_uid()` — the ONE
+  function that establishes or clears a batch<->project link (see below for
+  why this is the right choke point and also not the whole answer). Linking
+  now best-effort-derives a method_id (via `batch.getMethod()` +
+  `method_bridge.profile_id_for_method`, request-free) and, if a matrix is
+  also known, exports the resolved file; unlinking deletes it, so a cleared
+  project link never leaves a stale project-tier answer for the worker to
+  read. Both directions are wrapped so a failure is logged and swallowed,
+  never blocking the annotation write that already happened.
+- `pfas_pipeline/method_profiles.reload_from_profiles()` gained an optional
+  `batch_id` argument. When given, it reads that batch's resolved file (if
+  any) back and injects each already-resolved value into
+  `_profile_data_cache` at the same key paths the global-file load already
+  fills — `instrument_verification.calibration.r2_min`,
+  `...confirmation.sn_quan_min`, `qc_acceptance.Dup.tiers[0].rpd_max`,
+  `instrument_verification.ccv.recovery_{min,max}`, and per-analyte
+  `eis_overrides`. **It performs no resolution** — no tier comparison, no
+  fallthrough — only plumbing, per the task's explicit constraint that a
+  second copy of tier logic in the worker would be the dead-twin shape this
+  project has already removed twice (§2 A4, §4). The one thing duplicated
+  across the process boundary is a small, static key->path map — the same
+  kind of small duplication `method_baselines.matrix_class()` already
+  carries for the identical reason (worker is Python-3-only and dependency-
+  free of the Python-2.7 add-on package; that module's own comment says so).
+  `pfas_pipeline/pipeline.py`'s sidecar-parsing block (which resolves
+  `senaite_batch_id`) was moved a few lines earlier, ahead of the
+  `reload_from_profiles()` call, so the batch id is known in time to pass —
+  the two blocks only ever read function arguments/the sidecar file, so nothing
+  else about either changed; `tests/test_watcher_parity.py`'s ordering
+  assertions still hold (sidecar is read even earlier than before).
+- The malformed-file contract is intentionally all-or-nothing: a corrupt
+  JSON file, a file with no recognizable `method_id`, or a file containing
+  even one structurally-broken row causes the WHOLE file to be ignored (one
+  log line) rather than applied row-by-row — the §7.1 partial-write shape
+  one layer over. A row with a recognized shape but an unmapped/foreign key
+  is a normal per-row no-op, not corruption, so it does not sink its
+  siblings — forward-compatible with a future criterion key this worker
+  version does not yet consume.
+- **Found while wiring this, not by the tests first written for it:**
+  `_profile_data_cache` is not the only live reader of `cal_r2_min` /
+  `sn_quan_min`. `constants.CRITERIA` — a flat dict `reload_criteria()`
+  builds by re-reading the global profiles file DIRECTLY, never through the
+  cache this overlay patches — still has two real consumers that never
+  migrated to the "profiled" path Decision C (2026-06-17) declared
+  authoritative: `qc_engine.signal_to_noise_check()` reads
+  `CRITERIA["sn_quan_min"]` unconditionally (no profiled variant exists to
+  call instead), and `qc_engine.calibration_check()` — the fallback
+  `run_queue.py` uses only when no profile resolved at all — reads
+  `CRITERIA["cal_r2_min"]`. Overlaying `_profile_data_cache` alone would have
+  left those two consumers silently seeing the un-overridden lab value for a
+  project-linked batch: the same "merged half-way" inconsistency this
+  entry's tests exist to rule out at the file level, reappearing one
+  consumer layer down. `_apply_resolved_overlay()` now also writes the
+  resolved `cal_r2_min`/`sn_quan_min` (+ its `sn_min` alias) into `CRITERIA`
+  from the same rows — no new resolution, the same values, one more
+  destination. **Scoped to `method_id == "FDA_32PFAS"` only**, because
+  `reload_criteria()` is called with no `method_id` argument anywhere in
+  this codebase and so always builds `CRITERIA` from FDA_32PFAS regardless
+  of the run's actual method — a PRE-EXISTING behaviour this entry did not
+  introduce and does not fix (recorded here so the next reader does not
+  have to rediscover it): an EPA_537_1/EPA_1633A run's signal-to-noise check
+  is judged against FDA's calibration/S/N numbers today, project-linked or
+  not. Overlaying CRITERIA for a non-FDA resolved payload would not fix
+  that; it would just make an already-wrong dict wrong in a different,
+  more confusing way, so it is deliberately left alone outside that scope.
+  `tests/test_resolved_overlay.py::test_a_project_override_of_cal_r2_min_also_reaches_criteria`
+  and `::test_criteria_overlay_is_scoped_to_fda_32pfas_only` pin both halves.
+
+**The safety property, proven, not assumed.** `tests/test_resolved_overlay.py`
+pins byte-for-byte identity for `batch_id=None` and for `batch_id` set but no
+file present (the state of every batch today) against the same global-file
+load with no batch_id argument at all — plus the malformed/partial-file
+rejection cases, a null-valued row not clobbering a real lab value, the
+eis_recovery per-analyte path, the CRITERIA agreement above, and — since the
+worker process is long-lived and runs batches back-to-back against the same
+module-global cache — that a project-linked run's overlay does NOT leak into
+the next batch processed in the same process when that batch has no project
+(`test_a_project_overlay_does_not_leak_into_the_next_batch_without_one`,
+deliberately run WITHOUT the cache reset every other test uses, since
+production never resets between batches either). 22 new test functions
+across the two new files (9 + 13), all passing; full suite (22 files) green
+as one invocation.
+
+**Is `resolve_for_batch()` still at zero call sites? No — but read what
+"a call site" means here before treating this as closed.** It is called
+from `resolved_criteria_store.export_resolved_criteria()`, itself called
+from `project_ref.set_project_uid()`. That is a real call site, not a test
+harness. But — and this is the honest part — **nothing in this add-on calls
+`set_project_uid()` either**, in production code, today. `senaite.pfas.
+browser.projects` (`@@pfas-projects`, added the same day as this entry)
+manages `PFASProject` entities — create, edit, list — and never links one to
+a Batch. There is no UI anywhere that lets a user say "this batch belongs to
+this project." So the honest chain is:
+
+```
+a manager enters a QAPP override        -- UI exists (project ruleset
+                                            get/set helpers in ruleset.py,
+                                            tested, e.g. set_project_criterion)
+        |
+a batch gets linked to that project     -- NO UI EXISTS. set_project_uid()
+                                            is callable and correct, and now
+                                            triggers the export, but nothing
+                                            calls it.
+        |
+the resolved file is exported           -- WIRED, this entry, IF the above
+                                            fires with a known method_id/matrix
+        |
+the worker overlays it at run time      -- WIRED, this entry
+```
+
+**Is `set_project_uid()` the right hook, or is the UI layer better?** Both,
+for different halves of the same reason `export_profiles_to_file()` lives
+inside `method_profile_store.save_profile()` rather than at each of its UI
+callers: the choke point should be the function that changes the fact, not
+every place that might one day call it, so a future caller cannot forget to
+re-export. `set_project_uid()` is that choke point for "the link changed" —
+correct to put the trigger there, and now done. But the choke point cannot
+manufacture context it was never given: nothing on a bare Batch reliably
+names its method_id and matrix without a request/worksheet in scope (the
+existing helpers that come closest — `run_builder.batch_method()`,
+`data_review._batch_matrix()` — both need a request, and the latter needs a
+worksheet with analyses already on it, which will not exist yet at the
+moment a project is first linked). `set_project_uid()` therefore takes
+`method_id`/`matrix` as optional arguments and does its best without them
+(a request-free method_id lookup only; matrix is never guessed, per CLAUDE.md
+§8's "never fabricate"). A future "link this batch to a project" UI already
+has to know the batch's method and matrix to render sensibly — a batch is
+created against exactly one of each (§3) — so it is the natural place to
+supply both explicitly. **Verdict: `set_project_uid()` is the right permanent
+home for the trigger; it is not, by itself, sufficient — it is waiting on a
+UI that does not exist yet to supply the two pieces of context it cannot
+derive alone.**
+
+**So would a QAPP override entered in the UI today actually reach a run?**
+No, and the missing step is now narrow and specific: the QAPP-override UI
+(project ruleset editing) exists at the data-layer/helper level
+(`ruleset.get_project_ruleset` / `set_project_criterion`) but has no browser
+view either — DECISIONS.md 2026-09-20 explicitly deferred that ("QC
+composition" was reprioritised ahead of it) — AND no UI links a batch to a
+project at all. Fix both and the rest of the chain now genuinely fires:
+`set_project_uid()` exports, `reload_from_profiles(batch_id=...)` overlays,
+and the worker evaluates QC against the resolved value with zero further
+code changes needed in either half — for `dup_rpd_max`, `ccv_recovery`, and
+`eis_recovery` unconditionally, and for `cal_r2_min`/`sn_quan_min` when the
+batch's method is FDA_32PFAS (the CRITERIA scoping above; an EPA_537_1/
+EPA_1633A project override of either would still resolve and export
+correctly but not reach `signal_to_noise_check()`/the calibration fallback,
+because `CRITERIA` does not represent those methods today regardless of any
+project link). That is a materially smaller remaining gap than §17
+described — a batch-to-project linking control and a ruleset edit form, not
+a cross-process delivery mechanism — but it is not zero, and the CRITERIA
+scoping is a second, narrower edge worth remembering alongside it.
+
+### The transferable rule, once more
+
+The same shape as §15/§17/§18: a mechanism can be built, tested, and wired to
+its one real call site, and the feature can still not fire in production
+because the call site it was wired to is itself unreached. "Has a call site"
+and "is reachable from the UI a user actually operates" are different
+claims; this register now distinguishes them explicitly rather than letting
+the first stand in for the second.
