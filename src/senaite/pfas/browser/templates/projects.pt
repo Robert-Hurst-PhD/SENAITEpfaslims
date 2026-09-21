@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Projects</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .pj-toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+                  margin-bottom:16px; }
+    .pj-code { font-family:monospace; font-weight:700; }
+    .pj-notes-cell { max-width:220px; white-space:normal; color:var(--s-secondary);
+                     font-size:12px; }
+    .pj-muted { color:var(--s-secondary); font-style:italic; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Projects</tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div tal:condition="view/ok_msg"    class="alert alert-success" tal:content="view/ok_msg"></div>
+    <div tal:condition="view/error_msg" class="alert alert-error"   tal:content="view/error_msg"></div>
+
+    <!-- ─── Create / edit form ─ manager only (CLAUDE.md §6A: never show a
+         control the current user cannot use) ──────────────────────────── -->
+    <div class="pfas-card" tal:condition="view/can_manage"
+         tal:define="editing view/edit_project">
+      <div class="pfas-card-head">
+        <span tal:condition="not:editing">New Project</span>
+        <span tal:condition="editing">Edit Project
+          <tal:c tal:content="python:editing['project_code']"></tal:c></span>
+      </div>
+      <div class="pfas-card-body">
+        <form method="post"
+              tal:attributes="action string:${view/portal_url}/@@pfas-projects">
+          <input type="hidden" name="action"
+                 tal:attributes="value python:'edit' if editing else 'add'"/>
+          <input type="hidden" name="uid"
+                 tal:attributes="value python:editing['uid'] if editing else ''"/>
+
+          <div class="field-grid">
+            <div class="field-row">
+              <label for="pj-title">Project Name</label>
+              <input type="text" id="pj-title" name="title" required="required"
+                     tal:attributes="value python:editing['title'] if editing else ''"/>
+            </div>
+            <div class="field-row">
+              <label for="pj-code">Project Code</label>
+              <input type="text" id="pj-code" name="project_code" required="required"
+                     tal:attributes="value python:editing['project_code'] if editing else ''"/>
+            </div>
+            <div class="field-row">
+              <label for="pj-client">Client</label>
+              <select id="pj-client" name="client_uid" required="required">
+                <option value="">-- Select client --</option>
+                <tal:opts tal:repeat="c view/clients">
+                  <option tal:attributes="value c/uid;
+                                          selected python:editing and editing['client_uid'] == c['uid']"
+                          tal:content="c/title"></option>
+                </tal:opts>
+              </select>
+              <div class="hint" tal:condition="not:view/clients">
+                No SENAITE clients found -- create one under Clients first.
+              </div>
+            </div>
+            <div class="field-row">
+              <label for="pj-qapp">QAPP Document</label>
+              <select id="pj-qapp" name="qapp_document_id">
+                <option value="">None -- use lab's internal quality system</option>
+                <tal:opts tal:repeat="q view/qapp_docs">
+                  <option tal:attributes="value q/sop_id;
+                                          selected python:editing and editing['qapp_document_id'] == q['sop_id']"
+                          tal:content="python:'%s — %s' % (q['sop_id'], q['title'])"></option>
+                </tal:opts>
+              </select>
+              <div class="hint">
+                A QAPP is client-owned but reusable across projects/clients --
+                not filtered by the client selected above.
+              </div>
+            </div>
+            <div class="field-row">
+              <label for="pj-start">Start Date</label>
+              <input type="date" id="pj-start" name="start_date"
+                     tal:attributes="value python:editing['start_date'] if editing else ''"/>
+            </div>
+            <div class="field-row">
+              <label for="pj-end">End Date</label>
+              <input type="date" id="pj-end" name="end_date"
+                     tal:attributes="value python:editing['end_date'] if editing else ''"/>
+            </div>
+            <div class="field-row">
+              <label for="pj-status">Status</label>
+              <select id="pj-status" name="status">
+                <tal:opts tal:repeat="pair view/all_statuses">
+                  <option tal:attributes="value python:pair[0];
+                                          selected python:(editing['status'] if editing else 'active') == pair[0]"
+                          tal:content="python:pair[1]"></option>
+                </tal:opts>
+              </select>
+            </div>
+            <div class="field-row field-row-wide">
+              <label for="pj-notes">Notes</label>
+              <textarea id="pj-notes" name="notes" rows="3"
+                        tal:content="python:editing['notes'] if editing else ''"></textarea>
+            </div>
+          </div>
+
+          <div class="form-actions" style="margin-top:14px;">
+            <button type="submit" class="btn btn-primary">
+              <span tal:condition="not:editing">Create Project</span>
+              <span tal:condition="editing">Save Changes</span>
+            </button>
+            <a tal:condition="editing" class="btn btn-secondary"
+               tal:attributes="href string:${view/portal_url}/@@pfas-projects">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="pfas-card" tal:condition="not:view/can_manage">
+      <div class="pfas-card-body">
+        <span class="pj-muted">
+          Only a lab manager can create or edit projects. Contact your QAO/Manager
+          to add a new project or change one on file.
+        </span>
+      </div>
+    </div>
+
+    <!-- ─── Project list ────────────────────────────────────────────────── -->
+    <div class="table-wrap">
+      <table class="pfas-table">
+        <thead>
+          <tr>
+            <th>Project Code</th>
+            <th>Project Name</th>
+            <th>Client</th>
+            <th>QAPP</th>
+            <th>Status</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Notes</th>
+            <th tal:condition="view/can_manage">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tal:rows tal:repeat="pj view/projects">
+          <tr>
+            <td class="pj-code" tal:content="python:pj.get('project_code','')"></td>
+            <td tal:content="python:pj.get('title','')"></td>
+            <td tal:content="python:pj.get('client_name','') or '—'"></td>
+            <td>
+              <span tal:condition="python:pj.get('qapp_document_id')"
+                    class="mono-badge" tal:content="python:pj.get('qapp_label','')"></span>
+              <span tal:condition="not:python:pj.get('qapp_document_id')"
+                    class="pj-muted">none on file</span>
+            </td>
+            <td>
+              <span tal:attributes="class python:'badge ' + ('badge-active' if pj.get('status')=='active' else 'badge-archived')"
+                    tal:content="python:pj.get('status','').capitalize()"></span>
+            </td>
+            <td tal:content="python:pj.get('start_date','') or '—'"></td>
+            <td tal:content="python:pj.get('end_date','') or '—'"></td>
+            <td class="pj-notes-cell" tal:content="python:pj.get('notes','')"></td>
+            <td style="white-space:nowrap;" tal:condition="view/can_manage">
+              <a class="btn-sm"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-projects?edit_uid=${pj/uid}">
+                Edit
+              </a>
+              <form method="post" style="display:inline;"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-projects"
+                    onsubmit="return confirm('Delete this project? This cannot be undone.')">
+                <input type="hidden" name="action" value="delete"/>
+                <input type="hidden" name="uid" tal:attributes="value pj/uid"/>
+                <button type="submit" class="btn-sm btn-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+          </tal:rows>
+          <tr tal:condition="not:view/projects">
+            <td colspan="9" class="pj-muted" style="text-align:center;padding:20px;">
+              No projects yet.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+  </div>
+</body>
+</html>

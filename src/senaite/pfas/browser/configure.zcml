@@ -280,6 +280,14 @@
       permission="zope2.View"
       />
 
+  <!-- PFAS Projects (client project carrying a QAPP, linked to batches) -->
+  <browser:page
+      name="pfas-projects"
+      for="*"
+      class=".projects.PFASProjectsView"
+      permission="zope2.View"
+      />
+
   <!-- Guided Instrument Import & Mapping Studio -->
   <browser:page
       name="pfas-import-studio"
