@@ -402,6 +402,45 @@ def test_criteria_overlay_is_scoped_to_fda_32pfas_only():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_criteria_does_not_leak_across_batches_in_production_call_order():
+    """Unlike _profile_data_cache, CRITERIA's no-leak protection is
+    POSITIONAL, not structural: it depends on reload_criteria()'s
+    CRITERIA.clear() running before reload_from_profiles()'s overlay, on
+    every run, from a different module -- exactly the two-call sequence
+    pipeline.run_pipeline() actually makes. This test drives that real
+    sequence (not reload_from_profiles alone) so a future reordering of
+    those two calls, or a reload_criteria() early-return, would be caught
+    here rather than discovered as a silent cross-batch QAPP leak."""
+    from pfas_pipeline.constants import reload_criteria, CRITERIA
+    tmp = tempfile.mkdtemp()
+    try:
+        gpath = _write_global(tmp)
+        _write_resolved(tmp, "B-1200", {
+            "batch_id": "B-1200", "method_id": "FDA_32PFAS", "matrix": "Eggs",
+            "criteria": [
+                {"key": "cal_r2_min", "analyte": None, "value": 0.900,
+                 "tier": "project", "source_doc": "QAPP-X", "source_rev": 1,
+                 "conformance": "UNKNOWN", "departure": None},
+            ],
+        })
+        _reset_cache()
+
+        # Run A: project-linked, production call order.
+        reload_criteria(profiles_path=gpath)
+        mp.reload_from_profiles(profiles_path=gpath, batch_id="B-1200")
+        assert CRITERIA["cal_r2_min"] == 0.900, "sanity: run A's overlay applied"
+
+        # Run B: same process, no project -- same production call order,
+        # no manual reset of CRITERIA in between (reload_criteria() itself
+        # is what must do that job, as it does on every real run).
+        reload_criteria(profiles_path=gpath)
+        mp.reload_from_profiles(profiles_path=gpath, batch_id="B-1201-NO-PROJECT")
+        assert CRITERIA["cal_r2_min"] == 0.995, (
+            "run A's project-tier cal_r2_min leaked into run B's CRITERIA")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ── No cross-batch leak in the long-lived worker process ───────────────────
 
 def test_a_project_overlay_does_not_leak_into_the_next_batch_without_one():

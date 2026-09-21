@@ -548,6 +548,20 @@ def run_pipeline(
     # criteria, if senaite.pfas has ever exported any for it — see
     # reload_from_profiles()'s docstring for the safety property this
     # preserves when there is none, which is every run today.
+    #
+    # ORDER MATTERS and is NOT enforced by either function: reload_criteria()
+    # is what resets constants.CRITERIA to the plain lab value on every run;
+    # reload_from_profiles()'s overlay then writes a project-tier value over
+    # it for THIS batch only, from the same resolved rows it applies to
+    # _profile_data_cache (see "The CRITERIA wrinkle" there). Swap this pair,
+    # or drop the reload_criteria() call, and a project override resolved for
+    # one batch would silently persist into the next batch's CRITERIA in
+    # this long-lived process — a leak the file-cache side structurally
+    # cannot have (it replaces the whole method entry every reload) but this
+    # one can, because it depends on call ORDER across two modules rather
+    # than a single replace. tests/test_resolved_overlay.py's
+    # test_criteria_does_not_leak_across_batches_in_production_call_order
+    # drives this exact two-call sequence to catch a future reordering.
     reload_criteria()
     reload_from_profiles(batch_id=senaite_batch_id or None)
 
