@@ -84,6 +84,13 @@ repeated:
 **17 of 18 method × matrix combinations cannot evaluate a matrix spike**, and
 **13 of 18 report on the extract basis** because no matrix factor is set.
 
+> **The second half of that sentence is WRONG — corrected 2026-09-22, see §22.**
+> Those 13 all have a matrix factor of **1.0** in ZODB. The export drops any
+> row whose factor is exactly 1.0, so the file the worker reads shows
+> `matrix_factors: []` and the table below reads **none**. For aqueous
+> matrices 1.0 is the *correct* value, not a missing one. The table's
+> "none" cells below are unreliable for the same reason.
+
 | Method | Matrices | Matrix factor | Spike level | Notes |
 |---|---|---|---|---|
 | FDA_32PFAS | Animal Feed | 2.0 | **set** | the only fully configured combination |
@@ -1547,3 +1554,74 @@ Zope/Plone browser code, proven live above, the same category
 `resolved_criteria_store.export_resolved_criteria()`/`remove_resolved_
 criteria()` already were in §20).
 the first stand in for the second.
+
+---
+
+## 22. The export erases a configured 1.0, and ZODB never got the factor fix (2026-09-22)
+
+Three findings, established by querying the running instance's profile editor
+directly rather than reading the exported file.
+
+### 22.1 A factor of 1.0 is indistinguishable from no factor
+
+`@@pfas-method-profile-edit` shows what ZODB actually holds:
+
+| Method | Matrices | Factor in ZODB | In the exported file |
+|---|---|---|---|
+| FDA_32PFAS | Aquatic Tissue | **1.0** | absent |
+| EPA_537_1 | all 3 | **1.0** | `matrix_factors: []` |
+| EPA_1633A | all 9 | **1.0** | `matrix_factors: []` |
+
+The export omits any row whose factor is exactly 1.0. So **§3's "13 of 18
+report on the extract basis because no matrix factor is set" is wrong.** All 13
+have a factor. It is 1.0 — which for an aqueous matrix reporting ng/L off the
+extract is the *correct* value, not an unfilled one. Someone configured these;
+the export erased the evidence and the register read the silence as a gap.
+
+Same for Aquatic Tissue, reported twice in this session as having no factor. It
+has 1.0. That is a decision, not an omission.
+
+The behaviour is right either way — `pipeline.py:128` skips conversion for both
+`None` and `1.0` — but the log line it emits is not: *"No matrix factor
+configured for %s / %s"* fires for matrices that are configured. A deliberate
+choice and an unmade one produce the same file, the same warning and the same
+register entry.
+
+### 22.2 The 1000x factor correction was never persisted
+
+The factors corrected on 2026-09-18 (500 / 500 / 500 / 200 / 2000, §14) were
+written to `data/qc/method_profiles.json` — the **export**. ZODB, the source of
+truth, still holds the originals:
+
+```
+Meat / Muscle 0.5   Eggs 0.5   Fish / Seafood 0.5   Milk 0.5   Animal Feed 2.0
+```
+
+The file is regenerated from ZODB, so the correction survives only until
+something regenerates it. **The 1000x under-reporting defect is not fixed.** It
+is masked in a file that gets overwritten. Applying it properly means saving the
+Matrices & Units pane in the Method Profile UI — a human clicking Save, or a
+full-pane POST; a *partial* POST is what nulled seven live QC criteria in §7.1,
+and the 823b546 guard stops an absent pane clobbering, it does not make a
+scripted partial POST safe.
+
+### 22.3 Restarting Zope silently reverts live config
+
+`docker compose restart senaite` reapplies the `senaite.pfas:default`
+GenericSetup profile on startup (`collective.recipe.plonesite`, dependency
+strategy `reapply`) and regenerates the profile export from ZODB. Any live edit
+to `data/qc/method_profiles.json` is discarded.
+
+This is a **process defect, not an incident**. This project's own workflow
+requires a Zope restart after every template change, so every such restart has
+been silently reverting live config. Anyone editing that file must either
+persist through the UI or expect the edit to last until the next restart.
+
+### The transferable rule
+
+§13 named the recurring shape: a fact recorded correctly in one place and never
+carried to where it is used. 22.1 is its mirror — **a fact recorded correctly
+and then erased in transit, so the absence reads as a decision never made.**
+An export that drops a value because it is a no-op destroys the difference
+between "configured to do nothing" and "not configured". When something is read
+as evidence of a gap, the export is not a safe thing to read it from.
