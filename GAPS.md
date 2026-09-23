@@ -84,12 +84,10 @@ repeated:
 **17 of 18 method × matrix combinations cannot evaluate a matrix spike**, and
 **13 of 18 report on the extract basis** because no matrix factor is set.
 
-> **The second half of that sentence is WRONG — corrected 2026-09-22, see §22.**
-> Those 13 all have a matrix factor of **1.0** in ZODB. The export drops any
-> row whose factor is exactly 1.0, so the file the worker reads shows
-> `matrix_factors: []` and the table below reads **none**. For aqueous
-> matrices 1.0 is the *correct* value, not a missing one. The table's
-> "none" cells below are unreliable for the same reason.
+> **This sentence is CORRECT. A "correction" filed against it on 2026-09-22 was
+> itself wrong and has been withdrawn — see §22.1.** Querying ZODB directly:
+> EPA_537_1 and EPA_1633A store **zero** `matrix_factors` rows, and FDA stores
+> five (Aquatic Tissue has none). The 13 really are unset.
 
 | Method | Matrices | Matrix factor | Spike level | Notes |
 |---|---|---|---|---|
@@ -1562,30 +1560,42 @@ the first stand in for the second.
 Three findings, established by querying the running instance's profile editor
 directly rather than reading the exported file.
 
-### 22.1 A factor of 1.0 is indistinguishable from no factor
+### 22.1 WITHDRAWN — this entry was wrong, and how it went wrong is the point
 
-`@@pfas-method-profile-edit` shows what ZODB actually holds:
+**The claim filed here on 2026-09-22 — that the 13 "unset" matrices actually
+hold a factor of 1.0 which the export drops — is false.** §3 was right all
+along. Reading `get_profile()` inside Zope, which is the store itself:
 
-| Method | Matrices | Factor in ZODB | In the exported file |
-|---|---|---|---|
-| FDA_32PFAS | Aquatic Tissue | **1.0** | absent |
-| EPA_537_1 | all 3 | **1.0** | `matrix_factors: []` |
-| EPA_1633A | all 9 | **1.0** | `matrix_factors: []` |
+| Method | supported_matrices | `matrix_factors` rows STORED |
+|---|---|---|
+| FDA_32PFAS | 6 | **5** — Aquatic Tissue has none |
+| EPA_537_1 | 3 | **0** |
+| EPA_1633A | 9 | **0** |
 
-The export omits any row whose factor is exactly 1.0. So **§3's "13 of 18
-report on the extract basis because no matrix factor is set" is wrong.** All 13
-have a factor. It is 1.0 — which for an aqueous matrix reporting ng/L off the
-extract is the *correct* value, not an unfilled one. Someone configured these;
-the export erased the evidence and the register read the silence as a gap.
+So the 13 genuinely have no factor, and Aquatic Tissue genuinely has none —
+exactly as originally recorded.
 
-Same for Aquatic Tissue, reported twice in this session as having no factor. It
-has 1.0. That is a decision, not an omission.
+**Where the false claim came from.** The retraction was based on
+`@@pfas-method-profile-edit` rendering `value="1.0"` for every one of those
+matrices. That is the **form supplying a display default for a matrix with no
+stored row**, not a stored value. The rendered HTML was read as if it were the
+store.
 
-The behaviour is right either way — `pipeline.py:128` skips conversion for both
-`None` and `1.0` — but the log line it emits is not: *"No matrix factor
-configured for %s / %s"* fires for matrices that are configured. A deliberate
-choice and an unmade one produce the same file, the same warning and the same
-register entry.
+That is the same defect shape this register exists to catalogue, committed by
+the register itself: a derived surface mistaken for the source of truth. It is
+worse than the ones in §13, because those were the code doing it — this was the
+audit doing it, and an audit that reads a rendering will confidently certify
+whatever the rendering says.
+
+It was caught only because a *write* was planned. The dry run written to make
+the write safe printed the stored rows, and they did not match the form. Had
+the correction been filed without intending to change anything, it would have
+stood.
+
+**The rule:** when the question is "is this configured?", the form cannot
+answer it. A form's job is to show something editable, so it must invent a
+value where none exists. Only the store distinguishes *unset* from *set to the
+default*.
 
 ### 22.2 The 1000x factor correction was never persisted
 
@@ -1620,8 +1630,24 @@ persist through the UI or expect the edit to last until the next restart.
 ### The transferable rule
 
 §13 named the recurring shape: a fact recorded correctly in one place and never
-carried to where it is used. 22.1 is its mirror — **a fact recorded correctly
-and then erased in transit, so the absence reads as a decision never made.**
-An export that drops a value because it is a no-op destroys the difference
-between "configured to do nothing" and "not configured". When something is read
-as evidence of a gap, the export is not a safe thing to read it from.
+carried to where it is used. Every entry above is a variant, including the one
+that had to be withdrawn.
+
+**22.1 is the shape turned on the auditor.** The store said one thing, the form
+rendered another, and the audit believed the form. Nothing in the code was
+wrong; the reading was. An audit that consults a derived surface will certify
+whatever that surface happens to show, and it will do so with citations.
+
+**22.2 is the same boundary in the other direction.** A value was written to the
+export and not to the store, so the system agreed with the fix exactly until
+something regenerated the file.
+
+Both reduce to one working rule, which is now the price of entry for anything
+filed here: **a claim about configuration must come from the store.** Not the
+export, which drops and reshapes; not the form, which must invent a value to
+have something to show. If an entry cannot name where in ZODB it read a value,
+it is a claim about a rendering, and it does not belong in this register.
+
+The withdrawal was caught only because a write was planned and a dry run was
+written to make the write safe. That is luck, not method. The method is to read
+the store first.
