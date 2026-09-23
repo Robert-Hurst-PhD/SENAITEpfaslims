@@ -1713,3 +1713,64 @@ downstream of ZODB in both directions — it cannot be trusted as evidence and i
 cannot be used as a destination. Editing `data/qc/method_profiles.json` by hand
 is not a way to change this system's behaviour; it is a way to disagree with it
 temporarily.
+
+---
+
+## 24. The resolved-criteria record is mutable, and a certificate depends on it (2026-09-23)
+
+Found by checking this project against how regulated-industry LIMS version
+specifications: a spec is bound with an effective date, activating a new
+revision supersedes the old one, and **the version in force at the time of the
+decision** is what flags pass/fail — not the current one.
+
+### What is actually stored
+
+`resolved_criteria_store.write_resolved_file()` writes
+`{dirname(PFAS_PROFILES_PATH)}/resolved/{batch_id}.json` and **overwrites
+unconditionally**. The write is atomic (`.tmp` then rename) and stamps
+`generated_at`, but keeps no history. The key is the **batch**, not the run and
+not the report.
+
+Its only trigger today is `project_ref.set_project_uid()` — assigning or
+clearing a project link.
+
+### Why that is a parentage problem, not a tidiness one
+
+- **Re-assigning a project rewrites the basis of a judgement already made.** A
+  batch judged and reported under one set of criteria, then re-linked, resolves
+  afterwards to whatever the criteria are *now*. The certificate says one thing;
+  the system's record of why says another.
+- **A QAPP revision after the run leaves the file stale rather than rewritten** —
+  accidentally immutable, for want of a trigger rather than by design. Both
+  failure modes come from the same place: nothing ties the record to a moment.
+- **One file per batch, not per run.** A batch analysed twice has one record,
+  and the second overwrites the first.
+
+CLAUDE.md §1 rule 6 requires a result to name its parentage in both directions.
+A parent that can be edited after the fact is not parentage; the non-conformance
+statement §5 will build on this is a claim about a specific moment, and nothing
+currently fixes that moment.
+
+### The shape of the fix
+
+The precedent already exists here: `snapshot_for_publication` captures a report
+at issue time rather than re-rendering it later. The same applies — the resolved
+criteria that governed a run must be **snapshotted where the judgement is
+recorded** (the worksheet or the publication record), and the certificate must
+read the snapshot, never the live file.
+
+That makes the per-batch file what it should be: a **working artefact** for the
+worker to consume on the next run, freely regenerable, with no historical claim
+attached to it.
+
+**This is a precondition for §5, not a follow-up to it.** A disclosure that
+itemises departures is only as good as the immutability of what it itemises,
+and it is much cheaper to snapshot before anything reads from the live file than
+to retrofit provenance onto certificates already issued.
+
+### The rule
+
+§22 established that configuration must be read from and written to the store.
+This adds the time axis: **a criterion that decided something must be frozen at
+the moment it decided it.** Live config answers "what would we do now"; only a
+snapshot answers "what did we do then", and an audit only ever asks the second.
