@@ -439,6 +439,275 @@ def test_set_project_criterion_merges_and_does_not_null_siblings():
         rs._annotations = original
 
 
+# ── QC COMPOSITION keys: ccv_frequency / lfsm_frequency / duplicate_all_samples
+#
+# A QAPP can require "all samples run in duplicate" or "LFSM every 5 samples
+# instead of every 20" -- a different override CLASS from the numeric
+# criteria above (WHAT QC runs, not its limits), but resolved through the
+# identical three-tier path. See ruleset.py's SEEDING DISCIPLINE comment:
+# no baseline is ever registered for any of the three in production, so
+# get_baseline() returns None for them today and every test below that wants
+# a real DEPARTS/CONFORMS verdict installs a synthetic one, exactly like
+# test_ceiling_departure_via_full_resolution_is_not_inverted does for
+# dup_rpd_max above.
+
+import json as _json
+
+
+def _real_profile(method_id):
+    """The REAL shipped lab profile for `method_id` -- data/qc/method_profiles
+    .json (or $PFAS_PROFILES_PATH), read directly since this test file must
+    stay loadable with no Zope/senaite installed. Used only to characterize
+    what a project-less batch resolves to TODAY, against real data, not a
+    hand-built fixture."""
+    path = os.environ.get(
+        "PFAS_PROFILES_PATH",
+        os.path.join(_HERE, os.pardir, "data", "qc", "method_profiles.json"))
+    with open(path) as fh:
+        data = _json.load(fh)
+    return data.get(method_id) or {}
+
+
+def test_ccv_frequency_resolves_through_all_three_tiers():
+    """project overrides lab overrides baseline, exactly like the numeric
+    criteria -- ccv_frequency is registered and reads the SAME profile path
+    run_builder.ccv_interval() read directly before this key existed."""
+    profile = {"instrument_verification": {"ccv": {"frequency": 10}}}
+    # lab tier: no project.
+    r = rs.resolve("FDA_32PFAS", "Eggs", "ccv_frequency", profile=profile)
+    assert r.tier == rs.TIER_LAB, r
+    assert r.value == 10, r
+    assert r.conformance == mb.UNKNOWN, "no baseline is ever seeded for this key"
+
+    # project tier: a QAPP tightens the interval to every 5.
+    project_ruleset = {"FDA_32PFAS": {"Eggs": {"ccv_frequency": 5}}}
+    r2 = rs.resolve("FDA_32PFAS", "Eggs", "ccv_frequency", profile=profile,
+                     project_ruleset=project_ruleset,
+                     project_doc="QAPP-011", project_rev=1)
+    assert r2.tier == rs.TIER_PROJECT, r2
+    assert r2.value == 5, r2
+    assert r2.source_doc == "QAPP-011" and r2.source_rev == 1
+
+    # baseline tier: no lab value, no project -- falls all the way through,
+    # cleanly, to value=None (never a fabricated default like 6 or 10).
+    r3 = rs.resolve("FDA_32PFAS", "Eggs", "ccv_frequency", profile={},
+                     project_ruleset=None)
+    assert r3.tier == rs.TIER_BASELINE
+    assert r3.value is None
+
+
+def test_lfsm_frequency_resolves_through_all_three_tiers():
+    """No lab profile ships an LFSM-frequency field today (SEEDING
+    DISCIPLINE), so the lab tier legitimately resolves to None; a project
+    can still supply one directly."""
+    r = rs.resolve("FDA_32PFAS", "Eggs", "lfsm_frequency", profile={})
+    assert r.tier == rs.TIER_BASELINE
+    assert r.value is None
+    assert r.conformance == mb.UNKNOWN
+
+    project_ruleset = {"FDA_32PFAS": {"Eggs": {"lfsm_frequency": 5}}}
+    r2 = rs.resolve("FDA_32PFAS", "Eggs", "lfsm_frequency", profile={},
+                     project_ruleset=project_ruleset,
+                     project_doc="QAPP-011", project_rev=2)
+    assert r2.tier == rs.TIER_PROJECT
+    assert r2.value == 5
+    assert r2.source_doc == "QAPP-011" and r2.source_rev == 2
+
+    # a lab profile that DOES carry the (forward-looking) field is read too.
+    profile_with_lab_value = {"qc_acceptance": {"LFSM": {"frequency": 15}}}
+    r3 = rs.resolve("FDA_32PFAS", "Eggs", "lfsm_frequency",
+                     profile=profile_with_lab_value)
+    assert r3.tier == rs.TIER_LAB
+    assert r3.value == 15
+
+
+def test_duplicate_all_samples_resolves_through_all_three_tiers():
+    r = rs.resolve("FDA_32PFAS", "Eggs", "duplicate_all_samples", profile={})
+    assert r.tier == rs.TIER_BASELINE
+    assert r.value is None
+    assert r.conformance == mb.UNKNOWN
+
+    project_ruleset = {"FDA_32PFAS": {"Eggs": {"duplicate_all_samples": True}}}
+    r2 = rs.resolve("FDA_32PFAS", "Eggs", "duplicate_all_samples", profile={},
+                     project_ruleset=project_ruleset,
+                     project_doc="QAPP-011", project_rev=3)
+    assert r2.tier == rs.TIER_PROJECT
+    assert r2.value is True
+    assert r2.source_doc == "QAPP-011" and r2.source_rev == 3
+
+    profile_with_lab_value = {
+        "qc_acceptance": {"Dup": {"duplicate_all_samples": True}}}
+    r3 = rs.resolve("FDA_32PFAS", "Eggs", "duplicate_all_samples",
+                     profile=profile_with_lab_value)
+    assert r3.tier == rs.TIER_LAB
+    assert r3.value is True
+
+
+def test_frequency_direction_rule_is_not_inverted_ccv_and_lfsm():
+    """THE direction rule: ccv_frequency / lfsm_frequency are intervals, so a
+    LARGER number is LOOSER (SHAPE_MAX) -- a project asking for a SMALLER
+    interval (more frequent QC) must CONFORM, never DEPART, and a LARGER
+    interval (less frequent QC) must DEPART. Installs a synthetic baseline
+    (no real one is ever seeded for these keys -- see SEEDING DISCIPLINE),
+    exactly like test_ceiling_departure_via_full_resolution_is_not_inverted
+    does for dup_rpd_max."""
+    for key, path in (("ccv_frequency", ["instrument_verification", "ccv",
+                                          "frequency"]),
+                       ("lfsm_frequency", ["qc_acceptance", "LFSM",
+                                           "frequency"])):
+        original = mb._REGISTRY.get(("FDA_32PFAS", key))
+        mb._REGISTRY[("FDA_32PFAS", key)] = (
+            lambda analyte, matrix, k=key: mb.Baseline(
+                "FDA_32PFAS", k, None, None, mb.SHAPE_MAX, None, 20.0,
+                "test-cite"))
+        try:
+            def _profile(n, path=path):
+                d = {}
+                cur = d
+                for step in path[:-1]:
+                    cur = cur.setdefault(step, {})
+                cur[path[-1]] = n
+                return d
+
+            # tighter (smaller interval -- MORE frequent QC) must conform.
+            tighter = rs.resolve("FDA_32PFAS", "Eggs", key, profile=_profile(5))
+            assert tighter.conformance == mb.CONFORMS, (
+                "{0}: a SMALLER interval (more QC than required) must "
+                "CONFORM, not depart -- inverted direction".format(key))
+
+            # equal to the baseline must conform.
+            equal = rs.resolve("FDA_32PFAS", "Eggs", key, profile=_profile(20))
+            assert equal.conformance == mb.CONFORMS, key
+
+            # looser (larger interval -- LESS frequent QC) must depart.
+            looser = rs.resolve("FDA_32PFAS", "Eggs", key, profile=_profile(40))
+            assert looser.conformance == mb.DEPARTS, (
+                "{0}: a LARGER interval (less QC than required) must "
+                "DEPART".format(key))
+            assert looser.departure["baseline_value"] == 20.0
+            assert looser.departure["resolved_value"] == 40
+        finally:
+            if original is None:
+                del mb._REGISTRY[("FDA_32PFAS", key)]
+            else:
+                mb._REGISTRY[("FDA_32PFAS", key)] = original
+
+
+def test_more_qc_than_required_never_departs_certificate_language():
+    """Restated as the lab's own scenario: a project demanding LFSM every 5
+    samples where the method's own floor is every 20 is doing MORE QC, not
+    less -- this must never be reported as a non-conformance on a
+    certificate. (Same mechanism as the direction-rule test above; kept
+    separate because this is the exact scenario the task calls out and it
+    should fail loudly on its own if the direction is ever inverted again.)"""
+    key = "lfsm_frequency"
+    original = mb._REGISTRY.get(("FDA_32PFAS", key))
+    mb._REGISTRY[("FDA_32PFAS", key)] = (
+        lambda analyte, matrix: mb.Baseline(
+            "FDA_32PFAS", key, None, None, mb.SHAPE_MAX, None, 20.0, "cite"))
+    try:
+        project_ruleset = {"FDA_32PFAS": {"Eggs": {"lfsm_frequency": 5}}}
+        r = rs.resolve("FDA_32PFAS", "Eggs", key, profile={},
+                        project_ruleset=project_ruleset,
+                        project_doc="QAPP-LFSM-5", project_rev=1)
+        assert r.tier == rs.TIER_PROJECT
+        assert r.value == 5
+        assert r.conformance == mb.CONFORMS, (
+            "lab running LFSM more often than the method requires must "
+            "never report DEPARTS")
+        assert r.departure is None
+    finally:
+        if original is None:
+            del mb._REGISTRY[("FDA_32PFAS", key)]
+        else:
+            mb._REGISTRY[("FDA_32PFAS", key)] = original
+
+
+def test_duplicate_all_samples_shape_min_direction_synthetic_baseline():
+    """duplicate_all_samples is boolean; True is strictly tighter. Registered
+    as SHAPE_MIN treating True/False as 1/0 (a floor: a HIGHER -- i.e. True --
+    value is tighter). A synthetic baseline proves the direction: requiring
+    duplicates (baseline True) and resolving True conforms; resolving False
+    (LESS QC than required) departs. No real baseline is ever seeded for
+    this key (SEEDING DISCIPLINE) so compare() never runs on it in
+    production -- this test pins the taxonomy for if/when one ever exists."""
+    key = "duplicate_all_samples"
+    original = mb._REGISTRY.get(("FDA_32PFAS", key))
+    mb._REGISTRY[("FDA_32PFAS", key)] = (
+        lambda analyte, matrix: mb.Baseline(
+            "FDA_32PFAS", key, None, None, mb.SHAPE_MIN, True, None, "cite"))
+    try:
+        conforms = rs.resolve("FDA_32PFAS", "Eggs", key,
+                               profile={"qc_acceptance": {
+                                   "Dup": {"duplicate_all_samples": True}}})
+        assert conforms.conformance == mb.CONFORMS, (
+            "requiring duplicates when the baseline requires them must conform")
+
+        departs = rs.resolve("FDA_32PFAS", "Eggs", key,
+                              profile={"qc_acceptance": {
+                                  "Dup": {"duplicate_all_samples": False}}})
+        assert departs.conformance == mb.DEPARTS, (
+            "declining duplicates the baseline requires must depart, not "
+            "silently conform")
+
+        # And the direction is NOT symmetric: a baseline that does NOT
+        # require duplicates (False) with a project asking for them anyway
+        # (True, i.e. MORE QC) must conform, never depart.
+        mb._REGISTRY[("FDA_32PFAS", key)] = (
+            lambda analyte, matrix: mb.Baseline(
+                "FDA_32PFAS", key, None, None, mb.SHAPE_MIN, False, None,
+                "cite"))
+        more_qc = rs.resolve("FDA_32PFAS", "Eggs", key,
+                              profile={"qc_acceptance": {
+                                  "Dup": {"duplicate_all_samples": True}}})
+        assert more_qc.conformance == mb.CONFORMS, (
+            "MORE QC than the baseline requires must never depart")
+    finally:
+        if original is None:
+            del mb._REGISTRY[("FDA_32PFAS", key)]
+        else:
+            mb._REGISTRY[("FDA_32PFAS", key)] = original
+
+
+def test_duplicate_all_samples_and_lfsm_frequency_have_no_real_baseline():
+    """SEEDING DISCIPLINE, pinned: nothing seeds a real baseline for either
+    key today -- a QAPP-only demand has no published-method text to cite."""
+    assert mb.get_baseline("FDA_32PFAS", "duplicate_all_samples") is None
+    assert mb.get_baseline("FDA_32PFAS", "lfsm_frequency") is None
+    assert mb.get_baseline("EPA_537_1", "duplicate_all_samples") is None
+    assert mb.get_baseline("EPA_1633A", "lfsm_frequency") is None
+
+
+def test_project_less_batch_composition_keys_are_identity_on_real_profiles():
+    """THE safety property (task Sec C), proven against the REAL shipped
+    profiles rather than a fixture: with no project (project_ruleset=None,
+    the default for every existing batch), duplicate_all_samples and
+    lfsm_frequency resolve to value=None for all three methods -- no
+    method profile configures either field yet -- which is exactly the
+    input run_composition.compose_sample_block() treats as IDENTITY (no
+    extra duplicate/LFSM rows). ccv_frequency resolves through the lab tier
+    to the SAME integer senaite.pfas.browser.run_builder.ccv_interval() read
+    directly, by the same profile path, before this change -- so a
+    project-less batch's CCV cadence is unchanged too."""
+    expected_ccv = {"FDA_32PFAS": 6, "EPA_537_1": 10, "EPA_1633A": 10}
+    for method_id, expected in expected_ccv.items():
+        profile = _real_profile(method_id)
+        for key in ("duplicate_all_samples", "lfsm_frequency"):
+            r = rs.resolve(method_id, "Eggs", key, profile=profile,
+                            project_ruleset=None)
+            assert r.value is None, (
+                "{0}/{1}: expected no configured value (identity for run "
+                "composition) on the real shipped profile, got {2!r}"
+                .format(method_id, key, r.value))
+        r_ccv = rs.resolve(method_id, "Eggs", "ccv_frequency", profile=profile,
+                            project_ruleset=None)
+        assert r_ccv.tier == rs.TIER_LAB, (method_id, r_ccv)
+        assert r_ccv.value == expected, (
+            "{0}: ccv_frequency resolved to {1!r}, run_builder read {2!r} "
+            "directly before this change".format(
+                method_id, r_ccv.value, expected))
+
+
 if __name__ == "__main__":
     ok = fail = 0
     for name, fn in sorted(globals().items()):

@@ -117,7 +117,53 @@ SHAPES_BY_KEY = {
     "dup_rpd_max":  method_baselines.SHAPE_MAX,
     "ccv_recovery": method_baselines.SHAPE_WINDOW,
     "eis_recovery": method_baselines.SHAPE_WINDOW,
+
+    # ── QC COMPOSITION keys (what QC runs, not its numeric limits) ──────────
+    # A QAPP can require "all samples run in duplicate" or "LFSM every 5
+    # samples instead of every 20" -- a different override CLASS from the
+    # numeric criteria above, consumed by senaite.pfas.browser.run_builder /
+    # senaite.pfas.run_composition when a run is BUILT, not by anything that
+    # judges an already-produced result. Same three-tier resolution path;
+    # see SEEDING DISCIPLINE below on why no baseline is ever registered for
+    # any of the three.
+    #
+    # ccv_frequency / lfsm_frequency are INTERVALS: "1 QC injection per N
+    # samples". A larger N is a LESS frequent (LOOSER) requirement, so these
+    # are SHAPE_MAX -- the same "looser means higher" direction as
+    # dup_rpd_max above, not SHAPE_MIN. Getting this backwards would report a
+    # lab running QC MORE often than the method requires (a smaller N) as a
+    # departure, confidently, on a certificate -- see method_baselines.py's
+    # own warning about this and tests/test_ruleset.py's direction-rule
+    # tests for both keys.
+    "ccv_frequency":  method_baselines.SHAPE_MAX,
+    "lfsm_frequency": method_baselines.SHAPE_MAX,
+
+    # duplicate_all_samples is boolean, not numeric, but the same "looser
+    # means lower" logic that defines SHAPE_MIN (a floor: a HIGHER value is
+    # tighter, a LOWER one is looser) maps cleanly onto it if True/False are
+    # read as 1/0: requiring duplicates (True/1) is strictly the tighter
+    # requirement, and method_baselines._verdict_min's `resolved < baseline`
+    # test is exactly "the resolved value provides LESS than the baseline
+    # demands", which is correct for a boolean floor too (Python compares
+    # False < True as True). No baseline will ever be registered for this
+    # key in practice (SEEDING DISCIPLINE below), so compare() never
+    # actually runs on it in production -- this assignment is declarative,
+    # pinning the taxonomy for when/if a citable baseline ever exists,
+    # proven only by a synthetic baseline in tests/test_ruleset.py.
+    "duplicate_all_samples": method_baselines.SHAPE_MIN,
 }
+
+# SEEDING DISCIPLINE for the three composition keys above (mirrors
+# method_baselines.py's docstring for the numeric criteria): "all samples in
+# duplicate" / "LFSM every N samples" are QAPP-level demands ON TOP OF a
+# published method's own minimum QC -- a client project can always ask for
+# MORE than the method requires. No EPA/FDA method text specifies a duplicate
+# frequency or an LFSM interval as part of its own minimum program, so there
+# is nothing to cite and get_baseline() returns None for all three,
+# unconditionally, today. That is not a gap to fill in -- CLAUDE.md Sec8:
+# never fabricate a regulatory value. Absent means UNKNOWN (ruleset rule 1),
+# which is the correct, permanent answer here, not a placeholder for a
+# baseline someone forgot to add.
 
 # Criterion keys that are per-analyte, not per-method x matrix alone. Their
 # stored value (at the project tier, and as read off the lab profile) is
@@ -184,6 +230,22 @@ _LAB_EXTRACTORS = {
         profile, ["qc_acceptance", "Dup", "tiers", 0, "rpd_max"]),
     "ccv_recovery": _lab_ccv_recovery,
     "eis_recovery": _lab_eis_recovery,
+
+    # Same path run_builder.ccv_interval() read directly before this change
+    # (instrument_verification.ccv.frequency) -- registering it here lets a
+    # project override it and gives it provenance, without changing what a
+    # project-less batch resolves to (still this same dig, still tier=lab).
+    "ccv_frequency": lambda profile, matrix, analyte: _dig(
+        profile, ["instrument_verification", "ccv", "frequency"]),
+    # No method profile carries either of these fields yet -- both extractors
+    # are forward-looking (a lab that later adds "frequency" under its LFSM
+    # qc_acceptance tier, or a "duplicate_all_samples" flag, starts resolving
+    # automatically) and legitimately return None for every profile shipped
+    # today, same as an unconfigured numeric criterion does.
+    "lfsm_frequency": lambda profile, matrix, analyte: _dig(
+        profile, ["qc_acceptance", "LFSM", "frequency"]),
+    "duplicate_all_samples": lambda profile, matrix, analyte: _dig(
+        profile, ["qc_acceptance", "Dup", "duplicate_all_samples"]),
 }
 
 

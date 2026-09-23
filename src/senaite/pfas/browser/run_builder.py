@@ -139,15 +139,66 @@ class PFASRunBuilderView(BrowserView):
         # last resort: the conventional extraction form if the method requires it
         return "252" if "252" in required else (required[0] if required else "")
 
-    def ccv_interval(self, method_id):
-        """CCV frequency from the method profile (never a form input)."""
-        prof = self._profile(method_id)
+    def ccv_interval(self, method_id, batch=None):
+        """CCV frequency: project QAPP -> lab method profile -> published-
+        method baseline, resolved via senaite.pfas.ruleset.resolve_for_batch
+        -- the SAME three-tier path the numeric QC criteria already use.
+        Never a form input.
+
+        A project can tighten this (CCV every 5 samples instead of every
+        10); a project-less batch (`batch=None`, or any batch with no linked
+        project -- the default, and every batch that predates project
+        support) falls straight through to the lab profile's
+        instrument_verification.ccv.frequency exactly as this method read it
+        directly before this change -- see ruleset.resolve()'s rule 3."""
+        resolved = self._resolve_composition(method_id, batch, "ccv_frequency")
         try:
-            freq = (prof.get("instrument_verification", {})
-                        .get("ccv", {}).get("frequency"))
-            return max(1, int(freq))
+            return max(1, int(resolved))
         except (TypeError, ValueError):
             return 6
+
+    def _resolve_composition(self, method_id, batch, key):
+        """Resolve one QC-COMPOSITION key (ccv_frequency / lfsm_frequency /
+        duplicate_all_samples) through project -> lab -> baseline via
+        senaite.pfas.ruleset.resolve_for_batch -- the identical mechanism
+        the numeric QC criteria already use. Returns the resolved value, or
+        None if nothing resolves anywhere (a project-less batch with no lab
+        value configured either -- both legitimate, never an error).
+
+        Resolved DIRECTLY here, add-on side, because composition decides how
+        THIS view builds a run -- never routed through
+        senaite.pfas.resolved_criteria_store, which exists for the Py3
+        pipeline worker's per-batch evaluation of already-produced results
+        (see that module's docstring and GAPS.md Sec20); composition is a
+        build-time decision that store was never meant to carry.
+        """
+        try:
+            from senaite.pfas import ruleset
+            from senaite.pfas import project_ref
+            matrix = u""
+            if batch is not None:
+                try:
+                    from senaite.pfas.browser.batch_project_viewlet import (
+                        _batch_matrix)
+                    matrix = _batch_matrix(self._portal(), batch) or u""
+                except Exception:
+                    matrix = u""
+                if not matrix and project_ref.get_project_uid(batch):
+                    # A project IS linked but its matrix can't be derived --
+                    # the project tier is being SKIPPED, not "there is no
+                    # override"; say so rather than resolving silently (the
+                    # silent-no-op shape GAPS.md keeps cataloging).
+                    logger.warning(
+                        "_resolve_composition(%s): batch %r is linked to a "
+                        "project but its matrix could not be derived -- any "
+                        "project-tier override for this key is being "
+                        "skipped, not applied", key, batch)
+            resolved = ruleset.resolve_for_batch(
+                self._portal(), batch, method_id, matrix or None, key)
+            return resolved.value
+        except Exception as exc:
+            logger.warning("_resolve_composition(%s) failed: %s", key, exc)
+            return None
 
     # ── run template (per-method, editable) ──────────────────────────────
     #
@@ -420,14 +471,15 @@ class PFASRunBuilderView(BrowserView):
         bid = self.selected_batch()
         if not bid:
             return None
-        method_id = self.batch_method()
+        b = self._batch(bid)
+        method_id = self.batch_method(b)
         slug = self.extraction_logbook_slug(method_id) if method_id else ""
         rows = self.sample_rows()
         return {
             "batch_id": bid,
             "method_id": method_id or "(unresolved)",
             "extraction_slug": slug or "(none set on method)",
-            "ccv_interval": self.ccv_interval(method_id) if method_id else 6,
+            "ccv_interval": self.ccv_interval(method_id, batch=b) if method_id else 6,
             "rows": rows,
             "n_samples": len(rows),
         }
@@ -541,7 +593,8 @@ class PFASRunBuilderView(BrowserView):
         return name, desc
 
     def build_sequence(self, sample_rows, initials, method_id, ccv_interval,
-                       include_cal, std=None):
+                       include_cal, std=None, duplicate_all_samples=None,
+                       lfsm_frequency=None):
         """Assemble the injection worklist by walking the method's run sequence.
 
         Each row carries a lot-code injection NAME (the linked prepared-standard
@@ -549,7 +602,16 @@ class PFASRunBuilderView(BrowserView):
         method code) and a human DESCRIPTION (analyst · QC type · lot · prep
         date). CAL opens the CCV-bracketed body; instrument-cal injections
         (CAL/ICV/CCV/CCB) don't advance the interval; extraction QC + samples do;
-        a single closing CCV ends the run."""
+        a single closing CCV ends the run.
+
+        `duplicate_all_samples` / `lfsm_frequency` are QC-COMPOSITION
+        overrides (senaite.pfas.ruleset / senaite.pfas.run_composition) —
+        applied ONLY inside the SAMPLES-token block, via
+        run_composition.compose_sample_block(): every field sample optionally
+        gets a duplicate injection, and an extra LFSM is optionally inserted
+        every N field samples. Both are None by default, which is IDENTITY —
+        a project-less batch (the caller's default) builds exactly the
+        sequence it always has; see run_composition.py's docstring."""
         from senaite.pfas.method_bridge import get_method_cal_code
         std = std or {}
         run_date = date.today()
@@ -635,7 +697,18 @@ class PFASRunBuilderView(BrowserView):
                     state["in_body"] = True     # no CAL: body starts at samples
                     state["pending_open"] = True
                 open_bracket_if_needed()        # samples count → open now
-                for i, r in enumerate(sample_rows):
+                from senaite.pfas import run_composition
+                for r, marker in run_composition.compose_sample_block(
+                        sample_rows, duplicate_all_samples, lfsm_frequency):
+                    if marker == "lfsm":
+                        # An interval-driven extra LFSM (QAPP composition
+                        # override). Emitted even if the batch also registers
+                        # its own LFSM sample elsewhere in the sequence —
+                        # more QC than the template calls for is always safe
+                        # under the direction rule, so no suppression here.
+                        add_qc("LFSM")
+                        body_tick()
+                        continue
                     mtx = r.get("matrix") or dom
                     sid = r["sample_id"]
                     # Prefer the sample's Client Sample ID: it is what the
@@ -644,9 +717,14 @@ class PFASRunBuilderView(BrowserView):
                     # for samples that have none.
                     csid = (r.get("client_sample_id") or "").strip()
                     name = csid or u"{0}-{1}".format(method_code, sid)
-                    add(name, "Sample",
-                        u"{0} · Sample {1} · {2} · {3}".format(
-                            initials, sid, mtx or u"Lab", sample_date))
+                    if marker == "duplicate":
+                        name = u"{0}-DUP".format(name)
+                        desc = u"{0} · Duplicate of {1} · {2} · {3}".format(
+                            initials, sid, mtx or u"Lab", sample_date)
+                    else:
+                        desc = u"{0} · Sample {1} · {2} · {3}".format(
+                            initials, sid, mtx or u"Lab", sample_date)
+                    add(name, "Sample", desc)
                     body_tick()
                 continue
             # a QC token
@@ -686,22 +764,14 @@ class PFASRunBuilderView(BrowserView):
 
     def _role_from_sample(self, row):
         """QC role a registered sample plays, from its id. Only used to decide
-        whether a sequence entry is redundant, never to alter a result."""
-        raw = (row.get("client_sample_id") or row.get("sample_id") or "")
-        sid = raw.upper()
-        # Mirrors the pipeline's classify_injection: a duplicate is written
-        # "LFSM Mid Duplicate" at least as often as "LFSMD", and matching only
-        # the literal left the LFSMD entry un-suppressed.
-        if "LFSMD" in sid or ("LFSM" in sid and "DUP" in sid):
-            return "LFSMD"
-        if "LFSM" in sid:
-            return "LFSM"
-        if "MB" in sid.split():
-            return "MB"
-        for code in ("ICV", "CCV", "LFB", "CCB"):
-            if code in sid:
-                return code
-        return ""
+        whether a sequence entry is redundant, never to alter a result.
+
+        Delegates to senaite.pfas.run_composition.classify_sample_role, which
+        also backs that module's is_field_sample() (duplicate_all_samples /
+        lfsm_frequency must only ever touch genuine field samples) — one
+        definition, not two copies drifting apart (CLAUDE.md Sec3)."""
+        from senaite.pfas import run_composition
+        return run_composition.classify_sample_role(row)
 
     # ── actions ───────────────────────────────────────────────────────────
     def _handle_build(self):
@@ -726,10 +796,20 @@ class PFASRunBuilderView(BrowserView):
         if not rows_in:
             return self._redirect_err(batch_id, "No samples to run")
 
-        ccv = self.ccv_interval(method_id)
+        batch_obj = self._batch(batch_id)
+        ccv = self.ccv_interval(method_id, batch=batch_obj)
+        # QC-COMPOSITION overrides (senaite.pfas.ruleset / run_composition):
+        # None for a project-less batch, which is IDENTITY -- see
+        # build_sequence()'s docstring and run_composition.py.
+        duplicate_all_samples = self._resolve_composition(
+            method_id, batch_obj, "duplicate_all_samples")
+        lfsm_frequency = self._resolve_composition(
+            method_id, batch_obj, "lfsm_frequency")
         std = self._std_context(batch_id)
         rows, dom, spike = self.build_sequence(
-            rows_in, initials, method_id, ccv, include_cal, std=std)
+            rows_in, initials, method_id, ccv, include_cal, std=std,
+            duplicate_all_samples=duplicate_all_samples,
+            lfsm_frequency=lfsm_frequency)
         manifest = {
             "built_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
             "built_by": initials,
@@ -743,6 +823,12 @@ class PFASRunBuilderView(BrowserView):
             "cal_lot": (std.get("cal_a_lot") or u""),
             "spike_lot": (std.get("analyte_spike_lot") or u""),
             "prep_date": (std.get("prepared_date") or u""),
+            # QC-composition overrides actually applied to this run, for the
+            # same reason cal_lot/spike_lot are recorded here: an output must
+            # name its parentage (CLAUDE.md Sec6) -- a reviewer looking at
+            # extra DUP/LFSM rows in `rows` should not have to guess why.
+            "duplicate_all_samples": bool(duplicate_all_samples),
+            "lfsm_frequency": lfsm_frequency,
             "rows": rows,
         }
         missing = getattr(self, "_missing_roles", []) or []

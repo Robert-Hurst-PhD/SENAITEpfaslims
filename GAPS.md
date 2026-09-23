@@ -1774,3 +1774,176 @@ to retrofit provenance onto certificates already issued.
 This adds the time axis: **a criterion that decided something must be frozen at
 the moment it decided it.** Live config answers "what would we do now"; only a
 snapshot answers "what did we do then", and an audit only ever asks the second.
+
+---
+
+## 25. QC COMPOSITION is now a resolvable override class, distinct from the
+##     numeric criteria (2026-09-23)
+
+The lab's own framing: *"QAPPs can require things like all samples run in
+duplicate, an additional surrogate is used, or LFSMs get run in more regular
+intervals."* Everything §15/§20 built resolves a criterion's **numeric limit**
+(a recovery window, an RPD ceiling, an r² floor). None of that touches WHICH
+injections a run contains or HOW OFTEN — a QAPP can vary that too, and nothing
+in `ruleset.py` or `run_builder.py` had a place for it.
+
+### What is now wired
+
+Three keys, registered in `ruleset.SHAPES_BY_KEY` and resolved through the
+identical project → lab → baseline path the numeric criteria use:
+
+| Key | Shape | Lab-tier source | Baseline seeded? |
+|---|---|---|---|
+| `ccv_frequency` | `SHAPE_MAX` | `instrument_verification.ccv.frequency` (same path `run_builder.ccv_interval()` already read directly) | No |
+| `lfsm_frequency` | `SHAPE_MAX` | `qc_acceptance.LFSM.frequency` (forward-looking — no shipped profile has this field yet) | No |
+| `duplicate_all_samples` | `SHAPE_MIN` (boolean read as 1/0 — True is strictly tighter) | `qc_acceptance.Dup.duplicate_all_samples` (forward-looking) | No |
+
+**Explicitly out of scope, on purpose:** "an additional surrogate is used."
+That changes the surrogate-to-IS map, a method-owned single-source fact
+(CLAUDE.md §3, and the exact defect class §9/§13 already catalog for
+duplicated analyte data). No code here touches `analyte_reference`, any
+surrogate map, or an IS list.
+
+**No baseline is seeded for any of the three**, and none should be: these are
+QAPP-level demands *on top of* a method's own minimum QC — no EPA/FDA method
+text specifies a duplicate frequency or an LFSM interval as part of its
+minimum program, so there is nothing to cite (CLAUDE.md §8). Absent means
+UNKNOWN (rule 1), permanently, not a placeholder for a baseline someone forgot
+to add. Consequence: `method_baselines.compare()` never actually runs on
+`duplicate_all_samples` in production — its `SHAPE_MIN` assignment is
+declarative, pinned only by a synthetic baseline in
+`tests/test_ruleset.py::test_duplicate_all_samples_shape_min_direction_synthetic_baseline`.
+
+### The direction rule, proven
+
+Frequencies are intervals: a **larger** number is a **looser** requirement
+(1 LFSM per 20 samples is less QC than 1 per 5), so both frequency keys are
+`SHAPE_MAX` — the same "looser means higher" direction as `dup_rpd_max`, not
+`SHAPE_MIN`. `tests/test_ruleset.py::test_frequency_direction_rule_is_not_inverted_ccv_and_lfsm`
+and `::test_more_qc_than_required_never_departs_certificate_language` pin this
+with a synthetic baseline: a project asking for MORE QC (a smaller interval,
+or `duplicate_all_samples=True` under a `True`-requiring baseline) always
+resolves `CONFORMS`, never `DEPARTS`.
+
+### Where composition is consumed — the integration point, and why
+
+`senaite.pfas.browser.run_builder.PFASRunBuilderView` — the add-on view that
+actually assembles a run — not `resolved_criteria_store` (the per-batch file
+export). That store exists for the Py3 pipeline worker's evaluation of
+already-produced results (§17/§20); composition is a **build-time** decision
+about what the run itself contains, made before any result exists, so it is
+resolved directly via `ruleset.resolve_for_batch()` from a new
+`_resolve_composition()` helper on the view, called from `ccv_interval()` and
+from `_handle_build()`.
+
+The actual sequence transform (duplicate insertion, LFSM-interval insertion)
+is a new Zope-free module, `senaite.pfas.run_composition`, in the same "pure
+core, thin ZODB shell" style as `ruleset.py` / `method_baselines.py` /
+`holding_time.py` — required because `run_builder.py` imports
+`zope.annotation` / `Products.CMFCore` / `Products.Five` at module load and so
+cannot be unit-tested outside a Plone container at all; the part with real
+risk of an inverted or silently-wrong composition change needed to be
+testable on its own. `compose_sample_block()` is IDENTITY when both overrides
+are `None`/falsy — the project-less default — which both a Zope-free test
+(`tests/test_run_composition.py`) and a live before/after CSV diff on batch
+B-002 (md5 `749af8f6897e7f9754790ceb0781a0cb`, byte-identical) confirm.
+
+`run_builder._role_from_sample` (redundant-QC suppression: a registered
+LFSM/MB sample must not also get a sequence-token injection) now delegates to
+`run_composition.classify_sample_role` rather than carrying its own copy —
+the same judgement decides `is_field_sample()`, so `duplicate_all_samples`
+and `lfsm_frequency` never touch a row that is already a registered QC sample,
+one definition instead of two (CLAUDE.md §3).
+
+**Recorded decision, not an accident:** an interval-driven extra LFSM is
+emitted even when the batch also registers its own LFSM sample elsewhere in
+the sequence. Emitting more QC than the template calls for is always safe
+under the direction rule; suppressing it would need a second definition of
+"already have enough LFSM" that does not exist and was not built here.
+
+### A bug the unit tests could not have caught, found by testing the positive
+### case live
+
+Every unit test built against hand-written fixtures had `role=""` or no
+`role` key for an ordinary field sample. Against the REAL extraction log on
+B-002, `run_builder.sample_rows()` sets `row["role"] = "Sample"` for every
+field sample — an explicit, non-blank value. `is_field_sample()`'s first cut
+treated *any* non-empty role as "this is a registered QC sample, not a field
+sample" — so against real data, `duplicate_all_samples=True` and
+`lfsm_frequency=2` both silently applied to **zero rows**, while every
+Zope-free test still passed, because none of them used a row shaped like the
+ones the add-on actually produces.
+
+Found by linking B-002 to a throwaway `PFASProject` (`bin/instance run`,
+`transaction.abort()` at the end — nothing committed, temp project deleted),
+setting `ccv_frequency=3` / `lfsm_frequency=2` / `duplicate_all_samples=True`
+via `ruleset.set_project_criterion()`, and building the real sequence through
+`build_sequence()`. Before the fix: 0 duplicate rows, 0 extra LFSM rows.
+Fixed by replacing "any non-empty role disqualifies" with an explicit set of
+recognized QC role codes (`run_composition._QC_ROLE_CODES`) that a row's
+`role` must match to be excluded; `role="Sample"` (or any role senaite.pfas
+doesn't recognize) now falls through to the id-based guess, same as blank.
+After the fix, the same live rebuild produced 3 duplicate rows, 2 LFSM rows
+(1 interval-inserted + 1 already-registered), and 5 CCV rows (interval 3
+instead of 6) — all correct. `tests/test_run_composition.py
+::test_an_explicit_sample_role_is_still_a_field_sample` pins the shape of
+the bug directly so it cannot reappear silently. The project-less safety
+property (B-002 byte-identical CSV) was re-confirmed after the fix.
+
+This is the same lesson the fault-injection register (§1/§16) keeps proving:
+a transform this consequential is only trustworthy once it has been run
+against a shape of data nobody hand-wrote for it.
+
+### What is still open
+
+- **`qc/rules.py`'s `RULE_LIBRARY` `ccv_frequency` toggle is a different
+  thing and remains unwired** — `LIBRARY_KEY_TO_ENGINE_CHECKS["ccv_frequency"]`
+  is still `[]`. Nothing verifies that a produced run *actually carried* a CCV
+  every N injections after the fact; §4's and §13's entries on this stay open.
+  What changed here is narrower and upstream of that: the build-time interval
+  itself is now project-overridable and provenance-bearing, not that
+  compliance with it is checked post-hoc.
+- **No UI sets a project-tier composition criterion yet.** Exactly the same
+  gap §20 recorded for the numeric criteria — `ruleset.set_project_criterion()`
+  works and is tested, but nothing in `@@pfas-projects` calls it for any key,
+  numeric or compositional. The positive case (a project actually forcing
+  duplicates and a tighter LFSM/CCV interval into a built run) WAS proven
+  live — a throwaway `PFASProject` was linked to B-002, given
+  `ccv_frequency=3` / `lfsm_frequency=2` / `duplicate_all_samples=True`, and
+  the real sequence was rebuilt through `build_sequence()` (see the bug
+  writeup above) — but only via a one-off `bin/instance run` script with
+  `transaction.abort()`, never committed, and the temp project was deleted
+  immediately after. No lab user can reach this through the UI today.
+- **`run_composition._QC_ROLE_CODES` is a second, hardcoded copy of a
+  vocabulary that already lives in `run_builder._noncount_codes()` /
+  `_blank_codes()` (Reference-Definition-driven) — by necessity, since
+  deriving it the same way needs Zope and this module must stay Zope-free
+  to be unit-testable at all (see this task's report). A QC code added to
+  the RefDef vocabulary later and not also added here falls through to
+  `classify_sample_role()`'s id-guess — safe under the direction rule (it
+  reads as a field sample, so it gets MORE QC applied, not less) but silent.
+- **The `is_field_sample()` pre-existing MB-id quirk now has a live
+  consequence.** `classify_sample_role()`'s MB match is `"MB" in
+  sid.split()` — a literal, space-separated token, copied verbatim from the
+  original `run_builder._role_from_sample` (pre-existing, out of scope to
+  fix here). A method blank registered with the id shape `_qc_injection`
+  itself generates — `FDA_32PFAS-MB-260923-01`, hyphenated — does NOT match,
+  so it classifies as `""` (a field sample). Before this task that only
+  risked a redundant MB injection (§1.3's shape, harmless over-QC). Now that
+  `is_field_sample()` rides on the same classifier, such a row would ALSO
+  get duplicated under `duplicate_all_samples` and counted toward the LFSM
+  interval. The live verification's own MB/blank rows were saved by an
+  explicit `role` field from the extraction log (`role="LFSM"` for the one
+  QC-role row present); a batch whose extraction log leaves `role` blank on
+  a hyphenated MB id would not be.
+- **The surrogate-composition class ("an additional surrogate is used")
+  remains unbuilt, deliberately.** It is a different kind of override than
+  either the numeric criteria or the two composition keys here: it would add
+  a new analyte relationship (which injection standard a QAPP wants used to
+  quantify a given native) rather than override an existing one's cadence or
+  count. CLAUDE.md §3 makes the surrogate-to-IS map a method-owned
+  single-source fact; §9 already shows what duplicating it produces. Building
+  a project-tier override for it needs its own design decision — where the
+  override is stored, whether it can name a standard the method's own map
+  does not carry, how a certificate discloses a per-project quantification
+  ion — not an extension of this module's shape.
