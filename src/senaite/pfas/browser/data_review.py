@@ -2017,6 +2017,21 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:
             logger.error("approve_release: %s", exc)
             return self._redirect_with_msg("workflow_error", "error")
+        # Freeze the resolved criteria that governed this worksheet's batch
+        # (GAPS.md Sec26) -- the ISO 17025 Sec7.8.4 technical review IS the
+        # moment a judgement is made, so it is the moment the basis of that
+        # judgement must stop being editable. write-once: a later project
+        # re-link or QAPP change can regenerate the per-batch working file
+        # (resolved_criteria_store) for the pipeline's NEXT run, but must
+        # never rewrite what THIS worksheet was judged against. Guarded here
+        # too, on top of freeze_resolved_criteria()'s own internal guards --
+        # record-keeping must never be able to block a workflow transition
+        # that has already happened.
+        try:
+            self._freeze_resolved_criteria(ws)
+        except Exception as exc:                                # noqa: BLE001
+            logger.error("approve_release: resolved-criteria freeze failed "
+                         "for %s: %s", ws.getId(), exc)
         user = getSecurityManager().getUser()
         now  = datetime.datetime.utcnow().isoformat()
         cl   = self._get_checklist(ws)
@@ -2026,6 +2041,21 @@ class PFASDataReviewView(BrowserView):
         self._stamp_qualifier_remarks(ws)
         self._audit(ws)
         return self._redirect_with_msg("batch_approved", "ok")
+
+    def _freeze_resolved_criteria(self, ws):
+        """Thin call-site wrapper: gather what freeze_resolved_criteria()
+        needs (the linked Batch, method_id, matrix) from the same sources
+        every other panel on this view already uses (_linked_batch,
+        batch_method, _batch_matrix), then delegate the actual write-once
+        freeze to senaite.pfas.worksheet_criteria_snapshot. See that
+        module's docstring for the three outcomes (frozen/unresolved/
+        failed) and why an empty criteria list is never stamped "frozen"."""
+        from senaite.pfas import worksheet_criteria_snapshot
+        batch = self._linked_batch(ws)
+        method_id = self.batch_method()
+        matrix = self._batch_matrix()
+        worksheet_criteria_snapshot.freeze_resolved_criteria(
+            self._portal(), ws, batch, method_id, matrix)
 
     def _handle_reject(self):
         if not self.is_manager():

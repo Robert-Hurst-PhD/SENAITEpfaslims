@@ -206,6 +206,44 @@ def write_resolved_file(batch_id, method_id, matrix, rows, directory=None):
 # ── Thin ZODB shells (not exercised by the plain-Python-3 test harness — ────
 # proven live, like ruleset.resolve_for_batch() itself) ──────────────────────
 
+def resolve_rows_for_batch(portal, batch, method_id, matrix):
+    """The read half of export_resolved_criteria(): resolve every registered
+    criterion for (batch, method_id, matrix) through project -> lab ->
+    baseline and return the plain rows (build_resolved_rows()'s shape),
+    WITHOUT writing anything.
+
+    Split out so a second caller can resolve through the identical path
+    instead of growing its own copy of this loop (CLAUDE.md Sec3, single
+    source of truth): worksheet_criteria_snapshot.freeze_resolved_criteria()
+    freezes these same rows onto a WORKSHEET annotation at the Sec7.8.4
+    technical review, rather than the per-batch working file this function's
+    other caller writes.
+
+    `batch` may be None -- every project_ref lookup already treats a None
+    batch as "no project" rather than raising (see project_ref.get_project_
+    uid's own docstring), so this simply resolves lab/baseline tier only in
+    that case. `method_id`/`matrix` may also be empty; the caller decides
+    whether an incomplete result is acceptable (export_resolved_criteria
+    refuses to write one; the worksheet snapshot records why it could not,
+    see GAPS.md Sec26)."""
+    from senaite.pfas import method_profile_store
+    from senaite.pfas import project_ref
+
+    project = project_ref.get_project(portal, batch) if batch is not None else None
+    project_ruleset = (ruleset.get_project_ruleset(project)
+                        if project is not None else {})
+    profile = method_profile_store.get_profile(portal, method_id)
+
+    rows = []
+    for key in sorted(ruleset.SHAPES_BY_KEY):
+        for analyte in _analytes_for_key(key, method_id, matrix, profile,
+                                          project_ruleset):
+            resolved = ruleset.resolve_for_batch(
+                portal, batch, method_id, matrix, key, analyte=analyte)
+            rows.append(_row_from_resolved(resolved))
+    return rows
+
+
 def export_resolved_criteria(portal, batch, method_id, matrix, directory=None):
     """Resolve every registered criterion for (batch, method_id, matrix)
     through project -> lab -> baseline and write the result to
@@ -228,22 +266,7 @@ def export_resolved_criteria(portal, batch, method_id, matrix, directory=None):
             batch_id, method_id, matrix)
         return None
 
-    from senaite.pfas import method_profile_store
-    from senaite.pfas import project_ref
-
-    project = project_ref.get_project(portal, batch)
-    project_ruleset = (ruleset.get_project_ruleset(project)
-                        if project is not None else {})
-    profile = method_profile_store.get_profile(portal, method_id)
-
-    rows = []
-    for key in sorted(ruleset.SHAPES_BY_KEY):
-        for analyte in _analytes_for_key(key, method_id, matrix, profile,
-                                          project_ruleset):
-            resolved = ruleset.resolve_for_batch(
-                portal, batch, method_id, matrix, key, analyte=analyte)
-            rows.append(_row_from_resolved(resolved))
-
+    rows = resolve_rows_for_batch(portal, batch, method_id, matrix)
     return write_resolved_file(batch_id, method_id, matrix, rows,
                                 directory=directory)
 

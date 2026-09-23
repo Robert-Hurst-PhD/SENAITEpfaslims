@@ -1947,3 +1947,177 @@ against a shape of data nobody hand-wrote for it.
   override is stored, whether it can name a standard the method's own map
   does not carry, how a certificate discloses a per-project quantification
   ion — not an extension of this module's shape.
+
+## 26. The resolved-criteria record is now frozen at the moment it judges
+##     (2026-09-23)
+
+Closes §24. The per-batch file (`resolved_criteria_store.write_resolved_
+file()`) still overwrites unconditionally and is unchanged — it stays what
+it always should have been: a freely regenerable working artefact for the
+Py3 pipeline worker's *next* run. What changed is that history no longer
+depends on it.
+
+### What is frozen, and where
+
+A new ZODB annotation on the **Worksheet** —
+`senaite.pfas.worksheet_criteria_snapshot` (module of the same name, key
+`SNAPSHOT_KEY`) — holding the full resolved rows (value, tier, source_doc,
+source_rev, conformance, departure — `resolved_criteria_store._row_from_
+resolved()`'s exact shape, unchanged) plus `batch_id`, `method_id`,
+`matrix`, and `frozen_at`. Per CLAUDE.md §7: this is data belonging to
+exactly one ZODB object (the worksheet that was judged), so it is annotated
+onto that object, not written to SQLite or the filesystem.
+
+**The hook point** is `src/senaite/pfas/browser/data_review.py`,
+`_handle_approve_release()` — the ISO 17025 §7.8.4 technical review itself:
+immediately after the worksheet's analyses and the worksheet transition to
+`verified` (right after the `wf_tool.doActionFor(ws, "verify")` block, before
+the checklist bookkeeping), a new `self._freeze_resolved_criteria(ws)` call
+gathers the linked Batch (`_linked_batch`), `method_id` (`batch_method`), and
+`matrix` (`_batch_matrix`) — the same three sources every other panel on
+this view already uses — and delegates to
+`worksheet_criteria_snapshot.freeze_resolved_criteria()`. The whole call is
+wrapped in its own `try/except` in `_handle_approve_release`, on top of
+`freeze_resolved_criteria()`'s own internal guards: record-keeping must
+never be able to block a workflow transition that has already happened
+(requirement 3).
+
+### The write-once guarantee, and how it is enforced
+
+`worksheet_criteria_snapshot.store_snapshot(store, payload)` is the single
+choke point that writes `SNAPSHOT_KEY`. It checks whether a payload with
+`status == "frozen"` is already present; if so it returns `(False,
+<the original payload, untouched>)` and does **not** write. Every other
+status (`"unresolved"`, `"failed"`, or nothing at all) may be replaced —
+those are not judgement history, because nothing was judged. The real
+trigger this protects against is retract → fix something → re-submit →
+re-approve on the same worksheet, or a project re-link followed by someone
+re-running the approval handler: `tests/test_worksheet_criteria_snapshot.py
+::test_second_verification_does_not_overwrite_the_frozen_snapshot` simulates
+exactly that (freezes with FDA_32PFAS/Eggs, then calls
+`freeze_resolved_criteria()` again with EPA_1633A/Drinking Water on the SAME
+worksheet object, and asserts the second call returns the FIRST result,
+`frozen_at` included).
+
+Three states, not two — an empty `criteria` list is never stamped `"frozen"`:
+
+| status | meaning | may a later attempt replace it? |
+|---|---|---|
+| `frozen` | resolution succeeded; `criteria` holds the rows | **No — this is the guarantee.** |
+| `unresolved` | method_id/matrix not both known at verification time; resolution never attempted (mirrors `export_resolved_criteria`'s own refusal to write a partial/guessed file) | Yes |
+| `failed` | method_id/matrix known, resolution raised | Yes — including by a subsequent `frozen` payload, which carries the failed marker forward under its own `superseded` key so a "failed once, then froze on retry" history is never silently erased by the fix that made it succeed |
+
+`tests/test_worksheet_criteria_snapshot.py::test_unresolved_when_method_or_
+matrix_unknown_never_an_empty_frozen_payload` pins the `unresolved` case;
+`test_build_failure_marker_carries_superseded_marker_forward` and
+`test_store_snapshot_replaces_unresolved_and_failed_markers` pin a
+failed→failed retry; `test_failed_then_fixed_retry_carries_the_failure_
+forward_as_superseded` is the one that matters most and was initially
+missing — an earlier version of this change let `build_snapshot_payload()`
+(the SUCCESS path) drop the prior marker on the floor, which would have
+silently erased a recorded failure the moment the retry that followed it
+succeeded. `build_snapshot_payload()` now also takes `superseded`, and
+`freeze_resolved_criteria()` passes the pre-existing marker (if any) on
+every path, not just failure→failure.
+
+### What a reader gets when no snapshot exists
+
+`worksheet_criteria_snapshot.get_frozen_criteria(ws)` is the ONLY sanctioned
+way to ask "what governed this worksheet's batch?" It returns a deep copy of
+the frozen payload, or **`None`** if nothing was ever frozen — every
+worksheet verified before this change, and any worksheet approved through a
+code path that predates this hook. `None` (or a non-`"frozen"` status) means
+**not recorded**; a caller must present exactly that, in those words or
+equivalent, and must never fall back to resolving live criteria and
+presenting the result as if it were history. That is §15's rule (UNKNOWN
+must never read as CONFORMS) applied to the time axis, and it is the failure
+§24 exists to prevent — `tests/test_worksheet_criteria_snapshot.py
+::test_worksheet_with_no_snapshot_reports_not_recorded` pins it.
+`read_snapshot()` returns a `copy.deepcopy` specifically so a reader cannot
+mutate the frozen record through the dict it was handed back
+(`test_read_snapshot_returns_a_deep_copy_not_the_live_dict`).
+
+No existing UI reads resolved criteria as a history claim today — the one
+browser-side consumer of `ruleset`/`resolve_for_batch` besides this feature,
+`browser/batch_project_viewlet.py`, only ever shows the CURRENT project/QAPP
+link and derives `method_id`/`matrix` best-effort for a NEW assignment; it
+never displays a resolved value or a departure and is correctly a
+build-time/"what would we do now" view, not a history one — it needed no
+change. The disclosure work this section is a precondition for (§24's
+closing paragraph) is the first intended consumer of `get_frozen_criteria()`.
+
+### What remains mutable by design
+
+- **The per-batch file** (`{resolved-dir}/{batch_id}.json`, written by
+  `resolved_criteria_store.write_resolved_file()`) — unchanged, still
+  overwritten unconditionally on every `project_ref.set_project_uid()` call.
+  It is consumed only by the Py3 pipeline worker's *next* run and carries no
+  historical claim; nothing reads it for "what governed" anymore.
+- **Live QC criteria themselves** (method profiles, QAPP/project rulesets) —
+  still fully editable at any time, by design; a QAPP revision or profile
+  correction must be able to change what governs FUTURE runs. Only the
+  worksheet's own frozen copy of a PAST resolution is protected.
+- **A worksheet in `open` or `to_be_verified`** has no snapshot yet, and
+  correctly so — nothing has been judged. `get_frozen_criteria()` on such a
+  worksheet returns `None`, same as "not recorded"; that is accurate, not a
+  gap, until the §7.8.4 review actually happens.
+- **A worksheet verified through a route OTHER than `@@pfas-data-review`'s
+  Approve action never gets a snapshot at all.** The hook lives in
+  `_handle_approve_release()`; a Manager who instead verifies the underlying
+  analyses through a native SENAITE listing (the path §5's "first sample
+  ever reached `verified`" entry already records as historically the one
+  that worked, before the checklist handler's workflow cascade was fixed)
+  reaches `verified` with no snapshot written. This is safe by construction
+  — `get_frozen_criteria()` still correctly returns `None` / "not recorded"
+  for that worksheet, it never fabricates an answer — but it means a lab
+  that releases work outside this one workspace gets silently zero
+  disclosure basis rather than an explicit warning that it skipped the
+  freeze. Worth a follow-up (a workflow-transition subscriber on `verify`
+  would close this regardless of which UI triggered it) but out of scope
+  here: the task named `_handle_approve_release` as the freeze point, and
+  that hook is correct for the workflow the Data Review workspace owns.
+
+### Refactor along the way
+
+`resolved_criteria_store.export_resolved_criteria()`'s row-resolution loop
+(project → lab → baseline for every `SHAPES_BY_KEY` entry) is extracted into
+a new `resolve_rows_for_batch(portal, batch, method_id, matrix)`, called by
+both `export_resolved_criteria()` (writes the working file) and
+`worksheet_criteria_snapshot.freeze_resolved_criteria()` (freezes the
+worksheet snapshot) — one resolution path, not two (CLAUDE.md §3).
+`tests/test_resolved_criteria_store.py` (unchanged, still green) pins the
+behavior this was extracted from.
+
+### Verification
+
+- `tests/test_worksheet_criteria_snapshot.py` — 14 new tests: payload shape,
+  write-once on `store_snapshot()` directly, replacement of `unresolved`/
+  `failed` markers, `None` on no snapshot, deep-copy on read (both from
+  `read_snapshot()` and from `freeze_resolved_criteria()`'s own
+  already-frozen early return), provenance round-trip through the real
+  `resolved_criteria_store.build_resolved_rows()` (tier/source_doc/
+  source_rev/conformance/departure all survive a `json.dumps`/`loads`
+  cycle), and five thin-shell tests that exercise
+  `freeze_resolved_criteria()`/`get_frozen_criteria()` end to end against a
+  faked `zope.annotation.interfaces.IAnnotations` (a per-object attribute,
+  not an `id(obj)`-keyed registry that could collide after GC) — including
+  the literal "verify, then re-verify" scenario and the failed→fixed→frozen
+  supersession chain.
+- Full suite (`tests/*.py`, one invocation) green: every existing file
+  unchanged in behavior, `test_resolved_criteria_store.py` still green after
+  the `resolve_rows_for_batch` extraction.
+- Live, under the real Zope Python 2.7 environment (`bin/zopepy`, not the
+  plain-python3 test harness): `senaite.pfas.worksheet_criteria_snapshot`
+  and `senaite.pfas.resolved_criteria_store.resolve_rows_for_batch` import
+  cleanly; `senaite.pfas.browser.data_review.PFASDataReviewView` carries the
+  new `_freeze_resolved_criteria` method.
+- Live, after restarting the `senaite` container: `@@pfas-data-review` and
+  `@@pfas-projects` both still return `200`.
+- **Not exercised**: an actual verify → freeze → re-verify cycle against a
+  real worksheet on the running instance. The task's own instruction was to
+  do this only against a worksheet that could be restored and was not part
+  of the lab's real reported work; no such disposable worksheet was
+  identified this session, so this relies on the unit coverage above (which
+  drives the real `freeze_resolved_criteria()`/`store_snapshot()` code, not
+  a reimplementation of it) plus the live import/200 checks. Flagged here
+  rather than silently skipped.
