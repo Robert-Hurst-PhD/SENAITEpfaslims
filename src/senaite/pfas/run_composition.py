@@ -35,6 +35,15 @@ Python 2.7 compatible. No f-strings, no pathlib, no type annotations.
 """
 from __future__ import absolute_import, unicode_literals
 
+import re
+
+# MB is matched on a token boundary rather than as a substring, because "MB"
+# is short enough to sit inside an unrelated word. It used to split on
+# WHITESPACE only, which meant it never fired on the hyphenated ids the run
+# builder itself generates (FDA_32PFAS-MB-260923-01 has no spaces). Splitting
+# on any non-alphanumeric run keeps the defensive intent and actually matches.
+_TOKEN_SPLIT = re.compile(r"[^A-Z0-9]+")
+
 
 def classify_sample_role(row):
     """The QC role a registered sample `row` plays, guessed from its id, or
@@ -55,7 +64,7 @@ def classify_sample_role(row):
         return "LFSMD"
     if "LFSM" in sid:
         return "LFSM"
-    if "MB" in sid.split():
+    if "MB" in _TOKEN_SPLIT.split(sid):
         return "MB"
     for code in ("ICV", "CCV", "LFB", "CCB"):
         if code in sid:

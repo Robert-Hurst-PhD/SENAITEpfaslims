@@ -51,13 +51,14 @@ def _rows(*ids):
 # ── classify_sample_role / is_field_sample ───────────────────────────────────
 
 def test_classify_sample_role_recognizes_qc_ids():
-    # NOTE: the MB match is `"MB" in sid.split()` -- a literal, space-
-    # separated "MB" token, not a substring -- copied verbatim from the
-    # original run_builder._role_from_sample. A hyphenated id like
-    # "FDA-MB-01" does NOT match (pre-existing behavior, out of scope for
-    # this change); "Batch MB Blank" does.
+    # MB is matched on a token boundary, not as a substring, because "MB" is
+    # short enough to sit inside an unrelated word. That boundary used to be
+    # WHITESPACE, inherited verbatim from run_builder._role_from_sample, so a
+    # hyphenated id never matched -- including the ones the builder itself
+    # generates. This test asserted that miss as expected behaviour; it is now
+    # a token split on any non-alphanumeric run. See the two MB tests below.
     assert rc.classify_sample_role({"sample_id": "Batch MB Blank"}) == "MB"
-    assert rc.classify_sample_role({"sample_id": "FDA-MB-01"}) == ""
+    assert rc.classify_sample_role({"sample_id": "FDA-MB-01"}) == "MB"
     assert rc.classify_sample_role({"sample_id": "EGG-0001-LFSM"}) == "LFSM"
     assert rc.classify_sample_role({"sample_id": "EGG-0001-LFSMD"}) == "LFSMD"
     assert rc.classify_sample_role(
@@ -188,6 +189,24 @@ def test_lfsm_frequency_none_or_non_numeric_is_identity():
     for bad in (None, 0, -3, "not-a-number", ""):
         out = rc.compose_sample_block(rows, None, bad)
         assert out == [(r, "sample") for r in rows], (bad, out)
+
+
+def test_mb_is_recognised_in_a_hyphenated_id():
+    """MB was matched on a WHITESPACE token, so it never fired on the
+    hyphenated ids the run builder itself generates. A method blank read as a
+    field sample, which under duplicate_all_samples would have duplicated it
+    and counted it toward the LFSM interval."""
+    for sid in ("FDA_32PFAS-MB-260923-01", "MB-01", "EPA_1633A-MB-01",
+                "KCP MB 01"):
+        assert rc.classify_sample_role({"sample_id": sid}) == "MB", sid
+
+
+def test_mb_is_not_matched_inside_an_unrelated_word():
+    """Why the match is token-based and not a substring: 'MB' is short enough
+    to sit inside a real client sample id. The original whitespace split was
+    guarding against exactly this, and that intent is preserved."""
+    for sid in ("COMBINED-01", "LAMB-TISSUE-02", "THUMBPRINT-03"):
+        assert rc.classify_sample_role({"sample_id": sid}) != "MB", sid
 
 
 if __name__ == "__main__":
