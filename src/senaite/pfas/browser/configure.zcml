@@ -37,6 +37,30 @@
       permission="zope2.View"
       />
 
+  <!-- Batch -> Project assignment: the missing link that turns a Project
+       (created at @@pfas-projects) into a live QAPP override for a batch's
+       resolved QC criteria. Shows the batch's current Project + QAPP (or
+       states plainly that none is assigned); a manager may assign/clear via
+       project_ref.set_project_uid(), which is what triggers the resolved-
+       criteria export. Upgrade-safe viewlet on the PFAS layer, mirroring
+       senaite.pfas.method-profile-link above — no core fork. -->
+  <browser:viewlet
+      name="senaite.pfas.batch-project-link"
+      for="bika.lims.interfaces.IBatch"
+      manager="plone.app.layout.viewlets.interfaces.IAboveContentBody"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      class=".batch_project_viewlet.PFASBatchProjectViewlet"
+      permission="zope2.View"
+      />
+
+  <!-- POST-only action target for the viewlet's assign/clear form. -->
+  <browser:page
+      name="pfas-batch-project-assign"
+      for="bika.lims.interfaces.IBatch"
+      class=".batch_project_viewlet.PFASBatchProjectAssignView"
+      permission="zope2.View"
+      />
+
   <!-- LC-MS Run Builder — extraction form → instrument worklist → re-import -->
   <browser:page
       name="pfas-run-builder"

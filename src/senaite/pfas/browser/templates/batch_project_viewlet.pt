@@ -1,0 +1,83 @@
+<tal:panel xmlns:tal="http://xml.zope.org/namespaces/tal"
+           xmlns:i18n="http://xml.zope.org/namespaces/i18n">
+  <style>
+    .pfas-projlink { margin:10px 0 16px; border:1px solid #dee2e6;
+      border-left:4px solid #428aaf; border-radius:8px; background:#e8f4f8;
+      padding:12px 16px; }
+    .pfas-projlink-label { font-size:11px; font-weight:700; letter-spacing:.05em;
+      text-transform:uppercase; color:#6c757d; }
+    .pfas-projlink-title { font-size:15px; font-weight:700; color:#293333; margin-top:2px; }
+    .pfas-projlink-meta { font-size:12px; color:#6c757d; margin-top:3px; }
+    .pfas-projlink-none { font-size:13px; color:#6c757d; font-style:italic; }
+    .pfas-projlink-warn { font-size:12px; color:#8a6d3b; margin-top:4px; }
+    .pfas-projlink-form { margin-top:10px; display:flex; align-items:center;
+      gap:8px; flex-wrap:wrap; }
+    .pfas-projlink-form select { padding:5px 8px; border:1px solid #dee2e6;
+      border-radius:5px; min-width:260px; }
+    .pfas-projlink-btn { background:#428aaf; color:#fff; border:none; font-weight:600;
+      font-size:13px; padding:7px 14px; border-radius:5px; cursor:pointer; }
+    .pfas-projlink-btn:hover { background:#387493; }
+    .pfas-projlink-btn-clear { background:#a94442; }
+    .pfas-projlink-btn-clear:hover { background:#8b3a37; }
+    .pfas-projlink-msg-ok { color:#2f7d3c; font-size:12px; margin-top:6px; }
+    .pfas-projlink-msg-error { color:#a94442; font-size:12px; margin-top:6px; }
+  </style>
+  <div class="pfas-projlink">
+    <div class="pfas-projlink-label">PFAS Project</div>
+
+    <tal:has-project condition="view/project">
+      <div class="pfas-projlink-title"
+           tal:content="python: '%s (%s)' % (view.project['project_code'], view.project['client_name'])">
+        PRJ-001 (Acme Labs)
+      </div>
+      <div class="pfas-projlink-meta">
+        <tal:has-qapp condition="view/project/qapp_label">
+          QAPP <span tal:content="view/project/qapp_label">QAPP-001</span>
+          &#8212; overrides the lab's internal quality system for this batch.
+        </tal:has-qapp>
+        <tal:no-qapp condition="not: view/project/qapp_label">
+          No QAPP on file for this project &#8212; the lab's internal quality
+          system applies.
+        </tal:no-qapp>
+      </div>
+    </tal:has-project>
+
+    <tal:no-project condition="not: view/project">
+      <div class="pfas-projlink-none" tal:condition="not: view/project_uid">
+        No project assigned &#8212; the lab's internal quality system applies.
+      </div>
+      <div class="pfas-projlink-none" tal:condition="view/project_uid">
+        Linked project could not be found (it may have been deleted) &#8212;
+        the lab's internal quality system applies.
+      </div>
+    </tal:no-project>
+
+    <form tal:condition="view/can_manage" method="post"
+          tal:attributes="action view/assign_url" class="pfas-projlink-form">
+      <select name="project_uid">
+        <option value="">Choose a project&#8230;</option>
+        <option tal:repeat="p view/projects"
+                tal:attributes="value p/uid;
+                                 selected python: bool(view.project) and p['uid'] == view.project_uid"
+                tal:content="python: '%s - %s (%s)' % (p['project_code'], p['title'], p['client_name'])">
+          PRJ-001 - Demo (Acme)
+        </option>
+      </select>
+      <button type="submit" name="action" value="assign" class="pfas-projlink-btn">
+        Assign
+      </button>
+      <button type="submit" name="action" value="clear"
+              tal:condition="view/project_uid"
+              class="pfas-projlink-btn pfas-projlink-btn-clear">
+        Clear
+      </button>
+    </form>
+
+    <div class="pfas-projlink-msg-ok" tal:condition="view/ok_msg" tal:content="view/ok_msg">
+      Saved
+    </div>
+    <div class="pfas-projlink-msg-error" tal:condition="view/error_msg" tal:content="view/error_msg">
+      Error
+    </div>
+  </div>
+</tal:panel>

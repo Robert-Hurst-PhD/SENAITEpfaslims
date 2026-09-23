@@ -1348,4 +1348,202 @@ its one real call site, and the feature can still not fire in production
 because the call site it was wired to is itself unreached. "Has a call site"
 and "is reachable from the UI a user actually operates" are different
 claims; this register now distinguishes them explicitly rather than letting
+it stand -- see the next entry for the same pattern closed by half.
+
+## 21. Batch-to-project linking control — built as a viewlet, proven live end
+##     to end (2026-09-22)
+
+§20 named the exact remaining gap: "a batch-to-project linking control and a
+ruleset edit form, not a cross-process delivery mechanism." This entry closes
+the first half. `set_project_uid()` now has a real, UI-reachable call site.
+
+**What is built** — `senaite.pfas.browser.batch_project_viewlet`, following
+`senaite.pfas.method-profile-link` (`browser/method_viewlet.py`) exactly:
+
+- `PFASBatchProjectViewlet`, registered `for="bika.lims.interfaces.IBatch"`,
+  manager `IAboveContentBody`, layer `ISenaitePFASLayer` — always renders
+  (unlike the method-profile viewlet, which renders nothing when there is no
+  profile): shows the batch's current Project (code + client + QAPP), or
+  states plainly "No project assigned — the lab's internal quality system
+  applies." A manager (`browser.perms.require_manager`) additionally sees a
+  dropdown of existing Projects + Assign/Clear buttons; a non-manager sees
+  only the read-only state, no control they cannot use (CLAUDE.md §6A).
+  Every attribute the template reads is pre-initialised to the benign "none
+  assigned" state before a single try/except wraps the whole update body, so
+  a failure on any one batch's data cannot 500 that batch's page.
+- `PFASBatchProjectAssignView`, a companion `browser:page`
+  (`@@pfas-batch-project-assign`) on the same interface — the POST-only
+  target the viewlet's form submits to. Manager-gated server-side (403 on an
+  unauthorised POST, matching `projects.py`), CSRF-disabled the same way,
+  redirect-after-POST back to the batch. It never writes the project_uid
+  annotation directly — always through `project_ref.set_project_uid()` /
+  `set_project_uid(batch, None)` — the one choke point §20 already
+  identified as correct.
+- method_id/matrix for a new assignment are best-effort derived at the POST
+  handler and passed to `set_project_uid()` explicitly, never guessed inside
+  `project_ref` itself, exactly as its docstring specifies. method_id reuses
+  the SAME resolver `run_builder.py` already calls for a batch context —
+  `logbooks.PFASLogbookIndexView.batch_method()`. matrix comes from the
+  batch's linked samples' SampleType, via `senaite_catalog_sample.
+  unrestrictedSearchResults(getBatchUID=...)` — the pattern `run_builder.py`'s
+  own batch-linked-samples fallback uses, deliberately NOT `data_review.
+  _batch_matrix()`, which walks a WORKSHEET's analyses and so needs a
+  worksheet that will not exist yet when a project is first linked to a
+  fresh batch. When neither resolves the link is still recorded but the
+  viewlet says so honestly ("Project assigned - resolved criteria NOT
+  exported (method/matrix not yet known for this batch)") rather than
+  claiming a success it did not achieve.
+
+**A UID trap found and avoided, not inherited.** `browser.projects.
+_list_projects()`/`_obj_to_dict()` expose a project's FOLDER id (the
+`uuid4().hex` used as its Zope object id) under the field name `"uid"`.
+`project_ref.get_project()`/`set_project_uid()` resolve through the object's
+REAL Plone UID (`bika.lims.api.get_uid()`) via `api.get_object_by_uid()` /
+a catalog `UID` search. Verified live, on a throwaway PFASProject created
+and deleted for the check: folder id `76d752...` vs real UID `ac5dc7...` —
+different values. Reusing `projects.py`'s dict for this viewlet's dropdown
+would have silently assigned the WRONG identifier and `get_project()` would
+never have resolved it back. This viewlet builds its own project list
+(`_list_projects_for_select()`) keyed by `api.get_uid(obj)`, and reads the
+CURRENTLY-linked project directly off the object `project_ref.get_project()`
+already resolved, never through `projects.py`'s dict. `projects.py` itself is
+unchanged — its `_get_project()`/`_delete_project()` deliberately key off the
+folder id for their own (different) purposes — this is a naming trap to
+remember, not a bug to fix there.
+
+**Verified live, on the running instance, real data.**
+
+Only two Batches exist in this installation, not the nine a prior session
+believed (`GAPS.md`/memory predates this correction) —
+`pfas-demo-client/B-001` ("Test Demo", 0 linked samples, no extraction-guide
+session, no FM-ENV-251/252 method annotation, no `getMethod` field on core
+Batch — method_id and matrix both resolve to `""`) and
+`kcp-feed-forage/kcp-b-001` (9 real samples, matrix "Animal Feed", method
+`FDA_32PFAS`). Both facts checked directly against `senaite_catalog_sample.
+unrestrictedSearchResults()`, not inferred.
+
+1. Both batches loaded at HTTP 200 before any change, viewlet rendering "No
+   project assigned" on each — the untouched-batch case (task step 7),
+   captured for kcp-b-001 before it was touched at all.
+2. Created a throwaway Project (`TEST-PROJ-CHAIN-01`) via `@@pfas-projects`.
+3. Assigned it to **B-001** via the viewlet's POST target. Response: `ok=
+   Project assigned - resolved criteria NOT exported (method/matrix not yet
+   known for this batch)`. Instance log, verbatim:
+   `project_ref: batch <Batch at .../B-001> linked to a project but
+   method_id/matrix not known (u''/u'') -- resolved-criteria export skipped,
+   not guessed`. `IAnnotations(b)[PROJECT_UID_KEY]` set correctly;
+   `/data/qc/resolved/` did not even exist yet. This is the documented safety
+   property (§20/`resolved_criteria_store.py`) behaving exactly as specified
+   — not a defect in the viewlet.
+4. Assigned the same Project to **kcp-b-001**. Response: `ok=Project
+   assigned - resolved criteria exported`. `/data/qc/resolved/kcp-b-001.json`
+   now exists:
+   ```
+   batch_id:     kcp-b-001
+   method_id:    FDA_32PFAS
+   matrix:       Animal Feed
+   generated_at: 2026-09-23T00:54:44.621689Z
+   criteria (4 rows, every key in ruleset.SHAPES_BY_KEY today):
+     cal_r2_min:    value=0.99                    tier=lab  conformance=UNKNOWN
+     ccv_recovery:  value={min:72.0, max:128.0}    tier=lab  conformance=UNKNOWN
+     dup_rpd_max:   value=20.0                     tier=lab  conformance=UNKNOWN
+     sn_quan_min:   value=3.0                      tier=lab  conformance=UNKNOWN
+   ```
+   Every row carries `value`, `tier`, `source_doc`, `source_rev`,
+   `conformance`, `departure` per the task's requirement (`source_doc`/
+   `source_rev`/`departure` are `null` here because nothing departs from an
+   un-set baseline at project tier yet — the fields are present and correct,
+   not fabricated). **This is the mechanism firing end to end, live, for the
+   first time**: link → export → file on disk, exactly the shape the Py3
+   worker's `reload_from_profiles(batch_id=...)` already overlays (§20).
+5. Cleared both batches via the viewlet's Clear button.
+   `PROJECT_UID_KEY in IAnnotations(b)` is `False` on both (the key is
+   deleted, not merely falsy) and `/data/qc/resolved/` is empty again (the
+   directory itself is not removed by `remove_resolved_criteria()` — it only
+   unlinks the file — so an empty `resolved/` directory persisting is
+   expected, not a leftover to clean up).
+6. Deleted the throwaway Project via `@@pfas-projects`.
+7. Final state confirmed identical to initial: both batches HTTP 200, both
+   viewlets read "No project assigned", no `PROJECT_UID_KEY` annotation on
+   either, no files under `/data/qc/resolved/`.
+
+**So does a QAPP override reach a run now? Half of it does.** The transport
+this entry adds is real and proven (step 4's file is the evidence) — a
+Project linked to a batch now produces a resolved-criteria file the worker
+overlays. But every row in that file resolved to **tier: "lab"**, because
+`ruleset.get_project_ruleset(project)` reads a per-project annotation
+(`PROJECT_RULESET_KEY`) that `set_project_criterion()`/`set_project_ruleset()`
+can write — and grepping the entire add-on turns up ZERO call sites for
+either outside `ruleset.py`'s own definition and `tests/test_ruleset.py`.
+§20 already flagged this half as deferred (DECISIONS.md 2026-09-20); this
+entry confirms empirically that it is still true four days later: there is
+still no authoring surface anywhere a manager could actually enter a QAPP
+override value. So today, a Project can be linked to a batch (this entry)
+and the link will faithfully export and overlay whatever ruleset the project
+has (nothing, always) — **a QAPP override would reach a run if one could be
+authored, but nothing in this codebase lets anyone author one yet.** The
+remaining gap is exactly, and only, a project-ruleset edit form; no further
+plumbing work is needed once it exists.
+
+**Found during verification, unrelated to this feature, left alone but
+serious enough to flag prominently: a plain `docker compose restart senaite`
+silently rewrote `data/qc/method_profiles.json`.** CLAUDE.md's own gotcha (b)
+requires exactly this restart after any `.pt`/`.py` change — this is not an
+edge case, it is the documented, required workflow, and this session
+followed it once for this task. A snapshot taken immediately before the
+restart differs from the file 2 minutes after it: five `matrix_adjust`
+`factor` values regressed by ~1000x (e.g. Meat/Muscle 500.0 -> 0.5, Animal
+Feed 2000.0 -> 2.0) and a `verify_against_method: true` flag on an EPA_1633A
+tier disappeared. Root cause CONFIRMED from the container's own startup log
+(`docker logs senaite_pfas-senaite-1`), not guessed from timing alone:
+
+```
+INFO:collective.recipe.plonesite:Running profiles: ['senaite.lims:default',
+    'senaite.storage:default', 'senaite.pfas:default']
+INFO:Products.GenericSetup.tool:Importing profile
+    profile-senaite.pfas:default with dependency strategy reapply.
+INFO:Products.GenericSetup.tool:Applying main profile
+    profile-senaite.pfas:default
+INFO:senaite.pfas:Found existing Method: USDA/FDA 32-PFAS in Food v10
+... (existing content, not re-created)
+```
+
+`collective.recipe.plonesite` reapplies every listed site profile —
+including `senaite.pfas:default` — with GenericSetup's **`reapply`**
+dependency strategy on EVERY instance startup, not only on an explicit
+(re)install. Reapplying the profile re-runs `setuphandlers.post_install`,
+which calls `method_profile_store.seed_default_profiles()` unconditionally;
+that function calls `export_profiles_to_file(portal)` at its end regardless
+of whether anything was newly seeded (all 3 method profiles already
+existed, so no `"Seeded N..."` line appears — that function only logs on
+the seed path, not the export, so the rewrite itself is invisible in the
+log; only the `Importing profile .../reapply` trail upstream of it is
+visible). `export_profiles_to_file()` re-derives the on-disk JSON purely
+from current ZODB state, so it silently reverted whatever the file held
+that ZODB did not agree with. The practical implication: if
+`data/qc/method_profiles.json` ever holds a value that was written into the
+file directly (or by an older code path) without also being persisted into
+ZODB via `method_profile_store.save_profile()`, the NEXT container restart —
+including one done only to pick up a template change, as this task's own
+workflow requires — silently reverts that value with no error, no log line
+naming what changed, and no operator-visible signal. The file was restored
+byte-for-byte from the pre-restart snapshot (`md5sum` verified identical)
+before any further work in this session; this note is the only record of
+the incident. Not fixed here — it is a separate subsystem (method profile
+seeding/export and the buildout's profile-reapply strategy) from the
+batch-project link this entry is about, and a real fix needs to decide the
+harder question of which side (ZODB or file) is supposed to be
+authoritative, which is a design decision for whoever owns that subsystem,
+not a slip to correct in passing. Flagged here because the
+discovery mechanism (snapshot-before-touching-shared-state) is exactly what
+this task's own instructions required, and the next person who runs `docker
+compose restart senaite` without a fresh snapshot in hand will not see it
+coming.
+
+Suite: all 22 test files green as one invocation (`for t in tests/*.py; do
+python3 "$t"; done`), same command as always — this feature adds no new
+plain-Python-3-testable module (the viewlet and its POST handler are
+Zope/Plone browser code, proven live above, the same category
+`resolved_criteria_store.export_resolved_criteria()`/`remove_resolved_
+criteria()` already were in §20).
 the first stand in for the second.
