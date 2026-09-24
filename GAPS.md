@@ -19,6 +19,7 @@ export PFAS_PROFILES_PATH="$PWD/data/qc/method_profiles.json" && \
 export PFAS_ALLOW_LEGACY_VENDOR_MAP=1 && \
 for t in tests/*.py; do echo "=== $t"; python3 "$t"; done && \
 python3 tools/audit_configurable.py --profiles data/qc/method_profiles.json && \
+python3 tools/wiring_map.py > WIRING.md && \
 python3 tools/generate_synthetic_runs.py --out /tmp/synth --list
 ```
 

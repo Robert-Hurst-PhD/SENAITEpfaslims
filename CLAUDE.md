@@ -82,6 +82,12 @@ Python 2.7  /  Docker / Linux
 ```
 Read `README.md` and `RESOURCE_MAP.md` before doing anything.
 
+For "what is wired to what," read `WIRING.md` first — generated
+(`python3 tools/wiring_map.py > WIRING.md`), never hand-patched, covering
+ZODB annotation keys, the add-on/worker file boundary, browser views, workflow
+subscribers, and content types. `RESOURCE_MAP.md`/`SYSTEM_AUDIT.md` are
+rationale and history, not current reference.
+
 ---
 
 ## 3. THE RELATIONAL DATA MODEL (the truth)
