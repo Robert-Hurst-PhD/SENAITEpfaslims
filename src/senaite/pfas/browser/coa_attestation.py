@@ -74,6 +74,48 @@ class PFASCoAAttestationView(BrowserView):
             pass
         return meta
 
+    def accreditation_disclosure(self, collection=None):
+        """The accreditation statement for the sample(s) on this certificate,
+        or None when there is nothing to state.
+
+        Read from the criteria FROZEN on the worksheet at verification
+        (`worksheet_criteria_snapshot`), never resolved live. A certificate is a
+        claim about a judgement that already happened; resolving now would state
+        what the lab would do today as though it were what the lab did — the
+        defect GAPS.md §24 exists to prevent.
+
+        This is deliberately SAMPLE-scoped and must stay visually separate from
+        `qc_qualifications()` below, which is RESULT-scoped. "This result was
+        released despite a failing QC criterion [M]" and "this sample falls
+        outside the laboratory's accreditation" are different claims about
+        different things; printing them as one list would blur a per-measurement
+        caveat into a scope statement, or worse, the reverse.
+        """
+        collection = collection if collection is not None else getattr(
+            self, "collection", [])
+        if not collection:
+            return None
+        try:
+            from senaite.pfas import disclosure
+            from senaite.pfas import worksheet_criteria_snapshot as wcs
+            from senaite.pfas.browser.qc_review_report import _worksheet_for
+            sample = api.get_object(collection[0])
+            worksheet = _worksheet_for(sample)
+            if worksheet is None:
+                return None
+            snapshot = wcs.get_frozen_criteria(worksheet)
+            if not snapshot:
+                # No frozen record. The certificate says nothing rather than
+                # implying conformance — and nothing rather than a guess.
+                return None
+            out = disclosure.build_disclosure(snapshot)
+            out["lines"] = [disclosure.format_departure(i)
+                            for i in out.get("items") or []]
+            return out
+        except Exception as exc:
+            logger.error("accreditation_disclosure: %s", exc)
+            return None
+
     def qc_qualifications(self, collection=None):
         """Qualifiers that apply to the sample(s) on this certificate.
 

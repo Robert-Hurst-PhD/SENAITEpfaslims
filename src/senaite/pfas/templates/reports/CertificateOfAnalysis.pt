@@ -72,6 +72,44 @@
   <tal:t replace="structure python:view.render_discreeter(context, **options)" />
 
 
+  <!-- ACCREDITATION SCOPE (PFAS) — printed ABOVE the QC qualifications and in
+       a heavier frame on purpose. It is a statement about the SAMPLE, not about
+       a measurement: ISO 17025 §7.8.2.1 requires results not covered by the
+       laboratory's accreditation to be clearly identified, and a reader must
+       not have to infer scope from a list of per-result codes.
+
+       Read from the criteria FROZEN on the worksheet at verification, never
+       resolved at render time — see accreditation_disclosure(). When nothing
+       was frozen the block is absent: the certificate states no scope claim
+       rather than implying one. -->
+  <tal:accred define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
+                      accred python:att.accreditation_disclosure(view.collection);"
+              condition="python:accred and accred.get('out_of_scope')">
+    <div style="margin-top:14px; padding:9px 11px; border:2px solid #000;">
+      <div style="font-weight:bold; font-size:12px; margin-bottom:4px;"
+           i18n:translate="">
+        Not covered by the laboratory's accreditation
+      </div>
+      <div style="font-size:10px; color:#222; margin-bottom:6px;">
+        This sample was analysed under project-specific requirements that depart
+        from the published method. The departures are stated below. Results are
+        reported in full; they are not accredited results.
+      </div>
+      <table style="width:100%; font-size:10px; border-collapse:collapse;">
+        <tr tal:repeat="line accred/lines" style="vertical-align:top;">
+          <td style="width:14px; padding:3px 4px;">&#8226;</td>
+          <td style="padding:3px 4px;" tal:content="line">departure</td>
+        </tr>
+      </table>
+      <div style="font-size:9px; color:#555; margin-top:5px;"
+           tal:condition="accred/frozen_at">
+        Governing criteria recorded at technical review
+        (<tal:v replace="accred/frozen_at"/>).
+      </div>
+    </div>
+  </tal:accred>
+
+
   <!-- QC QUALIFICATIONS (PFAS) — results released despite a failing QC
        criterion, with the laboratory's statement of what it means. Rendered
        here because core owns the results table; the short code travels with
