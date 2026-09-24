@@ -2465,3 +2465,73 @@ projects` and `@@pfas-data-review` both `200` after a restart.
   superseded while an override citing the old revision is still live. Both
   are workflow nudges, not correctness gaps -- `source_rev` is still recorded
   accurately at the moment of resolution either way.
+
+---
+
+## 29. Containment is not output (2026-09-24)
+
+Two defects in a single sentence, both shipped past a fully green suite, both
+found by reading one line of real output.
+
+The sentence is `disclosure.format_departure()`'s — the itemised
+non-conformance statement printed on a client's certificate. Its entire purpose
+is that a human can read it and tell what changed.
+
+### 29.1 A Python dict on a certificate
+
+Window criteria travel as `{"min": x, "max": y}`. Interpolated raw, the
+certificate read:
+
+> where the method requires `{'min': 5.0, 'max': 130.0}`
+
+Now rendered through `format_value()`: `5.0-130.0`, `>= 5.0` for a half-open
+window, `required` / `not required` for a boolean.
+
+### 29.2 The lab's own registers on a client document
+
+`EIS_CITATION` appended the internal verification trail — *"Verified against
+the official PDF -- QUESTIONS.md Q-004, closed 2026-06-19 (DECISIONS.md same
+date)"* — and it printed. Two problems at once: internal bookkeeping on a
+client-facing document, and a duplication of the comment sitting directly above
+the constant, so §1 rule 3 was already broken and the leak was only its visible
+symptom. The citation now names the regulatory authority and stops.
+
+### Why a green suite missed both
+
+**Every assertion checked that a fragment was PRESENT.**
+
+```python
+assert "5.0" in line          # passes for 5.0-130.0 AND for {'min': 5.0}
+```
+
+Worse, the fixture that appeared to prove formatting — `"applied_value":
+"40-140%"` — was a string **I had written by hand**. The test proved that a
+value I supplied pre-formatted survived interpolation. The code's own
+formatting had never been exercised at all.
+
+`assert X in output` is a containment test. It answers "is this present",
+never "is this right". For anything a person reads, those are different
+questions, and only the second one matters.
+
+The new tests assert `"{" not in line`, and that no citation contains
+`QUESTIONS.md` / `DECISIONS.md` / `GAPS.md` / `Q-004`.
+
+### The taxonomy this completes
+
+Five defects this cycle, none caught by tests written beside the code:
+
+| Shape | Instance |
+|---|---|
+| Tests sharing the code's assumptions | composition applied to zero rows — fixtures used `role=""`, reality uses `role="Sample"` |
+| A test certifying the bug as expected | MB classification asserted `FDA-MB-01` → `""`, comment calling it out of scope |
+| A code path never given data | Projects UI 500 (`--` in a comment); the em-dash crash that needed the first QAPP to exist |
+| A page never loaded in the failing case | Data Review 500 for `to_be_verified`/`verified` (§27) |
+| **Assertions about containment, not output** | **§29.1, §29.2** |
+
+The fault-injection harness remains the standing exception for one structural
+reason: it asserts against an independently built manifest, not against the
+implementation's own idea of itself. Everything else on that list was written
+by the same mind, at the same time, as the thing it was checking.
+
+**The working rule:** for any artefact a person reads, print it and read it.
+No assertion about its substrings is a substitute.
