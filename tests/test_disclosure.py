@@ -176,6 +176,32 @@ def test_format_departure_names_value_authority_and_method_requirement():
         assert fragment in line, (fragment, line)
 
 
+def test_format_value_never_prints_a_python_dict():
+    """A window travels as {"min": x, "max": y}. Interpolated raw it prints
+    `{'min': 5.0, 'max': 130.0}` on a document a client reads — caught by
+    looking at real output rather than by any assertion about structure."""
+    assert dis.format_value({"min": 5.0, "max": 130.0}) == "5.0-130.0"
+    assert dis.format_value({"min": 5.0, "max": None}) == ">= 5.0"
+    assert dis.format_value({"min": None, "max": 130.0}) == "<= 130.0"
+    assert dis.format_value({}) == "not specified"
+    assert dis.format_value(True) == "required"
+    assert dis.format_value(False) == "not required"
+    assert dis.format_value(None) == "not specified"
+    assert dis.format_value(30.0) == "30.0"
+
+
+def test_format_departure_renders_a_window_readably():
+    line = dis.format_departure({
+        "key": "eis_recovery", "analyte": "13C4-PFBA",
+        "source_doc": "QAPP-001", "source_rev": 3,
+        "applied_value": {"min": 0.0, "max": 150.0},
+        "method_value": {"min": 5.0, "max": 130.0},
+    })
+    assert "0.0-150.0" in line, line
+    assert "5.0-130.0" in line, line
+    assert "{" not in line, ("a dict repr reached the certificate line", line)
+
+
 def test_format_departure_does_not_invent_a_document_for_the_lab_tier():
     """The lab tier has no controlled-document link today -- the method profile
     carries values with no QAM/SOP revision. Say so; never synthesize one."""

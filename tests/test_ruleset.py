@@ -800,6 +800,26 @@ def test_project_less_batch_composition_keys_are_identity_on_real_profiles():
                 method_id, r_ccv.value, expected))
 
 
+def test_a_citation_carries_no_internal_register_references():
+    """A citation travels onto a client's certificate via
+    disclosure.format_departure, so it names the regulatory authority and
+    nothing else. The EIS citation previously appended the lab's own
+    verification trail ("QUESTIONS.md Q-004, closed ... DECISIONS.md same
+    date") and it did print — internal bookkeeping on a client document, and a
+    duplication of the comment that already records it.
+    """
+    for baseline in [mb.get_baseline("EPA_1633A", "eis_recovery",
+                                     analyte="13C4-PFBA",
+                                     matrix="Drinking Water")]:
+        assert baseline is not None
+        citation = baseline.citation or ""
+        for leak in ("QUESTIONS.md", "DECISIONS.md", "GAPS.md", "Q-004",
+                     "closed 2026"):
+            assert leak not in citation, (leak, citation)
+        assert "EPA 1633A" in citation, citation
+        assert "820-R-24-007" in citation, citation
+
+
 if __name__ == "__main__":
     ok = fail = 0
     for name, fn in sorted(globals().items()):

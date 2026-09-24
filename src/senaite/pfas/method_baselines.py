@@ -102,11 +102,13 @@ EndVerdict = collections.namedtuple(
 # closed verification. Keyed by the compound display name as it appears on
 # the instrument export and in the method profile ("13C4-PFBA", "D3-NMeFOSA",
 # ...), NOT the internal M-prefix SENAITE keyword.
-EIS_CITATION = (
-    "EPA 1633A (December 2024, EPA 820-R-24-007), Tables 6 and 8. "
-    "Verified against the official PDF -- QUESTIONS.md Q-004, closed "
-    "2026-06-19 (DECISIONS.md same date)."
-)
+# A citation is CLIENT-FACING: it travels through disclosure.format_departure
+# onto a certificate, so it names the regulatory authority and stops there. The
+# internal verification trail (QUESTIONS.md Q-004, closed 2026-06-19, and the
+# DECISIONS.md entry of the same date) belongs in the comment above and in those
+# registers — not on a document a client reads. It was previously appended here
+# and did print, which is both a leak and a duplication of the comment above.
+EIS_CITATION = "EPA 1633A (December 2024, EPA 820-R-24-007), Tables 6 and 8"
 
 # Table 6, aqueous column. Also the fallback for any 1633A matrix whose class
 # has no override for a given analyte in _EIS_MATRIX_OVERRIDES below.

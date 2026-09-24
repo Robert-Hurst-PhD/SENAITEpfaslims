@@ -172,6 +172,36 @@ def build_disclosure(snapshot):
     return base
 
 
+def format_value(value):
+    """A criterion value as a reader should see it.
+
+    Window criteria travel as {"min": x, "max": y}, and interpolating that dict
+    straight into a sentence prints `{'min': 5.0, 'max': 130.0}` — a Python repr
+    on a document a client reads. The whole purpose of this statement is that
+    someone can tell what changed, so the formatting is not cosmetic.
+
+    Renders a window as "5.0-130.0", a half-open window as ">= 5.0" or
+    "<= 130.0", a boolean as required/not required, and anything else as itself.
+    """
+    if isinstance(value, dict):
+        lo = value.get(u"min")
+        hi = value.get(u"max")
+        if lo is not None and hi is not None:
+            return u"{0}-{1}".format(lo, hi)
+        if lo is not None:
+            return u">= {0}".format(lo)
+        if hi is not None:
+            return u"<= {0}".format(hi)
+        return u"not specified"
+    if value is True:
+        return u"required"
+    if value is False:
+        return u"not required"
+    if value is None:
+        return u"not specified"
+    return u"{0}".format(value)
+
+
 def format_departure(item):
     """One human-readable line for a departing criterion.
 
@@ -197,8 +227,8 @@ def format_departure(item):
                     u"recorded)"
 
     line = u"{0}: {1} applied per {2}, where the method requires {3}".format(
-        subject, item.get(u"applied_value"), authority,
-        item.get(u"method_value"))
+        subject, format_value(item.get(u"applied_value")), authority,
+        format_value(item.get(u"method_value")))
 
     ends = item.get(u"ends") or []
     details = [e.get(u"detail") for e in ends if e.get(u"detail")]
