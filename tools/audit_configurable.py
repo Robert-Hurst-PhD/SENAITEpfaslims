@@ -346,6 +346,236 @@ def _consumers(reads, writers):
             and not r[0].endswith(("method_profile_store.py", "egad_store.py"))]
 
 
+# Calls that YIELD a method profile dict. A name assigned from one of these is
+# a profile for the rest of its scope.
+PROFILE_SOURCE_CALLS = {
+    "get_profile", "_profile_data", "_method_profile", "profile",
+    "_get_profile", "get_method_profile",
+}
+# Bases whose `.get(...)` yields a METHOD profile. Named explicitly rather than
+# matched on "profile" appearing in the name: this codebase calls three
+# different things a profile — the METHOD profile, the Import Studio instrument
+# profile (`import_studio.py`), and the EGAD state profile (`egad_config.py`) —
+# and a name-based heuristic reported the latter two's keys (vendor, retired,
+# map, state, columns, aliases) as missing method-profile producers. Same word,
+# different concept; only the first one belongs here.
+PROFILE_CACHE_BASES = {"_profile_data_cache", "_DEFAULT_PROFILE_CACHE"}
+
+# NOTE: there is deliberately NO name-based rule (a parameter called `profile`
+# is not evidence). Tracking is by ASSIGNMENT from a known method-profile
+# source only, which is what distinguishes the three vocabularies above.
+
+# Keys read off a profile that are legitimately absent from the data: either a
+# deliberate NOT WIRED obligation, or a name the code probes defensively.
+# Anything NOT listed here that the code reads and no profile supplies is a
+# consumer with no producer and fails the audit.
+NO_PRODUCER_ALLOWED = {
+    # Add entries as "key": "why it is allowed to have no producer".
+}
+
+
+def code_read_profile_keys():
+    """Keys the CODE reads off a method profile, whatever the data contains.
+
+    WHY THIS EXISTS. `profile_keys()` enumerates the profile JSON, and
+    `audit_keys()` only ever examined those — so the key universe was whatever
+    happened to be in the data. A key the code READS that has never been written
+    into any profile was invisible, and "0 UNREACHABLE" therefore meant "no key
+    in the data goes unread", not "no key the code reads goes unwritten".
+
+    `internal_standards` is exactly that case: read by
+    `pfas_pipeline/method_profiles.py:get_is_list`, present in no profile, so
+    `get_is_list` returns [] for both EPA methods and NO surrogate or internal
+    standard check runs on either (GAPS.md §19). It survived four months of a
+    clean audit because the audit's own input was the convenient case.
+
+    WHY AST AND NOT A REGEX. The first version of this matched profile-shaped
+    receiver names on a single line. It reported 19 keys and MISSED
+    `internal_standards` — the one case it was built for — because the real read
+    is `data.get("internal_standards")` where `data` was bound from
+    `_profile_data_cache.get(method_id, {})` two lines earlier. A line-based
+    pattern cannot know what a local variable holds, so it collected unrelated
+    dicts (`error`, `map`, `columns`, `vendor`) and none of the profile ones.
+    19 false positives and 0 true positives is worse than no check: it teaches
+    the reader to skip the section.
+
+    Returns {key: [(file, line, source), ...]}.
+    """
+    found = defaultdict(list)
+
+    # Wrapper functions that RETURN a profile are profile sources too. Derived
+    # rather than listed: narrowing the source set by hand lost
+    # `extraction_logbook` (read off `run_builder._profile(method_id)`, which is
+    # `return get_profile(...)`) — a real finding, silently, because the wrapper
+    # was not in the hardcoded set. Discovering them means a wrapper added later
+    # is covered without anyone remembering to update a list.
+    # PER FILE, never global. A shared name-keyed set leaked across modules:
+    # qc_grid._load_profile returns a METHOD profile, import_studio._load_profile
+    # returns an INSTRUMENT profile, and classifying the name globally made the
+    # second inherit the first's meaning — reporting `map` and `vendor_key` as
+    # missing method-profile producers. Third instance of one root cause in this
+    # function (module-scope leak, then function-scope leak, now cross-module):
+    # a name is only ever meaningful inside the scope that defines it.
+    wrappers_by_path = {}
+    active = set()
+
+    def _returns_profile(fn_node, known):
+        for node in ast.walk(fn_node):
+            if isinstance(node, ast.Return) and node.value is not None:
+                val = node.value
+                # `return get_profile(...) or {}`
+                if isinstance(val, ast.BoolOp) and val.values:
+                    val = val.values[0]
+                if isinstance(val, ast.Call):
+                    name = (getattr(val.func, "id", None)
+                            or getattr(val.func, "attr", None))
+                    if name in PROFILE_SOURCE_CALLS or name in known:
+                        return True
+        return False
+
+    for path in walk(ALL_DIRS, (".py",)):
+        try:
+            tree = ast.parse(read(path))
+        except SyntaxError:
+            continue
+        known = set()
+        # Two passes so a wrapper of a wrapper in the SAME file is caught. A
+        # wrapper imported from another module is deliberately not followed:
+        # missing one is the safer direction than inheriting a foreign meaning.
+        for _ in range(2):
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.FunctionDef)
+                        and _returns_profile(node, known)):
+                    known.add(node.name)
+        wrappers_by_path[rel(path)] = known
+
+    def profile_yielding(node):
+        """Does this expression evaluate to a method profile?"""
+        if isinstance(node, ast.Call):
+            fn = node.func
+            name = getattr(fn, "id", None) or getattr(fn, "attr", None)
+            if name in PROFILE_SOURCE_CALLS or name in active:
+                return True
+            # _profile_data_cache.get(method_id, {}) -- the worker's own cache
+            if name == "get" and isinstance(fn, ast.Attribute):
+                if getattr(fn.value, "id", None) in PROFILE_CACHE_BASES:
+                    return True
+        return False
+
+    def own_nodes(scope):
+        """Every node in `scope`, stopping at nested function/class boundaries.
+
+        `ast.walk` descends through them, which leaked names ACROSS functions: a
+        module-level walk of method_profiles.py picked up `p = get_profile(...)`
+        at line 80 and then attributed every `p.get("...")` in the file to it —
+        including an unrelated `for p in rule.get("params")` loop variable 400
+        lines later, reporting `default`/`label`/`type` as missing profile keys.
+        A name means a profile only inside the scope that bound it.
+        """
+        stack = list(getattr(scope, "body", []))
+        while stack:
+            node = stack.pop()
+            yield node
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.FunctionDef, ast.ClassDef)):
+                    continue
+                stack.append(child)
+
+    def tracked_names(scope):
+        """Names bound to a METHOD profile by assignment in THIS scope only.
+
+        Assignment only. A parameter or local merely CALLED `profile` is not
+        evidence — see PROFILE_CACHE_BASES on the three different things this
+        codebase calls a profile.
+        """
+        names = set()
+        for node in own_nodes(scope):
+            if isinstance(node, ast.Assign) and profile_yielding(node.value):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        names.add(target.id)
+        return names
+
+    seen = set()
+
+    def record(path, lines, key, node):
+        # Module and FunctionDef scopes overlap under ast.walk, so a read inside
+        # a function is visited from both and was reported twice. Dedupe on the
+        # site itself rather than trying to partition the scopes.
+        line_no = getattr(node, "lineno", 0)
+        fingerprint = (rel(path), line_no, key)
+        if fingerprint in seen:
+            return
+        seen.add(fingerprint)
+        src = lines[line_no - 1].strip() if 0 < line_no <= len(lines) else ""
+        found[key].append((rel(path), line_no, src))
+
+    for path in walk(ALL_DIRS, (".py",)):
+        text = read(path)
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        lines = text.splitlines()
+        # This file's own wrappers only — see wrappers_by_path above.
+        active = wrappers_by_path.get(rel(path), set())
+        scopes = [n for n in ast.walk(tree)
+                  if isinstance(n, (ast.FunctionDef, ast.Module))]
+        for scope in scopes:
+            names = tracked_names(scope)
+            if not names:
+                continue
+            for node in own_nodes(scope):
+                # <tracked>.get("KEY")
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "get"
+                        and getattr(node.func.value, "id", None) in names
+                        and node.args):
+                    arg = node.args[0]
+                    if isinstance(arg, ast.Str):
+                        record(path, lines, arg.s, node)
+                    elif isinstance(arg, ast.Constant) and isinstance(
+                            arg.value, str):
+                        record(path, lines, arg.value, node)
+                # <tracked>["KEY"]
+                elif (isinstance(node, ast.Subscript)
+                        and getattr(node.value, "id", None) in names):
+                    idx = node.slice
+                    idx = getattr(idx, "value", idx)
+                    if isinstance(idx, ast.Str):
+                        record(path, lines, idx.s, node)
+                    elif isinstance(idx, ast.Constant) and isinstance(
+                            idx.value, str):
+                        record(path, lines, idx.value, node)
+    return found
+
+
+def audit_no_producer(profiles_path):
+    """Keys the code reads off a profile that NO profile supplies.
+
+    The second of §13's two defect shapes — a consumer with no producer —
+    applied to the profile store. Distinct from UNREACHABLE, which is "the
+    engine reads it and no UI writes it": here nothing writes it at all, so the
+    read silently yields None/[] forever.
+    """
+    present = {k.split(".")[-1] for k in profile_keys(profiles_path)}
+    findings = []
+    for key, sites in sorted(code_read_profile_keys().items()):
+        if key in present or key in CONTAINER_KEYS or key in DERIVED_KEYS:
+            continue
+        if key in NO_PRODUCER_ALLOWED:
+            continue
+        # A migration's whole job is reading keys that no longer exist, so a
+        # legacy key read ONLY there is correct rather than a gap. Same filter
+        # the read-side checks already apply (see _external_reads).
+        sites = [s for s in sites if "/migrations/" not in s[0]]
+        if not sites:
+            continue
+        findings.append((key, sites))
+    return findings
+
+
 def audit_keys(profiles_path):
     dead, unreachable, split, derived, uionly, legacy = [], [], [], [], [], []
     keys = profile_keys(profiles_path)
@@ -540,11 +770,15 @@ def main():
                                          "method_profiles.json"),
                     help="exported method profile JSON to enumerate keys from")
     ap.add_argument("--format", choices=("text", "md"), default="text")
+    ap.add_argument("--strict", action="store_true",
+                    help="exit non-zero when a key the code reads has no "
+                         "producer and is not in NO_PRODUCER_ALLOWED")
     args = ap.parse_args()
 
     (dead, unreachable, split, derived, uionly, legacy,
      total) = audit_keys(args.profiles)
     hardcoded = audit_hardcoded()
+    no_producer = audit_no_producer(args.profiles)
     if not total:
         print("No method profile JSON at {0} — key audit skipped; run with "
               "--profiles pointing at the exported file.".format(args.profiles),
@@ -552,6 +786,31 @@ def main():
     (emit_md if args.format == "md" else emit_text)(
         dead, unreachable, split, derived, uionly, legacy, hardcoded, total)
 
+    # NO PRODUCER is reported separately and can FAIL the run. The other checks
+    # report only: they have been clean for months and a regression there is a
+    # different conversation. This one exists because a silent consumer with no
+    # producer survived four months of a clean audit (GAPS.md §19), so the
+    # default is to be loud, and a deliberate case goes in NO_PRODUCER_ALLOWED
+    # with its reason rather than being tolerated by silence.
+    print("")
+    print("NO PRODUCER ({0}) — read off a profile, written by nothing".format(
+        len(no_producer)))
+    if not no_producer:
+        print("  none")
+    for key, sites in no_producer:
+        print("  {0}".format(key))
+        for path, line, src in sites[:4]:
+            print("      read at {0}:{1}".format(path, line))
+        if len(sites) > 4:
+            print("      ... and {0} more".format(len(sites) - 4))
+    if args.strict and no_producer:
+        print("")
+        print("FAIL: {0} key(s) read with no producer. Either give them one, "
+              "or add each to NO_PRODUCER_ALLOWED with a reason.".format(
+                  len(no_producer)), file=sys.stderr)
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)
