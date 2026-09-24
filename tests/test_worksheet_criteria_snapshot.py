@@ -347,6 +347,30 @@ def test_worksheet_with_no_snapshot_reports_not_recorded():
         "'not recorded' -- never a live-resolved substitute")
 
 
+# ── The subscriber guard ─────────────────────────────────────────────────────
+# data_review.on_after_transition itself imports Zope at module load, so only
+# its guard is exercised here. The guard is the part that must be exact: this
+# handler runs on EVERY workflow transition in the site.
+
+def test_should_freeze_only_on_a_worksheet_verify():
+    assert wcs.should_freeze("Worksheet", "verify") is True
+
+
+def test_should_freeze_ignores_other_transitions_on_a_worksheet():
+    for t in ("submit", "retract", "reject", "unassign", "reinstate",
+              "cancel", "publish", "receive", "verified", "Verify"):
+        assert wcs.should_freeze("Worksheet", t) is False, t
+
+
+def test_should_freeze_ignores_verify_on_other_types():
+    """A sample and an analysis both have a `verify` transition, and both fire
+    this subscriber. Freezing on either would write the annotation onto an
+    object whose criteria nobody asked about."""
+    for pt in ("AnalysisRequest", "Analysis", "Batch", "DuplicateAnalysis",
+               "ReferenceAnalysis", "PFASProject", None, ""):
+        assert wcs.should_freeze(pt, "verify") is False, pt
+
+
 def test_failed_then_fixed_retry_carries_the_failure_forward_as_superseded():
     """A resolution failure is not judgement history, so a later retry MAY
     replace it -- but the fact that the first attempt failed must survive

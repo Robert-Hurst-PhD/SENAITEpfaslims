@@ -2061,21 +2061,49 @@ closing paragraph) is the first intended consumer of `get_frozen_criteria()`.
   correctly so — nothing has been judged. `get_frozen_criteria()` on such a
   worksheet returns `None`, same as "not recorded"; that is accurate, not a
   gap, until the §7.8.4 review actually happens.
-- **A worksheet verified through a route OTHER than `@@pfas-data-review`'s
-  Approve action never gets a snapshot at all.** The hook lives in
-  `_handle_approve_release()`; a Manager who instead verifies the underlying
-  analyses through a native SENAITE listing (the path §5's "first sample
-  ever reached `verified`" entry already records as historically the one
-  that worked, before the checklist handler's workflow cascade was fixed)
-  reaches `verified` with no snapshot written. This is safe by construction
-  — `get_frozen_criteria()` still correctly returns `None` / "not recorded"
-  for that worksheet, it never fabricates an answer — but it means a lab
-  that releases work outside this one workspace gets silently zero
-  disclosure basis rather than an explicit warning that it skipped the
-  freeze. Worth a follow-up (a workflow-transition subscriber on `verify`
-  would close this regardless of which UI triggered it) but out of scope
-  here: the task named `_handle_approve_release` as the freeze point, and
-  that hook is correct for the workflow the Data Review workspace owns.
+- ~~**A worksheet verified through a route OTHER than `@@pfas-data-review`'s
+  Approve action never gets a snapshot at all.**~~ **CLOSED, see §26.1.**
+  The hook lived in `_handle_approve_release()`, which made the freeze a
+  property of one button: a Manager verifying the underlying analyses from a
+  native SENAITE listing — the path §5 records as historically the one that
+  actually worked, before the checklist handler's workflow cascade was fixed —
+  reached `verified` with no snapshot. Safe by construction (`None` /
+  "not recorded", never a fabricated answer) but silently zero disclosure
+  basis for a lab that releases outside this one workspace.
+
+### 26.1 The freeze is a property of the transition, not of a button
+
+`data_review.on_after_transition` is registered on
+`Products.DCWorkflow.interfaces.IAfterTransitionEvent` in
+`browser/configure.zcml`, beside `controlled_publications.on_after_transition`
+— which exists for the same reason, so that an immutable issuance entry is
+written every time a CoA is published rather than every time someone uses the
+expected screen.
+
+**One producer, not two.** The direct call in `_handle_approve_release()` is
+removed. That handler's own `doActionFor(ws, "verify")` is now what fires the
+freeze. Two call sites writing one record is the dead-twin shape removed twice
+already (§2 A4, §4); write-once remains a safety property rather than a licence
+to write from two places.
+
+**The guard is exact and lives once.** `worksheet_criteria_snapshot.should_freeze
+(portal_type, transition_id)` is Zope-free and returns True only for a
+`Worksheet` completing `verify`. It is the reject-fast path of a handler that
+runs on **every** workflow transition in the site: `AnalysisRequest`, `Analysis`
+and others all have a `verify` transition and all fire this subscriber, so
+freezing on any of them would write a snapshot onto an object whose criteria
+nobody asked about. Three tests cover the matrix.
+
+**It cannot abort a transaction.** A subscriber that raises rolls back the
+transition it was watching — here, the verification itself. The handler's body
+is wrapped whole, and `freeze_resolved_criteria()` already never raises. A
+record-keeping failure logs and leaves a `failed` marker; it does not undo a
+review that happened.
+
+Confirmed registered in the running instance, not merely present in ZCML:
+`getGlobalSiteManager().registeredHandlers()` lists
+`senaite.pfas.browser.data_review.on_after_transition` with
+`required=['Interface', 'IAfterTransitionEvent']`.
 
 ### Refactor along the way
 

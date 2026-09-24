@@ -95,6 +95,26 @@ STATUS_FROZEN     = u"frozen"
 STATUS_UNRESOLVED = u"unresolved"
 STATUS_FAILED     = u"failed"
 
+# The transition the freeze hangs on. Kept here, Zope-free, so the subscriber's
+# guard has exactly one definition and can be tested without a Zope instance --
+# data_review.on_after_transition imports Zope at module load and cannot be
+# exercised by the standalone harness.
+FREEZE_PORTAL_TYPE = u"Worksheet"
+FREEZE_TRANSITION  = u"verify"
+
+
+def should_freeze(portal_type, transition_id):
+    """True only for a Worksheet completing `verify`.
+
+    This is the reject-fast guard for a subscriber that runs on EVERY workflow
+    transition in the site, so it must be cheap and it must be exact: freezing
+    on the wrong transition would record a judgement that had not been made,
+    and freezing on the wrong type would write the annotation onto an object
+    whose criteria nobody asked about.
+    """
+    return (portal_type == FREEZE_PORTAL_TYPE
+            and transition_id == FREEZE_TRANSITION)
+
 
 def _now_iso():
     return datetime.datetime.utcnow().isoformat() + u"Z"

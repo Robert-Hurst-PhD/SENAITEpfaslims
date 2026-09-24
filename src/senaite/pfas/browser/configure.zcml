@@ -403,6 +403,16 @@
       handler=".controlled_publications.on_after_transition"
       />
 
+  <!-- Freeze the resolved QC criteria on a Worksheet when it is VERIFIED
+       (GAPS.md Sec26). Registered on the transition rather than called from
+       the Data Review Approve handler, so a worksheet verified from a native
+       SENAITE listing or a script is recorded too. The handler rejects every
+       other type and transition first and can never raise. -->
+  <subscriber
+      for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".data_review.on_after_transition"
+      />
+
   <!-- Role-aware workspace launcher — redirects to the user's default workspace -->
   <browser:page
       name="pfas-home"

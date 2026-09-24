@@ -48,6 +48,49 @@ CHECKLIST_KEY         = u"senaite.pfas.data_review.checklist"
 INSTRUMENT_REPORT_DIR = os.environ.get("PFAS_INSTRUMENT_REPORTS", "/data/instrument_reports")
 DEFAULT_DB_PATH       = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
+
+def on_after_transition(instance, event):
+    """Freeze the resolved QC criteria whenever a Worksheet reaches `verified`,
+    by WHATEVER route got it there.
+
+    This began life as a direct call inside `_handle_approve_release()`, which
+    made the freeze a property of one button: a worksheet verified from a native
+    SENAITE listing, a script, or any other workflow action skipped it, and the
+    record then read "not recorded" for work that genuinely had been judged —
+    missing precisely when it mattered. Hanging it on the transition instead
+    makes it a property of the verification itself.
+
+    Same shape as `controlled_publications.on_after_transition`, and for the
+    same reason: an immutable record must be written every time the thing it
+    records happens, not every time someone uses the expected screen.
+
+    The reject path is the fast path — this handler runs on EVERY transition in
+    the site — and it can NEVER raise. A subscriber that raises aborts the
+    transaction, which would roll back the very verification it exists to
+    record: a far worse defect than the one it fixes.
+    """
+    if getattr(event, "transition", None) is None:
+        return
+    from senaite.pfas.worksheet_criteria_snapshot import should_freeze
+    if not should_freeze(getattr(instance, "portal_type", None),
+                         event.transition.id):
+        return
+    try:
+        # Reuse the view's own resolvers rather than reimplementing them.
+        # batch_method()/_batch_matrix() derive purely from the worksheet (its
+        # method, else its analyses' methods and sample types), and
+        # _get_worksheet() returns self.context when the context IS a
+        # Worksheet — so traversed here they answer about THIS worksheet.
+        # controlled_publications._review_state_at_issue does the same.
+        review = instance.restrictedTraverse(str("@@pfas-data-review"))
+        from senaite.pfas import worksheet_criteria_snapshot
+        worksheet_criteria_snapshot.freeze_resolved_criteria(
+            review._portal(), instance, review._linked_batch(instance),
+            review.batch_method(), review._batch_matrix())
+    except Exception as exc:                                    # noqa: BLE001
+        logger.error("criteria-freeze: failed for worksheet %s on verify: %s",
+                     getattr(instance, "getId", lambda: "?")(), exc)
+
 # Ordered checklist items (key, label, auto-computed)
 _CHECKLIST_ITEMS = [
     ("coc",               u"Chain of Custody",              False),
@@ -2017,21 +2060,15 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:
             logger.error("approve_release: %s", exc)
             return self._redirect_with_msg("workflow_error", "error")
-        # Freeze the resolved criteria that governed this worksheet's batch
-        # (GAPS.md Sec26) -- the ISO 17025 Sec7.8.4 technical review IS the
-        # moment a judgement is made, so it is the moment the basis of that
-        # judgement must stop being editable. write-once: a later project
-        # re-link or QAPP change can regenerate the per-batch working file
-        # (resolved_criteria_store) for the pipeline's NEXT run, but must
-        # never rewrite what THIS worksheet was judged against. Guarded here
-        # too, on top of freeze_resolved_criteria()'s own internal guards --
-        # record-keeping must never be able to block a workflow transition
-        # that has already happened.
-        try:
-            self._freeze_resolved_criteria(ws)
-        except Exception as exc:                                # noqa: BLE001
-            logger.error("approve_release: resolved-criteria freeze failed "
-                         "for %s: %s", ws.getId(), exc)
+        # NO freeze call here. The resolved-criteria freeze (GAPS.md Sec26) now
+        # hangs on the Worksheet `verify` TRANSITION -- see module-level
+        # on_after_transition() above -- so it happens whatever route verifies
+        # the worksheet, including the native SENAITE listings this handler is
+        # not involved in. The doActionFor(ws, "verify") just above is what
+        # fires it. Calling it here as well would make two producers of one
+        # record, which is the dead-twin shape removed twice already
+        # (GAPS.md Sec2 A4, Sec4); write-once stays a safety property, not a
+        # licence to write from two places.
         user = getSecurityManager().getUser()
         now  = datetime.datetime.utcnow().isoformat()
         cl   = self._get_checklist(ws)
@@ -2041,21 +2078,6 @@ class PFASDataReviewView(BrowserView):
         self._stamp_qualifier_remarks(ws)
         self._audit(ws)
         return self._redirect_with_msg("batch_approved", "ok")
-
-    def _freeze_resolved_criteria(self, ws):
-        """Thin call-site wrapper: gather what freeze_resolved_criteria()
-        needs (the linked Batch, method_id, matrix) from the same sources
-        every other panel on this view already uses (_linked_batch,
-        batch_method, _batch_matrix), then delegate the actual write-once
-        freeze to senaite.pfas.worksheet_criteria_snapshot. See that
-        module's docstring for the three outcomes (frozen/unresolved/
-        failed) and why an empty criteria list is never stamped "frozen"."""
-        from senaite.pfas import worksheet_criteria_snapshot
-        batch = self._linked_batch(ws)
-        method_id = self.batch_method()
-        matrix = self._batch_matrix()
-        worksheet_criteria_snapshot.freeze_resolved_criteria(
-            self._portal(), ws, batch, method_id, matrix)
 
     def _handle_reject(self):
         if not self.is_manager():
