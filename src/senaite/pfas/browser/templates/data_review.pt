@@ -251,6 +251,70 @@
       </tal:has_devs>
     </tal:dev_banner>
 
+    <!-- Accreditation banner. Sits above the tabs deliberately: a reviewer
+         must not have to open a particular tab to learn they are approving a
+         report that falls outside accreditation. The mode is always stated,
+         because "what would be recorded if you approve now" and "what was
+         recorded" are different claims (see accreditation_disclosure). -->
+    <tal:accred tal:define="accred view/accreditation_disclosure">
+      <tal:has tal:condition="accred">
+
+        <tal:out_of_scope tal:condition="accred/out_of_scope">
+          <div style="background:#f8d7da;color:#721c24;border:1px solid #dc3545;
+                      border-radius:6px;padding:10px 14px;margin-bottom:14px;
+                      font-size:13px;display:flex;align-items:flex-start;gap:10px">
+            <span style="font-size:16px;flex-shrink:0">&#9888;</span>
+            <div>
+              <strong>Outside accreditation scope</strong>
+              <tal:preview tal:condition="python:accred.get('mode') == 'preview'">
+                — <em>if approved now.</em> Not yet recorded.
+              </tal:preview>
+              <tal:rec tal:condition="python:accred.get('mode') == 'recorded'">
+                — recorded at verification
+                <tal:f tal:condition="accred/frozen_at">
+                  (<tal:v tal:replace="accred/frozen_at"/>)</tal:f>.
+              </tal:rec>
+              <div style="margin-top:6px">
+                This sample departs from a published method requirement and is
+                not covered by the laboratory's accreditation. The certificate
+                must state each departure below.
+              </div>
+              <ul style="margin:8px 0 0 18px;padding:0">
+                <li tal:repeat="line view/disclosure_lines"
+                    style="margin-bottom:4px"
+                    tal:content="line">departure</li>
+              </ul>
+            </div>
+          </div>
+        </tal:out_of_scope>
+
+        <tal:not_recorded tal:condition="python:accred.get('mode') == 'not_recorded'">
+          <div style="background:#e2e3e5;color:#383d41;border:1px solid #adb5bd;
+                      border-radius:6px;padding:10px 14px;margin-bottom:14px;
+                      font-size:13px">
+            <strong>Governing criteria not recorded</strong> — this worksheet was
+            verified before the criteria were frozen at review, so what it was
+            judged against cannot be stated. No accreditation claim is made
+            either way.
+          </div>
+        </tal:not_recorded>
+
+        <tal:uncompared tal:condition="python:(not accred.get('out_of_scope')) and accred.get('mode') != 'not_recorded' and accred.get('uncompared')">
+          <div style="background:#fff3cd;color:#856404;border:1px solid #ffc107;
+                      border-radius:6px;padding:10px 14px;margin-bottom:14px;
+                      font-size:13px">
+            <strong>No departure detected</strong> — but
+            <tal:n tal:replace="accred/uncompared"/> of
+            <tal:t tal:replace="python:accred.get('uncompared', 0) + accred.get('compared', 0)"/>
+            criteria have no published-method baseline to compare against, so
+            conformance is not established for those. This is not a statement
+            that the sample conforms.
+          </div>
+        </tal:uncompared>
+
+      </tal:has>
+    </tal:accred>
+
     <!-- batch header row -->
     <div class="dr-header">
       <span class="dr-batch-title">

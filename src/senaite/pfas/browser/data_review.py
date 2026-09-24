@@ -347,14 +347,25 @@ class PFASDataReviewView(BrowserView):
         """Page 2 — LFSM/LFSMD/LFB/LCS recoveries + RPD vs the method's spec
         limits, per analyte. Reads the aggregate qc_results (value=recovery/rpd)
         and shows the limit each was judged against."""
+        # Every exit from this method MUST carry the same keys. The template
+        # dereferences page/pending_spikes and page['specs'] unconditionally, so
+        # an early return that omitted them raised LocationError and 500'd the
+        # WHOLE Data Review page — not just this pane. It fired for any
+        # worksheet with no QC record in the store ("no_batch_record"), which
+        # is exactly the to_be_verified and verified worksheets this page exists
+        # to review. Found by loading the page against a real worksheet in each
+        # state rather than only the one that happened to have QC rows.
+        empty = {"rows": [], "types": [], "specs": {}, "pending_spikes": []}
         if not self.db_available:
-            return {"rows": [], "types": []}
+            return empty
         ws = self._get_worksheet()
         if ws is None:
-            return {"rows": [], "types": []}
+            return empty
         summary = self._get_qc_summary(ws)          # reuse the matrix builder
         if summary.get("error"):
-            return {"rows": [], "types": [], "error": summary.get("error")}
+            out = dict(empty)
+            out["error"] = summary.get("error")
+            return out
         # keep only spike/recovery QC types on this page
         spike_types = [t for t in summary.get("qc_types", [])
                        if t in ("LFSM", "LFSMD", "LFB", "LCS", "SD")]
@@ -1316,6 +1327,86 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:
             logger.error("get_qc_summary: %s", exc)
             return {"error": str(exc), "rows": [], "qc_types": [], "overall_pass": False}
+
+    # ── Accreditation / non-conformance disclosure ────────────────────────
+
+    def accreditation_disclosure(self):
+        """What this worksheet's certificate will say about accreditation, or
+        None when there is nothing to show.
+
+        The timing here is the whole difficulty, and getting it wrong would
+        recreate GAPS.md Sec24. The criteria are frozen AT verification, so a
+        reviewer about to approve does not have a frozen record yet — only what
+        resolution says right now. Those are different claims and the caller
+        must never conflate them, so the mode is explicit:
+
+          "recorded"     the worksheet is verified and a snapshot exists. This
+                         IS what governed the results. Authoritative.
+          "preview"      the worksheet is not verified yet. This is what WOULD
+                         be recorded if it were approved now, and it may still
+                         change. Never presented as the record.
+          "not_recorded" the worksheet IS verified and no snapshot exists —
+                         every worksheet verified before the freeze existed.
+                         Deliberately NOT a preview: resolving live here and
+                         showing it would describe what the lab would do now as
+                         though it were what the lab did.
+        """
+        ws = self._get_worksheet()
+        if ws is None:
+            return None
+        try:
+            from senaite.pfas import disclosure
+            from senaite.pfas import worksheet_criteria_snapshot as wcs
+        except Exception as exc:
+            logger.error("accreditation_disclosure: import failed: %s", exc)
+            return None
+
+        verified = self.ws_state() == "verified"
+        try:
+            frozen = wcs.get_frozen_criteria(ws)
+        except Exception as exc:
+            logger.error("accreditation_disclosure: reading the snapshot for "
+                         "%s raised: %s", ws.getId(), exc)
+            frozen = None
+
+        if frozen:
+            out = disclosure.build_disclosure(frozen)
+            out["mode"] = u"recorded"
+            return out
+
+        if verified:
+            # No snapshot, but the judgement already happened. Say so; do NOT
+            # substitute live criteria.
+            out = disclosure.build_disclosure(None)
+            out["mode"] = u"not_recorded"
+            return out
+
+        # Not verified yet — show what would be recorded, clearly labelled.
+        try:
+            from senaite.pfas import resolved_criteria_store as rcs
+            rows = rcs.resolve_rows_for_batch(
+                self._portal(), self._linked_batch(ws),
+                self.batch_method(), self._batch_matrix())
+            payload = wcs.build_snapshot_payload(
+                self.batch_id(), self.batch_method(), self._batch_matrix(),
+                rows)
+            out = disclosure.build_disclosure(payload)
+        except Exception as exc:
+            logger.error("accreditation_disclosure: preview resolution for %s "
+                         "raised: %s", ws.getId(), exc)
+            out = disclosure.build_disclosure(None)
+        out["mode"] = u"preview"
+        return out
+
+    def disclosure_lines(self):
+        """The itemised departures as human-readable lines, or []."""
+        d = self.accreditation_disclosure() or {}
+        try:
+            from senaite.pfas import disclosure
+            return [disclosure.format_departure(i) for i in d.get("items") or []]
+        except Exception as exc:
+            logger.error("disclosure_lines: %s", exc)
+            return []
 
     # ── Final Data Summary ────────────────────────────────────────────────
 
