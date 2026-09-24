@@ -2149,3 +2149,82 @@ behavior this was extracted from.
   drives the real `freeze_resolved_criteria()`/`store_snapshot()` code, not
   a reimplementation of it) plus the live import/200 checks. Flagged here
   rather than silently skipped.
+
+---
+
+## 27. Data Review 500'd for the two states it exists to review (2026-09-23)
+
+Found while verifying an unrelated banner, by loading the page against a real
+worksheet in **each** review state instead of one convenient one.
+
+### The defect
+
+`data_review.PFASDataReviewView.spike_qc_page()` had three early returns:
+
+```python
+if not self.db_available:      return {"rows": [], "types": []}
+if ws is None:                 return {"rows": [], "types": []}
+if summary.get("error"):       return {"rows": [], "types": [], "error": ...}
+```
+
+The template dereferences `page/pending_spikes` and `page['specs']`
+unconditionally (`data_review.pt:1012,1020,1046`). A missing key in a TAL path
+raises `LocationError`, and because the expression sits inside the shared page
+macro, it took down the **entire Data Review page** — not the Spike QC pane.
+
+The trigger is a worksheet whose QC summary returns `no_batch_record`, i.e. one
+with no rows in the QC store. Live, before the fix:
+
+| Worksheet | State | Result |
+|---|---|---|
+| WS-0001 | `open` | 200 — happened to have QC rows |
+| WS-0003 | `to_be_verified` | **500** |
+| WS-0004 | `verified` | **500** |
+
+So the page was broken for exactly the two states it exists to serve: a
+worksheet awaiting review, and one already reviewed. Every exit now returns the
+same keys.
+
+### Why it survived this long
+
+Every prior check was satisfied by a 200 that proved nothing:
+
+- `curl @@pfas-data-review` with no worksheet renders the **worklist**, a
+  different code path that never touches `spike_qc_page`.
+- The one worksheet anybody loaded by hand had QC rows.
+
+§5 records this page driving a sample to `verified` and publishing a
+certificate, which is true — that worksheet had QC data. The failure needs a
+worksheet without it, and nothing had ever asked for one.
+
+### The rule
+
+**A page that renders is not a page that works, and the case that gets loaded
+is rarely the case that breaks.** Four defects this cycle were found only by
+real data or a real request, none by the tests written beside the code:
+
+- the Projects UI 500 (`--` in a template comment) — invisible to every static check
+- composition applying to zero rows while its whole suite passed, because
+  fixtures used `role=""` and reality uses `role="Sample"`
+- a test that actively certified the MB classification bug as expected behaviour
+- this one, where the only worksheet ever loaded by hand was the one that worked
+
+The fault-injection harness is the standing exception, and the reason is
+structural: it asserts against an independently built manifest rather than
+against the implementation's own idea of itself. Tests written beside code
+inherit its assumptions; a page loaded against arbitrary real data does not.
+
+### Also in this entry: the disclosure is surfaced
+
+`disclosure.build_disclosure()` (§26's frozen snapshot → a statement) now
+renders as a banner above the Data Review tabs, so a reviewer cannot approve an
+out-of-scope report without being told. Three modes, because criteria freeze AT
+verification and conflating them would recreate §24:
+
+- **preview** — not verified yet: what *would* be recorded, labelled as such
+- **recorded** — verified with a snapshot: what *did* govern the results
+- **not_recorded** — verified WITHOUT one: says so, and deliberately does not
+  substitute live criteria
+
+WS-0004 exercises the third path live and reports "not recorded" rather than
+presenting today's criteria as history.
