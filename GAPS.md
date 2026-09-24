@@ -2228,3 +2228,240 @@ verification and conflating them would recreate §24:
 
 WS-0004 exercises the third path live and reports "not recorded" rather than
 presenting today's criteria as history.
+
+## 28. The project tier is reachable for the first time — a QAPP criteria
+##     editor on the Projects UI (2026-09-24)
+
+Every prior entry in this file assumed the project tier of `senaite.pfas.
+ruleset` would eventually be written to. It never was. `ruleset.
+set_project_criterion` / `set_project_ruleset` had zero call sites outside
+their own definitions and tests -- so every resolved criterion, on every
+batch, forever, read `tier: "lab"`. No departure could ever exist. The
+out-of-scope disclosure (`disclosure.build_disclosure`, wired to the Data
+Review banner in §27) had a fully correct, fully tested rendering path for a
+state that could never occur. This entry closes that.
+
+### What was built
+
+`@@pfas-projects` (`browser/projects.py` / `templates/projects.pt`) gained a
+"QAPP Criteria" panel per project, scoped **method x matrix** like every
+other analyte-bearing structure (CLAUDE.md §3 rule 2): pick a method, pick
+one of its matrices, and every one of ruleset.py's 8 registered keys is
+editable there --
+
+  - `cal_r2_min`, `sn_quan_min`, `dup_rpd_max` — a single number field
+  - `ccv_recovery` — a min/max window
+  - `ccv_frequency`, `lfsm_frequency` — an integer interval
+  - `duplicate_all_samples` — a tri-state select (inherit / true / false)
+  - `eis_recovery` — analyte-scoped, so it gets its own sub-panel: a table of
+    every analyte already overridden (with a per-row Clear), plus an
+    add/update mini-form keyed on an analyte picker
+
+`eis_recovery` was **not** treated as optional, per the task brief: it is the
+only key with a seeded published-method baseline (EPA 1633A Tables 6/8,
+Q-004), so it is the only key that can ever produce a DEPARTS verdict. Every
+other key resolves UNKNOWN forever (no baseline registered -- see method_
+baselines.py's SEEDING DISCIPLINE) and the editor's own conformance column
+shows exactly that live, honestly, rather than hiding a column that mostly
+says UNKNOWN.
+
+Every value shown -- inherited AND currently-effective -- is produced by
+`ruleset.resolve()`, called twice per row (once with the project's real
+ruleset, once with `project_ruleset=None`) -- never read off the method
+profile directly. The second call is what makes "what happens if you clear
+it" a provable claim rather than a guess: it is the literal resolve() call
+a clear produces.
+
+### The four things the task called out, and how each was met
+
+**1. Writes go through `set_project_criterion` only, one key at a time.**
+Both handlers (`_handle_save_criteria`, `_handle_save_eis_criterion`,
+`_handle_clear_eis_criterion`) parse the whole form FIRST -- a bad number
+anywhere aborts the entire save before any write happens -- then loop over
+the 8 keys calling `ruleset.set_project_criterion(project, method_id, matrix,
+key, value)` individually. `set_project_ruleset` (the wholesale-replace
+function) is never called from this editor. `eis_recovery`'s per-analyte
+shape is one level deeper (its stored node is `{analyte: {min,max}, ...}`,
+not a scalar), so `_set_eis_analyte()` reads that one node via `ruleset.
+get_project_ruleset()`, edits ONE analyte's entry, and writes the whole node
+back through `set_project_criterion` -- still one key, per that function's
+own merge contract; only the key's own shape is nested.
+
+**2. Clearing falls back to the lab tier, proven by test.** The editor
+clears a scalar/window/int/bool key by calling `set_project_criterion(...,
+key, None)` -- the SAME function, not a second write path. `ruleset.
+_project_value()`'s `if node is None: return None` already treats a stored
+None as silence (verified, not assumed), so resolution falls through to lab.
+`tests/test_ruleset.py::test_clearing_a_project_criterion_falls_back_to_lab_tier`
+asserts `tier == "lab"`, `value == <the lab's real number>`, and `value is
+not None` -- the third assertion is the one that would catch a project tier
+silently carrying None. A second test,
+`test_clearing_one_eis_analyte_override_does_not_leak_to_a_sibling`, proves
+the per-analyte isolation `_set_eis_analyte` exists for: clearing one
+analyte's eis_recovery override leaves a sibling analyte's override on the
+same (method, matrix, key) node fully intact at `tier == "project"`.
+
+**3. A criteria edit refreshes every linked batch's resolved-criteria
+file.** `_refresh_resolved_criteria_for_project()` walks `batch_ref.
+list_batches(portal)` -- every Batch in the site -- and calls `project_ref.
+get_project_uid(batch)` on each, comparing against the edited project's REAL
+Plone UID (`bika_api.get_uid(project_obj)`, never the folder id the
+`?uid=` query param carries -- `batch_project_viewlet.py`'s own docstring
+warns these differ). For every batch that matches, it derives that batch's
+own method_id/matrix (reusing `batch_project_viewlet._batch_method_id` /
+`_batch_matrix` -- not a second derivation path) and calls `resolved_
+criteria_store.export_resolved_criteria()` again, wrapped in a per-batch
+try/except so one batch's export failure (that function raises on I/O
+failure, unlike `project_ref`'s own caller, which swallows it) cannot 500 a
+save that already succeeded in ZODB. The ok-message reports how many batches
+were refreshed and how many were skipped, so a save is never silently
+ineffective for the worker.
+
+**What this does NOT close**: there is no reverse index from Project to
+Batch -- the link is an annotation on the Batch (`project_ref.
+PROJECT_UID_KEY`), not a back-reference on the Project. `_refresh_
+resolved_criteria_for_project` is therefore a site-wide linear scan, the same
+cost `batch_ref.list_batches()` already documents as the cheap option when
+no catalog metadata exists for what is being searched. Fine at today's scale;
+if it ever is not, the fix is a catalog index on that annotation, not
+anything in this editor.
+
+**4. Manager-gated both ways.** `save_criteria` / `save_eis_criterion` /
+`clear_eis_criterion` all run through the same `require_manager` 403 gate the
+existing add/edit/delete actions use. The whole panel (`tal:condition="python:
+view.can_manage() and view.criteria_uid()"`) is absent from the rendered HTML
+for a non-manager -- not hidden by CSS -- per CLAUDE.md §6A.
+
+### A pre-existing defect this work exposed, and fixed in passing
+
+Creating the FIRST-EVER QAPP document and selecting it in the existing "New
+Project" form's QAPP dropdown 500'd `@@pfas-projects` outright:
+
+```
+UnicodeDecodeError: 'ascii' codec can't decode byte 0xe2 in position 3
+```
+
+`templates/projects.pt`'s QAPP `<option>` label was built as `python:'%s —
+%s' % (q['sop_id'], q['title'])` -- a **byte-string** literal (TAL `python:`
+expressions are not affected by a `.py` file's `from __future__ import
+unicode_literals`) containing the UTF-8 bytes of an em-dash, combined via `%`
+with `q['title']`, which is `unicode` (JSON-decoded). Python 2 tried to
+ASCII-decode the byte-string literal to reconcile the mix, and the em-dash's
+lead byte (`0xE2`) is not valid ASCII. This is exactly this project's
+recurring shape (§27's rule: "the case that gets loaded is rarely the case
+that breaks") -- `qapp_docs()` had always returned `[]` before today, so the
+`tal:repeat` loop containing this expression had never actually executed it.
+The very first QAPP this system ever had triggered a defect that had been
+sitting in the template since the Projects UI shipped. Fixed by prefixing the
+literal `u'%s — %s'` (and the one other place this editor's own new markup
+did the same thing, in the criteria panel's header). Left everywhere else in
+the codebase alone -- this was the one instance blocking this task's own
+required live verification, not a general audit.
+
+### End-to-end evidence (live, against the running instance)
+
+A real Project (`E2E-D63-TEST`, uid `754b95326f164d4fb9012ba08c42e962`) was
+created and linked to a real QAPP document (`QAPP-001`, revision 1, activated
+so provenance would populate). An `eis_recovery` override for
+`EPA_1633A` / `Groundwater` / `13C4-PFBA` was set to `{"min": 0.0, "max":
+200.0}` -- looser at both ends than the seeded EPA 1633A Table 6 baseline
+(`5.0`-`130.0`). Resolving it (`ruleset.resolve`, run inside the actual Zope
+instance via `bin/instance run`) reported, verbatim:
+
+```
+tier: project
+conformance: DEPARTS
+value: {'max': 200.0, 'min': 0.0}
+source_doc / source_rev: QAPP-001 / 1
+departure.ends:
+  min floor loosened: method requires >= 5.0, resolved value allows >= 0.0
+  max ceiling loosened: method requires <= 130.0, resolved value allows <= 200.0
+citation: EPA 1633A (December 2024, EPA 820-R-24-007), Tables 6 and 8 ...
+```
+
+Feeding a snapshot built from that row into `disclosure.build_disclosure()`
+reported `outcome: departs_from_method`, `out_of_scope: True`, and one
+itemised line via `format_departure()`:
+
+```
+eis_recovery (13C4-PFBA): {'max': 200.0, 'min': 0.0} applied per QAPP-001
+rev 1, where the method requires {'max': 130.0, 'min': 5.0} (min floor
+loosened: method requires >= 5.0, resolved value allows >= 0.0; max ceiling
+loosened: method requires <= 130.0, resolved value allows <= 200.0)
+[EPA 1633A (December 2024, EPA 820-R-24-007), Tables 6 and 8 ...]
+```
+
+The DEPARTS badge rendered live on the `@@pfas-projects` criteria panel
+itself, not just in a script. Clearing the override (`clear_eis_criterion`
+via the same POST handler the UI uses) then re-resolving reported:
+
+```
+tier: lab
+value: {'max': 130.0, 'min': 5.0}
+conformance: CONFORMS
+```
+
+-- the lab's real value, not a project tier carrying None. The general
+(non-analyte-scoped) path was exercised too: `dup_rpd_max` was set to `25.0`
+(tier flipped to `project`), then cleared (tier returned to `lab`, value
+`30.0` -- the lab's real configured RPD ceiling).
+
+**Item 3's refresh loop was proven live, not just by unit test on its pure
+half.** A second, real Batch (`B-002`, an existing FDA_32PFAS x Eggs batch --
+not fabricated for this test) was linked to a second test project (`E2E-D63-
+REFRESH` / `QAPP-002`) via the actual `@@pfas-batch-project-assign` endpoint,
+which reported "resolved criteria exported" and wrote a baseline `/data/qc/
+resolved/B-002.json` with `dup_rpd_max: {tier: lab, value: 20.0}`. Editing
+that project's `dup_rpd_max` to `12.0` through the new criteria editor
+reported `"1 batch(es) refreshed"` (not the `"0 batch(es)"` a project with no
+linked batch reports), and the file on disk changed under it: `dup_rpd_max`
+now read `{tier: project, value: 12.0, source_doc: "QAPP-002", source_rev:
+1}`, with a newer mtime. Clearing the criterion reported `"1 batch(es)
+refreshed"` again and the file returned to `{tier: lab, value: 20.0,
+source_doc: null}`. This is the file the Py3 worker actually overlays --
+confirmed changing, not merely exercised in isolation.
+
+An earlier draft of this entry claimed the refresh loop was "exercised by
+unit test" when in fact `_refresh_resolved_criteria_for_project`'s body --
+the UID comparison, the method/matrix derivation, the per-batch try/except --
+had zero coverage at that point (the first test project had no linked batch,
+so the loop body never ran; `test_resolved_criteria_store.py` tests only the
+pure `build_resolved_rows`/`write_resolved_file` half). That draft also
+passed `request=None` into `_batch_method_id()`, which -- silently, inside a
+swallowed try/except -- would have degraded every real batch to "method/
+matrix not known" the first time this ran against one. Caught before commit;
+fixed to thread the handler's real `self.request` through, and the B-002 run
+above is what actually exercises that fixed path.
+
+Cleanup: both test Projects were deleted via the same `action=delete` handler
+every project uses (`?ok=Project+deleted`, confirmed absent from the listing
+afterward); both test QAPPs were archived via `@@pfas-sop`'s existing soft-
+delete (`action=delete_sop` -- this module keeps archived documents for audit
+rather than hard-deleting, matching every other controlled document in the
+system, so "removed" here means removed from active use exactly as it does
+for every SOP/JA/Supplemental in the registry); B-002's project link was
+cleared via `@@pfas-batch-project-assign`'s `clear` action, which deleted its
+resolved-criteria file too, restoring it to exactly its pre-test state (no
+project link, no resolved file). All confirmed live.
+
+### Suite / live status
+
+Full suite (`tests/*.py`, one invocation) green, including two new tests in
+`test_ruleset.py` for the clearing/isolation guarantees above. `@@pfas-
+projects` and `@@pfas-data-review` both `200` after a restart.
+
+### What is still open
+
+- No reverse index Project -> Batch (noted above under item 3) -- a
+  linear scan today, fine at lab scale.
+- The 7 non-`eis_recovery` keys have no seeded baseline anywhere
+  (method_baselines.py's SEEDING DISCIPLINE, unchanged by this work) -- an
+  operator can override them at the project tier, and the UI shows exactly
+  that ("UNKNOWN", not invented), but none of them can ever show DEPARTS
+  until a citable baseline is added for one, which is a data-verification
+  task, not a code gap.
+- The editor writes the project tier; nothing yet prompts an operator to open
+  it when a new QAPP is attached to a project, or warns a QAPP revision was
+  superseded while an override citing the old revision is still live. Both
+  are workflow nudges, not correctness gaps -- `source_rev` is still recorded
+  accurately at the moment of resolution either way.

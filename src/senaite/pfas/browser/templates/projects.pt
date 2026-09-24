@@ -74,7 +74,7 @@
                 <tal:opts tal:repeat="q view/qapp_docs">
                   <option tal:attributes="value q/sop_id;
                                           selected python:editing and editing['qapp_document_id'] == q['sop_id']"
-                          tal:content="python:'%s — %s' % (q['sop_id'], q['title'])"></option>
+                          tal:content="python:u'%s — %s' % (q['sop_id'], q['title'])"></option>
                 </tal:opts>
               </select>
               <div class="hint">
@@ -170,6 +170,10 @@
                  tal:attributes="href string:${view/portal_url}/@@pfas-projects?edit_uid=${pj/uid}">
                 Edit
               </a>
+              <a class="btn-sm"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-projects?criteria_uid=${pj/uid}">
+                QAPP Criteria
+              </a>
               <form method="post" style="display:inline;"
                     tal:attributes="action string:${view/portal_url}/@@pfas-projects"
                     onsubmit="return confirm('Delete this project? This cannot be undone.')">
@@ -187,6 +191,223 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- ─── QAPP Criteria editor — manager only both server-side (403 in
+         the handler) and here (CLAUDE.md §6A: never show a control the
+         current user cannot use). Scoped method x matrix, per project. ──── -->
+    <div class="pfas-card" style="margin-top:20px;"
+         tal:condition="python:view.can_manage() and view.criteria_uid()"
+         tal:define="cproj view/criteria_project">
+      <div class="pfas-card-head">
+        QAPP Criteria
+        <tal:c tal:condition="cproj"
+               tal:content="python:u' — %s (%s)' % (cproj['project_code'], cproj['title'])"></tal:c>
+      </div>
+      <div class="pfas-card-body">
+        <div class="pj-muted" tal:condition="not:cproj">Project not found.</div>
+
+        <tal:has-project tal:condition="cproj">
+          <div class="hint" tal:condition="not:python:cproj.get('qapp_document_id')">
+            This project has no QAPP document on file yet. An override set
+            here still resolves at the project tier, but its source
+            document/revision will be blank until a QAPP is attached above.
+          </div>
+
+          <form method="get" class="pj-scope-form"
+                tal:attributes="action string:${view/portal_url}/@@pfas-projects">
+            <input type="hidden" name="criteria_uid" tal:attributes="value view/criteria_uid"/>
+            <div class="field-grid">
+              <div class="field-row">
+                <label for="crit-method">Method</label>
+                <select id="crit-method" name="method_id" onchange="this.form.submit()">
+                  <option value="">-- Select method --</option>
+                  <tal:opts tal:repeat="mid view/criteria_method_ids">
+                    <option tal:attributes="value mid;
+                                            selected python:mid == view.criteria_method()"
+                            tal:content="mid"></option>
+                  </tal:opts>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="crit-matrix">Matrix</label>
+                <select id="crit-matrix" name="matrix" onchange="this.form.submit()">
+                  <option value="">-- Select matrix --</option>
+                  <tal:opts tal:repeat="m view/criteria_matrices">
+                    <option tal:attributes="value m;
+                                            selected python:m == view.criteria_matrix()"
+                            tal:content="m"></option>
+                  </tal:opts>
+                </select>
+              </div>
+              <div class="field-row">
+                <label>&#160;</label>
+                <button type="submit" class="btn btn-secondary">Load</button>
+              </div>
+            </div>
+          </form>
+
+          <tal:scope tal:condition="view/criteria_scope_ready">
+
+            <form method="post"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-projects">
+              <input type="hidden" name="action" value="save_criteria"/>
+              <input type="hidden" name="uid" tal:attributes="value view/criteria_uid"/>
+              <input type="hidden" name="method_id" tal:attributes="value view/criteria_method"/>
+              <input type="hidden" name="matrix" tal:attributes="value view/criteria_matrix"/>
+
+              <div class="table-wrap">
+                <table class="pfas-table">
+                  <thead>
+                    <tr>
+                      <th>Criterion</th>
+                      <th>Inherited (lab/method)</th>
+                      <th>Effective now</th>
+                      <th>Project override</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr tal:repeat="row view/criteria_rows">
+                      <td tal:content="row/label"></td>
+                      <td>
+                        <span class="mono-badge" tal:content="row/inherited_display"></span>
+                        <div class="pj-muted">tier: <tal:t tal:content="row/inherited_tier"/></div>
+                      </td>
+                      <td>
+                        <span class="mono-badge" tal:content="row/current_display"></span>
+                        <span tal:attributes="class python:'badge ' + ({'DEPARTS':'badge-expired','CONFORMS':'badge-active'}.get(row['current_conformance'], 'badge-archived'))"
+                              tal:content="row/current_conformance"></span>
+                        <div class="pj-muted">tier: <tal:t tal:content="row/current_tier"/></div>
+                      </td>
+                      <td>
+                        <tal:number tal:condition="python:row['input'] in ('number', 'int')">
+                          <input type="number" tal:attributes="name row/key; step row/step; value row/raw_value"
+                                 style="width:110px"/>
+                        </tal:number>
+                        <tal:window tal:condition="python:row['input'] == 'window'">
+                          min <input type="number" step="0.1" style="width:70px"
+                                     tal:attributes="name string:${row/key}_min; value row/raw_min"/>
+                          max <input type="number" step="0.1" style="width:70px"
+                                     tal:attributes="name string:${row/key}_max; value row/raw_max"/>
+                        </tal:window>
+                        <tal:boolean tal:condition="python:row['input'] == 'bool'">
+                          <select tal:attributes="name row/key">
+                            <option value="" tal:attributes="selected python:row['raw_bool'] == ''">(inherit lab)</option>
+                            <option value="true" tal:attributes="selected python:row['raw_bool'] == 'true'">True</option>
+                            <option value="false" tal:attributes="selected python:row['raw_bool'] == 'false'">False</option>
+                          </select>
+                        </tal:boolean>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="hint">
+                Leave a field blank (both ends, for a window) and Save to
+                clear that override and fall back to the lab tier.
+              </div>
+              <div class="form-actions" style="margin-top:10px;">
+                <button type="submit" class="btn btn-primary">Save Criteria</button>
+              </div>
+            </form>
+
+            <div class="pfas-card-head" style="margin-top:20px;">
+              EIS Recovery — per analyte (EPA 1633A's baseline-bearing key)
+            </div>
+
+            <div class="table-wrap" tal:condition="view/criteria_eis_rows">
+              <table class="pfas-table">
+                <thead>
+                  <tr><th>Analyte</th><th>Inherited</th><th>Effective now</th><th></th></tr>
+                </thead>
+                <tbody>
+                  <tr tal:repeat="row view/criteria_eis_rows">
+                    <td tal:content="row/analyte"></td>
+                    <td tal:content="row/inherited_display"></td>
+                    <td>
+                      <span tal:content="row/current_display"></span>
+                      <span tal:attributes="class python:'badge ' + ({'DEPARTS':'badge-expired','CONFORMS':'badge-active'}.get(row['current_conformance'], 'badge-archived'))"
+                            tal:content="row/current_conformance"></span>
+                    </td>
+                    <td>
+                      <form method="post" style="display:inline;"
+                            tal:attributes="action string:${view/portal_url}/@@pfas-projects">
+                        <input type="hidden" name="action" value="clear_eis_criterion"/>
+                        <input type="hidden" name="uid" tal:attributes="value view/criteria_uid"/>
+                        <input type="hidden" name="method_id" tal:attributes="value view/criteria_method"/>
+                        <input type="hidden" name="matrix" tal:attributes="value view/criteria_matrix"/>
+                        <input type="hidden" name="analyte" tal:attributes="value row/analyte"/>
+                        <button type="submit" class="btn-sm btn-danger">Clear</button>
+                      </form>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pj-muted" tal:condition="not:view/criteria_eis_rows">
+              No per-analyte EIS Recovery overrides set for this method/matrix.
+            </div>
+
+            <form method="get" style="margin-top:10px;"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-projects">
+              <input type="hidden" name="criteria_uid" tal:attributes="value view/criteria_uid"/>
+              <input type="hidden" name="method_id" tal:attributes="value view/criteria_method"/>
+              <input type="hidden" name="matrix" tal:attributes="value view/criteria_matrix"/>
+              <div class="field-grid">
+                <div class="field-row">
+                  <label for="crit-eis-analyte">Add/update override for analyte</label>
+                  <select id="crit-eis-analyte" name="analyte" onchange="this.form.submit()">
+                    <option value="">-- Select analyte --</option>
+                    <tal:opts tal:repeat="a view/criteria_eis_analytes">
+                      <option tal:attributes="value a;
+                                              selected python:a == view.criteria_eis_selected_analyte()"
+                              tal:content="a"></option>
+                    </tal:opts>
+                  </select>
+                </div>
+              </div>
+            </form>
+
+            <tal:preview tal:define="preview view/criteria_eis_preview"
+                         tal:condition="preview">
+              <form method="post"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-projects">
+                <input type="hidden" name="action" value="save_eis_criterion"/>
+                <input type="hidden" name="uid" tal:attributes="value view/criteria_uid"/>
+                <input type="hidden" name="method_id" tal:attributes="value view/criteria_method"/>
+                <input type="hidden" name="matrix" tal:attributes="value view/criteria_matrix"/>
+                <input type="hidden" name="analyte" tal:attributes="value python:preview['analyte']"/>
+                <div class="field-grid">
+                  <div class="field-row">
+                    <label>Inherited</label>
+                    <span class="mono-badge" tal:content="python:preview['inherited_display']"></span>
+                  </div>
+                  <div class="field-row">
+                    <label>Effective now (tier: <tal:t tal:content="python:preview['current_tier']"/>)</label>
+                    <span class="mono-badge" tal:content="python:preview['current_display']"></span>
+                  </div>
+                  <div class="field-row">
+                    <label for="eis-min">Override min</label>
+                    <input type="number" step="0.1" id="eis-min" name="eis_min"/>
+                  </div>
+                  <div class="field-row">
+                    <label for="eis-max">Override max</label>
+                    <input type="number" step="0.1" id="eis-max" name="eis_max"/>
+                  </div>
+                </div>
+                <div class="hint">
+                  Leave both blank and Save to clear this analyte's override
+                  (falls back to the lab tier, or the method baseline).
+                </div>
+                <div class="form-actions" style="margin-top:10px;">
+                  <button type="submit" class="btn btn-primary">Save EIS Override</button>
+                </div>
+              </form>
+            </tal:preview>
+
+          </tal:scope>
+        </tal:has-project>
+      </div>
     </div>
 
   </div>

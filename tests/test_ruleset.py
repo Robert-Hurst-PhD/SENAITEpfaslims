@@ -439,6 +439,98 @@ def test_set_project_criterion_merges_and_does_not_null_siblings():
         rs._annotations = original
 
 
+def test_clearing_a_project_criterion_falls_back_to_lab_tier():
+    """Task requirement 2: clearing an override must resolve tier=='lab'
+    with the LAB'S REAL VALUE -- never a project tier carrying None. resolve()
+    tests `if pv is not None`, so storing None through set_project_criterion
+    (the same, and only, write path -- no second function for clearing) is
+    silence at the project tier, which correctly falls through."""
+    class FakeAnnotations(dict):
+        pass
+
+    store = {}
+
+    class FakeProject(object):
+        pass
+
+    project = FakeProject()
+    profile = {"instrument_verification": {"calibration": {"r2_min": 0.995}}}
+
+    original = rs._annotations
+    rs._annotations = lambda proj: store.setdefault(id(proj), FakeAnnotations())
+    try:
+        rs.set_project_criterion(project, "FDA_32PFAS", "Eggs", "cal_r2_min", 0.999)
+        overridden = rs.resolve(
+            "FDA_32PFAS", "Eggs", "cal_r2_min", profile=profile,
+            project_ruleset=rs.get_project_ruleset(project))
+        assert overridden.tier == rs.TIER_PROJECT
+        assert overridden.value == 0.999
+
+        # Clear it -- same function, value=None.
+        rs.set_project_criterion(project, "FDA_32PFAS", "Eggs", "cal_r2_min", None)
+        cleared = rs.resolve(
+            "FDA_32PFAS", "Eggs", "cal_r2_min", profile=profile,
+            project_ruleset=rs.get_project_ruleset(project))
+        assert cleared.tier == rs.TIER_LAB, cleared.tier
+        assert cleared.value == 0.995, cleared.value
+        assert cleared.value is not None, (
+            "a cleared override must report the lab's real value, not a "
+            "project tier carrying None")
+    finally:
+        rs._annotations = original
+
+
+def test_clearing_one_eis_analyte_override_does_not_leak_to_a_sibling():
+    """eis_recovery is analyte-scoped one level deeper than every other key
+    (ruleset.ANALYTE_SCOPED_KEYS): clearing ONE analyte's override must not
+    clear another's stored under the same (method, matrix, key) node --
+    the exact isolation senaite.pfas.browser.projects._set_eis_analyte exists
+    to preserve, proven here at the ruleset layer it writes through."""
+    class FakeAnnotations(dict):
+        pass
+
+    store = {}
+
+    class FakeProject(object):
+        pass
+
+    project = FakeProject()
+
+    original = rs._annotations
+    rs._annotations = lambda proj: store.setdefault(id(proj), FakeAnnotations())
+    try:
+        node = {
+            "13C4-PFBA": {"min": 1.0, "max": 200.0},
+            "13C5-PFPeA": {"min": 2.0, "max": 210.0},
+        }
+        rs.set_project_criterion(
+            project, "EPA_1633A", "Groundwater", "eis_recovery", node)
+
+        # Clear ONE analyte the way the editor does: read the node, drop
+        # one entry, write the whole (still one-key) node back.
+        current = rs.get_project_ruleset(project)
+        remaining = dict(current["EPA_1633A"]["Groundwater"]["eis_recovery"])
+        remaining.pop("13C4-PFBA")
+        rs.set_project_criterion(
+            project, "EPA_1633A", "Groundwater", "eis_recovery", remaining)
+
+        cleared = rs.resolve(
+            "EPA_1633A", "Groundwater", "eis_recovery", analyte="13C4-PFBA",
+            profile=_EPA1633A_PROFILE,
+            project_ruleset=rs.get_project_ruleset(project))
+        assert cleared.tier == rs.TIER_LAB, cleared.tier
+
+        untouched = rs.resolve(
+            "EPA_1633A", "Groundwater", "eis_recovery", analyte="13C5-PFPeA",
+            profile=_EPA1633A_PROFILE,
+            project_ruleset=rs.get_project_ruleset(project))
+        assert untouched.tier == rs.TIER_PROJECT, (
+            "clearing one analyte's override must not clear a sibling's")
+        assert untouched.value == {"min": 2.0, "max": 210.0}
+    finally:
+        rs._annotations = original
+
+
 # ── QC COMPOSITION keys: ccv_frequency / lfsm_frequency / duplicate_all_samples
 #
 # A QAPP can require "all samples run in duplicate" or "LFSM every 5 samples
