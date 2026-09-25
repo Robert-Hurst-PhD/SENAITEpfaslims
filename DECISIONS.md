@@ -5103,13 +5103,10 @@ committed is published, `GAPS.md` and `DECISIONS.md` included — this file is
 world-readable, and it is a candid record of the lab's internal quality findings.
 `.gitignore` keeps all of `data/` out, so no lab data is exposed.
 
-**The licence is UNRESOLVED and must not be guessed.** `LICENSE` says MIT and
-arrived from GitHub's repo-creation dialog, not from a decision — the first 204
-commits carried no licence file at all. `setup.py:12` declares `GPLv2`, and
-`install_requires` pulls `senaite.core`, `senaite.lims` and `senaite.storage`,
-which are GPLv2; a Plone add-on importing them is normally a derivative work, so
-MIT may not be ours to offer. The likely fix is replacing `LICENSE` with GPLv2 to
-match `setup.py`. Open, awaiting an answer.
+**The licence was UNRESOLVED; it is now GPLv2** — see the entry below, which
+supersedes this paragraph. At the time of writing, `LICENSE` said MIT and had
+arrived from GitHub's repo-creation dialog rather than from a decision (the first
+204 commits carried no licence file at all), while `setup.py:12` declared GPLv2.
 
 **Also superseded:** the same 2026-09-20 entry recorded FDA §10.2(4) as "an
 implemented, unwired regulatory obligation". It is wired as of 2026-09-25 —
@@ -5118,3 +5115,45 @@ GAPS.md §31 — and its prompt is switchable and technique-neutral (§31.2).
 **Implementation consequence.** CLAUDE.md §8 now carries the push discipline
 (push at the end of any turn that produced a commit, never batch a session's
 commits), the public-repo constraint, and the licence warning.
+
+---
+
+## 2026-09-25 — The licence is GPLv2
+
+**Status:** confirmed. **Resolves** the open licence question raised the same day.
+
+**Decision.** GPLv2. `LICENSE` now holds the verbatim GNU General Public License
+version 2 text, replacing the MIT file.
+
+**Why it was not a free choice.** This add-on imports `senaite.core`,
+`senaite.lims` and `senaite.storage` directly, and all three declare GPLv2
+(verified: `senaite.core-2.6.0` PKG-INFO reads `License: GPLv2`). A Plone add-on
+importing them is normally a derivative work, so a permissive licence was not
+available to offer in the first place — MIT was never ours to grant. It reached
+the repository from GitHub's repository-creation dialog, not from a decision, and
+contradicted `setup.py:12`, which has declared GPLv2 for all 204 commits that
+preceded it. So this makes the file agree with a declaration that was already
+there rather than choosing anything new.
+
+**Provenance of the text.** Copied verbatim from
+`/usr/share/common-licenses/GPL-2` inside the running SENAITE container — 339
+lines, `sha256 8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643`.
+Taken from a file on disk rather than typed out, because a licence altered by one
+clause is a different licence and no review would reliably catch it.
+
+**Implementation consequence.**
+- `LICENSE` — verbatim GPL-2.0 text.
+- `setup.py` — gains `classifiers`, including
+  `License :: OSI Approved :: GNU General Public License v2 (GPLv2)`, so the
+  declaration is machine-readable and not only a free-text `license=` string.
+- `README.md` — gains a Licence section with the copyright notice, the
+  no-warranty paragraph GPLv2 asks distributors to carry, and the derivative-work
+  reasoning.
+- GitHub's detected-licence badge changes from MIT to GPL-2.0.
+
+**One thing left for the lab.** The copyright holder is currently `PFAS Lab`,
+which is the author string `setup.py` already declared — chosen for consistency,
+NOT because it is the legal holder. It was deliberately not inferred from the
+GitHub account name: a copyright line is a legal statement about a real person or
+entity and is not something to guess. Replace it in `README.md` and `setup.py`
+with whoever actually holds copyright.

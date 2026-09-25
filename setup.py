@@ -9,7 +9,18 @@ setup(
     long_description=open("README.md").read() if __import__("os").path.exists("README.md") else "",
     long_description_content_type="text/markdown",
     author="PFAS Lab",
+    # GPLv2, matching the LICENSE file and the stack this extends. senaite.core,
+    # senaite.lims and senaite.storage are all GPLv2 and are imported directly,
+    # so this add-on is a derivative work and cannot be offered under a
+    # permissive licence. Confirmed 2026-09-25; see DECISIONS.md.
     license="GPLv2",
+    classifiers=[
+        "Framework :: Plone",
+        "Framework :: Zope2",
+        "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+        "Programming Language :: Python :: 2.7",
+        "Topic :: Scientific/Engineering :: Chemistry",
+    ],
     packages=find_packages("src"),
     package_dir={"": "src"},
     namespace_packages=["senaite"],

@@ -389,10 +389,13 @@ Profile pages:
 - The repo is PUBLIC. Anything committed is published permanently: no lab data
   (`.gitignore` covers `data/`), no client identifiers in commit messages, and
   remember that GAPS.md / DECISIONS.md are readable by anyone.
-- Licence is UNRESOLVED and must not be guessed: `LICENSE` says MIT (it came
-  from GitHub's repo-creation dialog), `setup.py:12` declares GPLv2, and
-  `install_requires` pulls senaite.core/lims/storage, which are GPLv2. Ask
-  before touching either.
+- Licence is **GPLv2**, resolved 2026-09-25 (DECISIONS.md). `LICENSE` holds the
+  verbatim GPL-2.0 text, `setup.py` declares it in both `license=` and
+  `classifiers`, and README carries the notice. It was not a free choice:
+  senaite.core/lims/storage are all GPLv2 and are imported directly, so this is a
+  derivative work. Do not relicense, and do not add code under an incompatible
+  licence. The copyright HOLDER is still the placeholder `PFAS Lab` and is the
+  lab's to set — never infer it from an account name.
 - Surface what a rename/delete would orphan before doing it.
 - After each change, bring the stack up and verify against the running instance;
   confirm the pipeline still imports, runs QC (respecting toggles, factors,

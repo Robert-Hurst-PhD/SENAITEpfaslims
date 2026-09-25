@@ -155,3 +155,29 @@ senaite_pfas/
 │   └── profiles/default/            GenericSetup XML (metadata, types, registry)
 └── pfas_pipeline/                   the out-of-process worker (QC engine, etc.)
 ```
+
+---
+
+## Licence
+
+Copyright (C) 2026 PFAS Lab.
+
+> **Set the copyright holder.** "PFAS Lab" is the author string already
+> declared in `setup.py` and is used here for consistency, not because it
+> is the legal holder. Replace it with the person or entity that actually
+> holds copyright — it appears here and in `setup.py`.
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the **GNU General Public License version 2** as published by the
+Free Software Foundation. See [LICENSE](LICENSE) for the full text.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+**Why GPLv2 and not something permissive.** This is a Plone add-on that imports
+`senaite.core`, `senaite.lims` and `senaite.storage` directly, and all three are
+GPLv2. It is therefore a derivative work, so a permissive licence is not
+available to offer. The repository briefly carried an MIT `LICENSE` that arrived
+from GitHub's repository-creation dialog rather than from a decision; it has been
+replaced. See `DECISIONS.md`, 2026-09-25.
