@@ -144,22 +144,36 @@ def _load_rule_toggles(method_id: str, rules_path: str = "/data/qc/qc_rules.json
         return {}
 
 
-def _is_extracted(injection_name: str, dilutions: "dict | None" = None) -> bool:
-    """Was this injection put through the extraction?
+def _takes_surrogate_recovery(injection_name: str,
+                              dilutions: "dict | None" = None) -> bool:
+    """Does a surrogate recovery criterion apply to this injection?
 
-    Derived from REVIEW_CHECKS rather than from a second list of QC codes: the
-    catalogue already declares `surrogate_recovery` on exactly the extracted
-    injection types and omits it from the ones prepared in solvent (CAL, ICV,
-    CCV, CCB). Keeping one declaration means the loop and the review queue
-    cannot disagree about which injections have a recovery to measure.
+    Named for the question it answers rather than "is it extracted", because the
+    two differ in one case that matters. Derived from REVIEW_CHECKS rather than
+    from a second list of QC codes: the catalogue already declares
+    `surrogate_recovery` on exactly the extracted injection types and omits it
+    from the ones prepared in solvent (CAL, ICV, CCV, CCB), so the loop and the
+    review queue cannot disagree about which injections have a recovery.
 
-    An unrecognised name falls back to Sample, which IS extracted — the same
-    default classify_injection already applies, and the safe direction: a client
-    sample wrongly treated as solvent would have its surrogates unchecked.
+    A DILUTION is the exception. It is made from an extract, so it is
+    "extracted" — but it is the same extract re-injected at a known factor, and
+    its surrogate reads the diluted value. A 1:10 dilution's surrogate recovers
+    at roughly a tenth of nominal and would fail every window, against a
+    criterion this module already says does not apply to a dilution ("its
+    retention times, ion ratios, calibration agreement AND RECOVERY would all be
+    judged against criteria that assume a neat extract"). `classify_injection`
+    returns "Dilution", which is not a REVIEW_CHECKS key, so this has to be
+    explicit — falling through to the Sample default would fail every diluted
+    injection in the batch.
+
+    An unrecognised name does fall back to Sample, which is the safe direction:
+    a client sample mistaken for solvent would go unchecked.
     """
     from .importer import classify_injection
     from .injection_builder import REVIEW_CHECKS
     role = classify_injection(injection_name or "", dilutions)
+    if role == "Dilution":
+        return False
     checks = REVIEW_CHECKS.get(role)
     if checks is None:
         checks = REVIEW_CHECKS["Sample"]
@@ -439,6 +453,7 @@ class RunQueue:
         # entire 1633A EIS branch -- limits, matrix overrides, the QAPP tier
         # above it -- was unreachable from a live run. See GAPS.md Sec30.
         eis_evaluated = set()
+        eis_advisory = set()
         if profile is not None:
             _injection_is = injection_is_names()
             for compound in _get_is_list(_method):
@@ -460,19 +475,45 @@ class RunQueue:
                     continue
                 if rule is None or rule.recovery_min is None:
                     continue
-                for row in all_rows:
+                # `rows`, not `all_rows`: dilutions are excluded for the same
+                # reason RT, ion-ratio and calibration exclude them. is_raw_check
+                # above is the deliberate exception, and it corrects for the
+                # recorded factor internally; a recovery does not.
+                for row in rows:
                     if (row.compound_name or "").strip() != compound:
                         continue
                     if row.pct_recovery_is is None:
                         continue
-                    if not _is_extracted(row.injection_name, dilutions):
+                    if not _takes_surrogate_recovery(row.injection_name,
+                                                     dilutions):
                         continue
-                    eis_evaluated.add(row.injection_name)
                     raw_flag = recovery_check_profiled(
                         profile, compound, _matrix, "SUR",
                         float(row.pct_recovery_is), row.injection_name)
                     if raw_flag is None:
+                        eis_evaluated.add(row.injection_name)
                         continue
+                    if rule.is_guidance_only:
+                        # FDA §2024.10.1(5) makes surrogate recovery ADVISORY.
+                        # It is recorded so the QC log and the reviewer see it,
+                        # and carries NO check_kind, so it cannot AUTO_FAIL a
+                        # release gate — a criterion the method calls guidance
+                        # must not block a batch. The check is left PENDING
+                        # rather than passed: a human should read an advisory
+                        # exceedance, and AUTO_PASS beside a flag would say the
+                        # opposite.
+                        flags_by_injection.setdefault(
+                            row.injection_name, []).append(QCFlag(
+                                source="{0} surrogate recovery "
+                                       "(guidance)".format(_method),
+                                analyte=raw_flag.analyte,
+                                injection_name=raw_flag.injection_name,
+                                value=raw_flag.value,
+                                issue=raw_flag.issue,
+                            ))
+                        eis_advisory.add(row.injection_name)
+                        continue
+                    eis_evaluated.add(row.injection_name)
                     flags_by_injection.setdefault(
                         row.injection_name, []).append(QCFlag(
                             source="{0} surrogate recovery".format(_method),
@@ -750,12 +791,18 @@ class RunQueue:
                     if chk.injection_name in lfsmd_evaluated:
                         chk.status = CheckStatus.AUTO_PASS
                 elif chk.check_name == "surrogate_recovery":
-                    # Same rule as LFSM: AUTO_PASS only where the check actually
-                    # ran. An injection whose export carried no % recovery
-                    # column, or whose method could not resolve a window, stays
-                    # PENDING so a reviewer sees it -- a silent pass here would
-                    # be indistinguishable from a good result.
-                    if chk.injection_name in eis_evaluated:
+                    # Advisory wins over evaluated: one compound can be in
+                    # range on an injection while another exceeds a
+                    # guidance-only window, and the exceedance is the thing a
+                    # reviewer has to see.
+                    if chk.injection_name in eis_advisory:
+                        pass          # advisory exceedance — stays PENDING
+                    # Otherwise the LFSM rule: AUTO_PASS only where the check
+                    # actually ran. An injection whose export carried no %
+                    # recovery column, or whose method could not resolve a
+                    # window, stays PENDING so a reviewer sees it -- a silent
+                    # pass would be indistinguishable from a good result.
+                    elif chk.injection_name in eis_evaluated:
                         chk.status = CheckStatus.AUTO_PASS
                     # else: stays PENDING
                 else:

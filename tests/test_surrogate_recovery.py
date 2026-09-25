@@ -244,6 +244,65 @@ def test_a_calibrator_is_never_given_a_surrogate_recovery_check():
         assert "surrogate_recovery" in REVIEW_CHECKS[extracted], extracted
 
 
+def test_a_dilution_is_not_judged_against_a_recovery_window():
+    """A 1:10 dilution's surrogate reads a tenth of nominal.
+
+    It is the same extract re-injected at a known factor, and run_queue already
+    excludes dilutions from RT, ion-ratio and calibration for exactly this
+    reason. `classify_injection` returns "Dilution", which is NOT a REVIEW_CHECKS
+    key — so an implementation that falls through to the Sample default fails
+    every diluted injection in the batch against a criterion that does not apply.
+    """
+    from pfas_pipeline.run_queue import _takes_surrogate_recovery
+    dil = {"260925-D1": {"parent": "260925-01", "factor": 10}}
+    assert _takes_surrogate_recovery("260925-D1", dil) is False
+    assert _takes_surrogate_recovery("260925-01", dil) is True
+
+    parent, diluted = "260925-08", "260925-D1"
+    plan = _sample_plan(parent) + _sample_plan(diluted)
+    batch = Batch(batch_id="B-EIS-D", analyst="RT", date=datetime(2026, 9, 25),
+                  matrix="Wastewater", method_id="EPA_1633A",
+                  instrument_file="synthetic.csv",
+                  injections=[_row("13C3-PFPeA", parent, 95.0),
+                              _row("13C3-PFPeA", diluted, 9.5)],
+                  dilutions={diluted: {"parent": parent, "factor": 10}})
+    q = RunQueue(batch, plan, method_id="EPA_1633A")
+    q.auto_evaluate()
+    assert _surrogate_flags(q, parent).status == CheckStatus.AUTO_PASS
+    assert _surrogate_flags(q, diluted).status != CheckStatus.AUTO_FAIL, (
+        "the dilution was failed on a recovery window that does not apply to it")
+
+
+def test_a_guidance_only_criterion_is_recorded_but_never_gates_release():
+    """FDA §2024.10.1(5) makes surrogate recovery advisory.
+
+    `recovery_check_profiled` returns a flag for a guidance-only rule (tagged
+    "[guidance only]"), so wiring it straight to KIND_SURROGATE would gate every
+    FDA batch on a criterion the method calls guidance. The flag must be
+    recorded and visible; the check must not AUTO_FAIL.
+    """
+    inj = "260925-FDA"
+    q, batch = _run([_row("13C3-PFBA", inj, 10.0)], _sample_plan(inj),
+                    method_id="FDA_32PFAS", matrix="Eggs")
+    chk = _surrogate_flags(q, inj)
+    assert chk.status != CheckStatus.AUTO_FAIL, (
+        "a guidance-only exceedance blocked release", chk.status)
+    assert chk.status != CheckStatus.AUTO_PASS, (
+        "an advisory exceedance was passed silently; a human should read it")
+    issues = [f.issue for f in batch.qc_flags]
+    assert any("guidance only" in i for i in issues), (
+        "the advisory exceedance was dropped entirely rather than recorded",
+        issues)
+
+
+def test_an_in_range_result_on_a_guidance_only_method_still_auto_passes():
+    """Advisory must not mean permanently pending — only an exceedance holds."""
+    inj = "260925-FDA2"
+    q, _ = _run([_row("13C3-PFBA", inj, 95.0)], _sample_plan(inj),
+                method_id="FDA_32PFAS", matrix="Eggs")
+    assert _surrogate_flags(q, inj).status == CheckStatus.AUTO_PASS
+
+
 def test_a_row_with_no_recovery_column_stays_pending_not_passed():
     """An export without the % recovery column must not read as a pass."""
     inj = "260925-07"
@@ -263,6 +322,60 @@ def test_both_epa_methods_evaluate_a_surrogate_recovery():
                     method_id=method, matrix=matrix)
         chk = _surrogate_flags(q, inj)
         assert chk.status == CheckStatus.AUTO_FAIL, (method, chk.status)
+
+
+# ── The OTHER check the list feeds: IS response (raw peak area) ──────────────
+
+def _is_response_check(q, injection):
+    chk = [c for c in q.checks
+           if c.injection_name == injection and c.check_name == "is_response"]
+    assert len(chk) == 1, [c.check_name for c in q.checks]
+    return chk[0]
+
+
+def test_the_is_response_check_now_runs_on_an_epa_method():
+    """§19's actual defect, exercised end to end for the first time.
+
+    Fixing get_is_list() made this loop iterate 15 compounds on 537.1 and 25 on
+    1633A where it had iterated NONE. That path had therefore never executed on
+    either EPA method, so "the list is right" is not the same claim as "the
+    check works". This runs it.
+
+    is_raw_check compares each labelled compound's peak AREA against the ICAL
+    average, which is a different question from recovery: a surrogate can hold
+    its area and still fail recovery, and vice versa.
+    """
+    for method, matrix, compound in (("EPA_537_1", "Drinking Water",
+                                      "13C3-PFHxS"),
+                                     ("EPA_1633A", "Wastewater",
+                                      "13C3-PFPeA")):
+        good = "{0}-ok".format(method)
+        bad = "{0}-low".format(method)
+        cal = ["{0}-CAL{1}".format(method, n) for n in (1, 2, 3)]
+        rows = [_row(compound, c, None, sample_type="Standard") for c in cal]
+        rows.append(_row(compound, good, None))
+        rows.append(_row(compound, bad, None))
+        # area 1000 on every calibrator; the ICAL average is therefore 1000
+        for r in rows:
+            r.response = 1000.0
+        rows[-1].response = 100.0       # 10% of the ICAL average
+
+        plan = _sample_plan(good) + _sample_plan(bad)
+        batch = Batch(batch_id="B-ISR", analyst="RT",
+                      date=datetime(2026, 9, 25), matrix=matrix,
+                      method_id=method, instrument_file="synthetic.csv",
+                      injections=rows)
+        q = RunQueue(batch, plan, method_id=method)
+        q.auto_evaluate()
+
+        assert _is_response_check(q, good).status == CheckStatus.AUTO_PASS, (
+            method, "an in-range IS area was not passed",
+            _is_response_check(q, good).status)
+        assert _is_response_check(q, bad).status == CheckStatus.AUTO_FAIL, (
+            method, "an IS area at 10% of the ICAL average was not flagged")
+        assert batch.is_results, (
+            method, "no IS result was recorded at all — the loop iterated "
+                    "nothing, which is §19 verbatim")
 
 
 if __name__ == "__main__":

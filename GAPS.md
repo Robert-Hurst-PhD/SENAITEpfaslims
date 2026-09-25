@@ -2682,3 +2682,61 @@ profile key the code reads that nothing writes. Neither would have caught THIS
 one — a function with a caller, called with the wrong literal. The check that
 would is "every branch of a `qc_type` dispatch is reached by some call site",
 which nothing currently does. Logged as the next auditor to build.
+
+### 30.5 Two defects introduced by the fix, and found by review not by tests
+
+The sixteen tests written alongside §30 all passed on an implementation with two
+behaviour-changing defects in it. Both are the "criterion applied where it does
+not belong" shape, which is the mirror of §30's "criterion never applied".
+
+**Every diluted injection would have failed.** The loop iterated `all_rows` and
+its guard fell through to the Sample default for a dilution, because
+`classify_injection` returns `"Dilution"` and that is not a `REVIEW_CHECKS` key.
+A 1:10 dilution's surrogate reads about a tenth of nominal, so every diluted
+injection in every batch would have AUTO_FAILed — against a criterion this same
+module already excludes dilutions from, in a comment 200 lines above that names
+**recovery** explicitly. `is_raw_check` is the deliberate exception and corrects
+for the recorded factor internally; a recovery does not. Now uses `rows`, and the
+guard excludes `"Dilution"` explicitly rather than by fallthrough. Renamed
+`_takes_surrogate_recovery` — the question is not "was this extracted" (a
+dilution was) but "does the criterion apply".
+
+**Every FDA batch would have been gated on guidance.** FDA §2024.10.1(5) makes
+surrogate recovery advisory, and `FDA32PFASProfile.qc_rules(..., "SUR")` says so
+via `is_guidance_only=True`. But `recovery_check_profiled` returns a flag anyway,
+tagged "[guidance only]" in its text — so attaching `KIND_SURROGATE` to it made
+an advisory exceedance an AUTO_FAIL on a release gate. Guidance-only exceedances
+are now recorded with **no** `check_kind`: they appear in the QC log and on the
+injection, and cannot fail a check. The check is left PENDING rather than passed,
+because a human should read an advisory exceedance and AUTO_PASS beside a visible
+flag would say the opposite. An in-range result still AUTO_PASSes, so "advisory"
+does not become "permanently pending".
+
+**Why no test caught either.** Every one of the sixteen asserted something about
+the compound, the window, or the status of an injection the test itself
+constructed. None asked "what does this now do to an injection type I did not
+think about" — and the two that mattered, a dilution and a guidance-only method,
+are both *absences* from the test set rather than wrong assertions in it. A test
+suite can only be wrong about what it mentions.
+
+The transferable form: when a check starts applying where it did not before,
+enumerate the injection types and methods it will now touch, and ask of each
+whether the criterion belongs. That list is short and finite —
+`REVIEW_CHECKS.keys()` and the three methods — which is exactly why not consulting
+it was careless rather than unlucky.
+
+### 30.6 Still open on this subsystem
+
+* **`surrogate_is_chain` is empty for both EPA methods.** FDA carries 20 entries.
+  With it empty, `is_raw_check` cannot take its method-scoped branch and falls
+  back to the global reference table, which names FDA's `13C4-PFOA` as the
+  injection standard. That was inert while the loop iterated nothing; it is
+  reachable now. EPA 1633A uses non-extracted internal standards (NIS) that are
+  its own, so this needs the method's chain configured rather than a code change.
+* **Column 30 in real exports is unverified.** `pct_recovery_is` drives the new
+  check and `data/instrument_output/` is empty, so whether the lab's instrument
+  actually reports "% Recovery (Internal Standard)" is untested against a real
+  file. If it does not, `surrogate_recovery` shows PENDING on every injection —
+  visible, not silent, and the correct failure direction, but it should be
+  confirmed on the next real run before anyone reads it as meaningful.
+* **The ten divergent EIS designations** (§30.2) remain a QA-manager question.
