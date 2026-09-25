@@ -591,11 +591,17 @@ class PFASDataReviewView(BrowserView):
     def _compute_traceability_status(self, ws):
         try:
             tree = self._build_traceability_tree(ws)
-            has_data = (
-                len(tree.get("direct_reagents", [])) > 0 or
-                len(tree.get("direct_standards", [])) > 0 or
-                len(tree.get("prepared_standards", [])) > 0
-            )
+            # "Has data" means at least one row that actually NAMES A LOT
+            # (GAPS §33.10). Counting bare list lengths let one 252 row carrying
+            # a name and an empty lot satisfy the gate with ZERO lots resolved,
+            # because the entry is appended outside the `if lot:` branch so it
+            # could neither resolve nor be reported unresolved.
+            def _with_lots(key):
+                return [e for e in tree.get(key, []) if (e.get("lot") or "").strip()]
+
+            has_data = bool(_with_lots("direct_reagents")
+                            or _with_lots("direct_standards")
+                            or _with_lots("prepared_standards"))
             return has_data and len(tree.get("unresolved", [])) == 0
         except Exception as exc:
             logger.error("_compute_traceability_status: %s", exc)
@@ -1029,15 +1035,30 @@ class PFASDataReviewView(BrowserView):
     # ── Traceability ──────────────────────────────────────────────────────
 
     def _build_lot_indices(self, portal):
-        """Build in-memory lot-number dicts (lot_number not a catalog index)."""
+        """Build in-memory lot dicts (lot_number is not a catalog index).
+
+        ARCHIVED reagents are excluded (GAPS §33.8). This walked
+        `objectValues()` raw, so a lot the lab had deliberately withdrawn still
+        satisfied traceability — demonstrated live: archiving a parent left the
+        gate reporting `resolved=True`. Every other consumer of reagent data
+        filters archived lots; this one did not, which is also §33.9's "three
+        resolvers, three answers".
+        """
+        from senaite.pfas.browser.reagents import _ANN_ARCHIVED_KEY
         reagent_by_lot = {}
         reagent_folder = portal.get("pfas_reagents")
         if reagent_folder is not None:
             for obj in reagent_folder.objectValues():
-                if getattr(obj, "portal_type", "") == "Reagent":
-                    lot = (getattr(obj, "lot_number", "") or "").strip()
-                    if lot:
-                        reagent_by_lot[lot] = obj
+                if getattr(obj, "portal_type", "") != "Reagent":
+                    continue
+                try:
+                    if IAnnotations(obj).get(_ANN_ARCHIVED_KEY):
+                        continue
+                except Exception:
+                    pass
+                lot = (getattr(obj, "lot_number", "") or "").strip()
+                if lot:
+                    reagent_by_lot[lot] = obj
 
         ps_by_lot = {}
         ps_folder = portal.get("pfas_prepared_standards")
@@ -1051,13 +1072,46 @@ class PFASDataReviewView(BrowserView):
         return reagent_by_lot, ps_by_lot
 
     def _reagent_dict(self, r):
+        # `has_coa` carried because the chain previously terminated at a Reagent
+        # URL and never reached the certificate of analysis (GAPS §33) — so the
+        # tree proved inventory membership, not that the lot is certified
+        # reference material, which is the whole point of level 1.
+        has_coa = False
+        try:
+            from senaite.pfas.browser.reagents import _COA_ANN_KEY
+            has_coa = bool(IAnnotations(r).get(_COA_ANN_KEY))
+        except Exception:
+            pass
         return {
             "title":      r.Title() if hasattr(r, "Title") else (r.title or u""),
             "cat_number": getattr(r, "cat_number", "") or u"",
             "supplier":   getattr(r, "supplier", "") or u"",
             "lot_number": getattr(r, "lot_number", "") or u"",
             "url":        r.absolute_url(),
+            "has_coa":    has_coa,
         }
+
+    def _resolve_parent(self, portal, parent, reagent_by_lot):
+        """The Reagent a parent record refers to, or None.
+
+        UID FIRST, lot string second (GAPS §33.7). The annotation has always
+        carried a `uid` per parent and nothing read it — resolution was by
+        lot-number string alone, so renaming or re-lotting a Reagent broke the
+        level-1 link silently. The repo already does this correctly for
+        salt-factor CoA links (D54: `{analyte, factor, lot_uid, lot_number}`
+        resolved by uid); `parent_reagents` was never brought up to it.
+
+        The lot fallback is deliberate and permanent: every parent record written
+        before this carries no usable uid, and they must keep resolving.
+        """
+        uid = (parent.get("uid") or u"").strip()
+        if uid:
+            folder = portal.get("pfas_reagents")
+            obj = folder.get(uid) if folder is not None else None
+            if obj is not None and getattr(obj, "portal_type", "") == "Reagent":
+                return obj
+        lot = (parent.get("lot") or u"").strip()
+        return reagent_by_lot.get(lot) if lot else None
 
     def _linked_batch(self, ws):
         """The SENAITE Batch this worksheet's analyses belong to.
@@ -1170,6 +1224,29 @@ class PFASDataReviewView(BrowserView):
                 })
             tree["direct_standards"].append(entry)
 
+        # --- FM-ENV-252: extraction_materials[] table ---
+        # Traced nowhere before (GAPS §33.12): the gate read only reagents[] and
+        # standards[], so a cartridge or sorbent lot was neither resolved nor
+        # reported unresolved. These consumables touch the extract and belong in
+        # the chain.
+        for row in active_rows(lb252.get("extraction_materials")):
+            lot  = (row.get("lot") or u"").strip()
+            name = row.get("name") or u""
+            entry = {
+                "name":     name,
+                "lot":      lot,
+                "notes":    row.get("notes") or u"",
+                "resolved": None,
+            }
+            if lot and lot in reagent_by_lot:
+                entry["resolved"] = self._reagent_dict(reagent_by_lot[lot])
+            elif lot:
+                tree["unresolved"].append({
+                    "source": "252.extraction_materials", "lot": lot,
+                    "name": name,
+                })
+            tree["direct_reagents"].append(entry)
+
         # --- FM-ENV-251: lot_ref fields ---
         LOT_REF_FIELDS = [
             ("pds_a_lot",         u"PDS-A"),
@@ -1210,6 +1287,25 @@ class PFASDataReviewView(BrowserView):
                 except Exception:
                     parents = []
 
+                # LEVEL 1 IS NOW GATED (GAPS §33.2). This loop was the only
+                # branch in this method with no `else` appending to
+                # tree["unresolved"], and _compute_traceability_status keys
+                # solely off that list — so a parent naming a reagent that does
+                # not exist PASSED the release gate while a nonexistent reagent
+                # named directly in the 252 FAILED it. Proven by that contrast
+                # on the live instance. The failure was rendered in the
+                # Traceability tab and gated nowhere: the ISO 17025 §6.6 leaf
+                # link was the one link in the chain with no enforcement.
+                if not parents:
+                    # The loop below cannot catch this: zero iterations. A
+                    # prepared standard with NO parentage is the case CLAUDE.md
+                    # §10 names explicitly, and one already exists in
+                    # production (PS-FDA-2026-A).
+                    tree["unresolved"].append({
+                        "source": "prepstd.parents", "lot": lot_ref,
+                        "name": ps_node["title"],
+                        "reason": u"no parent reagents recorded",
+                    })
                 for p in parents:
                     p_lot = (p.get("lot") or u"").strip()
                     p_entry = {
@@ -1220,8 +1316,16 @@ class PFASDataReviewView(BrowserView):
                         "unit":     p.get("unit") or u"",
                         "resolved": None,
                     }
-                    if p_lot and p_lot in reagent_by_lot:
-                        p_entry["resolved"] = self._reagent_dict(reagent_by_lot[p_lot])
+                    p_obj = self._resolve_parent(portal, p, reagent_by_lot)
+                    if p_obj is not None:
+                        p_entry["resolved"] = self._reagent_dict(p_obj)
+                    else:
+                        tree["unresolved"].append({
+                            "source": "prepstd.parents",
+                            "lot": p_lot or u"(blank)",
+                            "name": p.get("name") or ps_node["title"],
+                            "reason": u"parent reagent not in inventory",
+                        })
                     ps_node["parent_reagents"].append(p_entry)
             else:
                 tree["unresolved"].append({
