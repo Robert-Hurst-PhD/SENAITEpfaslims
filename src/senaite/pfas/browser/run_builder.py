@@ -6,8 +6,8 @@ Everything derives from the relational spine — nothing method-specific is
 hardcoded here:
   * batch → METHOD via the same resolution logbooks use (extraction session >
     logbook annotations > SENAITE batch method);
-  * the method's OWN extraction logbook (profile `extraction_logbook`, else an
-    extraction-titled entry of `required_logbooks`) supplies the per-sample
+  * the method's OWN extraction logbook (the extraction-titled entry of its
+    `required_logbooks`) supplies the per-sample
     rows — sample id, MATRIX (varies per sample) and SPIKE — with the batch's
     linked samples (matrix = core SampleType) as fallback;
   * CCV interval comes from the method profile
@@ -120,12 +120,21 @@ class PFASRunBuilderView(BrowserView):
             return {}
 
     def extraction_logbook_slug(self, method_id):
-        """The METHOD'S extraction logbook: explicit profile setting first,
-        else the extraction-titled entry among its required_logbooks."""
+        """The METHOD'S extraction logbook: the extraction-titled entry among
+        its `required_logbooks`.
+
+        An `extraction_logbook` profile override used to be consulted first.
+        Nothing could write it -- no editor field, no seed, no migration -- so
+        it was a setting the UI offered and could never honour, and every
+        method silently took the fallback. The configurability audit found it by
+        enumerating the keys this code READS rather than the keys the profile
+        data happens to hold.
+
+        It is removed rather than given a producer: `required_logbooks` already
+        records which logbooks a method uses and is editable, so a second key
+        naming one of them would be a second source of truth for one fact.
+        """
         prof = self._profile(method_id)
-        explicit = prof.get("extraction_logbook")
-        if explicit:
-            return str(explicit)
         required = [str(s) for s in (prof.get("required_logbooks") or [])]
         try:
             from senaite.pfas.logbook_store import get_active_logbook_defs

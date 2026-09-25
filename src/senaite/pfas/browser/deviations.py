@@ -8,10 +8,13 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.qc_deviation import (
+    get_registry as _get_registry,
+    save_registry as _save_registry,
+)
 
 logger = logging.getLogger("senaite.pfas.deviations")
 
-_ANN_REGISTRY = u"senaite.pfas.deviations.registry"
 
 EVENT_TYPES = [
     ("missed_calibration",   "Missed Calibration"),
@@ -63,16 +66,8 @@ def _risk_label(score):
 
 
 # ── Annotation helpers ────────────────────────────────────────────────────────
-
-def _get_registry(portal):
-    ann = IAnnotations(portal)
-    raw = ann.get(_ANN_REGISTRY)
-    return json.loads(raw) if raw else []
-
-
-def _save_registry(portal, data):
-    ann = IAnnotations(portal)
-    ann[_ANN_REGISTRY] = json.dumps(data)
+# Imported, not redeclared. This module used to carry its own copy of the key
+# string plus an identical accessor pair; senaite.pfas.qc_deviation owns both.
 
 
 def _next_dev_id(registry, dev_type):

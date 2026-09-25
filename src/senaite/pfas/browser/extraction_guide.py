@@ -30,12 +30,14 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 
 from senaite.pfas.method_profile_store import get_profile
+# Imported, never redeclared: senaite.pfas.dilution_ref owns this key and reads
+# the same session to resolve per-sample dilution factors.
+from senaite.pfas.dilution_ref import EXTRACTION_SESSION_KEY
 from senaite.pfas.browser.reagents import _list_reagents, _save_reagent, STATUS_OPENED
 from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.extraction_guide")
 
-EXTRACTION_SESSION_KEY = u"senaite.pfas.extraction_session"
 
 # ── Session helpers ───────────────────────────────────────────────────────────
 

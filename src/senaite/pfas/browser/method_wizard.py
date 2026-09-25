@@ -26,6 +26,9 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
+# Imported, never redeclared: senaite.pfas.method_bridge owns this key and is
+# what the rest of the package reads method associations through.
+from senaite.pfas.method_bridge import METHOD_ASSOC_KEY
 
 try:
     from bika.lims import api as bika_api
@@ -36,7 +39,6 @@ except ImportError:
 logger = logging.getLogger("senaite.pfas.browser.method_wizard")
 
 WIZARD_SESSIONS_KEY = u"senaite.pfas.wizard_sessions"
-METHOD_ASSOC_KEY = u"senaite.pfas.method_associations"
 NUM_STEPS = 10
 
 # (num, id, title, explain, depends)

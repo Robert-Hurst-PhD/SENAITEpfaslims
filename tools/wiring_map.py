@@ -254,6 +254,75 @@ def pass2_follow_imports():
                         (r, local, rel(target_file), alias.name, node.lineno))
 
 
+ACCESSOR_EDGES = []   # (importer, lineno, local, source_file, func, key)
+
+
+def func_spans(path):
+    """(name, first_line, last_line) for every function in `path`, innermost
+    last, so a line lookup can take the tightest enclosing span."""
+    tree = parse(path)
+    spans = []
+    if tree is None:
+        return spans
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            end = getattr(node, "end_lineno", None) or node.lineno
+            spans.append((node.name, node.lineno, end))
+    spans.sort(key=lambda t: t[2] - t[1])      # tightest span first
+    return spans
+
+
+def pass4_follow_accessors():
+    """A key reached through its OWNER's accessor functions, not by importing
+    the key constant.
+
+    This pass exists because §1.4's collapse has a cost, and the cost has to be
+    paid back or the map gets quieter rather than truer. Once
+    browser/deviations.py imports `get_registry()` instead of redeclaring
+    `senaite.pfas.deviations.registry`, the duplicate is gone -- and so is any
+    trace of that module on the key's own entry, because it no longer names the
+    key at any line. The key would read as though one module touched it.
+
+    So: map each key USE back to the function that contains it, then record
+    every cross-module import of those functions. §1.6 reports the edges and
+    render_evidence puts the consumers back where a reader looks for them.
+
+    Imports inside a function body count (ast.walk sees them), which matters:
+    the Data Review reader is a deferred import inside a method.
+    """
+    func_keys = defaultdict(set)              # (file, func) -> {key values}
+    spans_by_file = {}
+    for value, uses in KEY_USES.items():
+        for use_file, lineno, _kind in uses:
+            if use_file not in spans_by_file:
+                spans_by_file[use_file] = func_spans(
+                    os.path.join(ROOT, use_file))
+            for name, first, last in spans_by_file[use_file]:
+                if first <= lineno <= last:
+                    func_keys[(use_file, name)].add(value)
+                    break                     # tightest enclosing function
+
+    for path in ALL_PY_FILES:
+        tree = parse(path)
+        if tree is None:
+            continue
+        r = rel(path)
+        modname = FILE_TO_MODNAME[path]
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            target_file = MODNAME_TO_FILE.get(
+                resolve_import_module(modname, node))
+            if not target_file or rel(target_file) == r:
+                continue
+            tf = rel(target_file)
+            for alias in node.names:
+                for value in sorted(func_keys.get((tf, alias.name), ())):
+                    ACCESSOR_EDGES.append(
+                        (r, node.lineno, alias.asname or alias.name,
+                         tf, alias.name, value))
+
+
 def is_annotations_expr(expr):
     if isinstance(expr, ast.Call):
         f = expr.func
@@ -701,6 +770,7 @@ def section1():
     pass1_collect_constants()
     pass2_follow_imports()
     pass3_scan_usage()
+    pass4_follow_accessors()
     families, member_values = compute_families()
     real_dupes, legit_dupes, same_symbol = compute_duplicates()
 
@@ -745,6 +815,14 @@ def section1():
         elif family_read:
             lines.append("  - read by: (covered by the family's dynamic "
                          "concat/format read — see §1.1)")
+        acc = defaultdict(list)
+        for imp, ln, _local, src, func, val in ACCESSOR_EDGES:
+            if val == value:
+                acc[(src, func)].append("`{0}:{1}`".format(imp, ln))
+        for (src, func), sites in sorted(acc.items()):
+            lines.append(
+                "  - reached via `{0}()` ({1}) — imported by {2}".format(
+                    func, src, ", ".join(sorted(set(sites)))))
         same_line = {(w[0], w[1]) for w in writes} & {(r[0], r[1]) for r in reads}
         if same_line:
             lines.append("  - (same call site appears in both rows above: a "
@@ -858,8 +936,15 @@ def section1():
         "legacy key's literal value on its way out — see "
         "`tools/audit_configurable.py`'s LEGACY bucket for the same "
         "distinction applied to profile keys.\n")
-    out.append("**Real duplicates ({0})** — no migration involved, both "
-               "definitions live production code:\n".format(len(real_dupes)))
+    if real_dupes:
+        out.append("**Real duplicates ({0})** — no migration involved, both "
+                   "definitions live production code:\n".format(
+                       len(real_dupes)))
+    else:
+        out.append("**Real duplicates (0)** — every key is now declared in "
+                   "exactly one production module. A module that needs one "
+                   "imports the constant (§1.6) or calls the owner's "
+                   "accessors, which §1.2 credits back to the key.\n")
     if not real_dupes:
         out.append("- none\n")
     for value, defs in real_dupes:
@@ -911,6 +996,22 @@ def section1():
         for importer, local, source_file, source_name, ln in IMPORT_EDGES:
             out.append("- `{0}:{1}` imports `{2}` from `{3}` as `{4}`".format(
                 importer, ln, source_name, source_file, local))
+        out.append("")
+
+    if ACCESSOR_EDGES:
+        out.append("### 1.7 Keys reached through an accessor ({0})\n".format(
+            len(ACCESSOR_EDGES)))
+        out.append(
+            "The other identity-preserving case, and the one a key-literal "
+            "scan cannot see at all: the consumer never names the key, it "
+            "imports a function from the module that owns it. Without this "
+            "pass, collapsing a duplicate (§1.4) makes a key look LESS used "
+            "than before — the redundant declaration disappears and so does "
+            "the only evidence that module touched it. Each edge below is "
+            "also credited on the key's own entry in §1.2.\n")
+        for imp, ln, local, src, func, val in sorted(ACCESSOR_EDGES):
+            out.append("- `{0}:{1}` calls `{2}()` from `{3}` → `{4}`".format(
+                imp, ln, func, src, val))
         out.append("")
 
     counts = dict(

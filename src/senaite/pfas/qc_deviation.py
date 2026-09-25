@@ -28,11 +28,16 @@ from zope.annotation.interfaces import IAnnotations
 
 logger = logging.getLogger("senaite.pfas.qc_deviation")
 
-# The SAME key the Deviations workspace and Data Review read
-# (browser/deviations.py, data_review.active_deviations_for_worksheet).
-# This module wrote "senaite.pfas.deviations" while both readers used
-# "...registry", so a successfully filed deviation was invisible everywhere.
-_ANN_REGISTRY = u"senaite.pfas.deviations.registry"
+# THE key for the deviation/CAR registry, defined here and imported everywhere
+# else: browser/deviations.py (the workspace) declared its own copy of the
+# string and its own accessor pair, and data_review inlined the literal a third
+# time.
+#
+# That is not a tidiness point. This module once wrote
+# "senaite.pfas.deviations" while both readers used "...registry", so a
+# successfully filed deviation was invisible in every view that should have
+# shown it -- a defect only reachable because the string existed more than once.
+ANN_REGISTRY_KEY = u"senaite.pfas.deviations.registry"
 
 # Marks the deviations this module owns, so re-opening Data Review updates the
 # existing record rather than filing a duplicate on every page load.
@@ -41,13 +46,15 @@ SIGNATURE_KEY = "pfas_unconfigured_signature"
 EVENT_TYPE = "QC criterion not configured"
 
 
-def _registry(portal):
-    raw = IAnnotations(portal).get(_ANN_REGISTRY)
+def get_registry(portal):
+    """The deviation/CAR registry as a list -- the one reader of the key."""
+    raw = IAnnotations(portal).get(ANN_REGISTRY_KEY)
     return json.loads(raw) if raw else []
 
 
-def _save(portal, data):
-    IAnnotations(portal)[_ANN_REGISTRY] = json.dumps(data)
+def save_registry(portal, data):
+    """Persist the registry -- the one writer of the key."""
+    IAnnotations(portal)[ANN_REGISTRY_KEY] = json.dumps(data)
 
 
 def _next_id(registry):
@@ -87,7 +94,7 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
     if not gaps or not worksheet_id:
         return None
     signature = _signature(worksheet_id, gaps)
-    registry = _registry(portal)
+    registry = get_registry(portal)
 
     for dev in registry:
         if dev.get(SIGNATURE_KEY) == signature and dev.get("status") != "closed":
@@ -101,7 +108,7 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
                 if _notify_qao(portal, dev, worksheet_id, gaps):
                     dev["qao_notified"] = True
                     dev["closure_notes"] = u""
-                    _save(portal, registry)
+                    save_registry(portal, registry)
                     logger.info("QAO notified retrospectively for %s",
                                 dev.get("dev_id"))
             return dev
@@ -153,7 +160,7 @@ def ensure_deviation(portal, worksheet_id, gaps, filed_by=u"system"):
             u"this deviation.".format(
                 record.get("qao_notify_error") or u"reason unrecorded."))
     registry.append(record)
-    _save(portal, registry)
+    save_registry(portal, registry)
     return record
 
 

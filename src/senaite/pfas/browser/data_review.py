@@ -1798,11 +1798,8 @@ class PFASDataReviewView(BrowserView):
             return []
         ws_id = ws.getId()
         try:
-            ann = IAnnotations(self._portal())
-            raw = ann.get(u"senaite.pfas.deviations.registry")
-            if not raw:
-                return []
-            registry = json.loads(raw)
+            from senaite.pfas.qc_deviation import get_registry
+            registry = get_registry(self._portal())
             return [
                 d for d in registry
                 if d.get("status") != "closed"
