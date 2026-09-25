@@ -798,12 +798,17 @@ def single_transition_confirm_needed(
     (%diff < 20%).  Returns a review-prompt string when confirmation is
     required.
 
-    NOT WIRED. This docstring used to end "used by the run queue"; nothing
-    calls it, so the confirmation FDA §10.2(4) requires is never prompted for.
-    Kept rather than deleted because the rule is correct and the obligation is
-    real -- deleting it would erase the only record that the requirement is
-    unmet. See GAPS.md; wiring it means adding a review-queue prompt, which is
-    new behaviour and needs verifying against a run with PFBA/PFPeA positives.
+    WIRED 2026-09-25, from `pipeline.build_summary` — the only place that knows
+    whether an analyte was detected. It had no caller from the day it was
+    written; this docstring claimed "used by the run queue" and GAPS.md §13
+    ranked it the most consequential remaining code gap.
+
+    `detected` must mean DETECTED, not quantified: BLoQ and ALoQ both count,
+    because §10.2(4) is about establishing identity, not about the number.
+
+    Which analytes need confirming comes from the method's confirmation_rule, so
+    this returns None on EPA 537.1 and EPA 1633A, whose
+    `single_transition_analytes` are empty. Method-conditional by data.
     """
     conf = profile.confirmation_rule()
     if detected and analyte in conf.single_transition_analytes:

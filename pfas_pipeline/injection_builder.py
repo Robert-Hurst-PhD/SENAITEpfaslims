@@ -71,7 +71,7 @@ REVIEW_CHECKS: dict[str, list[str]] = {
     "ICV":    ["ccv_pct_dev", "is_response", "rt_deviation"],
     "CCV":    ["ccv_pct_dev", "is_response", "rt_deviation", "ion_ratio"],
     "MB":     ["blank_contamination", "is_response", "lod_check",
-              "surrogate_recovery"],
+              "surrogate_recovery", "hrms_confirmation"],
     # The other blanks. Without these, classify_injection's new roles fell back
     # to REVIEW_CHECKS["Sample"] and a blank was given the CHECKS OF A CLIENT
     # SAMPLE — bloq/lod qualifiers instead of a contamination check.
@@ -80,13 +80,19 @@ REVIEW_CHECKS: dict[str, list[str]] = {
     "CCB":    ["blank_contamination", "is_response"],
     "LFB":    ["recovery", "is_response", "surrogate_recovery"],
     "LFSM":   ["lfsm_recovery", "is_response", "ion_ratio", "rt_deviation",
-               "surrogate_recovery"],
+               "surrogate_recovery", "hrms_confirmation"],
     "LFSMD":  ["lfsmd_rpd", "lfsm_recovery", "is_response",
-               "surrogate_recovery"],
+               "surrogate_recovery", "hrms_confirmation"],
     "Dup":    ["duplicate_rpd", "is_response", "surrogate_recovery"],
     "Sample": ["is_response", "ion_ratio", "rt_deviation", "signal_to_noise",
-               "bloq_check", "lod_check", "surrogate_recovery"],
+               "bloq_check", "lod_check", "surrogate_recovery",
+               "hrms_confirmation"],
 }
+# `hrms_confirmation` is on the four roles a RESULT is reported for -- the same
+# set build_summary calls REPORTED_ROLES (Sample, MB, LFSM, LFSMD) -- because
+# FDA §10.2(4) is an obligation about a reported positive identification. Not on
+# Dup, which reports no result of its own, nor on any solvent injection.
+#
 # `surrogate_recovery` is on the EXTRACTED injections and only those. A
 # surrogate is spiked into the sample before extraction, so its recovery
 # measures the extraction; a calibrator, ICV, CCV or solvent blank (CCB) is

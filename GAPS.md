@@ -2740,3 +2740,79 @@ it was careless rather than unlucky.
   visible, not silent, and the correct failure direction, but it should be
   confirmed on the next real run before anyone reads it as meaningful.
 * **The ten divergent EIS designations** (§30.2) remain a QA-manager question.
+
+---
+
+## 31. FDA §10.2(4) confirmation — wired (2026-09-25)
+
+§13 ranked this "the most consequential remaining code gap", and it was the same
+shape as §30: `single_transition_confirm_needed()` computed the rule correctly
+and had **no caller** from the day it was written. Its docstring claimed "used by
+the run queue". Nothing did.
+
+PFBA and PFPeA have one usable MS/MS transition, so their identity cannot be
+established by ion ratio the way every other analyte's is. FDA §10.2(4) therefore
+requires a positive to be confirmed by an orthogonal technique (LC-HRMS, agreeing
+within `confirm_pct_diff_max`, 20%). Until now nothing prompted for it.
+
+### Where it had to go, and why not the run queue
+
+It lives in `pipeline.build_summary`, which is the only place that knows whether
+an analyte was **detected**. The run queue was the obvious home and is the wrong
+one: `auto_evaluate()` runs at `pipeline.py:715` and `build_summary` at 720, and
+they cannot be swapped because the summary consumes `batch.is_results`, which
+auto_evaluate produces. Deciding detection again inside the queue would be two
+answers to one question — the §1 rule-3 violation this register keeps finding.
+
+So the obligation is settled in two passes:
+
+1. `build_summary` appends `QUALIFIER_HRMS` to the result's existing `flags`
+   list — the same mechanism that already carries `N.C.` and `SUR` onto the
+   certificate, so no new plumbing — and records the prompt on
+   `batch.confirmations_required`.
+2. `RunQueue.resolve_confirmations()`, called after `build_summary`, settles the
+   new `hrms_confirmation` review check: **PENDING** where a confirmation is
+   genuinely owed, with the prompt attached; **AUTO_PASS** where §10.2(4) does
+   not apply.
+
+That second pass exists because of §30.5. `hrms_confirmation` is deliberately
+absent from `auto_evaluate`'s `_CHECK_KINDS`, which leaves it PENDING — and
+without the resolve pass it would sit PENDING on every injection of every batch
+forever, which is a check nobody reads.
+
+**AUTO_PASS here means "§10.2(4) does not apply to this injection", NOT "the
+confirmation was done."** An owed confirmation is closed by a human accepting the
+check with the LC-HRMS result, which `accept()` already exists for.
+
+### Two things reach alone would have got wrong
+
+**It must be silent on the EPA methods.** `single_transition_analytes` is
+populated only by FDA's `confirmation_rule()`; both EPA methods inherit the
+dataclass default `()`. So the check is method-conditional **by data**, not by an
+`if method_id ==` — which is what CLAUDE.md §3 rule 3 requires. A test pins that
+EPA 1633A raises nothing, so if it ever does, the cause is a profile edit.
+
+**"Detected" is not "quantified".** BLoQ is a detection *below* the quantitation
+limit — build_summary's own comment says so — and ALoQ is one above the range.
+§10.2(4) is about establishing identity, not about the number, so both count. A
+test pins BLoQ.
+
+### The policy this follows
+
+An owed confirmation does **not** hard-block release. It raises a prompt the
+reviewer must dispose of, and if the result is released without confirmation it
+carries the `HRMS` qualifier. That follows the lab's stated rule verbatim — "You
+can always output data that does not conform. It just needs to be appropriately
+qualified" — rather than inventing a refusal branch. FDA gets its prompt; the lab
+keeps its release policy.
+
+### Still open
+
+* **Recording the confirmation itself.** `confirm_pct_diff_max` (20%) is
+  resolved and nothing computes a %diff, because there is nowhere to enter the
+  LC-HRMS result. Today the reviewer closes the check by accepting it with a
+  comment. Entering the second value and having the system judge the 20% is the
+  next increment.
+* **`calculate_mdl` is now the only remaining NOT WIRED function** in the
+  pipeline. It needs a periodic-study feature (≥7 replicates over time), which is
+  a data-entry surface, not a missing call.

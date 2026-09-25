@@ -378,8 +378,22 @@ Profile pages:
 - `DECISIONS.md`: append every decision (proposed/confirmed/superseded) with
   date + context. `QUESTIONS.md`: open questions awaiting my answer. No
   assumption may live only in code.
-- Commit to git after each significant change (restore points). Surface what a
-  rename/delete would orphan before doing it.
+- Commit to git after each significant change (restore points), **and push**.
+  There is a remote as of 2026-09-25 (`origin`,
+  github.com/Robert-Hurst-PhD/SENAITEpfaslims, SSH, **public**) — before it
+  existed, 204 commits lived on one disk, which GAPS §14.1 called the top
+  standing risk. A commit that is not pushed has not addressed that risk. Push
+  the working branch at the end of any turn that produced a commit; do not batch
+  a session's commits into one push at the end, because the session is exactly
+  what might not finish.
+- The repo is PUBLIC. Anything committed is published permanently: no lab data
+  (`.gitignore` covers `data/`), no client identifiers in commit messages, and
+  remember that GAPS.md / DECISIONS.md are readable by anyone.
+- Licence is UNRESOLVED and must not be guessed: `LICENSE` says MIT (it came
+  from GitHub's repo-creation dialog), `setup.py:12` declares GPLv2, and
+  `install_requires` pulls senaite.core/lims/storage, which are GPLv2. Ask
+  before touching either.
+- Surface what a rename/delete would orphan before doing it.
 - After each change, bring the stack up and verify against the running instance;
   confirm the pipeline still imports, runs QC (respecting toggles, factors,
   isomer sums, version-dependent IS correction), and reports. Show me how to

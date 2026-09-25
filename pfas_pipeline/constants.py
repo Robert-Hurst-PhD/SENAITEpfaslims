@@ -37,6 +37,7 @@ QUALIFIER_ALOQ = "ALoQ"     # above limit of quantitation — report the dilutio
 QUALIFIER_NC   = "N.C."     # not calculated (no IS)
 QUALIFIER_SUR  = "SUR"      # surrogate flag
 QUALIFIER_REC  = "REC"      # review recovery
+QUALIFIER_HRMS = "HRMS"     # identification needs LC-HRMS confirmation (FDA §10.2(4))
 
 # ── Default acceptance criteria (FDA 32-PFAS baseline) ───────────────────────
 # These values are used when no exported method profile JSON file is found.

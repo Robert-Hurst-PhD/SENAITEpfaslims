@@ -35,9 +35,11 @@ from .run_queue import RunQueue
 from .injection_builder import REVIEW_CHECKS
 from .analyte_alias import keyword_for
 from .barcode import ExtractionLog
+from .qc_engine import single_transition_confirm_needed
 from .report import generate_batch_report
 from .constants import (
     QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_ALOQ,
+    QUALIFIER_HRMS,
     reload_criteria,
 )
 from .method_profiles import (
@@ -217,6 +219,14 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     _matrix = getattr(batch, "matrix", "") or ""
     _analytes = _get_included_analytes(_method, _matrix) if _matrix else _get_analytes(_method)
     _non_iso = _get_non_iso_set(_method)
+    # FDA §10.2(4) needs the method's confirmation rule. Resolved once here
+    # rather than per result, and None-safe: a batch with no loaded profile
+    # simply raises no confirmation prompt, exactly as before.
+    try:
+        from .method_profiles import get_profile as _get_profile_obj
+        _conf_profile = _get_profile_obj(_method)
+    except Exception:                                      # noqa: BLE001
+        _conf_profile = None
 
     # Build isomer lookup tables from method profile.
     # by_linear: analyte IS the linear name (e.g. "lr-PFOS" in _analytes)
@@ -420,6 +430,44 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                                  if drow.conc_qualifier != QUALIFIER_ALOQ else "")
                     source_injection = meta["injection"]
                     dil_factor = meta.get("factor")
+
+            # FDA §10.2(4): PFBA and PFPeA have one usable MS/MS transition, so
+            # their identity cannot be confirmed by ion ratio the way every other
+            # analyte's is. A POSITIVE therefore requires confirmation by an
+            # orthogonal technique (LC-HRMS, agreeing within
+            # confirm_pct_diff_max).
+            #
+            # `single_transition_confirm_needed` has computed this correctly and
+            # had NO CALLER since it was written -- its own docstring said "NOT
+            # WIRED" and GAPS.md §13 ranked it the most consequential remaining
+            # code gap. This is the call.
+            #
+            # It belongs HERE and not in the run queue: whether an analyte was
+            # detected is decided in this function, and auto_evaluate() runs
+            # BEFORE build_summary and cannot be reordered after it (the summary
+            # consumes batch.is_results, which auto_evaluate produces). Deciding
+            # detection a second time in the queue would be two answers to one
+            # question.
+            #
+            # Which analytes need it comes from the METHOD's confirmation_rule,
+            # so this is silent on EPA 537.1 and EPA 1633A, whose
+            # single_transition_analytes are empty -- method-conditional by data,
+            # not by an `if method ==` here.
+            if _conf_profile is not None and qualifier not in (
+                    QUALIFIER_ND, QUALIFIER_LOD):
+                # Detected. BLoQ and ALoQ count: both are detections, one below
+                # and one above the quantitation range, and §10.2(4) is about
+                # identification rather than quantitation.
+                prompt = single_transition_confirm_needed(
+                    _conf_profile, reported_name, True)
+                if prompt:
+                    flags.append(QUALIFIER_HRMS)
+                    batch.confirmations_required.append({
+                        "sample_injection": sample_name,
+                        "analyte": reported_name,
+                        "qc_type": role_of.get(sample_name, "Sample"),
+                        "prompt": prompt,
+                    })
 
             summary.append(SummaryResult(
                 analyte=reported_name,
@@ -718,6 +766,18 @@ def run_pipeline(
 
     # 5. Summary
     build_summary(batch)
+
+    # 5a. FDA §10.2(4). build_summary has just decided what was detected, so the
+    # confirmation checks can now be settled — PENDING where a single-transition
+    # positive genuinely owes an LC-HRMS confirmation, AUTO_PASS where §10.2(4)
+    # does not apply. Has to follow build_summary and therefore cannot be part of
+    # auto_evaluate; see RunQueue.resolve_confirmations.
+    n_conf = queue.resolve_confirmations()
+    if n_conf:
+        logger.warning(
+            "FDA §10.2(4): %d single-transition positive(s) require LC-HRMS "
+            "confirmation before the identification can be reported as "
+            "confirmed — see the hrms_confirmation review checks", n_conf)
 
     # 5b. Persist per-injection detail for the multi-page Results Review (D59).
     try:

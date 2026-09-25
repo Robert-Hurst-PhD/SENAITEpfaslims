@@ -234,6 +234,54 @@ class RunQueue:
                     check_name=check_name,
                 ))
 
+    def resolve_confirmations(self):
+        """Settle the `hrms_confirmation` checks once detection is known.
+
+        FDA §10.2(4) applies only to a POSITIVE of a single-transition analyte,
+        and whether an analyte was detected is decided in
+        `pipeline.build_summary` -- which runs AFTER auto_evaluate() and cannot
+        be reordered before it, because the summary consumes the is_results that
+        auto_evaluate produces. So this is a second, later pass rather than part
+        of the main evaluation.
+
+        `hrms_confirmation` is deliberately absent from auto_evaluate's
+        _CHECK_KINDS, which leaves it PENDING there -- the documented default for
+        a check no engine block resolves. Without this pass it would stay PENDING
+        on every injection of every batch forever, which is the noise defect
+        GAPS.md §30.5 records: a check that is always pending is one nobody reads.
+
+        So: PENDING where a confirmation is genuinely owed, with the prompt
+        attached; AUTO_PASS where nothing was detected that needs confirming.
+        AUTO_PASS here means "§10.2(4) does not apply to this injection", NOT
+        "the confirmation was done" -- an owed confirmation is closed by a human
+        accepting the check with the LC-HRMS result, which is what
+        `accept()` already exists for.
+
+        Idempotent: calling it twice reaches the same answer.
+        """
+        owed = {}
+        for entry in getattr(self.batch, "confirmations_required", None) or []:
+            owed.setdefault(entry.get("sample_injection"), []).append(entry)
+
+        for chk in self.checks:
+            if chk.check_name != "hrms_confirmation":
+                continue
+            entries = owed.get(chk.injection_name)
+            if not entries:
+                chk.status = CheckStatus.AUTO_PASS
+                chk.flags = []
+                continue
+            chk.status = CheckStatus.PENDING
+            chk.flags = [{
+                "Source": "FDA §10.2(4) confirmation",
+                "Analyte": e.get("analyte"),
+                "Injection Name": chk.injection_name,
+                "Value": "positive detect",
+                "Issue": e.get("prompt"),
+                "Link": "",
+            } for e in entries]
+        return sum(len(v) for v in owed.values())
+
     # ── automatic evaluation ──────────────────────────────────────────────────
     def auto_evaluate(self):
         """

@@ -292,6 +292,13 @@ class Batch:
     # {injection: {parent, spike_ppt, level}}. Identifies an LFSM by what the
     # bench recorded rather than by a substring in its name.
     spikes:             dict                 = field(default_factory=dict)
+    # FDA §10.2(4): analytes with one usable MS/MS transition (PFBA, PFPeA)
+    # cannot be identified by ion ratio, so a POSITIVE has to be confirmed by an
+    # orthogonal technique. Populated by build_summary, which is the only place
+    # that knows whether an analyte was detected, and read by
+    # RunQueue.resolve_confirmations() to settle the hrms_confirmation check.
+    # Each entry: {sample_injection, analyte, qc_type, prompt}.
+    confirmations_required: list[dict]       = field(default_factory=list)
     # SENAITE IDs once uploaded
     senaite_batch_uid:  Optional[str]        = None
 
