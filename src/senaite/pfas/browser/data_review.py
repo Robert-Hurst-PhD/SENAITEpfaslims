@@ -1319,6 +1319,30 @@ class PFASDataReviewView(BrowserView):
                     p_obj = self._resolve_parent(portal, p, reagent_by_lot)
                     if p_obj is not None:
                         p_entry["resolved"] = self._reagent_dict(p_obj)
+                        # A parent with NO recorded expiry is undocumented
+                        # provenance, not a clean lot (GAPS §33.13).
+                        # `_is_expired` answers False for it -- correctly, since
+                        # an unrecorded date is not evidence of expiry -- so the
+                        # refusal has to happen here.
+                        #
+                        # Applied to PARENTS only, deliberately: the parent is
+                        # the manufacturer link, which is what CLAUDE.md §10
+                        # requires provenance for. Extending it to the direct
+                        # 252/251 rows is a wider behaviour change and is left
+                        # open rather than slipped in.
+                        try:
+                            from senaite.pfas.browser.reagents import (
+                                _expiry_unknown, _obj_to_dict as _rd)
+                            if _expiry_unknown(_rd(p_obj)):
+                                tree["unresolved"].append({
+                                    "source": "prepstd.parents",
+                                    "lot": p_lot or u"(blank)",
+                                    "name": p.get("name") or u"",
+                                    "reason": u"parent reagent has no recorded "
+                                              u"expiry",
+                                })
+                        except ImportError:
+                            pass
                     else:
                         tree["unresolved"].append({
                             "source": "prepstd.parents",

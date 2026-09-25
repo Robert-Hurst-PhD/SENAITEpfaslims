@@ -158,14 +158,41 @@ def get_reagent_effective_expiry(portal, lot, name=None):
     return ""
 
 
-def _is_expired(rec):
+def _is_expired(rec, as_of=None):
+    """Is this lot expired, as of `as_of` (default today)?
+
+    `as_of` exists because judging a lot against TODAY makes a released batch
+    less defensible as time passes: every standard on this instance is now
+    expired, yet the runs that used them were in date at the time. The
+    traceability record has to be judged against the date the lot was USED --
+    decided in DECISIONS.md 2026-08-03 item 7 and never implemented until now.
+
+    An UNKNOWN expiry still returns False here, because "no date recorded" is
+    not the same claim as "expired" and this answer drives the lot picker. It is
+    not silence, though: `_expiry_unknown` reports it separately and the
+    traceability gate treats it as unresolved (GAPS §33.13).
+    """
     exp = _effective_expiry(rec)
     if not exp:
         return False
+    ref = as_of or date.today()
     try:
-        return datetime.strptime(exp, "%Y-%m-%d").date() < date.today()
+        return datetime.strptime(exp, "%Y-%m-%d").date() < ref
     except (ValueError, TypeError):
         return False
+
+
+def _expiry_unknown(rec):
+    """True when no expiry can be resolved for this lot at all.
+
+    Distinct from `_is_expired`, which answers False for such a lot -- correctly,
+    since an unrecorded date is not evidence of expiry. But it must not read as
+    a clean bill of health either: an undated lot is undocumented, and
+    CLAUDE.md §10 makes provenance a hard requirement. The gate refuses rather
+    than guessing, which is the same posture `tests/test_holding_time.py` pins
+    for an unset holding time.
+    """
+    return not _effective_expiry(rec)
 
 
 # ── Content-object store helpers ──────────────────────────────────────────────
@@ -426,14 +453,23 @@ def _save_coa(portal, uid, file_data, filename, content_type, uploaded_by):
     Returns True on success.
     """
     try:
+        # Resolve the reagent FIRST (GAPS §33.5). This wrote the file to disk,
+        # then skipped the annotation when the reagent did not exist, then
+        # returned True regardless -- so POSTing a CoA against a uid that is not
+        # a reagent reported "CoA uploaded", attached it to nothing, and left an
+        # orphan file behind. The operator is told the lot is documented when it
+        # is not, which is worse than an outright failure.
+        folder = _get_reagents_folder(portal)
+        obj = folder.get(uid) if uid else None
+        if obj is None or getattr(obj, "portal_type", "") != "Reagent":
+            logger.error("_save_coa: no Reagent for uid %r -- refusing", uid)
+            return False
         if not os.path.isdir(COA_DIR):
             os.makedirs(COA_DIR)
         ext = os.path.splitext(filename)[1] if filename else ".pdf"
         dest = os.path.join(COA_DIR, "{}{}" .format(uid, ext))
         with open(dest, "wb") as fh:
             fh.write(file_data)
-        folder = _get_reagents_folder(portal)
-        obj = folder.get(uid)
         if obj is not None:
             ann = IAnnotations(obj)
             ann[_COA_ANN_KEY] = json.dumps({
