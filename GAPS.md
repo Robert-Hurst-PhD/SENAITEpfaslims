@@ -2976,10 +2976,36 @@ An agent is useful as a *drafter*. It cannot be the authoriser, and as of this
 entry the system can tell the difference — which it could not before, and which had
 to exist before automating any part of this, not after.
 
+### 32.5 The group id was the silent-failure mode, so the installer creates it
+
+First written as `AUTOMATION_GROUP = "PFAS Automation"` and left as an
+instruction: *"you'll need to create that group."* Two things wrong with that.
+
+`getGroups()` returns group **IDs**, not titles. An id that does not match raises
+nothing — it classifies every service account as **human**, which is the one
+direction that matters, because a machine attestation would then open the release
+gate looking like a person's sign-off. And this site's ids are CamelCase with no
+spaces (`Analysts`, `LabManagers`, `RegulatoryInspectors`), so a space also risked
+the Plone UI transforming what a lab typed into something that no longer matched.
+
+So the id is now `PFASAutomation`, and `setuphandlers.setup_automation_group()`
+**creates** it rather than leaving a human to type it correctly. A silent-failure
+mode with no symptom is not something to close with documentation.
+
+It grants **no roles**, deliberately and asserted by a test: it classifies an
+account, it does not empower one. A service account still needs Analyst or
+LabManager through the normal role model to reach the view at all (`can_act`), so
+capability and classification stay separate — attaching permissions here later
+would mean adding an account to it silently widens what it may do.
+
+Verified live: created, idempotent on re-run, no roles, no members. And proven
+end to end on a throwaway account — `human` before joining, `automated` after,
+`human` again after removal, transaction aborted so nothing persisted.
+
 ### Still open
 
-* Nothing yet WRITES a proposal: no automated actor exists, and `propose` is
-  reachable only by a member of a group nobody is in. That is deliberate — the
+* Nothing yet WRITES a proposal: no automated actor exists, and the group has no
+  members. That is deliberate — the
   audit distinction is the prerequisite, and building the producer first is how
   the LFSM toggle went wrong (§8). The next increment that needs it is recording
   an LC-HRMS value and computing the 20% agreement.

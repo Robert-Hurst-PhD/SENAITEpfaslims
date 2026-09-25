@@ -109,7 +109,19 @@ _CHECKLIST_ITEMS = [
 # authority key off the permissions SENAITE already enforces, never a second
 # permission system. So granting or revoking automation is a group membership
 # change in the normal Plone UI, and an auditor can see who is in it.
-AUTOMATION_GROUP = "PFAS Automation"
+#
+# This is a group ID, not a title. `getGroups()` returns IDs, so it must match
+# exactly -- and a mismatch fails SILENTLY, classifying every service account as
+# human, which is the failure direction that matters. Hence no space and the
+# CamelCase this site already uses (Analysts, LabManagers,
+# RegulatoryInspectors), and hence `setup_automation_group()` in setuphandlers
+# CREATES it rather than leaving a lab to type the id correctly.
+#
+# It deliberately grants NO roles. It classifies an account; it does not empower
+# one. A service account still needs Analyst or LabManager from the normal role
+# model to reach this view at all (`can_act`), so capability and classification
+# stay separate -- do not attach permissions to this group.
+AUTOMATION_GROUP = "PFASAutomation"
 
 
 def _actor_kind(user=None):

@@ -751,6 +751,51 @@ def migrate_egad_config_from_annotations(portal):
     return 1, 0
 
 
+def setup_automation_group(portal):
+    """Create the group that marks an account as a NON-HUMAN service account.
+
+    Returns True if it was created, False if it already existed. Idempotent.
+
+    WHY THIS IS SEEDED RATHER THAN DOCUMENTED. `data_review._actor_kind()` decides
+    human-vs-automated from `user.getGroups()`, which returns group **IDs**. If the
+    id does not match exactly, the check does not error -- it silently classifies
+    every service account as a person, which is the one direction that matters,
+    because a machine attestation would then open the release gate looking like a
+    human sign-off. Leaving a lab to create a group and type the id right is a
+    silent-failure mode with no symptom, so the id is created here instead.
+
+    IT GRANTS NO ROLES, deliberately. The group classifies an account; it does not
+    empower one. A service account still needs Analyst or LabManager through the
+    normal role model to reach the Data Review view at all. Keeping capability and
+    classification separate means adding an account here cannot accidentally widen
+    what it may do -- so do NOT attach permissions to this group later.
+
+    Nobody is a member on install. That is correct: no automated actor exists yet,
+    and the classification has to exist before a producer does, not after (the
+    ordering GAPS.md §8 got wrong).
+    """
+    # Local imports, matching this module's convention (see
+    # setup_reagents_catalog): setuphandlers runs during install, where a
+    # module-level import of a tool or a browser module can order badly.
+    from Products.CMFCore.utils import getToolByName
+    from senaite.pfas.browser.data_review import AUTOMATION_GROUP
+    gtool = getToolByName(portal, "portal_groups")
+    if AUTOMATION_GROUP in gtool.getGroupIds():
+        return False
+    gtool.addGroup(
+        AUTOMATION_GROUP,
+        title="PFAS Automation (service accounts)",
+        description=(
+            "Non-human service accounts. Membership marks an attestation as "
+            "AUTOMATED: such an account may record a proposed disposition on the "
+            "Data Review checklist but cannot sign an item off, because ISO "
+            "17025 requires a competent, authorised person to authorise results. "
+            "Grants no roles of its own."),
+        roles=[],
+    )
+    return True
+
+
 def post_install(context):
     logger.info("senaite.pfas post_install")
     # Defensive portal resolution: in some invocation contexts (e.g. a
@@ -770,6 +815,14 @@ def post_install(context):
     if portal is None:
         logger.error("post_install: cannot resolve portal — aborting")
         return
+
+    # ── Automation service-account group ──────────────────────────────────
+    try:
+        created = setup_automation_group(portal)
+        logger.info("Automation group: %s",
+                    "created" if created else "already present")
+    except Exception as exc:
+        logger.error("Failed to set up the automation group: %s", exc)
 
     # ── Import Studio vendor templates ────────────────────────────────────
     try:

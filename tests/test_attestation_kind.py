@@ -73,7 +73,10 @@ def test_automation_is_a_group_membership_not_a_name_pattern():
     ids would be a second permission system, invisible to an auditor reading
     Plone's own group membership."""
     src = _source()
-    assert 'AUTOMATION_GROUP = "PFAS Automation"' in src
+    assert 'AUTOMATION_GROUP = "PFASAutomation"' in src, (
+        "the group NAME changed; it is an ID matched against getGroups() and a "
+        "mismatch fails silently, classifying every service account as human")
+    assert " " not in "PFASAutomation", "sanity"
     body = _body("_actor_kind")
     assert "getGroups" in body, (
         "_actor_kind no longer consults group membership")
@@ -81,6 +84,50 @@ def test_automation_is_a_group_membership_not_a_name_pattern():
         assert smell not in body, (
             "_actor_kind appears to infer automation from the NAME (%r) rather "
             "than from declared group membership" % smell)
+
+
+def test_the_group_id_is_id_safe_and_matches_the_sites_convention():
+    """`getGroups()` returns group IDs, not titles. A mismatch does not raise —
+    it silently classifies every service account as human, which is the one
+    direction that matters, because a machine attestation would then open the
+    release gate looking like a person's.
+
+    This site's ids are CamelCase with no spaces (Analysts, LabManagers,
+    RegulatoryInspectors). A space would also risk the Plone UI transforming what
+    a lab typed into something that no longer matches.
+    """
+    import re
+    src = _source()
+    match = re.search(r'AUTOMATION_GROUP = "([^"]+)"', src)
+    assert match, "AUTOMATION_GROUP is no longer a plain string literal"
+    gid = match.group(1)
+    assert " " not in gid, ("group id %r contains a space" % gid)
+    assert re.match(r"^[A-Za-z][A-Za-z0-9_-]*$", gid), gid
+
+
+def test_the_group_is_created_by_the_installer_not_left_to_a_human():
+    """Leaving a lab to create the group and type the id correctly is a
+    silent-failure mode with no symptom. setuphandlers creates it, and grants it
+    no roles: it classifies an account, it does not empower one."""
+    handlers = os.path.join(_ROOT, "src", "senaite", "pfas", "setuphandlers.py")
+    with open(handlers) as fh:
+        hsrc = fh.read()
+    assert "def setup_automation_group(" in hsrc, (
+        "nothing creates the group, so the id is only as right as a human typed it")
+    assert "setup_automation_group(portal)" in hsrc, (
+        "setup_automation_group is defined but never called from post_install")
+    tree = ast.parse(hsrc, handlers)
+    fn = [n for n in ast.walk(tree)
+          if isinstance(n, ast.FunctionDef)
+          and n.name == "setup_automation_group"][0]
+    kwargs = {k.arg: k.value for n in ast.walk(fn)
+              if isinstance(n, ast.Call) for k in n.keywords if k.arg}
+    assert "roles" in kwargs, "addGroup is called without an explicit roles list"
+    roles = kwargs["roles"]
+    assert isinstance(roles, ast.List) and not roles.elts, (
+        "the automation group grants roles; it must classify without empowering")
+    assert "getGroupIds" in ast.dump(fn), (
+        "setup_automation_group is not idempotent — it does not check first")
 
 
 def test_the_actor_kind_fails_closed_to_human():
