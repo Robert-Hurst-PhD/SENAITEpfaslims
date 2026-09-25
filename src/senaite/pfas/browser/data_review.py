@@ -101,6 +101,39 @@ _CHECKLIST_ITEMS = [
 ]
 
 
+# A non-human actor attests differently from a person, and the difference has to
+# be recorded at the moment of attestation or it cannot be reconstructed later.
+#
+# Membership of this GROUP is what makes an account automated -- not a name
+# pattern, not a parallel list in a Python constant. CLAUDE.md §6A: visibility and
+# authority key off the permissions SENAITE already enforces, never a second
+# permission system. So granting or revoking automation is a group membership
+# change in the normal Plone UI, and an auditor can see who is in it.
+AUTOMATION_GROUP = "PFAS Automation"
+
+
+def _actor_kind(user=None):
+    """``"automated"`` if the acting user is a declared service account.
+
+    ISO 17025 requires results to be authorised by a competent, authorised
+    PERSON. A service account cannot hold a competence record or take
+    responsibility, so its attestation is evidence gathered, not authorisation
+    given -- and the two must not be indistinguishable in the record.
+
+    Fails CLOSED to "human": an unreadable group list must not silently reclassify
+    a person's sign-off as machine output, which would discard a valid
+    attestation. The risk runs the other way (a service account mistaken for a
+    person), and that is why membership is explicit rather than inferred.
+    """
+    try:
+        if user is None:
+            user = getSecurityManager().getUser()
+        groups = user.getGroups() if hasattr(user, "getGroups") else []
+        return u"automated" if AUTOMATION_GROUP in (groups or []) else u"human"
+    except Exception:
+        return u"human"
+
+
 def _is_manager(context):
     try:
         user = getSecurityManager().getUser()
@@ -232,6 +265,14 @@ class PFASDataReviewView(BrowserView):
                                    u"Cannot mark CoC as reviewed — the recorded dates say "
                                    u"otherwise, regardless of the checkbox.",
         "checklist_incomplete":    u"All checklist items must pass before submitting.",
+        "automated_proposal_recorded": (
+            u"Recorded as an AUTOMATED proposal, not a sign-off. This account is "
+            u"a declared service account, so what it found is evidence for the "
+            u"reviewer; a person must still authorise the item."),
+        "checklist_machine_attested": (
+            u"One or more items carry an automated attestation. ISO 17025 "
+            u"requires a person to authorise results, so a human must sign "
+            u"those items off before submission."),
         "submitted_for_review":    u"Submitted for manager review.",
         "workflow_error":          u"Workflow transition failed — check worksheet state.",
         "wrong_state":             u"Worksheet is not in the expected state.",
@@ -482,6 +523,16 @@ class PFASDataReviewView(BrowserView):
                 "checked_by": None,
                 "checked_at": None,
                 "notes":      u"",
+                # "human" | "automated" -- who ATTESTED, in kind rather than by
+                # name. None until attested.
+                "checked_by_kind": None,
+                # An automated actor's PROPOSED disposition. Deliberately
+                # separate from `notes`, which a human owns: a proposal must
+                # survive the human acting on it, or the record cannot show that
+                # a machine looked first.
+                "proposed_by":    None,
+                "proposed_at":    None,
+                "proposed_notes": u"",
             }
         return {
             "version":   1,
@@ -505,6 +556,8 @@ class PFASDataReviewView(BrowserView):
                         items[key] = {
                             "label": label, "auto": auto, "checked": False,
                             "checked_by": None, "checked_at": None, "notes": u"",
+                            "checked_by_kind": None, "proposed_by": None,
+                            "proposed_at": None, "proposed_notes": u"",
                         }
                 return data
         except Exception as exc:
@@ -694,6 +747,8 @@ class PFASDataReviewView(BrowserView):
             item = dict(items.get(key, {
                 "label": label, "auto": auto, "checked": False,
                 "checked_by": None, "checked_at": None, "notes": u"",
+                "checked_by_kind": None, "proposed_by": None,
+                "proposed_at": None, "proposed_notes": u"",
             }))
             item["key"] = key
             # An automatic gate that has run and not passed is a FAILURE, and a
@@ -841,7 +896,40 @@ class PFASDataReviewView(BrowserView):
                          "deviation: %s", exc)
 
     def all_items_pass(self):
-        return all(i.get("checked") for i in self.checklist_status())
+        """Every item checked, and every MANUAL item attested by a person.
+
+        `checked` alone is not enough. The three manual items are the ones ISO
+        17025 requires a competent, authorised person to authorise, so an
+        attestation recorded by a declared service account must not open the
+        gate -- see `_handle_check_item`, which refuses to set `checked` for such
+        an account in the first place. This is the second half of the same rule,
+        enforced at the gate rather than only at the point of entry, because an
+        item could also be written by a migration or a scripted POST that never
+        goes through that handler (GAPS.md §7.1 is exactly that shape).
+
+        A manual item with `checked_by_kind` unset is treated as HUMAN. Every
+        such item predates this field, and every one of them was written by
+        `_handle_check_item`, which has always required an authenticated user and
+        typed initials -- so reading them as machine output would invalidate
+        real sign-offs retroactively. New automated attestations are labelled,
+        so the ambiguity does not grow.
+        """
+        items = self.checklist_status()
+        if not all(i.get("checked") for i in items):
+            return False
+        return not self.machine_attested_items()
+
+    def machine_attested_items(self):
+        """Manual items whose attestation was made by a service account.
+
+        Non-empty means the checklist LOOKS complete but is not authorised.
+        Returned rather than merely counted so the reviewer is told WHICH items
+        still need a person.
+        """
+        return [i for i in self.checklist_status()
+                if not i.get("auto")
+                and i.get("checked")
+                and i.get("checked_by_kind") == u"automated"]
 
     def checklist_json(self):
         """HTML-safe JSON of checklist status for JS use."""
@@ -2050,10 +2138,35 @@ class PFASDataReviewView(BrowserView):
         now  = datetime.datetime.utcnow().isoformat()
         cl   = self._get_checklist(ws)
         item = cl["items"].get(item_key, {})
-        item["checked"]    = True
-        item["checked_by"] = user.getId()
-        item["initials"]   = initials
-        item["checked_at"] = now
+
+        # A declared service account may RECORD what it found; it may not sign
+        # the item off. The three manual items are the human-judgement ones --
+        # chain of custody, the final data review, the instrument report -- and
+        # ISO 17025 requires a competent, authorised PERSON to authorise results.
+        # A machine holds no competence record and takes no responsibility, so
+        # its output is evidence FOR the reviewer, not the review.
+        #
+        # Enforced rather than documented because `checked` is what
+        # all_items_pass() reads, and therefore what opens the release gate. An
+        # automated actor able to set it would make "reviewed" and "computed" one
+        # state -- the defect GAPS.md keeps finding in other forms: a pass that
+        # quietly means nobody looked.
+        if _actor_kind(user) == u"automated":
+            item["proposed_by"]    = user.getId()
+            item["proposed_at"]    = now
+            item["proposed_notes"] = initials
+            cl["items"][item_key]  = item
+            self._save_checklist(ws, cl)
+            self._audit(ws)
+            return self._redirect_with_msg(
+                "automated_proposal_recorded", "ok",
+                tab=self.request.form.get("tab", "overview"))
+
+        item["checked"]         = True
+        item["checked_by"]      = user.getId()
+        item["checked_by_kind"] = u"human"
+        item["initials"]        = initials
+        item["checked_at"]      = now
         cl["items"][item_key] = item
         self._save_checklist(ws, cl)
         self._audit(ws)
@@ -2066,6 +2179,11 @@ class PFASDataReviewView(BrowserView):
         ws = self._get_worksheet()
         if not ws:
             return self._redirect_with_msg("no_worksheet", "error")
+        if self.machine_attested_items():
+            # Distinct from "incomplete": every box is ticked, but one was ticked
+            # by a machine. Saying "incomplete" would send the reviewer looking
+            # for an empty box that does not exist.
+            return self._redirect_with_msg("checklist_machine_attested", "error")
         if not self.all_items_pass():
             return self._redirect_with_msg("checklist_incomplete", "error")
         wf_tool = getToolByName(self.context, "portal_workflow")

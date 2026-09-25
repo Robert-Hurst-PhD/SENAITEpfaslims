@@ -2889,3 +2889,99 @@ on the rendered string — the §29 shape exactly, for the third time: **an asse
 about structure standing in for reading the output.** The test now pins all three
 documented strings, which are an independent reference rather than this project's
 own idea of the format.
+
+---
+
+## 32. A machine's finding is evidence; a person's sign-off is authorisation (2026-09-25)
+
+Asked whether the §10.2(4) review could be performed by an agent. Investigating
+it turned up something worth more than the answer.
+
+### 32.1 The review queue an agent would act on is write-only
+
+`RunQueue` looked like the release gate. It is not:
+
+* `is_complete` — **no callers**
+* `RunQueue.load` — **no callers**
+* `{batch_id}_queue.json` — written at `pipeline.py:846`, read by nothing
+* review checks reach neither SQLite nor the add-on; `check_name` does not appear
+  anywhere in `src/`
+
+So an agent disposing of `identity_confirmation` in the pipeline queue would
+change nothing that gates a release. Adding an `AUTO_ACCEPTED` status there — the
+first plan — would have been a mechanism with no consumer: the §12/§30 defect,
+built deliberately.
+
+**The actual gate** is the 5-item checklist in ZODB on the Worksheet
+(`senaite.pfas.data_review.checklist`), whose `all_items_pass()` drives submission
+and whose `submitted_by`/`approved_by` feed the CoA attestation. That is where the
+distinction had to go, and it is a different subsystem from the one the question
+was about.
+
+### 32.2 What was actually wrong
+
+`checked_by` was a **free string**, and `all_items_pass()` read only `checked`. Any
+account able to POST the handler could tick a manual item and open the gate,
+leaving a record indistinguishable from a person's. There was no status, field or
+flag separating the two — so "reviewed" and "computed" were one state.
+
+That is the same shape as §30.5 and §31: a pass that quietly means nobody looked.
+Here it would have meant nobody *authorised*, which under ISO 17025 is the one
+thing a person has to do.
+
+### 32.3 What was built
+
+**Identity from a group, not a name.** `AUTOMATION_GROUP = "PFAS Automation"`;
+`_actor_kind()` reads Plone group membership. Not a name pattern (`svc_*`), not a
+tuple of user ids — CLAUDE.md §6A requires authority to key off the permissions
+SENAITE already enforces, so granting automation is an ordinary group membership
+change that an auditor can see. A test asserts the absence of name-pattern
+matching, because that is the cheap wrong implementation.
+
+**It fails closed to `human`.** An unreadable group list must not reclassify a
+person's sign-off as machine output, which would discard a valid attestation. The
+risk runs the other way, and explicit membership is what addresses it.
+
+**A service account may propose; it may not attest.** `_handle_check_item` now
+branches on actor kind *before* setting `checked`, and the automated branch records
+`proposed_by` / `proposed_at` / `proposed_notes` and returns. `proposed_notes` is
+deliberately separate from `notes`, which a human owns: sharing one field would
+erase the evidence that a machine looked first, which is the provenance the whole
+distinction exists to keep.
+
+**Enforced at the gate as well as at entry.** `all_items_pass()` now also requires
+that no manual item carries an automated attestation, and
+`machine_attested_items()` names which ones do. Entry-point enforcement alone is
+not enough: an item can be written by a migration or a scripted POST that never
+reaches the handler — §7.1 is exactly that shape. Submission reports
+"machine attested" distinctly from "incomplete", because telling a reviewer the
+checklist is incomplete sends them hunting for an empty box that does not exist.
+
+**An unlabelled attestation reads as human.** Every existing one predates
+`checked_by_kind` and was written by a handler that has always required an
+authenticated user and typed initials. Treating them as machine output would
+retroactively invalidate real sign-offs; new automated ones are labelled, so the
+ambiguity does not grow.
+
+### 32.4 What this settles about agents
+
+| step | who |
+|---|---|
+| detect that confirmation is owed | code — §31 |
+| compute the %diff and judge the tolerance | code — still to build |
+| gather evidence, draft a disposition | a service account, now recordable as such |
+| authorise and release | a person, now enforced |
+
+An agent is useful as a *drafter*. It cannot be the authoriser, and as of this
+entry the system can tell the difference — which it could not before, and which had
+to exist before automating any part of this, not after.
+
+### Still open
+
+* Nothing yet WRITES a proposal: no automated actor exists, and `propose` is
+  reachable only by a member of a group nobody is in. That is deliberate — the
+  audit distinction is the prerequisite, and building the producer first is how
+  the LFSM toggle went wrong (§8). The next increment that needs it is recording
+  an LC-HRMS value and computing the 20% agreement.
+* The pipeline `RunQueue` remains write-only. Either wire it to something or
+  retire it; a queue nothing reads is a standing invitation to build against it.
