@@ -2816,3 +2816,28 @@ keeps its release policy.
 * **`calculate_mdl` is now the only remaining NOT WIRED function** in the
   pipeline. It needs a periodic-study feature (≥7 replicates over time), which is
   a data-entry surface, not a missing call.
+
+### 31.1 The reported value never matched its own documented format
+
+Printing `SummaryResult.display()` on a result carrying the new flag — rather
+than asserting anything about the list — found a defect older than this work.
+`build_summary`'s docstring records three strings taken from REAL output:
+`8.39 (BLoQ)`, `0.0537 (BLoQ; N.C.)`, `10.6 (BLoQ; SUR)`. `display()` reproduced
+the first and **neither of the others**. It emitted a separate parenthesis per
+group, and joined multiple flags with the empty string:
+
+| | was | now |
+|---|---|---|
+| one code | `8.39 (BLoQ)` | `8.39 (BLoQ)` |
+| qualifier + flag | `0.0537 (BLoQ) (N.C.)` | `0.0537 (BLoQ; N.C.)` |
+| two flags | `12 (N.C.HRMS)` | `12 (N.C.; HRMS)` |
+
+`N.C.HRMS` is not two qualifier codes. It is a third string that is not a code at
+all, on a document a client reads and an assessor audits.
+
+Reachable all along via `N.C.` + `SUR`; §31 only made a second code common. It
+survived because the sole consumer is `report.py:94` and nothing had ever asserted
+on the rendered string — the §29 shape exactly, for the third time: **an assertion
+about structure standing in for reading the output.** The test now pins all three
+documented strings, which are an independent reference rather than this project's
+own idea of the format.

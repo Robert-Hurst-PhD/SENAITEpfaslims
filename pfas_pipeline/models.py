@@ -249,16 +249,29 @@ class SummaryResult:
     is_mismatch:      str               = ""
 
     def display(self) -> str:
-        """Replicate the Summary Sheet display format from row 5 of Sheet 5."""
+        """Replicate the Summary Sheet display format from row 5 of Sheet 5.
+
+        ONE parenthesis, semicolon-separated, which is the format
+        `build_summary`'s own docstring records from real output:
+        `8.39 (BLoQ)`, `0.0537 (BLoQ; N.C.)`, `10.6 (BLoQ; SUR)`.
+
+        This produced neither of the two-code forms. It emitted a SEPARATE
+        parenthesis per group -- `0.0537 (BLoQ) (N.C.)` -- and joined multiple
+        flags with the empty string, so a result carrying two of them read
+        `12 (N.C.HRMS)`: two qualifier codes run together into a third thing that
+        is not a code at all, on a document a client reads.
+
+        Found by printing the output rather than by any assertion about the list
+        (GAPS.md §29: for any artefact a person reads, print it and read it).
+        Reachable all along with N.C. + SUR; wiring the FDA §10.2(4) HRMS flag
+        (§31) simply made a second code common.
+        """
         if self.result_ppt is None:
             return self.qualifier
-        parts = [f"{self.result_ppt:.3g}"]
-        if self.qualifier:
-            parts.append(f"({self.qualifier})")
-        extras = [f for f in self.flags if f]
-        if extras:
-            parts.append(f"({''.join(extras)})")
-        return " ".join(parts)
+        codes = [c for c in [self.qualifier] + list(self.flags) if c]
+        if not codes:
+            return f"{self.result_ppt:.3g}"
+        return f"{self.result_ppt:.3g} ({'; '.join(codes)})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

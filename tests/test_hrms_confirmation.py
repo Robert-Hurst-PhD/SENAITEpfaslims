@@ -224,22 +224,75 @@ def test_resolve_confirmations_is_idempotent():
     assert (_check(q).status, len(_check(q).flags)) == before
 
 
-def test_a_batch_that_never_built_a_summary_does_not_claim_a_pass():
-    """resolve_confirmations reads batch.confirmations_required. If the summary
-    never ran, that is empty — and an empty list must not be read as 'checked
-    and nothing owed' for a single-transition method. It AUTO_PASSes here, so
-    this test exists to pin that the call ORDER in pipeline.py matters: the
-    resolve step must follow build_summary, never precede it."""
+def test_the_resolve_step_runs_after_build_summary_in_run_pipeline():
+    """resolve_confirmations() reads batch.confirmations_required, which only
+    build_summary populates. Called first, every confirmation silently
+    AUTO_PASSes — the check would report "does not apply" for a batch full of
+    PFBA positives.
+
+    Scans `run_pipeline` BY NAME. An earlier version fell back to the whole
+    module when a guessed function name was absent, which passed for the wrong
+    reason: it was finding the first occurrence of each string anywhere in the
+    file rather than in the orchestration.
+    """
     import inspect
     from pfas_pipeline import pipeline
-    src = inspect.getsource(pipeline.process_batch) \
-        if hasattr(pipeline, "process_batch") else inspect.getsource(pipeline)
+    assert hasattr(pipeline, "run_pipeline"), (
+        "run_pipeline is gone; this test is scanning nothing")
+    src = inspect.getsource(pipeline.run_pipeline)
     i_summary = src.find("build_summary(batch)")
     i_resolve = src.find("resolve_confirmations()")
-    assert i_summary != -1 and i_resolve != -1, (i_summary, i_resolve)
+    assert i_summary != -1, "build_summary is not called in run_pipeline"
+    assert i_resolve != -1, "resolve_confirmations is not called in run_pipeline"
     assert i_summary < i_resolve, (
         "resolve_confirmations() runs BEFORE build_summary(); every "
         "confirmation would silently AUTO_PASS")
+
+
+def test_an_empty_owed_list_is_only_trusted_because_the_summary_ran():
+    """Behavioural companion to the ordering test: with no summary built, the
+    owed list is empty and the check reads AUTO_PASS. That is only CORRECT
+    because run_pipeline guarantees the summary ran first — which is precisely
+    why the ordering above is asserted rather than assumed."""
+    batch = Batch(batch_id="B-NOSUM", analyst="RT",
+                  date=datetime(2026, 9, 25), matrix="Eggs",
+                  method_id="FDA_32PFAS", instrument_file="x.csv",
+                  injections=[_row("PFBA", 12.0)])
+    assert batch.confirmations_required == []
+    q = RunQueue(batch, _plan(), method_id="FDA_32PFAS")
+    assert q.resolve_confirmations() == 0
+
+
+# ── What a client actually reads ─────────────────────────────────────────────
+
+def test_the_displayed_value_reproduces_the_documented_real_output():
+    """build_summary's docstring records three strings taken from REAL output:
+    `8.39 (BLoQ)`, `0.0537 (BLoQ; N.C.)`, `10.6 (BLoQ; SUR)`. That is an
+    independent reference, not this test's idea of the format — which matters,
+    because display() matched NONE of the two-code forms: it put each group in
+    its own parenthesis and joined flags with the empty string.
+    """
+    from pfas_pipeline.models import SummaryResult
+
+    def shown(value, qualifier, flags):
+        return SummaryResult(analyte="X", sample_injection="i",
+                             result_ppt=value, qualifier=qualifier,
+                             flags=list(flags)).display()
+
+    assert shown(8.39, QUALIFIER_BLOQ, []) == "8.39 (BLoQ)"
+    assert shown(0.0537, QUALIFIER_BLOQ, ["N.C."]) == "0.0537 (BLoQ; N.C.)"
+    assert shown(10.6, QUALIFIER_BLOQ, ["SUR"]) == "10.6 (BLoQ; SUR)"
+
+
+def test_two_qualifier_codes_never_run_together():
+    """`12 (N.C.HRMS)` is not two codes, it is a third thing that is not a code.
+    Wiring §10.2(4) made a second code common; the defect predated it."""
+    from pfas_pipeline.models import SummaryResult
+    line = SummaryResult(analyte="PFBA", sample_injection="i", result_ppt=12.0,
+                         qualifier="", flags=["N.C.", QUALIFIER_HRMS]).display()
+    assert line == "12 (N.C.; HRMS)", line
+    assert "N.C.HRMS" not in line
+    assert ") (" not in line, ("each code group got its own parenthesis", line)
 
 
 if __name__ == "__main__":
