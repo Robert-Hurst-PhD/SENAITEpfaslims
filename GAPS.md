@@ -3011,3 +3011,160 @@ end to end on a throwaway account — `human` before joining, `automated` after,
   an LC-HRMS value and computing the 20% agreement.
 * The pipeline `RunQueue` remains write-only. Either wire it to something or
   retire it; a queue nothing reads is a standing invitation to build against it.
+
+---
+
+## 33. Traceability & throughput audit — reagent lot → in-house standard → result (2026-09-25)
+
+Asked for an audit of throughput: can work flow through, and does a lot prepared
+in-house link back to the manufacturer's material? Levels 1→2 exercised **through
+the web forms** on the live instance, plus the 2→3 gate. Lots named `AUDIT-*`,
+all removed afterwards — the final baseline is byte-identical to the as-found one
+and `method_profiles.json` verified unchanged by sha256.
+
+**Throughput itself works.** A manufacturer lot was created with full provenance,
+a CoA uploaded and served back, an in-house standard prepared from it, the parent
+link written and resolved, and a Certificate of Preparation issued correctly
+labelled "not a manufacturer CoA". The chain *can* be built correctly.
+
+The problem is that nothing requires it to be, and the bench path actively breaks
+the model.
+
+### As-found data state
+
+| | |
+|---|---|
+| reagent lots / prepared standards | 14 / 11 |
+| **reagent lots with a CoA on file** | **0 of 14** |
+| prepared standards with no parentage | 1 (`PS-FDA-2026-A`) |
+| prepared standards expired | 11 of 11 (latest 2026-09-22) |
+| tests exercising the traceability gate | **0** |
+
+### HIGH — structural
+
+**33.1 Preparing a solution in-house creates a MANUFACTURER reagent.**
+`extraction_guide._handle_prepare_solution` (`:347`) calls `_save_reagent`, not the
+prepared-standard path. Demonstrated live: the form produced a `Reagent` with
+`supplier="In-house"`, empty `cat_number`, empty `manufacturer_expiry`, and
+composition/preparer buried in a free-text `notes` string. It sits in inventory
+beside genuine Wellington/Fisher CRMs with the same shape.
+
+The link back is not merely absent, it is **impossible**: `IReagent` has no
+parent/parentage/source field at all. So the three-level chain collapses to two the
+moment a bench chemist prepares anything, and the resulting object *claims to be*
+the manufacturer material. Contradicts DECISIONS.md D50 (`:2380`), which states this
+path records "a new Prepared Standard lot (parents = the stage's reagents) …
+completing the 3-level traceability chain the review gate checks."
+
+**33.2 The item labelled "3-level chain auto-resolved" gates two levels.**
+Proven by contrast, reproduced identically twice:
+
+| logbook names | gate |
+|---|---|
+| a standard whose parent lot does not exist | **PASS** |
+| a *reagent* lot that does not exist | fail (`unresolved=1`) |
+
+Level 2 genuinely gates; level 1 does not. `_build_traceability_tree`
+(`data_review.py:1212-1226`) is the only branch with no
+`else: tree["unresolved"].append(...)`, and `_compute_traceability_status` (`:591`)
+keys solely off `unresolved`. The tree even *computes and displays*
+`unresolved_parents` — the information exists and is shown, and is not gated. A
+standard with zero parents also passes, as does a corrupt annotation
+(`except Exception: parents = []`, `:1210`).
+
+**33.3 A fabricated parentage is certified as fact.** A standard naming parent lot
+`AUDIT-DOES-NOT-EXIST` saved without error, and its Certificate of Preparation
+printed `Nonexistent CRM | Nowhere Labs | AUDIT-DOES-NOT-EXIST | 50 uL` under
+"Parent Reagents (Parentage)" with the 3-tier QA attestation attached and **no flag
+anywhere** that the lot is not in inventory.
+
+**33.4 A standard with no parentage is saved and certified.** Only `title` and
+`lot_number` are validated (`prepared_standards.py:524`). The certificate is then
+issued printing "No parent reagents recorded" — the document that exists to
+establish parentage is issued precisely when there is none.
+
+### MODERATE-HIGH
+
+**33.5 A CoA can be "uploaded" against nothing, reporting success.** `_save_coa`
+(`reagents.py:422`) writes the file to disk *before* resolving the reagent, then
+`if obj is not None:` skips the annotation, then `return True` unconditionally.
+Demonstrated: `uid=1000` (not a reagent) returned `?ok=CoA+uploaded` and left an
+orphan `/data/coa/1000.pdf` attached to nothing. The operator is told the lot is
+documented. It is not.
+
+**33.6 A dangling parent silently disables expiry protection.**
+`get_reagent_effective_expiry` returns `''` for an unknown lot (`reagents.py:158`),
+and `effective_expiry_info` treats `''` as "no constraint" inside a bare
+`except Exception: pass` (`prepared_standards.py:235`). Unresolvable and
+unconstrained are indistinguishable, so §10's "an expired CRM invalidates prepared
+standards made from it" cannot fire when the parent cannot be found at all.
+
+### MODERATE
+
+**33.7 The stored parent `uid` is dead — the root cause of 33.3 and 33.6.** The
+annotation carries a `uid` per parent and nothing reads it; resolution is by
+lot-number STRING (`data_review.py:1221`, `prepared_standards.py:233`). The repo
+already holds the correct pattern: D54 stores salt-factor CoA links as
+`{analyte, factor, lot_uid, lot_number}` and resolves by uid
+(`method_profiles.py:1102`). `parent_reagents` was never brought up to it.
+
+**33.8 The gate resolves against ARCHIVED lots.** Demonstrated: after archiving a
+parent reagent while a standard still cited it, `_build_lot_indices` still returned
+it (it walks `objectValues()` with no status/archive filter), `resolved=True`, gate
+`True`. A lot the lab has deliberately withdrawn still satisfies traceability.
+*(Correction made during the audit: I first read this as the link breaking, because
+`_list_reagents()` does filter archived lots. That is not the resolver the gate uses.)*
+
+**33.9 Three resolvers, three answers, for one parent.** At the same moment for the
+same archived parent: `_list_reagents()` → absent; `get_reagent_effective_expiry()`
+→ `'2028-03-31'`; `_build_lot_indices()` → present. "Is this parent real" depends on
+which you ask.
+
+**33.10 A row with no lot satisfies "has data".** `direct_reagents.append(entry)`
+sits outside the `if lot:` branch (`data_review.py:1148`), so one 252 row with a
+name and an empty lot makes `has_data` True and adds nothing to `unresolved` —
+traceability passes with zero lots resolved. Confirmed live.
+
+**33.11 The lot picker offers undocumented standards.** `usable_lots()` offered the
+parentless and the ghost-parented standard alongside the properly documented one,
+with nothing distinguishing them.
+
+**33.12 `extraction_materials[]` lots are traced nowhere.** The gate reads only
+`reagents[]` and `standards[]` (`:1132, :1151`). Cartridge/sorbent lots are neither
+resolved nor reported unresolved.
+
+**33.13 No expiry means never expires.** `_is_expired()` (`reagents.py:161`):
+`if not exp: return False`. A lot created with no dates at all reports not-expired.
+Fails open, against this project's own precedent — `tests/test_holding_time.py` pins
+that an unset limit must REFUSE rather than pass.
+
+### LOW-MODERATE, and data/design items
+
+- **33.14** A manufacturer lot needs no manufacturer identity: POST with only
+  `name` + `lot_number` saved cleanly, leaving supplier, catalogue number and all
+  dates empty. It is then eligible as a prepared-standard parent.
+- **33.15** No NIST/CRM traceability field exists anywhere in `content/` or the
+  reagent UI. CLAUDE.md §10 "Reference standard provenance (NIST-traceable)" is
+  **unrecordable**, not merely unenforced.
+- **33.16** `extraction_guide.py:358` calls `_auto_expiry_from_open` without the
+  `defaults` argument, so the one path that creates lots automatically bypasses the
+  lab-configurable expiry defaults (golden rule 1).
+- **DATA:** 0 of 14 lots have a CoA — including the two Wellington CRMs every
+  calibration standard descends from. The mechanism works; it has never been used.
+- **DESIGN QUESTION for the QA manager:** should parent links be UID references
+  (33.7)? That is a data-migration decision, not a bug fix.
+
+### What this audit did not cover
+
+Level 3 was verified only as a mechanism. The instance holds no samples or
+AnalysisRequests, so no released result was traced back to a lot. The 2→3 seeding
+used worksheet annotations directly; note the dual read (`data_review.py:1091`)
+takes the worksheet before the linked batch.
+
+### The transferable point
+
+This subsystem had **one incidental mention** in 32 sections of this register before
+today, and no test at all. Every finding above was reachable by driving the forms
+for an afternoon. The gate that was supposed to catch them reports green — and
+33.2's contrast shows it is not a broken gate, it is a gate with one link missing,
+which is far harder to notice than a gate that never worked.
