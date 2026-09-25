@@ -5053,3 +5053,68 @@ whose it is, and reuse is a lab decision rather than something the model forbids
 - **`d63-state-edd-profiles` merged to `master`** (fast-forward, 142 commits,
   master now at 2492bc9). No git remote exists, so nothing is pushed; creating
   one remains an explicit, separate decision.
+
+---
+
+## 2026-09-25 — Identity confirmation applies to every reported role, not only client samples
+
+**Status:** confirmed.
+
+**Decision.** The `identity_confirmation` review check (FDA §10.2(4), single-
+transition positives) sits on **all four roles a result is reported for** —
+`Sample`, `MB`, `LFSM`, `LFSMD` — and not on `Sample` alone. Asked explicitly
+because it means a method blank with a PFBA detect now holds a pending check;
+answered yes.
+
+**Why it is the right answer and not merely the status quo.** A blank
+contaminated with PFBA is precisely a case where identity matters. The finding
+that gets acted on is "the method blank contained PFBA", and that claim rests on
+the identification being correct — the same single-transition weakness applies,
+and the consequence of getting it wrong is larger, because a false blank positive
+can invalidate a batch or trigger blank subtraction against a compound that was
+never there. Confirming identity only on client samples would confirm it where the
+number is reported and skip it where the number decides whether the batch is
+releasable at all.
+
+**Implementation consequence.** The role set is the same one `build_summary`
+calls `REPORTED_ROLES`, and `pfas_pipeline/injection_builder.REVIEW_CHECKS` is the
+single declaration of it. `Dup` is excluded because it reports no result of its
+own, and every solvent injection (`CAL`, `ICV`, `CCV`, `CCB`) is excluded because
+nothing was extracted into it.
+`test_the_check_is_declared_on_every_reported_role_and_no_other` pins both
+directions, so narrowing this later is a deliberate edit rather than a drift.
+
+---
+
+## 2026-09-25 — A git remote exists, it is public, and the licence is unresolved
+
+**Status:** confirmed. **Supersedes** two lines in *2026-09-20 — Remaining
+answers from the September review*.
+
+**Decision.** `origin` is `github.com/Robert-Hurst-PhD/SENAITEpfaslims` over SSH.
+The 2026-09-20 entry recorded that no remote existed and that creating one
+"remains an explicit, separate decision" — that decision is now taken.
+
+The repository is **public**. Private was asked for and chosen first; a public
+repo was then created, and when the mismatch was put plainly, public was
+reaffirmed. It is therefore deliberate. Consequences, which are not reversible by
+a later flip to private because caches, forks and scrapes survive it: everything
+committed is published, `GAPS.md` and `DECISIONS.md` included — this file is
+world-readable, and it is a candid record of the lab's internal quality findings.
+`.gitignore` keeps all of `data/` out, so no lab data is exposed.
+
+**The licence is UNRESOLVED and must not be guessed.** `LICENSE` says MIT and
+arrived from GitHub's repo-creation dialog, not from a decision — the first 204
+commits carried no licence file at all. `setup.py:12` declares `GPLv2`, and
+`install_requires` pulls `senaite.core`, `senaite.lims` and `senaite.storage`,
+which are GPLv2; a Plone add-on importing them is normally a derivative work, so
+MIT may not be ours to offer. The likely fix is replacing `LICENSE` with GPLv2 to
+match `setup.py`. Open, awaiting an answer.
+
+**Also superseded:** the same 2026-09-20 entry recorded FDA §10.2(4) as "an
+implemented, unwired regulatory obligation". It is wired as of 2026-09-25 —
+GAPS.md §31 — and its prompt is switchable and technique-neutral (§31.2).
+
+**Implementation consequence.** CLAUDE.md §8 now carries the push discipline
+(push at the end of any turn that produced a commit, never batch a session's
+commits), the public-repo constraint, and the licence warning.

@@ -215,7 +215,20 @@ def _check(q, injection=_SAMPLE):
 
 
 def test_the_check_is_declared_on_every_reported_role_and_no_other():
-    """The same four roles build_summary calls REPORTED_ROLES."""
+    """The same four roles build_summary calls REPORTED_ROLES.
+
+    A CONFIRMED DECISION, not an incidental choice — DECISIONS.md 2026-09-25.
+    Including MB means a method blank with a PFBA detect holds a pending check,
+    which was put to the lab explicitly and answered yes: the finding acted on is
+    "the method blank contained PFBA", and that claim rests on the identification
+    being right. The same single-transition weakness applies and the consequence
+    is larger, because a false blank positive can invalidate a batch or drive
+    blank subtraction against a compound that was never there.
+
+    Dup is excluded because it reports no result of its own; CAL/ICV/CCV/CCB
+    because nothing was extracted into them. Both directions are asserted so
+    narrowing this later is a deliberate edit rather than a drift.
+    """
     for role in ("Sample", "MB", "LFSM", "LFSMD"):
         assert "identity_confirmation" in REVIEW_CHECKS[role], role
     for role in ("CAL", "ICV", "CCV", "CCB", "Dup", "LFB", "MxB", "LRB"):
