@@ -813,6 +813,7 @@ def single_transition_confirm_needed(
     conf = profile.confirmation_rule()
     if detected and analyte in conf.single_transition_analytes:
         return (f"{analyte} positive detect: single MS/MS transition — "
-                f"confirm by LC-HRMS; %diff between techniques must be "
-                f"< {conf.confirm_pct_diff_max:.0f}%")
+                f"confirm by an orthogonal technique "
+                f"({conf.confirm_technique}); %diff between techniques must "
+                f"be < {conf.confirm_pct_diff_max:.0f}%")
     return None

@@ -235,7 +235,7 @@ class RunQueue:
                 ))
 
     def resolve_confirmations(self):
-        """Settle the `hrms_confirmation` checks once detection is known.
+        """Settle the `identity_confirmation` checks once detection is known.
 
         FDA §10.2(4) applies only to a POSITIVE of a single-transition analyte,
         and whether an analyte was detected is decided in
@@ -244,7 +244,7 @@ class RunQueue:
         auto_evaluate produces. So this is a second, later pass rather than part
         of the main evaluation.
 
-        `hrms_confirmation` is deliberately absent from auto_evaluate's
+        `identity_confirmation` is deliberately absent from auto_evaluate's
         _CHECK_KINDS, which leaves it PENDING there -- the documented default for
         a check no engine block resolves. Without this pass it would stay PENDING
         on every injection of every batch forever, which is the noise defect
@@ -264,7 +264,7 @@ class RunQueue:
             owed.setdefault(entry.get("sample_injection"), []).append(entry)
 
         for chk in self.checks:
-            if chk.check_name != "hrms_confirmation":
+            if chk.check_name != "identity_confirmation":
                 continue
             entries = owed.get(chk.injection_name)
             if not entries:

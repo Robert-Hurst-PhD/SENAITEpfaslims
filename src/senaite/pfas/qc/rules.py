@@ -79,6 +79,18 @@ RULE_LIBRARY = [
      ]},
     {"key": "mdl_check",     "label": "MDL Check",
      "params": [{"name": "mdl_n_min", "label": "Min replicate count", "type": "integer", "default": 7}]},
+    # Whether the system PROMPTS for confirmation of a single-transition
+    # positive. The obligation is method text (FDA §10.2(4)) and is not in
+    # question; what is optional is this prompt, because a lab may confirm PFBA
+    # by a route that is not LC-HRMS -- a second column, different ionisation,
+    # an alternative transition -- and may be recording that elsewhere.
+    #
+    # WHICH analytes need confirming and WHICH technique is named live in the
+    # method profile's `confirmation` block, beside the other confirmation
+    # settings. This is the on/off switch only: one fact, one home.
+    {"key": "single_transition_confirm",
+     "label": "Single-Transition Confirmation",
+     "params": []},
 ]
 
 # ── Default toggle state per method ──────────────────────────────────────────
@@ -88,16 +100,24 @@ DEFAULT_METHOD_RULE_TOGGLES = {
         "is_response": True, "rrt_deviation": True, "ion_ratio": True,
         "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
         "sn_min": False, "mdl_check": False,
+        # ON for FDA: §10.2(4) names PFBA/PFPeA and the lab can switch the
+        # prompt off if it confirms them another way.
+        "single_transition_confirm": True,
     },
     "EPA_537_1": {
         "is_response": True, "rrt_deviation": True, "ion_ratio": True,
         "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
         "sn_min": False, "mdl_check": True,
+        # Inert rather than off: 537.1 declares no single-transition analytes,
+        # so the check finds nothing to confirm. Left ON so that a lab which
+        # DOES declare one gets the prompt without also having to find a switch.
+        "single_transition_confirm": True,
     },
     "EPA_1633A": {
         "is_response": True, "rrt_deviation": True, "ion_ratio": True,
         "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
         "sn_min": True, "mdl_check": True,
+        "single_transition_confirm": True,
     },
 }
 
@@ -123,6 +143,7 @@ LIBRARY_KEY_TO_ENGINE_CHECKS = {
     "ccv_frequency": [],   # UI only — CCV interval in InjectionSequenceBuilder
     "sn_min":        ["signal_to_noise"],
     "mdl_check":     [],   # UI only — MDL assessment not auto-evaluated
+    "single_transition_confirm": ["identity_confirmation"],
 }
 
 # ── Default QC rule set ───────────────────────────────────────────────────────

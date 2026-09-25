@@ -28,6 +28,16 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RULES = os.path.join(ROOT, "src", "senaite", "pfas", "qc", "rules.py")
 QUEUE = os.path.join(ROOT, "pfas_pipeline", "run_queue.py")
+# Every module that gates a check on a rule toggle, not just the queue. Added
+# 2026-09-25: the FDA §10.2(4) confirmation prompt is gated in `pipeline.py`,
+# because build_summary is the only place that knows whether an analyte was
+# detected — and this guard scanned run_queue.py ALONE, so a toggle read there
+# would have been invisible to the very test that exists to catch an unreachable
+# toggle. The blind spot was in the checker, not the checked.
+GATING_MODULES = [
+    QUEUE,
+    os.path.join(ROOT, "pfas_pipeline", "pipeline.py"),
+]
 
 
 def _module_literal(path, name):
@@ -42,21 +52,23 @@ def _module_literal(path, name):
 
 
 def _keys_read_by_engine():
-    """Every literal key passed to `_rule_enabled` in run_queue -- from the
-    AST, so a mention in a comment or docstring does not count."""
-    with open(QUEUE) as fh:
-        tree = ast.parse(fh.read(), QUEUE)
+    """Every literal key passed to `_rule_enabled` anywhere in GATING_MODULES --
+    from the AST, so a mention in a comment or docstring does not count."""
     found = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if getattr(func, "id", getattr(func, "attr", None)) != "_rule_enabled":
-            continue
-        for arg in node.args[1:]:
-            value = arg.value if hasattr(arg, "value") else getattr(arg, "s", None)
-            if isinstance(value, str):
-                found.add(value)
+    for path in GATING_MODULES:
+        with open(path) as fh:
+            tree = ast.parse(fh.read(), path)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if getattr(func, "id", getattr(func, "attr", None)) != "_rule_enabled":
+                continue
+            for arg in node.args[1:]:
+                value = (arg.value if hasattr(arg, "value")
+                         else getattr(arg, "s", None))
+                if isinstance(value, str):
+                    found.add(value)
     return found
 
 
@@ -156,6 +168,97 @@ def test_the_real_profiles_report_their_configured_state():
             assert profile.qc_type_enabled(qc_type) is True, (
                 "%s %s is configured enabled=True and must report so"
                 % (mid, qc_type))
+
+
+def test_the_confirmation_toggle_is_reachable_and_enforced():
+    """The FDA §10.2(4) prompt must be switchable off — a lab may confirm PFBA by
+    a route other than the LC-HRMS the method cites, and the prompt should not
+    insist on an instrument it may not own.
+
+    Pins all three halves of "reachable": in the library (so it has a UI), in
+    every method's defaults, and actually READ by a gating module. Any one
+    missing is the §8 defect — a switch that is displayed but unread, or read but
+    undisplayed.
+    """
+    key = "single_transition_confirm"
+    assert key in LIBRARY, "no UI: the toggle would be permanently ON"
+    assert key in MAPPING and MAPPING[key], (
+        "mapped to no engine check, so it would be declared UI-only while "
+        "actually gating something")
+    for method, toggles in sorted(DEFAULTS.items()):
+        assert key in toggles, method
+    assert key in _keys_read_by_engine(), (
+        "the toggle is displayed but nothing reads it")
+
+
+def test_switching_the_confirmation_off_suppresses_the_qualifier():
+    """Behavioural, not structural: with the rule OFF, a PFBA positive gets no
+    confirmation qualifier and nothing is recorded as owed."""
+    import sys
+    import json
+    import tempfile
+    from datetime import datetime
+    sys.path.insert(0, ROOT)
+    os.environ.setdefault("PFAS_ALLOW_LEGACY_VENDOR_MAP", "1")
+    os.environ.setdefault(
+        "PFAS_PROFILES_PATH",
+        os.path.join(ROOT, "data", "qc", "method_profiles.json"))
+    from pfas_pipeline import method_profiles as mp
+    from pfas_pipeline import pipeline as pl
+    from pfas_pipeline.constants import QUALIFIER_CONF
+    from pfas_pipeline.models import Batch, InstrumentRow
+    mp.reload_from_profiles()
+
+    def _row():
+        return InstrumentRow(
+            compound_name="PFBA", compound_type="Target", compound_group="PFAS",
+            sample_description="i", injection_name="260925-01",
+            sample_group="G1", sample_type="Unknown", included_in_cal=False,
+            level=None, linked_is=None, cal_ref_compound=None, observed_rt=5.0,
+            rt_relative_to_is=1.0, response=1000.0, is_response=1000.0,
+            response_ratio=1.0, expected_conc=None, calculated_conc=12.0,
+            pct_deviation=None, pct_recovery_is=None, ion_ratios=None,
+            expected_ion_ratios=None, r2=None, signal_to_noise=None,
+            qual_sn=None, quant_status=None, reporting_limit=None,
+            measured_conc=12.0,
+            acquisition_datetime=datetime(2026, 9, 25, 10, 0, 0),
+            concat_id="260925-01|20260925100000")
+
+    def _summary_flags(rules_payload):
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as fh:
+            json.dump(rules_payload, fh)
+            rules_path = fh.name
+        from pfas_pipeline import run_queue as rq
+        original = rq._load_rule_toggles
+        rq._load_rule_toggles = lambda mid, rules_path=rules_path: (
+            original(mid, rules_path))
+        try:
+            batch = Batch(batch_id="B-T", analyst="RT",
+                          date=datetime(2026, 9, 25), matrix="Eggs",
+                          method_id="FDA_32PFAS", instrument_file="x.csv",
+                          injections=[_row()])
+            pl.build_summary(batch)
+            hit = [s for s in batch.summary if s.analyte == "PFBA"][0]
+            return hit.flags, batch.confirmations_required
+        finally:
+            rq._load_rule_toggles = original
+            os.unlink(rules_path)
+
+    on_flags, on_owed = _summary_flags(
+        {"method_rule_toggles": {"FDA_32PFAS":
+                                 {"single_transition_confirm": True}}})
+    assert QUALIFIER_CONF in on_flags, ("rule ON must qualify", on_flags)
+    assert on_owed, "rule ON must record the confirmation as owed"
+
+    off_flags, off_owed = _summary_flags(
+        {"method_rule_toggles": {"FDA_32PFAS":
+                                 {"single_transition_confirm": False}}})
+    assert QUALIFIER_CONF not in off_flags, (
+        "the switch did nothing — the qualifier was applied with the rule OFF",
+        off_flags)
+    assert not off_owed, ("the switch did nothing — a confirmation was still "
+                          "recorded as owed", off_owed)
 
 
 def test_ui_only_rules_are_declared_as_such():

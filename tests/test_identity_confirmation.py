@@ -31,7 +31,7 @@ os.environ.setdefault("PFAS_PROFILES_PATH",
                       os.path.join(_ROOT, "data", "qc", "method_profiles.json"))
 
 from pfas_pipeline.constants import (                          # noqa: E402
-    QUALIFIER_HRMS, QUALIFIER_ND, QUALIFIER_BLOQ,
+    QUALIFIER_CONF, QUALIFIER_ND, QUALIFIER_BLOQ,
 )
 from pfas_pipeline.models import Batch, InstrumentRow          # noqa: E402
 from pfas_pipeline.pipeline import build_summary               # noqa: E402
@@ -94,6 +94,47 @@ def test_the_rule_names_the_analyte_the_technique_and_the_tolerance():
         assert fragment in prompt, (fragment, prompt)
 
 
+def test_the_technique_is_the_labs_to_name_not_hardcoded():
+    """FDA §10.2(4) cites LC-HRMS as an example; it is not the only orthogonal
+    route to confirming PFBA. A second column, a different ionisation mode or an
+    alternative transition can also establish identity, so the prompt must quote
+    whatever the lab configured rather than insisting on an instrument it may not
+    own. CLAUDE.md §1 rule 1: configurable, not hardcoded.
+    """
+    class Stub(mp.FDA32PFASProfile):
+        def __init__(self, technique):
+            # The other confirmation criteria have to be present: this
+            # method refuses to judge on an unconfigured one rather than
+            # substituting a value, which is the behaviour §2 relies on.
+            self._data = {"instrument_verification": {
+                "confirmation": {
+                    "confirm_technique": technique,
+                    "ion_ratio_tol_pct": 30.0,
+                    "rrt_tol_pct": 1.0,
+                    "sn_quan_min": 3.0,
+                    "sn_confirm_min": 3.0,
+                }}}
+
+        def _profile_data(self):
+            return self._data
+
+    prompt = single_transition_confirm_needed(
+        Stub("second-column GC-MS/MS"), "PFBA", True)
+    assert "second-column GC-MS/MS" in prompt, prompt
+    assert "LC-HRMS" not in prompt, (
+        "the prompt named LC-HRMS anyway", prompt)
+    assert "orthogonal technique" in prompt, prompt
+
+    # blank falls back to the method's cited example rather than naming nothing
+    assert "LC-HRMS" in single_transition_confirm_needed(Stub(""), "PFBA", True)
+
+
+def test_the_qualifier_code_does_not_assert_a_technique():
+    """`HRMS` on a certificate claims the identification needs one specific
+    instrument. `CONF` says what is true: confirmation is outstanding."""
+    assert QUALIFIER_CONF == "CONF", QUALIFIER_CONF
+
+
 def test_a_non_detect_needs_no_confirmation():
     profile = mp.get_profile("FDA_32PFAS")
     assert single_transition_confirm_needed(profile, "PFBA", False) is None
@@ -122,7 +163,7 @@ def test_a_pfba_positive_is_qualified_on_the_result():
     batch = _summary([_row("PFBA", 12.0)])
     res = _result_for(batch, "PFBA")
     assert res.result_ppt == 12.0
-    assert QUALIFIER_HRMS in res.flags, (
+    assert QUALIFIER_CONF in res.flags, (
         "a single-transition positive reached the summary with no confirmation "
         "qualifier", res.flags)
 
@@ -131,7 +172,7 @@ def test_a_pfba_non_detect_is_not_qualified():
     batch = _summary([_row("PFBA", None, qualifier=QUALIFIER_ND)])
     res = _result_for(batch, "PFBA")
     assert res.qualifier == QUALIFIER_ND
-    assert QUALIFIER_HRMS not in res.flags, res.flags
+    assert QUALIFIER_CONF not in res.flags, res.flags
     assert not _owed(batch)
 
 
@@ -140,13 +181,13 @@ def test_bloq_counts_as_a_detection():
     build_summary. §10.2(4) is about identity, so it still needs confirming."""
     batch = _summary([_row("PFPeA", 0.4, qualifier=QUALIFIER_BLOQ)])
     res = _result_for(batch, "PFPeA")
-    assert QUALIFIER_HRMS in res.flags, (res.qualifier, res.flags)
+    assert QUALIFIER_CONF in res.flags, (res.qualifier, res.flags)
     assert ("PFPeA", _SAMPLE) in _owed(batch)
 
 
 def test_a_two_transition_positive_is_not_qualified():
     batch = _summary([_row("PFOA", 50.0)])
-    assert QUALIFIER_HRMS not in _result_for(batch, "PFOA").flags
+    assert QUALIFIER_CONF not in _result_for(batch, "PFOA").flags
     assert not _owed(batch)
 
 
@@ -155,7 +196,7 @@ def test_nothing_is_owed_on_an_epa_batch():
                      matrix="Wastewater")
     assert not _owed(batch), (
         "EPA 1633A raised an FDA §10.2(4) confirmation", batch.confirmations_required)
-    assert QUALIFIER_HRMS not in _result_for(batch, "PFBA").flags
+    assert QUALIFIER_CONF not in _result_for(batch, "PFBA").flags
 
 
 # ── The review prompt ────────────────────────────────────────────────────────
@@ -168,7 +209,7 @@ def _plan(injection=_SAMPLE, qc_type="Sample"):
 def _check(q, injection=_SAMPLE):
     hits = [c for c in q.checks
             if c.injection_name == injection
-            and c.check_name == "hrms_confirmation"]
+            and c.check_name == "identity_confirmation"]
     assert len(hits) == 1, [c.check_name for c in q.checks]
     return hits[0]
 
@@ -176,9 +217,9 @@ def _check(q, injection=_SAMPLE):
 def test_the_check_is_declared_on_every_reported_role_and_no_other():
     """The same four roles build_summary calls REPORTED_ROLES."""
     for role in ("Sample", "MB", "LFSM", "LFSMD"):
-        assert "hrms_confirmation" in REVIEW_CHECKS[role], role
+        assert "identity_confirmation" in REVIEW_CHECKS[role], role
     for role in ("CAL", "ICV", "CCV", "CCB", "Dup", "LFB", "MxB", "LRB"):
-        assert "hrms_confirmation" not in REVIEW_CHECKS[role], role
+        assert "identity_confirmation" not in REVIEW_CHECKS[role], role
 
 
 def test_an_owed_confirmation_leaves_the_check_pending_with_the_prompt():
@@ -289,9 +330,9 @@ def test_two_qualifier_codes_never_run_together():
     Wiring §10.2(4) made a second code common; the defect predated it."""
     from pfas_pipeline.models import SummaryResult
     line = SummaryResult(analyte="PFBA", sample_injection="i", result_ppt=12.0,
-                         qualifier="", flags=["N.C.", QUALIFIER_HRMS]).display()
-    assert line == "12 (N.C.; HRMS)", line
-    assert "N.C.HRMS" not in line
+                         qualifier="", flags=["N.C.", QUALIFIER_CONF]).display()
+    assert line == "12 (N.C.; CONF)", line
+    assert "N.C.CONF" not in line
     assert ") (" not in line, ("each code group got its own parenthesis", line)
 
 

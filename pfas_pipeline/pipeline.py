@@ -39,7 +39,7 @@ from .qc_engine import single_transition_confirm_needed
 from .report import generate_batch_report
 from .constants import (
     QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_ALOQ,
-    QUALIFIER_HRMS,
+    QUALIFIER_CONF,
     reload_criteria,
 )
 from .method_profiles import (
@@ -227,6 +227,30 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         _conf_profile = _get_profile_obj(_method)
     except Exception:                                      # noqa: BLE001
         _conf_profile = None
+    # ...and the lab's switch for whether to prompt at all. The OBLIGATION is
+    # method text and not in question; the PROMPT is optional, because PFBA can
+    # be confirmed by routes other than the LC-HRMS the method cites -- a second
+    # column, a different ionisation mode, an alternative transition -- and a lab
+    # doing that may be recording it elsewhere.
+    #
+    # Gated through the same _rule_enabled/_load_rule_toggles pair every other
+    # instrument rule uses, on a key that IS in RULE_LIBRARY, in
+    # DEFAULT_METHOD_RULE_TOGGLES and in LIBRARY_KEY_TO_ENGINE_CHECKS. GAPS.md §8
+    # is what happens otherwise: `lfsm_recovery` was read by the engine and
+    # present in no library, no defaults and no UI, so the switch the lab was
+    # given did nothing and the switch that worked did not exist.
+    _confirm_on = True
+    if _conf_profile is not None:
+        try:
+            from .run_queue import _load_rule_toggles, _rule_enabled
+            _confirm_on = _rule_enabled(_load_rule_toggles(_method),
+                                        "single_transition_confirm")
+        except Exception:                                  # noqa: BLE001
+            _confirm_on = True        # absent must not silently disable a check
+    if not _confirm_on:
+        logger.info("%s: single-transition confirmation prompt is switched OFF "
+                    "in the QC rules; §10.2(4) positives will carry no "
+                    "confirmation qualifier", _method)
 
     # Build isomer lookup tables from method profile.
     # by_linear: analyte IS the linear name (e.g. "lr-PFOS" in _analytes)
@@ -453,15 +477,15 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             # so this is silent on EPA 537.1 and EPA 1633A, whose
             # single_transition_analytes are empty -- method-conditional by data,
             # not by an `if method ==` here.
-            if _conf_profile is not None and qualifier not in (
-                    QUALIFIER_ND, QUALIFIER_LOD):
+            if (_confirm_on and _conf_profile is not None
+                    and qualifier not in (QUALIFIER_ND, QUALIFIER_LOD)):
                 # Detected. BLoQ and ALoQ count: both are detections, one below
                 # and one above the quantitation range, and §10.2(4) is about
                 # identification rather than quantitation.
                 prompt = single_transition_confirm_needed(
                     _conf_profile, reported_name, True)
                 if prompt:
-                    flags.append(QUALIFIER_HRMS)
+                    flags.append(QUALIFIER_CONF)
                     batch.confirmations_required.append({
                         "sample_injection": sample_name,
                         "analyte": reported_name,
@@ -777,7 +801,7 @@ def run_pipeline(
         logger.warning(
             "FDA §10.2(4): %d single-transition positive(s) require LC-HRMS "
             "confirmation before the identification can be reported as "
-            "confirmed — see the hrms_confirmation review checks", n_conf)
+            "confirmed — see the identity_confirmation review checks", n_conf)
 
     # 5b. Persist per-injection detail for the multi-page Results Review (D59).
     try:

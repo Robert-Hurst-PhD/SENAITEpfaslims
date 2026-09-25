@@ -912,6 +912,12 @@ class PFASMethodProfileEditView(BrowserView):
             conf["sn_quan_min"]              = _float("conf_sn_quan_min")
             conf["sn_confirm_min"]           = _float("conf_sn_confirm_min")
             conf["require_confirm_ion_check"] = _bool("conf_require_confirm_ion_check")
+            # How a single-transition positive is confirmed. FDA §10.2(4) cites
+            # LC-HRMS; it is not the only orthogonal route, so the lab names its
+            # own and the review prompt quotes it. Blank falls back to the cited
+            # default rather than producing a prompt naming no technique.
+            conf["confirm_technique"] = (
+                f.get("conf_confirm_technique", "").strip() or "LC-HRMS")
 
         # Recovery tiers are written back to the structure the engine reads.
         # Guarded by the field's presence so a POST from another pane cannot

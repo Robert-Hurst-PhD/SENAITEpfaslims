@@ -2766,16 +2766,16 @@ answers to one question — the §1 rule-3 violation this register keeps finding
 
 So the obligation is settled in two passes:
 
-1. `build_summary` appends `QUALIFIER_HRMS` to the result's existing `flags`
+1. `build_summary` appends `QUALIFIER_CONF` to the result's existing `flags`
    list — the same mechanism that already carries `N.C.` and `SUR` onto the
    certificate, so no new plumbing — and records the prompt on
    `batch.confirmations_required`.
 2. `RunQueue.resolve_confirmations()`, called after `build_summary`, settles the
-   new `hrms_confirmation` review check: **PENDING** where a confirmation is
+   new `identity_confirmation` review check: **PENDING** where a confirmation is
    genuinely owed, with the prompt attached; **AUTO_PASS** where §10.2(4) does
    not apply.
 
-That second pass exists because of §30.5. `hrms_confirmation` is deliberately
+That second pass exists because of §30.5. `identity_confirmation` is deliberately
 absent from `auto_evaluate`'s `_CHECK_KINDS`, which leaves it PENDING — and
 without the resolve pass it would sit PENDING on every injection of every batch
 forever, which is a check nobody reads.
@@ -2816,6 +2816,54 @@ keeps its release policy.
 * **`calculate_mdl` is now the only remaining NOT WIRED function** in the
   pipeline. It needs a periodic-study feature (≥7 replicates over time), which is
   a data-entry surface, not a missing call.
+
+### 31.2 Corrected: the prompt insisted on one instrument, and could not be switched off
+
+Robin's correction, 2026-09-25: *"The HRMS check should be an optional toggle
+setting. There are other ways to confirm PFBA that do not require HRMS."*
+
+Both halves were CLAUDE.md §1 rule 1 — configurable, not hardcoded — and §31 as
+first written violated it twice.
+
+**The technique was hardcoded.** FDA §10.2(4) cites LC-HRMS as an example; a
+second column, a different ionisation mode or an alternative transition can also
+establish identity. The prompt named LC-HRMS unconditionally, telling a lab to
+run an instrument it may not own. `confirmation.confirm_technique` is now a
+configurable field with a form input in the Method Profile confirmation pane, and
+the prompt quotes whatever the lab names, falling back to the method's cited
+example only when left blank. The qualifier code changed `HRMS` → **`CONF`**: a
+code on a certificate should say confirmation is outstanding, not assert which
+instrument is required. The review check is `identity_confirmation`, not
+`hrms_confirmation`, for the same reason.
+
+**The prompt could not be switched off.** Now gated on
+`single_transition_confirm` in `RULE_LIBRARY`, with an entry in
+`LIBRARY_KEY_TO_ENGINE_CHECKS` and in all three methods' defaults. The obligation
+is method text and is not in question; what is optional is whether this system
+prompts, since a lab confirming PFBA another way may be recording it elsewhere.
+
+### 31.3 The toggle guard had the same blind spot it exists to catch
+
+`tests/test_rule_toggles.py` harvests every key passed to `_rule_enabled` and
+fails if one is absent from `RULE_LIBRARY` — the guard written after §8, where
+`lfsm_recovery` was read by the engine and present in no library, no defaults and
+no UI, so the switch the lab was given did nothing.
+
+It scanned **`run_queue.py` alone**. This confirmation prompt is gated in
+`pipeline.py`, because `build_summary` is the only place that knows whether an
+analyte was detected — so the gate would have been invisible to the very test
+that exists to catch an unreachable toggle. Now scans a `GATING_MODULES` list.
+
+The blind spot was in the checker, not the checked, which is the third instance
+of that shape in this register: §1 could not see the IS defect (§19.2), the
+configurability audit could not see a key nothing writes (§30.1), and this.
+**A guard that scans one file asserts something only about that file.**
+
+Two new tests: one pinning all three halves of "reachable" (in the library, in
+every method's defaults, and actually read by a gating module), and one
+behavioural — with the rule OFF, a PFBA positive gets no qualifier and nothing is
+recorded as owed. Structural agreement between tables is what §8 already had;
+proving the switch *does something* is what it lacked.
 
 ### 31.1 The reported value never matched its own documented format
 

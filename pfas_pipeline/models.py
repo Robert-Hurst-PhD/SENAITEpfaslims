@@ -309,7 +309,7 @@ class Batch:
     # cannot be identified by ion ratio, so a POSITIVE has to be confirmed by an
     # orthogonal technique. Populated by build_summary, which is the only place
     # that knows whether an analyte was detected, and read by
-    # RunQueue.resolve_confirmations() to settle the hrms_confirmation check.
+    # RunQueue.resolve_confirmations() to settle the identity_confirmation check.
     # Each entry: {sample_injection, analyte, qc_type, prompt}.
     confirmations_required: list[dict]       = field(default_factory=list)
     # SENAITE IDs once uploaded

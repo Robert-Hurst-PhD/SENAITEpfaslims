@@ -1037,6 +1037,18 @@
                   <span class="hint">1.0 for EPA 1633A.</span>
                 </div>
                 <div class="field-row field-row-wide">
+                  <label for="conf_confirm_technique">Confirmation technique for single-transition analytes</label>
+                  <input type="text" id="conf_confirm_technique" name="conf_confirm_technique"
+                         placeholder="LC-HRMS"
+                         tal:attributes="value python:view.confirmation().get('confirm_technique') or 'LC-HRMS'" />
+                  <span class="hint">FDA &#167;10.2(4) requires a positive for a
+                    single-transition analyte (PFBA, PFPeA) to be confirmed by an
+                    orthogonal technique, and cites LC-HRMS as an example &#8212; it
+                    is not the only route. Name the one this lab uses; the review
+                    prompt quotes it. Switch the prompt off entirely under QC Rules
+                    &#8594; Single-Transition Confirmation.</span>
+                </div>
+                <div class="field-row field-row-wide">
                   <div class="check-row">
                     <input type="checkbox" id="conf_require_confirm_ion_check"
                            name="conf_require_confirm_ion_check"

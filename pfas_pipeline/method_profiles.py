@@ -99,6 +99,12 @@ class ConfirmationRule:
     sn_min_quant:         Optional[float] = None
     sn_min_confirm:       Optional[float] = None
     single_transition_analytes: tuple = ()        # need orthogonal confirm
+    # HOW a single-transition positive is confirmed. FDA §10.2(4) cites LC-HRMS,
+    # but it is not the only orthogonal route -- a second column, a different
+    # ionisation mode or an alternative transition can also establish identity --
+    # so the technique is the lab's to name and the prompt quotes whatever it
+    # says. Hardcoding "LC-HRMS" told a lab to run an instrument it may not own.
+    confirm_technique: str = "LC-HRMS"
     confirm_pct_diff_max: Optional[float] = None  # HRMS vs MS/MS %diff
     notes: str = ""
 
@@ -896,6 +902,8 @@ class FDA32PFASProfile(MethodProfile):
             single_transition_analytes=tuple(
                 conf.get("single_transition_analytes") or ("PFBA", "PFPeA")),
             confirm_pct_diff_max=conf.get("confirm_pct_diff_max", 20.0),
+            confirm_technique=(conf.get("confirm_technique")
+                               or "LC-HRMS").strip(),
             notes="PFBA/PFPeA positives require LC-HRMS confirmation; "
                   "cholic acid (TDCA/TCDCA/TUDCA) interference transitions "
                   "monitored for PFOS (§2024.8.5)",
