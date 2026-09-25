@@ -3156,10 +3156,18 @@ that an unset limit must REFUSE rather than pass.
 
 ### What this audit did not cover
 
-Level 3 was verified only as a mechanism. The instance holds no samples or
-AnalysisRequests, so no released result was traced back to a lot. The 2→3 seeding
-used worksheet annotations directly; note the dual read (`data_review.py:1091`)
-takes the worksheet before the linked batch.
+Level 3 was verified only as a mechanism in this pass; §34 carries it out against
+real worksheets. The 2→3 seeding used worksheet annotations directly; note the
+dual read (`data_review.py:1091`) takes the worksheet before the linked batch.
+
+**CORRECTION, see §34.3.** This paragraph first read "The instance holds no samples
+or AnalysisRequests". That was wrong. There are **39 AnalysisRequests** across three
+clients, and **WS-0005 is `verified` with 288 analyses** — the real August
+end-to-end run. The cause was a ZCatalog queried in a way that returns an empty
+result set, which is not the same thing as an empty catalog; the same mistake had
+already been caught once earlier in this session. The reagent and prepared-standard
+counts in the table above were each taken by two structurally different routes,
+agreed, and stand.
 
 ### The transferable point
 
@@ -3168,3 +3176,83 @@ today, and no test at all. Every finding above was reachable by driving the form
 for an afternoon. The gate that was supposed to catch them reports green — and
 33.2's contrast shows it is not a broken gate, it is a gate with one link missing,
 which is far harder to notice than a gate that never worked.
+
+---
+
+## 34. The fixes, verified at level 3 against real released data (2026-09-25)
+
+§33's fixes change what the release gate allows, so the question that matters is
+not "do the probes pass" but "does a worksheet that was legitimately released still
+pass". Run against every worksheet on the instance.
+
+### The gate now enforces level 1 and does not regress a released worksheet
+
+| worksheet | state | analyses | gate | unresolved |
+|---|---|---|---|---|
+| **WS-0005** | **verified** | 288 | **PASS** | 0 |
+| WS-0001 | open | 0 | **fail** | 1 — `PS-FDA-2026-A`, "no parent reagents recorded" |
+| WS-001 | open | 0 | PASS | 0 |
+| WS-0002/3/6/7/8 | open / to_be_verified | 0 | fail | 0 rows of any kind |
+| WS-0004 | **verified** | 0 | fail | 0 rows of any kind |
+
+Two things this establishes:
+
+**No regression.** WS-0005 is the real August end-to-end run — 288 analyses,
+`verified`, published. All twelve of its parent links resolve, and it still passes
+the tightened gate. So level-1 enforcement is not a blanket block; it discriminates.
+
+**The fix catches the real defect on real data.** WS-0001 fails on
+`PS-FDA-2026-A` — the parentless standard found in §33's as-found pass, not a
+fixture. Under the old gate that worksheet reported green. It is `open`, so nothing
+released is retrospectively blocked.
+
+### 34.1 A verified worksheet has no traceability evidence at all
+
+WS-0004 is `verified` with zero reagent, standard and prepared-standard rows — so
+`has_data` is False and it would not pass the gate today. Either it was released
+before the gate existed in its current form, or it is seed data that was pushed to
+`verified` directly. Both are worth knowing and I have not established which;
+recorded rather than guessed at.
+
+### 34.2 Every released result traces to a CRM with no CoA on file
+
+`has_coa` is **False for all twelve** of WS-0005's resolved parents, including
+`WL-PFACMXK-A2439` and `WL-MPFACCES-B1177` — the Wellington CRMs its published
+results descend from. §33 reported 0 of 14 lots carrying a CoA as a data gap; this
+is what that means in practice. The chain resolves, the lots exist, and the
+document establishing what is in them is absent at every node.
+
+Nothing in the code can fix this. It is lot documentation the lab has to upload,
+and the upload path now works and refuses to lie about it (§33.5).
+
+### 34.3 A second catalog mistake, same cause
+
+§33 stated "0 samples / 0 AnalysisRequests". Wrong: there are 39, across three
+clients. The cause is the same one already caught earlier in this session — a
+ZCatalog queried in a way that returns an empty result set is not an empty catalog.
+Having been caught once, it was repeated, which is the useful part: the lesson had
+been recorded but not converted into a habit.
+
+**The habit:** for a count that a finding rests on, cross-check by a second,
+structurally different route before writing it down. The as-found reagent and
+prepared-standard figures in §33 were taken by folder walk *and* by the production
+readers, agreed, and were right. The sample figure was taken one way and was wrong.
+
+### Still open from §33
+
+- **§33.1 — the bench path.** `_handle_prepare_solution` still files an in-house
+  solution as a manufacturer `Reagent` with no parentage, and `IReagent` still has
+  no field that could hold one. The correct fix is a `PreparedStandard` with the
+  stage's reagents as parents, which is what DECISIONS.md D50 already claims
+  happens. It is a bench-workflow change, so it is not being slipped in alongside
+  gate fixes.
+- **§33.3** the Certificate of Preparation still prints an unresolvable parent as
+  fact, with no flag. The gate now refuses such a standard, so the document and the
+  gate disagree — which is better than both being wrong, and still wrong.
+- **§33.11** `usable_lots` still offers standards the gate will now reject. An
+  analyst can pick a lot that blocks release, with no warning at the point of
+  choice.
+- **as-of-date expiry** (DECISIONS.md 2026-08-03 item 7): `_is_expired` now takes
+  `as_of`, and nothing passes it yet. Judging against today would condemn
+  historical batches whose standards were in date when used, so the USE date has to
+  be threaded through the gate first.
