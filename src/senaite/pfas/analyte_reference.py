@@ -299,6 +299,55 @@ def get_injection_is_list():
     return [[row[0], row[1]] for row in INTERNAL_STANDARDS if row[3] == "injection_is"]
 
 
+def get_labeled_analog_map():
+    """{labelled_compound_keyword: native_keyword} — which native each labelled
+    compound stands in for. Already recorded as INTERNAL_STANDARDS row[2]; this
+    is the accessor so nothing re-derives it from a name."""
+    return {row[0]: row[2] for row in INTERNAL_STANDARDS if row[2]}
+
+
+# ── Published-method spellings of a NATIVE analyte ───────────────────────────
+# A published method may name a native differently from this table's keyword.
+# These are pure synonyms -- the same substance under another name -- NOT
+# different compounds, which is why they belong here beside the keyword rather
+# than in a method profile:
+#
+#   HFPO-DA  EPA's name for what this table keys as GenX (both are the
+#            hexafluoropropylene oxide dimer acid, CAS 13252-13-6)
+#   PFUnA    "perfluoroundecanoic acid" numbered as undecanoic; this table keys
+#            it PFUDA (CAS 2058-94-8)
+#   PFOSA    "perfluorooctanesulfonamide" with the PF- prefix spelled out; this
+#            table keys it FOSA (CAS 754-91-6)
+#
+# WHY THIS EXISTS. EPA 1633A Table 6 designates its extracted internal standards
+# by the labelled form of the native (13C3-HFPO-DA, 13C7-PFUnA, 13C8-PFOSA), so
+# joining a Table 6 row to the analyte it belongs to needs the native's
+# published spelling. Verified complete, not guessed: of 1633A's 24 Table 6
+# designations, 21 resolve to a native by stripping the isotopic label alone,
+# and the 3 that do not are exactly these -- which are exactly the 3 natives the
+# method's own surrogate map leaves otherwise uncovered. Complementary sets,
+# 24/24, so the join is total.
+NATIVE_NAME_SYNONYMS = {
+    "HFPO-DA": "GenX",
+    "PFUnA": "PFUDA",
+    "PFOSA": "FOSA",
+}
+
+
+def native_keyword_for(published_name):
+    """A native analyte's keyword from whatever a published method calls it.
+
+    Returns the name unchanged when it is already a keyword or is unknown --
+    the caller then fails to join and says so, which is the same outcome as
+    before but for a genuinely unrecognised analyte rather than a synonym.
+    """
+    if not published_name:
+        return published_name
+    if published_name in NATIVE_NAME_SYNONYMS:
+        return NATIVE_NAME_SYNONYMS[published_name]
+    return COMPOUND_NAME_TO_KEYWORD.get(published_name, published_name)
+
+
 # ── Compound-name → keyword reverse lookup ───────────────────────────────────
 # Maps instrument export display names back to SENAITE keyword (row[0]) when
 # they differ.  Example: "lr-PFOS" → "PFOS", "9Cl-PF3ONS" → "9ClPF3ONS".

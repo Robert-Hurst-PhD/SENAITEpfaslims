@@ -43,6 +43,11 @@ KIND_CCV         = "ccv"
 KIND_SN          = "sn"
 KIND_LFSM        = "lfsm"
 KIND_LFSMD       = "lfsmd"
+# Recovery of a labelled compound added BEFORE extraction. Distinct from
+# KIND_IS_RESPONSE, which is the same compound's raw peak area against the ICAL
+# average: a surrogate can hold its area and still fail recovery, and vice
+# versa, so one kind could not stand for both.
+KIND_SURROGATE   = "surrogate"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

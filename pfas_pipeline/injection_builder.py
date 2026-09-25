@@ -70,20 +70,28 @@ REVIEW_CHECKS: dict[str, list[str]] = {
     "CAL":    ["calibration_pct_dev", "r_squared", "rt_deviation", "ion_ratio"],
     "ICV":    ["ccv_pct_dev", "is_response", "rt_deviation"],
     "CCV":    ["ccv_pct_dev", "is_response", "rt_deviation", "ion_ratio"],
-    "MB":     ["blank_contamination", "is_response", "lod_check"],
+    "MB":     ["blank_contamination", "is_response", "lod_check",
+              "surrogate_recovery"],
     # The other blanks. Without these, classify_injection's new roles fell back
     # to REVIEW_CHECKS["Sample"] and a blank was given the CHECKS OF A CLIENT
     # SAMPLE — bloq/lod qualifiers instead of a contamination check.
-    "MxB":    ["blank_contamination", "is_response"],
-    "LRB":    ["blank_contamination", "is_response"],
+    "MxB":    ["blank_contamination", "is_response", "surrogate_recovery"],
+    "LRB":    ["blank_contamination", "is_response", "surrogate_recovery"],
     "CCB":    ["blank_contamination", "is_response"],
-    "LFB":    ["recovery", "is_response"],
-    "LFSM":   ["lfsm_recovery", "is_response", "ion_ratio", "rt_deviation"],
-    "LFSMD":  ["lfsmd_rpd", "lfsm_recovery", "is_response"],
-    "Dup":    ["duplicate_rpd", "is_response"],
+    "LFB":    ["recovery", "is_response", "surrogate_recovery"],
+    "LFSM":   ["lfsm_recovery", "is_response", "ion_ratio", "rt_deviation",
+               "surrogate_recovery"],
+    "LFSMD":  ["lfsmd_rpd", "lfsm_recovery", "is_response",
+               "surrogate_recovery"],
+    "Dup":    ["duplicate_rpd", "is_response", "surrogate_recovery"],
     "Sample": ["is_response", "ion_ratio", "rt_deviation", "signal_to_noise",
-               "bloq_check", "lod_check"],
+               "bloq_check", "lod_check", "surrogate_recovery"],
 }
+# `surrogate_recovery` is on the EXTRACTED injections and only those. A
+# surrogate is spiked into the sample before extraction, so its recovery
+# measures the extraction; a calibrator, ICV, CCV or solvent blank (CCB) is
+# never extracted, and a "recovery" computed on one would be a number with
+# nothing behind it. MB/MxB/LRB and LFB ARE extracted, so they carry it.
 
 
 class InjectionSequenceBuilder:

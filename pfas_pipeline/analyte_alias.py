@@ -96,6 +96,32 @@ def surrogate_names() -> set:
     return _labelled_by_role("surrogate")
 
 
+def labelled_display_name(keyword: str) -> str:
+    """Display name of a labelled compound from its keyword ("M3PFBA" ->
+    "13C3-PFBA"). The instrument exports display names and the method profile's
+    surrogate_map stores keywords, so anything crossing between the two needs
+    this direction; NAME_TO_KEYWORD only goes the other way."""
+    rows = getattr(_mod, "INTERNAL_STANDARDS", None) or []
+    for row in rows:
+        if row[0] == keyword:
+            return row[1]
+    return keyword
+
+
+def labeled_analog_map() -> dict:
+    """{labelled_compound_keyword: native_keyword} from the reference table."""
+    fn = getattr(_mod, "get_labeled_analog_map", None)
+    return dict(fn()) if fn else {}
+
+
+def native_keyword_for(published_name: str) -> str:
+    """A native analyte's keyword from a published method's spelling of it
+    (EPA's "HFPO-DA" -> this table's "GenX"). See
+    analyte_reference.NATIVE_NAME_SYNONYMS for why those three exist."""
+    fn = getattr(_mod, "native_keyword_for", None)
+    return fn(published_name) if fn else published_name
+
+
 def keyword_for(analyte_name: str) -> str:
     """SENAITE keyword for an instrument analyte name.
 

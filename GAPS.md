@@ -18,13 +18,20 @@ cd "$(git rev-parse --show-toplevel)" && \
 export PFAS_PROFILES_PATH="$PWD/data/qc/method_profiles.json" && \
 export PFAS_ALLOW_LEGACY_VENDOR_MAP=1 && \
 for t in tests/*.py; do echo "=== $t"; python3 "$t"; done && \
-python3 tools/audit_configurable.py --profiles data/qc/method_profiles.json && \
+python3 tools/audit_configurable.py --profiles data/qc/method_profiles.json \
+    --strict && \
 python3 tools/wiring_map.py > WIRING.md && \
 python3 tools/generate_synthetic_runs.py --out /tmp/synth --list
 ```
 
-Last updated: 2026-09-19 — 19/19 test files pass, audit DEAD 0 / UNREACHABLE 0
-/ SPLIT 0, 18 runs planned / 0 skipped.
+`--strict` is live as of 2026-09-25: the audit now EXITS NON-ZERO on a profile
+key the code reads that nothing writes. It was held back deliberately while two
+such keys existed (`extraction_logbook`, `internal_standards` — §30), because a
+gate that fails by default teaches you to ignore it. Both are closed, so the
+count is 0 and the block breaks if a new one appears.
+
+Last updated: 2026-09-25 — 26/26 test files pass, audit DEAD 0 / UNREACHABLE 0
+/ SPLIT 0 / NO PRODUCER 0, wiring §1.4 real duplicates 0 / §5 orphans 0.
 
 ---
 
@@ -2536,3 +2543,142 @@ by the same mind, at the same time, as the thing it was checking.
 
 **The working rule:** for any artefact a person reads, print it and read it.
 No assertion about its substrings is a substitute.
+
+---
+
+## 30. Surrogate recovery: both halves existed, and had never met (2026-09-25)
+
+`recovery_check_profiled()` had exactly **one** call site in the whole system —
+`run_queue.py`, passing the literal `"LFSM"`. Nothing ever asked it for a
+surrogate window. So this entire chain was unreachable from a live run:
+
+```
+EPA 1633A Tables 6/8 per-analyte limits   (seeded, 24 analytes)
+  -> qc_acceptance.LFSM tiers as the base  (configured)
+  -> eis_matrix_overrides per matrix class (configured)
+  -> ruleset.resolve three tiers, QAPP above lab   (§15, tested)
+  -> resolved_criteria_store export              (§17, tested)
+  -> worker overlay per batch                    (§22, tested)
+  -> EPA1633AProfile.qc_rules(..., "EIS")        <-- NOTHING CALLS THIS
+```
+
+Task #8 was marked complete on the strength of everything above the last line.
+Each layer was individually tested and correct. The thing none of those tests
+could see is that the last arrow does not exist.
+
+On the other side of the same check, `InstrumentRow.pct_recovery_is` — column 30
+of the export, the instrument's own % recovery for each labelled compound,
+parsed by `importer`, mapped in `instrument_columns`, carried on every row — was
+read by **nothing**. Both halves of surrogate recovery monitoring were present,
+configured and tested, and no line of code connected them.
+
+### 30.1 And the loop above it iterated nothing
+
+`get_is_list()` read a profile key `internal_standards` that no editor field, no
+seed and no migration has ever written, falling back to an inline FDA list. So
+it returned 21 names for FDA and **`[]` for both EPA methods** — the `is_response`
+loop iterated an empty list and no labelled compound was checked at all on EPA
+537.1 or EPA 1633A (§19). This is the key that held `--strict` back.
+
+It is now derived, not stored: `{surrogate_map values} + {injection IS}`, keyword
+to display name. Both inputs are already method-scoped, and every name it yields
+exists as an AnalysisService — which matters, see below.
+
+### 30.2 The names diverge, and it is not a spelling problem
+
+EPA 1633A's `eis_overrides` is keyed by **Table 6's own designations**. Ten of
+the twenty-four name compounds that exist as **no AnalysisService at all**,
+because `setupdata/internal_standards.csv` is the only thing that creates them
+and it carries the lab's catalogue spellings:
+
+| Table 6 (EPA 820-R-24-007) | The lab's catalogue | Same substance? |
+|---|---|---|
+| `13C4-PFBA`   | `13C3-PFBA`   | **No** — four ¹³C vs three |
+| `13C5-PFPeA`  | `13C3-PFPeA`  | **No** |
+| `13C6-PFDA`   | `13C2-PFDA`   | **No** |
+| `13C9-PFNA`   | `13C5-PFNA`   | **No** |
+| `13C2-4:2FTS` | `13C2,D4-4:2FTS` | probably — abbreviation |
+| `13C2-6:2FTS` | `13C2,D4-6:2FTS` | probably |
+| `13C2-8:2FTS` | `13C2,D4-8:2FTS` | probably |
+| `13C3-HFPO-DA`| `13C3-GenX (HFPO-DA)` | yes — native synonym |
+| `13C7-PFUnA`  | `13C2-PFUDA`  | native synonym, **different label** |
+| `13C8-PFOSA`  | `13C8-FOSA`   | yes — native synonym |
+
+**This is an open question for the QA manager, not a code question.** Four of
+these are unambiguously different isotopologues from the ones EPA 1633A
+specifies. Whether the lab should be purchasing EPA's isotopologues, or whether
+the catalogue is right and Table 6's designations are being read too literally,
+is a purchasing-and-method decision. Nothing in this repo can settle it.
+
+Worth stating plainly because it bears on §9: that entry recorded the surrogate
+maps as "proven" by reproducing the hand-maintained FDA/1633A maps exactly. That
+proves the derivation is self-consistent with what was already there. It says
+**nothing** about whether the 1633A entries were ever right for 1633A. Same
+shape as the §22.1 mistake — a check that confirms agreement with an existing
+value, mistaken for a check that the value is correct.
+
+### 30.3 What was implemented instead
+
+The join is on the **native** the standard labels, never on the labelled name:
+
+```
+instrument name -> keyword -> native (INTERNAL_STANDARDS row[2])
+                -> the Table 6 row whose designation labels that native
+```
+
+This embeds no claim that `13C3-PFBA` and `13C4-PFBA` are one substance. It
+claims only that whatever the lab spikes as PFBA's extracted internal standard
+is judged against the method's limit *for PFBA's EIS* — the relationship Table 6
+actually states. The flag keeps the lab's name, so a certificate names what was
+in the vial while the limit comes from the method.
+
+Proven total, not assumed: of 24 Table 6 designations, 21 reach a native by
+stripping the isotopic label alone, and the 3 that do not (`HFPO-DA`, `PFUnA`,
+`PFOSA`) are **exactly** the 3 natives the method's own surrogate map leaves
+otherwise uncovered. Complementary sets, a 24/24 bijection once the injection
+standard is excluded, and `test_the_table_6_join_is_total_and_one_to_one` fails
+if that ever drifts.
+
+The injection standard (`13C4-PFOA`) is excluded from recovery: it goes in at
+reconstitution, *after* extraction, so it has no recovery to measure — its area
+is what `KIND_IS_RESPONSE` tests. It stays in `get_is_list` for that check.
+
+`surrogate_recovery` is declared on the extracted injection types only (Sample,
+LFSM, LFSMD, Dup, LFB, MB, MxB, LRB) and not on CAL/ICV/CCV/CCB, which are
+prepared in solvent. `_is_extracted()` derives "was this extracted" *from that
+declaration* rather than keeping a second list of QC codes, so the loop and the
+review queue cannot disagree.
+
+### 30.4 The test that would have caught it, and the one that would not
+
+The discriminator is chosen so it can only pass if the name join works. Table 6
+floors PFBA's EIS at **5%** and PFPeA's at **40%**; the generic window floors
+both at 40%. One run, both compounds at 20% recovery:
+
+* a lookup on the instrument's name misses both, applies 40–130 to each, and
+  fails **both**
+* the native join applies 5–130 and 40–130, so PFBA **passes** and PFPeA fails
+
+A test asserting `get_is_list()` is non-empty passes in a world where the EIS
+branch is still unreachable. A test asserting the window equals 5–130 passes in a
+world where nothing evaluates it. Only a test that runs the queue and reads the
+*check status* distinguishes all three.
+
+### The rule this adds
+
+Seven entries now share one shape: a criterion that resolves, exports, overlays,
+persists and renders — and is never *asked for*. §12 named it ("implemented but
+never wired"), §19 and §22.2 repeated it, and this is the largest instance yet.
+
+**A layer-by-layer test suite cannot see a missing call.** Every layer here had
+tests and every layer passed. What was needed was one question asked of the
+whole: *who calls this, with what arguments?* `grep` for the function name,
+then read the arguments at each site — `recovery_check_profiled` would have
+answered in one line, because `"LFSM"` is right there in the only call.
+
+That question is now partly mechanised: `WIRING.md` §3/§4 enumerate view and
+subscriber call sites, and `audit_configurable.py --strict` fails the build on a
+profile key the code reads that nothing writes. Neither would have caught THIS
+one — a function with a caller, called with the wrong literal. The check that
+would is "every branch of a `qc_type` dispatch is reached by some call site",
+which nothing currently does. Logged as the next auditor to build.

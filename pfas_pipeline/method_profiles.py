@@ -37,6 +37,7 @@ import copy
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -1249,13 +1250,23 @@ class EPA1633AProfile(MethodProfile):
                         self.method_id, analyte))
             default_lo = float(base.recovery_min)
             default_hi = float(base.recovery_max)
-            override = eis_overrides.get(analyte, {})
+            # `analyte` is the compound as the INSTRUMENT names it, which is
+            # the compound the lab actually spiked. Tables 6/8 designate the
+            # same position by EPA's own labelled form, and ten of the
+            # twenty-four differ (13C4-PFBA vs the catalogue's 13C3-PFBA), so a
+            # direct lookup missed ten compounds and silently applied the
+            # generic window. Join through the native instead; see
+            # eis_criteria_name. The flag keeps `analyte` unchanged, so a
+            # certificate names the compound the lab has rather than EPA's.
+            criteria_name = eis_criteria_name(self.method_id, analyte)
+            override = eis_overrides.get(criteria_name, {})
             lo = float(override.get("recovery_min", default_lo))
             hi = float(override.get("recovery_max", default_hi))
             if matrix:
                 mat_class = _1633a_matrix_class(matrix)
                 if mat_class != "aqueous":
-                    mat_override = eis_matrix.get(mat_class, {}).get(analyte)
+                    mat_override = eis_matrix.get(mat_class, {}).get(
+                        criteria_name)
                     if mat_override:
                         lo = float(mat_override.get("recovery_min", lo))
                         hi = float(mat_override.get("recovery_max", hi))
@@ -1435,19 +1446,123 @@ def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
     return frozenset(names & panel) if panel else frozenset(names)
 
 
-def get_is_list(method_id: str = "FDA_32PFAS") -> list:
-    """Display-name IS / surrogate list for method_id.
+# Leading isotopic label on a labelled compound's name: "13C4-", "13C2,D4-",
+# "D3-". Used ONLY to reach the native a published method's EIS designation
+# refers to (see eis_criteria_name) -- never to decide that two labelled names
+# mean the same compound.
+_ISOTOPE_LABEL = re.compile(r"^(?:13C\d+|D\d+)(?:,\s*D\d+)?-")
 
-    After a JSON profile load the cache may carry ``internal_standards``
-    exported by the store; otherwise falls back to the inline FDA defaults.
+
+def get_is_list(method_id: str = "FDA_32PFAS") -> list:
+    """Display names of the labelled compounds this METHOD monitors.
+
+    DERIVED, not stored. This used to read a profile key `internal_standards`
+    that NOTHING has ever written -- no editor field, no seed, no migration --
+    and fall back to an inline FDA list. So it returned the 21 FDA names for
+    FDA_32PFAS and an EMPTY LIST for both EPA methods, which meant the IS
+    Response loop in run_queue iterated nothing and no surrogate or internal
+    standard was checked at all on EPA 537.1 or EPA 1633A (GAPS.md Sec19).
+
+    The set is already recorded twice over, per method: `surrogate_map` names
+    the labelled compound that quantifies each native in the method's panel, and
+    the reference table marks which labelled compound is the injection standard.
+    Both are method-scoped by construction, so the list is their union:
+
+        {surrogate_map values} + {injection IS}   ->   display names
+
+    Keywords are converted to display names because that is what the instrument
+    exports and what `is_raw_check` matches rows on. Every name this returns
+    therefore exists as an AnalysisService -- internal_standards.csv creates
+    them from the same table -- which a list taken from a published method's own
+    designations would NOT (see eis_criteria_name).
+
+    Falls back to the inline FDA names only when no profile is loaded at all.
     """
+    from .analyte_alias import injection_is_names, labelled_display_name
+
     data = _profile_data_cache.get(method_id, {})
-    explicit = data.get("internal_standards")
-    if explicit is not None:
-        return list(explicit)
+    rows = data.get("surrogate_map") or []
+    names, seen = [], set()
+    for row in rows:
+        kw = (row.get("surrogate_is") or "").strip()
+        if not kw:
+            continue
+        name = labelled_display_name(kw)
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    # The injection standard quantifies the surrogates rather than a native, so
+    # it appears in no surrogate_map row -- and its response is the one that
+    # must NOT be dilution-corrected, which is precisely why it has to be in the
+    # list rather than left out as "not a surrogate".
+    for name in sorted(injection_is_names()):
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    if names:
+        return names
     if method_id == "FDA_32PFAS":
         return list(_FDA_IS_DISPLAY_NAMES)
     return []
+
+
+def eis_criteria_name(method_id: str, compound: str) -> str:
+    """The key under which `eis_overrides` holds `compound`'s recovery limits.
+
+    Needed because a published method designates its extracted internal
+    standards by ITS OWN spelling, and the lab's catalogue uses the spelling of
+    the standard it actually buys. EPA 1633A Table 6 lists `13C4-PFBA`; the only
+    thing that creates AnalysisServices (setupdata/internal_standards.csv)
+    creates `13C3-PFBA`. Ten of the twenty-four diverge that way, so a lookup on
+    the instrument's name found nothing for ten compounds and silently fell back
+    to the generic window.
+
+    The join is on the NATIVE the standard labels, never on the labelled name:
+
+        instrument name -> keyword -> native (INTERNAL_STANDARDS row[2])
+                        -> the Table 6 row whose designation labels that native
+
+    That deliberately embeds NO claim that `13C3-PFBA` and `13C4-PFBA` are the
+    same substance -- they are not, one carries three C-13 and the other four.
+    It claims only that whatever the lab spikes as PFBA's extracted internal
+    standard is judged against the method's limit FOR PFBA'S EIS, which is the
+    relationship Table 6 actually states. Whether the lab should be buying the
+    isotopologue EPA specifies is a purchasing question for the QA manager, and
+    the ten names are listed in GAPS.md Sec30 for them to answer.
+
+    Returns `compound` unchanged when no pairing is needed or possible: a method
+    with no `eis_overrides` (FDA, 537.1) or a compound whose native has no
+    Table 6 row. Never raises, and never invents a limit.
+    """
+    from .analyte_alias import (keyword_for, labeled_analog_map,
+                                native_keyword_for)
+
+    overrides = _profile_data_cache.get(method_id, {}).get("eis_overrides")
+    if not overrides:
+        return compound
+    if isinstance(overrides, dict):
+        if compound in overrides:
+            return compound
+        designations = list(overrides.keys())
+    else:
+        designations = [(r.get("analyte") or "") for r in overrides]
+        if compound in designations:
+            return compound
+
+    analogs = labeled_analog_map()
+    native = analogs.get(keyword_for(compound) or compound)
+    if not native:
+        return compound
+
+    for designation in designations:
+        if not designation:
+            continue
+        # Strip the isotopic label ("13C4-", "13C2,D4-", "D3-") to reach the
+        # native the designation names, then normalise EPA's spelling of it.
+        stripped = _ISOTOPE_LABEL.sub("", designation)
+        if native_keyword_for(stripped) == native:
+            return designation
+    return compound
 
 
 def get_included_display_analytes(method_id: str, matrix: str) -> list:

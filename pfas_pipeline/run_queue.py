@@ -44,13 +44,14 @@ def _units_compatible(a, b):
     return any(a in fam and b in fam for fam in _UNIT_FAMILIES)
 from .qc_engine import (
     KIND_CALIBRATION, KIND_CCV, KIND_ION_RATIO, KIND_IS_RESPONSE,
-    KIND_LFSM, KIND_LFSMD, KIND_RT, KIND_SN,
+    KIND_LFSM, KIND_LFSMD, KIND_RT, KIND_SN, KIND_SURROGATE,
     is_raw_check, rt_deviation_check, qual_quan_check,
     calibration_check, calibration_check_profiled,
     ccv_check_profiled, rrt_check_profiled, signal_to_noise_check,
     recovery_check_profiled, rpd_check_profiled,
 )
 from .constants import CRITERIA
+from .analyte_alias import injection_is_names
 from .method_profiles import (
     UnconfiguredCriterion,
     get_profile as _get_method_profile,
@@ -141,6 +142,28 @@ def _load_rule_toggles(method_id: str, rules_path: str = "/data/qc/qc_rules.json
         return rules.get("method_rule_toggles", {}).get(method_id, {})
     except Exception:
         return {}
+
+
+def _is_extracted(injection_name: str, dilutions: "dict | None" = None) -> bool:
+    """Was this injection put through the extraction?
+
+    Derived from REVIEW_CHECKS rather than from a second list of QC codes: the
+    catalogue already declares `surrogate_recovery` on exactly the extracted
+    injection types and omits it from the ones prepared in solvent (CAL, ICV,
+    CCV, CCB). Keeping one declaration means the loop and the review queue
+    cannot disagree about which injections have a recovery to measure.
+
+    An unrecognised name falls back to Sample, which IS extracted — the same
+    default classify_injection already applies, and the safe direction: a client
+    sample wrongly treated as solvent would have its surrogates unchecked.
+    """
+    from .importer import classify_injection
+    from .injection_builder import REVIEW_CHECKS
+    role = classify_injection(injection_name or "", dilutions)
+    checks = REVIEW_CHECKS.get(role)
+    if checks is None:
+        checks = REVIEW_CHECKS["Sample"]
+    return "surrogate_recovery" in checks
 
 
 def _rule_enabled(toggles: dict, library_key: str) -> bool:
@@ -269,21 +292,32 @@ class RunQueue:
             self.batch.unconfigured = []
         seen_gaps = set()
 
+        def _record_gap(qc_type, analyte, exc):
+            """File an unconfigured-criterion gap, once per distinct reason.
+
+            Split out of _guard because a check whose result is a single flag
+            (or None) cannot use _guard's "return []" convention: [] is falsy
+            but is not None, so "unconfigured" and "passed" would be
+            indistinguishable at the call site.
+            """
+            key = (qc_type, str(exc))
+            if key in seen_gaps:
+                return
+            seen_gaps.add(key)
+            self.batch.unconfigured.append({
+                "qc_type": qc_type,
+                "analyte": analyte,
+                "method_id": self.method_id or "",
+                "reason": str(exc),
+            })
+            logger.error("%s not evaluated — %s", qc_type, exc)
+
         def _guard(qc_type, analyte, fn, *args):
             """Run a profiled check; record rather than raise when unconfigured."""
             try:
                 return fn(*args)
             except UnconfiguredCriterion as exc:
-                key = (qc_type, str(exc))
-                if key not in seen_gaps:
-                    seen_gaps.add(key)
-                    self.batch.unconfigured.append({
-                        "qc_type": qc_type,
-                        "analyte": analyte,
-                        "method_id": self.method_id or "",
-                        "reason": str(exc),
-                    })
-                    logger.error("%s not evaluated — %s", qc_type, exc)
+                _record_gap(qc_type, analyte, exc)
                 return []
 
         def _guard_is(rows_, is_cmp, dils, method):
@@ -387,6 +421,67 @@ class RunQueue:
             if sn_enabled:
                 for flag in signal_to_noise_check(rows, analyte):
                     flags_by_injection.setdefault(flag.injection_name, []).append(flag)
+
+        # 5b. SURROGATE / extracted-internal-standard RECOVERY.
+        #
+        # Both halves of this check already existed and had never met. The
+        # instrument reports each labelled compound's % recovery in column 30;
+        # `importer` parses it and `InstrumentRow.pct_recovery_is` carries it on
+        # every row -- and NOTHING read that field, anywhere. On the other side,
+        # every method profile resolves a surrogate-recovery window through
+        # `qc_rules(..., "SUR")` (FDA guidance-only 50-150% per
+        # Sec2024.10.1(5), EPA 537.1 Sec9.3.5 70-130%, EPA 1633A per-analyte x
+        # matrix-class from Tables 6/8), reachable through all three resolution
+        # tiers, exported across the process boundary and overlaid per batch.
+        #
+        # `recovery_check_profiled` had exactly ONE call site, passing the
+        # literal "LFSM". So no call ever asked for a surrogate window, and the
+        # entire 1633A EIS branch -- limits, matrix overrides, the QAPP tier
+        # above it -- was unreachable from a live run. See GAPS.md Sec30.
+        eis_evaluated = set()
+        if profile is not None:
+            _injection_is = injection_is_names()
+            for compound in _get_is_list(_method):
+                # The injection standard goes in at reconstitution, AFTER
+                # extraction, so it has no recovery to measure -- what its area
+                # tests is instrument response, which is KIND_IS_RESPONSE's job.
+                # It is in the monitored list for that check, not for this one.
+                if compound in _injection_is:
+                    continue
+                # Resolve the window ONCE per compound. A compound whose method
+                # configures no window must not mark its injections evaluated:
+                # that is the difference between "recovery was acceptable" and
+                # "nobody said what acceptable is", and AUTO_PASS may only mean
+                # the first.
+                try:
+                    rule = profile.qc_rules(compound, _matrix, "SUR")
+                except UnconfiguredCriterion as exc:
+                    _record_gap("Surrogate Recovery", compound, exc)
+                    continue
+                if rule is None or rule.recovery_min is None:
+                    continue
+                for row in all_rows:
+                    if (row.compound_name or "").strip() != compound:
+                        continue
+                    if row.pct_recovery_is is None:
+                        continue
+                    if not _is_extracted(row.injection_name, dilutions):
+                        continue
+                    eis_evaluated.add(row.injection_name)
+                    raw_flag = recovery_check_profiled(
+                        profile, compound, _matrix, "SUR",
+                        float(row.pct_recovery_is), row.injection_name)
+                    if raw_flag is None:
+                        continue
+                    flags_by_injection.setdefault(
+                        row.injection_name, []).append(QCFlag(
+                            source="{0} surrogate recovery".format(_method),
+                            check_kind=KIND_SURROGATE,
+                            analyte=raw_flag.analyte,
+                            injection_name=raw_flag.injection_name,
+                            value=raw_flag.value,
+                            issue=raw_flag.issue,
+                        ))
 
         # 6. LFSM recovery + LFSMD RPD (per-analyte tiered limits from method profile)
         lfsm_evaluated  = set()   # injection names where spike was resolved + check ran
@@ -631,6 +726,7 @@ class RunQueue:
             "signal_to_noise":     {KIND_SN},
             "lfsm_recovery":       {KIND_LFSM},
             "lfsmd_rpd":           {KIND_LFSMD},
+            "surrogate_recovery":  {KIND_SURROGATE},
         }
 
         for chk in self.checks:
@@ -652,6 +748,14 @@ class RunQueue:
                     # else: stays PENDING — spike not configured yet
                 elif chk.check_name == "lfsmd_rpd" and lfsmd_enabled:
                     if chk.injection_name in lfsmd_evaluated:
+                        chk.status = CheckStatus.AUTO_PASS
+                elif chk.check_name == "surrogate_recovery":
+                    # Same rule as LFSM: AUTO_PASS only where the check actually
+                    # ran. An injection whose export carried no % recovery
+                    # column, or whose method could not resolve a window, stays
+                    # PENDING so a reviewer sees it -- a silent pass here would
+                    # be indistinguishable from a good result.
+                    if chk.injection_name in eis_evaluated:
                         chk.status = CheckStatus.AUTO_PASS
                     # else: stays PENDING
                 else:
