@@ -115,7 +115,6 @@ senaite.pfas (in SENAITE)              pfas_pipeline (worker container)
 analyte_reference.py  ───────────────▶ constants.py / method_profiles.py
 setupdata/*.csv  → SENAITE objects     (same keywords used in results push)
 content/Reagent     ◀───── register ── barcode.py (ReagentCatalog.scan)
-content/EnvironmentalReading ◀──────── senaite_connector.push_sensor_reading
 setuphandlers.py (install)             pipeline.py (per-batch processing)
 ```
 
@@ -128,9 +127,14 @@ here, so results land on the correct AnalysisService without manual mapping.
 
 - **Reagent** — a barcode-scanned reagent/standard lot (catalog #, lot #,
   expiry, class, scan count). Created on first scan by the extraction-log API.
-- **EnvironmentalReading** — a temperature/humidity reading from a monitored
-  location (supports Maine CMR Ch.263 continuous monitoring; carries a
-  NIST-verified flag and out-of-range flag).
+Facility/environmental monitoring (Maine CMR Ch.263 continuous monitoring, ISO
+17025 §6.4) is **not** a content type. It lives in
+`/data/qc/facility_monitoring.db` — `facility_qc.temperature_readings` plus
+`temperature_studies` for the NIST verification metadata. An
+`EnvironmentalReading` Dexterity type used to shadow that store and was removed
+(`migrations/remove_envreading_type.py`); its only intended producer had no
+caller, posted to a folder that did not exist, and used field names the schema
+did not declare.
 
 ---
 
@@ -147,8 +151,7 @@ senaite_pfas/
 │   ├── analyte_reference.py         master analyte table (CAS, classes, IS links)
 │   ├── setupdata/                   ← the populated placeholders (8 CSVs)
 │   ├── content/
-│   │   ├── reagent.py               Reagent content type
-│   │   └── envreading.py            EnvironmentalReading content type
+│   │   └── reagent.py               Reagent content type
 │   └── profiles/default/            GenericSetup XML (metadata, types, registry)
 └── pfas_pipeline/                   the out-of-process worker (QC engine, etc.)
 ```

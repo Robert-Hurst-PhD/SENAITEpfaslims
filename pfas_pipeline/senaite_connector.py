@@ -365,20 +365,19 @@ class SenaiteConnector:
                          " — " + detail if detail else "")
             return None
 
-    # ── Environmental monitoring (Raspberry Pi POSTs here) ──────────────────
-    def push_sensor_reading(self, location: str, temperature_c: float,
-                            humidity_pct: float, sensor_id: str):
-        """
-        RPi端 cron POSTs readings; stored as a remark stream or custom type.
-        Maine CMR Ch.263 p.41: each sensor verified against NIST reference.
-        """
-        try:
-            self._post("create", {
-                "portal_type": "EnvironmentalReading",   # custom type
-                "parent_path": "/senaite/env-monitoring",
-                "title": f"{location} {sensor_id}",
-                "Temperature": temperature_c,
-                "Humidity": humidity_pct,
-            })
-        except requests.HTTPError:
-            logger.debug("EnvironmentalReading type not installed; skipping")
+    # ── Environmental monitoring ────────────────────────────────────────────
+    # `push_sensor_reading()` used to live here, POSTing to an
+    # `EnvironmentalReading` Dexterity type. It is removed along with that type:
+    # facility monitoring is owned by /data/qc/facility_monitoring.db
+    # (facility_qc.temperature_readings), whose columns cover every field the
+    # ZODB type declared, so the type was a second store for one fact.
+    #
+    # It had also never worked, in four independent ways: no caller, a
+    # parent_path (/senaite/env-monitoring) that does not exist, field names
+    # ("Temperature"/"Humidity") that do not match the schema
+    # (temperature_c/humidity_pct), and an `except requests.HTTPError` that
+    # logged the whole thing at DEBUG. Any one of those would have been silent.
+    #
+    # The §6.4 gap this leaves is real and unchanged: facility_units and
+    # temperature_readings both still hold zero rows (GAPS.md §10.3). What is
+    # missing is an ingest path into the SQLite store, not a content type.

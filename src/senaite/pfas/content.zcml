@@ -31,12 +31,6 @@
                         status notes" />
   </class>
 
-  <!-- EnvironmentalReading (RPi temperature/humidity) -->
-  <class class=".content.envreading.EnvironmentalReading">
-    <allow attributes="location sensor_id temperature_c humidity_pct
-                        reading_time nist_verified out_of_range" />
-  </class>
-
   <!-- LogbookDef (logbook form definition) -->
   <class class=".content.logbook_def.LogbookDef">
     <allow attributes="form_num builtin active sort_order table_columns" />

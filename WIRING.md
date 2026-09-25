@@ -51,13 +51,13 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
     - concatenated/formatted write at: `src/senaite/pfas/browser/logbook_docs.py:51`
     - concatenated/formatted read at: `src/senaite/pfas/browser/logbook_docs.py:46`
 
-- **`senaite.pfas.sop.{sop_id}.revisions`** (template family) — **wired** — defined as `_ANN_REVISIONS` (src/senaite/pfas/browser/sop_documents.py:17)
-    - concatenated/formatted write at: `src/senaite/pfas/browser/sop_documents.py:139`
-    - concatenated/formatted read at: `src/senaite/pfas/browser/sop_documents.py:133`
+- **`senaite.pfas.sop.{sop_id}.revisions`** (template family) — **wired** — defined as `_ANN_REVISIONS` (src/senaite/pfas/browser/sop_documents.py:18)
+    - concatenated/formatted write at: `src/senaite/pfas/browser/sop_documents.py:140`
+    - concatenated/formatted read at: `src/senaite/pfas/browser/sop_documents.py:134`
 
-- **`senaite.pfas.sop.{sop_id}.signoffs`** (template family) — **wired** — defined as `_ANN_SIGNOFFS` (src/senaite/pfas/browser/sop_documents.py:18)
-    - concatenated/formatted write at: `src/senaite/pfas/browser/sop_documents.py:150`
-    - concatenated/formatted read at: `src/senaite/pfas/browser/sop_documents.py:144`
+- **`senaite.pfas.sop.{sop_id}.signoffs`** (template family) — **wired** — defined as `_ANN_SIGNOFFS` (src/senaite/pfas/browser/sop_documents.py:19)
+    - concatenated/formatted write at: `src/senaite/pfas/browser/sop_documents.py:151`
+    - concatenated/formatted read at: `src/senaite/pfas/browser/sop_documents.py:145`
 
 ### 1.2 Standalone keys (43)
 
@@ -84,8 +84,8 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `ANN_REGISTRY_KEY` (src/senaite/pfas/qc_deviation.py:40)
   - written by: `src/senaite/pfas/qc_deviation.py:57`
   - read by: `src/senaite/pfas/qc_deviation.py:51`
-  - reached via `get_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/data_review.py:1801`, `src/senaite/pfas/browser/deviations.py:11`
-  - reached via `save_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/deviations.py:11`
+  - reached via `get_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/data_review.py:1801`, `src/senaite/pfas/browser/deviations.py:12`
+  - reached via `save_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/deviations.py:12`
 - `senaite.pfas.edd_profiles`
   - defined: `EDD_PROFILES_KEY` (src/senaite/pfas/egad_store.py:177)
   - written by: `src/senaite/pfas/egad_store.py:278`, `src/senaite/pfas/egad_store.py:335`, `src/senaite/pfas/egad_store.py:359`
@@ -226,9 +226,9 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - written by: `src/senaite/pfas/browser/run_builder.py:849`
   - read by: `src/senaite/pfas/browser/logbooks.py:1498`, `src/senaite/pfas/browser/qc_review_report.py:309`, `src/senaite/pfas/browser/run_builder.py:867`, `src/senaite/pfas/egad_builder.py:434`
 - `senaite.pfas.sop.registry`
-  - defined: `_ANN_REGISTRY` (src/senaite/pfas/browser/sop_documents.py:16)
-  - written by: `src/senaite/pfas/browser/sop_documents.py:120`
-  - read by: `src/senaite/pfas/browser/sop_documents.py:114`
+  - defined: `_ANN_REGISTRY` (src/senaite/pfas/browser/sop_documents.py:17)
+  - written by: `src/senaite/pfas/browser/sop_documents.py:121`
+  - read by: `src/senaite/pfas/browser/sop_documents.py:115`
   - reached via `_get_registry()` (src/senaite/pfas/browser/sop_documents.py) — imported by `src/senaite/pfas/browser/projects.py:333`
 - `senaite.pfas.spec_sync_audit`
   - defined: `PFAS_SPEC_AUDIT_KEY` (src/senaite/pfas/spec_sync.py:27)
@@ -339,8 +339,8 @@ The other identity-preserving case, and the one a key-literal scan cannot see at
 - `src/senaite/pfas/browser/data_review.py:410` calls `get_spikes()` from `src/senaite/pfas/dilution_ref.py` → `senaite.pfas.extraction_session`
 - `src/senaite/pfas/browser/data_review.py:1801` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
 - `src/senaite/pfas/browser/data_review.py:2011` calls `set_pending_amendment_reason()` from `src/senaite/pfas/browser/controlled_publications.py` → `senaite.pfas.pending_amendment_reason`
-- `src/senaite/pfas/browser/deviations.py:11` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
-- `src/senaite/pfas/browser/deviations.py:11` calls `save_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
+- `src/senaite/pfas/browser/deviations.py:12` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
+- `src/senaite/pfas/browser/deviations.py:12` calls `save_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
 - `src/senaite/pfas/browser/egad_config.py:26` calls `get_client_egad()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.egad_client`
 - `src/senaite/pfas/browser/egad_config.py:26` calls `save_client_egad()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.egad_client`
 - `src/senaite/pfas/browser/egad_config.py:141` calls `get_edd_profiles()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
@@ -410,7 +410,7 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 - touched from (worker side): `pfas_pipeline/injection_store.py`, `pfas_pipeline/qc_store.py`, `pfas_pipeline/seed_calibrations.py`
 
 **`/data/qc/facility_monitoring.db` (SQLite)**
-- touched from: `src/senaite/pfas/facility_qc.py`
+- touched from: `pfas_pipeline/senaite_connector.py`, `src/senaite/pfas/facility_qc.py`, `src/senaite/pfas/migrations/remove_envreading_type.py`
 - NOT a cross-process fact — no reference to it exists under pfas_pipeline/. Recorded here to make that absence explicit rather than assumed.
 
 ## 3. Browser views
@@ -559,12 +559,9 @@ type name → schema interface / class (from `profiles/default/types/*.xml`) →
 | type | schema | klass | folder(s) instances live in | example site |
 |---|---|---|---|---|
 | `EGADConfig` | `senaite.pfas.content.egad_config.IEGADConfig` | `senaite.pfas.content.egad_config.EGADConfig` | pfas_egad_config | `src/senaite/pfas/setuphandlers.py:718` |
-| `EnvironmentalReading` | `senaite.pfas.content.envreading.IEnvironmentalReading` | `senaite.pfas.content.envreading.EnvironmentalReading` | **ORPHAN** — no `invokeFactory("EnvironmentalReading", ...)` call anywhere in the scanned tree | `-` |
 | `LogbookDef` | `senaite.pfas.content.logbook_def.ILogbookDef` | `senaite.pfas.content.logbook_def.LogbookDef` | pfas_logbook_defs | `src/senaite/pfas/setuphandlers.py:530` |
 | `MethodProfile` | `senaite.pfas.content.method_profile.IMethodProfile` | `senaite.pfas.content.method_profile.MethodProfile` | pfas_method_profiles | `src/senaite/pfas/method_profile_store.py:1160` |
 | `PFASProject` | `senaite.pfas.content.project.IPFASProject` | `senaite.pfas.content.project.PFASProject` | pfas_projects | `src/senaite/pfas/browser/projects.py:398` |
 | `PrepLogbookDef` | `senaite.pfas.content.prep_logbook_def.IPrepLogbookDef` | `senaite.pfas.content.prep_logbook_def.PrepLogbookDef` | pfas_prep_logbooks | `src/senaite/pfas/browser/prep_logbooks.py:160` |
 | `PreparedStandard` | `senaite.pfas.content.prepared_standard.IPreparedStandard` | `senaite.pfas.content.prepared_standard.PreparedStandard` | pfas_prepared_standards | `src/senaite/pfas/browser/prepared_standards.py:195` |
 | `Reagent` | `senaite.pfas.content.reagent.IReagent` | `senaite.pfas.content.reagent.Reagent` | pfas_reagents | `src/senaite/pfas/browser/reagents.py:373` |
-
-**1 type(s) registered (types.xml FTI + schema/klass) but never instantiated anywhere this tool scanned**: `EnvironmentalReading`. For `EnvironmentalReading`, this is consistent with CLAUDE.md §7 — facility QC readings are documented as living in SQLite (`/data/qc/facility_monitoring.db`), not ZODB — which makes this Dexterity type plausibly vestigial from an earlier design rather than a live content type. Worth a human decision (remove the FTI, or find the missing call site), not asserted here.
