@@ -345,48 +345,105 @@ class PFASExtractionGuideView(BrowserView):
         return self._redirect(url)
 
     def _handle_prepare_solution(self):
+        """Record a solution prepared at the bench as a PREPARED STANDARD.
+
+        This used to call `_save_reagent`, filing an in-house preparation as a
+        level-1 MANUFACTURER reagent: `supplier="In-house"`, no catalogue number,
+        no manufacturer expiry, composition buried in a free-text `notes` string
+        -- and no parentage, because `IReagent` has no field that could hold any
+        (GAPS.md §33.1). The three-level ISO 17025 §6.6 chain therefore collapsed
+        to two the moment a bench chemist prepared anything, and the object that
+        resulted CLAIMED TO BE the manufacturer material. Because it was a
+        Reagent, the traceability gate resolved it happily and reported green.
+
+        DECISIONS.md D50 has said since 2026-07-02 that this path "records a new
+        Prepared Standard lot (parents = the stage's reagents; expiry inherits)
+        … completing the 3-level traceability chain the review gate checks". It
+        never did. This is that.
+
+        The parents are the STAGE'S REAGENT ROWS, which is what D50 specifies and
+        is also the strongest form available: those rows carry `inventory_uid`, a
+        real Reagent UID, so the link survives a lot-number correction or a
+        rename -- the uid-first resolution added for §33.7 reads it.
+
+        Refuses when no parent is named. A parentless prepared standard is
+        exactly §33.4, the traceability gate now rejects one, and telling the
+        analyst at the bench beats telling them at release.
+        """
         b = self._get_batch()
         if not b:
             return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
         f = self.request.form
-        # Save the new solution as a reagent in inventory
         from datetime import date
-        from senaite.pfas.browser.reagents import _auto_expiry_from_open
+        from senaite.pfas.browser.prepared_standards import (
+            _save as _save_prepstd, effective_expiry_info)
+
         name = f.get("sol_name", "").strip()
         lot = f.get("sol_lot", "").strip()
+        if not name or not lot:
+            return self._redirect(
+                "{0}?batch_uid={1}&error=Solution+name+and+lot+are+required".format(
+                    self._self_url(), b.UID()))
+
+        try:
+            parents = json.loads(f.get("parent_reagents_json", "[]") or "[]")
+        except (ValueError, TypeError):
+            parents = []
+        parents = [p for p in parents
+                   if (p.get("lot") or "").strip() or (p.get("uid") or "").strip()]
+        if not parents:
+            return self._redirect(
+                "{0}?batch_uid={1}&error=Record+the+reagent+lots+this+solution"
+                "+was+made+from+before+saving+it".format(
+                    self._self_url(), b.UID()))
+
         today = date.today().strftime("%Y-%m-%d")
-        auto_exp = _auto_expiry_from_open(name, today)
+        analyst = f.get("sol_analyst", "").strip()
+        conc = f.get("sol_conc", "").strip()
         rec = {
-            "name":             name,
-            "category":         "Extraction Reagent",
-            "supplier":         "In-house",
-            "cat_number":       "",
+            "uid":              None,
+            "title":            name,
             "lot_number":       lot,
-            "received_date":    today,
-            "opened_date":      today,
-            "manufacturer_expiry": "",
-            "expiry_date":      auto_exp,
+            "standard_type":    u"Solvent / Reagent",
+            "logbook_slug":     "",
+            "logbook_revision": 1,
+            "logbook_title":    u"",
+            "prepared_by":      analyst,
+            "prepared_date":    today,
+            # Blank lets _populate_obj apply the configured default; the
+            # parent-tightened value is then resolved on read by
+            # effective_expiry_info, so an expiry can never outlive its source.
+            "expiry_date":      f.get("sol_expiry", "").strip(),
+            "expiry_notes":     u"",
             "storage_location": f.get("sol_storage", "").strip(),
-            "quantity":         f.get("sol_volume", "").strip(),
-            "unit":             "mL",
-            "notes":            u"Prepared during extraction batch {0}; "
-                                u"concentration: {1}; prepared by: {2}".format(
+            "volume_prepared":  f.get("sol_volume", "").strip(),
+            "notes":            u"Prepared at the bench during extraction batch "
+                                u"{0}{1}".format(
                                     b.UID()[:8],
-                                    f.get("sol_conc", ""),
-                                    f.get("sol_analyst", ""),
-                                ),
-            "status":           STATUS_OPENED,
+                                    u"; nominal concentration: {0}".format(conc)
+                                    if conc else u""),
+            "parent_reagents":  parents,
+            "analyte_concentrations": [],
         }
-        _save_reagent(self._portal(), rec)
-        # Redirect to label printer
+        uid = _save_prepstd(self._portal(), rec)
+
+        # The label shows the expiry actually in force, which may be earlier than
+        # the one just stored if a parent lot expires sooner.
+        try:
+            from senaite.pfas.browser.prepared_standards import _get
+            shown_expiry = (effective_expiry_info(
+                self._portal(), _get(self._portal(), uid)) or {}).get("date", "")
+        except Exception:
+            shown_expiry = rec["expiry_date"]
+
         import urllib
         params = urllib.urlencode({
             "name":     name,
             "lot":      lot,
-            "conc":     f.get("sol_conc", ""),
-            "vol":      f.get("sol_volume", ""),
-            "analyst":  f.get("sol_analyst", ""),
-            "exp":      auto_exp,
+            "conc":     conc,
+            "vol":      f.get("sol_volume", "").strip(),
+            "analyst":  analyst,
+            "exp":      shown_expiry,
             "date":     today,
             "back":     "{0}?batch_uid={1}".format(self._self_url(), b.UID()),
         })

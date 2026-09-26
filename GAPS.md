@@ -3256,3 +3256,77 @@ readers, agreed, and were right. The sample figure was taken one way and was wro
   `as_of`, and nothing passes it yet. Judging against today would condemn
   historical batches whose standards were in date when used, so the USE date has to
   be threaded through the gate first.
+
+---
+
+## 35. The bench path now builds the chain instead of faking it (2026-09-26)
+
+§33.1 fixed. `extraction_guide._handle_prepare_solution` creates a
+**PreparedStandard** whose parents are the stage's reagent lots, not a
+manufacturer `Reagent` with supplier `"In-house"` and no parentage.
+
+DECISIONS.md D50 has claimed this since 2026-07-02 — "records a new Prepared
+Standard lot (parents = the stage's reagents; expiry inherits) … completing the
+3-level traceability chain the review gate checks". It is now true.
+
+### The parents are UID-linked, which is stronger than D50 asked for
+
+The stage's reagent rows already carry `inventory_uid`, a real Reagent UID, so the
+template posts that alongside the lot string and §33.7's uid-first resolution reads
+it. Supplier is deliberately **not** copied into the parent record — the resolved
+Reagent owns it, and duplicating it is what let the old records drift.
+
+Proven live, and this is the part that matters:
+
+    bench standard, parent intact                gate=True   parent resolved
+    after the parent's LOT NUMBER is corrected   gate=True   parent resolved
+
+Under the old code a lot-number correction silently dangled the level-1 link, and
+the old gate silently passed it anyway. Now it survives the correction.
+
+### It refuses rather than producing an untraceable lot
+
+With no reagent lots recorded, the handler redirects with
+*"Record the reagent lots this solution was made from before saving it"*, and the
+template blocks it client-side first with the reason. A parentless prepared
+standard is §33.4, the gate now rejects one, and telling the analyst at the bench
+beats telling them at release.
+
+### Verified
+
+    in pfas_reagents           : []                     <- old behaviour gone
+    in pfas_prepared_standards : ['AUDIT2-BENCH-001']    <- level 2, correct
+    standard_type              : 'Solvent / Reagent'
+    parent lot FISHER-MEOH-260510, uid 933266ac...
+      resolves by UID -> 'Methanol LC-MS Grade'
+      supplier on the resolved object -> 'Fisher Scientific'
+
+So an in-house preparation now reaches a named manufacturer. Test lot removed; the
+baseline is byte-identical to as-found.
+
+### 35.1 A restart was required, and that is worth recording
+
+The first run of this test appeared to fail — the refusal did not fire and the old
+handler ran. Cause: `/addon` is a live mount, but the module was already imported
+in the long-running Zope process. `bin/instance run` starts a fresh process and
+therefore saw the new code, which is why every gate probe reflected the fixes
+immediately; **curl hits the running server, which did not.**
+
+That also means the §33 form-driven findings were genuine — they exercised the code
+as loaded at container start, which was the unfixed code. But any future audit that
+drives forms after editing add-on Python must restart the instance first, or it
+tests the old code and says so convincingly. Two stray Reagents created by the
+stale handler during that confusion were removed.
+
+### Still open
+
+- **§33.3** the Certificate of Preparation still prints an unresolvable parent as
+  fact. The gate now refuses such a standard, so document and gate disagree.
+- **§33.11** `usable_lots` still offers standards the gate will reject, so a lot can
+  be chosen that blocks release with no warning at the point of choice.
+- **as-of-date expiry**: `_is_expired` takes `as_of` and nothing passes it; the USE
+  date has to be threaded through the gate before it can be used, or historical
+  batches would be condemned for standards that were in date when used.
+- **`IReagent` still has no parentage field.** Not needed now that in-house
+  preparations are PreparedStandards, but it is what made the old behaviour
+  unfixable in place, and any future "in-house reagent" would hit it again.

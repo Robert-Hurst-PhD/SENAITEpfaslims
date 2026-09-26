@@ -629,12 +629,35 @@
 
   function saveSolutionToInventory(i) {
     var s = solutionsData[i];
+    /* PARENTAGE. A solution prepared at the bench is a PreparedStandard whose
+       parents are this stage's reagent lots -- DECISIONS.md D50, and the
+       three-level ISO 17025 6.6 chain. Before this the solution was filed as a
+       manufacturer Reagent with no parentage at all (GAPS.md 33.1).
+
+       inventory_uid is carried through deliberately: it is a real Reagent UID,
+       so the link survives a lot-number correction or a rename, which a
+       lot-string link does not. Supplier is NOT copied -- the resolved Reagent
+       owns it, and duplicating it is what made the old records drift. */
+    var parents = [];
+    reagentData.forEach(function(r) {
+      if (!r.lot && !r.inventory_uid) return;
+      parents.push({uid: r.inventory_uid || '', name: r.name || r.role || '',
+                    lot: r.lot || '', qty: r.qty_used || '', unit: ''});
+    });
+    if (!parents.length) {
+      alert('Record the reagent lots this solution was made from first.\n\n' +
+            'A prepared standard with no parentage cannot be traced back to the ' +
+            'manufacturer, and the data-review traceability gate will reject it.');
+      return;
+    }
     var form = document.createElement('form');
     form.method = 'post';
     form.action = SELF_URL;
     var fields = {action:'prepare_solution', batch_uid:BATCH_UID,
                   sol_name:s.name, sol_lot:s.lot, sol_conc:s.conc,
-                  sol_volume:s.volume_ml, sol_storage:s.storage||''};
+                  sol_volume:s.volume_ml, sol_storage:s.storage||'',
+                  sol_expiry:s.expiry||'', sol_analyst:s.analyst||'',
+                  parent_reagents_json:JSON.stringify(parents)};
     Object.keys(fields).forEach(function(k) {
       var inp = document.createElement('input');
       inp.type = 'hidden'; inp.name = k; inp.value = fields[k]||'';
