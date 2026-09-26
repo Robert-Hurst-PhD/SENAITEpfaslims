@@ -239,6 +239,220 @@ def effective_expiry_info(portal, d):
     return {"date": eff, "inherited_from": src}
 
 
+# ── Parentage hierarchy ──────────────────────────────────────────────────────
+# THE canonical walk from a prepared standard up to what it was ultimately made
+# from. Both the Certificate of Preparation and the Data Review traceability gate
+# call it, so the document and the gate cannot disagree -- they did before, and
+# GAPS §33.9 recorded three separate resolvers giving three different answers
+# about whether one parent existed.
+#
+# A lot may be made from another LOT, not only from a manufactured reagent: a
+# working standard from a secondary stock from a primary stock from the CRM. So
+# the walk recurses, and every branch must terminate in one of exactly three
+# ways:
+#
+#   MANUFACTURER   a Reagent with a supplier -- the ISO 17025 §6.6 leaf
+#   WATER          in-house Type 1 water, whose provenance is the water QC log
+#                  for the day it was used, not a supplier (§36)
+#   PROBLEM        anything else: unresolvable, or water with no log entry
+#
+# There is no fourth ending. A branch that stops anywhere else is a traceability
+# failure by construction rather than by a check someone remembered to write --
+# which is how level 1 went unenforced for so long (§33.2).
+
+KIND_MANUFACTURER = u"manufacturer"
+KIND_WATER = u"water"
+KIND_PREPARED = u"prepared"
+KIND_UNRESOLVED = u"unresolved"
+
+MAX_PARENTAGE_DEPTH = 12
+
+
+def _resolve_lot(portal, parent):
+    """(object, kind) for a parent record -- a Reagent or another
+    PreparedStandard. UID first, lot string second (GAPS §33.7)."""
+    uid = (parent.get("uid") or u"").strip()
+    lot = (parent.get("lot") or u"").strip()
+    for folder_id, kind in (("pfas_reagents", KIND_MANUFACTURER),
+                            ("pfas_prepared_standards", KIND_PREPARED)):
+        folder = portal.get(folder_id)
+        if folder is None:
+            continue
+        if uid:
+            obj = folder.get(uid)
+            if obj is not None:
+                return obj, kind
+    # fall back to the lot number, which is all a pre-uid record carries
+    if not lot:
+        return None, KIND_UNRESOLVED
+    for folder_id, kind in (("pfas_reagents", KIND_MANUFACTURER),
+                            ("pfas_prepared_standards", KIND_PREPARED)):
+        folder = portal.get(folder_id)
+        if folder is None:
+            continue
+        for obj in folder.objectValues():
+            if (getattr(obj, "lot_number", "") or "").strip() == lot:
+                return obj, kind
+    return None, KIND_UNRESOLVED
+
+
+def build_parentage(portal, rec, used_on=None, _seen=None, _depth=0):
+    """The full parentage hierarchy of a prepared standard, as a node list.
+
+    `rec` is a prepared-standard dict (`_obj_to_dict`). `used_on` is the ISO date
+    the material was USED, which is what the water log is checked against -- it
+    defaults to the standard's own prepared_date, and is passed down so a
+    working standard made today from water drawn today asks about today.
+
+    Each node:
+        kind      manufacturer | water | prepared | unresolved
+        name supplier cat_number lot url expiry has_coa qty unit
+        water_log  the Type 1 QC entry for `used_on`, or None
+        problems   [] when this branch is sound
+        children   the node's own parentage (prepared lots only)
+
+    Cycle-safe: a lot cannot be its own ancestor, and depth is bounded. Without
+    that, a mis-keyed parent pointing at itself would recurse until the request
+    died -- a data-entry error should not be able to take a page down.
+    """
+    from senaite.pfas.content.reagent import CATEGORY_INHOUSE_WATER
+
+    _seen = set(_seen or ())
+    own_lot = (rec.get("lot_number") or u"").strip()
+    if own_lot:
+        _seen.add(own_lot)
+    used_on = used_on or (str(rec.get("prepared_date") or "")[:10])
+
+    nodes = []
+    parents = rec.get("parent_reagents") or []
+    if not parents:
+        return [{
+            "kind": KIND_UNRESOLVED, "name": u"", "lot": u"",
+            "supplier": u"", "cat_number": u"", "url": u"", "expiry": u"",
+            "has_coa": False, "qty": u"", "unit": u"", "water_log": None,
+            "children": [],
+            "problems": [u"no parent lots recorded — this lot cannot be traced "
+                         u"to anything"],
+        }]
+
+    if _depth >= MAX_PARENTAGE_DEPTH:
+        return [{
+            "kind": KIND_UNRESOLVED, "name": u"", "lot": own_lot,
+            "supplier": u"", "cat_number": u"", "url": u"", "expiry": u"",
+            "has_coa": False, "qty": u"", "unit": u"", "water_log": None,
+            "children": [],
+            "problems": [u"parentage deeper than %d levels — not followed "
+                         u"further" % MAX_PARENTAGE_DEPTH],
+        }]
+
+    for p in parents:
+        obj, kind = _resolve_lot(portal, p)
+        lot = (p.get("lot") or u"").strip()
+        node = {
+            "kind":       kind,
+            "name":       p.get("name") or u"",
+            "lot":        lot,
+            "supplier":   u"",
+            "cat_number": u"",
+            "url":        u"",
+            "expiry":     u"",
+            "has_coa":    False,
+            "qty":        p.get("qty") or u"",
+            "unit":       p.get("unit") or u"",
+            "water_log":  None,
+            "children":   [],
+            "problems":   [],
+        }
+
+        if obj is None:
+            node["problems"].append(
+                u"lot %s is not in inventory" % (lot or u"(blank)"))
+            nodes.append(node)
+            continue
+
+        node["name"] = obj.Title() or node["name"]
+        node["url"] = obj.absolute_url()
+
+        if kind == KIND_MANUFACTURER:
+            from senaite.pfas.browser.reagents import (
+                _COA_ANN_KEY, _ANN_ARCHIVED_KEY, _obj_to_dict as _rdict,
+                _effective_expiry, get_expiry_defaults)
+            rd = _rdict(obj)
+            node["supplier"] = rd.get("supplier") or u""
+            node["cat_number"] = rd.get("cat_number") or u""
+            node["expiry"] = _effective_expiry(rd, get_expiry_defaults(portal))
+            try:
+                node["has_coa"] = bool(IAnnotations(obj).get(_COA_ANN_KEY))
+            except Exception:
+                node["has_coa"] = False
+            if IAnnotations(obj).get(_ANN_ARCHIVED_KEY):
+                node["problems"].append(u"lot is archived")
+
+            if (rd.get("category") or u"") == CATEGORY_INHOUSE_WATER:
+                # THE exception. In-house water has no manufacturer; the Type 1
+                # water QC log for the day of use is its provenance, and the
+                # lab's rule is that an entry must always exist for that day.
+                node["kind"] = KIND_WATER
+                node["supplier"] = u"In-house Type 1 water system"
+                try:
+                    from senaite.pfas import facility_qc
+                    node["water_log"] = facility_qc.get_water_qc_for_date(used_on)
+                except Exception as exc:                    # noqa: BLE001
+                    logger.error("water QC lookup for %s: %s", used_on, exc)
+                    node["water_log"] = None
+                if not node["water_log"]:
+                    node["problems"].append(
+                        u"in-house Type 1 water was used on %s and there is no "
+                        u"water QC entry for that date" % (used_on or u"?"))
+                elif not node["water_log"].get("passed"):
+                    node["problems"].append(
+                        u"the Type 1 water QC entry for %s FAILED" % used_on)
+            elif not node["supplier"]:
+                node["problems"].append(
+                    u"no supplier recorded — the lot cannot be traced to a "
+                    u"manufacturer")
+
+        elif kind == KIND_PREPARED:
+            child_rec = _obj_to_dict(obj)
+            child_lot = (child_rec.get("lot_number") or u"").strip()
+            node["expiry"] = str(child_rec.get("expiry_date") or "")[:10]
+            if child_lot and child_lot in _seen:
+                node["problems"].append(
+                    u"circular parentage: %s is already in this chain"
+                    % child_lot)
+            else:
+                # The child's own preparation date governs ITS water check.
+                node["children"] = build_parentage(
+                    portal, child_rec,
+                    used_on=str(child_rec.get("prepared_date") or "")[:10]
+                            or used_on,
+                    _seen=_seen | {child_lot} if child_lot else _seen,
+                    _depth=_depth + 1)
+
+        nodes.append(node)
+    return nodes
+
+
+def parentage_problems(nodes):
+    """Every problem anywhere in the hierarchy, flattened, deepest included.
+
+    The gate needs one list; the certificate needs the tree. Same walk, so a
+    branch the certificate prints as broken is exactly the one that blocks
+    release.
+    """
+    out = []
+    for n in nodes or []:
+        for prob in n.get("problems") or []:
+            out.append({
+                "lot": n.get("lot") or u"(blank)",
+                "name": n.get("name") or u"",
+                "kind": n.get("kind"),
+                "reason": prob,
+            })
+        out.extend(parentage_problems(n.get("children")))
+    return out
+
+
 def _list(portal, q="", status_filter="", type_filter=""):
     try:
         folder = _get_folder(portal)
@@ -282,7 +496,12 @@ def _write_cert(obj):
         d = _obj_to_dict(obj)
         from senaite.pfas.print_settings import get_signoff_signers
         from bika.lims import api as _api
-        html = _render_cert_html(d, get_signoff_signers(_api.get_portal()))
+        _portal = _api.get_portal()
+        # The portal is passed so the certificate RESOLVES the chain instead of
+        # reprinting the stored copy of it. Before this it printed the parent
+        # record verbatim, so a lot that was not in inventory appeared as
+        # established fact with the QA attestation attached (GAPS §33.3).
+        html = _render_cert_html(d, get_signoff_signers(_portal), portal=_portal)
         path = os.path.join(CERT_DIR, "{}.html".format(obj.getId()))
         if not os.path.isdir(CERT_DIR):
             os.makedirs(CERT_DIR)
@@ -292,7 +511,63 @@ def _write_cert(obj):
         logger.error("_write_cert %s: %s", obj.getId(), exc)
 
 
-def _render_cert_html(d, signers=None):
+def _render_parentage_html(nodes, depth=0):
+    """The parentage hierarchy as nested rows, with links and provenance.
+
+    Each row states how its branch ENDS, because that is the question a reader
+    and an assessor actually have: a manufacturer with a catalogue number and a
+    CoA, the Type 1 water log for the day of use, or a problem. Indentation
+    carries the depth; a lot made from a lot made from a CRM reads as such.
+    """
+    out = u""
+    for n in nodes or []:
+        pad = 18 * depth
+        kind = n.get("kind")
+        if kind == KIND_MANUFACTURER:
+            badge = u'<span class="pk pk-mfr">MANUFACTURER</span>'
+            prov = n.get("supplier") or u"—"
+            if n.get("cat_number"):
+                prov += u" &middot; cat. {0}".format(n["cat_number"])
+            prov += (u' &middot; <strong>CoA on file</strong>' if n.get("has_coa")
+                     else u' &middot; <span class="pk-warn">no CoA on file</span>')
+        elif kind == KIND_WATER:
+            badge = u'<span class="pk pk-water">TYPE 1 WATER</span>'
+            wl = n.get("water_log") or {}
+            if wl:
+                prov = (u"in-house system &middot; QC {0} {1} &middot; "
+                        u"conductivity {2} &micro;S/cm &middot; TOC {3} ppb "
+                        u"&middot; {4}").format(
+                    wl.get("log_date", u""), wl.get("log_time", u""),
+                    wl.get("conductivity", u"—"), wl.get("toc", u"—"),
+                    u"PASS" if wl.get("passed") else u"FAIL")
+            else:
+                prov = u'<span class="pk-warn">in-house system &mdash; no water QC entry</span>'
+        elif kind == KIND_PREPARED:
+            badge = u'<span class="pk pk-prep">PREPARED IN HOUSE</span>'
+            prov = u"made from the lot(s) below"
+        else:
+            badge = u'<span class="pk pk-bad">UNRESOLVED</span>'
+            prov = u'<span class="pk-warn">not traceable</span>'
+
+        name = n.get("name") or u"(unnamed)"
+        if n.get("url"):
+            name = u'<a href="{0}">{1}</a>'.format(n["url"], name)
+        amount = u"{0} {1}".format(n.get("qty") or u"", n.get("unit") or u"").strip()
+        out += (
+            u'<tr><td style="padding-left:{pad}px">{badge} {name}</td>'
+            u'<td>{lot}</td><td>{prov}</td><td>{amount}</td>'
+            u'<td>{expiry}</td></tr>').format(
+                pad=pad, badge=badge, name=name, lot=n.get("lot") or u"—",
+                prov=prov, amount=amount or u"—", expiry=n.get("expiry") or u"—")
+        for prob in n.get("problems") or []:
+            out += (u'<tr><td colspan="5" style="padding-left:{0}px" '
+                    u'class="pk-problem">&#9888; {1}</td></tr>').format(
+                        pad + 18, prob)
+        out += _render_parentage_html(n.get("children"), depth + 1)
+    return out
+
+
+def _render_cert_html(d, signers=None, portal=None):
     """Return the internal certificate HTML string for a prepared-standard dict.
 
     `signers` (optional) = {"qao": staff-dict-or-None, "director": ...} from
@@ -311,14 +586,34 @@ def _render_cert_html(d, signers=None):
                 row.get("unit", "")
             )
         )
-    parents_html = u""
-    for p in d.get("parent_reagents") or []:
+    # The parentage HIERARCHY, resolved, not the stored copy reprinted. A lot may
+    # be made from another lot made from a CRM, and every branch has to end at a
+    # manufacturer or at the Type 1 water log -- so the certificate walks it and
+    # says where each branch ends.
+    parentage = []
+    if portal is not None:
+        try:
+            parentage = build_parentage(portal, d)
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("certificate parentage for %s: %s",
+                         d.get("lot_number"), exc)
+            parentage = []
+    parents_html = _render_parentage_html(parentage)
+    problems = parentage_problems(parentage)
+    if problems:
+        # Stated ON the document. It previously printed an unresolvable parent as
+        # established fact with the 3-tier QA attestation attached (GAPS §33.3);
+        # a certificate that cannot substantiate its own parentage has to say so.
         parents_html += (
-            u"<tr><td>{}</td><td>{}</td><td>{}</td><td>{} {}</td></tr>".format(
-                p.get("name", ""), p.get("supplier", ""), p.get("lot", ""),
-                p.get("qty", ""), p.get("unit", "")
-            )
-        )
+            u'<tr><td colspan="5" class="pk-banner">'
+            u'&#9888; THIS PARENTAGE IS NOT FULLY SUBSTANTIATED &mdash; '
+            u'{0} unresolved link(s). The data-review traceability gate will '
+            u'reject a worksheet that uses this lot until they are resolved.'
+            u'</td></tr>').format(len(problems))
+    elif not parentage:
+        parents_html = (u'<tr><td colspan="5" class="pk-banner">&#9888; '
+                        u'No parent lots recorded &mdash; this lot cannot be '
+                        u'traced to anything.</td></tr>')
     return u"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -327,6 +622,16 @@ def _render_cert_html(d, signers=None):
 <style>
   body {{ font-family: Arial, sans-serif; font-size: 12px; margin: 30px 40px; color: #222; }}
   h1 {{ font-size: 18px; margin-bottom: 4px; }}
+  .pk {{ display:inline-block; font-size:9px; font-weight:bold; padding:1px 5px;
+         border-radius:3px; margin-right:6px; vertical-align:middle; }}
+  .pk-mfr {{ background:#d5e8d4; color:#1e5b2a; }}
+  .pk-water {{ background:#d6e6f5; color:#14496e; }}
+  .pk-prep {{ background:#efe3c8; color:#6b4c11; }}
+  .pk-bad {{ background:#f5d5d5; color:#8a1c1c; }}
+  .pk-warn {{ color:#8a1c1c; font-weight:bold; }}
+  .pk-problem {{ color:#8a1c1c; font-size:11px; }}
+  .pk-banner {{ background:#f8e6e6; color:#8a1c1c; font-weight:bold;
+                padding:6px 8px; }}
   .cert-meta {{ background: #f4f6f8; padding: 12px 16px; border-radius: 6px;
                margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; }}
   .cert-meta dt {{ font-weight: 700; font-size: 11px; text-transform: uppercase; color: #555; }}
@@ -369,9 +674,15 @@ def _render_cert_html(d, signers=None):
   <tbody>{analyte_rows}</tbody>
 </table>
 
-<h2 style="font-size:13px;margin-bottom:8px">Parent Reagents (Parentage)</h2>
+<h2 style="font-size:13px;margin-bottom:8px">Parentage &mdash; full hierarchy to source</h2>
+<p style="margin:0 0 8px 0;color:#555">Each branch ends at a
+<strong>manufacturer</strong> (supplier, catalogue number and CoA) or, for
+reagent-grade water produced in house, at the <strong>Type 1 water system QC log
+for the day it was used</strong>. Indentation shows depth: a lot made from a lot
+made from a certified reference material reads down the page.</p>
 <table>
-  <thead><tr><th>Reagent Name</th><th>Supplier</th><th>Lot Number</th><th>Amount Used</th></tr></thead>
+  <thead><tr><th>Lot / source</th><th>Lot number</th><th>Provenance</th>
+             <th>Amount used</th><th>Expiry</th></tr></thead>
   <tbody>{parent_rows}</tbody>
 </table>
 
@@ -410,7 +721,7 @@ def _render_cert_html(d, signers=None):
         logbook_title=d.get("logbook_title", ""),
         logbook_revision=d.get("logbook_revision", ""),
         analyte_rows=rows_html or u"<tr><td colspan='3'>No analytes recorded</td></tr>",
-        parent_rows=parents_html or u"<tr><td colspan='4'>No parent reagents recorded</td></tr>",
+        parent_rows=parents_html,
         expiry_note_section=(
             u"<p style='font-size:11px;color:#856404;background:#fff3cd;padding:8px 12px;"
             u"border-radius:4px'><strong>Expiry Note:</strong> {}</p>".format(

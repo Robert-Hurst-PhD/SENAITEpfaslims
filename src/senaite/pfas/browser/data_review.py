@@ -1296,11 +1296,41 @@ class PFASDataReviewView(BrowserView):
                 # on the live instance. The failure was rendered in the
                 # Traceability tab and gated nowhere: the ISO 17025 §6.6 leaf
                 # link was the one link in the chain with no enforcement.
+                # THE FULL HIERARCHY, not one level. A lot may be made from
+                # another lot made from a CRM, and every branch has to end at a
+                # manufacturer or at the Type 1 water QC log for the day the
+                # water was used (GAPS §36).
+                #
+                # Same walk the Certificate of Preparation prints, deliberately:
+                # the document and the gate used to disagree, and §33.9 recorded
+                # three resolvers giving three different answers about whether a
+                # parent existed. One function, one answer.
+                try:
+                    from senaite.pfas.browser.prepared_standards import (
+                        _obj_to_dict as _psdict, build_parentage,
+                        parentage_problems)
+                    ps_node["parentage"] = build_parentage(
+                        portal, _psdict(ps_obj))
+                    for prob in parentage_problems(ps_node["parentage"]):
+                        tree["unresolved"].append({
+                            "source": "prepstd.parentage",
+                            "lot": prob.get("lot"),
+                            "name": prob.get("name"),
+                            "reason": prob.get("reason"),
+                        })
+                except Exception as exc:                    # noqa: BLE001
+                    logger.error("parentage walk for %s: %s", lot_ref, exc)
+                    tree["unresolved"].append({
+                        "source": "prepstd.parentage", "lot": lot_ref,
+                        "name": ps_node["title"],
+                        "reason": u"parentage could not be resolved (%s)" % exc,
+                    })
+
                 if not parents:
-                    # The loop below cannot catch this: zero iterations. A
-                    # prepared standard with NO parentage is the case CLAUDE.md
-                    # §10 names explicitly, and one already exists in
-                    # production (PS-FDA-2026-A).
+                    # Kept alongside the walk: build_parentage reports this too,
+                    # but the flat `parent_reagents` list below is what the
+                    # Traceability tab renders, and a zero-parent standard must
+                    # be unmistakable in both.
                     tree["unresolved"].append({
                         "source": "prepstd.parents", "lot": lot_ref,
                         "name": ps_node["title"],

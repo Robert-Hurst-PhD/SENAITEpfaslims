@@ -20,6 +20,17 @@ STATUS_EXHAUSTED  = u"exhausted"
 STATUS_EXPIRED    = u"expired"
 STATUS_QUARANTINE = u"quarantine"
 
+# Reagent-grade water produced by the lab's own Type 1 system is the ONE lot
+# class with no manufacturer to trace to. Its provenance is the Type 1 water QC
+# log for the day it was used, so the parentage walk terminates there instead of
+# at a supplier and catalogue number (GAPS §36).
+#
+# A separate category rather than name-matching on "water": purchased LC-MS water
+# (e.g. Fisher) is an ordinary manufactured lot and must keep tracing to its
+# supplier. The distinction is which one the bench selected, not what it is
+# called.
+CATEGORY_INHOUSE_WATER = u"Reagent Water — in-house Type 1"
+
 REAGENT_CATEGORIES = [
     u"Mobile Phase / Solvent",
     u"Extraction Reagent",
@@ -28,6 +39,7 @@ REAGENT_CATEGORIES = [
     u"Buffer",
     u"Acid / Base",
     u"Salt",
+    CATEGORY_INHOUSE_WATER,
     u"Other Reagent",
 ]
 

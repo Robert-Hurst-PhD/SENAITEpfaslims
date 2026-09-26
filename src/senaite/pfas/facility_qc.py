@@ -602,6 +602,30 @@ def save_water_qc(operator, conductivity, toc, log_date=None, log_time=None,
     return passed
 
 
+def get_water_qc_for_date(log_date):
+    """The Type 1 water QC entry in force for `log_date`, or None.
+
+    THE single definition of "was the in-house water system verified that day".
+    It exists because reagent-grade water produced in house has no manufacturer
+    to trace to -- the water QC log IS its provenance (GAPS §36), so the
+    prepared-standard parentage walk has to ask this question per preparation
+    date, and the facility dashboard already asked it with an inline query.
+
+    Ordered by `log_time` AND `id`. Ordering on log_time alone is the defect
+    GAPS §10.1 found for the eye wash: two entries in the same minute made the
+    "latest" arbitrary, and a stale PASS could win over a later FAIL.
+    """
+    ensure_schema()
+    if not log_date:
+        return None
+    with _connect() as conn:
+        row = conn.execute("""
+            SELECT * FROM water_qc_logs WHERE log_date=?
+            ORDER BY log_time DESC, id DESC LIMIT 1
+        """, (log_date,)).fetchone()
+    return dict(row) if row else None
+
+
 def list_water_qc(limit=30):
     ensure_schema()
     with _connect() as conn:
@@ -764,12 +788,12 @@ def dashboard_summary():
             else:
                 row["status"] = "out_of_range"
         elif ut == "water_system":
-            with _connect() as conn:
-                wq = conn.execute("""
-                    SELECT * FROM water_qc_logs WHERE log_date=?
-                    ORDER BY log_time DESC LIMIT 1
-                """, (today,)).fetchone()
-            row["last_water"] = dict(wq) if wq else None
+            # One definition of "verified today", shared with the
+            # prepared-standard parentage walk. The inline query this replaces
+            # ordered by log_time alone, which is the same-minute tie GAPS §10.1
+            # found for the eye wash.
+            wq = get_water_qc_for_date(today)
+            row["last_water"] = wq
             if not wq:
                 row["status"] = "pending"
             elif wq["passed"]:

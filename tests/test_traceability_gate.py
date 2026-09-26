@@ -201,6 +201,116 @@ def test_a_resolved_reagent_reports_whether_it_has_a_coa():
         "manufacturer lot is certified")
 
 
+# ── The parentage hierarchy (GAPS §36) ───────────────────────────────────────
+
+PREPSTD = os.path.join(_ROOT, "src", "senaite", "pfas", "browser",
+                       "prepared_standards.py")
+
+
+def _ps_source():
+    with open(PREPSTD) as fh:
+        return fh.read()
+
+
+def _ps_func(name):
+    for node in ast.walk(ast.parse(_ps_source(), PREPSTD)):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError("%s not found in %s" % (name, PREPSTD))
+
+
+def test_the_parentage_walk_recurses():
+    """A lot may be made from another lot made from a CRM. A single-level walk
+    would report the intermediate stock as the source."""
+    fn = _ps_func("build_parentage")
+    assert any(isinstance(n, ast.Call)
+               and getattr(n.func, "id", "") == "build_parentage"
+               for n in ast.walk(fn)), (
+        "build_parentage does not call itself, so parentage stops at one level")
+
+
+def test_the_walk_is_cycle_safe_and_depth_bounded():
+    """A mis-keyed parent pointing at its own descendant must not recurse until
+    the request dies. A data-entry error should not take a page down."""
+    src = _ps_source()
+    assert "MAX_PARENTAGE_DEPTH" in src, "no depth bound on the parentage walk"
+    fn = _ps_func("build_parentage")
+    dumped = ast.dump(fn)
+    assert "_seen" in dumped, "no visited-set, so a cycle would recurse forever"
+    assert "circular parentage" in src, (
+        "a cycle is not reported to the reader, only silently stopped")
+
+
+def test_every_branch_ends_in_one_of_three_ways():
+    """manufacturer, Type 1 water, or a problem. A branch that stops anywhere
+    else is a traceability failure by construction rather than by a check
+    somebody remembered to write — which is how level 1 went unenforced."""
+    src = _ps_source()
+    for const in ("KIND_MANUFACTURER", "KIND_WATER", "KIND_PREPARED",
+                  "KIND_UNRESOLVED"):
+        assert const in src, const
+    fn = _ps_func("build_parentage")
+    dumped = ast.dump(fn)
+    assert "CATEGORY_INHOUSE_WATER" in dumped, (
+        "the walk does not recognise in-house water, so it would demand a "
+        "manufacturer for water that has none")
+
+
+def test_in_house_water_is_checked_against_the_day_of_use():
+    """Water produced in house has no manufacturer; the Type 1 QC log for the day
+    it was USED is its provenance, and the lab's rule is that an entry must
+    always exist for that day."""
+    fn = _ps_func("build_parentage")
+    dumped = ast.dump(fn)
+    assert "get_water_qc_for_date" in dumped, (
+        "the water branch does not consult the water QC log")
+    assert "used_on" in dumped, (
+        "the water check is not keyed on the date of USE, so a working standard "
+        "made today from water drawn today would ask about the wrong day")
+    # Short fragments: the message wraps across source lines, so a long
+    # substring is brittle rather than wrong.
+    src = _ps_source()
+    assert "water QC entry for that date" in src, (
+        "a missing water QC entry is not reported to the reader")
+    assert "FAILED" in src, "a water QC entry that FAILED is treated as adequate"
+
+
+def test_water_is_identified_by_category_not_by_name():
+    """Purchased LC-MS water is an ordinary manufactured lot and must keep
+    tracing to its supplier. Matching on the word "water" would break that."""
+    src = _ps_source()
+    fn = ast.dump(_ps_func("build_parentage"))
+    assert "CATEGORY_INHOUSE_WATER" in fn
+    for smell in ('"water" in', "'water' in", ".lower().find"):
+        assert smell not in src, (
+            "in-house water appears to be detected by NAME (%r), which would "
+            "also catch purchased water" % smell)
+
+
+def test_the_certificate_and_the_gate_use_the_SAME_walk():
+    """They disagreed before: the certificate printed an unresolvable parent as
+    fact while the gate passed it, and §33.9 found three resolvers giving three
+    answers. One function, one answer."""
+    assert "build_parentage" in _ps_source(), "walk missing"
+    cert = ast.dump(_ps_func("_render_cert_html"))
+    assert "build_parentage" in cert, (
+        "the certificate does not walk the chain; it is reprinting the stored "
+        "parent record, which is how a fabricated parentage got certified")
+    assert "build_parentage" in _source(), (
+        "data_review does not use the shared walk, so the gate and the "
+        "certificate can disagree again")
+
+
+def test_the_certificate_states_when_parentage_is_unsubstantiated():
+    """A controlled document that cannot substantiate its own parentage has to
+    say so on its face — it previously printed a nonexistent lot with the 3-tier
+    QA attestation attached and no flag at all."""
+    src = _ps_source()
+    assert "parentage_problems" in ast.dump(_ps_func("_render_cert_html"))
+    assert "NOT FULLY SUBSTANTIATED" in src, (
+        "the certificate does not warn when a branch is unresolved")
+
+
 if __name__ == "__main__":
     ok = fail = 0
     for name, fn in sorted(globals().items()):

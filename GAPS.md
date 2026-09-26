@@ -3330,3 +3330,105 @@ stale handler during that confusion were removed.
 - **`IReagent` still has no parentage field.** Not needed now that in-house
   preparations are PreparedStandards, but it is what made the old behaviour
   unfixable in place, and any future "in-house reagent" would hit it again.
+
+---
+
+## 36. The Certificate of Preparation carries the hierarchy to its source (2026-09-26)
+
+Requirement, verbatim: *"The certificate of preparation should include details and
+links to the stocks used to prepare it. It should produce a hierarchy map. Certain
+lots will come from other lots which should always link back to the manufacturer
+with the exception of reagent grade water, this should link to the type 1 water
+source log. There must always be an entry if the in house water system was used
+day of."*
+
+### One walk, three endings, no fourth
+
+`prepared_standards.build_parentage(portal, rec, used_on=...)` recurses from a
+prepared standard up through however many lots it descends from. Every branch
+terminates in exactly one of three ways, and that is enforced by construction
+rather than by a check somebody remembered to write — which is how level 1 went
+unenforced for so long (§33.2):
+
+| ending | provenance |
+|---|---|
+| `manufacturer` | a Reagent with a supplier, catalogue number and CoA status |
+| `water` | in-house Type 1 water — the water QC log **for the day of use** |
+| `unresolved` | not in inventory, no supplier, archived, or water with no log |
+
+A parent may now be **another prepared standard**, which is what "certain lots
+come from other lots" requires. Resolution is UID-first (§33.7), so a lot-number
+correction anywhere in the chain does not break it.
+
+Cycle-safe and depth-bounded (`MAX_PARENTAGE_DEPTH = 12`): a mis-keyed parent
+pointing into its own chain is reported as `circular parentage` rather than
+recursing until the request dies. A data-entry error must not be able to take a
+page down.
+
+### What the certificate now prints
+
+Resolved and rendered as an indented hierarchy with links, not the stored parent
+record reprinted. Real output from a three-level chain:
+
+    PREPARED IN HOUSE  CERT-PRIMARY   made from the lot(s) below
+      MANUFACTURER     CERT-CRM       Wellington Laboratories · cat. PFAC-MXK
+                                      · no CoA on file
+    TYPE 1 WATER       CERT-H2O       in-house system · QC 2026-09-26 10:36
+                                      · conductivity 0.055 µS/cm · TOC 3.0 ppb · PASS
+    UNRESOLVED         CERT-DOES-NOT-EXIST   not traceable
+                                      ⚠ lot CERT-DOES-NOT-EXIST is not in inventory
+    ⚠ THIS PARENTAGE IS NOT FULLY SUBSTANTIATED — 1 unresolved link(s).
+
+That closes §33.3: the document previously printed a fabricated parent as
+established fact with the 3-tier QA attestation attached and no flag anywhere.
+
+### The water rule
+
+In-house water is identified by a new reagent category,
+`CATEGORY_INHOUSE_WATER = u"Reagent Water — in-house Type 1"` — **not** by matching
+the word "water", because purchased LC-MS water (Fisher `FISHER-H2O-260510`) is an
+ordinary manufactured lot that must keep tracing to its supplier. The distinction
+is which category the bench selected, not what the lot is called.
+
+`facility_qc.get_water_qc_for_date(log_date)` is the single definition of "was the
+system verified that day". The facility dashboard's inline copy of that query now
+calls it too — and the shared version orders by `log_time` **and `id`**, fixing the
+same-minute tie that §10.1 found for the eye wash, where a stale PASS could beat a
+later FAIL.
+
+The check is keyed on the date of **use**, threaded down the recursion: a working
+standard made today from a stock made last month asks about today for its own water
+and about last month for the stock's. Judging everything against today would be the
+§33.13 mistake in another form.
+
+**A missing entry fails the gate.** Confirmed as the intended reading. Verified
+live: with no entry the walk reports *"in-house Type 1 water was used on 2026-09-26
+and there is no water QC entry for that date"*; recording one clears it; a recorded
+entry whose `passed` is 0 is reported as a FAIL rather than accepted.
+
+### The document and the gate cannot disagree again
+
+`data_review` calls the same `build_parentage` and turns `parentage_problems()`
+straight into `tree["unresolved"]`. Before, the certificate and the gate had
+different ideas of the same chain, and §33.9 found three resolvers giving three
+answers about whether one parent existed. A branch the certificate prints as broken
+is now exactly the one that blocks release.
+
+### Operational consequence, stated plainly
+
+`facility_units` and `water_qc_logs` hold **zero rows** (§10.3). So the moment a lab
+marks a lot as in-house Type 1 water, every preparation using it fails the gate
+until daily water QC logging starts. That is the requirement working as asked, not
+a defect — but it is a real prerequisite, and no existing lot carries the new
+category, so nothing is blocked today.
+
+Verified: 10/10 gate probes still correct, 15 structural tests, instance baseline
+byte-identical to as-found. A water QC row created during the probe was removed —
+test data in a compliance log is worse than none.
+
+### Still open
+
+- **§33.11** `usable_lots` still offers standards the gate will reject.
+- **as-of-date expiry**: `_is_expired` takes `as_of`; nothing passes it yet.
+- **0 of 14 lots have a CoA**, so every `manufacturer` node prints "no CoA on file".
+  The hierarchy now makes that visible on every certificate, which is the point.
