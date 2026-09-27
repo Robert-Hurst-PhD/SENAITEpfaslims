@@ -437,6 +437,129 @@ def test_the_certificate_does_not_assert_unperformed_verification():
     assert "Reserved for" in src
 
 
+# ── Equipment provenance (GAPS §38) ──────────────────────────────────────────
+
+FACILITY = os.path.join(_ROOT, "src", "senaite", "pfas", "facility_qc.py")
+
+
+def _fq_source():
+    with open(FACILITY) as fh:
+        return fh.read()
+
+
+def _fq_func(name):
+    for node in ast.walk(ast.parse(_fq_source(), FACILITY)):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError("%s not found in %s" % (name, FACILITY))
+
+
+def test_the_equipment_chain_ends_at_an_external_metrology_lab():
+    """The equipment analogue of a reagent's manufacturer CoA: the point where
+    the chain leaves this laboratory and becomes someone else's accredited
+    measurement. A balance verification is only as good as the weights used, and
+    those are calibrated externally."""
+    src = _fq_source()
+    for needle in ("weight_sets", "cal_lab", "cal_cert_number", "cal_due_date",
+                   "nist_traceable"):
+        assert needle in src, "weight sets do not record %s" % needle
+    fn = ast.dump(_fq_func("equipment_provenance"))
+    assert "_weight_set_chain" in fn, (
+        "equipment_provenance does not follow the weight set, so a balance "
+        "verification traces to nothing")
+
+
+def test_pipette_calibration_records_internal_and_external():
+    """Quarterly in house or by a provider. An internal check is a measurement
+    THIS lab made, so it carries its own provenance — the balance and weight set
+    it used — while an external one carries a provider and certificate number."""
+    src = _fq_source()
+    assert "pipette_calibrations" in src
+    for needle in ("provider", "cert_number", "balance_unit_id",
+                   "weight_set_id", "due_date"):
+        assert needle in src, "pipette calibration does not record %s" % needle
+    fn = ast.dump(_fq_func("equipment_provenance"))
+    assert "external" in fn and "internal" in fn or "balance_unit_id" in fn, (
+        "internal and external calibrations are not distinguished")
+
+
+def test_calibration_is_judged_as_of_the_date_of_use():
+    """A run performed while the pipette was in calibration does not stop being
+    defensible later. Same rule as the water log and reagent expiry."""
+    for name in ("get_pipette_calibration_in_force",
+                 "get_balance_verification_for_date", "equipment_provenance"):
+        fn = ast.dump(_fq_func(name))
+        assert "as_of" in fn or "verified_date" in fn, (
+            "%s does not take a date of use" % name)
+    src = _fq_source()
+    assert "cal_date<=?" in src, (
+        "the in-force query does not restrict to calibrations on or before the "
+        "date of use, so a LATER calibration would excuse an earlier run")
+
+
+def test_only_measuring_equipment_owes_a_calibration():
+    """A centrifuge, vortex mixer, cryogenic mill or shaker measures nothing and
+    has no calibration standard to trace to. Demanding one is a check that can
+    never be satisfied, which is worse than no check — and the first version of
+    this did exactly that, retroactively failing the already-released WS-0005 on
+    a cryogenic mill."""
+    src = _fq_source()
+    assert "CALIBRATED_UNIT_TYPES" in src, (
+        "every piece of equipment is treated as owing a calibration")
+    tree = ast.parse(src, FACILITY)
+    for node in tree.body:
+        if (isinstance(node, ast.Assign)
+                and any(getattr(t, "id", "") == "CALIBRATED_UNIT_TYPES"
+                        for t in node.targets)):
+            types = set(ast.literal_eval(node.value))
+            break
+    else:
+        raise AssertionError("CALIBRATED_UNIT_TYPES is not a literal")
+    assert types == {"balance_analytical", "balance_prep", "pipette"}, types
+
+
+def test_unknown_calibration_status_warns_and_does_not_block():
+    """An unregistered serial means we cannot tell whether the equipment owed a
+    calibration at all. The gap is REGISTRATION; enforcing on it would block a
+    release over a vortex mixer. Registering the unit starts enforcement."""
+    src = _source()
+    assert '"warnings"' in src, (
+        "data_review does not separate warnings from blocking problems")
+    fq = _fq_source()
+    assert 'out["warnings"].append' in fq, (
+        "an unregistered unit is reported as a blocking problem")
+    # only problems reach the gate
+    fn = _func("_build_traceability_tree")
+    dumped = ast.dump(fn)
+    i_prob = dumped.find('problems')
+    assert i_prob != -1
+    assert 'entry["warnings"]' in src, "warnings are computed but never kept"
+
+
+def test_the_equipment_walk_uses_the_documented_dual_read():
+    """Worksheet then linked batch, the same order _logbook_json uses. Reading one
+    place only is how §33's seeding reported "saw nothing" for the wrong reason —
+    and the first version of this walk read the batch alone and found nothing."""
+    fn = ast.dump(_func("_build_traceability_tree"))
+    assert "_linked_batch" in fn
+    assert "extraction_session" in fn, (
+        "the equipment walk does not read the extraction session at all")
+
+
+def test_a_balance_verification_records_the_weight_set_used():
+    """Without it the verification traces to nothing — it is a measurement with
+    no reference."""
+    fn = _fq_func("save_balance_verification")
+    args = [a.arg for a in fn.args.args]
+    assert "weight_set_id" in args, (
+        "save_balance_verification cannot record which weight set was used")
+    src = _fq_source()
+    assert "weight_set_id," in src
+    assert "_ADDED_COLUMNS" in src, (
+        "no idempotent migration for the new column, so an instance already "
+        "collecting verifications would break or lose them")
+
+
 if __name__ == "__main__":
     ok = fail = 0
     for name, fn in sorted(globals().items()):

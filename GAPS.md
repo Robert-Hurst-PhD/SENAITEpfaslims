@@ -3533,3 +3533,96 @@ and are untouched — the Run Builder joins on them.
 The ISO-date test scans the **argument of each `strftime` call via the AST**. Its
 first version scanned raw text and flagged the comment explaining the fix — the
 identical mistake `tests/test_rule_toggles.py` records having made, repeated here.
+
+---
+
+## 38. Equipment provenance: balance and pipette to the metrology lab (2026-09-27)
+
+Requirement: equipment records link to the standards used for their calibration;
+balance logs link to the equipment, which links to the extraction/sample processing
+performed **that day**; pipette calibration is recorded (quarterly or external);
+and the weight sets used for balance verification are checked by a metrology lab.
+
+This is the equipment analogue of §36's reagent chain, and it terminates the same
+way — at someone else's accredited measurement:
+
+```
+extraction stage (day X)
+  → equipment serial → registered Facility QC unit
+      balance  → verification for DAY X → weight set → metrology lab certificate
+      pipette  → calibration in force at day X
+                   internal: balance + weight set → metrology lab certificate
+                   external: provider + certificate number
+```
+
+### What was added
+
+* **`weight_sets`** — the lab's reference weights with their EXTERNAL calibration:
+  issuing metrology laboratory, its accreditation, certificate number, calibration
+  and due dates, NIST traceability, weight class, serial.
+* **`pipette_calibrations`** — `kind` of `internal` (quarterly gravimetric, carrying
+  the balance and weight set used) or `external` (provider, accreditation,
+  certificate). Both with `cal_date` and `due_date`.
+* **`balance_verifications.weight_set_id`** — added via an idempotent `ALTER`
+  (`_ADDED_COLUMNS`), because `CREATE TABLE IF NOT EXISTS` cannot add a column and
+  an instance already collecting verifications must not lose them.
+* **`pipette` unit type**, `unit_by_serial()`, `get_balance_verification_for_date()`,
+  `get_pipette_calibration_in_force()`, and `equipment_provenance(unit_id, as_of)`.
+
+Judged **as of the date of use**, not today, with `cal_date<=?` so a later
+calibration cannot excuse an earlier run — the same rule the water log (§36) and
+reagent expiry (§33.13) follow.
+
+### The extraction join that never existed
+
+`equipment_sns` — `{equipment_name: serial}` captured per extraction stage — was
+read by `extraction_pdf` alone: printed, never resolved, never checked. The gate now
+resolves each serial to a registered unit and asks about its calibration for the
+stage's own completion date, using the **dual read** (worksheet then linked batch)
+that `_logbook_json` uses. The first version read the batch alone, found nothing on
+WS-0002, and reported `equipment=0` — the §33 mistake exactly.
+
+### 38.1 The first version demanded a weight set from a vortex mixer
+
+Running it against the real released WS-0005 failed it with **13 unresolved**, a
+retroactive block on published work. Diagnosis: 9 of the 13 were a **cryogenic mill,
+vortex mixer, centrifuge and mechanical shaker**. They measure nothing and have no
+calibration standard to trace to, so the check could never be satisfied — worse than
+no check.
+
+The obligation belongs to the **unit type**, which is data:
+`CALIBRATED_UNIT_TYPES = (balance_analytical, balance_prep, pipette)`. Everything
+else is recorded as used and nothing more.
+
+### 38.2 Enforce where the obligation is established; report where it is unknown
+
+The remaining question was an unregistered serial. Blocking on it is wrong — we
+cannot tell whether that equipment owed a calibration at all — so:
+
+| situation | effect |
+|---|---|
+| unregistered serial | **warning**: "calibration status is unknown" |
+| non-measuring registered unit | recorded as used, no obligation |
+| registered balance, no verification for the day used | **BLOCKS** |
+| registered pipette, no calibration covering the day | **BLOCKS** |
+| weight set with no external certificate, or expired before use | **BLOCKS** |
+| weight set not NIST-traceable | **BLOCKS** |
+
+That line is not a compromise: it enforces every obligation the system KNOWS about,
+and the gap for the rest is **registration**, which the lab closes by registering the
+unit — at which point enforcement begins automatically. `facility_units` holds zero
+rows (§10.3), so nothing is blocked today.
+
+Verified live, all four cases, with WS-0005 back to `gate=True unresolved=0` and
+WS-0001 still failing on its reagent parentage. Every probe cleaned up after itself:
+0 units, 0 weight sets, 0 verifications left.
+
+### Still open
+
+- No UI yet for weight sets or pipette calibration — the schema and API exist and
+  the Facility QC pages do not expose them. Deliberate: §8's lesson is that the
+  producer comes after the thing it feeds, not before, and the gate already reads
+  them.
+- `PreparedStandard` still records no equipment, so a prepared standard's
+  certificate cannot name the balance used to weigh it (§37.5). The extraction path
+  now can; the prep path needs a field.

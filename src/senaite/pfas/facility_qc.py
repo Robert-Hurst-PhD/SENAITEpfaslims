@@ -36,6 +36,10 @@ UNIT_TYPES = [
     ("balance_prep",       "Balance — Preparatory"),
     ("eyewash",            "Eye Wash Station"),
     ("water_system",       "Type 1 Water System"),
+    # A pipette is verified on a PERIOD, not daily: quarterly in house or by an
+    # external provider. Its calibration record is what a result's volumetric
+    # step traces to (GAPS §38).
+    ("pipette",            "Pipette"),
     ("room_sensor",        "Room Sensor"),
 ]
 
@@ -207,6 +211,54 @@ CREATE TABLE IF NOT EXISTS balance_verifications (
     created_at   TEXT NOT NULL
 );
 
+-- ── Reference weight sets ────────────────────────────────────────────────────
+-- A balance verification is only as good as the weights it was verified WITH, and
+-- those are themselves calibrated by an external metrology laboratory. This is the
+-- equipment analogue of a reagent's manufacturer CoA: the point where the chain
+-- leaves this laboratory and becomes someone else's accredited measurement
+-- (GAPS §38).
+CREATE TABLE IF NOT EXISTS weight_sets (
+    id            TEXT PRIMARY KEY,
+    set_id        TEXT NOT NULL,          -- the lab's own identifier
+    description   TEXT,
+    weight_class  TEXT,                   -- ASTM Class 1, OIML E2, ...
+    serial_number TEXT,
+    -- external calibration, by a metrology laboratory
+    cal_lab            TEXT,
+    cal_lab_accreditation TEXT,           -- e.g. ISO/IEC 17025, scope number
+    cal_cert_number    TEXT,
+    cal_date           TEXT,              -- ISO 8601
+    cal_due_date       TEXT,              -- ISO 8601
+    nist_traceable     INTEGER DEFAULT 1,
+    active        INTEGER DEFAULT 1,
+    notes         TEXT,
+    created_at    TEXT NOT NULL
+);
+
+-- ── Pipette calibration ──────────────────────────────────────────────────────
+-- `kind` is 'internal' (a quarterly gravimetric check, done on a balance with a
+-- weight set) or 'external' (a service provider's certificate). Both are
+-- recorded; an internal check carries the balance and weight set it used, so a
+-- pipette's provenance runs through them to the metrology lab as well.
+CREATE TABLE IF NOT EXISTS pipette_calibrations (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id       TEXT NOT NULL,          -- facility_units.id, unit_type=pipette
+    kind          TEXT NOT NULL,          -- internal | external
+    cal_date      TEXT NOT NULL,          -- ISO 8601
+    due_date      TEXT,                   -- ISO 8601
+    operator      TEXT,                   -- internal check
+    provider      TEXT,                   -- external provider
+    provider_accreditation TEXT,
+    cert_number   TEXT,
+    balance_unit_id TEXT,                 -- internal: the balance used
+    weight_set_id TEXT,                   -- internal: the weight set used
+    as_found_pct  REAL,                   -- worst as-found deviation
+    tolerance_pct REAL,
+    passed        INTEGER DEFAULT 1,
+    notes         TEXT,
+    created_at    TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS balance_verification_points (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     verification_id INTEGER NOT NULL,
@@ -269,9 +321,28 @@ def _connect():
     return conn
 
 
+# Columns added to tables that already shipped. CREATE TABLE IF NOT EXISTS cannot
+# add a column to an existing database, so these are applied explicitly and
+# idempotently — an instance that has been collecting balance verifications must
+# not lose them to get the weight-set link.
+_ADDED_COLUMNS = [
+    ("balance_verifications", "weight_set_id", "TEXT"),
+]
+
+
 def ensure_schema():
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        for table, column, coltype in _ADDED_COLUMNS:
+            have = set()
+            try:
+                for row in conn.execute("PRAGMA table_info(%s)" % table):
+                    have.add(row[1])
+            except Exception:
+                continue
+            if column not in have:
+                conn.execute("ALTER TABLE %s ADD COLUMN %s %s"
+                             % (table, column, coltype))
 
 
 def _now():
@@ -516,7 +587,256 @@ def _refresh_study_status(conn, study_id):
 
 # ── Balance verifications ─────────────────────────────────────────────────────
 
-def save_balance_verification(unit_id, operator, verified_date, points, notes=None):
+# ── Weight sets (calibrated by an external metrology laboratory) ─────────────
+
+def save_weight_set(data):
+    """Upsert a reference weight set. `data["id"]` absent/None creates one."""
+    ensure_schema()
+    now = _now()
+    wid = data.get("id") or uuid.uuid4().hex
+    cols = ("set_id", "description", "weight_class", "serial_number", "cal_lab",
+            "cal_lab_accreditation", "cal_cert_number", "cal_date",
+            "cal_due_date", "nist_traceable", "active", "notes")
+    vals = [data.get(c) for c in cols]
+    with _connect() as conn:
+        exists = conn.execute("SELECT 1 FROM weight_sets WHERE id=?",
+                              (wid,)).fetchone()
+        if exists:
+            conn.execute(
+                "UPDATE weight_sets SET %s WHERE id=?"
+                % ", ".join("%s=?" % c for c in cols), vals + [wid])
+        else:
+            conn.execute(
+                "INSERT INTO weight_sets (id, %s, created_at) VALUES (%s)"
+                % (", ".join(cols), ", ".join(["?"] * (len(cols) + 2))),
+                [wid] + vals + [now])
+    return wid
+
+
+def list_weight_sets(active_only=True):
+    ensure_schema()
+    with _connect() as conn:
+        sql = "SELECT * FROM weight_sets"
+        if active_only:
+            sql += " WHERE active=1"
+        sql += " ORDER BY set_id"
+        return [dict(r) for r in conn.execute(sql).fetchall()]
+
+
+def get_weight_set(weight_set_id):
+    ensure_schema()
+    if not weight_set_id:
+        return None
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM weight_sets WHERE id=?",
+                           (weight_set_id,)).fetchone()
+    return dict(row) if row else None
+
+
+# ── Pipette calibration ──────────────────────────────────────────────────────
+
+def save_pipette_calibration(data):
+    """Record a pipette calibration — internal quarterly check or external."""
+    ensure_schema()
+    cols = ("unit_id", "kind", "cal_date", "due_date", "operator", "provider",
+            "provider_accreditation", "cert_number", "balance_unit_id",
+            "weight_set_id", "as_found_pct", "tolerance_pct", "passed", "notes")
+    vals = [data.get(c) for c in cols]
+    with _connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO pipette_calibrations (%s, created_at) VALUES (%s)"
+            % (", ".join(cols), ", ".join(["?"] * (len(cols) + 1))),
+            vals + [_now()])
+        return cur.lastrowid
+
+
+def list_pipette_calibrations(unit_id=None, limit=50):
+    ensure_schema()
+    with _connect() as conn:
+        if unit_id:
+            rows = conn.execute(
+                "SELECT * FROM pipette_calibrations WHERE unit_id=? "
+                "ORDER BY cal_date DESC, id DESC LIMIT ?",
+                (unit_id, limit)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM pipette_calibrations "
+                "ORDER BY cal_date DESC, id DESC LIMIT ?", (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_pipette_calibration_in_force(unit_id, as_of):
+    """The calibration covering `as_of`, or None.
+
+    "In force" means calibrated on or before the date and not yet due. Judged
+    against the date of USE, not today — the same rule the water log and the
+    reagent expiry follow, and for the same reason: a run performed while the
+    pipette was in calibration does not stop being defensible later.
+
+    Ordered by `cal_date` AND `id`, so two records on one day resolve
+    deterministically (the §10.1 same-minute defect, one field up).
+    """
+    ensure_schema()
+    if not unit_id or not as_of:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM pipette_calibrations WHERE unit_id=? AND cal_date<=? "
+            "ORDER BY cal_date DESC, id DESC LIMIT 1",
+            (unit_id, as_of)).fetchone()
+    if not row:
+        return None
+    rec = dict(row)
+    due = rec.get("due_date") or ""
+    rec["in_force"] = bool(not due or due >= as_of)
+    return rec
+
+
+def get_balance_verification_for_date(unit_id, verified_date):
+    """The balance verification for a given day, or None. Day-of, by design:
+    a balance is verified per working day, and a sample weighed on a day with no
+    verification has no established mass provenance."""
+    ensure_schema()
+    if not unit_id or not verified_date:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM balance_verifications WHERE unit_id=? AND "
+            "verified_date=? ORDER BY id DESC LIMIT 1",
+            (unit_id, verified_date)).fetchone()
+    return dict(row) if row else None
+
+
+def unit_by_serial(serial):
+    """A facility unit by its serial number, or None.
+
+    The extraction record captures equipment as free-text SERIAL NUMBERS
+    (`equipment_sns`), which were read only by the PDF. This is the join that
+    turns one into a registered unit whose calibration can be asked about.
+    """
+    ensure_schema()
+    if not serial:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM facility_units WHERE serial_number=? LIMIT 1",
+            (str(serial).strip(),)).fetchone()
+    return dict(row) if row else None
+
+
+# Unit types whose measurements a reported result depends on, and which therefore
+# owe a traceable calibration. Everything else is recorded as used and nothing more.
+CALIBRATED_UNIT_TYPES = ("balance_analytical", "balance_prep", "pipette")
+
+
+def equipment_provenance(unit_id, as_of):
+    """The calibration chain for one piece of equipment, as of a date.
+
+    Returns {unit, kind, records: [...], problems: [...]} where every branch ends
+    the same way the reagent chain does -- at someone else's accredited
+    measurement, or at a problem:
+
+        balance  -> verification for that DAY -> weight set -> metrology lab cert
+        pipette  -> calibration in force      -> (internal: balance + weight set
+                                                  -> metrology lab cert)
+
+    Problems are phrased for a reader, not a developer, because they surface on a
+    certificate and in the release gate.
+    """
+    unit = get_unit(unit_id) if unit_id else None
+    out = {"unit": unit, "kind": (unit or {}).get("unit_type") or u"",
+           "records": [], "problems": [], "warnings": []}
+    if unit is None:
+        out["warnings"].append(u"equipment is not registered in Facility QC")
+        return out
+
+    name = unit.get("name") or unit.get("id")
+    ut = unit.get("unit_type") or ""
+
+    def _weight_set_chain(weight_set_id, why):
+        ws = get_weight_set(weight_set_id)
+        if not weight_set_id or ws is None:
+            out["problems"].append(
+                u"%s: no reference weight set recorded, so the %s cannot be "
+                u"traced to a calibrated standard" % (name, why))
+            return
+        out["records"].append({"type": "weight_set", "data": ws})
+        if not ws.get("cal_cert_number") or not ws.get("cal_lab"):
+            out["problems"].append(
+                u"weight set %s has no external calibration certificate — a "
+                u"metrology laboratory must calibrate it" % ws.get("set_id"))
+        due = ws.get("cal_due_date") or ""
+        if due and due < as_of:
+            out["problems"].append(
+                u"weight set %s calibration expired %s, before it was used on %s"
+                % (ws.get("set_id"), due, as_of))
+        if not ws.get("nist_traceable"):
+            out["problems"].append(
+                u"weight set %s is not recorded as NIST-traceable"
+                % ws.get("set_id"))
+
+    # WHICH equipment owes a calibration record is a property of its TYPE, not of
+    # everything that touched the sample. A balance and a pipette make the
+    # measurements a result depends on, so each must trace to a calibrated
+    # standard. A centrifuge, vortex mixer, cryogenic mill or shaker measures
+    # nothing and has no calibration standard to trace to -- demanding one would
+    # be a check that can never be satisfied, which is worse than no check.
+    #
+    # Found by running this against the real released worksheet WS-0005: 9 of its
+    # 13 equipment entries were a mill, a mixer, a centrifuge and a shaker, and
+    # the first version of this function demanded a weight set from each.
+    if ut not in CALIBRATED_UNIT_TYPES:
+        out["records"].append({"type": "no_calibration_required",
+                               "data": {"unit_type": ut, "name": name}})
+        return out
+
+    if ut in ("balance_analytical", "balance_prep"):
+        ver = get_balance_verification_for_date(unit_id, as_of)
+        if not ver:
+            out["problems"].append(
+                u"%s has no balance verification for %s, the day it was used"
+                % (name, as_of))
+        else:
+            out["records"].append({"type": "balance_verification", "data": ver})
+            if not ver.get("passed"):
+                out["problems"].append(
+                    u"the balance verification for %s on %s FAILED"
+                    % (name, as_of))
+            _weight_set_chain(ver.get("weight_set_id"), u"verification")
+    elif ut == "pipette":
+        cal = get_pipette_calibration_in_force(unit_id, as_of)
+        if not cal:
+            out["problems"].append(
+                u"%s has no calibration record covering %s" % (name, as_of))
+        else:
+            out["records"].append({"type": "pipette_calibration", "data": cal})
+            if not cal.get("in_force"):
+                out["problems"].append(
+                    u"%s calibration was due %s, before it was used on %s"
+                    % (name, cal.get("due_date"), as_of))
+            if not cal.get("passed"):
+                out["problems"].append(
+                    u"the %s calibration dated %s FAILED"
+                    % (name, cal.get("cal_date")))
+            if (cal.get("kind") or "") == "external":
+                if not cal.get("cert_number") or not cal.get("provider"):
+                    out["problems"].append(
+                        u"%s external calibration names no provider or "
+                        u"certificate number" % name)
+            else:
+                # An internal check is a measurement this lab made, so it has to
+                # carry its own provenance: the balance and the weight set used.
+                _weight_set_chain(cal.get("weight_set_id"),
+                                  u"in-house pipette check")
+                if not cal.get("balance_unit_id"):
+                    out["problems"].append(
+                        u"%s in-house calibration does not record which balance "
+                        u"was used" % name)
+    return out
+
+
+def save_balance_verification(unit_id, operator, verified_date, points, notes=None,
+                              weight_set_id=None):
     """points: list of {nominal_g, label, actual_g, tolerance_g}"""
     ensure_schema()
     now = _now()
@@ -543,9 +863,11 @@ def save_balance_verification(unit_id, operator, verified_date, points, notes=No
     with _connect() as conn:
         cur = conn.execute("""
             INSERT INTO balance_verifications
-            (unit_id, verified_date, operator, passed, notes, created_at)
-            VALUES (?,?,?,?,?,?)
-        """, (unit_id, verified_date, operator, 1 if all_passed else 0, notes, now))
+            (unit_id, verified_date, operator, passed, notes, weight_set_id,
+             created_at)
+            VALUES (?,?,?,?,?,?,?)
+        """, (unit_id, verified_date, operator, 1 if all_passed else 0, notes,
+              weight_set_id, now))
         vid = cur.lastrowid
         for p in processed:
             conn.execute("""

@@ -1176,6 +1176,9 @@ class PFASDataReviewView(BrowserView):
             "direct_reagents":    [],
             "direct_standards":   [],
             "prepared_standards": [],
+            # Equipment used during extraction, resolved to registered units and
+            # checked for calibration as of the day of use (GAPS §38).
+            "equipment":          [],
             "unresolved":         [],
         }
 
@@ -1246,6 +1249,78 @@ class PFASDataReviewView(BrowserView):
                     "name": name,
                 })
             tree["direct_reagents"].append(entry)
+
+        # --- Equipment: serial -> unit -> calibration, as of the day used ---
+        # The extraction record captures equipment as free-text SERIAL NUMBERS
+        # per stage (`equipment_sns`), and until now they were read only by the
+        # PDF: printed, never resolved, never checked (GAPS §38). A balance is
+        # verified per working day and a pipette on a period, so a mass or volume
+        # step performed on a day with no verification has no provenance.
+        #
+        # The chain ends where the reagent chain does — at someone else's
+        # accredited measurement: verification -> weight set -> metrology lab.
+        try:
+            from senaite.pfas import facility_qc as _fq
+            # DUAL READ, worksheet then linked batch — the same order
+            # _logbook_json uses and for the same reason: the extraction views
+            # historically write to the batch, and a worksheet may carry its own
+            # copy. Reading only one place is how §33's seeding reported "saw
+            # nothing" for the wrong reason.
+            sess = {}
+            for holder in (ws, self._linked_batch(ws)):
+                if holder is None:
+                    continue
+                raw_sess = IAnnotations(holder).get(
+                    u"senaite.pfas.extraction_session")
+                if raw_sess:
+                    sess = json.loads(raw_sess)
+                    break
+            for _order, stage in sorted((sess.get("stages") or {}).items()):
+                # The date the equipment was USED, not today.
+                used_on = str(stage.get("completed_at") or "")[:10]
+                for label, serial in (stage.get("equipment_sns") or {}).items():
+                    serial = (serial or u"").strip()
+                    entry = {"label": label, "serial": serial, "unit": None,
+                             "records": [], "problems": [], "warnings": []}
+                    if not serial:
+                        entry["warnings"].append(
+                            u"no serial recorded for %s" % label)
+                    else:
+                        unit = _fq.unit_by_serial(serial)
+                        if unit is None:
+                            # WARNING, not a gate failure. An unregistered serial
+                            # means we cannot tell whether this equipment owed a
+                            # calibration at all — a vortex mixer does not. The
+                            # gap is REGISTRATION, and the lab closes it by
+                            # registering the unit, at which point enforcement
+                            # begins automatically for a balance or pipette.
+                            #
+                            # Blocking here would have retroactively failed the
+                            # already-released WS-0005 on a cryogenic mill.
+                            entry["warnings"].append(
+                                u"serial %s is not registered in Facility QC, so "
+                                u"its calibration status is unknown" % serial)
+                        else:
+                            prov = _fq.equipment_provenance(unit.get("id"),
+                                                            used_on)
+                            entry["unit"] = unit
+                            entry["records"] = prov.get("records") or []
+                            entry["problems"] = prov.get("problems") or []
+                            entry["warnings"] = prov.get("warnings") or []
+                    tree.setdefault("equipment", []).append(entry)
+                    # Only an ESTABLISHED unmet obligation blocks release: a
+                    # registered balance with no verification for the day it was
+                    # used, or a pipette out of calibration. Unknown status is
+                    # reported, not enforced.
+                    for prob in entry["problems"]:
+                        tree["unresolved"].append({
+                            "source": "equipment",
+                            "lot": serial or label,
+                            "name": label,
+                            "reason": prob,
+                        })
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("equipment provenance walk: %s", exc)
 
         # --- FM-ENV-251: lot_ref fields ---
         LOT_REF_FIELDS = [
