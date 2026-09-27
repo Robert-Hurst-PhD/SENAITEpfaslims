@@ -599,6 +599,21 @@
       class=".facility_qc.PFASBalanceLogView"
       permission="zope2.View"
       />
+  <!-- Reference weight sets: the external metrology-lab calibration a balance
+       verification traces to (GAPS 38). -->
+  <browser:page
+      name="pfas-weight-sets"
+      for="*"
+      class=".facility_qc.PFASWeightSetsView"
+      permission="zope2.View"
+      />
+  <!-- Pipette calibration: quarterly in house, or external. -->
+  <browser:page
+      name="pfas-pipette-calibration"
+      for="*"
+      class=".facility_qc.PFASPipetteCalibrationView"
+      permission="zope2.View"
+      />
   <browser:page
       name="pfas-water-log"
       for="*"

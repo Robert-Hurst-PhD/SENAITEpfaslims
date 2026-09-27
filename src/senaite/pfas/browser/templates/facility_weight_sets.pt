@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Reference Weight Sets</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .log-form { background:var(--s-bg); border:1px solid var(--s-border);
+                border-radius:8px; padding:16px; margin-bottom:18px; }
+    .log-form h3 { font-size:13px; font-weight:700; margin:0 0 4px; color:var(--s-body); }
+    .log-form .hint { font-size:11px; color:var(--s-secondary); margin:0 0 12px; }
+    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
+    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld input, .fld select { padding:6px 8px; font-size:13px;
+                 border:1px solid var(--s-input-border); border-radius:4px;
+                 color:var(--s-input-text); }
+    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .fld-row .fld { flex:1; min-width:140px; }
+    .chk { display:flex; align-items:center; gap:6px; font-size:12px;
+           color:var(--s-body); margin-bottom:10px; }
+    .log-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .log-table th { background:var(--s-light); padding:7px 10px; font-size:11px;
+                    font-weight:700; color:var(--s-secondary);
+                    border-bottom:2px solid var(--s-border); text-align:left; }
+    .log-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
+                    vertical-align:top; }
+    .p-ok  { background:#d4edda; color:#155724; padding:2px 9px; border-radius:8px;
+             font-size:10px; font-weight:700; }
+    .p-fail { background:#f8d7da; color:#721c24; padding:2px 9px; border-radius:8px;
+              font-size:10px; font-weight:700; }
+    .why { background:var(--s-light); border-left:3px solid var(--s-border);
+           padding:10px 14px; font-size:12px; color:var(--s-secondary);
+           margin-bottom:18px; border-radius:0 4px 4px 0; }
+    .prob { color:#8a1c1c; font-size:11px; display:block; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">Reference Weight Sets</tal:t>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="purl view/portal_url; today view/today">
+
+  <div class="why">
+    A balance verification is only as good as the weights it was performed with.
+    These sets are calibrated by an <strong>external metrology laboratory</strong>
+    &mdash; the point where the equipment chain leaves this laboratory, the same
+    way a reagent's chain ends at its manufacturer's certificate. A set with no
+    certificate, an expired calibration, or no NIST traceability makes every
+    balance verification performed with it untraceable, and the Data Review
+    traceability gate will reject the affected worksheets. All dates ISO 8601.
+  </div>
+
+  <div class="log-form">
+    <h3>Add / update a weight set</h3>
+    <p class="hint">Leave the identifier of an existing set unchanged to update it.</p>
+    <form method="POST" tal:attributes="action string:${purl}/@@pfas-weight-sets">
+      <input type="hidden" name="action" value="save" />
+      <input type="hidden" name="id" value="" tal:attributes="value request/form/id|nothing" />
+      <div class="fld-row">
+        <div class="fld"><label>Set identifier *</label>
+          <input type="text" name="set_id" required placeholder="WS-001" /></div>
+        <div class="fld"><label>Weight class</label>
+          <input type="text" name="weight_class" placeholder="ASTM Class 1 / OIML E2" /></div>
+        <div class="fld"><label>Serial number</label>
+          <input type="text" name="serial_number" /></div>
+      </div>
+      <div class="fld"><label>Description</label>
+          <input type="text" name="description" placeholder="1 mg - 100 g, 12 weights" /></div>
+
+      <h3 style="margin-top:14px">External calibration (metrology laboratory)</h3>
+      <p class="hint">Required. Without it the set establishes no traceability.</p>
+      <div class="fld-row">
+        <div class="fld"><label>Calibration laboratory *</label>
+          <input type="text" name="cal_lab" required /></div>
+        <div class="fld"><label>Its accreditation</label>
+          <input type="text" name="cal_lab_accreditation"
+                 placeholder="ISO/IEC 17025, scope no." /></div>
+        <div class="fld"><label>Certificate number *</label>
+          <input type="text" name="cal_cert_number" required /></div>
+      </div>
+      <div class="fld-row">
+        <div class="fld"><label>Calibration date *</label>
+          <input type="date" name="cal_date" required /></div>
+        <div class="fld"><label>Calibration due *</label>
+          <input type="date" name="cal_due_date" required /></div>
+      </div>
+      <div class="chk">
+        <input type="checkbox" name="nist_traceable" value="1" checked="checked"
+               id="nist" />
+        <label for="nist" style="font-size:12px">Calibration is NIST-traceable</label>
+      </div>
+      <div class="chk">
+        <input type="checkbox" name="active" value="1" checked="checked" id="act" />
+        <label for="act" style="font-size:12px">In service</label>
+      </div>
+      <div class="fld"><label>Notes</label><input type="text" name="notes" /></div>
+      <button type="submit" class="btn btn-primary">Save weight set</button>
+    </form>
+  </div>
+
+  <h3 style="font-size:13px;margin:0 0 8px">Registered sets</h3>
+  <table class="log-table">
+    <thead><tr>
+      <th>Set</th><th>Class</th><th>Calibration laboratory</th>
+      <th>Certificate</th><th>Calibrated</th><th>Due</th><th>Status</th>
+    </tr></thead>
+    <tbody>
+      <tal:rows tal:repeat="ws view/weight_sets">
+      <tr>
+        <td><strong tal:content="ws/set_id">WS-001</strong>
+            <span tal:condition="ws/description|nothing" style="color:var(--s-secondary)"
+                  tal:content="string: — ${ws/description}"></span></td>
+        <td tal:content="ws/weight_class|string:—">—</td>
+        <td tal:content="ws/cal_lab|string:—">—</td>
+        <td tal:content="ws/cal_cert_number|string:—">—</td>
+        <td tal:content="ws/cal_date|string:—">—</td>
+        <td tal:content="ws/cal_due_date|string:—">—</td>
+        <td>
+          <span tal:condition="not:ws/problems" class="p-ok">TRACEABLE</span>
+          <tal:bad tal:condition="ws/problems">
+            <span class="p-fail">NOT TRACEABLE</span>
+            <span class="prob" tal:repeat="p ws/problems" tal:content="p"></span>
+          </tal:bad>
+        </td>
+      </tr>
+      </tal:rows>
+      <tr tal:condition="not:view/weight_sets">
+        <td colspan="7" style="color:var(--s-secondary)">
+          No weight sets recorded. Until one is, every balance verification traces
+          to nothing.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  </tal:def>
+</metal:content>
+</body>
+</html>

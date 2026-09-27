@@ -4,6 +4,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import json
 import logging
+from datetime import date
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
@@ -506,6 +507,177 @@ class PFASEyeWashLogView(BrowserView):
 
     def logs(self):
         return db.list_eyewash_logs(limit=60)
+
+    def portal_url(self):
+        return _portal(self.context).absolute_url()
+
+
+class PFASWeightSetsView(BrowserView):
+    """Reference weight sets and their EXTERNAL metrology-lab calibration.
+
+    This is where the equipment chain leaves the laboratory (GAPS §38). A balance
+    verification is only as good as the weights it was performed with, and those
+    are calibrated by an accredited metrology laboratory — the equipment analogue
+    of a reagent's manufacturer certificate of analysis. Without a certificate
+    recorded here, every balance verification performed with the set traces to
+    nothing, and the traceability gate says so.
+    """
+    _template = ViewPageTemplateFile("templates/facility_weight_sets.pt")
+
+    def __call__(self):
+        flatten_form(self.request)
+        if self.request.method == "POST":
+            action = self.request.form.get("action", "")
+            if action == "save":
+                self._save()
+            elif action == "delete":
+                self._delete()
+            self.request.response.redirect(
+                _portal(self.context).absolute_url() + "/@@pfas-weight-sets")
+            return ""
+        return self._template()
+
+    def _save(self):
+        f = self.request.form
+        db.save_weight_set({
+            "id":                    f.get("id") or None,
+            "set_id":                f.get("set_id", "").strip(),
+            "description":           f.get("description", "").strip(),
+            "weight_class":          f.get("weight_class", "").strip(),
+            "serial_number":         f.get("serial_number", "").strip(),
+            "cal_lab":               f.get("cal_lab", "").strip(),
+            "cal_lab_accreditation": f.get("cal_lab_accreditation", "").strip(),
+            "cal_cert_number":       f.get("cal_cert_number", "").strip(),
+            "cal_date":              f.get("cal_date", "").strip(),
+            "cal_due_date":          f.get("cal_due_date", "").strip(),
+            "nist_traceable":        1 if f.get("nist_traceable") else 0,
+            "active":                1 if f.get("active", "1") else 0,
+            "notes":                 f.get("notes", "").strip(),
+        })
+
+    def _delete(self):
+        wid = self.request.form.get("id", "")
+        if wid:
+            db.save_weight_set(dict(db.get_weight_set(wid) or {},
+                                    id=wid, active=0))
+
+    def weight_sets(self):
+        """Every set, with the problems the gate would raise, so the QAO sees
+        here exactly what would block a release rather than discovering it at
+        review."""
+        out = []
+        for ws in db.list_weight_sets(active_only=False):
+            probs = []
+            if not ws.get("cal_cert_number") or not ws.get("cal_lab"):
+                probs.append(u"no external calibration certificate recorded")
+            if not ws.get("nist_traceable"):
+                probs.append(u"not recorded as NIST-traceable")
+            due = ws.get("cal_due_date") or ""
+            if due and due < self.today():
+                probs.append(u"calibration expired %s" % due)
+            elif not due:
+                probs.append(u"no calibration due date recorded")
+            ws["problems"] = probs
+            out.append(ws)
+        return out
+
+    def today(self):
+        return date.today().strftime("%Y-%m-%d")
+
+    def portal_url(self):
+        return _portal(self.context).absolute_url()
+
+
+class PFASPipetteCalibrationView(BrowserView):
+    """Pipette calibration — quarterly in house, or external.
+
+    An INTERNAL check is a measurement this laboratory made, so it carries its own
+    provenance: the balance and the reference weight set used, which run on to the
+    metrology lab. An EXTERNAL one carries the provider, its accreditation and the
+    certificate number. Both record a due date, because the gate judges
+    calibration as of the date the pipette was USED, not today (GAPS §38).
+    """
+    _template = ViewPageTemplateFile("templates/facility_pipettes.pt")
+
+    def __call__(self):
+        flatten_form(self.request)
+        if self.request.method == "POST":
+            self._save()
+            self.request.response.redirect(
+                _portal(self.context).absolute_url()
+                + "/@@pfas-pipette-calibration?unit_id="
+                + self.request.form.get("unit_id", ""))
+            return ""
+        return self._template()
+
+    def _save(self):
+        f = self.request.form
+        kind = f.get("kind", "internal")
+        try:
+            as_found = float(f.get("as_found_pct") or 0) or None
+        except (TypeError, ValueError):
+            as_found = None
+        try:
+            tol = float(f.get("tolerance_pct") or 0) or None
+        except (TypeError, ValueError):
+            tol = None
+        db.save_pipette_calibration({
+            "unit_id":                f.get("unit_id", ""),
+            "kind":                   kind,
+            "cal_date":               f.get("cal_date", "").strip(),
+            "due_date":               f.get("due_date", "").strip(),
+            "operator":               f.get("operator", "").strip(),
+            "provider":               f.get("provider", "").strip(),
+            "provider_accreditation": f.get("provider_accreditation", "").strip(),
+            "cert_number":            f.get("cert_number", "").strip(),
+            # An in-house check must say what it was measured WITH; an external
+            # one has no balance or weight set of ours involved.
+            "balance_unit_id":        (f.get("balance_unit_id", "").strip()
+                                       if kind == "internal" else None),
+            "weight_set_id":          (f.get("weight_set_id", "").strip()
+                                       if kind == "internal" else None),
+            "as_found_pct":           as_found,
+            "tolerance_pct":          tol,
+            "passed":                 1 if f.get("passed") else 0,
+            "notes":                  f.get("notes", "").strip(),
+        })
+
+    def unit(self):
+        uid = self.request.form.get("unit_id", "")
+        return db.get_unit(uid) if uid else None
+
+    def pipettes(self):
+        return [u for u in db.list_units() if u["unit_type"] == "pipette"]
+
+    def balances(self):
+        return [u for u in db.list_units()
+                if u["unit_type"] in ("balance_analytical", "balance_prep")]
+
+    def weight_sets(self):
+        return db.list_weight_sets()
+
+    def history(self):
+        unit = self.unit()
+        if not unit:
+            return []
+        rows = db.list_pipette_calibrations(unit["id"])
+        today = date.today().strftime("%Y-%m-%d")
+        for r in rows:
+            due = r.get("due_date") or ""
+            r["expired"] = bool(due and due < today)
+        return rows
+
+    def in_force(self):
+        """What covers TODAY — shown so the page answers the question a reviewer
+        actually asks, rather than leaving them to read dates off a list."""
+        unit = self.unit()
+        if not unit:
+            return None
+        return db.get_pipette_calibration_in_force(
+            unit["id"], date.today().strftime("%Y-%m-%d"))
+
+    def today(self):
+        return date.today().strftime("%Y-%m-%d")
 
     def portal_url(self):
         return _portal(self.context).absolute_url()

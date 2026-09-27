@@ -817,6 +817,18 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-balance"/></svg></span>
           <span class="pfas-si-label">Balance Verification</span>
         </a>
+        <a class="pfas-si" title="Weight Sets"
+           tal:attributes="href string:${purl}/@@pfas-weight-sets;
+                           class python:'pfas-si si-active' if '@@pfas-weight-sets' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-balance"/></svg></span>
+          <span class="pfas-si-label">Weight Sets</span>
+        </a>
+        <a class="pfas-si" title="Pipette Calibration"
+           tal:attributes="href string:${purl}/@@pfas-pipette-calibration;
+                           class python:'pfas-si si-active' if '@@pfas-pipette-calibration' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-balance"/></svg></span>
+          <span class="pfas-si-label">Pipette Calibration</span>
+        </a>
         <a class="pfas-si" title="Reagent Water"
            tal:attributes="href string:${purl}/@@pfas-water-log;
                            class python:'pfas-si si-active' if '@@pfas-water-log' in path else 'pfas-si'">

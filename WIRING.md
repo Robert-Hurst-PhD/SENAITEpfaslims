@@ -432,7 +432,7 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 
 `@@view-name` → class → template, derived from `browser/configure.zcml` and `browser/overrides.zcml`. Where the zcml carries no `template=` attribute (most views), the template is resolved by finding a `ViewPageTemplateFile(...)` class attribute in the view's own module.
 
-### 3.1 View registry (72)
+### 3.1 View registry (74)
 
 | `@@name` | class | template | for | registered in |
 |---|---|---|---|---|
@@ -440,7 +440,7 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@email` | `senaite.pfas.browser.edd_email.PFASEmailView` | (none found) | `bika.lims.interfaces.IClient` | `src/senaite/pfas/browser/overrides.zcml` |
 | `@@lims-setup` | `senaite.pfas.browser.lims_setup.PFASSetupView` | templates/lims_setup.pt (`class attr` at src/senaite/pfas/browser/lims_setup.py:276) | `Products.CMFPlone.interfaces.IPloneSiteRoot` | `src/senaite/pfas/browser/overrides.zcml` |
 | `@@pfas-ar-tracker` | `.pfas_nav.PFASARTrackerTabView` | templates/pfas_ar_tracker_tab.pt (`class attr` at src/senaite/pfas/browser/pfas_nav.py:180) | `bika.lims.interfaces.IAnalysisRequest` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-balance-log` | `.facility_qc.PFASBalanceLogView` | templates/facility_balance.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:328) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-balance-log` | `.facility_qc.PFASBalanceLogView` | templates/facility_balance.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:329) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-batch-dilutions` | `.logbooks.PFASBatchDilutionsView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-batch-project-assign` | `.batch_project_viewlet.PFASBatchProjectAssignView` | (none found) | `bika.lims.interfaces.IBatch` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-bench` | `.workspace_home.PFASBenchHomeView` | templates/pfas_bench.pt (`class attr` at src/senaite/pfas/browser/workspace_home.py:113) | `*` | `src/senaite/pfas/browser/configure.zcml` |
@@ -457,9 +457,9 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-egad-export` | `.egad_config.PFASEGADExportView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-extraction-guide` | `.extraction_guide.PFASExtractionGuideView` | templates/extraction_guide.pt (`class attr` at src/senaite/pfas/browser/extraction_guide.py:69) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-extraction-pdf` | `.extraction_pdf.PFASExtractionPDFView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-eyewash-log` | `.facility_qc.PFASEyeWashLogView` | templates/facility_eyewash.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:471) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-facility-qc` | `.facility_qc.PFASFacilityDashboardView` | templates/facility_dashboard.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:42) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-facility-units` | `.facility_qc.PFASFacilityUnitsView` | templates/facility_units.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:89) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-eyewash-log` | `.facility_qc.PFASEyeWashLogView` | templates/facility_eyewash.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:472) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-facility-qc` | `.facility_qc.PFASFacilityDashboardView` | templates/facility_dashboard.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:43) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-facility-units` | `.facility_qc.PFASFacilityUnitsView` | templates/facility_units.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:90) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-home` | `.workspace_home.PFASWorkspaceHomeView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-import-studio` | `.import_studio.PFASImportStudioView` | templates/import_studio.pt (`class attr` at src/senaite/pfas/browser/import_studio.py:692) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-instrument-profile` | `.import_studio.PFASInstrumentProfileView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
@@ -480,6 +480,7 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-method-profile-edit` | `.method_profiles.PFASMethodProfileEditView` | templates/method_profile_edit.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:113) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-method-profiles` | `.method_profiles.PFASMethodProfilesView` | templates/method_profiles.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:58) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-method-wizard` | `.method_wizard.PFASMethodWizardView` | templates/method_wizard.pt (`class attr` at src/senaite/pfas/browser/method_wizard.py:234) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-pipette-calibration` | `.facility_qc.PFASPipetteCalibrationView` | templates/facility_pipettes.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:600) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-prep-logbooks` | `.prep_logbooks.PFASPrepLogbooksView` | templates/prep_logbooks.pt (`class attr` at src/senaite/pfas/browser/prep_logbooks.py:396) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-prep-standards` | `.prepared_standards.PFASPrepStandardsView` | templates/prep_standards.pt (`class attr` at src/senaite/pfas/browser/prepared_standards.py:874) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-print-settings` | `.print_settings.PFASPrintSettingsView` | templates/print_settings.pt (`class attr` at src/senaite/pfas/browser/print_settings.py:21) | `*` | `src/senaite/pfas/browser/configure.zcml` |
@@ -500,10 +501,11 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-sidebar` | `.sidebar.PFASSidebarView` | templates/pfas_sidebar.pt (`class attr` at src/senaite/pfas/browser/sidebar.py:32) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-sop` | `.sop_documents.PFASSOPView` | templates/sop_documents.pt | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-system-map` | `.system_map.PFASSystemMapView` | templates/system_map.pt (`class attr` at src/senaite/pfas/browser/system_map.py:106) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-temperature-log` | `.facility_qc.PFASTemperatureLogView` | templates/facility_temp_log.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:237) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-temperature-log` | `.facility_qc.PFASTemperatureLogView` | templates/facility_temp_log.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:238) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-track` | `.tracker.PFASClientTrackerView` | templates/tracker.pt (`class attr` at src/senaite/pfas/browser/tracker.py:384) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-waste-log` | `.facility_qc.PFASWasteLogView` | templates/facility_waste.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:438) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-water-log` | `.facility_qc.PFASWaterLogView` | templates/facility_water.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:402) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-waste-log` | `.facility_qc.PFASWasteLogView` | templates/facility_waste.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:439) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-water-log` | `.facility_qc.PFASWaterLogView` | templates/facility_water.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:403) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-weight-sets` | `.facility_qc.PFASWeightSetsView` | templates/facility_weight_sets.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:525) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-ws-stage` | `.pfas_nav.PFASWorksheetStageTabView` | templates/pfas_ws_stage_tab.pt (`class attr` at src/senaite/pfas/browser/pfas_nav.py:147) | `bika.lims.interfaces.IWorksheet` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@senaite.pfas.batch-project-link` | `.batch_project_viewlet.PFASBatchProjectViewlet` | (viewlet) | `bika.lims.interfaces.IBatch` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@senaite.pfas.core-overlay-css` | `(none — template-only viewlet)` | (viewlet) templates/core_overlay_link.pt | `*` | `src/senaite/pfas/browser/configure.zcml` |

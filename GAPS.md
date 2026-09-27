@@ -3626,3 +3626,77 @@ WS-0001 still failing on its reagent parentage. Every probe cleaned up after its
 - `PreparedStandard` still records no equipment, so a prepared standard's
   certificate cannot name the balance used to weigh it (§37.5). The extraction path
   now can; the prep path needs a field.
+
+---
+
+## 39. The Facility QC pages for weight sets and pipette calibration (2026-09-27)
+
+§38 built the schema, the API and the gate reading; this is the producer. Both pages
+follow the existing Facility QC pattern (`@@pfas-macros/macros/page`, theme tokens,
+no bespoke styling — CLAUDE.md §6) and are registered in the sidebar's FACILITY QC
+group alongside Balance Verification.
+
+### `@@pfas-weight-sets`
+
+Records a reference weight set and, required, its **external metrology-laboratory
+calibration**: issuing laboratory, that laboratory's accreditation, certificate
+number, calibration and due dates, NIST traceability, class and serial.
+
+The list column does not say "saved" — it says whether the set is **TRACEABLE**, and
+when it is not it prints the reasons the gate would give:
+
+    AUDIT-WS-001   TRACEABLE
+    AUDIT-WS-BAD   NOT TRACEABLE
+                     no external calibration certificate recorded
+                     not recorded as NIST-traceable
+                     no calibration due date recorded
+
+That is deliberate. The QAO sees at the point of entry exactly what would block a
+release, instead of discovering it at data review on someone else's worksheet.
+
+### `@@pfas-pipette-calibration`
+
+Per-pipette history plus a single banner answering the question a reviewer actually
+asks — *is this in calibration?* — rather than leaving them to read dates off a list:
+
+    In calibration today. internal check dated 2026-07-01, due 2026-10-01
+
+The form branches on kind, and only shows the evidence that kind requires: an
+**in-house** check asks for the balance and weight set used (its own provenance,
+which runs on to the metrology lab); an **external** one asks for the provider, its
+accreditation and the certificate number. A form that asked for a balance on an
+external certificate would invite someone to invent one.
+
+Where a prerequisite is missing the page says so in place: "No weight sets
+registered — an in-house check cannot be traced without one."
+
+### Verified through HTTP, not by reading the code
+
+Both pages rendered 200, then driven with real POSTs: a fully-calibrated set saved
+and shown TRACEABLE; an uncalibrated one saved and shown NOT TRACEABLE with all three
+reasons; a pipette and balance registered through the existing Units page; an
+in-house quarterly calibration recorded and read back in the banner. Then
+`equipment_provenance` was asked about the data the FORMS had written:
+
+    pipette on 2026-08-15 -> problems=0
+       pipette_calibration kind=internal cal=2026-07-01 due=2026-10-01
+       weight_set AUDIT-WS-001 cal_lab=Regional Metrology Laboratory cert=RML-2026-4471
+    pipette on 2026-11-15 -> problems=1
+       PROBLEM: Pipette P200 calibration was due 2026-10-01, before it was used on 2026-11-15
+
+So the chain the gate reads is the chain the pages write, and the as-of-date rule
+holds in both directions. A restart was required for the new ZCML — the §35.1 lesson,
+applied rather than rediscovered.
+
+Every AUDIT-* row removed afterwards: `facility_units`, `weight_sets`,
+`pipette_calibrations`, `balance_verifications` and `water_qc_logs` all back to 0.
+WS-0005 still passes, WS-0001 still fails on its reagent parentage.
+
+### Still open
+
+- The balance verification form does not yet offer the weight set used — the column
+  and the API accept it, and `@@pfas-balance-log` still posts without it, so a
+  verification recorded through the UI today traces to nothing. That is the next
+  small step and it is the last link in this chain still unwired.
+- `PreparedStandard` records no equipment, so a prep certificate cannot name the
+  balance used to weigh it (§37.5).

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Pipette Calibration</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .log-form { background:var(--s-bg); border:1px solid var(--s-border);
+                border-radius:8px; padding:16px; margin-bottom:18px; }
+    .log-form h3 { font-size:13px; font-weight:700; margin:0 0 4px; color:var(--s-body); }
+    .log-form .hint { font-size:11px; color:var(--s-secondary); margin:0 0 12px; }
+    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
+    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld input, .fld select { padding:6px 8px; font-size:13px;
+                 border:1px solid var(--s-input-border); border-radius:4px;
+                 color:var(--s-input-text); }
+    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .fld-row .fld { flex:1; min-width:140px; }
+    .chk { display:flex; align-items:center; gap:6px; font-size:12px;
+           color:var(--s-body); margin-bottom:10px; }
+    .log-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .log-table th { background:var(--s-light); padding:7px 10px; font-size:11px;
+                    font-weight:700; color:var(--s-secondary);
+                    border-bottom:2px solid var(--s-border); text-align:left; }
+    .log-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
+    .p-ok  { background:#d4edda; color:#155724; padding:2px 9px; border-radius:8px;
+             font-size:10px; font-weight:700; }
+    .p-fail { background:#f8d7da; color:#721c24; padding:2px 9px; border-radius:8px;
+              font-size:10px; font-weight:700; }
+    .why { background:var(--s-light); border-left:3px solid var(--s-border);
+           padding:10px 14px; font-size:12px; color:var(--s-secondary);
+           margin-bottom:18px; border-radius:0 4px 4px 0; }
+    .state { padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:12px; }
+    .state-ok { background:#d4edda; color:#155724; }
+    .state-bad { background:#f8d7da; color:#721c24; }
+    .kind { font-size:10px; font-weight:700; padding:2px 7px; border-radius:8px; }
+    .kind-int { background:#efe3c8; color:#6b4c11; }
+    .kind-ext { background:#d6e6f5; color:#14496e; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">Pipette Calibration</tal:t>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="purl view/portal_url; unit view/unit; today view/today">
+
+  <div class="why">
+    A pipette is calibrated on a <strong>period</strong>, not daily: a quarterly
+    check in house, or an external service. An <strong>in-house</strong> check is a
+    measurement this laboratory made, so it records the balance and the reference
+    weight set used &mdash; which carry on to the metrology laboratory. An
+    <strong>external</strong> one records the provider, its accreditation and the
+    certificate number. The Data Review gate judges calibration as of the date the
+    pipette was <strong>used</strong>, not today, so a run made while it was in
+    calibration stays defensible afterwards. All dates ISO 8601.
+  </div>
+
+  <form method="GET" class="log-form"
+        tal:attributes="action string:${purl}/@@pfas-pipette-calibration">
+    <div class="fld"><label>Pipette</label>
+      <select name="unit_id" onchange="this.form.submit()">
+        <option value="">— select a pipette —</option>
+        <option tal:repeat="p view/pipettes"
+                tal:attributes="value p/id;
+                                selected python:unit and unit['id'] == p['id']"
+                tal:content="string:${p/name} (${p/serial_number})">P200</option>
+      </select></div>
+    <p class="hint" tal:condition="not:view/pipettes">
+      No pipettes registered. Add one under Facility QC &#8594; Units with type
+      &quot;Pipette&quot;, then record its calibration here.
+    </p>
+  </form>
+
+  <tal:chosen tal:condition="unit">
+    <tal:force tal:define="cal view/in_force">
+      <div tal:condition="python:cal and cal.get('in_force')" class="state state-ok">
+        <strong>In calibration today.</strong>
+        <tal:c tal:content="string:${cal/kind} check dated ${cal/cal_date}, due ${cal/due_date}"></tal:c>
+      </div>
+      <div tal:condition="python:cal and not cal.get('in_force')" class="state state-bad">
+        <strong>OUT OF CALIBRATION.</strong> The most recent record is dated
+        <tal:c tal:content="cal/cal_date"></tal:c> and was due
+        <tal:c tal:content="cal/due_date"></tal:c>. Any processing performed now
+        will be blocked at data review.
+      </div>
+      <div tal:condition="not:cal" class="state state-bad">
+        <strong>No calibration on record.</strong> Processing performed with this
+        pipette cannot be traced to a calibration and will be blocked at data
+        review.
+      </div>
+    </tal:force>
+
+    <div class="log-form">
+      <h3>Record a calibration</h3>
+      <p class="hint">An in-house check must name the balance and weight set used;
+        an external one must name the provider and certificate.</p>
+      <form method="POST"
+            tal:attributes="action string:${purl}/@@pfas-pipette-calibration">
+        <input type="hidden" name="unit_id" tal:attributes="value unit/id" />
+        <div class="fld-row">
+          <div class="fld"><label>Kind *</label>
+            <select name="kind" id="kind" onchange="toggleKind()">
+              <option value="internal">In-house (quarterly gravimetric)</option>
+              <option value="external">External provider</option>
+            </select></div>
+          <div class="fld"><label>Calibration date *</label>
+            <input type="date" name="cal_date" required /></div>
+          <div class="fld"><label>Next due *</label>
+            <input type="date" name="due_date" required /></div>
+        </div>
+
+        <div id="internal-fields">
+          <div class="fld-row">
+            <div class="fld"><label>Operator</label>
+              <input type="text" name="operator" /></div>
+            <div class="fld"><label>Balance used *</label>
+              <select name="balance_unit_id">
+                <option value="">— select —</option>
+                <option tal:repeat="b view/balances"
+                        tal:attributes="value b/id"
+                        tal:content="string:${b/name} (${b/serial_number})">Bal</option>
+              </select></div>
+            <div class="fld"><label>Weight set used *</label>
+              <select name="weight_set_id">
+                <option value="">— select —</option>
+                <option tal:repeat="w view/weight_sets"
+                        tal:attributes="value w/id"
+                        tal:content="string:${w/set_id} (${w/weight_class})">WS</option>
+              </select></div>
+          </div>
+          <p class="hint" tal:condition="not:view/weight_sets">
+            No weight sets registered &mdash; an in-house check cannot be traced
+            without one. Add it under Facility QC &#8594; Weight Sets.
+          </p>
+        </div>
+
+        <div id="external-fields" style="display:none">
+          <div class="fld-row">
+            <div class="fld"><label>Provider *</label>
+              <input type="text" name="provider" /></div>
+            <div class="fld"><label>Its accreditation</label>
+              <input type="text" name="provider_accreditation"
+                     placeholder="ISO/IEC 17025" /></div>
+            <div class="fld"><label>Certificate number *</label>
+              <input type="text" name="cert_number" /></div>
+          </div>
+        </div>
+
+        <div class="fld-row">
+          <div class="fld"><label>Worst as-found deviation (%)</label>
+            <input type="number" step="0.01" name="as_found_pct" /></div>
+          <div class="fld"><label>Tolerance (%)</label>
+            <input type="number" step="0.01" name="tolerance_pct" /></div>
+        </div>
+        <div class="chk">
+          <input type="checkbox" name="passed" value="1" checked="checked" id="pass" />
+          <label for="pass" style="font-size:12px">Calibration passed</label>
+        </div>
+        <div class="fld"><label>Notes</label><input type="text" name="notes" /></div>
+        <button type="submit" class="btn btn-primary">Record calibration</button>
+      </form>
+    </div>
+
+    <h3 style="font-size:13px;margin:0 0 8px">Calibration history</h3>
+    <table class="log-table">
+      <thead><tr>
+        <th>Date</th><th>Kind</th><th>Due</th><th>By / provider</th>
+        <th>Certificate</th><th>Traced to</th><th>Result</th>
+      </tr></thead>
+      <tbody>
+        <tal:rows tal:repeat="c view/history">
+        <tr>
+          <td tal:content="c/cal_date">2026-07-01</td>
+          <td><span tal:attributes="class python:'kind kind-int' if c['kind']=='internal' else 'kind kind-ext'"
+                    tal:content="python:c['kind'].upper()">INTERNAL</span></td>
+          <td>
+            <tal:d tal:content="c/due_date|string:—">—</tal:d>
+            <span tal:condition="c/expired" class="p-fail">EXPIRED</span>
+          </td>
+          <td tal:content="python:c.get('operator') or c.get('provider') or '—'">—</td>
+          <td tal:content="c/cert_number|string:—">—</td>
+          <td tal:content="python:('weight set ' + (c.get('weight_set_id') or '')[:8]) if c['kind']=='internal' else (c.get('provider_accreditation') or '—')">—</td>
+          <td>
+            <span tal:condition="c/passed" class="p-ok">PASS</span>
+            <span tal:condition="not:c/passed" class="p-fail">FAIL</span>
+          </td>
+        </tr>
+        </tal:rows>
+        <tr tal:condition="not:view/history">
+          <td colspan="7" style="color:var(--s-secondary)">
+            No calibration recorded for this pipette.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </tal:chosen>
+
+  </tal:def>
+</metal:content>
+
+<tal:scripts metal:fill-slot="scripts">
+<script>
+  /* The in-house and external branches ask for different evidence, so only the
+     relevant fields are shown — a form that asks for a balance on an external
+     certificate invites someone to invent one. */
+  function toggleKind() {
+    var k = document.getElementById('kind');
+    if (!k) return;
+    var internal = k.value === 'internal';
+    var i = document.getElementById('internal-fields');
+    var e = document.getElementById('external-fields');
+    if (i) i.style.display = internal ? '' : 'none';
+    if (e) e.style.display = internal ? 'none' : '';
+  }
+  toggleKind();
+</script>
+</tal:scripts>
+</body>
+</html>
