@@ -311,6 +311,132 @@ def test_the_certificate_states_when_parentage_is_unsubstantiated():
         "the certificate does not warn when a branch is unresolved")
 
 
+# ── A specimen CoA establishes nothing (GAPS §37) ────────────────────────────
+
+def test_a_specimen_coa_does_not_establish_traceability():
+    """Presence is not sufficiency. Specimen certificates were attached to all 14
+    lots so the machinery could be reviewed; if the §6.5 statement counted them,
+    the review would have manufactured the very false assurance the subsystem
+    exists to prevent."""
+    src = _ps_source()
+    assert "coa_specimen" in src, (
+        "the parentage node does not distinguish a specimen CoA from a real one")
+    fn = ast.dump(_ps_func("build_parentage"))
+    assert "uploaded_by" in fn or "filename" in fn, (
+        "specimen detection does not read the CoA metadata")
+    assert "SPECIMEN" in src
+    # the §6.5 statement must exclude them
+    cert = _ps_func("_render_cert_html")
+    dumped = ast.dump(cert)
+    assert "coa_specimen" in dumped, (
+        "the traceability statement counts a specimen as a certificate")
+
+
+def test_the_hierarchy_row_says_which_kind_of_coa_it_found():
+    src = _ps_source()
+    assert "SPECIMEN CoA only" in src, (
+        "the hierarchy prints 'CoA on file' for a specimen, which reads as real")
+
+
+# ── ISO 8601 dates (GAPS §37) ────────────────────────────────────────────────
+
+def _py_files():
+    for base, _dirs, files in os.walk(os.path.join(_ROOT, "src", "senaite",
+                                                   "pfas")):
+        for f in files:
+            if f.endswith(".py"):
+                yield os.path.join(base, f)
+
+
+def test_no_human_facing_date_uses_a_locale_dependent_format():
+    """Month names and D/M ordering are ambiguous on a document a client and an
+    assessor both read: the same string can mean a different day in another
+    convention. ISO 8601 everywhere it is DISPLAYED."""
+    # Scans the ARGUMENT of each strftime call, from the AST. A raw text scan
+    # flags the comment that explains the fix -- which is exactly the mistake
+    # tests/test_rule_toggles.py documents having made, and which the first
+    # version of this test duly repeated.
+    bad = []
+    for path in _py_files():
+        with open(path) as fh:
+            body = fh.read()
+        try:
+            tree = ast.parse(body, path)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call)
+                    and getattr(node.func, "attr", "") == "strftime"):
+                continue
+            for arg in node.args:
+                if not (isinstance(arg, ast.Constant)
+                        and isinstance(arg.value, str)):
+                    continue
+                for pat in ("%B", "%b", "%d/%m/%Y", "%A", "%a"):
+                    if pat in arg.value:
+                        bad.append("%s: %r" % (os.path.basename(path),
+                                               arg.value))
+    assert not bad, ("locale-dependent display date formats remain: %s"
+                     % sorted(set(bad)))
+
+
+def test_the_egad_export_keeps_its_required_non_iso_format():
+    """The ONE exception, and it must not be 'fixed'. Maine DEP's EGAD EDD
+    specifies MM/DD/YYYY; making it ISO would break the state submission. A
+    blanket date sweep would do exactly that, so this pins it deliberately."""
+    egad = os.path.join(_ROOT, "src", "senaite", "pfas", "egad_builder.py")
+    with open(egad) as fh:
+        body = fh.read()
+    assert '"%m/%d/%Y"' in body, (
+        "egad_builder no longer emits MM/DD/YYYY — the EGAD EDD requires it and "
+        "a state submission will be rejected without it")
+
+
+def test_the_certificate_declares_its_date_convention():
+    """A reader should not have to infer it."""
+    assert "ISO 8601" in _ps_source(), (
+        "the certificate does not state which date convention it uses")
+
+
+# ── ISO 17025 / GMP content on the Certificate of Preparation (GAPS §37) ─────
+
+def test_the_certificate_carries_the_iso17025_identification_fields():
+    src = _ps_source()
+    for needle, why in (
+            ("cert_id", "§7.8.2.1(b) unique identification of the certificate"),
+            ("Date of issue", "§7.8.2.1 date of issue"),
+            ("lab_header", "§7.8.2.1(a) name and address of the laboratory"),
+            ("relates only to", "scope-of-validity statement"),
+            ("not a manufacturer certificate", "must not read as a supplier CoA"),
+    ):
+        assert needle in src, "certificate is missing %s (%s)" % (needle, why)
+
+
+def test_an_unconfigured_laboratory_identity_is_stated_not_faked():
+    """SENAITE ships the Laboratory object titled "Laboratory Information". If
+    that were printed as the lab's name the certificate would assert an identity
+    nobody configured."""
+    src = _ps_source()
+    assert "Laboratory Information" in src, (
+        "the placeholder lab name is not detected, so it would be printed as if "
+        "it were the laboratory's actual name")
+    # Short fragment: the message wraps across source lines.
+    assert "configured (ISO 17025" in src, (
+        "an unconfigured laboratory identity is not stated on the certificate")
+
+
+def test_the_certificate_does_not_assert_unperformed_verification():
+    """It is generated automatically when the lot is recorded. Wording it as
+    "Reviewed and verified by <name>" asserted a review that had not happened —
+    the same defect shape §32 fixed for the release checklist."""
+    src = _ps_source()
+    assert "UNSIGNED UNTIL DATED" in src, (
+        "the sign-off block does not say it is unsigned")
+    assert "Reviewed and verified by" not in src, (
+        "the certificate still asserts verification in the past tense")
+    assert "Reserved for" in src
+
+
 if __name__ == "__main__":
     ok = fail = 0
     for name, fn in sorted(globals().items()):

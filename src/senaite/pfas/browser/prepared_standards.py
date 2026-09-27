@@ -381,10 +381,22 @@ def build_parentage(portal, rec, used_on=None, _seen=None, _depth=0):
             node["supplier"] = rd.get("supplier") or u""
             node["cat_number"] = rd.get("cat_number") or u""
             node["expiry"] = _effective_expiry(rd, get_expiry_defaults(portal))
+            # Presence is not sufficiency. A SPECIMEN certificate establishes no
+            # traceability, and a claim resting on one would be exactly the false
+            # assurance this subsystem exists to prevent — so the specimen flag
+            # travels with the node and the §6.5 statement refuses to count it.
+            node["has_coa"] = False
+            node["coa_specimen"] = False
             try:
-                node["has_coa"] = bool(IAnnotations(obj).get(_COA_ANN_KEY))
+                raw = IAnnotations(obj).get(_COA_ANN_KEY)
+                if raw:
+                    meta = json.loads(raw) if isinstance(raw, str) else raw
+                    node["has_coa"] = True
+                    marker = u"{0} {1}".format(meta.get("filename") or u"",
+                                               meta.get("uploaded_by") or u"")
+                    node["coa_specimen"] = u"SPECIMEN" in marker.upper()
             except Exception:
-                node["has_coa"] = False
+                pass
             if IAnnotations(obj).get(_ANN_ARCHIVED_KEY):
                 node["problems"].append(u"lot is archived")
 
@@ -528,8 +540,13 @@ def _render_parentage_html(nodes, depth=0):
             prov = n.get("supplier") or u"—"
             if n.get("cat_number"):
                 prov += u" &middot; cat. {0}".format(n["cat_number"])
-            prov += (u' &middot; <strong>CoA on file</strong>' if n.get("has_coa")
-                     else u' &middot; <span class="pk-warn">no CoA on file</span>')
+            if n.get("coa_specimen"):
+                prov += (u' &middot; <span class="pk-warn">SPECIMEN CoA only'
+                         u' &mdash; establishes nothing</span>')
+            elif n.get("has_coa"):
+                prov += u' &middot; <strong>CoA on file</strong>'
+            else:
+                prov += u' &middot; <span class="pk-warn">no CoA on file</span>'
         elif kind == KIND_WATER:
             badge = u'<span class="pk pk-water">TYPE 1 WATER</span>'
             wl = n.get("water_log") or {}
@@ -600,6 +617,93 @@ def _render_cert_html(d, signers=None, portal=None):
             parentage = []
     parents_html = _render_parentage_html(parentage)
     problems = parentage_problems(parentage)
+
+    # ISO 17025 §7.8.2.1(a): the name and address of the laboratory. Read from
+    # the SENAITE Laboratory object rather than hardcoded, and when it is
+    # unconfigured the certificate SAYS SO instead of printing the stock
+    # placeholder as though it were the lab's name.
+    lab_name, lab_address = u"", u""
+    if portal is not None:
+        try:
+            lab = portal.bika_setup.laboratory
+            nm = (lab.getName() or u"").strip()
+            if nm and nm != u"Laboratory Information":
+                lab_name = nm
+            addr = lab.getPostalAddress() or {}
+            lab_address = u", ".join(
+                [x for x in (addr.get("address"), addr.get("city"),
+                             addr.get("zip"), addr.get("state"),
+                             addr.get("country")) if x])
+        except Exception:
+            pass
+    lab_header = lab_name or (
+        u'<span style="color:#8a1c1c">Laboratory name and address not '
+        u'configured (ISO 17025 §7.8.2.1(a))</span>')
+    if lab_address:
+        lab_header += u" &mdash; " + lab_address
+
+    # §7.8.2.1(b) unique identification, and GMP document control: a reissued
+    # certificate must be distinguishable from the one it replaced.
+    cert_version = d.get("cert_version") or 1
+    cert_id = u"COP-{0}-r{1}".format(d.get("lot_number") or u"UNKNOWN",
+                                     cert_version)
+
+    # §6.5 metrological traceability. The assigned concentration of a prepared
+    # standard is only as traceable as the chain it descends from, so the claim
+    # is DERIVED from the parentage walk rather than asserted: if any
+    # manufacturer node in the chain has no CoA on file, traceability to a
+    # reference value is not established and the certificate must not imply it.
+    def _mfr_nodes(nodes):
+        out = []
+        for n in nodes or []:
+            if n.get("kind") == KIND_MANUFACTURER:
+                out.append(n)
+            out.extend(_mfr_nodes(n.get("children")))
+        return out
+
+    mfr = _mfr_nodes(parentage)
+    # A specimen counts as NO certificate for traceability purposes.
+    without_coa = [n for n in mfr
+                   if not n.get("has_coa") or n.get("coa_specimen")]
+    specimens = [n for n in mfr if n.get("coa_specimen")]
+    if not mfr:
+        trace_stmt = (u'<span style="color:#8a1c1c">No manufactured reference '
+                      u'material appears in this lot\'s parentage, so no '
+                      u'metrological traceability can be stated.</span>')
+    elif without_coa:
+        _spec = ((u" {0} of them {1} only a SPECIMEN certificate, which is "
+                  u"illustrative and establishes nothing.").format(
+                      len(specimens),
+                      u"carries" if len(specimens) == 1 else u"carry")
+                 if specimens else u"")
+        trace_stmt = (
+            u'<span style="color:#8a1c1c">NOT ESTABLISHED.</span> The assigned '
+            u'values are gravimetrically derived from the parentage above, but '
+            u'{0} of {1} source lot(s) have no USABLE certificate of analysis '
+            u'on file '
+            u'({2}). Without the supplier\'s certificate the reference value '
+            u'these were prepared against is unverified, so traceability to a '
+            u'stated reference cannot be claimed (ISO 17025 §6.5).').format(
+                len(without_coa), len(mfr),
+                u", ".join(n.get("lot") or u"?" for n in without_coa)) + _spec
+    else:
+        trace_stmt = (
+            u'Assigned values are gravimetrically derived from the source lots '
+            u'above, each of which has a supplier certificate of analysis on '
+            u'file. Traceability rests on those certificates; this laboratory '
+            u'asserts no independent value assignment and states no '
+            u'measurement uncertainty of its own for this lot '
+            u'(ISO 17025 §6.5).')
+
+    # GMP: the preparation must be reproducible from the record. Volumes taken
+    # come from the parentage rows; the final volume is the lot's own.
+    calc_rows = u""
+    for n in parentage:
+        amt = u"{0} {1}".format(n.get("qty") or u"", n.get("unit") or u"").strip()
+        calc_rows += (u"<tr><td>{0}</td><td>{1}</td><td>{2}</td></tr>".format(
+            n.get("name") or u"—", n.get("lot") or u"—", amt or u"(not recorded)"))
+    if not calc_rows:
+        calc_rows = u"<tr><td colspan='3'>No component amounts recorded</td></tr>"
     if problems:
         # Stated ON the document. It previously printed an unresolvable parent as
         # established fact with the 3-tier QA attestation attached (GAPS §33.3);
@@ -656,8 +760,11 @@ def _render_cert_html(d, signers=None, portal=None):
 </head>
 <body>
 <h1>Internal Certificate of Preparation</h1>
-<p style="margin-top:2px;color:#555;font-size:11px">PFAS Laboratory — {title}</p>
+<p style="margin-top:2px;color:#555;font-size:11px">{lab_header}</p>
+<p style="margin-top:2px;font-size:11px">{title}</p>
 <dl class="cert-meta">
+  <div><dt>Certificate number</dt><dd>{cert_id}</dd></div>
+  <div><dt>Date of issue</dt><dd>{generated_date}</dd></div>
   <div><dt>Lot Number</dt><dd>{lot_number}</dd></div>
   <div><dt>Standard Type</dt><dd>{standard_type}</dd></div>
   <div><dt>Date Prepared</dt><dd>{prepared_date}</dd></div>
@@ -686,25 +793,48 @@ made from a certified reference material reads down the page.</p>
   <tbody>{parent_rows}</tbody>
 </table>
 
+<h2 style="font-size:13px;margin-bottom:6px">Preparation record</h2>
+<table>
+  <thead><tr><th>Component</th><th>Lot number</th><th>Amount taken</th></tr></thead>
+  <tbody>{calc_rows}</tbody>
+</table>
+<p style="margin-top:0;font-size:11px;color:#555">Made to a final volume of
+<strong>{volume_prepared}</strong>. Equipment used (balance, pipettes and their
+calibration status) is <em>not recorded against this lot</em> &mdash; see the prep
+logbook entry named above.</p>
+
+<h2 style="font-size:13px;margin-bottom:6px">Metrological traceability (ISO 17025 §6.5)</h2>
+<p style="margin-top:0">{trace_stmt}</p>
+
 {expiry_note_section}
 
 <div class="signoff">
-  <div class="signoff-title">Quality Assurance Documentation</div>
+  <div class="signoff-title">Quality Assurance sign-off</div>
+  <p style="margin:0 0 8px 0;font-size:11px;color:#8a1c1c">
+    <strong>UNSIGNED UNTIL DATED.</strong> The names below are the designated
+    signatories; a row with no date and no signature records no review. This
+    certificate is issued automatically when the lot is recorded and does not
+    itself constitute verification or authorisation.</p>
   <table class="signoff-tbl">
     <tr><td class="r">Prepared&nbsp;by</td>
-        <td>This standard was prepared by <strong>{prepared_by}</strong>.</td>
+        <td>Prepared by <strong>{prepared_by}</strong>, as recorded at the bench.</td>
         <td class="dt">Date: {prepared_date}</td></tr>
-    <tr><td class="r">Verified&nbsp;by</td>
-        <td>Reviewed and verified by <strong>{qao_name}</strong>, Quality Assurance Officer.</td>
+    <tr><td class="r">Verification</td>
+        <td>Reserved for <strong>{qao_name}</strong>, Quality Assurance Officer.
+            Signature: <span class="ln">&nbsp;</span></td>
         <td class="dt">Date: <span class="ln">&nbsp;</span></td></tr>
-    <tr><td class="r">Authorized&nbsp;by</td>
-        <td>Authorized by <strong>{director_name}</strong>, Laboratory Director.</td>
+    <tr><td class="r">Authorisation</td>
+        <td>Reserved for <strong>{director_name}</strong>, Laboratory Director.
+            Signature: <span class="ln">&nbsp;</span></td>
         <td class="dt">Date: <span class="ln">&nbsp;</span></td></tr>
   </table>
 </div>
 <div class="footer">
-  Generated automatically by senaite.pfas on {generated_date}.
-  This document is an INTERNAL record and is not a manufacturer CoA.
+  {cert_id} &middot; issued {generated_date} &middot; all dates ISO 8601
+  (YYYY-MM-DD). Generated automatically by senaite.pfas.<br>
+  This document relates only to the lot identified above. It is an INTERNAL
+  preparation record and is <strong>not a manufacturer certificate of
+  analysis</strong>; it assigns no independently measured value.
 </div>
 </body>
 </html>""".format(
@@ -729,6 +859,10 @@ made from a certified reference material reads down the page.</p>
             if d.get("expiry_notes") else u""
         ),
         generated_date=date.today().strftime("%Y-%m-%d"),
+        lab_header=lab_header,
+        cert_id=cert_id,
+        trace_stmt=trace_stmt,
+        calc_rows=calc_rows,
     )
 
 

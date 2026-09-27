@@ -289,9 +289,13 @@ class PFASCoAAttestationView(BrowserView):
         return self._actor_info(userid, DateTime())
 
     def _fmt(self, when):
+        """ISO 8601. On a certificate a client and an assessor both read, an
+        unambiguous date matters more than a friendly one: "%d %b %Y" is
+        locale-dependent and month-name-dependent, and the same string read in
+        another convention can mean a different day."""
         if not when:
             return u""
         try:
-            return when.strftime("%d %b %Y %H:%M")
+            return when.strftime("%Y-%m-%d %H:%M")
         except Exception:
             return str(when)

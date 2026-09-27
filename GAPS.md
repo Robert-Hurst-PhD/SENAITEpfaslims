@@ -3432,3 +3432,104 @@ test data in a compliance log is worse than none.
 - **as-of-date expiry**: `_is_expired` takes `as_of`; nothing passes it yet.
 - **0 of 14 lots have a CoA**, so every `manufacturer` node prints "no CoA on file".
   The hierarchy now makes that visible on every certificate, which is the point.
+
+---
+
+## 37. Specimen CoAs, certificate review against ISO 17025 / GMP, ISO dates (2026-09-27)
+
+### 37.1 Fourteen specimen CoAs attached, and why they are marked
+
+`scripts/seed_example_coas.py` attaches a Certificate of Analysis to all 14 reagent
+lots through the production `_save_coa` path. Verified: 14/14, retrievable over HTTP
+(200, correct content type), and `has_coa` now True on every manufacturer node.
+
+Each carries the fields a supplier's certificate carries and that §6.6 needs from
+it: product, catalogue number, lot, certificate number, a **test-results table**
+(test / specification / result / verdict) chosen per material category, storage,
+expiry, an assigned-value traceability section, measurement uncertainty, and an
+identified authorising signatory with an issue date. All dates ISO 8601.
+
+Every page is marked SPECIMEN — title, banner, watermark, footer, `SPECIMEN-*`
+certificate number, and an explicit "establishes no traceability" statement. That
+is not decoration: a fabricated manufacturer CoA is exactly the record that does
+damage if it is later taken as genuine, because it would assert traceability to a
+reference value nobody measured. CLAUDE.md §8 says flag placeholders, never
+fabricate a regulatory value.
+
+### 37.2 The review caught the marking being laundered
+
+With the specimens attached, the §6.5 statement on every Certificate of Preparation
+immediately read *"each of which has a supplier certificate of analysis on file"* —
+a traceability claim resting on illustrative documents. Presence had been treated as
+sufficiency.
+
+Fixed: `build_parentage` reads the CoA **metadata**, not merely its presence, and
+carries `coa_specimen`. The hierarchy row now prints *"SPECIMEN CoA only — establishes
+nothing"*, and the §6.5 statement counts a specimen as **no** certificate:
+
+> NOT ESTABLISHED. …3 of 3 source lot(s) have no USABLE certificate of analysis on
+> file (…). 3 of them carry only a SPECIMEN certificate, which is illustrative and
+> establishes nothing.
+
+Worth recording as its own defect shape: **adding review data almost created the
+false assurance the review existed to find.** The certificate was right to be
+suspicious of its own inputs.
+
+### 37.3 Certificate of Preparation vs ISO 17025 and GMP — gaps closed
+
+Reviewed against the specimen CoA as comparator and against §7.8.2.1 / §6.5.
+
+| was missing | now |
+|---|---|
+| unique certificate identification (§7.8.2.1(b)) | `COP-<lot>-r<version>`, in header and footer |
+| date of issue | stated, ISO 8601 |
+| name and address of the laboratory (§7.8.2.1(a)) | read from `bika_setup.laboratory` |
+| metrological traceability (§6.5) | derived from the parentage walk, not asserted |
+| preparation record (GMP reproducibility) | component / lot / amount-taken table + final volume |
+| scope of validity | "relates only to the lot identified above" |
+| date convention | declared ISO 8601 on the document |
+
+**The lab identity is unconfigured**, and the certificate says so rather than
+printing SENAITE's stock "Laboratory Information" as though it were the lab's name.
+That is a §7.8.2.1(a) requirement the lab has to satisfy by filling it in.
+
+### 37.4 The certificate asserted a review that had not happened
+
+The sign-off block read *"Reviewed and verified by <QAO name>"* — past tense, name
+pre-filled from print settings, date line blank. The certificate is generated
+automatically when the lot is recorded, so nobody had reviewed anything.
+
+That is §32's defect in another document: a record that reads as approved because a
+name appears on it. Now headed **UNSIGNED UNTIL DATED**, with rows *"Reserved for
+<name>"* and the explicit statement that the certificate "does not itself constitute
+verification or authorisation".
+
+### 37.5 Two data gaps the rendered certificate exposed
+
+Neither is a code defect; both show on the document now, which is the point.
+
+- **No analyte concentrations** on `PS-KCP-CAL-251006` — a calibration standard
+  certificate with no concentrations is not fit for purpose.
+- **No component amounts**: every parentage row prints "(not recorded)", so the
+  preparation is not reproducible from the record. GMP expects the amounts.
+- **Equipment is recorded nowhere against a lot** — no balance, pipette or
+  calibration status. The certificate states this and points at the prep logbook
+  rather than implying it was captured.
+
+### 37.6 ISO 8601 dates, with one deliberate exception
+
+Display dates are now ISO 8601 everywhere. Two were not:
+`coa_attestation._fmt` used `%d %b %Y %H:%M` on the **client-facing** attestation
+block, and `deviations` used `%B %d, %Y` on a controlled record. Month names and D/M
+ordering are locale-dependent: the same string can mean a different day.
+
+**The exception, pinned by a test:** `egad_builder` emits `%m/%d/%Y` because Maine
+DEP's EGAD EDD specifies it. Making that ISO would break the state submission, so
+`test_the_egad_export_keeps_its_required_non_iso_format` exists specifically to stop
+a future blanket sweep from "fixing" it. Date CODES (`%y%m%d` in injection names and
+tracking IDs, `%Y%m%d%H%M%S` in `concat_id`) are identifiers, not displayed dates,
+and are untouched — the Run Builder joins on them.
+
+The ISO-date test scans the **argument of each `strftime` call via the AST**. Its
+first version scanned raw text and flagged the comment explaining the fix — the
+identical mistake `tests/test_rule_toggles.py` records having made, repeated here.

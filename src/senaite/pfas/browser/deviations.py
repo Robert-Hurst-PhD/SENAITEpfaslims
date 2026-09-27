@@ -732,7 +732,9 @@ class PFASDeviationView(BrowserView):
         else:
             ws_list_html = u"<p><em>No specific worksheets referenced.</em></p>"
 
-        today_str = date.today().strftime("%B %d, %Y")
+        # ISO 8601, like every other date this system prints. "September 27,
+        # 2026" is month-name- and locale-dependent on a controlled record.
+        today_str = date.today().strftime("%Y-%m-%d")
 
         html = u"""<!DOCTYPE html>
 <html lang="en">
