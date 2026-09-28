@@ -407,11 +407,18 @@
               </form>
             </tal:open>
             <!-- CoA upload/view -->
-            <tal:coa tal:define="coa python:view.coa_meta(rg.get('uid',''))">
+            <!-- `rg_uid` is bound here because a `string:` expression may only
+                 interpolate a SIMPLE PATH: `${python:...}` inside one raises
+                 "$ must be doubled or followed by a simple path" and 500s the
+                 page. This branch renders only when a reagent HAS a CoA, so with
+                 none on file it never evaluated and the defect sat here from
+                 2026-06-24 until specimen CoAs were attached (GAPS §40). -->
+            <tal:coa tal:define="coa python:view.coa_meta(rg.get('uid',''));
+                                 rg_uid python:rg.get('uid','')">
               <tal:has tal:condition="coa">
                 <a class="btn-sm"
                    target="_blank"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${python:rg.get('uid','')}">
+                   tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${rg_uid}">
                   CoA
                 </a>
                 <button class="btn-sm open-coa-modal"

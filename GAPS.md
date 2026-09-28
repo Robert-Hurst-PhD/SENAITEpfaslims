@@ -3700,3 +3700,82 @@ WS-0005 still passes, WS-0001 still fails on its reagent parentage.
   small step and it is the last link in this chain still unwired.
 - `PreparedStandard` records no equipment, so a prep certificate cannot name the
   balance used to weigh it (§37.5).
+
+---
+
+## 40. The Reagent Inventory 500, and why three months of checks missed it (2026-09-28)
+
+Reported: "Reagent inventory is now producing an error with the changes."
+
+```
+ExpressionError: $ must be doubled or followed by a simple path
+  reagents.pt line 414
+  "${view/portal_url}/@@pfas-reagents?action=coa&uid=${python:rg.get('uid','')}"
+```
+
+A `string:` expression may interpolate only a **simple path**. `${python:...}`
+inside one is invalid and raises at render time.
+
+### It was not caused by the change; it was REVEALED by it
+
+`git log -L` puts that line at commit `ec506f1`, **2026-06-24** — three months old.
+It renders only inside `tal:condition="coa"`, and until §37 attached specimen
+certificates **no reagent had a CoA**, so the branch was never taken and the
+expression was never evaluated. Attaching 14 of them made it reachable on the first
+page load.
+
+The same shape as §35.1's missing PEP 263 declaration, which a stale `.pyc` had
+masked: **a latent defect in a branch that data had never reached.** Adding correct
+data is what surfaced both. Worth stating because it is the opposite of the usual
+worry — the risk was not that the specimens would be mistaken for real, which §37.2
+handled, but that attaching them would exercise code nothing ever had.
+
+### Why nothing caught it
+
+- Not the Python suite: it is a template.
+- Not `tools/wiring_map.py` or `audit_configurable.py`: neither reads TAL.
+- Not compiling the template — it compiles fine. The expression is only parsed when
+  the branch is **rendered**.
+- Not a page-load smoke test: the page returned 200 for three months, because the
+  data never entered the branch.
+
+A page is only as tested as its data.
+
+### The fix, and the guard
+
+`rg_uid` is bound with `tal:define` and the `string:` interpolates that simple path.
+Two cached layers had to be cleared to see it: the template was already compiled in
+the long-running process, so the error kept reporting the OLD expression after the
+file was corrected — §35.1's restart lesson applies to templates, not only to
+Python.
+
+`tests/test_template_expressions.py` scans every `.pt` statically for `${python:`,
+`${string:`, `${structure` and `${nocall:` inside an interpolation. It is a **static**
+check on purpose: it would have caught this in June, with no CoAs and no data,
+which no runtime check could.
+
+Verified live afterwards: reagents 200 with CoA links carrying real uids, a CoA
+fetch 200 `text/html`, and prep-standards / extraction-guide / weight-sets /
+facility-qc all 200.
+
+### 40.1 The comment-scanning trap, for the third time
+
+The first version of that guard failed on `reagents.pt:411` — **the HTML comment I
+had just written explaining the defect**. `test_rule_toggles.py` records this
+happening once ("matched `_rule_enabled(...)` inside a COMMENT describing the fix");
+the ISO-date test in §37.6 was the second; this is the third. The guard now blanks
+HTML comments before scanning, preserving line numbers.
+
+Three occurrences is a pattern, not bad luck: **prose about a defect contains the
+defect's text.** Any scanner for a code smell must exclude comments and docstrings,
+or the fix trips it.
+
+### 40.2 A check I wrote and deleted
+
+I also attempted a "`metal:fill-slot` must not nest" check, after §39's pipette page
+was first written with the `scripts` slot nested inside `content`. A regex
+depth-count flagged **150 lines across 50 templates, every one valid** —
+`<tal:styles metal:fill-slot="head-extra">` defeats it completely. Deleted, with a
+comment in its place so the next person does not repeat it. A check that cannot
+distinguish valid from invalid is worse than no check, and compiling the template
+already catches nesting, which is how §39 caught it.
