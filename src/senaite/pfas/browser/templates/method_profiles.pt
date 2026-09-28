@@ -12,9 +12,8 @@
 
     .method-id { font-family: monospace; font-size: 12px; color: var(--s-primary);
                  background: var(--s-primary-lt); padding: 2px 6px; border-radius: 3px; }
-    /* .badge base is global (pfas_macros) — page-specific colours: */
-    .badge-custom  { background: #d4edda; color: #155724; }
-    .badge-default { background: #fff3cd; color: #856404; }
+    /* .badge and .badge-custom/.badge-default are all global now (pfas_macros) —
+       promoted when the Lab Settings console needed the same two colours. */
 
     .desc { color: var(--s-secondary); font-size: 12px; margin-top: 2px; }
   </style>

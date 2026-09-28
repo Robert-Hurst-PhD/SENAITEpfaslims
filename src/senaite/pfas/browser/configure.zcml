@@ -69,6 +69,17 @@
       permission="zope2.View"
       />
 
+  <!-- Lab Settings console — every setting the lab owns, enumerated from
+       settings_registry. Gated at ManageBika for now: it ships before the
+       two-tier permissions so the enumerable list exists BEFORE authorisation is
+       tightened, which is the list that tells us what tightening would affect. -->
+  <browser:page
+      name="pfas-lab-settings"
+      for="*"
+      class=".lab_settings.PFASLabSettingsView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
   <!-- Print settings — site-wide print header/footer template (Configuration) -->
   <browser:page
       name="pfas-print-settings"

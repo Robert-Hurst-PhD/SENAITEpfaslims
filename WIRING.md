@@ -445,7 +445,7 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 
 `@@view-name` → class → template, derived from `browser/configure.zcml` and `browser/overrides.zcml`. Where the zcml carries no `template=` attribute (most views), the template is resolved by finding a `ViewPageTemplateFile(...)` class attribute in the view's own module.
 
-### 3.1 View registry (74)
+### 3.1 View registry (75)
 
 | `@@name` | class | template | for | registered in |
 |---|---|---|---|---|
@@ -476,6 +476,7 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-home` | `.workspace_home.PFASWorkspaceHomeView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-import-studio` | `.import_studio.PFASImportStudioView` | templates/import_studio.pt (`class attr` at src/senaite/pfas/browser/import_studio.py:692) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-instrument-profile` | `.import_studio.PFASInstrumentProfileView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-lab-settings` | `.lab_settings.PFASLabSettingsView` | templates/lab_settings.pt (`class attr` at src/senaite/pfas/browser/lab_settings.py:63) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-label` | `.label_print.PFASLabelPrintView` | templates/label_print.pt (`class attr` at src/senaite/pfas/browser/label_print.py:49) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-logbook-250` | `.logbooks.PFASLogbook250View` | templates/logbook_250.pt (`class attr` at src/senaite/pfas/browser/logbooks.py:340) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-logbook-251` | `.logbooks.PFASLogbook251View` | templates/logbook_251.pt (`class attr` at src/senaite/pfas/browser/logbooks.py:389) | `*` | `src/senaite/pfas/browser/configure.zcml` |

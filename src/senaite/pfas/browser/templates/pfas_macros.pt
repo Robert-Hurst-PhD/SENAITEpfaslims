@@ -545,6 +545,12 @@
     .badge-expired    { background: #f8d7da; color: #721c24; }
     .badge-opened     { background: #cce5ff; color: #004085; }
     .badge-quarantine { background: #fff3cd; color: #856404; }
+    /* Promoted from method_profiles.pt, which defined them page-locally while
+       the .badge base was already global. Two pages now need them (the Lab
+       Settings console reuses the whole set), and a colour defined twice drifts
+       — so they live here with every other badge. */
+    .badge-custom     { background: #d4edda; color: #155724; }
+    .badge-default    { background: #fff3cd; color: #856404; }
 
     /* ── Mono badges ─────────────────────────────────────────────────────── */
     .mono-badge {

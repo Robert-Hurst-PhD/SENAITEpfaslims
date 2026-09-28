@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Lab Settings</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    /* Layout, plus the two alert boxes. Every STRUCTURAL colour is a theme
+       token, and the status pills reuse the global .badge-* classes rather than
+       redefining them (§6C: define UI once).
+       The two hex pairs below are NOT tokens, and that is worth stating plainly
+       rather than claiming otherwise: #f8d7da/#721c24 and #d4edda/#155724 are the
+       same danger/success pairs the global .badge-expired and .badge-custom use
+       and that every Facility QC page repeats inline. Consolidating that pair
+       into theme tokens would touch a dozen templates, so it is its own cleanup,
+       not something to smuggle in here. */
+    .ls-why { background:var(--s-light); border-left:3px solid var(--s-border);
+              padding:10px 14px; font-size:12px; color:var(--s-secondary);
+              margin-bottom:16px; border-radius:0 4px 4px 0; }
+    .ls-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;
+              background:var(--s-bg); border:1px solid var(--s-border);
+              border-radius:8px; padding:12px 14px; margin-bottom:16px; }
+    .ls-fld { display:flex; flex-direction:column; gap:3px; }
+    .ls-fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .ls-fld input, .ls-fld select { padding:6px 8px; font-size:13px;
+              border:1px solid var(--s-input-border); border-radius:4px;
+              color:var(--s-input-text); }
+    .ls-alert { display:block; padding:10px 14px; border-radius:6px;
+                margin-bottom:16px; font-size:13px; font-weight:600;
+                background:#f8d7da; color:#721c24; text-decoration:none; }
+    .ls-alert:hover { text-decoration:underline; }
+    .ls-ok { background:#d4edda; color:#155724; font-weight:400; }
+    .ls-group { border:1px solid var(--s-border); border-radius:8px;
+                margin-bottom:14px; background:var(--s-bg); }
+    .ls-group > summary { cursor:pointer; padding:11px 14px; font-size:13px;
+                font-weight:700; color:var(--s-body); }
+    .ls-count { font-weight:400; color:var(--s-secondary); font-size:12px; }
+    .ls-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .ls-table th { background:var(--s-light); padding:7px 10px; font-size:11px;
+                font-weight:700; color:var(--s-secondary); text-align:left;
+                border-top:1px solid var(--s-border);
+                border-bottom:2px solid var(--s-border); }
+    .ls-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
+                vertical-align:top; }
+    .ls-key { font-family:monospace; font-size:11px; color:var(--s-secondary); }
+    .ls-val { font-weight:600; color:var(--s-body); }
+    .ls-seed { color:var(--s-secondary); font-size:11px; }
+    .ls-judge { font-size:10px; font-weight:700; color:#8a1c1c; }
+    .ls-empty { padding:12px 14px; font-size:12px; color:var(--s-secondary); }
+    /* Wide table scrolls inside its own box, as every other PFAS table does. */
+    .ls-scroll { overflow-x:auto; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">Lab Settings</tal:t>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="purl view/portal_url;
+                       groups view/groups;
+                       unset_n view/unconfigured_count;
+                       total view/total_count">
+
+  <div class="ls-why">
+    Every setting the laboratory owns, in one place, enumerated from the settings
+    registry rather than a maintained list &mdash; so a newly declared setting
+    appears here without anyone remembering to add it. Each row says whether it is
+    still the <strong>default in code</strong>, has been <strong>customised</strong>
+    by the lab, or is <strong>not configured</strong>. Settings are edited in the
+    page that owns them, linked on the right: this console lists and never writes,
+    so there is exactly one owner for each fact.
+  </div>
+
+  <!-- The count that matters. A judging criterion with no value does not fall
+       back to a plausible number — it refuses, and the batch cannot be released.
+       Until now nothing told a lab WHICH criterion. -->
+  <a tal:condition="unset_n" class="ls-alert"
+     tal:attributes="href string:${purl}/@@pfas-lab-settings?status=unset">
+    &#9888; <tal:n tal:replace="unset_n">2</tal:n> setting(s) are NOT CONFIGURED.
+    A judging criterion with no value blocks release rather than assuming one
+    &mdash; show me which.
+  </a>
+  <div tal:condition="not:unset_n" class="ls-alert ls-ok">
+    Every judging criterion has a value.
+  </div>
+
+  <form method="GET" class="ls-bar"
+        tal:attributes="action string:${purl}/@@pfas-lab-settings">
+    <div class="ls-fld" style="flex:1;min-width:200px">
+      <label for="q">Search</label>
+      <input type="text" name="q" id="q" placeholder="holding time, tolerance, wording&hellip;"
+             tal:attributes="value view/query" />
+    </div>
+    <div class="ls-fld">
+      <label for="tier">Who may edit</label>
+      <select name="tier" id="tier">
+        <option value="">Anyone who may configure</option>
+        <option tal:repeat="opt view/tier_options"
+                tal:attributes="value python:opt[0];
+                                selected python:view.tier_filter() == opt[0]"
+                tal:content="python:opt[1]">Lab</option>
+      </select>
+    </div>
+    <div class="ls-fld">
+      <label for="status">Status</label>
+      <select name="status" id="status">
+        <option value="">Any status</option>
+        <option tal:repeat="opt view/status_options"
+                tal:attributes="value python:opt[0];
+                                selected python:view.status_filter() == opt[0]"
+                tal:content="python:opt[1]">Default</option>
+      </select>
+    </div>
+    <div class="ls-fld">
+      <label>&nbsp;</label>
+      <button type="submit" class="btn btn-primary">Filter</button>
+    </div>
+    <div class="ls-fld" tal:condition="view/filtering">
+      <label>&nbsp;</label>
+      <a class="btn" tal:attributes="href string:${purl}/@@pfas-lab-settings">Clear</a>
+    </div>
+  </form>
+
+  <tal:groups tal:repeat="g groups">
+    <details class="ls-group" tal:attributes="open python:bool(g['shown'])">
+      <summary>
+        <tal:l tal:replace="g/label">Group</tal:l>
+        <span class="ls-count">
+          <!-- Shown-of-total, because a section reading "(2)" while the lab has 27
+               wording settings would be actively misleading under a filter. -->
+          <tal:c tal:condition="python:g['shown'] == g['total']">
+            (<tal:n tal:replace="g/total">0</tal:n>)
+          </tal:c>
+          <tal:c tal:condition="python:g['shown'] != g['total']">
+            (<tal:n tal:replace="g/shown">0</tal:n> of <tal:t tal:replace="g/total">0</tal:t>)
+          </tal:c>
+          <tal:u tal:condition="g/unset">
+            &middot; <tal:n tal:replace="g/unset">1</tal:n> not configured
+          </tal:u>
+        </span>
+      </summary>
+
+      <div class="ls-scroll" tal:condition="g/rows">
+        <table class="ls-table">
+          <thead><tr>
+            <th>Setting</th><th>Value</th><th>Default</th>
+            <th>Status</th><th>Who may edit</th><th>Edit in</th>
+          </tr></thead>
+          <tbody>
+            <tal:rows tal:repeat="r g/rows">
+            <tr>
+              <td>
+                <div class="ls-val" tal:content="r/label">Label</div>
+                <div class="ls-key" tal:content="r/key">a.key</div>
+                <div class="ls-judge" tal:condition="r/judging">
+                  decides pass / fail
+                </div>
+                <div class="ls-seed" tal:condition="r/help|nothing"
+                     tal:content="r/help"></div>
+              </td>
+              <td>
+                <span class="ls-val" tal:content="r/display_value">value</span>
+                <span class="ls-seed" tal:condition="r/unit|nothing"
+                      tal:content="r/unit"></span>
+              </td>
+              <td class="ls-seed">
+                <tal:s tal:condition="r/has_seed" tal:content="r/display_seed">seed</tal:s>
+                <tal:s tal:condition="not:r/has_seed">no default &mdash; must be set</tal:s>
+              </td>
+              <td>
+                <span class="badge"
+                      tal:attributes="class string:badge ${r/status_class}"
+                      tal:content="r/status_label">Default</span>
+              </td>
+              <td class="ls-seed"
+                  tal:content="python:'Lab manager / QAO' if r['tier'] == 'lab' else 'System admin'">Lab</td>
+              <td>
+                <a tal:condition="r/owner_href"
+                   tal:attributes="href r/owner_href"
+                   tal:content="string:${r/owner_view}">@@view</a>
+                <span tal:condition="not:r/owner_href" class="ls-seed">
+                  this page
+                </span>
+              </td>
+            </tr>
+            </tal:rows>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- An empty group says WHY it is empty. A blank section reads as a bug. -->
+      <div class="ls-empty" tal:condition="not:g/rows">
+        <tal:filtered tal:condition="python:g['total'] and view.filtering()">
+          No setting in this group matches the current filter.
+        </tal:filtered>
+        <tal:none tal:condition="python:not g['total']">
+          Nothing is declared in this group yet. Its values still live in code, so
+          changing one is a code change today &mdash; they are migrated here one at
+          a time, each together with the code that reads it, so the console can
+          never list a setting that changes nothing.
+        </tal:none>
+      </div>
+    </details>
+  </tal:groups>
+
+  <p class="ls-seed" style="margin-top:14px">
+    <tal:t tal:replace="total">0</tal:t> settings declared. Values are read from
+    the page that owns each one, so what you see here is what the software uses.
+  </p>
+
+  </tal:def>
+</metal:content>
+</body>
+</html>
