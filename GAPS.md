@@ -3873,6 +3873,25 @@ prefixes `PORTAL_URL`. All now build from `view/portal_url`.
 This also explains the shape of item 2: the picker could not have been observed
 offering blocked lots, because it never opened.
 
+Fixing four URLs made three more paths reachable for the first time, which is the
+pattern that produced §41.2 and §41.3 — so each was exercised rather than assumed:
+
+    @@pfas-reagent-autocomplete?q=methanol          200, real reagent rows
+    @@pfas-reagents?action=lookup_json&q=methanol   200, real inventory items
+    @@pfas-logbook-250                              200, INV_URL interpolated
+    @@pfas-prep-standards                           200, LOOKUP_URL interpolated
+    @@pfas-logbook-dynamic?slug=251 (concise)       200, data-ac absolute
+    @@pfas-logbook-dynamic?slug=251&mode=guided     200, data-ac absolute
+
+The guided runtime renders the same field macro through a different view, so it was
+checked separately: `PFASLogbook250View` and the dynamic view both inherit
+`portal_url` from `_LogbookBase`, and `view/portal_url` would have raised on a view
+that only had `_portal()`. The mode cookie was set back to concise afterwards.
+
+No logbook definition currently contains a `reagent_ref` field, so the reagent
+autocomplete has no live consumer — the endpoint answers, and the URL is right for
+the day one is added.
+
 ### 41.5 The gate verdict now travels with the offer (item 2)
 
 `usable_lots` returns `gate_ok` and `gate_problems` per lot, from the same
@@ -3923,8 +3942,8 @@ blanks `/* */` and `//` runs the way `_strip_comments` blanks HTML comments.
 
 ### 41.7 One more self-inflicted scare, recorded
 
-The suite first reported 4 failures (`test_profiles`, `test_ruleset`-family). They fail
-at HEAD too — because the suite must be run with `PFAS_PROFILES_PATH` set, exactly as
+The suite first reported 4 failures — `test_fault_injection`, `test_profiles`,
+`test_salt_correction`, `test_unconfigured_criteria`. They fail at HEAD too — because the suite must be run with `PFAS_PROFILES_PATH` set, exactly as
 documented at the top of this file. With the documented environment: **31/31 test files
 pass**, `audit_configurable --strict` exit 0. Checked before reporting a regression
 that was not one.
