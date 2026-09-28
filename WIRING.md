@@ -23,7 +23,7 @@ real content changes only.
 
 `"senaite.pfas.*"` strings passed to `IAnnotations(obj)` — the per-object ZODB store (CLAUDE.md §7). Identity here is the **literal string value**, not the Python constant name: unlike the `profile` vocabularies (§0 design note), an annotation key's meaning survives an import, so a constant imported under a different local name still resolves to the same fact. Below, WRITE = `ann[k]=`/`.setdefault(k,`, READ = `ann.get(k)`/`ann[k]`/`k in ann`/`.pop(k)`.
 
-Families (5), standalone keys (44), unresolved dynamic key expressions (9 sites — recorded so they are never silently miscounted as "no consumer").
+Families (5), standalone keys (45), unresolved dynamic key expressions (9 sites — recorded so they are never silently miscounted as "no consumer").
 
 ### 1.1 Families (templated / prefix-concatenated keys)
 
@@ -59,9 +59,9 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
     - concatenated/formatted write at: `src/senaite/pfas/browser/sop_documents.py:151`
     - concatenated/formatted read at: `src/senaite/pfas/browser/sop_documents.py:145`
 
-### 1.2 Standalone keys (44)
+### 1.2 Standalone keys (45)
 
-**wired** (42)
+**wired** (43)
 
 - `senaite.pfas.batch.project_uid`
   - defined: `PROJECT_UID_KEY` (src/senaite/pfas/project_ref.py:28)
@@ -235,6 +235,10 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `RUN_MANIFEST_KEY` (src/senaite/pfas/browser/run_builder.py:48)
   - written by: `src/senaite/pfas/browser/run_builder.py:849`
   - read by: `src/senaite/pfas/browser/logbooks.py:1517`, `src/senaite/pfas/browser/qc_review_report.py:309`, `src/senaite/pfas/browser/run_builder.py:867`, `src/senaite/pfas/egad_builder.py:434`
+- `senaite.pfas.settings_registry`
+  - defined: `ANNOTATION_KEY` (src/senaite/pfas/settings_registry.py:71)
+  - written by: `src/senaite/pfas/settings_registry.py:278`
+  - read by: `src/senaite/pfas/settings_registry.py:255`
 - `senaite.pfas.sop.registry`
   - defined: `_ANN_REGISTRY` (src/senaite/pfas/browser/sop_documents.py:17)
   - written by: `src/senaite/pfas/browser/sop_documents.py:121`

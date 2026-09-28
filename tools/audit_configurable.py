@@ -652,6 +652,18 @@ def audit_hardcoded():
                 if not pattern.search(line):
                     continue
                 if why == "module-level table":
+                    # An EMPTY container holds no lab decision by definition --
+                    # `_REGISTRY = {}` is a table the code FILLS at import time,
+                    # not a lab value someone typed. Narrowly worded on purpose:
+                    # a first attempt widened the regex itself with a negative
+                    # lookahead and silently dropped the count from 109 to 13,
+                    # because most real tables open the brace and put their
+                    # contents on the NEXT line. Excluding only a same-line
+                    # empty pair cannot do that.
+                    if re.match(r'^\s*_?[A-Z][A-Z0-9_]{3,}\s*=\s*'
+                                r'(?:frozenset\()?(?:\{\}|\[\])\s*\)?\s*$',
+                                line):
+                        break
                     name = _table_name(line)
                     body = "\n".join(
                         text.splitlines()[n - 1:n + 14])
