@@ -4060,3 +4060,129 @@ how an unconditional `status` assignment once resurrected exhausted lots. Verifi
 - Prep equipment is stated on the certificate but does **not** gate release. Adding it
   to `parentage_problems`/`gate_problems` would change release behaviour on historical
   data and is a separate decision for the QA manager.
+
+---
+
+## 43. A lot is judged against the day it was used — and WS-0005 now FAILS (2026-09-28)
+
+The last item on the list. DECISIONS.md 2026-08-03 item 7 decided this and
+`reagents._is_expired` grew an `as_of` parameter that **nothing ever passed**. Judging
+a lot against TODAY makes a released batch less defensible as time passes: every
+standard on this instance is expired now, yet the runs that used them were in date at
+the time. A gate keyed on today would retroactively condemn correct work, which is the
+opposite of what it is for.
+
+### 43.1 There is no single use date, and the data says so
+
+The question was which date to thread through — the worksheet's, the extraction date,
+the analysis date. The data answered it. On the real released WS-0005:
+
+    FM-ENV-250  prepared_date    2025-10-20
+    FM-ENV-251  prepared_date    2025-10-06
+    FM-ENV-252  extraction_date  2026-08-03
+    FM-ENV-253  processing_date  2025-10-17
+
+**Ten months apart.** Each logbook carries the date ITS OWN rows were used, so each set
+of lots is judged against its own date. A worksheet-wide date would have condemned one
+set or excused the other, and either would be wrong. `_use_date(lb, *fields)` reads it
+per logbook; `_expired_at_use` decides.
+
+A prepared standard is judged on its **parent-tightened** expiry — a prep whose source
+CRM expired first expired with it — so the stored date on the lot is not the one that
+counts.
+
+A logbook with no date is **reported, not enforced**: an unrecorded date is not
+evidence of expiry. That is the same posture the equipment walk takes for an
+unregistered serial (§38), and it goes in a new `tree["warnings"]` so an unenforceable
+check never looks like a satisfied one.
+
+### 43.2 The verdict captured before, diffed after — and one worksheet changed
+
+Every worksheet's gate verdict was written to a file first, because "still passes"
+needs a recorded before-value:
+
+    WS-0001  before=False  after=False
+    WS-0002  before=False  after=False
+    WS-0003  before=False  after=False
+    WS-0004  before=False  after=False
+    WS-0006  before=False  after=False
+    WS-0007  before=False  after=False
+    WS-0008  before=False  after=False
+    WS-001   before=True   after=True
+    WS-0005  before=True   after=False   <-- CHANGED
+
+**WS-0005 is the released, verified worksheet — the only sample ever published (§5).**
+It now fails traceability on:
+
+    prepared standard lot PS-KCP-IS-251006  expired 2026-04-06, used 2026-08-03
+    prepared standard lot PS-KCP-MPA-251020 expired 2025-10-27, used 2026-08-03
+    prepared standard lot PS-KCP-CAL-251006 expired 2026-04-06 (via 251 fields)
+    prepared standard lot PS-KCP-SPK-251020 expired 2026-04-20 (via 251 fields)
+
+### 43.3 This is the DATA, and it was checked rather than assumed
+
+The check was interrogated at the boundary before the failure was believed:
+
+    lot PS-KCP-IS-251006, effective expiry 2026-04-06
+      used 2025-10-21 -> in date, passes
+      used 2026-04-05 -> in date, passes
+      used 2026-04-06 -> in date, passes
+      used 2026-04-07 -> EXPIRED
+      used 2026-08-03 -> EXPIRED
+
+So the logic is right at the day boundary, and WS-0005's failure is a property of the
+recorded data: the FM-ENV-252 extraction date is **2026-08-03** — the E2E run on real
+instrument data (§ E2E_TEST_2026-08-02) — while its standards are from the October 2025
+KCP scaffold and expired months earlier. The 252 logbook was re-dated for that E2E run
+and the standards were not re-prepared.
+
+**Left as found.** Editing lot expiry dates or the extraction date to make the gate
+green would falsify a record to satisfy a check, which is precisely the failure mode the
+check exists to prevent. Whether the E2E data should be re-scaffolded with in-date
+standards, or WS-0005 treated as a historical artefact, is the lab's call — but the
+gate is now telling the truth about it, and it was not before.
+
+### 43.4 The reagent check could not fire, and passing was how I found out
+
+The first version handed `self._reagent_dict(...)` to the expiry resolver.
+`_reagent_dict` is the **display projection** — `title, url, supplier, cat_number,
+lot_number, has_coa` — and carries no expiry of any kind, so `_effective_expiry`
+returned `""`, `_is_expired` answered False, and **every reagent read as in date**.
+
+Found by demanding the check fail: forcing the use date to 2030-01-01, when every
+reagent on the instance is expired, and watching it report nothing. `_reagent_record()`
+now supplies the full record, and forcing the date proves each branch fires at its real
+call site:
+
+    use date forced to 2030-01-01
+      252.reagents      7   lot FISHER-H2O-260510 expired 2028-01-01
+      252.standards     3
+      pds_a_lot / pds_b_lot / analyte_pds_lot / analyte_spike_lot / cal_a_lot  1 each
+
+That is the second check this session that reported safety it could not deliver — the
+first being §41.6's root-URL guard. Both were caught the same way, by requiring the
+test to fail on the defect, and neither would have been caught by running the suite.
+
+### 43.5 And the line-scoped-check mistake, for the second time
+
+The guard written to pin §43.4 also passed with the defect reinstated, because it
+scanned line by line and the call spans two lines — `self._expired_at_use(` on one, its
+first argument on the next. Exactly the shape that defeated the root-URL guard.
+Rewritten on the AST: find every `Call` to `_expired_at_use` and inspect its first
+argument. **A textual scan cannot see a multi-line construct; use the parse tree.**
+
+### Verification
+
+32/32 test files (`test_expiry_at_use.py`, 7 tests, every one mutation-tested),
+`audit_configurable --strict` exit 0. No test data created, so nothing to clean up.
+
+### Still open
+
+- **WS-0005's expiry failure is unresolved by design** — a data decision for the lab,
+  §43.2/43.3.
+- FM-ENV-253's `processing_materials` lots are still traced nowhere: the tree reads 252
+  and 251 only, so `processing_date` exists and nothing uses it. Narrower than it looks,
+  and a real gap.
+- §33.3 certificates generated before §36 still print an unresolvable parent as fact.
+- `IReagent` has no parentage field.
+- Prep equipment is stated on the certificate but does not gate release (§42).

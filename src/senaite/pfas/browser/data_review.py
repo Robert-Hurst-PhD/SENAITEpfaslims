@@ -588,6 +588,85 @@ class PFASDataReviewView(BrowserView):
 
     # ── Auto-check computation ────────────────────────────────────────────
 
+    # ── Expiry, judged as of the date the lot was USED ───────────────────────
+
+    def _use_date(self, lb, *fields):
+        """The date a logbook says its lots were used, or "" if it does not say.
+
+        There is no single "use date" for a worksheet, and choosing one would be
+        wrong: on the real released WS-0005 the FM-ENV-253 processing date is
+        2025-10-17 and the FM-ENV-252 extraction date is 2026-08-03 -- ten months
+        apart. Each logbook carries the date ITS OWN rows were used, so each set
+        of lots is judged against its own date. A worksheet-wide date would
+        condemn one set or excuse the other.
+        """
+        for f in fields:
+            v = (lb.get(f) or u"").strip()
+            if v:
+                return v[:10]
+        return u""
+
+    def _reagent_record(self, obj):
+        """The FULL reagent record, for deciding expiry.
+
+        `_reagent_dict` is the DISPLAY projection -- title, url, supplier,
+        cat_number, lot_number, has_coa -- and carries no expiry of any kind, so
+        handing it to the expiry resolver produced a check that could never fire.
+        """
+        if obj is None:
+            return {}
+        try:
+            from senaite.pfas.browser.reagents import _obj_to_dict as _rd
+            return _rd(obj)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("reagent record for expiry decision: %s", exc)
+            return {}
+
+    def _expired_at_use(self, resolved, lot, name, use_date, portal=None):
+        """A reason string when this lot was already expired on `use_date`, else None.
+
+        Decided in DECISIONS.md 2026-08-03 item 7 and never implemented: judging a
+        lot against TODAY makes a released batch LESS defensible as time passes.
+        Every standard on this instance is expired now, yet the runs that used them
+        were in date at the time -- so blocking on today's date would retroactively
+        condemn correct work, which is the opposite of what the gate is for.
+
+        Returns None when the use date is unknown: an unrecorded date is not
+        evidence of expiry. That is reported as a warning rather than enforced, the
+        same posture the equipment walk takes for an unregistered serial -- only an
+        ESTABLISHED unmet obligation blocks release.
+        """
+        if not resolved or not use_date:
+            return None
+        try:
+            if resolved.get("type") == "PreparedStandard":
+                # A prep inherits its parents' tighter expiry, so the effective
+                # date is the one to judge -- not the date typed on the lot.
+                from senaite.pfas.browser.prepared_standards import (
+                    _get as _ps_get, effective_expiry_info)
+                uid = resolved.get("uid") or u""
+                d = _ps_get(portal, uid) if (portal and uid) else None
+                exp = ((effective_expiry_info(portal, d) or {}).get("date")
+                       if d else resolved.get("expiry_date")) or u""
+                if exp and exp < use_date:
+                    return (u"prepared standard lot %s expired %s, before it was "
+                            u"used on %s" % (lot or name, exp, use_date))
+                return None
+            # A manufacturer lot: _is_expired owns the expiry_date ->
+            # manufacturer_expiry -> global-default resolution, so it is asked
+            # rather than reimplemented here.
+            from senaite.pfas.browser.reagents import (
+                _is_expired, _effective_expiry)
+            from datetime import datetime
+            ref = datetime.strptime(use_date, "%Y-%m-%d").date()
+            if _is_expired(resolved, as_of=ref):
+                return (u"lot %s expired %s, before it was used on %s"
+                        % (lot or name, _effective_expiry(resolved) or u"?",
+                           use_date))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("expiry-at-use for %s: %s", lot, exc)
+        return None
+
     def _compute_traceability_status(self, ws):
         try:
             tree = self._build_traceability_tree(ws)
@@ -1180,7 +1259,19 @@ class PFASDataReviewView(BrowserView):
             # checked for calibration as of the day of use (GAPS §38).
             "equipment":          [],
             "unresolved":         [],
+            # Reported but not enforced — see _expired_at_use.
+            "warnings":           [],
         }
+
+        # Each logbook's own date, because its rows were used on ITS date.
+        use_252 = self._use_date(lb252, "extraction_date")
+        use_251 = self._use_date(lb251, "prepared_date")
+        for lb_name, lb_date in (("FM-ENV-252", use_252),
+                                 ("FM-ENV-251", use_251)):
+            if not lb_date:
+                tree["warnings"].append(
+                    u"%s records no date, so the lots it names cannot be checked "
+                    u"for expiry at the time of use" % lb_name)
 
         # --- FM-ENV-252: reagents[] table ---
         # active_rows(): a row struck as not-applicable is recorded but inert.
@@ -1198,6 +1289,20 @@ class PFASDataReviewView(BrowserView):
             }
             if lot and lot in reagent_by_lot:
                 entry["resolved"] = self._reagent_dict(reagent_by_lot[lot])
+                # The FULL record, not entry["resolved"]: _reagent_dict carries
+                # only what the Traceability tab renders (title, url, supplier,
+                # cat_number, lot, has_coa) and NO expiry at all, so
+                # _effective_expiry returned "" and this check could never fire.
+                # Caught by asking it to fail on a use date of 2030 and watching
+                # it pass -- the same way the root-URL guard in §41.6 was caught.
+                reason = self._expired_at_use(
+                    self._reagent_record(reagent_by_lot[lot]), lot, name,
+                    use_252, portal)
+                if reason:
+                    tree["unresolved"].append({
+                        "source": "252.reagents", "lot": lot, "name": name,
+                        "reason": reason,
+                    })
             elif lot:
                 tree["unresolved"].append({
                     "source": "252.reagents", "lot": lot, "name": name,
@@ -1217,7 +1322,10 @@ class PFASDataReviewView(BrowserView):
             }
             if lot and lot in ps_by_lot:
                 ps = ps_by_lot[lot]
-                entry["resolved"] = {"title": ps.Title(), "url": ps.absolute_url(), "type": "PreparedStandard"}
+                entry["resolved"] = {"title": ps.Title(),
+                                     "url": ps.absolute_url(),
+                                     "uid": ps.getId(),
+                                     "type": "PreparedStandard"}
             elif lot and lot in reagent_by_lot:
                 entry["resolved"] = self._reagent_dict(reagent_by_lot[lot])
                 entry["resolved"]["type"] = "Reagent"
@@ -1225,6 +1333,20 @@ class PFASDataReviewView(BrowserView):
                 tree["unresolved"].append({
                     "source": "252.standards", "lot": lot, "name": name,
                 })
+            if entry["resolved"]:
+                # A standards[] row may resolve to either kind, so the record
+                # handed over depends on which: a PreparedStandard is judged on
+                # its parent-tightened expiry, a Reagent on its full record.
+                judged = (entry["resolved"]
+                          if entry["resolved"].get("type") == "PreparedStandard"
+                          else self._reagent_record(reagent_by_lot.get(lot)))
+                reason = self._expired_at_use(judged, lot, name,
+                                              use_252, portal)
+                if reason:
+                    tree["unresolved"].append({
+                        "source": "252.standards", "lot": lot, "name": name,
+                        "reason": reason,
+                    })
             tree["direct_standards"].append(entry)
 
         # --- FM-ENV-252: extraction_materials[] table ---
@@ -1243,6 +1365,14 @@ class PFASDataReviewView(BrowserView):
             }
             if lot and lot in reagent_by_lot:
                 entry["resolved"] = self._reagent_dict(reagent_by_lot[lot])
+                reason = self._expired_at_use(
+                    self._reagent_record(reagent_by_lot[lot]), lot, name,
+                    use_252, portal)
+                if reason:
+                    tree["unresolved"].append({
+                        "source": "252.extraction_materials", "lot": lot,
+                        "name": name, "reason": reason,
+                    })
             elif lot:
                 tree["unresolved"].append({
                     "source": "252.extraction_materials", "lot": lot,
@@ -1354,6 +1484,20 @@ class PFASDataReviewView(BrowserView):
                 ps_node["prepared_by"]  = getattr(ps_obj, "prepared_by", "") or u""
                 ps_node["expiry_date"]  = str(getattr(ps_obj, "expiry_date", "") or "")[:10]
                 ps_node["url"]          = ps_obj.absolute_url()
+
+                # Judged against the date FM-ENV-251 says these standards were
+                # used, not today. The parent-tightened expiry is the one that
+                # counts -- a prep whose source CRM expired first expired with it.
+                reason = self._expired_at_use(
+                    {"type": "PreparedStandard", "uid": ps_obj.getId(),
+                     "expiry_date": ps_node["expiry_date"]},
+                    lot_ref, ps_node["title"], use_251, portal)
+                if reason:
+                    tree["unresolved"].append({
+                        "source": field_name, "lot": lot_ref,
+                        "name": ps_node["title"], "label": display_label,
+                        "reason": reason,
+                    })
 
                 try:
                     ps_ann  = IAnnotations(ps_obj)

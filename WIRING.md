@@ -40,7 +40,7 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
       - `senaite.pfas.logbook.252` — **wired**
         - defined: `LOGBOOK_KEY` (src/senaite/pfas/dilution_ref.py:49)
         - written by: (covered by the family's dynamic concat/format write — see §1.1)
-        - read by: `src/senaite/pfas/browser/data_review.py:1021`, `src/senaite/pfas/dilution_ref.py:98`, `src/senaite/pfas/egad_builder.py:434`
+        - read by: `src/senaite/pfas/browser/data_review.py:1100`, `src/senaite/pfas/dilution_ref.py:98`, `src/senaite/pfas/egad_builder.py:434`
         - reached via `get_dilutions()` (src/senaite/pfas/dilution_ref.py) — imported by `src/senaite/pfas/browser/logbooks.py:1565`
 
 - **`senaite.pfas.logbook.{slug}.pdf_revisions`** (template family) — **wired** — defined as `_REV_KEY` (src/senaite/pfas/browser/logbook_docs.py:29)
@@ -77,14 +77,14 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - written by: `src/senaite/pfas/browser/data_review.py:580`
   - read by: `src/senaite/pfas/browser/data_review.py:561`
 - `senaite.pfas.data_review.corrections`
-  - defined: `CORRECTIONS_KEY` (src/senaite/pfas/browser/data_review.py:2163)
-  - written by: `src/senaite/pfas/browser/data_review.py:2245`
-  - read by: `src/senaite/pfas/browser/data_review.py:2227`
+  - defined: `CORRECTIONS_KEY` (src/senaite/pfas/browser/data_review.py:2307)
+  - written by: `src/senaite/pfas/browser/data_review.py:2389`
+  - read by: `src/senaite/pfas/browser/data_review.py:2371`
 - `senaite.pfas.deviations.registry`
   - defined: `ANN_REGISTRY_KEY` (src/senaite/pfas/qc_deviation.py:40)
   - written by: `src/senaite/pfas/qc_deviation.py:57`
   - read by: `src/senaite/pfas/qc_deviation.py:51`
-  - reached via `get_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/data_review.py:2134`, `src/senaite/pfas/browser/deviations.py:12`
+  - reached via `get_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/data_review.py:2278`, `src/senaite/pfas/browser/deviations.py:12`
   - reached via `save_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/deviations.py:12`
 - `senaite.pfas.edd_profiles`
   - defined: `EDD_PROFILES_KEY` (src/senaite/pfas/egad_store.py:177)
@@ -117,8 +117,8 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - reached via `set_ar_sample_type()` (src/senaite/pfas/browser/egad_publish.py) — imported by `src/senaite/pfas/browser/egad_config.py:593`
 - `senaite.pfas.extraction_session`
   - defined: `EXTRACTION_SESSION_KEY` (src/senaite/pfas/dilution_ref.py:140)
-  - written by: `src/senaite/pfas/browser/data_review.py:2596`, `src/senaite/pfas/browser/extraction_guide.py:57`
-  - read by: `src/senaite/pfas/browser/data_review.py:1273`, `src/senaite/pfas/browser/data_review.py:2586`, `src/senaite/pfas/browser/extraction_guide.py:46`, `src/senaite/pfas/dilution_ref.py:150`
+  - written by: `src/senaite/pfas/browser/data_review.py:2740`, `src/senaite/pfas/browser/extraction_guide.py:57`
+  - read by: `src/senaite/pfas/browser/data_review.py:1403`, `src/senaite/pfas/browser/data_review.py:2730`, `src/senaite/pfas/browser/extraction_guide.py:46`, `src/senaite/pfas/dilution_ref.py:150`
   - reached via `_load_session()` (src/senaite/pfas/browser/extraction_guide.py) — imported by `src/senaite/pfas/browser/extraction_pdf.py:20`, `src/senaite/pfas/browser/logbooks.py:165`, `src/senaite/pfas/browser/logbooks.py:249`
   - reached via `get_spikes()` (src/senaite/pfas/dilution_ref.py) — imported by `src/senaite/pfas/browser/data_review.py:463`, `src/senaite/pfas/browser/logbooks.py:1565`
 - `senaite.pfas.facility_defaults`
@@ -143,8 +143,8 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - read by: `src/senaite/pfas/browser/reagents.py:215`
 - `senaite.pfas.logbook.coc`
   - defined: (bare literal, no named constant)
-  - written by: `src/senaite/pfas/browser/data_review.py:2311`
-  - read by: `src/senaite/pfas/browser/data_review.py:980`, `src/senaite/pfas/browser/data_review.py:1020`, `src/senaite/pfas/browser/data_review.py:1140`, `src/senaite/pfas/browser/data_review.py:1806`, `src/senaite/pfas/browser/data_review.py:2305`
+  - written by: `src/senaite/pfas/browser/data_review.py:2455`
+  - read by: `src/senaite/pfas/browser/data_review.py:1059`, `src/senaite/pfas/browser/data_review.py:1099`, `src/senaite/pfas/browser/data_review.py:1219`, `src/senaite/pfas/browser/data_review.py:1950`, `src/senaite/pfas/browser/data_review.py:2449`
 - `senaite.pfas.logbook.pdf_archived`
   - defined: `_ARCH_KEY` (src/senaite/pfas/browser/logbook_docs.py:31)
   - written by: `src/senaite/pfas/browser/logbook_docs.py:144`
@@ -173,22 +173,22 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `PENDING_REASON_KEY` (src/senaite/pfas/browser/controlled_publications.py:43)
   - written by: `src/senaite/pfas/browser/controlled_publications.py:176`
   - read by: `src/senaite/pfas/browser/controlled_publications.py:177`, `src/senaite/pfas/browser/controlled_publications.py:178`, `src/senaite/pfas/browser/controlled_publications.py:204`, `src/senaite/pfas/browser/controlled_publications.py:205`, `src/senaite/pfas/browser/controlled_publications.py:206`
-  - reached via `set_pending_amendment_reason()` (src/senaite/pfas/browser/controlled_publications.py) — imported by `src/senaite/pfas/browser/data_review.py:2344`
+  - reached via `set_pending_amendment_reason()` (src/senaite/pfas/browser/controlled_publications.py) — imported by `src/senaite/pfas/browser/data_review.py:2488`
 - `senaite.pfas.prepstd.analyte_concentrations`
   - defined: `_ANN_ANALYTES` (src/senaite/pfas/browser/prepared_standards.py:36)
   - written by: `src/senaite/pfas/browser/prepared_standards.py:192`
   - read by: `src/senaite/pfas/browser/prepared_standards.py:145`
-  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1384`
+  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1528`
 - `senaite.pfas.prepstd.equipment`
   - defined: `_ANN_EQUIPMENT` (src/senaite/pfas/browser/prepared_standards.py:43)
   - written by: `src/senaite/pfas/browser/prepared_standards.py:197`
   - read by: `src/senaite/pfas/browser/prepared_standards.py:146`
-  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1384`
+  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1528`
 - `senaite.pfas.prepstd.parent_reagents`
   - defined: `_ANN_PARENTS` (src/senaite/pfas/browser/prepared_standards.py:35)
   - written by: `src/senaite/pfas/browser/prepared_standards.py:191`
-  - read by: `src/senaite/pfas/browser/data_review.py:1360`, `src/senaite/pfas/browser/prepared_standards.py:144`
-  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1384`
+  - read by: `src/senaite/pfas/browser/data_review.py:1504`, `src/senaite/pfas/browser/prepared_standards.py:144`
+  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1528`
 - `senaite.pfas.print_settings`
   - defined: `PRINT_SETTINGS_KEY` (src/senaite/pfas/print_settings.py:21)
   - written by: `src/senaite/pfas/print_settings.py:74`
@@ -213,14 +213,14 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
 - `senaite.pfas.reagent.archived`
   - defined: `_ANN_ARCHIVED_KEY` (src/senaite/pfas/browser/reagents.py:54)
   - written by: `src/senaite/pfas/browser/reagents.py:555`
-  - read by: `src/senaite/pfas/browser/data_review.py:1055`, `src/senaite/pfas/browser/prepared_standards.py:413`, `src/senaite/pfas/browser/reagents.py:321`, `src/senaite/pfas/browser/reagents.py:576`, `src/senaite/pfas/browser/reagents.py:577`, `src/senaite/pfas/browser/reagents.py:785`, `src/senaite/pfas/browser/reagents.py:962`
-  - reached via `build_parentage()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1384`, `src/senaite/pfas/browser/logbooks.py:970`
-  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/reagents.py) — imported by `src/senaite/pfas/browser/data_review.py:1439`, `src/senaite/pfas/browser/prepared_standards.py:390`
+  - read by: `src/senaite/pfas/browser/data_review.py:1134`, `src/senaite/pfas/browser/prepared_standards.py:413`, `src/senaite/pfas/browser/reagents.py:321`, `src/senaite/pfas/browser/reagents.py:576`, `src/senaite/pfas/browser/reagents.py:577`, `src/senaite/pfas/browser/reagents.py:785`, `src/senaite/pfas/browser/reagents.py:962`
+  - reached via `build_parentage()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1528`, `src/senaite/pfas/browser/logbooks.py:970`
+  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/reagents.py) — imported by `src/senaite/pfas/browser/data_review.py:1583`, `src/senaite/pfas/browser/data_review.py:619`, `src/senaite/pfas/browser/prepared_standards.py:390`
 - `senaite.pfas.reagent.coa`
   - defined: `_COA_ANN_KEY` (src/senaite/pfas/browser/reagents.py:429)
   - written by: `src/senaite/pfas/browser/reagents.py:475`
-  - read by: `src/senaite/pfas/browser/data_review.py:1082`, `src/senaite/pfas/browser/prepared_standards.py:404`, `src/senaite/pfas/browser/reagents.py:441`
-  - reached via `build_parentage()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1384`, `src/senaite/pfas/browser/logbooks.py:970`
+  - read by: `src/senaite/pfas/browser/data_review.py:1161`, `src/senaite/pfas/browser/prepared_standards.py:404`, `src/senaite/pfas/browser/reagents.py:441`
+  - reached via `build_parentage()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1528`, `src/senaite/pfas/browser/logbooks.py:970`
 - `senaite.pfas.reagent.scan_log`
   - defined: `_SCAN_LOG_KEY` (src/senaite/pfas/browser/reagents.py:430)
   - written by: `src/senaite/pfas/browser/reagents.py:521`
@@ -296,7 +296,7 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
 
 The key argument could not be resolved to a literal. Listed rather than dropped — a dropped read/write would understate a key's producers or consumers. Every entry below is the SAME shape: the generic body of a key-parameter wrapper (`_get_ann`, `_get_portal_store`, `_get_store_generic`, `_logbook_json` — see collect_key_wrappers()), scanned like any other function — inside its OWN definition, `key` is just a parameter with no fixed value, which is exactly what makes it a reusable wrapper. This is expected noise, not a gap: each wrapper's CALL SITES (where `key` is finally bound to something real) are resolved separately and already counted in §1.1/§1.2 — that is the whole point of deriving wrappers rather than reading only direct `IAnnotations(...)` access.
 
-- `src/senaite/pfas/browser/data_review.py:1158` (read) — `key`
+- `src/senaite/pfas/browser/data_review.py:1237` (read) — `key`
 - `src/senaite/pfas/browser/import_studio.py:467` (read) — `key`
 - `src/senaite/pfas/browser/import_studio.py:468` (write) — `key`
 - `src/senaite/pfas/browser/import_studio.py:469` (read) — `key`
@@ -331,9 +331,9 @@ A variable NAME reused across modules for a DIFFERENT key string. Not a bug by i
 
 Where a key constant is imported by name rather than redefined — the identity-preserving case §1's design note above depends on: an import carries the key's meaning with it, unlike a name-only heuristic over a wrapper function.
 
-- `src/senaite/pfas/browser/data_review.py:1047` imports `_ANN_ARCHIVED_KEY` from `src/senaite/pfas/browser/reagents.py` as `_ANN_ARCHIVED_KEY`
-- `src/senaite/pfas/browser/data_review.py:2583` imports `EXTRACTION_SESSION_KEY` from `src/senaite/pfas/dilution_ref.py` as `EXTRACTION_SESSION_KEY`
-- `src/senaite/pfas/browser/data_review.py:1081` imports `_COA_ANN_KEY` from `src/senaite/pfas/browser/reagents.py` as `_COA_ANN_KEY`
+- `src/senaite/pfas/browser/data_review.py:1126` imports `_ANN_ARCHIVED_KEY` from `src/senaite/pfas/browser/reagents.py` as `_ANN_ARCHIVED_KEY`
+- `src/senaite/pfas/browser/data_review.py:2727` imports `EXTRACTION_SESSION_KEY` from `src/senaite/pfas/dilution_ref.py` as `EXTRACTION_SESSION_KEY`
+- `src/senaite/pfas/browser/data_review.py:1160` imports `_COA_ANN_KEY` from `src/senaite/pfas/browser/reagents.py` as `_COA_ANN_KEY`
 - `src/senaite/pfas/browser/extraction_guide.py:35` imports `EXTRACTION_SESSION_KEY` from `src/senaite/pfas/dilution_ref.py` as `EXTRACTION_SESSION_KEY`
 - `src/senaite/pfas/browser/logbooks.py:1516` imports `RUN_MANIFEST_KEY` from `src/senaite/pfas/browser/run_builder.py` as `RUN_MANIFEST_KEY`
 - `src/senaite/pfas/browser/method_wizard.py:31` imports `METHOD_ASSOC_KEY` from `src/senaite/pfas/method_bridge.py` as `METHOD_ASSOC_KEY`
@@ -344,21 +344,22 @@ Where a key constant is imported by name rather than redefined — the identity-
 - `src/senaite/pfas/setuphandlers.py:590` imports `PFAS_METHOD_PROFILES_KEY` from `src/senaite/pfas/method_profile_store.py` as `PFAS_METHOD_PROFILES_KEY`
 - `src/senaite/pfas/setuphandlers.py:700` imports `PFAS_EGAD_KEY` from `src/senaite/pfas/egad_store.py` as `PFAS_EGAD_KEY`
 
-### 1.7 Keys reached through an accessor (60)
+### 1.7 Keys reached through an accessor (61)
 
 The other identity-preserving case, and the one a key-literal scan cannot see at all: the consumer never names the key, it imports a function from the module that owns it. Without this pass, collapsing a duplicate (§1.4) makes a key look LESS used than before — the redundant declaration disappears and so does the only evidence that module touched it. Each edge below is also credited on the key's own entry in §1.2.
 
 - `src/senaite/pfas/browser/coa_attestation.py:63` calls `get_publication_log()` from `src/senaite/pfas/browser/controlled_publications.py` → `senaite.pfas.controlled_pub_log`
 - `src/senaite/pfas/browser/controlled_publications.py:130` calls `snapshot_for_publication()` from `src/senaite/pfas/browser/qc_review_report.py` → `senaite.pfas.qc_review_snapshots`
 - `src/senaite/pfas/browser/data_review.py:463` calls `get_spikes()` from `src/senaite/pfas/dilution_ref.py` → `senaite.pfas.extraction_session`
-- `src/senaite/pfas/browser/data_review.py:1384` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.analyte_concentrations`
-- `src/senaite/pfas/browser/data_review.py:1384` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.equipment`
-- `src/senaite/pfas/browser/data_review.py:1384` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.parent_reagents`
-- `src/senaite/pfas/browser/data_review.py:1384` calls `build_parentage()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.reagent.archived`
-- `src/senaite/pfas/browser/data_review.py:1384` calls `build_parentage()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.reagent.coa`
-- `src/senaite/pfas/browser/data_review.py:1439` calls `_obj_to_dict()` from `src/senaite/pfas/browser/reagents.py` → `senaite.pfas.reagent.archived`
-- `src/senaite/pfas/browser/data_review.py:2134` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
-- `src/senaite/pfas/browser/data_review.py:2344` calls `set_pending_amendment_reason()` from `src/senaite/pfas/browser/controlled_publications.py` → `senaite.pfas.pending_amendment_reason`
+- `src/senaite/pfas/browser/data_review.py:619` calls `_obj_to_dict()` from `src/senaite/pfas/browser/reagents.py` → `senaite.pfas.reagent.archived`
+- `src/senaite/pfas/browser/data_review.py:1528` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.analyte_concentrations`
+- `src/senaite/pfas/browser/data_review.py:1528` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.equipment`
+- `src/senaite/pfas/browser/data_review.py:1528` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.parent_reagents`
+- `src/senaite/pfas/browser/data_review.py:1528` calls `build_parentage()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.reagent.archived`
+- `src/senaite/pfas/browser/data_review.py:1528` calls `build_parentage()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.reagent.coa`
+- `src/senaite/pfas/browser/data_review.py:1583` calls `_obj_to_dict()` from `src/senaite/pfas/browser/reagents.py` → `senaite.pfas.reagent.archived`
+- `src/senaite/pfas/browser/data_review.py:2278` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
+- `src/senaite/pfas/browser/data_review.py:2488` calls `set_pending_amendment_reason()` from `src/senaite/pfas/browser/controlled_publications.py` → `senaite.pfas.pending_amendment_reason`
 - `src/senaite/pfas/browser/deviations.py:12` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
 - `src/senaite/pfas/browser/deviations.py:12` calls `save_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
 - `src/senaite/pfas/browser/egad_config.py:26` calls `get_client_egad()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.egad_client`
