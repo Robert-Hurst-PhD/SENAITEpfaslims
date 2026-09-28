@@ -4216,3 +4216,138 @@ All three shapes were rendered and confirmed: WS-0001 (old-shaped entries), WS-0
 - §33.3 certificates generated before §36 still print an unresolvable parent as fact.
 - `IReagent` has no parentage field.
 - Prep equipment is stated on the certificate but does not gate release (§42).
+
+---
+
+## 44. FM-ENV-253 enters the chain, and a certificate stops replaying the past (2026-09-28)
+
+Two gaps closed, two deliberately left. A fresh gate baseline was captured first,
+recording the **reason set** and not only the verdict — WS-0005 already failed, so
+"failed before" had to stay distinguishable from "now fails for more reasons".
+
+### 44.1 The one logbook the walk never read
+
+FM-ENV-253 (sample processing / homogenisation) was loaded nowhere. Its rows carry
+lots, `processing_date` records when they were used, and `balance_sn` names the balance
+the samples were **weighed** on. None of it was read — so this is not a smaller version
+of an open item, it is the identical structural gap §33.12 fixed for
+`extraction_materials`, in the last logbook still outside the walk.
+
+`processing_materials` now resolves against inventory, judged against
+`processing_date` — **not** the extraction date, which on WS-0005 is ten months later.
+The rows land in `direct_reagents`, the same bucket `extraction_materials` uses: they
+are the same kind of thing, and a separate tree key would need separate rendering for
+no gain.
+
+### 44.2 The balance the samples were weighed on
+
+`balance_sn` is free text and nothing resolved it, so **the mass every result is
+calculated from rested on a balance with no calibration chain** — exactly the defect
+§38 fixed for the extraction stages' `equipment_sns`. It now resolves through
+`unit_by_serial` and `equipment_provenance` as of the processing date, reusing the
+settled policy rather than inventing a third: an **unregistered** serial is a warning
+(we cannot tell what it owed), a **registered** unit with no verification for the day
+is a problem.
+
+### 44.3 `N/A` is an analyst saying "no lot", not a lot that failed to resolve
+
+WS-0005's FM-ENV-253 records `{"name": "Dry ice", "lot": "N/A"}`. Dry ice genuinely has
+no lot number. Resolving that text would have invented a traceability failure for dry
+ice the first time the 253 walk ran — a false positive shipped on day one.
+
+`lot_or_none()` recognises the sentinel forms (`n/a`, `na`, `none`, `nil`, `-`, …,
+case-insensitively) and yields an **empty** lot, which the walk already skips
+everywhere. Not a new hole: a blank lot is skipped today, so this only recognises the
+same statement written a different way. It is **reported** as a warning, because the
+supported way to say not-applicable is to strike the row — `active_rows` already makes
+a struck row inert — and free text saying it informally should not be silently
+equivalent.
+
+One sentinel exists across every logbook on the instance, and it is that one.
+
+### 44.4 The diff: no verdict moved, and one real finding
+
+    WS-0001..WS-0008, WS-001   verdict unchanged
+      + warns: FM-ENV-253 records no date, so the lots it names cannot be checked
+
+    WS-0005                    verdict unchanged (already failing)
+      + BLOCKS: GRD-2025-003 — lot is not in the inventory
+      + warns : Dry ice recorded with lot "N/A", so it is traced to nothing
+      + warns : balance MT-XPR205-4471 is not registered in Facility QC
+
+**The grinder blades that touched every sample in the batch were never entered in
+inventory.** That is the finding; the walk simply could not see it before.
+
+### 44.5 A certificate was replaying a document written in August
+
+`_serve_cert` preferred the **stored file** whenever it existed. Seven of the eleven
+prepared standards had one dating to **2026-08-03** — before §36's parentage hierarchy
+and before §42's equipment section:
+
+    stored on disk   3831–4244 bytes   parentage=old flat section   equipment=NO
+    served now       7816–8628 bytes   full hierarchy               equipment section
+
+So every certificate written before §36 still asserted an unresolvable parent as
+established fact with the QA attestation attached — the exact claim §33.3 recorded as
+wrong — and the document disagreed with the release gate about the same lot.
+
+**And the fallback reproduced the defect it existed to cover.** The
+regenerate-when-missing branch called `_render_cert_html(rec, signers)` with **no
+`portal=`**, and without the portal the renderer cannot walk parentage or equipment at
+all. The branch meant to handle a missing file rendered the same wrong document.
+
+Now rendered on every serve, resolved. It costs a parentage walk (~0.2 ms/lot, measured
+in §41.5) and cannot go stale. Demonstrated on the exact lot §33.3 named:
+`PS-FDA-2026-A`, which has no parents, now prints **"THIS PARENTAGE IS NOT FULLY
+SUBSTANTIATED"** where it previously printed its parentage as fact. A bogus uid still
+404s.
+
+**When sign-off is built, this has to change with it.** A *signed* certificate must be
+frozen, the way §26 freezes resolved criteria at the moment they judge. Nothing captures
+a signature yet — every certificate prints "UNSIGNED UNTIL DATED" with reserved rows —
+so there is nothing to freeze and a fresh render is unambiguously the truthful answer
+today. Said in the code, at the place that will need it.
+
+### 44.6 Two more guards that could not fail
+
+Four mutations were run against the new tests. Two passed with the defect reinstated:
+
+  * promoting the unregistered-balance **warning** to a blocking **problem**, and
+  * reading `row["lot"]` directly instead of through `lot_or_none`.
+
+Same cause both times: the test split on a start marker and read **to the end of the
+function**, so `"is not registered in Facility QC"` was satisfied by the extraction
+equipment block further down, and `"if sentinel:"` by a hard-coded `sentinel = u""`.
+A region that includes neighbouring code cannot test that region. `_section(src, start,
+end)` now bounds it, and the policy is asserted structurally — *which list the append
+goes to* — rather than by message text.
+
+That is the third and fourth such guard this week. The pattern is consistent enough to
+state as a rule: **a guard is not finished until the defect has been reintroduced and
+the guard has failed.**
+
+### Deliberately NOT done, and why
+
+- **Prep equipment does not gate release.** §42 records it as a QA-manager decision and
+  "fix the gaps" does not retire that. It would also fail immediately and universally:
+  the facility database is empty, so *every* prepared standard has zero equipment
+  recorded, and gating it would block every worksheet using any prepared standard. A
+  check that fails everything on day one teaches a lab to ignore the gate. Stated on the
+  certificate, not enforced, until the lab records equipment.
+- **`IReagent` still has no parentage field.** §35 already concluded it is not needed now
+  that in-house preparations are PreparedStandards. Adding it would create a field with
+  no producer and no consumer — the exact "consumer with no producer" shape §14 lists as
+  one of this codebase's two recurring defect forms.
+
+### Verification
+
+32/32 test files (`test_traceability_gate.py` now 38 tests), `audit_configurable
+--strict` exit 0. Certificates served fresh at 200 with both new sections, bogus uid
+404. No test data created. No gate verdict changed.
+
+### Still open
+
+- WS-0005's expiry failures and the unregistered `GRD-2025-003` lot and
+  `MT-XPR205-4471` balance — all data decisions for the lab, §43.3 and §44.4.
+- Prep equipment stated but not gated (above).
+- Certificate freezing on sign-off, once sign-off exists (§44.5).

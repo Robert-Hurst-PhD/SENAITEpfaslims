@@ -164,6 +164,32 @@ def _is_analyst(context):
         return False
 
 
+# A lot cell an analyst has filled in to mean "this material has no lot number".
+# Dry ice, compressed gas and a machined part genuinely have none, and FM-ENV-253
+# on the released WS-0005 records exactly that: `{"name": "Dry ice", "lot": "N/A"}`.
+#
+# Treated as NO LOT, which is what the analyst meant, not as a lot that failed to
+# resolve. Resolving it would have invented a traceability failure for dry ice the
+# first time the 253 walk ran. It is REPORTED, though (see the warnings), because
+# the supported way to say "not applicable" is to strike the row -- `active_rows`
+# already makes a struck row inert -- and free text saying it informally should not
+# be silently equivalent.
+#
+# Not a new hole: a BLANK lot is already skipped everywhere in this walk, so this
+# only recognises the same statement written a different way.
+_LOT_SENTINELS = frozenset((
+    u"n/a", u"na", u"n.a.", u"none", u"nil", u"-", u"--", u"not applicable",
+))
+
+
+def lot_or_none(raw):
+    """(lot, sentinel_text). `lot` is u"" when the cell names no lot at all."""
+    lot = (raw or u"").strip()
+    if lot.lower() in _LOT_SENTINELS:
+        return u"", lot
+    return lot, u""
+
+
 class PFASDataReviewView(BrowserView):
 
     template = ViewPageTemplateFile("templates/data_review.pt")
@@ -1249,6 +1275,13 @@ class PFASDataReviewView(BrowserView):
 
         lb252 = _load(u"senaite.pfas.logbook.252")
         lb251 = _load(u"senaite.pfas.logbook.251")
+        # FM-ENV-253 (sample processing / homogenisation). Its rows were traced
+        # NOWHERE: the walk read 252 and 251 only, so a grinder-blade or sorbent
+        # lot named here was neither resolved nor reported unresolved, and the
+        # balance the samples were WEIGHED on had no calibration chain. Same
+        # structural gap as §33.12, in the one logbook the walk never learned to
+        # read (GAPS §44).
+        lb253 = _load(u"senaite.pfas.logbook.253")
         reagent_by_lot, ps_by_lot = self._build_lot_indices(portal)
 
         tree = {
@@ -1266,8 +1299,13 @@ class PFASDataReviewView(BrowserView):
         # Each logbook's own date, because its rows were used on ITS date.
         use_252 = self._use_date(lb252, "extraction_date")
         use_251 = self._use_date(lb251, "prepared_date")
+        use_253 = self._use_date(lb253, "processing_date")
+        # Every logbook the walk reads appears here. A logbook left out would skip
+        # its expiry check SILENTLY, which is the failure §43.1 exists to prevent —
+        # an unenforceable check must not look like a satisfied one.
         for lb_name, lb_date in (("FM-ENV-252", use_252),
-                                 ("FM-ENV-251", use_251)):
+                                 ("FM-ENV-251", use_251),
+                                 ("FM-ENV-253", use_253)):
             if not lb_date:
                 tree["warnings"].append(
                     u"%s records no date, so the lots it names cannot be checked "
@@ -1390,6 +1428,91 @@ class PFASDataReviewView(BrowserView):
                               u"resolve this link",
                 })
             tree["direct_reagents"].append(entry)
+
+        # --- FM-ENV-253: processing_materials[] table ---
+        # Traced nowhere, exactly as extraction_materials was before §33.12: the
+        # rows carry lots, `processing_date` records when they were used, and
+        # nothing read either. Grinder blades, dry ice and sorbents touch the
+        # sample before extraction, so they belong in the chain.
+        #
+        # Landed in `direct_reagents` deliberately, the same bucket
+        # extraction_materials uses: a separate tree key would have to be rendered
+        # separately, and these are the same kind of thing — a consumable lot that
+        # must resolve to inventory.
+        for row in active_rows(lb253.get("processing_materials")):
+            lot, sentinel = lot_or_none(row.get("lot"))
+            name = row.get("name") or u""
+            entry = {
+                "name":     name,
+                "lot":      lot,
+                "notes":    row.get("notes") or u"",
+                "resolved": None,
+            }
+            if sentinel:
+                # The analyst said this material has no lot. Reported, not
+                # enforced — see lot_or_none.
+                tree["warnings"].append(
+                    u"FM-ENV-253 records %s with lot \u201c%s\u201d, so it is "
+                    u"traced to nothing; strike the row instead if it is genuinely "
+                    u"not applicable" % (name or u"a processing material",
+                                         sentinel))
+            elif lot and lot in reagent_by_lot:
+                entry["resolved"] = self._reagent_dict(reagent_by_lot[lot])
+                reason = self._expired_at_use(
+                    self._reagent_record(reagent_by_lot[lot]), lot, name,
+                    use_253, portal)
+                if reason:
+                    tree["unresolved"].append({
+                        "source": "253.processing_materials", "lot": lot,
+                        "name": name, "reason": reason,
+                    })
+            elif lot:
+                tree["unresolved"].append({
+                    "source": "253.processing_materials", "lot": lot,
+                    "name": name,
+                    "reason": u"lot is not in the inventory — enter it to "
+                              u"resolve this link",
+                })
+            tree["direct_reagents"].append(entry)
+
+        # --- FM-ENV-253: the balance the samples were WEIGHED on ---
+        # 253 records `balance_sn` as free text and nothing resolved it, so the
+        # mass every result is calculated from rested on a balance with no
+        # calibration chain. Same defect §38 fixed for the extraction stages'
+        # `equipment_sns`, and the same policy is reused rather than a third one
+        # invented: an UNREGISTERED serial is a warning (we cannot tell what it
+        # owed), a registered unit with no verification for the day is a problem.
+        bal_sn = (lb253.get("balance_sn") or u"").strip()
+        if bal_sn:
+            try:
+                from senaite.pfas import facility_qc as _fq253
+                entry = {"label": u"FM-ENV-253 balance", "serial": bal_sn,
+                         "unit": None, "records": [], "problems": [],
+                         "warnings": []}
+                unit = _fq253.unit_by_serial(bal_sn)
+                if unit is None:
+                    entry["warnings"].append(
+                        u"balance %s is not registered in Facility QC, so its "
+                        u"calibration on the processing date is unknown" % bal_sn)
+                elif not use_253:
+                    entry["warnings"].append(
+                        u"FM-ENV-253 records no processing date, so balance %s "
+                        u"cannot be checked for the day it was used" % bal_sn)
+                else:
+                    prov = _fq253.equipment_provenance(unit.get("id"), use_253)
+                    entry["unit"] = unit
+                    entry["records"] = prov.get("records") or []
+                    entry["problems"] = prov.get("problems") or []
+                    entry["warnings"] = prov.get("warnings") or []
+                tree.setdefault("equipment", []).append(entry)
+                for prob in entry["problems"]:
+                    tree["unresolved"].append({
+                        "source": "253.balance_sn", "lot": bal_sn,
+                        "name": u"FM-ENV-253 balance", "reason": prob,
+                    })
+                tree["warnings"].extend(entry["warnings"])
+            except Exception as exc:                        # noqa: BLE001
+                logger.error("253 balance provenance: %s", exc)
 
         # --- Equipment: serial -> unit -> calibration, as of the day used ---
         # The extraction record captures equipment as free-text SERIAL NUMBERS

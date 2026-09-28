@@ -1239,19 +1239,39 @@ class PFASPrepStandardsView(BrowserView):
         return self._redirect("{0}?error=Not+found".format(self._self_url()))
 
     def _serve_cert(self):
-        """Serve the internal certificate HTML file for a given uid."""
+        """Serve the certificate, RESOLVED NOW rather than replayed from disk.
+
+        Two defects lived here (GAPS §44):
+
+        1. The stored file was preferred whenever it existed, so every certificate
+           written before §36 still asserted an unresolvable parent as established
+           fact with the QA attestation attached -- the exact claim §33.3 recorded
+           as wrong -- and none written before §42 named the equipment. The
+           document and the release gate disagreed about the same lot, which is
+           the divergence §33.9 already cost three separate resolvers to fix.
+        2. The on-demand fallback called `_render_cert_html(rec, signers)` with
+           **no `portal=`**, and without the portal the renderer cannot walk the
+           parentage or the equipment at all. So the branch meant to cover a
+           missing file reproduced the very defect the stored file had.
+
+        Rendering on every serve costs a parentage walk (~0.2 ms per lot, measured
+        in §41.5) and a SQLite read, and it cannot go stale. The stored file stays
+        as the write-time artefact.
+
+        NOTE: a certificate that has been SIGNED must be frozen instead, the way
+        §26 freezes resolved criteria at the moment they judge. Nothing captures a
+        signature yet -- every certificate prints "UNSIGNED UNTIL DATED" with
+        reserved rows -- so there is nothing to freeze, and a fresh render is
+        unambiguously the truthful answer today. When sign-off is built, this is
+        the place that has to change with it.
+        """
         uid = self.request.form.get("uid", "").strip()
-        cert_path = os.path.join(CERT_DIR, "{}.html".format(uid))
-        if not os.path.exists(cert_path):
-            # Regenerate on-demand
-            rec = _get(self._portal(), uid)
-            if not rec:
-                self.request.response.setStatus(404)
-                return "Certificate not found"
-            from senaite.pfas.print_settings import get_signoff_signers
-            html = _render_cert_html(rec, get_signoff_signers(self._portal()))
-        else:
-            with open(cert_path, "r") as fh:
-                html = fh.read()
+        rec = _get(self._portal(), uid)
+        if not rec:
+            self.request.response.setStatus(404)
+            return "Certificate not found"
+        from senaite.pfas.print_settings import get_signoff_signers
+        html = _render_cert_html(rec, get_signoff_signers(self._portal()),
+                                 portal=self._portal())
         self.request.response.setHeader("Content-Type", "text/html; charset=utf-8")
         return html

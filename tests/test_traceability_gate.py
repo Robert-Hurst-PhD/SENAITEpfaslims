@@ -34,6 +34,34 @@ def _source():
         return fh.read()
 
 
+def _section(src, start, end=None):
+    """The text between two markers inside _build_traceability_tree.
+
+    BOUNDED on purpose. The first version of the 253 tests split on a start marker
+    and read to the end of the function, so `"is not registered in Facility QC"`
+    was satisfied by the EXTRACTION equipment block further down and a mutation
+    that turned the 253 balance warning into a blocking problem passed. A region
+    that includes neighbouring code cannot test this region.
+    """
+    fn = _seg(src, "_build_traceability_tree")
+    assert start in fn, "marker %r not found" % start
+    body = fn.split(start, 1)[1]
+    if end is not None:
+        assert end in body, "end marker %r not found after %r" % (end, start)
+        body = body.split(end, 1)[0]
+    return body
+
+
+def _seg(src, name):
+    """The source text of one function, for substring assertions."""
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            lines = src.splitlines()
+            return "\n".join(lines[node.lineno - 1:node.body[-1].lineno + 4])
+    raise AssertionError("%s not found" % name)
+
+
 def _func(name):
     for node in ast.walk(ast.parse(_source(), REVIEW)):
         if isinstance(node, ast.FunctionDef) and node.name == name:
@@ -115,7 +143,12 @@ def test_every_resolution_branch_can_fail_the_gate():
                             and isinstance(v, ast.Constant)):
                         sources.add(v.value)
     for expected in ("252.reagents", "252.standards",
-                     "252.extraction_materials", "prepstd.parents"):
+                     "252.extraction_materials", "prepstd.parents",
+                     # FM-ENV-253 was the one logbook the walk never read, so its
+                     # lots and its balance were neither resolved nor reported
+                     # (GAPS §44) — the same structural gap as
+                     # 252.extraction_materials before §33.12.
+                     "253.processing_materials", "253.balance_sn"):
         assert expected in sources, (
             "%r never reports an unresolved lot; found %s"
             % (expected, sorted(sources)))
@@ -558,6 +591,129 @@ def test_a_balance_verification_records_the_weight_set_used():
     assert "_ADDED_COLUMNS" in src, (
         "no idempotent migration for the new column, so an instance already "
         "collecting verifications would break or lose them")
+
+
+# ── FM-ENV-253: the logbook the walk did not read (GAPS §44) ─────────────────
+
+def test_the_253_logbook_is_loaded_at_all():
+    src = _source()
+    assert 'lb253 = _load(u"senaite.pfas.logbook.253")' in src, (
+        "FM-ENV-253 is never loaded, so its processing_materials lots and the "
+        "balance its samples were weighed on are traced nowhere")
+
+
+def test_253_lots_are_judged_against_the_processing_date():
+    """Not the extraction date. On WS-0005 they are ten months apart."""
+    src = _source()
+    fn = _seg(src, "_build_traceability_tree")
+    assert 'use_253 = self._use_date(lb253, "processing_date")' in fn
+    # And the 253 resolution must actually pass use_253, not use_252.
+    block = _section(src, "FM-ENV-253: processing_materials",
+                     "FM-ENV-253: the balance")
+    assert "use_253" in block, "253 rows judged against another logbook's date"
+    assert "use_252" not in block
+
+
+def test_every_logbook_the_walk_reads_warns_when_it_has_no_date():
+    """A logbook left out of this loop would skip its expiry check SILENTLY —
+    the failure mode §43.1 exists to prevent."""
+    src = _source()
+    fn = _seg(src, "_build_traceability_tree")
+    for name in ("FM-ENV-252", "FM-ENV-251", "FM-ENV-253"):
+        assert '("%s", use_' % name in fn, (
+            "%s is read but a missing date on it is not reported" % name)
+
+
+def test_the_253_balance_reuses_the_established_warning_policy():
+    """An unregistered serial is a WARNING (we cannot tell what it owed — a vortex
+    mixer owes nothing); a registered unit with no verification for the day is a
+    PROBLEM. §38 settled this; a third policy here would be a second answer."""
+    src = _source()
+    block = _section(src, "FM-ENV-253: the balance",
+                     "Equipment: serial -> unit -> calibration")
+    assert "unit_by_serial" in block
+    assert "equipment_provenance" in block, \
+        "a registered balance must be checked as of the processing date"
+    assert 'tree["unresolved"].append' in block, \
+        "an established calibration failure must block"
+    # The POLICY, not just the words: an unregistered serial goes to warnings and
+    # a provenance problem goes to unresolved. Asserting on the message text alone
+    # let a mutation that promoted the warning to a problem pass.
+    unreg = block.split("unit is None:", 1)[1].split("elif", 1)[0]
+    assert 'entry["warnings"].append' in unreg, \
+        "an unregistered balance must WARN — we cannot tell what it owed"
+    assert 'entry["problems"].append' not in unreg, \
+        "an unregistered balance must not block; §38 settled this"
+
+
+# ── A lot cell that says "no lot" ───────────────────────────────────────────
+
+def test_a_sentinel_lot_is_treated_as_no_lot_and_reported():
+    """FM-ENV-253 on the released WS-0005 records `{"name": "Dry ice",
+    "lot": "N/A"}`. Dry ice genuinely has no lot, so resolving the text would have
+    invented a traceability failure the first time the 253 walk ran. It is not
+    silent either: the supported way to say not-applicable is to strike the row."""
+    src = _source()
+    assert "_LOT_SENTINELS" in src and "def lot_or_none(" in src, (
+        "no definition of a lot cell that means 'no lot'")
+    fn = _seg(src, "lot_or_none")
+    assert "return u\"\", lot" in fn, "the sentinel must yield an EMPTY lot"
+    # The 253 block must CALL it. Asserting only that `if sentinel:` appears let a
+    # mutation that read row["lot"] directly and hard-coded `sentinel = u""` pass.
+    block = _section(src, "FM-ENV-253: processing_materials",
+                     "FM-ENV-253: the balance")
+    assert "lot_or_none(row.get(\"lot\"))" in block, (
+        "the 253 walk reads the lot cell directly, so a lot of 'N/A' resolves as a "
+        "real lot number and invents a failure for dry ice")
+    assert "if sentinel:" in block and 'tree["warnings"].append' in block, (
+        "a sentinel lot must be reported, not silently dropped")
+
+
+def test_the_sentinel_set_covers_what_an_analyst_actually_types():
+    src = _source()
+    block = src.split("_LOT_SENTINELS = frozenset((", 1)[1].split("))", 1)[0]
+    for form in ("n/a", "na", "none", "-"):
+        assert '"%s"' % form in block.replace("u'", '"').replace("'", '"'), \
+            "%r is not recognised as 'no lot'" % form
+    # Case-insensitively, or "N/A" itself would miss.
+    assert ".lower()" in _seg(src, "lot_or_none")
+
+
+# ── A certificate must resolve, not replay (GAPS §44) ────────────────────────
+
+def test_the_certificate_renderer_is_never_called_without_the_portal():
+    """Without `portal=` the renderer cannot walk the parentage or the equipment at
+    all, so it falls back to printing the stored parent record verbatim — the exact
+    defect §33.3 recorded, where an unresolvable parent appeared as established
+    fact with the QA attestation attached.
+
+    `_serve_cert`'s on-demand branch did precisely this: the branch meant to cover
+    a missing certificate file reproduced the defect the file had.
+    """
+    src = _ps_source()
+    tree = ast.parse(src)
+    bad = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "_render_cert_html"):
+            continue
+        if not any(kw.arg == "portal" for kw in (node.keywords or [])):
+            bad.append(node.lineno)
+    assert not bad, (
+        "_render_cert_html called without portal= at line(s) %s — the certificate "
+        "will print the stored parent record instead of resolving the chain" % bad)
+
+
+def test_the_certificate_is_rendered_fresh_rather_than_read_from_disk():
+    """A stored certificate written before §36/§42 asserts things that are no longer
+    true, and the document then disagrees with the release gate about the same lot."""
+    src = _ps_source()
+    seg = _seg(src, "_serve_cert")
+    assert "open(cert_path" not in seg, (
+        "_serve_cert is replaying a stored file, so certificates written before the "
+        "parentage walk existed still assert an unresolvable parent as fact")
+    assert "_render_cert_html" in seg
 
 
 if __name__ == "__main__":
