@@ -181,7 +181,11 @@
           </td>
           <td tal:content="python:c.get('operator') or c.get('provider') or '—'">—</td>
           <td tal:content="c/cert_number|string:—">—</td>
-          <td tal:content="python:('weight set ' + (c.get('weight_set_id') or '')[:8]) if c['kind']=='internal' else (c.get('provider_accreditation') or '—')">—</td>
+          <!-- The set by the name it is labelled with, not the first 8 characters
+               of its internal id: that identified it to nobody and two sets
+               sharing a prefix read identically. `weight_set_label` resolves it
+               (browser/facility_qc._weight_set_label), shared with the balance log. -->
+          <td tal:content="python:('weight set ' + c['weight_set_label']) if c['kind']=='internal' and c.get('weight_set_label') else (c.get('provider_accreditation') if c['kind']=='external' else 'no weight set recorded') or '—'">—</td>
           <td>
             <span tal:condition="c/passed" class="p-ok">PASS</span>
             <span tal:condition="not:c/passed" class="p-fail">FAIL</span>

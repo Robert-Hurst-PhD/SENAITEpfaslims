@@ -369,7 +369,10 @@
   </div>
 
   <script>
-  var LOOKUP_URL = '/@@pfas-reagents?action=lookup_json&q=';
+  /* Absolute portal URL — see GAPS §41: a root-relative '/@@...' resolves against
+     the Zope root, where there is no portal_url tool. */
+  var LOOKUP_URL = '<tal:u replace="view/portal_url">/senaite</tal:u>'
+                 + '/@@pfas-reagents?action=lookup_json&q=';
   var currentLogbookExpiry = 365;
 
   /* ── Tab switching ────────────────────────────────────────────────── */

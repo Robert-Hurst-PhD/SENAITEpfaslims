@@ -968,7 +968,7 @@ def usable_lots(portal, lot_type="", q=""):
     """
     try:
         from senaite.pfas.browser.prepared_standards import (
-            STATUS_ACTIVE, _list)
+            STATUS_ACTIVE, _list, build_parentage, parentage_problems)
     except Exception as exc:
         logger.warning("usable_lots: %s", exc)
         return []
@@ -979,6 +979,23 @@ def usable_lots(portal, lot_type="", q=""):
         # active is either used up (exhausted) or out of date.
         if (d.get("status") or "") != STATUS_ACTIVE:
             continue
+        # WHY the gate verdict travels with the offer (GAPS §33.11): since the
+        # traceability gate started checking level 1, an in-date unexhausted lot
+        # can still block release -- because a parent is not in inventory, or the
+        # in-house water it was made with has no Type 1 log for the day. The
+        # picker offered those silently, so an analyst learned at data review
+        # what they could have known at the bench.
+        #
+        # ANNOTATED, not filtered: an analyst holding the physical bottle who
+        # cannot find it in the list learns nothing and works around the system.
+        # The same walk the certificate and the gate use, so the reason shown at
+        # the bench is the reason release will give.
+        try:
+            problems = parentage_problems(build_parentage(portal, d))
+        except Exception as exc:          # a data-entry error must not break the picker
+            logger.warning("usable_lots: parentage for %s: %s",
+                           d.get("lot_number"), exc)
+            problems = []
         out.append({
             "lot_number":    d.get("lot_number") or "",
             "title":         d.get("title") or d.get("lot_number") or "",
@@ -986,6 +1003,8 @@ def usable_lots(portal, lot_type="", q=""):
             "expiry_date":   d.get("effective_expiry") or d.get("expiry_date") or "",
             "prepared_date": d.get("prepared_date") or "",
             "status":        d.get("status") or "",
+            "gate_ok":       not problems,
+            "gate_problems": [p["reason"] for p in problems],
         })
     # _list sorts by prepared_date desc; make the tie-break explicit rather
     # than relying on sort stability. A lot with no prepared_date sorts last,

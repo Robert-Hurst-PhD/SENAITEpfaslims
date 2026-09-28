@@ -130,7 +130,14 @@
                                          id fname;
                                          value python:str(fvalue) if fvalue else u'';
                                          data-ac-type python:field.get('lot_type','');
-                                         data-ac string:/@@pfas-lot-autocomplete" />
+                                         data-ac string:${view/portal_url}/@@pfas-lot-autocomplete" />
+                  <!-- Absolute portal URL, not '/@@...': the site is not at the
+                       server root. Zope serves it at /senaite and nginx roots
+                       VirtualHostMonster there, so a root-relative path hit the Zope
+                       root, where there is no portal_url tool — 500 direct, 404 via
+                       nginx. The lot picker had therefore NEVER opened in this
+                       deployment, which is also why nobody noticed it offering lots
+                       the release gate rejects (GAPS §41). -->
                   <div class="lot-ac-dropdown"
                        tal:attributes="id string:ac-${fname}"></div>
                 </div>
@@ -144,7 +151,7 @@
                          tal:attributes="name fname;
                                          id fname;
                                          value python:str(fvalue) if fvalue else u'';
-                                         data-ac string:/@@pfas-reagent-autocomplete" />
+                                         data-ac string:${view/portal_url}/@@pfas-reagent-autocomplete" />
                   <div class="lot-ac-dropdown"
                        tal:attributes="id string:ac-${fname}"></div>
                 </div>

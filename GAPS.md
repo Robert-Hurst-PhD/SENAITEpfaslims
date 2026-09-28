@@ -3779,3 +3779,173 @@ depth-count flagged **150 lines across 50 templates, every one valid** —
 comment in its place so the next person does not repeat it. A check that cannot
 distinguish valid from invalid is worse than no check, and compiling the template
 already catches nesting, which is how §39 caught it.
+
+---
+
+## 41. The last unwired link, and four latent defects the data revealed (2026-09-28)
+
+Continuing the ranked list at the end of §39/§40: item 1 was the balance verification
+form not offering the weight set, item 2 was `usable_lots` offering standards the gate
+rejects. Both are closed. Getting there surfaced **four separate defects that had
+never executed**, each for the same structural reason — the code path required data
+the instance had never held.
+
+### 41.1 The balance form now names the reference weight set (item 1)
+
+`facility_balance.pt` offers the registered sets and the handler records the choice;
+`equipment_provenance` then closes the chain to the metrology laboratory. Proven live
+rather than by reading the column back — recorded through the **form**, then asked the
+gate:
+
+    verification recorded WITH a weight set    problems: NONE
+      -> traced to AUDIT-WS-001, Northeast Metrology Laboratory,
+         cert NML-2026-4417, due 2027-03-02, NIST=True
+    verification recorded WITHOUT one          problems: [no reference weight set
+         recorded, so the verification cannot be traced to a calibrated standard]
+    no verification that day at all            problems: [no balance verification
+         for 2026-09-20, the day it was used]
+
+The field is **required**, not optional: a verification is a measurement, and a
+measurement with no reference standard establishes nothing. With no set registered the
+form cannot be submitted, and says why, with a link to Weight Sets. Optional would
+have built the field and left the defect in place.
+
+`(f.get("weight_set_id", "").strip() or None)` — an empty string is not NULL, and a
+`weight_set_id IS NOT NULL` audit query would count a traceless row as traced.
+
+The pipette log stopped printing `(weight_set_id or '')[:8]`, a truncated uuid that
+identified the set to nobody. Both logs now resolve the label through one helper.
+
+### 41.2 The Balance Verification Log had never rendered at all
+
+Selecting a balance 500'd:
+
+    LocationError: (RepeatDictWrapper, 'wp')
+    facility_balance.pt: <tal:each tal:repeat="wp view/weight_points"
+                                   tal:define="i repeat/wp/index">
+
+**`tal:define` executes before `tal:repeat` on the same element**, so `repeat['wp']`
+does not exist yet. Proven pre-existing by contrast: HEAD's template fails identically
+with none of this work applied. Invisible because the whole form sits inside
+`tal:condition="unit"` and `facility_units` held zero rows — no balance could be
+selected, so the form never rendered. Registering the first balance revealed it.
+`i` is now defined on the child `<tr>`.
+
+### 41.3 Three py2 `sqlite3.Row` defects, invisible to a py3 test suite
+
+`list_balance_verifications` raised `IndexError: Index must be int or string` the
+moment a verification existed. A `sqlite3.Row` accepts only an int or a **byte**
+string as a key; `facility_qc.py` has `unicode_literals`, so every `row["col"]` in it
+passes a unicode key:
+
+    >>> r['id']        # python 2.7.18
+    IndexError: Index must be int or string
+    >>> dict(r)['id']
+    1
+
+Three sites carried it — `list_balance_verifications`, `dashboard_summary`'s eye wash
+and balance branches, and `save_study_point`. **The py3 test suite cannot see this
+class of defect at all**, because `sqlite3.Row` accepts `str` keys under py3; the
+defect exists only in the interpreter that runs production. The reason it never bit:
+§10.4's finding that the facility database has never held a row. So a quarterly NIST
+temperature study would have crashed on its first point, and the eye wash dashboard
+branch on the first log.
+
+All four verified under py2 with rows present:
+
+    OK  list_balance_verifications          read back 2 verifications, 4 points
+    OK  dashboard_summary (balance branch)  status='ok'
+    OK  dashboard_summary (eyewash branch)  status='ok'
+    OK  save_study_point                    5 points judged, study status='pass'
+
+### 41.4 The lot picker had never opened in this deployment
+
+Driving the real page with a browser, the autocomplete fetch returned 500:
+
+    GET /@@pfas-lot-autocomplete  ->  AttributeError: portal_url
+
+`data-ac` was the root-relative `/@@pfas-lot-autocomplete`. **The site is not at the
+server root**: Zope serves it at `/senaite`, and nginx roots VirtualHostMonster there
+as well, so the path reached the Zope root — 500 direct, 404 through nginx. Four sites
+carried it (both logbook autocompletes and two reagent lookups); every other place
+prefixes `PORTAL_URL`. All now build from `view/portal_url`.
+
+This also explains the shape of item 2: the picker could not have been observed
+offering blocked lots, because it never opened.
+
+### 41.5 The gate verdict now travels with the offer (item 2)
+
+`usable_lots` returns `gate_ok` and `gate_problems` per lot, from the same
+`build_parentage` walk the certificate and the release gate use — so the reason shown
+at the bench is the reason release will give. The dropdown and the default hint both
+show it, verified in a browser:
+
+    [BLOCKED] AUDIT-NOPARENT-001  exp 2027-03-01
+              ⚠ blocks release: no parent lots recorded — this lot cannot be traced
+    [  ok   ] AUDIT-CLEAN-001     exp 2027-03-01
+    [BLOCKED] AUDIT-BROKEN-001    exp 2027-03-01
+              ⚠ blocks release: lot NO-SUCH-LOT-9999 is not in inventory
+
+**Annotated, not filtered.** An analyst holding the physical bottle who cannot find it
+in the list learns nothing and works around the system. For the same reason the
+default still offers the most recent lot even when it blocks, flagged rather than
+silently swapped: the analyst uses the bottle they have, and the record must reflect
+that. Quietly defaulting to a different lot to make a gate pass would falsify the
+record.
+
+Cost measured rather than assumed, since this sits on a typeahead:
+
+    with the parentage walk      5.1 ms/call
+    with the walk stubbed out    4.5 ms/call
+    -> 0.2 ms per lot; 6.6 ms to walk all 14 including the water-log query
+
+### 41.6 Four static guards, and one that was worthless until mutated
+
+`tests/test_equipment_chain.py` (12 tests) covers the chain functionally against a
+scratch database, plus the form/handler wiring. `tests/test_template_expressions.py`
+gained two guards: the `tal:define`/`tal:repeat` ordering trap, and root-relative view
+URLs.
+
+**Every guard was mutation-tested** — the defect reintroduced, the guard required to
+fail. That is not ceremony. The root-URL guard passed with the real defect reinstated:
+its pattern anchored on a quote (`'/@@view'`, the JS form) and the TAL form is
+`string:/@@view"`, with the quote at the far end of the attribute. A test that cannot
+fail is worse than no test because it reports safety. Only the mutation found it.
+
+The per-function scoping of the `sqlite3.Row` guard came the same way: collecting
+fetch-bound names module-wide produced **20 false positives** — `row` is fetch-bound
+in `get_unit` and a plain `dict(u)` in `dashboard_summary`, and a name means different
+things in different scopes.
+
+And the comment-scanning trap appeared for a **fourth** time: the JS comment explaining
+the root-relative URL defect contains a root-relative URL. `_strip_js_comments` now
+blanks `/* */` and `//` runs the way `_strip_comments` blanks HTML comments.
+
+### 41.7 One more self-inflicted scare, recorded
+
+The suite first reported 4 failures (`test_profiles`, `test_ruleset`-family). They fail
+at HEAD too — because the suite must be run with `PFAS_PROFILES_PATH` set, exactly as
+documented at the top of this file. With the documented environment: **31/31 test files
+pass**, `audit_configurable --strict` exit 0. Checked before reporting a regression
+that was not one.
+
+### Verification
+
+Every `AUDIT-*` record removed: 11 prepared standards (the as-found count) and 0 rows
+in all nine facility tables. Balance log, weight sets, pipette calibration, facility
+QC, reagents, prep standards and facility units all HTTP 200.
+
+### Still open
+
+- **as-of-date expiry**: `_is_expired` takes `as_of` and nothing passes it. The USE
+  date has to be threaded through the gate first, or historical batches would be
+  condemned for standards that were in date when used. Changes release behaviour on
+  real data, so the WS-0005 verdict must be captured before and diffed after.
+- `PreparedStandard` records no equipment, so a prep certificate cannot name the
+  balance that weighed it (§37.5). Two pieces: the field, and the certificate section
+  that reads it — certificate first, so the field has a consumer the day it exists.
+- §33.3 the Certificate of Preparation still prints an unresolvable parent as fact on
+  certificates generated before the §36 fix.
+- `IReagent` still has no parentage field.
+- The facility database is empty again by design, so §41.2 and §41.3's code paths are
+  once more unexercised in production until the lab records its first verification.

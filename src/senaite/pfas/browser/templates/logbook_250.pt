@@ -392,7 +392,10 @@
   }
 
   /* ── Inventory lookup ── */
-  var INV_URL = '/@@pfas-reagents?action=lookup_json&q=';
+  /* Absolute portal URL — a root-relative '/@@...' resolves against the Zope
+     root, not the Plone site, so this lookup never answered (GAPS §41). */
+  var INV_URL = '<tal:u replace="view/portal_url">/senaite</tal:u>'
+              + '/@@pfas-reagents?action=lookup_json&q=';
 
   function openInvLookup() {
     document.getElementById('inv-overlay').style.display = 'flex';

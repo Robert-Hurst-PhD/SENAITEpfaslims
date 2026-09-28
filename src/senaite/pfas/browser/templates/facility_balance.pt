@@ -38,8 +38,12 @@
                border-radius:8px; font-size:10px; font-weight:700; }
     .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
     .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
-    .fld input { padding:6px 8px; font-size:13px; border:1px solid var(--s-input-border);
-                 border-radius:4px; }
+    .fld input, .fld select { padding:6px 8px; font-size:13px;
+                 border:1px solid var(--s-input-border); border-radius:4px;
+                 color:var(--s-input-text); }
+    .hint { font-size:11px; color:var(--s-secondary); margin:0 0 10px; }
+    .hint-bad { color:#8a1c1c; font-weight:600; }
+    .traced { font-size:11px; color:var(--s-secondary); }
     .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
     .fld-row .fld { flex:1; min-width:120px; }
   </style>
@@ -84,9 +88,31 @@
             <input type="date" name="verified_date" id="vDate" required/></div>
           <div class="fld"><label>Operator Initials *</label>
             <input type="text" name="operator" maxlength="10" required/></div>
-          <div class="fld" style="flex:2"><label>Notes</label>
-            <input type="text" name="notes"/></div>
+          <div class="fld" style="flex:2"><label>Reference weight set *</label>
+            <select name="weight_set_id" required="required">
+              <option value="">&#8212; select the set used &#8212;</option>
+              <option tal:repeat="w view/weight_sets"
+                      tal:attributes="value w/id"
+                      tal:content="string:${w/set_id} (${w/weight_class})">WS</option>
+            </select></div>
         </div>
+        <!-- Required, not optional. A verification is a MEASUREMENT, and a
+             measurement with no reference standard establishes nothing: the
+             release gate already treats a missing weight set as blocking
+             (facility_qc.equipment_provenance._weight_set_chain). Making the
+             field optional would have built it and left the defect in place.
+             With no set registered the form cannot be submitted — which is the
+             correct outcome, and the hint below says where to go. -->
+        <p class="hint hint-bad" tal:condition="not:view/weight_sets">
+          No reference weight set is registered, so no verification can be
+          recorded &mdash; one performed with unknown weights traces to nothing
+          and would block release at data review. Register the set and its
+          metrology-laboratory certificate under
+          <a tal:attributes="href string:${purl}/@@pfas-weight-sets"
+             style="color:var(--s-primary)">Weight Sets</a> first.
+        </p>
+        <div class="fld"><label>Notes</label>
+          <input type="text" name="notes"/></div>
 
         <table class="wp-table">
           <tr>
@@ -96,8 +122,17 @@
             <th>Deviation</th>
             <th>Pass?</th>
           </tr>
-          <tal:each tal:repeat="wp view/weight_points" tal:define="i repeat/wp/index">
-            <tr>
+          <!-- `i` is defined on the <tr>, NOT on the repeat element. TAL executes
+               tal:define BEFORE tal:repeat on the same tag, so `repeat/wp` does
+               not exist yet there and the page raises
+                   LocationError: (RepeatDictWrapper, 'wp')
+               This 500'd the Balance Verification Log for every selected balance
+               from the day it was written. It was invisible because the whole
+               form sits inside `tal:condition="unit"` and `facility_units` held
+               zero rows, so no balance could be selected — the same latency as
+               the §40 CoA link. Found by registering the first balance. -->
+          <tal:each tal:repeat="wp view/weight_points">
+            <tr tal:define="i repeat/wp/index">
               <td><strong tal:content="python:wp[1]">10 mg</strong></td>
               <td style="color:var(--s-secondary)">
                 ±<tal:t tal:replace="python:wp[2]"/>g
@@ -140,6 +175,16 @@
                   tal:content="python:'PASS' if v['passed'] else 'FAIL'"></span>
             <span style="font-size:11px;color:var(--s-secondary)"
                   tal:content="python:v.get('notes','')"></span>
+          </div>
+          <div class="traced" style="margin-bottom:6px">
+            <tal:with tal:condition="v/weight_set_label">
+              Performed with weight set
+              <strong tal:content="v/weight_set_label">WS-001</strong>
+            </tal:with>
+            <span tal:condition="not:v/weight_set_label" class="hint-bad">
+              No reference weight set recorded &mdash; this verification traces to
+              nothing and blocks release for any work it supports.
+            </span>
           </div>
           <table class="history-table">
             <tr><th>Nominal</th><th>Actual (g)</th><th>Deviation (g)</th><th>Tol (g)</th><th>Result</th></tr>

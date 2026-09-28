@@ -324,6 +324,28 @@ class PFASTemperatureLogView(BrowserView):
         return _portal(self.context).absolute_url()
 
 
+def _weight_set_label(weight_set_id):
+    """The set's human identifier, for a reader of the log.
+
+    A verification is signed off by someone who knows the set as `WS-001`, not by
+    its internal row id. The pipette history first rendered
+    `(c["weight_set_id"] or "")[:8]` -- a truncated uuid, which identifies the set
+    to nobody and cannot be told apart from a different set sharing a prefix. One
+    helper so the balance log and the pipette log cannot drift.
+    """
+    if not weight_set_id:
+        return u""
+    ws = db.get_weight_set(weight_set_id)
+    if ws is None:
+        # Not blanked: a record pointing at a set that no longer exists is
+        # precisely the traceability break the release gate reports, so the log
+        # has to say so rather than look empty.
+        return u"unknown set %s" % weight_set_id
+    label = ws.get("set_id") or weight_set_id
+    cls = ws.get("weight_class") or u""
+    return u"%s (%s)" % (label, cls) if cls else label
+
+
 class PFASBalanceLogView(BrowserView):
     """Balance verification entry and history."""
     _template = ViewPageTemplateFile("templates/facility_balance.pt")
@@ -362,6 +384,10 @@ class PFASBalanceLogView(BrowserView):
             verified_date=f.get("verified_date", ""),
             points=points,
             notes=f.get("notes") or None,
+            # `or None` deliberately: an empty string is not NULL, so a traceless
+            # row would be counted as traced by any `weight_set_id IS NOT NULL`
+            # query. Same idiom as the pipette handler.
+            weight_set_id=(f.get("weight_set_id", "").strip() or None),
         )
 
     def unit(self):
@@ -371,6 +397,9 @@ class PFASBalanceLogView(BrowserView):
     def balance_units(self):
         return [u for u in db.list_units()
                 if u["unit_type"] in ("balance_analytical", "balance_prep")]
+
+    def weight_sets(self):
+        return db.list_weight_sets()
 
     def weight_points(self):
         unit = self.unit()
@@ -392,7 +421,10 @@ class PFASBalanceLogView(BrowserView):
         unit = self.unit()
         if not unit:
             return []
-        return db.list_balance_verifications(unit["id"])
+        rows = db.list_balance_verifications(unit["id"])
+        for r in rows:
+            r["weight_set_label"] = _weight_set_label(r.get("weight_set_id"))
+        return rows
 
     def portal_url(self):
         return _portal(self.context).absolute_url()
@@ -665,6 +697,7 @@ class PFASPipetteCalibrationView(BrowserView):
         for r in rows:
             due = r.get("due_date") or ""
             r["expired"] = bool(due and due < today)
+            r["weight_set_label"] = _weight_set_label(r.get("weight_set_id"))
         return rows
 
     def in_force(self):

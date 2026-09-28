@@ -177,9 +177,12 @@
       inp.setAttribute('data-lot-default', '1');
       if (inp.parentNode && !inp.parentNode.querySelector('.lot-default-hint')) {
         var hint = document.createElement('span');
-        hint.className = 'lot-default-hint';
-        hint.textContent = 'most recent' +
-          (d.expiry_date ? ' · exp ' + d.expiry_date : '');
+        var bad = d.gate_ok === false;
+        hint.className = 'lot-default-hint' + (bad ? ' lot-hint-bad' : '');
+        hint.textContent = bad
+          ? '\u26a0 most recent, but blocks release: '
+            + ((d.gate_problems || []).join('; ') || 'traceability incomplete')
+          : 'most recent' + (d.expiry_date ? ' · exp ' + d.expiry_date : '');
         inp.parentNode.appendChild(hint);
       }
     });
@@ -195,9 +198,23 @@
       var sub   = item.expiry_date ? 'exp: ' + item.expiry_date
                 : (item.supplier ? item.supplier : '');
       var div = document.createElement('div');
-      div.className = 'lot-ac-item';
+      /* The gate verdict travels WITH the offer (GAPS §33.11). A lot in date and
+       * unexhausted can still block release, and the analyst is the person who can
+       * do something about it — at the bench, before the run, not at data review.
+       * Annotated rather than hidden: someone holding the physical bottle who
+       * cannot find it in the list learns nothing and works around the system. */
+      var blocked = item.gate_ok === false;
+      div.className = 'lot-ac-item' + (blocked ? ' lot-blocked' : '');
+      var warn = '';
+      if (blocked) {
+        var reasons = (item.gate_problems || []);
+        warn = '\x3cspan class="lot-ac-warn"\x3e\u26a0 blocks release: '
+             + _esc(reasons.length ? reasons.join('; ') : 'traceability incomplete')
+             + '\x3c/span\x3e';
+      }
       div.innerHTML = '\x3cspan\x3e' + _esc(label) + '\x3c/span\x3e'
-        + (sub ? ' \x3cspan class="lot-ac-sub"\x3e' + _esc(sub) + '\x3c/span\x3e' : '');
+        + (sub ? ' \x3cspan class="lot-ac-sub"\x3e' + _esc(sub) + '\x3c/span\x3e' : '')
+        + warn;
       div.addEventListener('mousedown', function(e) {
         e.preventDefault();
         inp.value = label;

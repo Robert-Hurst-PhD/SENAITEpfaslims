@@ -321,6 +321,19 @@ def _connect():
     return conn
 
 
+# A sqlite3.Row may only be subscripted with an int or a BYTE string. This module
+# has `unicode_literals`, so every `row["col"]` in it passes a unicode key and
+# raises
+#
+#     IndexError: Index must be int or string
+#
+# Almost every function here happens to do `dict(row)` first, which is why only
+# two sites ever carried the defect -- `list_balance_verifications` and
+# `_refresh_study_status` -- and both were unreachable until the first balance
+# verification and the first temperature study existed. Convert to a dict before
+# reading columns; do not reach for `b"col"`.
+
+
 # Columns added to tables that already shipped. CREATE TABLE IF NOT EXISTS cannot
 # add a column to an existing database, so these are applied explicitly and
 # idempotently — an instance that has been collecting balance verifications must
@@ -557,7 +570,8 @@ def save_study_point(study_id, time_point, sensor_reading, nist_reading,
             "SELECT tolerance FROM temperature_studies WHERE id=?", (study_id,)
         ).fetchone()
         if study and deviation is not None:
-            passed = 1 if abs(deviation) <= float(study["tolerance"]) else 0
+            # dict() first -- a unicode key on a Row raises; see _connect.
+            passed = 1 if abs(deviation) <= float(dict(study)["tolerance"]) else 0
         conn.execute("""
             UPDATE temperature_study_points
             SET sensor_reading=?, nist_reading=?, deviation=?, passed=?, recorded_at=?
@@ -572,10 +586,11 @@ def _refresh_study_status(conn, study_id):
         "SELECT passed FROM temperature_study_points WHERE study_id=?",
         (study_id,)
     ).fetchall()
-    filled = [p for p in pts if p["passed"] is not None]
+    # dict() first: a unicode key on a sqlite3.Row raises -- see _connect.
+    filled = [v for v in (dict(p)["passed"] for p in pts) if v is not None]
     if len(filled) < 5:
         status = "pending"
-    elif all(p["passed"] == 1 for p in filled):
+    elif all(v == 1 for v in filled):
         status = "pass"
     else:
         status = "fail"
@@ -892,7 +907,7 @@ def list_balance_verifications(unit_id, limit=30):
             pts = conn.execute("""
                 SELECT * FROM balance_verification_points WHERE verification_id=?
                 ORDER BY nominal_g
-            """, (r["id"],)).fetchall()
+            """, (d["id"],)).fetchall()   # d, not r: see _connect
             d["points"] = [dict(p) for p in pts]
             result.append(d)
     return result
@@ -1086,7 +1101,8 @@ def dashboard_summary():
                     ORDER BY log_date DESC, log_time DESC, id DESC
                     LIMIT 1
                 """, (u["id"],)).fetchone()
-            row["last_eyewash"] = dict(ew) if ew else None
+            ew = dict(ew) if ew else None   # unicode key on a Row: see _connect
+            row["last_eyewash"] = ew
             if not ew:
                 row["status"] = "no_data"
             elif not ew["passed"]:
@@ -1102,7 +1118,8 @@ def dashboard_summary():
                     WHERE unit_id=? AND verified_date=?
                     ORDER BY created_at DESC LIMIT 1
                 """, (u["id"], today)).fetchone()
-            row["last_balance"] = dict(bv) if bv else None
+            bv = dict(bv) if bv else None   # unicode key on a Row: see _connect
+            row["last_balance"] = bv
             if not bv:
                 row["status"] = "pending"
             elif bv["passed"]:
