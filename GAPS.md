@@ -4351,3 +4351,148 @@ the guard has failed.**
   `MT-XPR205-4471` balance — all data decisions for the lab, §43.3 and §44.4.
 - Prep equipment stated but not gated (above).
 - Certificate freezing on sign-off, once sign-off exists (§44.5).
+
+---
+
+## 45. A configuration layer the lab admin owns (2026-09-29)
+
+Asked for: *"include these incremental customisations into the system under the
+system admin account so that I can make smaller edits without diving into the pile
+of code."* Agreed shape: a console **and** a registry; all four categories (QC
+limits, vocabularies, document wording, thresholds); and split roles, because
+withdrawing a vocabulary term can orphan records that reference it.
+
+### 45.1 It is the main line of the roadmap, not a side quest
+
+Auditing the registers for what remains produced this unprompted: **the largest
+single class of remaining work is "there is no surface on which to enter the
+data."** GAPS already says so in its own words — *"a data-entry surface, not a
+missing call"* (§31), *"unrecordable, not merely unenforced"* (§33.15), *"nowhere
+to enter"* (§31) — and §14.3 is blunt that the un-entered numbers, *"not any code
+gap, is what blocks production use."* Eleven register items are blocked on a
+missing surface. So this layer is the highest-leverage thing left.
+
+### 45.2 The registry — `src/senaite/pfas/settings_registry.py`
+
+Generalises what `qc_qualification.get_library` and `facility_qc`'s defaults
+arrived at independently: seed in code, the lab's edits in a portal annotation,
+saved edits winning **field by field**, and **only the difference stored** so a
+seed correction still reaches anything never overridden.
+
+**Two read paths, deliberately.** `get()` refuses for a judging setting with no
+value — the 2026-08-03 decision. `describe()` never raises, because a console must
+RENDER the unset rows: they are the ones that block a run, and if `describe()`
+raised they would be the only rows it could not draw.
+
+`register()` refuses a duplicate key (rule 3, enforced where WIRING §1.4 can only
+report) and refuses `judging=True` carrying a seed. Storage is one annotation,
+`senaite.pfas.settings_registry` — **not** `senaite.pfas.lab_settings`, which
+`browser/reagents.py:53` already owns. Not a fourth storage tier either: §7's
+first rule is "one ZODB object → annotate it" and the portal is one object.
+
+### 45.3 The console — `@@pfas-lab-settings`
+
+40 settings declared, every one `linked`: an existing editor owns it and the
+console links there. **The view has no POST branch at all** and a test asserts it
+— a second writer to data another editor owns would recreate the split-key defect
+at a larger scale. A registry-owned key may be created only in the same change as
+the consumer that reads it, so the console can never list a setting that changes
+nothing.
+
+Two settings already read **NOT CONFIGURED** — holding time for FDA 32-PFAS and
+EPA 1633A. That is the state that blocks those batches, and until now nothing told
+a lab *which* criterion was missing.
+
+### 45.4 What the console found on its first day
+
+**`balance_tolerance` and `study_tolerance` were editable and inert.** Both are
+collected by the Unit Registry's Defaults panel, saved, and displayed back, and no
+consumer read either. A lab could loosen or tighten its balance criterion and no
+verification changed its verdict.
+
+The comment beside the one consumer claimed the opposite — *"A weight point with no
+tolerance falls back to the lab's configured default rather than a literal, so one
+place sets it"* — while reading the module constant. **A comment asserting a fix
+that was never made is harder to catch than no comment at all.**
+
+Fixed and proven live on a deviation of 0.003 g, which sits between the seed and a
+loosened setting:
+
+    seed 0.001        -> passed=0
+    lab sets 0.005    -> passed=1   (the same reading)
+    point's own 0.001 -> passed=0   (per-point precedence preserved)
+
+No behaviour change on this instance today — the value is not overridden and the
+facility tables are empty. The change is that the field now works when the lab
+sets it.
+
+### 45.5 Three defects in the register's own instruments
+
+- **`registry.xml` ships four dead settings.** `senaite.pfas.instrument_watch_dir`,
+  `report_output_dir`, `default_method`, `ccv_frequency_override` — **nothing reads
+  any of them** (verified repo-wide). They appear editable in Plone's control panel
+  and change nothing, and `ccv_frequency_override` reads like it changes QC
+  behaviour. `audit_configurable` reports DEAD 0 because its reachability analysis
+  covers the method-profile JSON only. Decide per record: wire or delete.
+- **`CONFIG_AUDIT.md` had drifted** — 108 keys / 96 values committed against 118 /
+  107 live — because GAPS' verification chain regenerates `WIRING.md` but runs the
+  audit with `--strict`, which writes nothing. Add `--format md > CONFIG_AUDIT.md`
+  to that chain.
+- **`UNIT_TYPES` left the register silently.** `_looks_like_lab_table` inspects a
+  15-line window from the opening brace, and the `("pipette", "Pipette")` row added
+  in §38 pushed its lab signal out of range. A real finding disappeared and nothing
+  noticed. The window heuristic is its own fix.
+
+### 45.6 I nearly disabled the audit, and only the count showed it
+
+Excluding `_REGISTRY = {}` by widening the *match* pattern with a negative
+lookahead dropped the hardcoded count **109 → 13**: most real tables open a brace
+and put their contents on the NEXT line, so the lookahead's end-of-line
+alternative excluded nearly all of them. Narrowed to a same-line empty pair; 108 →
+107, removing exactly the one false positive.
+
+`tests/test_audit_hardcoded_hints.py` now pins the scan by BEHAVIOUR on
+representative line shapes rather than by a total, because a total changes
+legitimately whenever the code does and a test that must be edited after every
+real change stops being read.
+
+### 45.7 The comment-scanning trap, fifth occurrence
+
+The comment written to explain *which* badge colours are global names
+`.badge-custom`, and the scan for a page-local redefinition matched the prose.
+Comments are stripped before scanning. Five occurrences (§40.1, §41.6, the ISO-date
+test, `test_rule_toggles`, and this) make it a standing rule rather than bad luck:
+**prose about a name contains the name.**
+
+### 45.8 Corrections to my own audit of the authorisation gap
+
+Two things I asserted and had to withdraw after checking properly:
+`browser/projects.py:44,465` and `prep_logbooks.py:26,403` **do** call
+`perms.require_manager`, and `lims_setup.py` has **zero** POST handling. My greps
+matched patterns those modules do not use. The real ungated list is seven surfaces
+— the three `facility_qc` config views, `import_studio`, `reagents` (incl. expiry
+defaults), `prepared_standards`, `deviations`.
+
+And the correction that mattered most: **five of `facility_qc`'s ten views are the
+daily bench logs.** Tightening the module wholesale — which "fix the ungated
+surfaces" invited — would have stopped the lab recording temperatures.
+
+### Still open
+
+- **Phase 3, authorisation.** Two permissions over existing roles, applied per
+  ACTION because one view mixes a lab threshold (`save_defaults`) with a structural
+  secret (`save_api_key`). Baseline captured: 68 registrations, 60 at `zope2.View`.
+  The bench logging POSTs stay open, explicitly.
+- **Never re-run the GenericSetup profile on this instance.** Two independent
+  reasons, both verified: `setuphandlers.setup_handler` resets EXISTING Methods,
+  AnalysisServices and SampleTypes from CSV seeds (`:85-88`, `:99-101`, `:126-128`)
+  — the seed-clobbers-override defect this registry exists to prevent, sitting in
+  the installer; and `:291` unpacks 3 values from `QC_REF_SPEC`'s 5-tuples, so a
+  reinstall raises `ValueError: too many values to unpack`. **Two separate defects
+  to file.** The permission grant goes through an idempotent `bin/instance run`
+  script.
+- Vocabularies remain code-only, so the console's Vocabulary group is empty and
+  says so. Retire-not-delete with usage counts is Phase 6.
+- **CLAUDE.md §5 still describes ten workspaces** when the 2026-09-18 decision was
+  two landings, which leaves §9's "which workspace does it live in?" unanswerable.
+
