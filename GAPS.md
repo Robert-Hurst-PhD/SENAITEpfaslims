@@ -3968,3 +3968,95 @@ QC, reagents, prep standards and facility units all HTTP 200.
 - `IReagent` still has no parentage field.
 - The facility database is empty again by design, so §41.2 and §41.3's code paths are
   once more unexercised in production until the lab records its first verification.
+
+---
+
+## 42. A prepared standard's certificate now names the balance (2026-09-28)
+
+§37.5, item 4 on the list. The Certificate of Preparation carried this sentence:
+
+> Equipment used (balance, pipettes and their calibration status) is *not recorded
+> against this lot* — see the prep logbook entry named above.
+
+A prepared standard's assigned value rests on a **mass and a volume**. Under ISO 17025
+§6.5 the balance and the pipette that measured them are part of its traceability, so a
+certificate that cannot name them cannot substantiate the value it carries. Pointing at
+a logbook is not traceability; it is a promise that traceability exists somewhere else.
+
+### The consumer was built before the producer
+
+Deliberately, and it is the §39 lesson applied in the right order: the certificate
+section was written first, so the field had a reader the day it existed rather than
+accumulating data nothing looked at.
+
+`build_equipment(portal, rec)` resolves each recorded unit through
+**`facility_qc.equipment_provenance`** — the same calibration walk the release gate
+uses for an extraction. One function, so the chain a prep certificate prints is the
+chain release checks. A second implementation would be a second answer.
+
+**`as_of` is the PREPARED date, not today.** A standard weighed on a balance that was in
+calibration that morning stays defensible after the calibration lapses; judging against
+today would condemn correct historical work. Same reason `build_parentage` takes
+`used_on`.
+
+Stored as `[{"unit_id", "role"}]` in `senaite.pfas.prepstd.equipment`, referencing the
+Facility QC registry rather than copying names and certificate numbers onto the lot —
+a copy rots, a reference resolves.
+
+### Three cases, verified live
+
+    AUDIT2-WITH-EQUIP  prepared 2026-09-28
+      Analytical balance -> balance_verification, weight_set
+         AUDIT2-WS, Northeast Metrology, cert NML-2026-9001
+      Pipette 1000 uL    -> calibration 2026-07-01 by Pipette Services Ltd
+                            (cert PS-2026-55), due 2026-10-01
+    AUDIT2-NO-EQUIP    -> "No equipment recorded against this lot"
+    AUDIT2-STALE-CAL   prepared 2026-09-20, same balance
+      -> PROBLEMS: no balance verification for 2026-09-20, the day it was used
+         and the certificate prints the banner, on the document
+
+The third case is the one that matters: the certificate does not go quiet when the
+chain breaks, it states the break — the same treatment §36 gave an unresolvable parent.
+
+### 42.1 The first version dated the pipette without saying who calibrated it
+
+It printed `calibration 2026-07-01, due 2026-10-01`. For an **external** check the
+provider and its certificate number *are* the traceability endpoint — the role the
+metrology laboratory plays for a weight set — so a row that omits them asserts the
+pipette was calibrated while withholding by whom. Now named.
+
+### 42.2 The bench path inherits equipment instead of asking again
+
+An extraction stage already collects equipment serial numbers, so a solution prepared
+during it takes them from the page rather than asking the analyst a second time. Each
+serial is resolved against the Facility QC registry with `unit_by_serial`, and **only a
+serial that resolves is recorded** — an unregistered one has no calibration chain to
+follow, so keeping it would put a name on the certificate with nothing behind it.
+
+### 42.3 The `status` trap, avoided by construction
+
+`_populate_obj` writes the annotation only when the caller supplied the key, and the
+handler sets it only when the form posts `equipment_posted`. Without both, any save
+through a path that does not post the field would wipe the record — which is exactly
+how an unconditional `status` assignment once resurrected exhausted lots. Verified:
+
+    equipment survives a save that does not post it: yes
+
+### Verification
+
+31/31 test files (`test_equipment_chain.py` now 16 tests), `audit_configurable
+--strict` exit 0. Form renders the pickers and the POST records both units. Every
+`AUDIT*` record removed: 11 prepared standards and 0 rows in all facility tables.
+
+### Still open
+
+- **as-of-date expiry** — the last item on the list. `_is_expired` takes `as_of` and
+  nothing passes it. Before changing it, the WS-0005 gate verdict has to be captured
+  and diffed, and one question settled in code: which date is the USE date — the
+  worksheet's, the FM-ENV-251 extraction date, or the analysis date. A lot in date on
+  one and expired on another is the case that will show up.
+- §33.3 certificates generated before §36 still print an unresolvable parent as fact.
+- `IReagent` has no parentage field.
+- Prep equipment is stated on the certificate but does **not** gate release. Adding it
+  to `parentage_problems`/`gate_problems` would change release behaviour on historical
+  data and is a separate decision for the QA manager.

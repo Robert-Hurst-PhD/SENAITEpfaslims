@@ -657,7 +657,13 @@
                   sol_name:s.name, sol_lot:s.lot, sol_conc:s.conc,
                   sol_volume:s.volume_ml, sol_storage:s.storage||'',
                   sol_expiry:s.expiry||'', sol_analyst:s.analyst||'',
-                  parent_reagents_json:JSON.stringify(parents)};
+                  parent_reagents_json:JSON.stringify(parents),
+                  /* The stage's equipment serials, so the solution records what it
+                     was MADE WITH without asking the analyst a second time — the
+                     information is already on this page. The handler resolves each
+                     serial against the Facility QC registry. GAPS §37.5. */
+                  equipment_posted:'1',
+                  equipment_sns_json:JSON.stringify(equipmentSNs || {})};
     Object.keys(fields).forEach(function(k) {
       var inp = document.createElement('input');
       inp.type = 'hidden'; inp.name = k; inp.value = fields[k]||'';

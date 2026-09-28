@@ -344,6 +344,36 @@ class PFASExtractionGuideView(BrowserView):
         url = "{0}?batch_uid={1}&ok=Pedigree+saved".format(self._self_url(), b.UID())
         return self._redirect(url)
 
+    def _resolve_equipment(self, sns_json):
+        """[{unit_id, role}] for each stage equipment serial that is registered.
+
+        `role` is the label the stage used ("Analytical balance", "Pipette 1000 uL"),
+        which is what the analyst sees, so the certificate reads the same way the
+        bench form did.
+        """
+        try:
+            sns = json.loads(sns_json or "{}") or {}
+        except (ValueError, TypeError):
+            return []
+        try:
+            from senaite.pfas import facility_qc as fq
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("equipment resolution unavailable: %s", exc)
+            return []
+        out = []
+        for label, serial in sns.items():
+            serial = (serial or "").strip()
+            if not serial:
+                continue
+            try:
+                unit = fq.unit_by_serial(serial)
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("unit_by_serial(%r): %s", serial, exc)
+                continue
+            if unit:
+                out.append({"unit_id": unit["id"], "role": label})
+        return out
+
     def _handle_prepare_solution(self):
         """Record a solution prepared at the bench as a PREPARED STANDARD.
 
@@ -425,6 +455,15 @@ class PFASExtractionGuideView(BrowserView):
             "parent_reagents":  parents,
             "analyte_concentrations": [],
         }
+        # What it was MADE WITH. The stage already collects equipment serial
+        # numbers, so the solution inherits them rather than asking the analyst
+        # again -- and the serial is resolved to a REGISTERED unit, because only a
+        # registered one has a calibration chain the certificate can follow.
+        # A serial that resolves to nothing is dropped here and reported by the
+        # certificate as equipment it cannot substantiate, not silently kept.
+        if f.get("equipment_posted"):
+            rec["equipment"] = self._resolve_equipment(
+                f.get("equipment_sns_json", "{}"))
         uid = _save_prepstd(self._portal(), rec)
 
         # The label shows the expiry actually in force, which may be earlier than

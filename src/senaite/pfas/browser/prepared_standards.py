@@ -34,6 +34,13 @@ logger = logging.getLogger("senaite.pfas.browser.prepared_standards")
 
 _ANN_PARENTS  = u"senaite.pfas.prepstd.parent_reagents"
 _ANN_ANALYTES = u"senaite.pfas.prepstd.analyte_concentrations"
+# The equipment a lot was MADE WITH. A prepared standard's assigned value rests on
+# a mass and a volume, so under ISO 17025 §6.5 the balance and pipette that
+# measured them are part of its traceability -- and the certificate could not name
+# them (GAPS §37.5). Stored as `[{"unit_id": ..., "role": ...}]`, referencing the
+# Facility QC unit registry, so the calibration chain is RESOLVED at read time by
+# facility_qc.equipment_provenance rather than copied onto the lot and left to rot.
+_ANN_EQUIPMENT = u"senaite.pfas.prepstd.equipment"
 
 CERT_DIR = os.environ.get("PFAS_CERT_DIR", "/data/coa/certs")
 
@@ -136,6 +143,7 @@ def _obj_to_dict(obj):
         "notes":           obj.notes or u"",
         "parent_reagents": _get_ann(obj, _ANN_PARENTS, []),
         "analyte_concentrations": _get_ann(obj, _ANN_ANALYTES, []),
+        "equipment": _get_ann(obj, _ANN_EQUIPMENT, []),
     }
     # Auto-update expired status (transient read-time only — not written to DB here)
     if d["status"] == STATUS_ACTIVE and _is_expired(d["expiry_date"]):
@@ -182,6 +190,11 @@ def _populate_obj(obj, data):
     # Store nested data in annotations
     _set_ann(obj, _ANN_PARENTS, data.get("parent_reagents") or [])
     _set_ann(obj, _ANN_ANALYTES, data.get("analyte_concentrations") or [])
+    # Only when the caller supplied it. The same trap as `status` above: an
+    # unconditional assignment would wipe the equipment record on any edit by a
+    # form that does not post the field.
+    if "equipment" in data:
+        _set_ann(obj, _ANN_EQUIPMENT, data.get("equipment") or [])
 
 
 def _save(portal, data):
@@ -584,6 +597,108 @@ def _render_parentage_html(nodes, depth=0):
     return out
 
 
+def build_equipment(portal, rec):
+    """The calibration chain of everything this lot was MADE WITH, as of the day
+    it was made.
+
+    Returns [{unit_id, role, name, serial, kind, records, problems, warnings}].
+
+    `as_of` is the PREPARED date, not today: a standard weighed on a balance that
+    was in calibration that morning stays defensible after the calibration lapses.
+    Judging against today would condemn correct historical work -- the same reason
+    `used_on` exists in build_parentage.
+
+    One function does the calibration walk (facility_qc.equipment_provenance), so
+    the chain a prep certificate prints is the chain the release gate walks for an
+    extraction. A second implementation here would be a second answer.
+    """
+    out = []
+    as_of = str(rec.get("prepared_date") or u"")[:10]
+    try:
+        from senaite.pfas import facility_qc as fq
+    except Exception as exc:                                    # noqa: BLE001
+        logger.error("equipment chain: facility_qc unavailable: %s", exc)
+        return out
+    for item in rec.get("equipment") or []:
+        unit_id = (item.get("unit_id") or u"").strip()
+        role = item.get("role") or u""
+        if not unit_id:
+            continue
+        try:
+            prov = fq.equipment_provenance(unit_id, as_of)
+        except Exception as exc:                                # noqa: BLE001
+            logger.error("equipment chain for %s: %s", unit_id, exc)
+            continue
+        unit = prov.get("unit") or {}
+        out.append({
+            "unit_id":  unit_id,
+            "role":     role,
+            "name":     unit.get("name") or unit_id,
+            "serial":   unit.get("serial_number") or u"",
+            "kind":     prov.get("kind") or u"",
+            "records":  prov.get("records") or [],
+            "problems": prov.get("problems") or [],
+            "warnings": prov.get("warnings") or [],
+        })
+    return out
+
+
+def equipment_problems(nodes):
+    """Flattened, the way parentage_problems flattens the lot hierarchy."""
+    out = []
+    for n in nodes or []:
+        for prob in n.get("problems") or []:
+            out.append({"unit": n.get("name") or u"", "role": n.get("role") or u"",
+                        "reason": prob})
+    return out
+
+
+def _render_equipment_html(nodes):
+    """Equipment rows for the certificate: what was used, and what its measurement
+    is traceable TO. A row that ends nowhere says so on the document."""
+    if not nodes:
+        return (u'<tr><td colspan="4">No equipment recorded against this lot '
+                u'&mdash; the balance and pipettes used, and their calibration '
+                u'status, cannot be shown. Record them on the prepared-standard '
+                u'form.</td></tr>')
+    rows = u""
+    for n in nodes:
+        traced = []
+        for r in n.get("records") or []:
+            d = r.get("data") or {}
+            if r.get("type") == "weight_set":
+                traced.append(u"weight set {0} &mdash; {1}, cert {2}".format(
+                    d.get("set_id") or u"?", d.get("cal_lab") or u"?",
+                    d.get("cal_cert_number") or u"?"))
+            elif r.get("type") == "balance_verification":
+                traced.append(u"verified {0}".format(d.get("verified_date") or u"?"))
+            elif r.get("type") == "pipette_calibration":
+                # For an EXTERNAL check the provider and its certificate are the
+                # traceability endpoint -- the same role the metrology laboratory
+                # plays for a weight set -- so they have to be named, not just
+                # dated. The first version printed only the dates, which said the
+                # pipette was calibrated without saying by whom.
+                who = u""
+                if (d.get("kind") or u"") == u"external":
+                    who = u" by {0}{1}".format(
+                        d.get("provider") or u"an unnamed provider",
+                        u" (cert {0})".format(d["cert_number"])
+                        if d.get("cert_number") else u"")
+                traced.append(u"calibration {0}{1}, due {2}".format(
+                    d.get("cal_date") or u"?", who, d.get("due_date") or u"?"))
+            elif r.get("type") == "no_calibration_required":
+                traced.append(u"makes no measurement &mdash; no calibration "
+                              u"standard to trace to")
+        cell = u"; ".join(traced) or u"&mdash;"
+        if n.get("problems"):
+            cell += (u'<br><span style="color:#8a1c1c">&#9888; '
+                     + u"; ".join(n["problems"]) + u"</span>")
+        rows += u"<tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td></tr>".format(
+            n.get("role") or u"&mdash;", n.get("name") or u"&mdash;",
+            n.get("serial") or u"&mdash;", cell)
+    return rows
+
+
 def _render_cert_html(d, signers=None, portal=None):
     """Return the internal certificate HTML string for a prepared-standard dict.
 
@@ -695,6 +810,28 @@ def _render_cert_html(d, signers=None, portal=None):
             u'measurement uncertainty of its own for this lot '
             u'(ISO 17025 §6.5).')
 
+    # The equipment this lot was MADE WITH, resolved as of the PREPARED date.
+    # Until now the certificate printed a sentence saying equipment "is not
+    # recorded against this lot" and pointed at the logbook -- true, and a gap
+    # (GAPS §37.5): a certificate that cannot name the balance behind its own mass
+    # cannot substantiate the assigned value it carries.
+    equipment = []
+    if portal is not None:
+        try:
+            equipment = build_equipment(portal, d)
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("certificate equipment for %s: %s",
+                         d.get("lot_number"), exc)
+            equipment = []
+    equip_rows = _render_equipment_html(equipment)
+    equip_problems = equipment_problems(equipment)
+    if equip_problems:
+        equip_rows += (
+            u'<tr><td colspan="4" class="pk-banner">'
+            u'&#9888; {0} of the equipment record(s) above do not trace to a '
+            u'calibrated standard for the day this lot was prepared.'
+            u'</td></tr>').format(len(equip_problems))
+
     # GMP: the preparation must be reproducible from the record. Volumes taken
     # come from the parentage rows; the final volume is the lot's own.
     calc_rows = u""
@@ -799,9 +936,17 @@ made from a certified reference material reads down the page.</p>
   <tbody>{calc_rows}</tbody>
 </table>
 <p style="margin-top:0;font-size:11px;color:#555">Made to a final volume of
-<strong>{volume_prepared}</strong>. Equipment used (balance, pipettes and their
-calibration status) is <em>not recorded against this lot</em> &mdash; see the prep
-logbook entry named above.</p>
+<strong>{volume_prepared}</strong>.</p>
+
+<h2 style="font-size:13px;margin-bottom:6px">Equipment used, and what it is traceable to</h2>
+<table>
+  <thead><tr><th>Role</th><th>Unit</th><th>Serial</th>
+             <th>Calibration in force on {prepared_date}</th></tr></thead>
+  <tbody>{equip_rows}</tbody>
+</table>
+<p style="margin-top:0;font-size:11px;color:#555">Calibration is judged as of the
+date this lot was <strong>prepared</strong>, not today: a standard weighed on a
+balance that was in calibration that morning stays defensible afterwards.</p>
 
 <h2 style="font-size:13px;margin-bottom:6px">Metrological traceability (ISO 17025 §6.5)</h2>
 <p style="margin-top:0">{trace_stmt}</p>
@@ -863,6 +1008,7 @@ logbook entry named above.</p>
         cert_id=cert_id,
         trace_stmt=trace_stmt,
         calc_rows=calc_rows,
+        equip_rows=equip_rows,
     )
 
 
@@ -895,6 +1041,22 @@ class PFASPrepStandardsView(BrowserView):
 
     def _portal(self):
         return getToolByName(self.context, "portal_url").getPortalObject()
+
+    def facility_balances(self):
+        """Registered balances, for the equipment picker. The registry is the one
+        Facility QC owns, so a unit named here already has a calibration chain."""
+        return self._facility_units(("balance_analytical", "balance_prep"))
+
+    def facility_pipettes(self):
+        return self._facility_units(("pipette",))
+
+    def _facility_units(self, kinds):
+        try:
+            from senaite.pfas import facility_qc as fq
+            return [u for u in fq.list_units() if u["unit_type"] in kinds]
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("facility units unavailable: %s", exc)
+            return []
 
     def _self_url(self):
         return "{}/@@pfas-prep-standards".format(self.context.absolute_url())
@@ -1030,6 +1192,17 @@ class PFASPrepStandardsView(BrowserView):
             "parent_reagents":  parents,
             "analyte_concentrations": analytes,
         }
+        # Only a form that DECLARES it owns the equipment field may set it.
+        # Without the marker, saving through any other path would wipe the record
+        # -- the same trap that once resurrected exhausted lots via `status`.
+        if f.get("equipment_posted"):
+            equipment = []
+            for key, role in (("equip_balance_unit_id", u"Balance"),
+                              ("equip_pipette_unit_id", u"Pipette")):
+                unit_id = (f.get(key, "") or "").strip()
+                if unit_id:
+                    equipment.append({"unit_id": unit_id, "role": role})
+            data["equipment"] = equipment
         uid = _save(self._portal(), data)
         return self._redirect("{0}?ok=Prepared+standard+saved".format(self._self_url()))
 

@@ -322,6 +322,57 @@ def test_no_unicode_key_on_a_sqlite_row():
         "Convert the row with dict() first." % bad)
 
 
+# ── A prepared standard's own equipment (GAPS §37.5 / §42) ───────────────────
+
+PREPSTD_PY = os.path.join(BROWSER, "prepared_standards.py")
+EXTRACTION_PY = os.path.join(BROWSER, "extraction_guide.py")
+PREPSTD_PT = os.path.join(BROWSER, "templates", "prep_standards.pt")
+
+
+def test_the_certificate_no_longer_says_equipment_is_not_recorded():
+    """It printed 'Equipment used ... is not recorded against this lot' and pointed
+    at the logbook. A certificate that cannot name the balance behind its own mass
+    cannot substantiate the value it carries (ISO 17025 §6.5)."""
+    body = open(PREPSTD_PY).read()
+    assert "not recorded against this lot" not in body, (
+        "the certificate still disclaims its own equipment instead of naming it")
+    assert "Equipment used, and what it is traceable to" in body
+
+
+def test_the_prep_equipment_chain_is_judged_as_of_the_PREPARED_date():
+    """Not today. A standard weighed on a balance that was in calibration that
+    morning stays defensible after the calibration lapses — the same reason
+    build_parentage takes `used_on`."""
+    body = open(PREPSTD_PY).read()
+    fn = body.split("def build_equipment(", 1)[1].split("\ndef ", 1)[0]
+    assert 'rec.get("prepared_date")' in fn, (
+        "build_equipment must resolve the chain as of the prepared date")
+    assert "date.today" not in fn, "judging against today condemns historical work"
+    # One calibration walk, shared with the release gate.
+    assert "equipment_provenance" in fn
+
+
+def test_equipment_is_only_written_by_a_form_that_declares_it():
+    """The `status` trap, avoided: an unconditional write would wipe the equipment
+    record whenever any other path saved the lot."""
+    body = open(PREPSTD_PY).read()
+    assert 'if "equipment" in data:' in body, (
+        "_populate_obj must not set the equipment annotation unconditionally")
+    upsert = body.split("def _handle_upsert(", 1)[1].split("\n    def ", 1)[0]
+    assert 'f.get("equipment_posted")' in upsert
+    assert 'name="equipment_posted"' in open(PREPSTD_PT).read()
+
+
+def test_the_bench_path_inherits_the_stage_equipment_by_serial():
+    """The stage already collects serials, so a solution prepared during it must
+    not ask again — and only a REGISTERED serial gets recorded, because only a
+    registered unit has a calibration chain to follow."""
+    body = open(EXTRACTION_PY).read()
+    fn = body.split("def _resolve_equipment(", 1)[1].split("\n    def ", 1)[0]
+    assert "unit_by_serial" in fn
+    assert "if unit:" in fn, "an unregistered serial must not be recorded as traced"
+
+
 if __name__ == "__main__":
     ok = fail = 0
     for name, fn in sorted(globals().items()):

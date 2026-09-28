@@ -299,6 +299,38 @@
                 <input type="text" name="storage_location" id="psStorage" />
               </div>
             </div>
+            <!-- Equipment. A prepared standard's assigned value rests on a mass
+                 and a volume, so under ISO 17025 §6.5 the balance and pipette that
+                 measured them belong to its traceability. The certificate used to
+                 print "equipment is not recorded against this lot" and point at the
+                 logbook (GAPS §37.5); now it names them and resolves each one's
+                 calibration as of the PREPARED date. `equipment_posted` marks that
+                 this form owns the field, so a form that does not post it cannot
+                 wipe the record. -->
+            <input type="hidden" name="equipment_posted" value="1" />
+            <div class="form-row">
+              <div class="form-field">
+                <label>Balance used</label>
+                <select name="equip_balance_unit_id" id="psBalance">
+                  <option value="">&#8212; not recorded &#8212;</option>
+                  <option tal:repeat="b view/facility_balances"
+                          tal:attributes="value b/id"
+                          tal:content="string:${b/name} (${b/serial_number})">Bal</option>
+                </select>
+                <span class="form-hint" tal:condition="not:view/facility_balances">
+                  No balance registered under Facility QC &#8594; Units.
+                </span>
+              </div>
+              <div class="form-field">
+                <label>Pipette used</label>
+                <select name="equip_pipette_unit_id" id="psPipette">
+                  <option value="">&#8212; not recorded &#8212;</option>
+                  <option tal:repeat="p view/facility_pipettes"
+                          tal:attributes="value p/id"
+                          tal:content="string:${p/name} (${p/serial_number})">Pip</option>
+                </select>
+              </div>
+            </div>
             <div class="form-row">
               <div class="form-field full">
                 <label>Expiry Justification (required if not default)</label>
