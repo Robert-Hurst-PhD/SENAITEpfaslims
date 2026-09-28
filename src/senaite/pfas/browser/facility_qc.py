@@ -149,7 +149,11 @@ class PFASFacilityUnitsView(BrowserView):
             "temp_max": f.get("temp_max") or None,
             "humidity_min": f.get("humidity_min") or None,
             "humidity_max": f.get("humidity_max") or None,
-            "study_tolerance": f.get("study_tolerance", "1.0"),
+            # The lab-wide default, not a literal: the Unit Registry collects
+            # `study_tolerance` in its Defaults panel and every consumer used to
+            # hardcode 1.0, so that field was inert too.
+            "study_tolerance": (f.get("study_tolerance")
+                                or _facility_defaults().get("study_tolerance")),
             "weight_points_json": weight_points,
             "extra_config_json": json.dumps(extra) if extra else None,
             "active": True,
@@ -262,7 +266,8 @@ class PFASTemperatureLogView(BrowserView):
             nist_serial=f.get("nist_serial", ""),
             nist_cert_date=f.get("nist_cert_date") or None,
             study_date=f.get("study_date") or None,
-            tolerance=float(f.get("tolerance") or unit.get("study_tolerance") or 1.0),
+            tolerance=float(f.get("tolerance") or unit.get("study_tolerance")
+                            or _facility_defaults().get("study_tolerance")),
             notes=f.get("notes") or None,
         )
 
@@ -388,6 +393,8 @@ class PFASBalanceLogView(BrowserView):
             # row would be counted as traced by any `weight_set_id IS NOT NULL`
             # query. Same idiom as the pipette handler.
             weight_set_id=(f.get("weight_set_id", "").strip() or None),
+            # So the lab-wide balance_tolerance actually reaches the verdict.
+            portal=_portal(self.context),
         )
 
     def unit(self):

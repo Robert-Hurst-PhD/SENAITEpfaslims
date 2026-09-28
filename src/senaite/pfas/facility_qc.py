@@ -851,18 +851,30 @@ def equipment_provenance(unit_id, as_of):
 
 
 def save_balance_verification(unit_id, operator, verified_date, points, notes=None,
-                              weight_set_id=None):
-    """points: list of {nominal_g, label, actual_g, tolerance_g}"""
+                              weight_set_id=None, portal=None):
+    """points: list of {nominal_g, label, actual_g, tolerance_g}
+
+    `portal` is how the lab-wide `balance_tolerance` reaches the pass/fail
+    decision. Without it the seed applies, which is the same documented headless
+    degradation `get_facility_defaults(portal=None)` already has for the worker
+    and the migration scripts.
+    """
     ensure_schema()
+    # The tolerance for a weight point that carries none of its own. This USED to
+    # read the module constant while the Unit Registry collected, saved and
+    # displayed a lab-wide `balance_tolerance` that nothing consumed -- and the
+    # comment below claimed it was configured. So the field was editable and
+    # inert: a lab could loosen or tighten it and no balance changed its verdict.
+    # Found by the Lab Settings console, which is what it is for.
+    tol_default = get_facility_defaults(portal).get(
+        "balance_tolerance") or BALANCE_TOLERANCE_DEFAULT
     now = _now()
     all_passed = True
     processed = []
     for p in points:
         actual = _f(p.get("actual_g"))
         nominal = float(p["nominal_g"])
-        # A weight point with no tolerance falls back to the lab's configured
-        # default rather than a literal, so one place sets it.
-        tol = float(p.get("tolerance_g") or BALANCE_TOLERANCE_DEFAULT)
+        tol = float(p.get("tolerance_g") or tol_default)
         dev = round(actual - nominal, 6) if actual is not None else None
         passed = (1 if dev is not None and abs(dev) <= tol else 0) if dev is not None else None
         if passed == 0:

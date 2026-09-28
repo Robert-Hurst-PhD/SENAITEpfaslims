@@ -218,6 +218,109 @@ def test_neither_log_shows_a_truncated_internal_id():
             "browser/facility_qc._weight_set_label" % os.path.basename(path))
 
 
+# ── The lab-wide tolerance must reach the verdict (dead config, now live) ─────
+
+def _portal_with_annotations():
+    """A fake portal plus the injected zope.annotation the module expects, so the
+    lab-wide OVERRIDE path is genuinely exercised and not just the seed."""
+    import types
+
+    def _fake_iannotations(obj):
+        if not hasattr(obj, "_fake_annotations"):
+            obj._fake_annotations = {}
+        return obj._fake_annotations
+
+    if "zope.annotation.interfaces" not in sys.modules:
+        iface = types.ModuleType("zope.annotation.interfaces")
+        iface.IAnnotations = _fake_iannotations
+        ann = types.ModuleType("zope.annotation")
+        ann.interfaces = iface
+        zope = sys.modules.get("zope") or types.ModuleType("zope")
+        zope.annotation = ann
+        sys.modules["zope"] = zope
+        sys.modules["zope.annotation"] = ann
+        sys.modules["zope.annotation.interfaces"] = iface
+
+    class _Portal(object):
+        pass
+
+    return _Portal()
+
+
+def _one_point_verdict(fq, unit, date_, portal, own_tol=None):
+    """A single weight point deviating by 0.003 g. Returns (tolerance, passed)."""
+    vid = fq.save_balance_verification(
+        unit_id=unit, operator="tol", verified_date=date_,
+        points=[{"nominal_g": 10.0, "label": "10 g", "actual_g": 10.003,
+                 "tolerance_g": own_tol}],
+        portal=portal)
+    rows = fq.list_balance_verifications(unit)
+    for r in rows:
+        if r["id"] == vid:
+            pt = r["points"][0]
+            return pt["tolerance_g"], pt["passed"]
+    raise AssertionError("verification not read back")
+
+
+def test_the_lab_wide_balance_tolerance_decides_the_verdict():
+    """It did not. The Unit Registry collected, saved and displayed
+    `balance_tolerance` while the only consumer read the module constant -- so the
+    field was editable and inert, and the code comment beside it claimed the
+    opposite. A lab could loosen or tighten its balance criterion and no
+    verification changed its verdict. Found by the Lab Settings console.
+    """
+    fq = _fresh_module()
+    portal = _portal_with_annotations()
+    unit = _balance(fq)
+    seed = fq._defaults_seed()["balance_tolerance"]
+    assert seed == 0.001, "seed moved; the deviation below assumes 0.001"
+
+    tol, passed = _one_point_verdict(fq, unit, "2026-09-29", portal)
+    assert (tol, passed) == (seed, 0), (tol, passed)
+
+    fq.save_facility_defaults(portal, {"balance_tolerance": 0.005})
+    tol2, passed2 = _one_point_verdict(fq, unit, "2026-09-30", portal)
+    assert tol2 == 0.005, (
+        "the configured tolerance did not reach the verdict; it is %s" % tol2)
+    assert passed2 == 1, "the same reading must pass under the looser setting"
+
+
+def test_a_weight_point_with_its_own_tolerance_still_wins():
+    """The lab-wide value is the fallback for a point that carries none, not an
+    override of the per-point tolerances a calibrated set defines."""
+    fq = _fresh_module()
+    portal = _portal_with_annotations()
+    unit = _balance(fq)
+    fq.save_facility_defaults(portal, {"balance_tolerance": 0.5})
+    tol, passed = _one_point_verdict(fq, unit, "2026-09-29", portal,
+                                     own_tol=0.001)
+    assert tol == 0.001, "a point's own tolerance was overridden by the default"
+    assert passed == 0
+
+
+def test_a_headless_caller_still_gets_the_seed():
+    """`portal=None` is the documented degradation for the worker and migration
+    scripts, matching get_facility_defaults(None)."""
+    fq = _fresh_module()
+    unit = _balance(fq)
+    tol, passed = _one_point_verdict(fq, unit, "2026-09-29", None)
+    assert tol == fq._defaults_seed()["balance_tolerance"]
+    assert passed == 0
+
+
+def test_the_verdict_does_not_read_the_module_constant_directly():
+    """Static counterpart: the constant may be the SEED, but the pass/fail line
+    must go through the configured value."""
+    with open(MODULE) as fh:
+        body = fh.read()
+    fn = body.split("def save_balance_verification(", 1)[1].split("\ndef ", 1)[0]
+    assert "get_facility_defaults" in fn, (
+        "the verdict no longer resolves the lab-wide tolerance")
+    assert "p.get(\"tolerance_g\") or BALANCE_TOLERANCE_DEFAULT" not in fn, (
+        "the pass/fail fallback reads the module constant again, which is the "
+        "defect: the field becomes editable and inert")
+
+
 # ── The py2 sqlite3.Row key trap ─────────────────────────────────────────────
 
 def _fetch_bound_names(tree):
