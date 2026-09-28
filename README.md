@@ -178,6 +178,4 @@ PARTICULAR PURPOSE. See the GNU General Public License for more details.
 **Why GPLv2 and not something permissive.** This is a Plone add-on that imports
 `senaite.core`, `senaite.lims` and `senaite.storage` directly, and all three are
 GPLv2. It is therefore a derivative work, so a permissive licence is not
-available to offer. The repository briefly carried an MIT `LICENSE` that arrived
-from GitHub's repository-creation dialog rather than from a decision; it has been
-replaced. See `DECISIONS.md`, 2026-09-25.
+available to offer.
