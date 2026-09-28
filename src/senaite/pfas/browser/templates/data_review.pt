@@ -719,19 +719,49 @@
 
       <tal:tree tal:define="t view/get_traceability_tree">
 
-        <!-- unresolved warning -->
+        <!-- Unresolved lots. Each entry now carries the REASON it blocks, and the
+             reason is shown: the entries added for expiry-at-use (§43) name a lot
+             that IS in inventory and in date today, so listing it with the old
+             blanket advice ("enter it in the inventory") sent the reviewer to fix
+             something that was not wrong. Entries written before §41 carry no
+             `reason`, hence the `|nothing` default. -->
         <tal:unresl tal:condition="t/unresolved|nothing">
           <div class="tree-warn-box">
             <i class="fas fa-exclamation-triangle"></i>
-            <strong>Unresolved lots:</strong>
-            <tal:ur tal:repeat="u t/unresolved">
-              <span tal:content="u/lot">lot</span>
-              (<tal:src tal:replace="u/source|nothing">src</tal:src>)
-              <tal:sep tal:condition="not:repeat/u/end">, </tal:sep>
-            </tal:ur>
-            — Ensure reagent/standard lot numbers are entered in the inventory.
+            <strong>Traceability blocked:</strong>
+            <ul style="margin:6px 0 0 18px;padding:0">
+              <tal:ur tal:repeat="u t/unresolved">
+                <li>
+                  <span tal:content="u/lot">lot</span>
+                  <tal:src tal:condition="u/source|nothing">
+                    (<tal:s tal:replace="u/source">src</tal:s>)
+                  </tal:src>
+                  <!-- Every entry carries a reason (see _build_traceability_tree),
+                       so there is no fallback branch here and no `not:...|nothing`
+                       precedence to get wrong. `|nothing` remains only so a stored
+                       tree written by an older revision still renders. -->
+                  <tal:why tal:condition="u/reason|nothing">
+                    &mdash; <tal:r tal:replace="u/reason">reason</tal:r>
+                  </tal:why>
+                </li>
+              </tal:ur>
+            </ul>
           </div>
         </tal:unresl>
+
+        <!-- Checks that could not be PERFORMED, as distinct from checks that
+             failed. Reported rather than enforced (§43.1), and reported here
+             rather than nowhere: an unenforceable check that is invisible looks
+             exactly like a satisfied one. -->
+        <tal:warn tal:condition="t/warnings|nothing">
+          <div class="tree-warn-box" style="border-left-color:#6c757d">
+            <i class="fas fa-info-circle"></i>
+            <strong>Not checked:</strong>
+            <ul style="margin:6px 0 0 18px;padding:0">
+              <li tal:repeat="w t/warnings" tal:content="w">warning</li>
+            </ul>
+          </div>
+        </tal:warn>
 
         <!-- Prepared Standards from FM-ENV-251 -->
         <tal:pstd tal:condition="t/prepared_standards|nothing">

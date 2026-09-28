@@ -1306,6 +1306,13 @@ class PFASDataReviewView(BrowserView):
             elif lot:
                 tree["unresolved"].append({
                     "source": "252.reagents", "lot": lot, "name": name,
+                    # EVERY unresolved entry carries its own reason, so the
+                    # Traceability tab needs no fallback branch and cannot give
+                    # the wrong advice. The expiry-at-use entries (§43) name a lot
+                    # that IS in inventory, and the old blanket message sent the
+                    # reviewer to fix something that was not wrong.
+                    "reason": u"lot is not in the inventory — enter it to "
+                              u"resolve this link",
                 })
             tree["direct_reagents"].append(entry)
 
@@ -1332,6 +1339,8 @@ class PFASDataReviewView(BrowserView):
             elif lot:
                 tree["unresolved"].append({
                     "source": "252.standards", "lot": lot, "name": name,
+                    "reason": u"lot is not in the inventory — enter it to "
+                              u"resolve this link",
                 })
             if entry["resolved"]:
                 # A standards[] row may resolve to either kind, so the record
@@ -1377,6 +1386,8 @@ class PFASDataReviewView(BrowserView):
                 tree["unresolved"].append({
                     "source": "252.extraction_materials", "lot": lot,
                     "name": name,
+                    "reason": u"lot is not in the inventory — enter it to "
+                              u"resolve this link",
                 })
             tree["direct_reagents"].append(entry)
 
@@ -1603,6 +1614,8 @@ class PFASDataReviewView(BrowserView):
             else:
                 tree["unresolved"].append({
                     "source": field_name, "lot": lot_ref, "label": display_label,
+                    "reason": u"no prepared standard with this lot number "
+                              u"exists in the inventory",
                 })
             tree["prepared_standards"].append(ps_node)
 

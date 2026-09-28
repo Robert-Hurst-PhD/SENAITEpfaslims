@@ -4136,6 +4136,12 @@ instrument data (§ E2E_TEST_2026-08-02) — while its standards are from the Oc
 KCP scaffold and expired months earlier. The 252 logbook was re-dated for that E2E run
 and the standards were not re-prepared.
 
+**This is not a recall.** The gate governs RELEASE, and WS-0005 was released and
+published months ago; a gate that fails it today has no retroactive effect on the
+certificate already issued. What the failure means is that the same worksheet could not
+be released again as it stands — which is the correct answer, because as recorded it
+used expired standards.
+
 **Left as found.** Editing lot expiry dates or the extraction date to make the gate
 green would falsify a record to satisfy a check, which is precisely the failure mode the
 check exists to prevent. Whether the E2E data should be re-scaffolded with in-date
@@ -4171,6 +4177,27 @@ first argument on the next. Exactly the shape that defeated the root-URL guard.
 Rewritten on the AST: find every `Call` to `_expired_at_use` and inspect its first
 argument. **A textual scan cannot see a multi-line construct; use the parse tree.**
 
+### 43.6 A gate that blocks must say why on the page that blocks
+
+Adding `reason` to the unresolved entries changed nothing on screen at first: the
+Traceability tab rendered `u/lot` and `u/source` and **never read `reason`**, under one
+blanket line — *"Ensure reagent/standard lot numbers are entered in the inventory."*
+For an expiry-at-use failure that advice is simply wrong: the lot IS in the inventory,
+and the reviewer would have been sent to fix something that was not broken.
+
+The tab now lists each blocked link with its own reason, and **every** entry carries
+one — including the four "not in inventory" sites that previously relied on the reader
+inferring it. Making the data self-describing removed the template's fallback branch
+entirely, which also removed a `not:u/reason|nothing` precedence question of the kind
+that was deliberately avoided in `facility_balance.pt`.
+
+`tree["warnings"]` gets its own **"Not checked"** box, visually distinct from a
+failure. A check that cannot be performed must not look like one that passed, and it
+must not look like one that failed either.
+
+All three shapes were rendered and confirmed: WS-0001 (old-shaped entries), WS-0005
+(expiry reasons shown), WS-0002 (warnings, no failures).
+
 ### Verification
 
 32/32 test files (`test_expiry_at_use.py`, 7 tests, every one mutation-tested),
@@ -4180,9 +4207,12 @@ argument. **A textual scan cannot see a multi-line construct; use the parse tree
 
 - **WS-0005's expiry failure is unresolved by design** — a data decision for the lab,
   §43.2/43.3.
-- FM-ENV-253's `processing_materials` lots are still traced nowhere: the tree reads 252
-  and 251 only, so `processing_date` exists and nothing uses it. Narrower than it looks,
-  and a real gap.
+- **FM-ENV-253's `processing_materials` lots are traced NOWHERE.** The tree reads 252
+  and 251 only. The rows carry lots, `processing_date` records when they were used, and
+  nothing reads either — so a sorbent or cartridge lot named in 253 is neither resolved
+  nor reported unresolved. This is the *same class* as §33.12 (`extraction_materials`
+  traced nowhere), which was fixed; it is not a smaller version of an open item, it is
+  the identical structural gap in the one logbook the walk never learned to read.
 - §33.3 certificates generated before §36 still print an unresolvable parent as fact.
 - `IReagent` has no parentage field.
 - Prep equipment is stated on the certificate but does not gate release (§42).
