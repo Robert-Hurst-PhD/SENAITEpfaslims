@@ -72,6 +72,21 @@ BENCH_LOG_VIEWS = [
 
 # ── 1. The helper, by behaviour ─────────────────────────────────────────────
 
+class _Portal(object):
+    pass
+
+
+PORTAL = _Portal()
+
+
+class _Context(object):
+    """Any object the view is traversed through; acquires portal_url."""
+    portal_url = types.SimpleNamespace(getPortalObject=lambda: PORTAL)
+
+
+OWNED = _Context()   # an object this user created: Zope makes them its Owner
+
+
 class _User(object):
     def __init__(self, roles):
         self._roles = roles
@@ -79,7 +94,10 @@ class _User(object):
     def getRolesInContext(self, context):
         if self._roles is None:
             raise RuntimeError("broken security context")
-        return list(self._roles)
+        roles = list(self._roles)
+        if context is OWNED:
+            roles.append("Owner")   # local role, as Plone grants on creation
+        return roles
 
 
 class _Response(object):
@@ -107,12 +125,12 @@ def _load_perms(roles):
     return mod
 
 
-def _decide(roles, action, gates_by_name):
+def _decide(roles, action, gates_by_name, context=None):
     perms = _load_perms(roles)
     gates = {k: getattr(perms, v) if v.startswith("TIER_") else v
              for k, v in gates_by_name.items()}
     req = _Request()
-    body = perms.deny_gated_action(object(), req, action, gates)
+    body = perms.deny_gated_action(context or _Context(), req, action, gates)
     return body, req.response.status
 
 
@@ -137,6 +155,22 @@ def test_site_admin_tier_excludes_lab_manager():
         assert _decide([role], "secret", GATES) == (None, 200), role
     for role in ("LabManager", "LabClerk"):
         assert _decide([role], "secret", GATES) == ("Forbidden", 403), role
+
+
+def test_local_owner_on_a_traversed_object_does_not_pass():
+    """GAPS §46.5, found live: the views are `for="*"`, and a LabClerk posting
+    through a reagent they had created carried the local Owner role into the
+    check and passed BOTH tiers. Roles are resolved at the portal."""
+    for action in ("cfg", "secret"):
+        assert _decide(["LabClerk"], action, GATES, context=OWNED) == (
+            "Forbidden", 403), action
+    # And the anchoring does not cost a real manager anything.
+    assert _decide(["LabManager"], "cfg", GATES, context=OWNED) == (None, 200)
+
+
+def test_unresolvable_portal_denies():
+    assert _decide(["Manager"], "cfg", GATES, context=object()) == (
+        "Forbidden", 403)
 
 
 def test_fails_closed():

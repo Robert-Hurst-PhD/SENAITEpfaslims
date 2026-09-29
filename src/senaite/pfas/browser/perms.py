@@ -57,10 +57,21 @@ _TIER_ROLES = {
 
 
 def _has_any_role(context, roles):
+    """Whether the user holds one of `roles` AT THE PORTAL.
+
+    Never at `context`. The gated views are registered `for="*"`, so they can be
+    reached through any object, and Zope grants the `Owner` LOCAL role to
+    whoever creates an object. Resolved at the context, a bench chemist posting
+    through a reagent they added passed both tiers -- the sensor key included
+    (GAPS §46.5). Every store these gates protect is portal-scoped, so the
+    portal is the only place the question means anything. Any failure to
+    resolve the portal denies.
+    """
     try:
         from AccessControl import getSecurityManager
+        portal = context.portal_url.getPortalObject()
         user = getSecurityManager().getUser()
-        return bool(roles.intersection(user.getRolesInContext(context)))
+        return bool(roles.intersection(user.getRolesInContext(portal)))
     except Exception:
         return False
 

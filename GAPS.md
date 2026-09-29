@@ -4577,8 +4577,54 @@ Also found: the sensor API key is **unset**. The ingest endpoint refuses every
 reading when it is (`not expected_key` → 403), so it fails closed; no sensor can
 post until a Manager or Owner sets one.
 
+### 46.5 The gate could be walked around through any object a user created
+
+Found in review, after the commit above, and proven live before fixing. The five
+views are registered `for="*"`, and Plone gives the **`Owner` local role** to
+whoever creates an object. `Owner` is in both tiers, and the check resolved roles
+at the traversal context. So a LabClerk with a local `Owner` role on a reagent
+posted `…/pfas_reagents/<id>/@@pfas-facility-units`:
+
+    context                         action                  before  after
+    portal                          save_api_key (empty)    403     403
+    a reagent the clerk owns        save_api_key (empty)    302     403
+    a reagent the clerk owns        weight-set delete       302     403
+    a reagent the clerk owns        purge_test              —       403
+    a reagent the clerk owns        reagent status (bench)  —       302
+
+Every bench chemist is `Owner` of every reagent and standard they have added, so
+this was not an edge case: **the site_admin tier, whose whole point was to be
+narrower than LabManager, was open to any bench user who had created anything.**
+
+Fixed in `perms._has_any_role`: roles are resolved **at the portal**, never at the
+context. Every store these gates protect is portal-scoped (portal annotations,
+SQLite), so the portal is the only place the question means anything. Failure to
+resolve the portal denies. Two tests added — a clerk carrying a local Owner via
+the traversed object is refused at both tiers, and an unresolvable portal denies —
+and reverting the anchoring is killed by the first.
+
+No side doors: every writer behind these gates (`set_api_key`, `delete_unit`,
+`save_unit`, `save_facility_defaults`, `save_weight_set`, `save_vendor_profile`,
+`set_vendor_profile_retired`, `_save_lab_settings`, `_purge_test_reagents`) is
+reached only from the gated handlers, `_maybe_record_production_since`, or
+setuphandlers seeding. `@@pfas-instrument-profile` copies before annotating its
+response and writes nothing.
+
+**The same flaw is in the pre-existing gates, NOT fixed here.**
+`perms.require_manager` resolves at the context, and so do the private copies in
+`method_profiles.py:39` and `egad_config.py:93`, each with `Owner` in its role
+set. Nine modules call one of them — `logbook_media`, `logbook_batches`,
+`projects`, `batch_project_viewlet`, `egad_config`, `prep_logbooks`, `logbooks`,
+`method_profiles`, `data_review`. **`method_profiles` is the QC-criteria editor.**
+Not probed live; the mechanism is identical. Awaiting a decision (below).
+
 ### Still open
 
+- **The pre-existing gates share §46.5's flaw** — above. Most urgent item here.
+- **Does Zope's `Owner` belong in either tier at all?** CLAUDE.md §4's business
+  "Owner" maps to SENAITE `LabManager`; Zope's `Owner` is the creator-of-object
+  role. Its presence in `ALLOWED_ROLES` looks like a name collision, not a
+  decision. With portal anchoring it only matters for whoever owns the portal.
 - **The refused buttons are still visible.** A bench user sees Save/Delete on
   Facility Units, Weight Sets, Import Studio and the expiry-defaults panel, and
   gets a bare `Forbidden` on submit. CLAUDE.md §6A wants controls a user cannot
