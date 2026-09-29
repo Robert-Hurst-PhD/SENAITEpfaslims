@@ -22,6 +22,7 @@ import logging
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
 
 logger = logging.getLogger("senaite.pfas.browser.setuprefs")
 
@@ -82,14 +83,10 @@ QC_REF_SPEC = {
 }
 
 
+# Resolved at the portal via perms (GAPS §46.8): resolved at the context, a
+# local role on any object reached through a for="*" view counted.
 def _is_manager(context):
-    try:
-        from AccessControl import getSecurityManager
-        user = getSecurityManager().getUser()
-        return "Manager" in user.getRolesInContext(context) or \
-               "LabManager" in user.getRolesInContext(context)
-    except Exception:
-        return False
+    return has_role_at_portal(context, MANAGER_ROLES)
 
 
 def _ref_def_code(obj):

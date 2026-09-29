@@ -25,6 +25,7 @@ Static/AST for (2) and (3): the view modules need Zope to import.
 import ast
 import importlib.util
 import os
+import re
 import sys
 import types
 
@@ -319,6 +320,120 @@ def test_bench_logs_stay_open():
                 assert node.id not in ("deny_gated_action", "require_manager",
                                        "require_site_admin"), (
                     "{0} is a bench log and must stay open".format(cls_name))
+
+
+# ── 4. Roles are resolved at the portal, everywhere ─────────────────────────
+
+def test_every_role_lookup_is_at_the_portal():
+    """GAPS §46.5-8. Every view here is `for="*"`, and SENAITE grants Owner
+    locally -- to an object's creator, and to each client's contacts on their
+    own client folder (bika/lims/content/client.py:273). A lookup at anything
+    but the portal lets that local role count."""
+    offenders = []
+    for dirpath, _, files in os.walk(os.path.join(ROOT, "src", "senaite", "pfas")):
+        if "tests" in dirpath.split(os.sep):
+            continue
+        for name in files:
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(dirpath, name)
+            with open(path) as fh:
+                tree = ast.parse(fh.read())
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "getRolesInContext"):
+                    arg = node.args[0] if node.args else None
+                    if not (isinstance(arg, ast.Name) and arg.id == "portal"):
+                        offenders.append("{0}:{1}".format(
+                            os.path.relpath(path, ROOT), node.lineno))
+    assert not offenders, "roles resolved off-portal: {0}".format(offenders)
+
+
+# ── 5. A control the user cannot use is not drawn ───────────────────────────
+
+TEMPLATES = os.path.join(BROWSER, "templates")
+
+# (template, action value or onclick marker, the condition that must enclose it)
+HIDDEN_CONTROLS = [
+    ("facility_units.pt", "save_api_key", "view/can_site_admin"),
+    ("facility_units.pt", "delete", "view/can_configure"),
+    ("facility_units.pt", "save", "view/can_configure"),
+    ("facility_units.pt", "save_defaults", "view/can_configure"),
+    ("facility_weight_sets.pt", "save", "view/can_configure"),
+    ("import_studio.pt", "upload", "view/can_configure"),
+    ("import_studio.pt", "save_profile", "view/can_configure"),
+    ("import_studio.pt", "retire_profile", "view/can_configure"),
+    ("import_studio.pt", "action=edit_profile", "view/can_configure"),
+    ("reagents.pt", "save_expiry_defaults", "view/can_configure"),
+    ("reagents.pt", "purgeTestReagents(this)", "view/can_configure"),
+]
+
+_VOID = {"input", "br", "hr", "img", "meta", "link", "col", "source"}
+
+
+def _enclosing_conditions(template, marker):
+    """For each element whose attributes mention `marker`, the tal:conditions
+    of it and every element enclosing it."""
+    from html.parser import HTMLParser
+    found = []
+
+    class P(HTMLParser):
+        def __init__(self):
+            HTMLParser.__init__(self)
+            self.stack = []
+
+        def _cond(self, attrs):
+            d = dict(attrs)
+            return d.get("tal:condition") or d.get("condition") or ""
+
+        def _check(self, attrs, cond):
+            for k, v in attrs:
+                if v and (v == marker or ("'" + marker + "'") in v
+                          or (marker in v and ("(" in marker or "=" in marker))):
+                    found.append([c for c in [x[1] for x in self.stack] + [cond]
+                                  if c])
+                    return
+
+        def handle_starttag(self, tag, attrs):
+            cond = self._cond(attrs)
+            self._check(attrs, cond)
+            if tag not in _VOID:
+                self.stack.append((tag, cond))
+
+        def handle_startendtag(self, tag, attrs):
+            self._check(attrs, self._cond(attrs))
+
+        def handle_endtag(self, tag):
+            for i in range(len(self.stack) - 1, -1, -1):
+                if self.stack[i][0] == tag:
+                    del self.stack[i:]
+                    return
+
+    with open(os.path.join(TEMPLATES, template)) as fh:
+        body = re.sub(r"<!--.*?-->", "", fh.read(), flags=re.S)
+    P().feed(body)
+    return found
+
+
+def test_gated_controls_are_hidden_from_those_refused():
+    for template, marker, required in HIDDEN_CONTROLS:
+        hits = _enclosing_conditions(template, marker)
+        assert hits, "{0}: no control found for {1}".format(template, marker)
+        for conds in hits:
+            assert any(c.strip() == required for c in conds), (
+                "{0}: {1} is drawn without {2} (conditions: {3})".format(
+                    template, marker, required, conds))
+
+
+def test_api_key_is_not_rendered_to_non_site_admins():
+    """Hiding the card is presentation; api_key() itself returns nothing to a
+    user who may not set the key, so no template change can leak it."""
+    cls = _class(_tree("facility_qc.py"), "PFASFacilityUnitsView")
+    func = _method(cls, "api_key")
+    first = func.body[0]
+    assert isinstance(first, ast.If) and "can_site_admin" in ast.dump(first.test)
+    assert isinstance(first.body[0], ast.Return)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,8 @@ from senaite.pfas.logbook_schema import active_rows
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import (
+    ANALYST_ROLES, MANAGER_ROLES, has_role_at_portal)
 from senaite.pfas.qc_qualification import format_remark_codes
 # Safe at module scope BECAUSE holding_time imports nothing from Plone -- there
 # is no import-order hazard. Most add-on helpers in this file are imported
@@ -146,22 +148,16 @@ def _actor_kind(user=None):
         return u"human"
 
 
+# Resolved at the portal via perms (GAPS §46.8): resolved at the context, a
+# local role on any object reached through a for="*" view counted.
 def _is_manager(context):
-    try:
-        user = getSecurityManager().getUser()
-        roles = user.getRolesInContext(context)
-        return "Manager" in roles or "LabManager" in roles
-    except Exception:
-        return False
+    return has_role_at_portal(context, MANAGER_ROLES)
 
 
 def _is_analyst(context):
-    try:
-        user = getSecurityManager().getUser()
-        roles = user.getRolesInContext(context)
-        return "Analyst" in roles or "Verifier" in roles
-    except Exception:
-        return False
+    # SENAITE core grants no worksheet-local Analyst role (it only ever grants
+    # Owner locally), so nothing relied on resolving this at the worksheet.
+    return has_role_at_portal(context, ANALYST_ROLES)
 
 
 # A lot cell an analyst has filled in to mean "this material has no lot number".

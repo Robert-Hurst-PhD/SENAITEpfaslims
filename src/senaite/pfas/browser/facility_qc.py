@@ -13,7 +13,7 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import facility_qc as db
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import (
-    TIER_CONFIG, TIER_SITE_ADMIN, deny_gated_action)
+    TIER_CONFIG, TIER_SITE_ADMIN, GateMixin, deny_gated_action)
 
 logger = logging.getLogger("senaite.pfas.browser.facility_qc")
 
@@ -104,7 +104,7 @@ WEIGHT_SET_GATES = {
 }
 
 
-class PFASFacilityUnitsView(BrowserView):
+class PFASFacilityUnitsView(GateMixin, BrowserView):
     """Unit registry — CRUD for lab manager."""
     _template = ViewPageTemplateFile("templates/facility_units.pt")
 
@@ -192,6 +192,9 @@ class PFASFacilityUnitsView(BrowserView):
         return _safe_json(_facility_defaults()["balance_points"])
 
     def api_key(self):
+        # Never rendered to anyone who may not set it (GAPS §46.7).
+        if not self.can_site_admin():
+            return ""
         return db.get_api_key(_portal(self.context))
 
     def portal_url(self):
@@ -573,7 +576,7 @@ class PFASEyeWashLogView(BrowserView):
         return _portal(self.context).absolute_url()
 
 
-class PFASWeightSetsView(BrowserView):
+class PFASWeightSetsView(GateMixin, BrowserView):
     """Reference weight sets and their EXTERNAL metrology-lab calibration.
 
     This is where the equipment chain leaves the laboratory (GAPS §38). A balance

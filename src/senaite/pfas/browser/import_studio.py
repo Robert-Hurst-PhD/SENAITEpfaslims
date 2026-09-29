@@ -35,7 +35,7 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.browser.perms import TIER_CONFIG, deny_gated_action
+from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
 
 logger = logging.getLogger("senaite.pfas.browser.import_studio")
 
@@ -701,7 +701,7 @@ STUDIO_GATES = {
 }
 
 
-class PFASImportStudioView(BrowserView):
+class PFASImportStudioView(GateMixin, BrowserView):
     """Guided Instrument Import & Mapping Studio."""
 
     template = ViewPageTemplateFile("templates/import_studio.pt")

@@ -4651,17 +4651,62 @@ nowhere). Lower risk, same shape; consolidating them onto `perms` is the tidy
 next step. `data_review._is_analyst` must be checked for any intended reliance
 on a worksheet-local role before it is moved.
 
+### 46.7 Controls a user cannot use are no longer drawn — and the key is no longer shown
+
+`perms.GateMixin` gives a gated view `can_configure()` / `can_site_admin()` for
+its template; the server-side gate stays authoritative. Hidden from those who
+would be refused: Facility Units' API-key card (site_admin), unit edit/
+deactivate, the add/edit form and Facility Defaults; the Weight Sets form;
+Import Studio's upload, save-profile, retire/reactivate and edit links; the
+reagent Expiry Defaults and Purge button. Each hidden block is replaced by one
+line saying who does it. Prepared-standard and weight-set delete have no control
+in the UI, so there was nothing to hide.
+
+**The sensor API key was rendered into Facility Units for anyone who could view
+it.** §46's gate stopped a bench user CHANGING the key, not READING it — and
+reading is enough to post readings. `api_key()` now returns nothing to a user who
+may not set it, so no template change can reintroduce the leak.
+
+Live, rendered per role (all 200):
+
+    page / control           LabClerk  LabManager  Manager
+    units: api key card      hidden    hidden      shown
+    units: defaults, form    hidden    shown       shown
+    weight-set form          hidden    shown       shown
+    studio upload            hidden    shown       shown
+    reagents expiry defaults hidden    shown       shown
+
+### 46.8 Every role lookup is now at the portal
+
+The five checks §46.6 left — `qcrules._check_manager`, `setuprefs._is_manager`,
+`calibrations._is_manager`, `run_builder._is_manager`, `data_review._is_manager`
+/ `_is_analyst` — delegate to `perms.has_role_at_portal` with their own sets
+unchanged (`MANAGER_ROLES`, `ANALYST_ROLES`; neither has Owner). Checked first
+that nothing relied on a local grant: **SENAITE core only ever grants `Owner`
+locally** — to a contact on their own object, and to each client's group on
+the client folder (`bika/lims/content/client.py:273`). So moving these to the
+portal changes WHERE roles are resolved, never WHO passes.
+
+That last reference sharpens §46.6: **before these fixes a CLIENT user could
+reach the QC-criteria editor through their own client folder**, not only a
+bench chemist through a reagent. Not probed with a client account; the mechanism
+is the one proven live.
+
+`tests/test_action_gates.py` now scans the whole add-on: any `getRolesInContext`
+call whose argument is not `portal` fails. It also pins every hidden control to
+its enclosing condition — by parsing the templates, comments stripped (§45.7) —
+and that `api_key()` refuses first. 12 mutations, all killed. Smoke: the moved
+modules' pages render for clerk and manager; `@@pfas-qc-rules` still 403s a
+clerk and redirects a manager to the unified console, as before.
+
 ### Still open
 
-- **Five lower-risk role checks still resolve at the context** — §46.6.
+- Nothing further on authorisation beyond the `Owner` question below.
 - **Does Zope's `Owner` belong in either tier at all?** CLAUDE.md §4's business
   "Owner" maps to SENAITE `LabManager`; Zope's `Owner` is the creator-of-object
   role. Its presence in `ALLOWED_ROLES` looks like a name collision, not a
   decision. With portal anchoring it only matters for whoever owns the portal.
-- **The refused buttons are still visible.** A bench user sees Save/Delete on
-  Facility Units, Weight Sets, Import Studio and the expiry-defaults panel, and
-  gets a bare `Forbidden` on submit. CLAUDE.md §6A wants controls a user cannot
-  use hidden, via the `can_manage` pattern `projects.py:502` already uses.
+- ~~The refused buttons are still visible.~~ Done — §46.7.
 - `deviations.can_manage` omits `Owner`; everything else includes it.
 - Everything else in §45's list is unchanged.
 

@@ -41,8 +41,9 @@
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url">
 
-  <!-- API key -->
-  <div class="api-card">
+  <!-- API key. Site admins only: the key authenticates the sensor ingest
+       endpoint, so SHOWING it is as sensitive as changing it (GAPS §46.7). -->
+  <div class="api-card" tal:condition="view/can_site_admin">
     <strong style="font-size:12px;color:var(--s-body)">Sensor Ingest API Key</strong>
     <p style="font-size:11px;color:var(--s-secondary);margin:4px 0 10px">
       Set on the Raspberry Pi in <code>/etc/pfas_sensor.conf</code> as
@@ -69,7 +70,8 @@
     <table class="units-table" tal:condition="python:bool(view.units())">
       <tr>
         <th>Name</th><th>Type</th><th>Location</th><th>Serial</th>
-        <th>Sensor ID</th><th>Range</th><th>Status</th><th></th>
+        <th>Sensor ID</th><th>Range</th><th>Status</th>
+        <th tal:condition="view/can_configure"></th>
       </tr>
       <tal:each tal:repeat="u view/units">
         <tr tal:attributes="class python:'inactive' if not u.get('active') else ''">
@@ -82,7 +84,7 @@
           <td>
             <span tal:condition="python:not u.get('active')" class="inactive-badge">Inactive</span>
           </td>
-          <td>
+          <td tal:condition="view/can_configure">
             <a style="font-size:11px;color:var(--s-primary);cursor:pointer;text-decoration:none"
                tal:attributes="onclick string:editUnit('${u/id}')">Edit</a>
             &nbsp;
@@ -101,8 +103,13 @@
     </table>
   </div>
 
+  <p class="form-note" tal:condition="not:view/can_configure">
+    Units and facility defaults are lab configuration: a Manager or LabManager
+    registers and edits them.
+  </p>
+
   <!-- Add / edit form -->
-  <div class="form-card" id="unit-form">
+  <div class="form-card" id="unit-form" tal:condition="view/can_configure">
     <h3>Add / Edit Unit</h3>
     <form method="POST" tal:attributes="action string:${purl}/@@pfas-facility-units"
           id="unitForm">
@@ -207,6 +214,7 @@
        Applied when a unit is created and wherever a unit records no value of
        its own. Seeded, then owned by the lab.
        ──────────────────────────────────────────────────────────────────── -->
+  <tal:defaults condition="view/can_configure">
   <h2 id="defaults" style="margin-top:30px;">Facility Defaults</h2>
   <p class="form-note" style="max-width:70em;">
     These apply when a new unit is created, and wherever a unit carries no
@@ -266,6 +274,7 @@
       Save Facility Defaults
     </button>
   </form>
+  </tal:defaults>
 
 
 </metal:content>

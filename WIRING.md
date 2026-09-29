@@ -31,7 +31,7 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
 
 - **`senaite.pfas.logbook.`** (prefix family) — **wired** — defined as `_KEY_PREFIX` (src/senaite/pfas/browser/logbooks.py:37)
     - concatenated/formatted write at: `src/senaite/pfas/browser/logbooks.py:109`
-    - concatenated/formatted read at: `src/senaite/pfas/browser/logbooks.py:96`, `src/senaite/pfas/browser/run_builder.py:388`
+    - concatenated/formatted read at: `src/senaite/pfas/browser/logbooks.py:96`, `src/senaite/pfas/browser/run_builder.py:389`
     - concrete instances folded into this family (same shape, discovered as literals elsewhere):
       - `senaite.pfas.logbook.251` — **wired**
         - defined: (bare literal, no named constant)
@@ -40,7 +40,7 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
       - `senaite.pfas.logbook.252` — **wired**
         - defined: `LOGBOOK_KEY` (src/senaite/pfas/dilution_ref.py:49)
         - written by: (covered by the family's dynamic concat/format write — see §1.1)
-        - read by: `src/senaite/pfas/browser/data_review.py:1126`, `src/senaite/pfas/dilution_ref.py:98`, `src/senaite/pfas/egad_builder.py:434`
+        - read by: `src/senaite/pfas/browser/data_review.py:1122`, `src/senaite/pfas/dilution_ref.py:98`, `src/senaite/pfas/egad_builder.py:434`
         - reached via `get_dilutions()` (src/senaite/pfas/dilution_ref.py) — imported by `src/senaite/pfas/browser/logbooks.py:1565`
 
 - **`senaite.pfas.logbook.{slug}.pdf_revisions`** (template family) — **wired** — defined as `_REV_KEY` (src/senaite/pfas/browser/logbook_docs.py:29)
@@ -73,18 +73,18 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - read by: `src/senaite/pfas/browser/controlled_publications.py:96`, `src/senaite/pfas/browser/controlled_publications.py:153`, `src/senaite/pfas/browser/controlled_publications.py:187`, `src/senaite/pfas/browser/controlled_publications.py:307`
   - reached via `get_publication_log()` (src/senaite/pfas/browser/controlled_publications.py) — imported by `src/senaite/pfas/browser/coa_attestation.py:63`, `src/senaite/pfas/browser/qc_review_report.py:348`
 - `senaite.pfas.data_review.checklist`
-  - defined: `CHECKLIST_KEY` (src/senaite/pfas/browser/data_review.py:47)
-  - written by: `src/senaite/pfas/browser/data_review.py:606`
-  - read by: `src/senaite/pfas/browser/data_review.py:587`
+  - defined: `CHECKLIST_KEY` (src/senaite/pfas/browser/data_review.py:49)
+  - written by: `src/senaite/pfas/browser/data_review.py:602`
+  - read by: `src/senaite/pfas/browser/data_review.py:583`
 - `senaite.pfas.data_review.corrections`
-  - defined: `CORRECTIONS_KEY` (src/senaite/pfas/browser/data_review.py:2443)
-  - written by: `src/senaite/pfas/browser/data_review.py:2525`
-  - read by: `src/senaite/pfas/browser/data_review.py:2507`
+  - defined: `CORRECTIONS_KEY` (src/senaite/pfas/browser/data_review.py:2439)
+  - written by: `src/senaite/pfas/browser/data_review.py:2521`
+  - read by: `src/senaite/pfas/browser/data_review.py:2503`
 - `senaite.pfas.deviations.registry`
   - defined: `ANN_REGISTRY_KEY` (src/senaite/pfas/qc_deviation.py:40)
   - written by: `src/senaite/pfas/qc_deviation.py:57`
   - read by: `src/senaite/pfas/qc_deviation.py:51`
-  - reached via `get_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/data_review.py:2414`, `src/senaite/pfas/browser/deviations.py:12`
+  - reached via `get_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/data_review.py:2410`, `src/senaite/pfas/browser/deviations.py:12`
   - reached via `save_registry()` (src/senaite/pfas/qc_deviation.py) — imported by `src/senaite/pfas/browser/deviations.py:12`
 - `senaite.pfas.edd_profiles`
   - defined: `EDD_PROFILES_KEY` (src/senaite/pfas/egad_store.py:177)
@@ -117,10 +117,10 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - reached via `set_ar_sample_type()` (src/senaite/pfas/browser/egad_publish.py) — imported by `src/senaite/pfas/browser/egad_config.py:590`
 - `senaite.pfas.extraction_session`
   - defined: `EXTRACTION_SESSION_KEY` (src/senaite/pfas/dilution_ref.py:140)
-  - written by: `src/senaite/pfas/browser/data_review.py:2876`, `src/senaite/pfas/browser/extraction_guide.py:57`
-  - read by: `src/senaite/pfas/browser/data_review.py:1537`, `src/senaite/pfas/browser/data_review.py:2866`, `src/senaite/pfas/browser/extraction_guide.py:46`, `src/senaite/pfas/dilution_ref.py:150`
+  - written by: `src/senaite/pfas/browser/data_review.py:2872`, `src/senaite/pfas/browser/extraction_guide.py:57`
+  - read by: `src/senaite/pfas/browser/data_review.py:1533`, `src/senaite/pfas/browser/data_review.py:2862`, `src/senaite/pfas/browser/extraction_guide.py:46`, `src/senaite/pfas/dilution_ref.py:150`
   - reached via `_load_session()` (src/senaite/pfas/browser/extraction_guide.py) — imported by `src/senaite/pfas/browser/extraction_pdf.py:20`, `src/senaite/pfas/browser/logbooks.py:165`, `src/senaite/pfas/browser/logbooks.py:249`
-  - reached via `get_spikes()` (src/senaite/pfas/dilution_ref.py) — imported by `src/senaite/pfas/browser/data_review.py:489`, `src/senaite/pfas/browser/logbooks.py:1565`
+  - reached via `get_spikes()` (src/senaite/pfas/dilution_ref.py) — imported by `src/senaite/pfas/browser/data_review.py:485`, `src/senaite/pfas/browser/logbooks.py:1565`
 - `senaite.pfas.facility_defaults`
   - defined: `FACILITY_DEFAULTS_KEY` (src/senaite/pfas/facility_qc.py:61)
   - written by: `src/senaite/pfas/facility_qc.py:145`
@@ -143,8 +143,8 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - read by: `src/senaite/pfas/browser/reagents.py:216`
 - `senaite.pfas.logbook.coc`
   - defined: (bare literal, no named constant)
-  - written by: `src/senaite/pfas/browser/data_review.py:2591`
-  - read by: `src/senaite/pfas/browser/data_review.py:1085`, `src/senaite/pfas/browser/data_review.py:1125`, `src/senaite/pfas/browser/data_review.py:1245`, `src/senaite/pfas/browser/data_review.py:2086`, `src/senaite/pfas/browser/data_review.py:2585`
+  - written by: `src/senaite/pfas/browser/data_review.py:2587`
+  - read by: `src/senaite/pfas/browser/data_review.py:1081`, `src/senaite/pfas/browser/data_review.py:1121`, `src/senaite/pfas/browser/data_review.py:1241`, `src/senaite/pfas/browser/data_review.py:2082`, `src/senaite/pfas/browser/data_review.py:2581`
 - `senaite.pfas.logbook.pdf_archived`
   - defined: `_ARCH_KEY` (src/senaite/pfas/browser/logbook_docs.py:31)
   - written by: `src/senaite/pfas/browser/logbook_docs.py:144`
@@ -173,22 +173,22 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `PENDING_REASON_KEY` (src/senaite/pfas/browser/controlled_publications.py:43)
   - written by: `src/senaite/pfas/browser/controlled_publications.py:176`
   - read by: `src/senaite/pfas/browser/controlled_publications.py:177`, `src/senaite/pfas/browser/controlled_publications.py:178`, `src/senaite/pfas/browser/controlled_publications.py:204`, `src/senaite/pfas/browser/controlled_publications.py:205`, `src/senaite/pfas/browser/controlled_publications.py:206`
-  - reached via `set_pending_amendment_reason()` (src/senaite/pfas/browser/controlled_publications.py) — imported by `src/senaite/pfas/browser/data_review.py:2624`
+  - reached via `set_pending_amendment_reason()` (src/senaite/pfas/browser/controlled_publications.py) — imported by `src/senaite/pfas/browser/data_review.py:2620`
 - `senaite.pfas.prepstd.analyte_concentrations`
   - defined: `_ANN_ANALYTES` (src/senaite/pfas/browser/prepared_standards.py:37)
   - written by: `src/senaite/pfas/browser/prepared_standards.py:193`
   - read by: `src/senaite/pfas/browser/prepared_standards.py:146`
-  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1662`
+  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1658`
 - `senaite.pfas.prepstd.equipment`
   - defined: `_ANN_EQUIPMENT` (src/senaite/pfas/browser/prepared_standards.py:44)
   - written by: `src/senaite/pfas/browser/prepared_standards.py:198`
   - read by: `src/senaite/pfas/browser/prepared_standards.py:147`
-  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1662`
+  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1658`
 - `senaite.pfas.prepstd.parent_reagents`
   - defined: `_ANN_PARENTS` (src/senaite/pfas/browser/prepared_standards.py:36)
   - written by: `src/senaite/pfas/browser/prepared_standards.py:192`
-  - read by: `src/senaite/pfas/browser/data_review.py:1638`, `src/senaite/pfas/browser/prepared_standards.py:145`
-  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1662`
+  - read by: `src/senaite/pfas/browser/data_review.py:1634`, `src/senaite/pfas/browser/prepared_standards.py:145`
+  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1658`
 - `senaite.pfas.print_settings`
   - defined: `PRINT_SETTINGS_KEY` (src/senaite/pfas/print_settings.py:21)
   - written by: `src/senaite/pfas/print_settings.py:74`
@@ -213,14 +213,14 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
 - `senaite.pfas.reagent.archived`
   - defined: `_ANN_ARCHIVED_KEY` (src/senaite/pfas/browser/reagents.py:55)
   - written by: `src/senaite/pfas/browser/reagents.py:556`
-  - read by: `src/senaite/pfas/browser/data_review.py:1160`, `src/senaite/pfas/browser/prepared_standards.py:414`, `src/senaite/pfas/browser/reagents.py:322`, `src/senaite/pfas/browser/reagents.py:577`, `src/senaite/pfas/browser/reagents.py:578`, `src/senaite/pfas/browser/reagents.py:801`, `src/senaite/pfas/browser/reagents.py:978`
-  - reached via `build_parentage()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1662`, `src/senaite/pfas/browser/logbooks.py:970`
-  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/reagents.py) — imported by `src/senaite/pfas/browser/data_review.py:1717`, `src/senaite/pfas/browser/data_review.py:645`, `src/senaite/pfas/browser/prepared_standards.py:391`
+  - read by: `src/senaite/pfas/browser/data_review.py:1156`, `src/senaite/pfas/browser/prepared_standards.py:414`, `src/senaite/pfas/browser/reagents.py:322`, `src/senaite/pfas/browser/reagents.py:577`, `src/senaite/pfas/browser/reagents.py:578`, `src/senaite/pfas/browser/reagents.py:801`, `src/senaite/pfas/browser/reagents.py:978`
+  - reached via `build_parentage()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1658`, `src/senaite/pfas/browser/logbooks.py:970`
+  - reached via `_obj_to_dict()` (src/senaite/pfas/browser/reagents.py) — imported by `src/senaite/pfas/browser/data_review.py:1713`, `src/senaite/pfas/browser/data_review.py:641`, `src/senaite/pfas/browser/prepared_standards.py:391`
 - `senaite.pfas.reagent.coa`
   - defined: `_COA_ANN_KEY` (src/senaite/pfas/browser/reagents.py:430)
   - written by: `src/senaite/pfas/browser/reagents.py:476`
-  - read by: `src/senaite/pfas/browser/data_review.py:1187`, `src/senaite/pfas/browser/prepared_standards.py:405`, `src/senaite/pfas/browser/reagents.py:442`
-  - reached via `build_parentage()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1662`, `src/senaite/pfas/browser/logbooks.py:970`
+  - read by: `src/senaite/pfas/browser/data_review.py:1183`, `src/senaite/pfas/browser/prepared_standards.py:405`, `src/senaite/pfas/browser/reagents.py:442`
+  - reached via `build_parentage()` (src/senaite/pfas/browser/prepared_standards.py) — imported by `src/senaite/pfas/browser/data_review.py:1658`, `src/senaite/pfas/browser/logbooks.py:970`
 - `senaite.pfas.reagent.scan_log`
   - defined: `_SCAN_LOG_KEY` (src/senaite/pfas/browser/reagents.py:431)
   - written by: `src/senaite/pfas/browser/reagents.py:522`
@@ -229,12 +229,12 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `REFERENCE_METHOD_KEY` (src/senaite/pfas/setuphandlers.py:192)
   - written by: `src/senaite/pfas/setuphandlers.py:206`
   - read by: `src/senaite/pfas/setuphandlers.py:199`
-  - reached via `get_reference_method()` (src/senaite/pfas/setuphandlers.py) — imported by `src/senaite/pfas/browser/setuprefs.py:329`
-  - reached via `set_reference_method()` (src/senaite/pfas/setuphandlers.py) — imported by `src/senaite/pfas/browser/setuprefs.py:342`
+  - reached via `get_reference_method()` (src/senaite/pfas/setuphandlers.py) — imported by `src/senaite/pfas/browser/setuprefs.py:326`
+  - reached via `set_reference_method()` (src/senaite/pfas/setuphandlers.py) — imported by `src/senaite/pfas/browser/setuprefs.py:339`
 - `senaite.pfas.run_manifest`
-  - defined: `RUN_MANIFEST_KEY` (src/senaite/pfas/browser/run_builder.py:48)
-  - written by: `src/senaite/pfas/browser/run_builder.py:849`
-  - read by: `src/senaite/pfas/browser/logbooks.py:1517`, `src/senaite/pfas/browser/qc_review_report.py:309`, `src/senaite/pfas/browser/run_builder.py:867`, `src/senaite/pfas/egad_builder.py:434`
+  - defined: `RUN_MANIFEST_KEY` (src/senaite/pfas/browser/run_builder.py:49)
+  - written by: `src/senaite/pfas/browser/run_builder.py:850`
+  - read by: `src/senaite/pfas/browser/logbooks.py:1517`, `src/senaite/pfas/browser/qc_review_report.py:309`, `src/senaite/pfas/browser/run_builder.py:868`, `src/senaite/pfas/egad_builder.py:434`
 - `senaite.pfas.settings_registry`
   - defined: `ANNOTATION_KEY` (src/senaite/pfas/settings_registry.py:71)
   - written by: `src/senaite/pfas/settings_registry.py:278`
@@ -300,7 +300,7 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
 
 The key argument could not be resolved to a literal. Listed rather than dropped — a dropped read/write would understate a key's producers or consumers. Every entry below is the SAME shape: the generic body of a key-parameter wrapper (`_get_ann`, `_get_portal_store`, `_get_store_generic`, `_logbook_json` — see collect_key_wrappers()), scanned like any other function — inside its OWN definition, `key` is just a parameter with no fixed value, which is exactly what makes it a reusable wrapper. This is expected noise, not a gap: each wrapper's CALL SITES (where `key` is finally bound to something real) are resolved separately and already counted in §1.1/§1.2 — that is the whole point of deriving wrappers rather than reading only direct `IAnnotations(...)` access.
 
-- `src/senaite/pfas/browser/data_review.py:1263` (read) — `key`
+- `src/senaite/pfas/browser/data_review.py:1259` (read) — `key`
 - `src/senaite/pfas/browser/import_studio.py:468` (read) — `key`
 - `src/senaite/pfas/browser/import_studio.py:469` (write) — `key`
 - `src/senaite/pfas/browser/import_studio.py:470` (read) — `key`
@@ -335,9 +335,9 @@ A variable NAME reused across modules for a DIFFERENT key string. Not a bug by i
 
 Where a key constant is imported by name rather than redefined — the identity-preserving case §1's design note above depends on: an import carries the key's meaning with it, unlike a name-only heuristic over a wrapper function.
 
-- `src/senaite/pfas/browser/data_review.py:1152` imports `_ANN_ARCHIVED_KEY` from `src/senaite/pfas/browser/reagents.py` as `_ANN_ARCHIVED_KEY`
-- `src/senaite/pfas/browser/data_review.py:2863` imports `EXTRACTION_SESSION_KEY` from `src/senaite/pfas/dilution_ref.py` as `EXTRACTION_SESSION_KEY`
-- `src/senaite/pfas/browser/data_review.py:1186` imports `_COA_ANN_KEY` from `src/senaite/pfas/browser/reagents.py` as `_COA_ANN_KEY`
+- `src/senaite/pfas/browser/data_review.py:1148` imports `_ANN_ARCHIVED_KEY` from `src/senaite/pfas/browser/reagents.py` as `_ANN_ARCHIVED_KEY`
+- `src/senaite/pfas/browser/data_review.py:2859` imports `EXTRACTION_SESSION_KEY` from `src/senaite/pfas/dilution_ref.py` as `EXTRACTION_SESSION_KEY`
+- `src/senaite/pfas/browser/data_review.py:1182` imports `_COA_ANN_KEY` from `src/senaite/pfas/browser/reagents.py` as `_COA_ANN_KEY`
 - `src/senaite/pfas/browser/extraction_guide.py:35` imports `EXTRACTION_SESSION_KEY` from `src/senaite/pfas/dilution_ref.py` as `EXTRACTION_SESSION_KEY`
 - `src/senaite/pfas/browser/logbooks.py:1516` imports `RUN_MANIFEST_KEY` from `src/senaite/pfas/browser/run_builder.py` as `RUN_MANIFEST_KEY`
 - `src/senaite/pfas/browser/method_wizard.py:31` imports `METHOD_ASSOC_KEY` from `src/senaite/pfas/method_bridge.py` as `METHOD_ASSOC_KEY`
@@ -354,16 +354,16 @@ The other identity-preserving case, and the one a key-literal scan cannot see at
 
 - `src/senaite/pfas/browser/coa_attestation.py:63` calls `get_publication_log()` from `src/senaite/pfas/browser/controlled_publications.py` → `senaite.pfas.controlled_pub_log`
 - `src/senaite/pfas/browser/controlled_publications.py:130` calls `snapshot_for_publication()` from `src/senaite/pfas/browser/qc_review_report.py` → `senaite.pfas.qc_review_snapshots`
-- `src/senaite/pfas/browser/data_review.py:489` calls `get_spikes()` from `src/senaite/pfas/dilution_ref.py` → `senaite.pfas.extraction_session`
-- `src/senaite/pfas/browser/data_review.py:645` calls `_obj_to_dict()` from `src/senaite/pfas/browser/reagents.py` → `senaite.pfas.reagent.archived`
-- `src/senaite/pfas/browser/data_review.py:1662` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.analyte_concentrations`
-- `src/senaite/pfas/browser/data_review.py:1662` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.equipment`
-- `src/senaite/pfas/browser/data_review.py:1662` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.parent_reagents`
-- `src/senaite/pfas/browser/data_review.py:1662` calls `build_parentage()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.reagent.archived`
-- `src/senaite/pfas/browser/data_review.py:1662` calls `build_parentage()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.reagent.coa`
-- `src/senaite/pfas/browser/data_review.py:1717` calls `_obj_to_dict()` from `src/senaite/pfas/browser/reagents.py` → `senaite.pfas.reagent.archived`
-- `src/senaite/pfas/browser/data_review.py:2414` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
-- `src/senaite/pfas/browser/data_review.py:2624` calls `set_pending_amendment_reason()` from `src/senaite/pfas/browser/controlled_publications.py` → `senaite.pfas.pending_amendment_reason`
+- `src/senaite/pfas/browser/data_review.py:485` calls `get_spikes()` from `src/senaite/pfas/dilution_ref.py` → `senaite.pfas.extraction_session`
+- `src/senaite/pfas/browser/data_review.py:641` calls `_obj_to_dict()` from `src/senaite/pfas/browser/reagents.py` → `senaite.pfas.reagent.archived`
+- `src/senaite/pfas/browser/data_review.py:1658` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.analyte_concentrations`
+- `src/senaite/pfas/browser/data_review.py:1658` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.equipment`
+- `src/senaite/pfas/browser/data_review.py:1658` calls `_obj_to_dict()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.prepstd.parent_reagents`
+- `src/senaite/pfas/browser/data_review.py:1658` calls `build_parentage()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.reagent.archived`
+- `src/senaite/pfas/browser/data_review.py:1658` calls `build_parentage()` from `src/senaite/pfas/browser/prepared_standards.py` → `senaite.pfas.reagent.coa`
+- `src/senaite/pfas/browser/data_review.py:1713` calls `_obj_to_dict()` from `src/senaite/pfas/browser/reagents.py` → `senaite.pfas.reagent.archived`
+- `src/senaite/pfas/browser/data_review.py:2410` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
+- `src/senaite/pfas/browser/data_review.py:2620` calls `set_pending_amendment_reason()` from `src/senaite/pfas/browser/controlled_publications.py` → `senaite.pfas.pending_amendment_reason`
 - `src/senaite/pfas/browser/deviations.py:12` calls `get_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
 - `src/senaite/pfas/browser/deviations.py:12` calls `save_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
 - `src/senaite/pfas/browser/egad_config.py:26` calls `get_client_egad()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.egad_client`
@@ -402,8 +402,8 @@ The other identity-preserving case, and the one a key-literal scan cannot see at
 - `src/senaite/pfas/browser/print_settings.py:72` calls `save_library()` from `src/senaite/pfas/qc_qualification.py` → `senaite.pfas.qc_qualification.library`
 - `src/senaite/pfas/browser/projects.py:333` calls `_get_registry()` from `src/senaite/pfas/browser/sop_documents.py` → `senaite.pfas.sop.registry`
 - `src/senaite/pfas/browser/qc_review_report.py:348` calls `get_publication_log()` from `src/senaite/pfas/browser/controlled_publications.py` → `senaite.pfas.controlled_pub_log`
-- `src/senaite/pfas/browser/setuprefs.py:329` calls `get_reference_method()` from `src/senaite/pfas/setuphandlers.py` → `senaite.pfas.reference_definition_method`
-- `src/senaite/pfas/browser/setuprefs.py:342` calls `set_reference_method()` from `src/senaite/pfas/setuphandlers.py` → `senaite.pfas.reference_definition_method`
+- `src/senaite/pfas/browser/setuprefs.py:326` calls `get_reference_method()` from `src/senaite/pfas/setuphandlers.py` → `senaite.pfas.reference_definition_method`
+- `src/senaite/pfas/browser/setuprefs.py:339` calls `set_reference_method()` from `src/senaite/pfas/setuphandlers.py` → `senaite.pfas.reference_definition_method`
 - `src/senaite/pfas/egad_builder.py:26` calls `get_client_egad()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.egad_client`
 - `src/senaite/pfas/egad_builder.py:421` calls `get_profile_id_for_method()` from `src/senaite/pfas/method_bridge.py` → `senaite.pfas.method_associations`
 - `src/senaite/pfas/egad_builder.py:587` calls `get_profile_id_for_method()` from `src/senaite/pfas/method_bridge.py` → `senaite.pfas.method_associations`
@@ -453,15 +453,15 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@email` | `senaite.pfas.browser.edd_email.PFASEmailView` | (none found) | `bika.lims.interfaces.IClient` | `src/senaite/pfas/browser/overrides.zcml` |
 | `@@lims-setup` | `senaite.pfas.browser.lims_setup.PFASSetupView` | templates/lims_setup.pt (`class attr` at src/senaite/pfas/browser/lims_setup.py:276) | `Products.CMFPlone.interfaces.IPloneSiteRoot` | `src/senaite/pfas/browser/overrides.zcml` |
 | `@@pfas-ar-tracker` | `.pfas_nav.PFASARTrackerTabView` | templates/pfas_ar_tracker_tab.pt (`class attr` at src/senaite/pfas/browser/pfas_nav.py:180) | `bika.lims.interfaces.IAnalysisRequest` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-balance-log` | `.facility_qc.PFASBalanceLogView` | templates/facility_balance.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:378) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-balance-log` | `.facility_qc.PFASBalanceLogView` | templates/facility_balance.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:381) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-batch-dilutions` | `.logbooks.PFASBatchDilutionsView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-batch-project-assign` | `.batch_project_viewlet.PFASBatchProjectAssignView` | (none found) | `bika.lims.interfaces.IBatch` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-bench` | `.workspace_home.PFASBenchHomeView` | templates/pfas_bench.pt (`class attr` at src/senaite/pfas/browser/workspace_home.py:113) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-calibrations` | `.calibrations.PFASCalibrationsView` | templates/calibrations.pt (`class attr` at src/senaite/pfas/browser/calibrations.py:45) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-calibrations` | `.calibrations.PFASCalibrationsView` | templates/calibrations.pt (`class attr` at src/senaite/pfas/browser/calibrations.py:42) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-coa-attestation` | `.coa_attestation.PFASCoAAttestationView` | templates/coa_attestation.pt (`class attr` at src/senaite/pfas/browser/coa_attestation.py:41) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-control-chart` | `.controlchart.PFASControlChartView` | templates/controlchart.pt (`class attr` at src/senaite/pfas/browser/controlchart.py:76) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-controlled-publications` | `.controlled_publications.PFASControlledPublicationsView` | templates/controlled_publications.pt (`class attr` at src/senaite/pfas/browser/controlled_publications.py:234) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-data-review` | `.data_review.PFASDataReviewView` | templates/data_review.pt (`class attr` at src/senaite/pfas/browser/data_review.py:195) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-data-review` | `.data_review.PFASDataReviewView` | templates/data_review.pt (`class attr` at src/senaite/pfas/browser/data_review.py:191) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-data-review-home` | `.workspace_home.PFASDataReviewHomeView` | templates/pfas_data_review_home.pt (`class attr` at src/senaite/pfas/browser/workspace_home.py:161) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-deviations` | `.deviations.PFASDeviationView` | templates/deviations.pt | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-egad-batches` | `.egad_config.PFASEGADBatchesView` | templates/egad_batches.pt (`class attr` at src/senaite/pfas/browser/egad_config.py:575) | `*` | `src/senaite/pfas/browser/configure.zcml` |
@@ -470,7 +470,7 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-egad-export` | `.egad_config.PFASEGADExportView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-extraction-guide` | `.extraction_guide.PFASExtractionGuideView` | templates/extraction_guide.pt (`class attr` at src/senaite/pfas/browser/extraction_guide.py:69) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-extraction-pdf` | `.extraction_pdf.PFASExtractionPDFView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-eyewash-log` | `.facility_qc.PFASEyeWashLogView` | templates/facility_eyewash.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:533) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-eyewash-log` | `.facility_qc.PFASEyeWashLogView` | templates/facility_eyewash.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:536) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-facility-qc` | `.facility_qc.PFASFacilityDashboardView` | templates/facility_dashboard.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:45) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-facility-units` | `.facility_qc.PFASFacilityUnitsView` | templates/facility_units.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:109) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-home` | `.workspace_home.PFASWorkspaceHomeView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
@@ -494,32 +494,32 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-method-profile-edit` | `.method_profiles.PFASMethodProfileEditView` | templates/method_profile_edit.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:111) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-method-profiles` | `.method_profiles.PFASMethodProfilesView` | templates/method_profiles.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:56) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-method-wizard` | `.method_wizard.PFASMethodWizardView` | templates/method_wizard.pt (`class attr` at src/senaite/pfas/browser/method_wizard.py:234) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-pipette-calibration` | `.facility_qc.PFASPipetteCalibrationView` | templates/facility_pipettes.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:665) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-pipette-calibration` | `.facility_qc.PFASPipetteCalibrationView` | templates/facility_pipettes.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:668) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-prep-logbooks` | `.prep_logbooks.PFASPrepLogbooksView` | templates/prep_logbooks.pt (`class attr` at src/senaite/pfas/browser/prep_logbooks.py:396) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-prep-standards` | `.prepared_standards.PFASPrepStandardsView` | templates/prep_standards.pt (`class attr` at src/senaite/pfas/browser/prepared_standards.py:1030) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-print-settings` | `.print_settings.PFASPrintSettingsView` | templates/print_settings.pt (`class attr` at src/senaite/pfas/browser/print_settings.py:21) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-projects` | `.projects.PFASProjectsView` | templates/projects.pt (`class attr` at src/senaite/pfas/browser/projects.py:454) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-qc-management` | `.workspace_home.PFASQCManagementView` | templates/pfas_qc_management.pt (`class attr` at src/senaite/pfas/browser/workspace_home.py:47) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-qc-review-report` | `.qc_review_report.PFASQCReviewReportView` | templates/qc_review_report.pt (`class attr` at src/senaite/pfas/browser/qc_review_report.py:93) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-qc-rules` | `.qcrules.PFASQCRulesView` | templates/qcrules.pt (`class attr` at src/senaite/pfas/browser/qcrules.py:74) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-qc-rules` | `.qcrules.PFASQCRulesView` | templates/qcrules.pt (`class attr` at src/senaite/pfas/browser/qcrules.py:71) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-qc-type-grid` | `.qc_grid.PFASQCTypeGridView` | templates/qc_grid.pt | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-reagent-autocomplete` | `.logbooks.PFASReagentAutocompleteView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-reagents` | `.reagents.PFASReagentsView` | templates/reagents.pt (`class attr` at src/senaite/pfas/browser/reagents.py:691) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-receipt` | `.receipt.PFASReceiptView` | templates/receipt.pt (`class attr` at src/senaite/pfas/browser/receipt.py:53) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-retire-attachment` | `.logbooks.PFASRetireAttachmentView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-run-builder` | `.run_builder.PFASRunBuilderView` | templates/run_builder.pt (`class attr` at src/senaite/pfas/browser/run_builder.py:54) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-run-builder` | `.run_builder.PFASRunBuilderView` | templates/run_builder.pt (`class attr` at src/senaite/pfas/browser/run_builder.py:55) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-run-manifest` | `.logbooks.PFASRunManifestView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-sample-status` | `.sample_status.PFASSampleStatusView` | templates/sample_status.pt (`class attr` at src/senaite/pfas/browser/sample_status.py:258) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-sensor-ingest` | `.facility_qc.PFASSensorIngestView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-setup-references` | `.setuprefs.PFASSetupRefsView` | templates/setuprefs.pt (`class attr` at src/senaite/pfas/browser/setuprefs.py:292) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-setup-references` | `.setuprefs.PFASSetupRefsView` | templates/setuprefs.pt (`class attr` at src/senaite/pfas/browser/setuprefs.py:289) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-sidebar` | `.sidebar.PFASSidebarView` | templates/pfas_sidebar.pt (`class attr` at src/senaite/pfas/browser/sidebar.py:32) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-sop` | `.sop_documents.PFASSOPView` | templates/sop_documents.pt | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-system-map` | `.system_map.PFASSystemMapView` | templates/system_map.pt (`class attr` at src/senaite/pfas/browser/system_map.py:106) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-temperature-log` | `.facility_qc.PFASTemperatureLogView` | templates/facility_temp_log.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:264) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-temperature-log` | `.facility_qc.PFASTemperatureLogView` | templates/facility_temp_log.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:267) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-track` | `.tracker.PFASClientTrackerView` | templates/tracker.pt (`class attr` at src/senaite/pfas/browser/tracker.py:384) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-waste-log` | `.facility_qc.PFASWasteLogView` | templates/facility_waste.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:500) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-water-log` | `.facility_qc.PFASWaterLogView` | templates/facility_water.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:464) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-weight-sets` | `.facility_qc.PFASWeightSetsView` | templates/facility_weight_sets.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:586) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-waste-log` | `.facility_qc.PFASWasteLogView` | templates/facility_waste.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:503) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-water-log` | `.facility_qc.PFASWaterLogView` | templates/facility_water.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:467) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-weight-sets` | `.facility_qc.PFASWeightSetsView` | templates/facility_weight_sets.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:589) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-ws-stage` | `.pfas_nav.PFASWorksheetStageTabView` | templates/pfas_ws_stage_tab.pt (`class attr` at src/senaite/pfas/browser/pfas_nav.py:147) | `bika.lims.interfaces.IWorksheet` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@senaite.pfas.batch-project-link` | `.batch_project_viewlet.PFASBatchProjectViewlet` | (viewlet) | `bika.lims.interfaces.IBatch` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@senaite.pfas.core-overlay-css` | `(none — template-only viewlet)` | (viewlet) templates/core_overlay_link.pt | `*` | `src/senaite/pfas/browser/configure.zcml` |
@@ -578,7 +578,7 @@ Every one of these fires on EVERY transition of EVERY type in the site (`for="*"
 
 ### `data_review.on_after_transition`
 
-- defined at `src/senaite/pfas/browser/data_review.py:52`
+- defined at `src/senaite/pfas/browser/data_review.py:54`
 - guards (first matching `return`s out):
   - `if getattr(event, 'transition', None) is None: return`
   - `if not should_freeze(getattr(instance, 'portal_type', None), event.transition.id): return`

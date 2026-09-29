@@ -76,6 +76,18 @@ def _has_any_role(context, roles):
         return False
 
 
+# Narrower sets some older views were written against. Kept as they were --
+# moving them onto the portal changed WHERE roles are resolved, not WHO passes
+# (GAPS §46.8). Neither contains Owner.
+MANAGER_ROLES = frozenset(("Manager", "LabManager"))
+ANALYST_ROLES = frozenset(("Analyst", "Verifier"))
+
+
+def has_role_at_portal(context, roles):
+    """Public form of the portal-anchored check, for views with their own set."""
+    return _has_any_role(context, frozenset(roles))
+
+
 def require_site_admin(context, request=None):
     """True if the current user may change structural settings. Never raises."""
     return _has_any_role(context, SITE_ADMIN_ROLES)
@@ -100,3 +112,17 @@ def deny_gated_action(context, request, action, gates):
         return None
     request.response.setStatus(403)
     return "Forbidden"
+
+
+class GateMixin(object):
+    """What a gated view's TEMPLATE asks, so a control the user cannot use is
+    not drawn (CLAUDE.md §6A). The server-side gate stays authoritative: hiding
+    a button is presentation, and deny_gated_action still refuses the POST.
+    """
+
+    def can_configure(self):
+        return require_manager(self.context, self.request)
+
+    def can_site_admin(self):
+        return require_site_admin(self.context, self.request)
+

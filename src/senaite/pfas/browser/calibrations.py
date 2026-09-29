@@ -17,6 +17,7 @@ import os
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
 
 logger = logging.getLogger("senaite.pfas.browser.calibrations")
 
@@ -24,14 +25,10 @@ DEFAULT_DB_PATH = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 DEFAULT_LIMIT = 50
 
 
+# Resolved at the portal via perms (GAPS §46.8): resolved at the context, a
+# local role on any object reached through a for="*" view counted.
 def _is_manager(context):
-    try:
-        from AccessControl import getSecurityManager
-        user = getSecurityManager().getUser()
-        roles = user.getRolesInContext(context)
-        return "Manager" in roles or "LabManager" in roles
-    except Exception:
-        return False
+    return has_role_at_portal(context, MANAGER_ROLES)
 
 
 class PFASCalibrationsView(BrowserView):

@@ -15,6 +15,7 @@ import logging
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
 
 logger = logging.getLogger("senaite.pfas.browser.qcrules")
 
@@ -52,15 +53,11 @@ QC_TYPE_FIELD_META = {
 }
 
 
+# Resolved at the portal via perms (GAPS §46.8): resolved at the context, a
+# local role on any object reached through a for="*" view counted.
 def _check_manager(context, request):
-    """Return True if the current user has the Manager role."""
-    try:
-        from AccessControl import getSecurityManager
-        user = getSecurityManager().getUser()
-        roles = user.getRolesInContext(context)
-        return "Manager" in roles or "LabManager" in roles
-    except Exception:
-        return False
+    """Return True if the current user has the Manager or LabManager role."""
+    return has_role_at_portal(context, MANAGER_ROLES)
 
 
 class PFASQCRulesView(BrowserView):

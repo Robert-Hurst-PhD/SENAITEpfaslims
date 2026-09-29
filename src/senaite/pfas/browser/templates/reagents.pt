@@ -256,6 +256,7 @@
           <span tal:content="tc">0</span>
           test entr<tal:s tal:replace="python:'y' if tc == 1 else 'ies'"></tal:s> from setup remain.
           <button type="button" class="btn-sm btn-danger"
+                  tal:condition="view/can_configure"
                   onclick="purgeTestReagents(this)">Purge test entries</button>
         </span>
       </div>
@@ -263,6 +264,7 @@
 
     <!-- ─── Global expiry defaults (inherited when no expiry stated) ──── -->
     <details style="margin-bottom:18px;border:1px solid var(--s-border);border-radius:8px;padding:10px 16px;background:var(--s-bg);"
+             tal:condition="view/can_configure"
              tal:define="ed view/expiry_defaults">
       <summary style="font-size:13px;font-weight:700;cursor:pointer;">
         Expiry Defaults

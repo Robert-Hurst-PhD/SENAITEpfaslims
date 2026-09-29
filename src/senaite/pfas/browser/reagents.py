@@ -31,7 +31,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.browser.perms import TIER_CONFIG, deny_gated_action
+from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
 
 logger = logging.getLogger("senaite.pfas.browser.reagents")
 
@@ -685,7 +685,7 @@ REAGENT_GATES = {
 }
 
 
-class PFASReagentsView(BrowserView):
+class PFASReagentsView(GateMixin, BrowserView):
     """PFAS Reagent Inventory — add, scan, OCR, track, expire."""
 
     template = ViewPageTemplateFile("templates/reagents.pt")

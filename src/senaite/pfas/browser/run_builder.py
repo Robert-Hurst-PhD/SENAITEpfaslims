@@ -31,6 +31,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import MANAGER_ROLES, has_role_at_portal
 
 logger = logging.getLogger("senaite.pfas.browser.run_builder")
 
@@ -915,12 +916,8 @@ class PFASRunBuilderView(BrowserView):
 
     # ── run-template save (Manager only — this is method configuration) ──
     def _is_manager(self):
-        try:
-            from AccessControl import getSecurityManager
-            roles = getSecurityManager().getUser().getRolesInContext(self.context)
-            return "Manager" in roles or "LabManager" in roles
-        except Exception:
-            return False
+        # Resolved at the portal via perms (GAPS §46.8).
+        return has_role_at_portal(self.context, MANAGER_ROLES)
 
     def template_saved(self):
         return self.request.form.get("tpl_saved", "") == "1"

@@ -52,7 +52,12 @@
     traceability gate will reject the affected worksheets. All dates ISO 8601.
   </div>
 
-  <div class="log-form">
+  <p class="hint" tal:condition="not:view/can_configure">
+    Weight sets and their metrology certificates are lab configuration: a
+    Manager or LabManager records them.
+  </p>
+
+  <div class="log-form" tal:condition="view/can_configure">
     <h3>Add / update a weight set</h3>
     <p class="hint">Leave the identifier of an existing set unchanged to update it.</p>
     <form method="POST" tal:attributes="action string:${purl}/@@pfas-weight-sets">

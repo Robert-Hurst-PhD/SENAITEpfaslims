@@ -407,7 +407,13 @@
         every column before saving a reusable profile to the instrument record.
       </p>
 
+      <p style="font-size:13px;" tal:condition="not:view/can_configure">
+        Instrument mappings are lab configuration: a Manager or LabManager
+        authors, retires and reactivates them. Saved profiles are listed below.
+      </p>
+
       <form method="post" enctype="multipart/form-data"
+            tal:condition="view/can_configure"
             tal:attributes="action string:${view/portal_url}/@@pfas-import-studio"
             id="upload-form">
         <input type="hidden" name="action" value="upload" />
@@ -482,7 +488,8 @@
                   <span tal:attributes="class python:'pv-calc '+prof['calc_mode']"
                         tal:content="prof/calc_mode">final</span>
                 </span>
-                <a tal:attributes="href python:'{0}/@@pfas-import-studio?action=edit_profile&amp;instrument_uid={1}&amp;version={2}'.format(view.portal_url(), instr['uid'], prof['version'])"
+                <a tal:condition="view/can_configure"
+                   tal:attributes="href python:'{0}/@@pfas-import-studio?action=edit_profile&amp;instrument_uid={1}&amp;version={2}'.format(view.portal_url(), instr['uid'], prof['version'])"
                    style="font-size:11px;font-weight:600;">Edit &#8594;</a>
               </li>
               </tal:prow>
@@ -571,7 +578,7 @@
 
         <!-- ── Side: profile save form ───────────────────────────── -->
         <div class="studio-side">
-          <div class="profile-card">
+          <div class="profile-card" tal:condition="view/can_configure">
             <h3>Save as Instrument Profile</h3>
 
             <form method="post"
@@ -650,7 +657,8 @@
       <div class="table-wrap" tal:condition="profiles">
       <table class="pfas-table">
         <thead><tr><th>Vendor</th><th>Version</th><th>Columns</th>
-                   <th>Status</th><th>Action</th></tr></thead>
+                   <th>Status</th>
+                   <th tal:condition="view/can_configure">Action</th></tr></thead>
         <tbody>
           <tr tal:repeat="p profiles">
             <td tal:content="p/vendor">SCIEX OS</td>
@@ -662,7 +670,7 @@
               <span tal:condition="p/retired"
                     style="font-size:11px;background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:8px;">RETIRED</span>
             </td>
-            <td>
+            <td tal:condition="view/can_configure">
               <form method="post" style="display:flex;gap:6px;align-items:center;">
                 <input type="hidden" name="action"
                        tal:attributes="value python:'reactivate_profile' if p['retired'] else 'retire_profile'"/>
