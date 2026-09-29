@@ -4479,10 +4479,7 @@ surfaces" invited — would have stopped the lab recording temperatures.
 
 ### Still open
 
-- **Phase 3, authorisation.** Two permissions over existing roles, applied per
-  ACTION because one view mixes a lab threshold (`save_defaults`) with a structural
-  secret (`save_api_key`). Baseline captured: 68 registrations, 60 at `zope2.View`.
-  The bench logging POSTs stay open, explicitly.
+- ~~**Phase 3, authorisation.**~~ Done — §46.
 - **Never re-run the GenericSetup profile on this instance.** Two independent
   reasons, both verified: `setuphandlers.setup_handler` resets EXISTING Methods,
   AnalysisServices and SampleTypes from CSV seeds (`:85-88`, `:99-101`, `:126-128`)
@@ -4495,4 +4492,97 @@ surfaces" invited — would have stopped the lab recording temperatures.
   says so. Retire-not-delete with usage counts is Phase 6.
 - **CLAUDE.md §5 still describes ten workspaces** when the 2026-09-18 decision was
   two landings, which leaves §9's "which workspace does it live in?" unanswerable.
+
+---
+
+## 46. Configuration POSTs are gated per action; the bench stays open (2026-09-29)
+
+Phase 3 of §45. Seven configuration surfaces accepted a POST from any
+authenticated user. After checking each handler rather than its name, **five
+needed a gate** — §45.8's list was wrong twice more:
+
+- **`deviations` was already gated.** `can_manage()` guards add_ca, complete_ca,
+  mark_notification_sent and close_deviation; `can_edit()` guards the rest. My
+  greps looked for `require_manager` and this module does not use it. (Its
+  `can_manage` omits `Owner`, unlike `perms.ALLOWED_ROLES` — left as found.)
+- **`prepared_standards` delete was worse than listed.** It removes the object
+  AND its certificate outright, in production too, breaking the middle link of
+  the traceability chain for every result that used the lot.
+
+### 46.1 The mechanism
+
+`perms.deny_gated_action(context, request, action, gates)` over a module-level
+table per view — `UNITS_GATES`, `WEIGHT_SET_GATES`, `STUDIO_GATES`,
+`REAGENT_GATES`, `PREP_STANDARD_GATES`. Role checks, not Zope permissions: see
+DECISIONS 2026-09-29 for why the plan changed. Two tiers — `config` (Manager,
+LabManager, Owner) and `site_admin` (Manager, Owner), the latter only for the
+sensor API key. An action absent from a table is open; **an unknown tier
+denies**, so a typo in a tier fails closed.
+
+The gate is the first statement of each POST branch — ahead of the CSRF-disable,
+every handler and every redirect.
+
+### 46.2 What stays open, deliberately
+
+All five daily logs, **pipette calibration** (decided: an in-house check is a
+measurement, like the balance log), reagent add/edit/open/status/CoA/scan/
+delete/restore (delete archives in production), prepared-standard add/edit/
+status. CLAUDE.md §4 requires the bench to be performable by any lab user and by
+a future service account, so a bench action becoming manager-only is as much a
+defect as a config action left open, and the test says so.
+
+### 46.3 The test — `tests/test_action_gates.py`
+
+Behaviour for the helper (stubbed `AccessControl`), AST for the wiring. It pins
+the agreed split in both directions, that each view consults **its own** table as
+the first statement of its POST branch and returns the result, that no bench log
+calls a gate, and — the one easy to miss — that **every gated action name is one
+the view actually dispatches**. A misspelt key gates nothing and leaves the real
+action open, silently.
+
+Mutation-tested: 12 mutations (gate removed, moved after the CSRF-disable, result
+not returned, wrong table, key typo in the table, typo in spec and table
+together, API key downgraded to config, LabManager added to site_admin, unknown
+tier permits, broken security context permits, a bench log gated, a bench action
+gated). **All 12 killed.**
+
+### 46.4 Verified live
+
+After a restart (`method_profiles.json` md5 identical before and after), with
+three throwaway users created by `bin/instance run` and deleted afterwards:
+
+    action                         LabClerk  LabManager  Manager
+    facility-units delete          403       302         302
+    weight-sets delete             403       302         302
+    import-studio retire_profile   403       302         302
+    prep-standards delete          403       302         302
+    reagents purge_test            403       (ran)       not sent
+    facility-units save_api_key    403       403         302
+
+Probes used nonexistent ids so the permitted paths changed nothing. The stored
+API key's md5 was identical before and after. Bench paths as the LabClerk:
+prep-standard status 302, reagent status 302, **water log 302 and the row was
+recorded** — removed afterwards, `water_qc_logs` back to 0.
+
+**My error, recorded.** The probe loop excluded only the Manager from
+`purge_test`, so it **really ran as the LabManager** — a hard delete of every
+reagent created before `production_since`. It matched none: `production_since`
+is 2026-06-22 and the reagent folder held the same 14 objects before each of the
+three most recent transactions (read with `db.open(before=tid)`) as after. No
+data was lost. From that point destructive actions were probed on the refusal
+path only. **A permitted-path probe of a destructive action is a destructive
+action.**
+
+Also found: the sensor API key is **unset**. The ingest endpoint refuses every
+reading when it is (`not expected_key` → 403), so it fails closed; no sensor can
+post until a Manager or Owner sets one.
+
+### Still open
+
+- **The refused buttons are still visible.** A bench user sees Save/Delete on
+  Facility Units, Weight Sets, Import Studio and the expiry-defaults panel, and
+  gets a bare `Forbidden` on submit. CLAUDE.md §6A wants controls a user cannot
+  use hidden, via the `can_manage` pattern `projects.py:502` already uses.
+- `deviations.can_manage` omits `Owner`; everything else includes it.
+- Everything else in §45's list is unchanged.
 

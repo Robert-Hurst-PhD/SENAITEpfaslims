@@ -29,6 +29,7 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import TIER_CONFIG, deny_gated_action
 
 logger = logging.getLogger("senaite.pfas.browser.prepared_standards")
 
@@ -1014,6 +1015,15 @@ balance that was in calibration that morning stays defensible afterwards.</p>
 
 # ── View ──────────────────────────────────────────────────────────────────────
 
+# Preparing a standard is bench work and stays open (CLAUDE.md §4). Deleting
+# one is not: it removes the object AND its certificate outright, in production
+# too, breaking the middle link of the three-level traceability chain for every
+# result that used the lot (CLAUDE.md §1.6). GAPS §46.
+PREP_STANDARD_GATES = {
+    "delete": TIER_CONFIG,
+}
+
+
 class PFASPrepStandardsView(BrowserView):
     """PFAS Prepared Standards — inventory, create, view certificate."""
 
@@ -1025,6 +1035,10 @@ class PFASPrepStandardsView(BrowserView):
         if action == "cert":
             return self._serve_cert()
         if self.request.method == "POST":
+            denied = deny_gated_action(
+                self.context, self.request, action, PREP_STANDARD_GATES)
+            if denied is not None:
+                return denied
             try:
                 from plone.protect.interfaces import IDisableCSRFProtection
                 from zope.interface import alsoProvides

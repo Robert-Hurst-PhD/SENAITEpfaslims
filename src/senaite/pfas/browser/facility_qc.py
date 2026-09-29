@@ -12,6 +12,8 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import facility_qc as db
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import (
+    TIER_CONFIG, TIER_SITE_ADMIN, deny_gated_action)
 
 logger = logging.getLogger("senaite.pfas.browser.facility_qc")
 
@@ -85,6 +87,23 @@ class PFASFacilityDashboardView(BrowserView):
         return _portal(self.context).absolute_url()
 
 
+# Which POST actions are lab configuration (GAPS §46). The daily bench logs in
+# this module -- temperature, balance, water, waste, eyewash, pipette
+# calibration -- are deliberately absent: any lab user records them.
+UNITS_GATES = {
+    "save": TIER_CONFIG,
+    "delete": TIER_CONFIG,
+    "save_defaults": TIER_CONFIG,
+    # The sensor secret authenticates the unauthenticated ingest endpoint.
+    "save_api_key": TIER_SITE_ADMIN,
+}
+
+WEIGHT_SET_GATES = {
+    "save": TIER_CONFIG,
+    "delete": TIER_CONFIG,
+}
+
+
 class PFASFacilityUnitsView(BrowserView):
     """Unit registry — CRUD for lab manager."""
     _template = ViewPageTemplateFile("templates/facility_units.pt")
@@ -94,6 +113,9 @@ class PFASFacilityUnitsView(BrowserView):
         req = self.request
         action = req.form.get("action", "")
         if req.method == "POST":
+            denied = deny_gated_action(self.context, req, action, UNITS_GATES)
+            if denied is not None:
+                return denied
             if action == "save":
                 self._save()
             elif action == "delete":
@@ -567,6 +589,10 @@ class PFASWeightSetsView(BrowserView):
         flatten_form(self.request)
         if self.request.method == "POST":
             action = self.request.form.get("action", "")
+            denied = deny_gated_action(
+                self.context, self.request, action, WEIGHT_SET_GATES)
+            if denied is not None:
+                return denied
             if action == "save":
                 self._save()
             elif action == "delete":

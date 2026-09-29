@@ -35,6 +35,7 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import TIER_CONFIG, deny_gated_action
 
 logger = logging.getLogger("senaite.pfas.browser.import_studio")
 
@@ -686,6 +687,20 @@ class PFASInstrumentProfileView(BrowserView):
 
 # ── View ─────────────────────────────────────────────────────────────────────
 
+# Every Studio POST authors or changes an instrument mapping -- the single
+# source of truth the importer reads (CLAUDE.md §7) -- so all are lab
+# configuration (GAPS §46). `upload` persists nothing, but it is the first step
+# of authoring; a bench user reaching the mapping screen only to be refused at
+# save is worse than being refused at the start. The pipeline never POSTs here:
+# it reads @@pfas-instrument-profile.
+STUDIO_GATES = {
+    "upload": TIER_CONFIG,
+    "save_profile": TIER_CONFIG,
+    "retire_profile": TIER_CONFIG,
+    "reactivate_profile": TIER_CONFIG,
+}
+
+
 class PFASImportStudioView(BrowserView):
     """Guided Instrument Import & Mapping Studio."""
 
@@ -695,6 +710,10 @@ class PFASImportStudioView(BrowserView):
         flatten_form(self.request)
         action = self.request.form.get("action", "")
         if self.request.method == "POST":
+            denied = deny_gated_action(
+                self.context, self.request, action, STUDIO_GATES)
+            if denied is not None:
+                return denied
             if action == "upload":
                 return self._handle_upload()
             if action == "retire_profile":

@@ -31,6 +31,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import TIER_CONFIG, deny_gated_action
 
 logger = logging.getLogger("senaite.pfas.browser.reagents")
 
@@ -673,6 +674,17 @@ def _expiry_class(rec):
 
 # ── View ──────────────────────────────────────────────────────────────────────
 
+# Lab configuration within the reagent inventory (GAPS §46). Everything else
+# here -- add, edit, open, status, CoA upload, scan, and delete (which ARCHIVES
+# in production and is reversible via restore) -- is bench work and stays open,
+# performable by a person or a future service account (CLAUDE.md §4).
+# `purge_test` hard-deletes every reagent created before production began.
+REAGENT_GATES = {
+    "save_expiry_defaults": TIER_CONFIG,
+    "purge_test": TIER_CONFIG,
+}
+
+
 class PFASReagentsView(BrowserView):
     """PFAS Reagent Inventory — add, scan, OCR, track, expire."""
 
@@ -694,6 +706,10 @@ class PFASReagentsView(BrowserView):
         if action == "reagent_suggestions":
             return self._handle_reagent_suggestions_json()
         if self.request.method == "POST":
+            denied = deny_gated_action(
+                self.context, self.request, action, REAGENT_GATES)
+            if denied is not None:
+                return denied
             try:
                 from plone.protect.interfaces import IDisableCSRFProtection
                 from zope.interface import alsoProvides

@@ -36,3 +36,56 @@ def require_manager(context, request=None):
 
 # Backwards-compatible alias — logbooks.py used this private name.
 _require_manager = require_manager
+
+
+# Roles permitted to change STRUCTURAL settings — secrets whose holder can act
+# as the system, such as the sensor API key that authenticates the
+# unauthenticated ingest endpoint. Deliberately narrower than ALLOWED_ROLES:
+# a LabManager edits lab thresholds, not credentials (GAPS §46).
+SITE_ADMIN_ROLES = frozenset(("Manager", "Owner"))
+
+# The two tiers an action can be gated at. Anything not named in a view's
+# gate table is OPEN — deliberately, because the bench logging actions must stay
+# performable by any lab user and by a future service account (CLAUDE.md §4).
+TIER_CONFIG = "config"
+TIER_SITE_ADMIN = "site_admin"
+
+_TIER_ROLES = {
+    TIER_CONFIG: ALLOWED_ROLES,
+    TIER_SITE_ADMIN: SITE_ADMIN_ROLES,
+}
+
+
+def _has_any_role(context, roles):
+    try:
+        from AccessControl import getSecurityManager
+        user = getSecurityManager().getUser()
+        return bool(roles.intersection(user.getRolesInContext(context)))
+    except Exception:
+        return False
+
+
+def require_site_admin(context, request=None):
+    """True if the current user may change structural settings. Never raises."""
+    return _has_any_role(context, SITE_ADMIN_ROLES)
+
+
+def deny_gated_action(context, request, action, gates):
+    """Refuse a POST whose action is gated above the current user's roles.
+
+    `gates` maps action name -> TIER_CONFIG / TIER_SITE_ADMIN. Returns the
+    response body to return immediately (with the status already set to 403)
+    when the user lacks the tier, else None. An action absent from `gates` is
+    open. An unknown tier DENIES — a typo in a gate table must fail closed.
+
+    Callers must invoke this BEFORE disabling CSRF protection and before any
+    handler runs, so an unauthorised POST never reaches either.
+    """
+    tier = gates.get(action)
+    if tier is None:
+        return None
+    roles = _TIER_ROLES.get(tier)
+    if roles is not None and _has_any_role(context, roles):
+        return None
+    request.response.setStatus(403)
+    return "Forbidden"

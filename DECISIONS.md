@@ -5157,3 +5157,26 @@ NOT because it is the legal holder. It was deliberately not inferred from the
 GitHub account name: a copyright line is a legal statement about a real person or
 entity and is not something to guess. Replace it in `README.md` and `setup.py`
 with whoever actually holds copyright.
+
+## 2026-09-29 — Authorisation is per action, in two tiers, by role check
+
+**Confirmed.** Phase 3 of the configuration layer (GAPS §45, §46).
+
+- **Mechanism: the existing role helpers in `browser/perms.py`, not new Zope
+  permissions.** §45 planned "two permissions over existing roles". Declaring Zope
+  permissions needs a rolemap grant, and the only safe way to apply one on this
+  instance would have been a bespoke `bin/instance run` script, because the
+  GenericSetup profile must not be re-run (§45: it clobbers overrides and raises
+  on `QC_REF_SPEC`). The requirement was per-action gating in two tiers; a role
+  check per action meets it, and nine modules already gate this way.
+- **Tier `config`** = `Manager`, `LabManager`, `Owner` (unchanged
+  `ALLOWED_ROLES`). **Tier `site_admin`** = `Manager`, `Owner` only — a LabManager
+  edits lab thresholds, not credentials. Applied to the sensor API key.
+- **Pipette calibration stays open to the bench.** An in-house quarterly check is
+  a measurement the lab made, the analogue of the balance log.
+- **Gated:** Facility Units save/delete/save_defaults (+ save_api_key at
+  site_admin); Weight Sets save/delete; Import Studio upload/save_profile/
+  retire_profile/reactivate_profile; Reagents save_expiry_defaults/purge_test;
+  Prepared Standards delete. **Everything else on those pages stays open**,
+  including reagent delete (it archives in production and is restorable).
+- An action missing from a gate table is open; an unknown tier denies.
