@@ -316,10 +316,11 @@ _BUILTIN_DEFS = [
 def seed_builtin_logbook_defs(portal):
     """Idempotently create PrepLogbookDef objects for the four standard logbooks.
 
-    Matches by logbook_slug.  Skips slugs that already have a PrepLogbookDef.
-    Updates sort_order, active, builtin, logbook_code, method_slug, and
-    field_schema_json on existing objects only if field_schema_json is still
-    the default "[]" (i.e. not yet configured by a user).
+    Matches by logbook_slug. Runs on EVERY restart (GAPS §47), so an existing
+    definition is the lab's: only its `builtin` identity is re-stamped, and its
+    field schema filled if still empty. sort_order, active, logbook_code and
+    method_slug are all on the editor's form, and re-writing them here reverted
+    a manager's edits at every restart.
     Returns (created, updated, skipped) counts.
     """
     try:
@@ -345,13 +346,11 @@ def seed_builtin_logbook_defs(portal):
 
         if existing is not None:
             changed = False
-            # Always update registry-style fields (safe even if user edited SOP text)
-            for attr, key in [("sort_order", "sort_order"), ("active", "active"),
-                               ("builtin", "builtin"), ("logbook_code", "logbook_code"),
-                               ("method_slug", "method_slug")]:
-                if getattr(existing, attr, None) != defn.get(key):
-                    setattr(existing, attr, defn[key])
-                    changed = True
+            # Identity only: which slugs are built in is the code's fact, not a
+            # setting. Nothing the editor exposes is touched.
+            if not getattr(existing, "builtin", False):
+                existing.builtin = True
+                changed = True
             # Only seed field_schema_json if still empty (don't overwrite user edits)
             cur_schema = getattr(existing, "field_schema_json", None) or "[]"
             if cur_schema in ("[]", "", None):
@@ -614,9 +613,14 @@ class PFASPrepLogbooksView(BrowserView):
             "guided_default":      f.get("guided_default") in ("true", "1", "yes", "on"),
             "sort_order":          f.get("sort_order", "100"),
             "active":              f.get("active") not in ("false", "0", "no", "off"),
-            "builtin":             f.get("builtin") in ("true", "1", "yes", "on"),
         }
         portal = self._portal()
+        # `builtin` is not on the form. Read from it, every save of a built-in
+        # logbook cleared the flag -- lifting its protection from hard delete --
+        # and only the restart re-stamp put it back (GAPS §47.2). A new
+        # definition is never built in; an edited one keeps what it had.
+        prior_rec = _get(portal, data["uid"]) if data["uid"] else None
+        data["builtin"] = bool(prior_rec and prior_rec.get("builtin"))
 
         # The Status dropdown can set "active" directly, which would otherwise
         # bypass _handle_activate/_archive_slug and leave TWO active revisions

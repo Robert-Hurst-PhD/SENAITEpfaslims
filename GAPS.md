@@ -4480,14 +4480,10 @@ surfaces" invited — would have stopped the lab recording temperatures.
 ### Still open
 
 - ~~**Phase 3, authorisation.**~~ Done — §46.
-- **Never re-run the GenericSetup profile on this instance.** Two independent
-  reasons, both verified: `setuphandlers.setup_handler` resets EXISTING Methods,
-  AnalysisServices and SampleTypes from CSV seeds (`:85-88`, `:99-101`, `:126-128`)
-  — the seed-clobbers-override defect this registry exists to prevent, sitting in
-  the installer; and `:291` unpacks 3 values from `QC_REF_SPEC`'s 5-tuples, so a
-  reinstall raises `ValueError: too many values to unpack`. **Two separate defects
-  to file.** The permission grant goes through an idempotent `bin/instance run`
-  script.
+- ~~**Never re-run the GenericSetup profile on this instance.**~~ Fixed — §47.
+  Both claims here were half right: the profile is not "never re-run", it re-runs
+  on **every restart**; and the unpack does not raise, it was swallowed as a
+  warning every time.
 - Vocabularies remain code-only, so the console's Vocabulary group is empty and
   says so. Retire-not-delete with usage counts is Phase 6.
 - **CLAUDE.md §5 still describes ten workspaces** when the 2026-09-18 decision was
@@ -4709,4 +4705,109 @@ clerk and redirects a manager to the unified console, as before.
 - ~~The refused buttons are still visible.~~ Done — §46.7.
 - `deviations.can_manage` omits `Owner`; everything else includes it.
 - Everything else in §45's list is unchanged.
+
+---
+
+## 47. Every restart re-ran the installer, and it reverted the lab's edits (2026-09-29)
+
+§45 said "never re-run the GenericSetup profile on this instance". It had been
+re-run **325 times**. The container entrypoint runs `buildout -c custom.cfg` on
+every start, and `custom.cfg` enables `collective.recipe.plonesite` with
+`senaite.pfas:default`; `portal_setup` holds one `import-all-profile-
+senaite.pfas_default-*.log` per restart, the latest from the restart that
+verified this fix. §22.3 had seen exactly this for `method_profiles.json`; nobody
+had asked what else the same re-run did.
+
+### 47.1 Proven, then fixed
+
+`setup_handler` found each seeded object by Title and then wrote the CSV value
+onto it regardless. Live, before the fix: a Method description tagged in setup
+came back as the CSV text after one restart. So **any edit made in SENAITE setup
+to a seeded Method's ID or description, a seeded service's precision or
+category, or a seeded sample type's retention or hazardous flag has been
+silently reverted at every restart** — including the restarts CLAUDE.md's own
+workflow requires after a template change. All live values equal their seeds
+today, consistent with that and with nobody having edited them.
+
+`_get_or_create` now returns `(obj, created)`, and every seed setter sits under
+`if created:`. The service-category collapse, which had been a one-time
+migration re-applied at each start, is done and no longer repeats.
+
+Live, after the fix — one field on each code path tagged, restart, read back
+(and the profile confirmed re-run by a new import log):
+
+    field                                  tagged    after restart
+    Method description (FDA 32-PFAS)       +PROBE    +PROBE
+    SampleType retention (first seeded)    4242 d    4242 d
+    AnalysisService precision (first)      7         7
+    Built-in logbook 251 sort_order        4242      4242
+
+All four restored afterwards; the seed comparison is back to 0 differences.
+
+### 47.2 The logbook seeder reverted the editor, and hid an editor defect
+
+`seed_builtin_logbook_defs` re-wrote `sort_order`, `active`, `logbook_code` and
+`method_slug` on the four built-in definitions each start — all four are on the
+editor's form, so a manager who deactivated or re-ordered a built-in logbook had
+it undone. It now re-stamps only the `builtin` identity and fills an empty field
+schema.
+
+The re-stamp had been covering for a real defect: the editor read `builtin`
+from the form, **which never sends it**, so every save of a built-in logbook
+cleared the flag and lifted its protection from hard delete until the next
+restart. The editor now keeps the prior value on edit; a new definition is never
+built in.
+
+### 47.3 The Reference Definition path never ran
+
+`create_reference_definitions` unpacked `QC_REF_SPEC`'s 5-tuples as 3, raised on
+the first row, and `setup_handler`'s `try` logged it as a warning — every
+restart. The accidental upside is that no Reference Definition was ever
+overwritten. Fixed arity, and now create-only: an existing definition is skipped
+(`@@pfas-setup-references` maintains them). All 11 codes already exist (13
+definitions live), so this changes nothing on this instance; it matters on a
+fresh one.
+
+### 47.4 Every seeder, audited
+
+| Seeder (runs every restart) | On existing data | Evidence |
+|---|---|---|
+| `setup_handler` CSV setters | **overwrote** — fixed | live tag reverted, then survived |
+| `create_reference_definitions` | never ran — fixed, create-only | unpack arity |
+| `seed_builtin_logbook_defs` | **overwrote 4 editor fields** — fixed | `prep_logbooks.py` + form fields |
+| `seed_default_profiles` | fills missing ids; **re-exports the JSON** | §22.3; md5 unchanged across 4 restarts today |
+| `egad_store.seed_defaults` | fills only (`if key not in store`) | code |
+| `migrate_state_profile_vocab` | fills missing vocab keys only | code |
+| `logbook_store.seed_defaults` | fills only | code |
+| `seed_vendor_templates` | fills only | code |
+| `link_method_analytes` | additive from the profile's own analyte set | code |
+| `setup_automation_group`, `setup_*_catalog`, `migrate_*_from_annotations` | create-if-missing / migrate-if-present | code |
+| `_stamp_pfas_role` | re-stamps an identity annotation, not editable | code |
+
+A new seeder must be added to this table, and must fill only.
+
+**Trade-off, recorded in DECISIONS:** a correction to the CSV seeds no longer
+reaches objects that already exist. It needs an explicit upgrade step.
+
+### 47.5 Tests
+
+`tests/test_installer_idempotence.py`, static: no `set*` on a get-or-created
+object outside `if created:`; `_get_or_create` returns `(obj, created)`; the
+Reference Definition loop's arity matches `QC_REF_SPEC` and skips existing; the
+logbook seeder writes no field the editor's form carries; the editor never reads
+`builtin` from the form. 7 mutations, all killed. 37/37 test files.
+
+### Still open
+
+- **Title is the match key.** A seeded Method, service or sample type the lab
+  RENAMES is not found at the next restart, and a fresh copy is created from the
+  seed. Both extra sample types today (`FDA 32-PFAS in Food LFSM` / `LFSMD`) are
+  lab-added, not re-creations, so it has not happened yet. Matching on a stable
+  key (MethodID, Keyword, Prefix) is a design decision — asked.
+- **Whether the profile should re-run at start at all.** Stopping it would also
+  stop `post_install`'s migrations, which then need proper upgrade steps. Asked,
+  not changed.
+- `seed_default_profiles` still re-exports `method_profiles.json` from ZODB on
+  every start (§22.3); harmless while the file is only ever written through the
+  store, which is the rule.
 

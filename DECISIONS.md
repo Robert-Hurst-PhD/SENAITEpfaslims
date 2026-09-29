@@ -5180,3 +5180,17 @@ with whoever actually holds copyright.
   Prepared Standards delete. **Everything else on those pages stays open**,
   including reagent delete (it archives in production and is restorable).
 - An action missing from a gate table is open; an unknown tier denies.
+
+## 2026-09-29 — The installer fills what is missing and never overwrites
+
+**Confirmed by necessity** (GAPS §47). `senaite.pfas:default` re-runs on every
+container start, so its seeders are not install-time code: each one runs against
+a live laboratory's configuration. Rule: a seeder may create what is missing and
+may fill an empty value; it may not write a seed value onto an existing object.
+
+Consequence: a correction to `setupdata/*.csv` no longer reaches objects that
+already exist. That needs an explicit upgrade step naming the objects and the
+change, which is what an audited system should require anyway — a silent change
+to a Method's description at restart is not something ISO 17025 §8.3 document
+control can account for.
+

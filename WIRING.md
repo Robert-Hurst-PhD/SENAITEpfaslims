@@ -91,13 +91,13 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - written by: `src/senaite/pfas/egad_store.py:278`, `src/senaite/pfas/egad_store.py:335`, `src/senaite/pfas/egad_store.py:359`
   - read by: `src/senaite/pfas/egad_store.py:278`, `src/senaite/pfas/egad_store.py:335`, `src/senaite/pfas/egad_store.py:359`
   - reached via `get_edd_profiles()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/browser/egad_config.py:138`, `src/senaite/pfas/browser/egad_config.py:363`, `src/senaite/pfas/browser/egad_config.py:425`
-  - reached via `migrate_state_profile_vocab()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/setuphandlers.py:169`
+  - reached via `migrate_state_profile_vocab()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/setuphandlers.py:185`
   - reached via `save_edd_profile()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/browser/egad_config.py:138`
   - (same call site appears in both rows above: a lazy-create-and-return wrapper — e.g. `if key not in ann: ann[key] = {}`, then `return ann[key]` — that both creates on first use and hands back the live value; every call is both)
 - `senaite.pfas.egad`
   - defined: `PFAS_EGAD_KEY` (src/senaite/pfas/egad_store.py:34)
   - written by: `src/senaite/pfas/egad_store.py:499`
-  - read by: `src/senaite/pfas/egad_store.py:498`, `src/senaite/pfas/egad_store.py:500`, `src/senaite/pfas/setuphandlers.py:726`
+  - read by: `src/senaite/pfas/egad_store.py:498`, `src/senaite/pfas/egad_store.py:500`, `src/senaite/pfas/setuphandlers.py:750`
 - `senaite.pfas.egad_client`
   - defined: `PFAS_EGAD_CLIENT_KEY` (src/senaite/pfas/egad_store.py:35)
   - written by: `src/senaite/pfas/egad_store.py:886`
@@ -151,12 +151,12 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - read by: `src/senaite/pfas/browser/logbook_docs.py:139`
   - reached via `get_archived_slugs()` (src/senaite/pfas/browser/logbook_docs.py) — imported by `src/senaite/pfas/browser/logbooks.py:638`, `src/senaite/pfas/browser/logbooks.py:647`
 - `senaite.pfas.logbook_defs`
-  - defined: `LOGBOOK_DEFS_KEY` (src/senaite/pfas/logbook_store.py:35), `LOGBOOK_DEFS_KEY` (src/senaite/pfas/setuphandlers.py:499)
+  - defined: `LOGBOOK_DEFS_KEY` (src/senaite/pfas/logbook_store.py:35), `LOGBOOK_DEFS_KEY` (src/senaite/pfas/setuphandlers.py:523)
   - written by: `src/senaite/pfas/logbook_store.py:180`, `src/senaite/pfas/logbook_store.py:254`
-  - read by: `src/senaite/pfas/logbook_store.py:155`, `src/senaite/pfas/logbook_store.py:253`, `src/senaite/pfas/setuphandlers.py:508`
+  - read by: `src/senaite/pfas/logbook_store.py:155`, `src/senaite/pfas/logbook_store.py:253`, `src/senaite/pfas/setuphandlers.py:532`
   - reached via `get_logbook_defs()` (src/senaite/pfas/logbook_store.py) — imported by `src/senaite/pfas/browser/logbooks.py:1681`, `src/senaite/pfas/browser/logbooks.py:637`, `src/senaite/pfas/browser/logbooks.py:646`, `src/senaite/pfas/browser/logbooks.py:704`, `src/senaite/pfas/browser/logbooks.py:785`
   - reached via `save_logbook_defs()` (src/senaite/pfas/logbook_store.py) — imported by `src/senaite/pfas/browser/logbooks.py:785`
-  - reached via `seed_defaults()` (src/senaite/pfas/logbook_store.py) — imported by `src/senaite/pfas/setuphandlers.py:176`
+  - reached via `seed_defaults()` (src/senaite/pfas/logbook_store.py) — imported by `src/senaite/pfas/setuphandlers.py:192`
 - `senaite.pfas.method_associations`
   - defined: `METHOD_ASSOC_KEY` (src/senaite/pfas/method_bridge.py:30)
   - written by: `src/senaite/pfas/browser/method_wizard.py:853`, `src/senaite/pfas/method_bridge.py:208`
@@ -167,7 +167,7 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
 - `senaite.pfas.method_profiles`
   - defined: `PFAS_METHOD_PROFILES_KEY` (src/senaite/pfas/method_profile_store.py:33)
   - written by: `src/senaite/pfas/method_profile_store.py:1003`
-  - read by: `src/senaite/pfas/method_profile_store.py:1002`, `src/senaite/pfas/method_profile_store.py:1004`, `src/senaite/pfas/method_profile_store.py:1029`, `src/senaite/pfas/migrations/purge_legacy_profile_annotations.py:62`, `src/senaite/pfas/migrations/purge_legacy_profile_annotations.py:103`, `src/senaite/pfas/setuphandlers.py:598`
+  - read by: `src/senaite/pfas/method_profile_store.py:1002`, `src/senaite/pfas/method_profile_store.py:1004`, `src/senaite/pfas/method_profile_store.py:1029`, `src/senaite/pfas/migrations/purge_legacy_profile_annotations.py:62`, `src/senaite/pfas/migrations/purge_legacy_profile_annotations.py:103`, `src/senaite/pfas/setuphandlers.py:622`
   - reached via `get_profile_store()` (src/senaite/pfas/method_profile_store.py) — imported by `src/senaite/pfas/migrations/backfill_matrix_uid_map.py:49`
 - `senaite.pfas.pending_amendment_reason`
   - defined: `PENDING_REASON_KEY` (src/senaite/pfas/browser/controlled_publications.py:43)
@@ -226,9 +226,9 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - written by: `src/senaite/pfas/browser/reagents.py:522`
   - read by: `src/senaite/pfas/browser/reagents.py:501`, `src/senaite/pfas/browser/reagents.py:517`
 - `senaite.pfas.reference_definition_method`
-  - defined: `REFERENCE_METHOD_KEY` (src/senaite/pfas/setuphandlers.py:192)
-  - written by: `src/senaite/pfas/setuphandlers.py:206`
-  - read by: `src/senaite/pfas/setuphandlers.py:199`
+  - defined: `REFERENCE_METHOD_KEY` (src/senaite/pfas/setuphandlers.py:208)
+  - written by: `src/senaite/pfas/setuphandlers.py:222`
+  - read by: `src/senaite/pfas/setuphandlers.py:215`
   - reached via `get_reference_method()` (src/senaite/pfas/setuphandlers.py) — imported by `src/senaite/pfas/browser/setuprefs.py:326`
   - reached via `set_reference_method()` (src/senaite/pfas/setuphandlers.py) — imported by `src/senaite/pfas/browser/setuprefs.py:339`
 - `senaite.pfas.run_manifest`
@@ -265,7 +265,7 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `PORTAL_TEMPLATES_KEY` (src/senaite/pfas/browser/import_studio.py:54)
   - written by: `src/senaite/pfas/browser/import_studio.py:566`, `src/senaite/pfas/browser/import_studio.py:592`
   - read by: `src/senaite/pfas/browser/import_studio.py:566`, `src/senaite/pfas/browser/import_studio.py:592`
-  - reached via `seed_vendor_templates()` (src/senaite/pfas/browser/import_studio.py) — imported by `src/senaite/pfas/setuphandlers.py:829`
+  - reached via `seed_vendor_templates()` (src/senaite/pfas/browser/import_studio.py) — imported by `src/senaite/pfas/setuphandlers.py:853`
   - (same call site appears in both rows above: a lazy-create-and-return wrapper — e.g. `if key not in ann: ann[key] = {}`, then `return ann[key]` — that both creates on first use and hands back the live value; every call is both)
 - `senaite.pfas.wizard_sessions`
   - defined: `WIZARD_SESSIONS_KEY` (src/senaite/pfas/browser/method_wizard.py:41)
@@ -289,8 +289,8 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
 **legacy — read only by a migration (not a finding)** (1)
 
 - `senaite.pfas.reagents`
-  - defined: `REAGENTS_KEY` (src/senaite/pfas/setuphandlers.py:382)
-  - read by: `src/senaite/pfas/setuphandlers.py:384`
+  - defined: `REAGENTS_KEY` (src/senaite/pfas/setuphandlers.py:406)
+  - read by: `src/senaite/pfas/setuphandlers.py:408`
 
 **declared only — never read or written** (0)
 
@@ -321,7 +321,7 @@ The same key STRING defined as a named constant in more than one module. Split i
 
 **Migration-sited redefinitions (1)** — legitimate: a migration reads/writes a legacy store by its old literal value on the way to the current structure:
 
-- `senaite.pfas.logbook_defs` defined in: `LOGBOOK_DEFS_KEY` at `src/senaite/pfas/logbook_store.py:35`, `LOGBOOK_DEFS_KEY` at `src/senaite/pfas/setuphandlers.py:499` (in migrate_logbook_defs_from_annotations())
+- `senaite.pfas.logbook_defs` defined in: `LOGBOOK_DEFS_KEY` at `src/senaite/pfas/logbook_store.py:35`, `LOGBOOK_DEFS_KEY` at `src/senaite/pfas/setuphandlers.py:523` (in migrate_logbook_defs_from_annotations())
 
 ### 1.5 Same symbol, different key — the inverse hazard
 
@@ -345,8 +345,8 @@ Where a key constant is imported by name rather than redefined — the identity-
 - `src/senaite/pfas/browser/prepared_standards.py:391` imports `_ANN_ARCHIVED_KEY` from `src/senaite/pfas/browser/reagents.py` as `_ANN_ARCHIVED_KEY`
 - `src/senaite/pfas/browser/qc_review_report.py:308` imports `RUN_MANIFEST_KEY` from `src/senaite/pfas/browser/run_builder.py` as `RUN_MANIFEST_KEY`
 - `src/senaite/pfas/migrations/purge_legacy_profile_annotations.py:55` imports `PFAS_METHOD_PROFILES_KEY` from `src/senaite/pfas/method_profile_store.py` as `PFAS_METHOD_PROFILES_KEY`
-- `src/senaite/pfas/setuphandlers.py:590` imports `PFAS_METHOD_PROFILES_KEY` from `src/senaite/pfas/method_profile_store.py` as `PFAS_METHOD_PROFILES_KEY`
-- `src/senaite/pfas/setuphandlers.py:700` imports `PFAS_EGAD_KEY` from `src/senaite/pfas/egad_store.py` as `PFAS_EGAD_KEY`
+- `src/senaite/pfas/setuphandlers.py:614` imports `PFAS_METHOD_PROFILES_KEY` from `src/senaite/pfas/method_profile_store.py` as `PFAS_METHOD_PROFILES_KEY`
+- `src/senaite/pfas/setuphandlers.py:724` imports `PFAS_EGAD_KEY` from `src/senaite/pfas/egad_store.py` as `PFAS_EGAD_KEY`
 
 ### 1.7 Keys reached through an accessor (61)
 
@@ -410,9 +410,9 @@ The other identity-preserving case, and the one a key-literal scan cannot see at
 - `src/senaite/pfas/method_profile_store.py:1188` calls `link_one()` from `src/senaite/pfas/method_bridge.py` → `senaite.pfas.method_associations`
 - `src/senaite/pfas/migrations/backfill_matrix_uid_map.py:49` calls `get_profile_store()` from `src/senaite/pfas/method_profile_store.py` → `senaite.pfas.method_profiles`
 - `src/senaite/pfas/migrations/backfill_method_associations.py:53` calls `get_association()` from `src/senaite/pfas/method_bridge.py` → `senaite.pfas.method_associations`
-- `src/senaite/pfas/setuphandlers.py:169` calls `migrate_state_profile_vocab()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
-- `src/senaite/pfas/setuphandlers.py:176` calls `seed_defaults()` from `src/senaite/pfas/logbook_store.py` → `senaite.pfas.logbook_defs`
-- `src/senaite/pfas/setuphandlers.py:829` calls `seed_vendor_templates()` from `src/senaite/pfas/browser/import_studio.py` → `senaite.pfas.vendor_templates`
+- `src/senaite/pfas/setuphandlers.py:185` calls `migrate_state_profile_vocab()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
+- `src/senaite/pfas/setuphandlers.py:192` calls `seed_defaults()` from `src/senaite/pfas/logbook_store.py` → `senaite.pfas.logbook_defs`
+- `src/senaite/pfas/setuphandlers.py:853` calls `seed_vendor_templates()` from `src/senaite/pfas/browser/import_studio.py` → `senaite.pfas.vendor_templates`
 
 ## 2. Cross-process facts
 
@@ -495,7 +495,7 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-method-profiles` | `.method_profiles.PFASMethodProfilesView` | templates/method_profiles.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:56) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-method-wizard` | `.method_wizard.PFASMethodWizardView` | templates/method_wizard.pt (`class attr` at src/senaite/pfas/browser/method_wizard.py:234) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-pipette-calibration` | `.facility_qc.PFASPipetteCalibrationView` | templates/facility_pipettes.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:668) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-prep-logbooks` | `.prep_logbooks.PFASPrepLogbooksView` | templates/prep_logbooks.pt (`class attr` at src/senaite/pfas/browser/prep_logbooks.py:396) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-prep-logbooks` | `.prep_logbooks.PFASPrepLogbooksView` | templates/prep_logbooks.pt (`class attr` at src/senaite/pfas/browser/prep_logbooks.py:395) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-prep-standards` | `.prepared_standards.PFASPrepStandardsView` | templates/prep_standards.pt (`class attr` at src/senaite/pfas/browser/prepared_standards.py:1030) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-print-settings` | `.print_settings.PFASPrintSettingsView` | templates/print_settings.pt (`class attr` at src/senaite/pfas/browser/print_settings.py:21) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-projects` | `.projects.PFASProjectsView` | templates/projects.pt (`class attr` at src/senaite/pfas/browser/projects.py:454) | `*` | `src/senaite/pfas/browser/configure.zcml` |
@@ -589,8 +589,8 @@ type name → schema interface / class (from `profiles/default/types/*.xml`) →
 
 | type | schema | klass | folder(s) instances live in | example site |
 |---|---|---|---|---|
-| `EGADConfig` | `senaite.pfas.content.egad_config.IEGADConfig` | `senaite.pfas.content.egad_config.EGADConfig` | pfas_egad_config | `src/senaite/pfas/setuphandlers.py:718` |
-| `LogbookDef` | `senaite.pfas.content.logbook_def.ILogbookDef` | `senaite.pfas.content.logbook_def.LogbookDef` | pfas_logbook_defs | `src/senaite/pfas/setuphandlers.py:530` |
+| `EGADConfig` | `senaite.pfas.content.egad_config.IEGADConfig` | `senaite.pfas.content.egad_config.EGADConfig` | pfas_egad_config | `src/senaite/pfas/setuphandlers.py:742` |
+| `LogbookDef` | `senaite.pfas.content.logbook_def.ILogbookDef` | `senaite.pfas.content.logbook_def.LogbookDef` | pfas_logbook_defs | `src/senaite/pfas/setuphandlers.py:554` |
 | `MethodProfile` | `senaite.pfas.content.method_profile.IMethodProfile` | `senaite.pfas.content.method_profile.MethodProfile` | pfas_method_profiles | `src/senaite/pfas/method_profile_store.py:1160` |
 | `PFASProject` | `senaite.pfas.content.project.IPFASProject` | `senaite.pfas.content.project.PFASProject` | pfas_projects | `src/senaite/pfas/browser/projects.py:398` |
 | `PrepLogbookDef` | `senaite.pfas.content.prep_logbook_def.IPrepLogbookDef` | `senaite.pfas.content.prep_logbook_def.PrepLogbookDef` | pfas_prep_logbooks | `src/senaite/pfas/browser/prep_logbooks.py:160` |

@@ -43,25 +43,34 @@ def _stamp_pfas_role(obj, role):
 
 
 def _get_or_create(container, portal_type, title, **kw):
-    """Idempotent get-or-create using bika.lims.api."""
+    """Idempotent get-or-create using bika.lims.api. Returns (obj, created).
+
+    THIS RUNS ON EVERY RESTART, not only on install: the container's buildout
+    re-applies senaite.pfas:default through collective.recipe.plonesite each
+    time it starts (GAPS §47). So a seed value may be written only to an object
+    this call has just CREATED. Writing it to an existing one reverts whatever
+    the lab set there -- proven live: a Method description edited in SENAITE
+    setup came back as the CSV text after one restart.
+
+    Matched by Title, so an object the lab RENAMES is not found and a fresh copy
+    is created from the seed (GAPS §47.4).
+    """
     from bika.lims import api
     existing = [o for o in container.objectValues()
                 if getattr(o, "Title", lambda: None)() == title]
     if existing:
-        logger.info("Found existing %s: %s", portal_type, title)
-        return existing[0]
+        return existing[0], False
     try:
         obj = api.create(container, portal_type, title=title, **kw)
     except Exception as e:
         logger.error("FAILED to create %s '%s': %s", portal_type, title, e)
         raise
     logger.info("Created %s: %s", portal_type, title)
-    return obj
+    return obj, True
 
 
 def setup_handler(context):
     marker = context.readDataFile("senaite.pfas.install.txt")
-    logger.info("DEBUG setup_handler marker=%r profile=%r", marker, getattr(context, '_profile_path', '?'))
     if marker is None:
         return
     logger.info("=== senaite.pfas: loading PFAS setup data ===")
@@ -75,31 +84,36 @@ def setup_handler(context):
     cat_folder = new_setup["analysiscategories"]
     categories = {}
     for cat in [u"PFAS", u"PFAS - Internal Standards"]:
-        categories[cat] = _get_or_create(cat_folder, "AnalysisCategory", cat)
+        categories[cat], _ = _get_or_create(cat_folder, "AnalysisCategory", cat)
 
     # ── Methods ─────────────────────────────────────────────────────────
     method_folder = portal["methods"]
     methods = {}
     for row in _read("methods.csv"):
-        m = _get_or_create(method_folder, "Method", row["Title"])
-        try:
-            m.setMethodID(row["MethodID"])
-            m.setDescription(row["Description"])
-        except Exception:
-            pass
+        m, created = _get_or_create(method_folder, "Method", row["Title"])
+        if created:
+            try:
+                m.setMethodID(row["MethodID"])
+                m.setDescription(row["Description"])
+            except Exception:
+                pass
         methods[row["MethodID"]] = m
 
     # ── Native analyte AnalysisServices ─────────────────────────────────
     svc_folder = bika_setup["bika_analysisservices"]
     pfas_cat = categories[u"PFAS"]
     for row in _read("analysis_services.csv"):
-        svc = _get_or_create(svc_folder, "AnalysisService", row["Title"],
-                             Keyword=row["Keyword"], Category=pfas_cat)
-        try:
-            svc.setCategory(pfas_cat)   # migrate existing services to collapsed category
-            svc.setPrecision(int(row["PrecisionDigits"]))
-        except Exception:
-            pass
+        svc, created = _get_or_create(svc_folder, "AnalysisService", row["Title"],
+                                      Keyword=row["Keyword"], Category=pfas_cat)
+        if created:
+            # The collapse onto one category was a one-time migration of
+            # existing services; it has run on every restart since, so it is
+            # done. From here the category and precision are the lab's.
+            try:
+                svc.setCategory(pfas_cat)
+                svc.setPrecision(int(row["PrecisionDigits"]))
+            except Exception:
+                pass
         # NOTE: SENAITE 2.6 core AnalysisService has NO CAS field, so CAS is NOT
         # stored on the core service. Analyte CAS is owned in the add-on
         # (analyte_reference.NATIVE_ANALYTES, single source), keyed by Keyword —
@@ -111,25 +125,27 @@ def setup_handler(context):
     # ── Internal standards / surrogates ─────────────────────────────────
     is_cat = categories[u"PFAS - Internal Standards"]
     for row in _read("internal_standards.csv"):
-        svc = _get_or_create(svc_folder, "AnalysisService", row["Title"],
-                             Keyword=row["Keyword"], Category=is_cat)
-        try:
-            svc.setCategory(is_cat)     # migrate existing IS services
-        except Exception:
-            pass
+        svc, created = _get_or_create(svc_folder, "AnalysisService", row["Title"],
+                                      Keyword=row["Keyword"], Category=is_cat)
+        if created:
+            try:
+                svc.setCategory(is_cat)
+            except Exception:
+                pass
         _stamp_pfas_role(svc, row.get("Role", "surrogate"))
 
     # ── Sample types ────────────────────────────────────────────────────
     st_folder = new_setup["sampletypes"]
     for row in _read("sample_types.csv"):
-        st = _get_or_create(st_folder, "SampleType", row["Title"],
-                            Prefix=row["Prefix"])
-        try:
-            st.setRetentionPeriod({"days": int(row["RetentionDays"]),
-                                   "hours": 0, "minutes": 0})
-            st.setHazardous(row["Hazardous"] == "Y")
-        except Exception:
-            pass
+        st, created = _get_or_create(st_folder, "SampleType", row["Title"],
+                                     Prefix=row["Prefix"])
+        if created:
+            try:
+                st.setRetentionPeriod({"days": int(row["RetentionDays"]),
+                                       "hours": 0, "minutes": 0})
+                st.setHazardous(row["Hazardous"] == "Y")
+            except Exception:
+                pass
 
     # ── Sample containers ───────────────────────────────────────────────
     cont_folder = new_setup["samplecontainers"]
@@ -288,9 +304,17 @@ def create_reference_definitions(portal):
         logger.warning("create_reference_definitions: %s", e)
         return
 
-    for code, (title, is_blank, _strategy) in sorted(QC_REF_SPEC.items()):
+    # QC_REF_SPEC rows are 5-tuples; this unpacked three, so the loop raised on
+    # its first row and setup_handler swallowed it as a warning on every restart
+    # -- no Reference Definition was ever created or updated here (GAPS §47.3).
+    for code, spec in sorted(QC_REF_SPEC.items()):
+        title, is_blank = spec[0], spec[1]
         try:
             obj, is_new = _get_or_create_ref_def(folder, title, is_blank=is_blank)
+            if not is_new:
+                # Runs on every restart: an existing definition is the lab's,
+                # maintained through @@pfas-setup-references.
+                continue
             records = _build_reference_results(code, rules, analyte_uids,
                                                profile=ref_profile)
             obj.setReferenceResults(records)
