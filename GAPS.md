@@ -4618,9 +4618,42 @@ set. Nine modules call one of them — `logbook_media`, `logbook_batches`,
 `method_profiles`, `data_review`. **`method_profiles` is the QC-criteria editor.**
 Not probed live; the mechanism is identical. Awaiting a decision (below).
 
+### 46.6 The QC-criteria editor was open to the bench, and is now closed
+
+Probed live with the same throwaway LabClerk holding a local `Owner` on one
+reagent, GET only:
+
+    view                        clerk@portal  clerk via owned reagent
+                                              before   after
+    pfas-method-profiles        403           200      403
+    pfas-method-profile-edit    403           200      403
+    pfas-prep-logbooks          403           200      403
+    pfas-egad-config            403           —        403
+
+**A bench chemist could open and submit the QC-criteria editor** by adding any
+reagent and going through it. `perms.require_manager` now delegates to the
+portal-anchored `_has_any_role`. `method_profiles.py` and `egad_config.py` each
+kept a private copy resolving at the context, so fixing `perms` alone would have
+left the editor open: both now delegate, and their private role sets are gone.
+Two tests added — `require_manager` refuses a clerk carrying a local Owner, and no
+module keeps a private copy — and each is killed by its mutation. A manager
+still reaches every gated page (smoke test: 200 across the gated views).
+`pfas-logbook-custom` and `pfas-logbook-macros` return 500 as admin **at HEAD
+without this change too**: a LocationError without parameters and a macro
+provider that is not callable. Not a regression.
+
+**Five more role checks resolve at the context and were left:**
+`qcrules._check_manager`, `setuprefs._is_manager`, `calibrations._is_manager`,
+`run_builder._is_manager`, `data_review._is_manager` / `_is_analyst`. None
+includes `Owner`, so they are open only to a LOCAL Manager/LabManager/Analyst
+grant, and nothing in this add-on makes one (`manage_setLocalRoles` appears
+nowhere). Lower risk, same shape; consolidating them onto `perms` is the tidy
+next step. `data_review._is_analyst` must be checked for any intended reliance
+on a worksheet-local role before it is moved.
+
 ### Still open
 
-- **The pre-existing gates share §46.5's flaw** — above. Most urgent item here.
+- **Five lower-risk role checks still resolve at the context** — §46.6.
 - **Does Zope's `Owner` belong in either tier at all?** CLAUDE.md §4's business
   "Owner" maps to SENAITE `LabManager`; Zope's `Owner` is the creator-of-object
   role. Its presence in `ALLOWED_ROLES` looks like a name collision, not a

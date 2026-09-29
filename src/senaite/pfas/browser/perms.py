@@ -25,13 +25,13 @@ def require_manager(context, request=None):
 
     Never raises: an unauthenticated or broken security context is treated
     as "not a manager" (deny by default).
+
+    Resolved at the PORTAL, not at `context` (GAPS §46.6). The views calling
+    this are registered `for="*"`, and Plone makes the creator of any object
+    its local `Owner`, so resolved at the context a bench chemist reached the
+    QC-criteria editor through any reagent they had added.
     """
-    try:
-        from AccessControl import getSecurityManager
-        user = getSecurityManager().getUser()
-        return bool(ALLOWED_ROLES.intersection(user.getRolesInContext(context)))
-    except Exception:
-        return False
+    return _has_any_role(context, ALLOWED_ROLES)
 
 
 # Backwards-compatible alias — logbooks.py used this private name.

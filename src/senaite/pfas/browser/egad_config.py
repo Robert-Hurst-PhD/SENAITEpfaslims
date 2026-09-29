@@ -44,7 +44,6 @@ from senaite.pfas.egad_store import (
 
 logger = logging.getLogger("senaite.pfas.browser.egad_config")
 
-_ALLOWED_ROLES = frozenset(("Manager", "LabManager", "Owner"))
 
 _METHODS = ("EPA_537_1", "EPA_1633A", "FDA_32PFAS")
 
@@ -91,13 +90,11 @@ _NEEDS_MANUAL_CAS = frozenset(["PFUnDS"])
 
 
 def _require_manager(context, request):
-    try:
-        from AccessControl import getSecurityManager
-        user = getSecurityManager().getUser()
-        roles = user.getRolesInContext(context)
-        return bool(_ALLOWED_ROLES.intersection(roles))
-    except Exception:
-        return False
+    # One gate, resolved at the portal (GAPS §46.6). This module kept a private
+    # copy that resolved at the context, so a bench user's local Owner role on
+    # anything they had created passed it.
+    from senaite.pfas.browser.perms import require_manager
+    return require_manager(context, request)
 
 
 def _portal(context):

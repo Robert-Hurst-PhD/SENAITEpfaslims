@@ -90,9 +90,9 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `EDD_PROFILES_KEY` (src/senaite/pfas/egad_store.py:177)
   - written by: `src/senaite/pfas/egad_store.py:278`, `src/senaite/pfas/egad_store.py:335`, `src/senaite/pfas/egad_store.py:359`
   - read by: `src/senaite/pfas/egad_store.py:278`, `src/senaite/pfas/egad_store.py:335`, `src/senaite/pfas/egad_store.py:359`
-  - reached via `get_edd_profiles()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/browser/egad_config.py:141`, `src/senaite/pfas/browser/egad_config.py:366`, `src/senaite/pfas/browser/egad_config.py:428`
+  - reached via `get_edd_profiles()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/browser/egad_config.py:138`, `src/senaite/pfas/browser/egad_config.py:363`, `src/senaite/pfas/browser/egad_config.py:425`
   - reached via `migrate_state_profile_vocab()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/setuphandlers.py:169`
-  - reached via `save_edd_profile()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/browser/egad_config.py:141`
+  - reached via `save_edd_profile()` (src/senaite/pfas/egad_store.py) — imported by `src/senaite/pfas/browser/egad_config.py:138`
   - (same call site appears in both rows above: a lazy-create-and-return wrapper — e.g. `if key not in ann: ann[key] = {}`, then `return ann[key]` — that both creates on first use and hands back the live value; every call is both)
 - `senaite.pfas.egad`
   - defined: `PFAS_EGAD_KEY` (src/senaite/pfas/egad_store.py:34)
@@ -108,13 +108,13 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `EGAD_BATCH_EDD_KEY` (src/senaite/pfas/browser/egad_publish.py:34)
   - written by: `src/senaite/pfas/browser/egad_publish.py:75`
   - read by: `src/senaite/pfas/browser/egad_publish.py:61`
-  - reached via `get_batch_edd()` (src/senaite/pfas/browser/egad_publish.py) — imported by `src/senaite/pfas/browser/egad_config.py:636`
+  - reached via `get_batch_edd()` (src/senaite/pfas/browser/egad_publish.py) — imported by `src/senaite/pfas/browser/egad_config.py:633`
 - `senaite.pfas.egad_sample_type`
   - defined: `EGAD_SAMPLE_TYPE_KEY` (src/senaite/pfas/browser/egad_publish.py:33)
   - written by: `src/senaite/pfas/browser/egad_publish.py:43`
   - read by: `src/senaite/pfas/browser/egad_publish.py:52`, `src/senaite/pfas/egad_builder.py:488`
-  - reached via `get_ar_sample_type()` (src/senaite/pfas/browser/egad_publish.py) — imported by `src/senaite/pfas/browser/egad_config.py:695`
-  - reached via `set_ar_sample_type()` (src/senaite/pfas/browser/egad_publish.py) — imported by `src/senaite/pfas/browser/egad_config.py:593`
+  - reached via `get_ar_sample_type()` (src/senaite/pfas/browser/egad_publish.py) — imported by `src/senaite/pfas/browser/egad_config.py:692`
+  - reached via `set_ar_sample_type()` (src/senaite/pfas/browser/egad_publish.py) — imported by `src/senaite/pfas/browser/egad_config.py:590`
 - `senaite.pfas.extraction_session`
   - defined: `EXTRACTION_SESSION_KEY` (src/senaite/pfas/dilution_ref.py:140)
   - written by: `src/senaite/pfas/browser/data_review.py:2876`, `src/senaite/pfas/browser/extraction_guide.py:57`
@@ -161,7 +161,7 @@ A family's own state is judged on its DYNAMIC accessors (the concat/format read 
   - defined: `METHOD_ASSOC_KEY` (src/senaite/pfas/method_bridge.py:30)
   - written by: `src/senaite/pfas/browser/method_wizard.py:853`, `src/senaite/pfas/method_bridge.py:208`
   - read by: `src/senaite/pfas/browser/method_wizard.py:852`, `src/senaite/pfas/browser/method_wizard.py:854`, `src/senaite/pfas/method_bridge.py:101`, `src/senaite/pfas/method_bridge.py:153`, `src/senaite/pfas/method_bridge.py:207`, `src/senaite/pfas/method_bridge.py:209`
-  - reached via `get_association()` (src/senaite/pfas/method_bridge.py) — imported by `src/senaite/pfas/browser/method_profiles.py:73`, `src/senaite/pfas/browser/method_viewlet.py:38`, `src/senaite/pfas/migrations/backfill_method_associations.py:53`
+  - reached via `get_association()` (src/senaite/pfas/method_bridge.py) — imported by `src/senaite/pfas/browser/method_profiles.py:71`, `src/senaite/pfas/browser/method_viewlet.py:38`, `src/senaite/pfas/migrations/backfill_method_associations.py:53`
   - reached via `get_profile_id_for_method()` (src/senaite/pfas/method_bridge.py) — imported by `src/senaite/pfas/browser/method_viewlet.py:38`, `src/senaite/pfas/egad_builder.py:421`, `src/senaite/pfas/egad_builder.py:587`
   - reached via `link_one()` (src/senaite/pfas/method_bridge.py) — imported by `src/senaite/pfas/method_profile_store.py:1188`
 - `senaite.pfas.method_profiles`
@@ -368,13 +368,13 @@ The other identity-preserving case, and the one a key-literal scan cannot see at
 - `src/senaite/pfas/browser/deviations.py:12` calls `save_registry()` from `src/senaite/pfas/qc_deviation.py` → `senaite.pfas.deviations.registry`
 - `src/senaite/pfas/browser/egad_config.py:26` calls `get_client_egad()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.egad_client`
 - `src/senaite/pfas/browser/egad_config.py:26` calls `save_client_egad()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.egad_client`
-- `src/senaite/pfas/browser/egad_config.py:141` calls `get_edd_profiles()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
-- `src/senaite/pfas/browser/egad_config.py:141` calls `save_edd_profile()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
-- `src/senaite/pfas/browser/egad_config.py:366` calls `get_edd_profiles()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
-- `src/senaite/pfas/browser/egad_config.py:428` calls `get_edd_profiles()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
-- `src/senaite/pfas/browser/egad_config.py:593` calls `set_ar_sample_type()` from `src/senaite/pfas/browser/egad_publish.py` → `senaite.pfas.egad_sample_type`
-- `src/senaite/pfas/browser/egad_config.py:636` calls `get_batch_edd()` from `src/senaite/pfas/browser/egad_publish.py` → `senaite.pfas.egad_edd`
-- `src/senaite/pfas/browser/egad_config.py:695` calls `get_ar_sample_type()` from `src/senaite/pfas/browser/egad_publish.py` → `senaite.pfas.egad_sample_type`
+- `src/senaite/pfas/browser/egad_config.py:138` calls `get_edd_profiles()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
+- `src/senaite/pfas/browser/egad_config.py:138` calls `save_edd_profile()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
+- `src/senaite/pfas/browser/egad_config.py:363` calls `get_edd_profiles()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
+- `src/senaite/pfas/browser/egad_config.py:425` calls `get_edd_profiles()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.edd_profiles`
+- `src/senaite/pfas/browser/egad_config.py:590` calls `set_ar_sample_type()` from `src/senaite/pfas/browser/egad_publish.py` → `senaite.pfas.egad_sample_type`
+- `src/senaite/pfas/browser/egad_config.py:633` calls `get_batch_edd()` from `src/senaite/pfas/browser/egad_publish.py` → `senaite.pfas.egad_edd`
+- `src/senaite/pfas/browser/egad_config.py:692` calls `get_ar_sample_type()` from `src/senaite/pfas/browser/egad_publish.py` → `senaite.pfas.egad_sample_type`
 - `src/senaite/pfas/browser/egad_publish.py:240` calls `get_client_egad()` from `src/senaite/pfas/egad_store.py` → `senaite.pfas.egad_client`
 - `src/senaite/pfas/browser/extraction_pdf.py:20` calls `_load_session()` from `src/senaite/pfas/browser/extraction_guide.py` → `senaite.pfas.extraction_session`
 - `src/senaite/pfas/browser/logbooks.py:165` calls `_load_session()` from `src/senaite/pfas/browser/extraction_guide.py` → `senaite.pfas.extraction_session`
@@ -391,7 +391,7 @@ The other identity-preserving case, and the one a key-literal scan cannot see at
 - `src/senaite/pfas/browser/logbooks.py:1565` calls `get_dilutions()` from `src/senaite/pfas/dilution_ref.py` → `senaite.pfas.logbook.252`
 - `src/senaite/pfas/browser/logbooks.py:1565` calls `get_spikes()` from `src/senaite/pfas/dilution_ref.py` → `senaite.pfas.extraction_session`
 - `src/senaite/pfas/browser/logbooks.py:1681` calls `get_logbook_defs()` from `src/senaite/pfas/logbook_store.py` → `senaite.pfas.logbook_defs`
-- `src/senaite/pfas/browser/method_profiles.py:73` calls `get_association()` from `src/senaite/pfas/method_bridge.py` → `senaite.pfas.method_associations`
+- `src/senaite/pfas/browser/method_profiles.py:71` calls `get_association()` from `src/senaite/pfas/method_bridge.py` → `senaite.pfas.method_associations`
 - `src/senaite/pfas/browser/method_viewlet.py:38` calls `get_association()` from `src/senaite/pfas/method_bridge.py` → `senaite.pfas.method_associations`
 - `src/senaite/pfas/browser/method_viewlet.py:38` calls `get_profile_id_for_method()` from `src/senaite/pfas/method_bridge.py` → `senaite.pfas.method_associations`
 - `src/senaite/pfas/browser/pfas_macros.py:43` calls `get_print_settings()` from `src/senaite/pfas/print_settings.py` → `senaite.pfas.print_settings`
@@ -464,9 +464,9 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-data-review` | `.data_review.PFASDataReviewView` | templates/data_review.pt (`class attr` at src/senaite/pfas/browser/data_review.py:195) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-data-review-home` | `.workspace_home.PFASDataReviewHomeView` | templates/pfas_data_review_home.pt (`class attr` at src/senaite/pfas/browser/workspace_home.py:161) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-deviations` | `.deviations.PFASDeviationView` | templates/deviations.pt | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-egad-batches` | `.egad_config.PFASEGADBatchesView` | templates/egad_batches.pt (`class attr` at src/senaite/pfas/browser/egad_config.py:578) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-egad-client-config` | `.egad_config.PFASEGADClientConfigView` | templates/egad_client_config.pt (`class attr` at src/senaite/pfas/browser/egad_config.py:395) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-egad-config` | `.egad_config.PFASEGADConfigView` | templates/egad_config.pt (`class attr` at src/senaite/pfas/browser/egad_config.py:122) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-egad-batches` | `.egad_config.PFASEGADBatchesView` | templates/egad_batches.pt (`class attr` at src/senaite/pfas/browser/egad_config.py:575) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-egad-client-config` | `.egad_config.PFASEGADClientConfigView` | templates/egad_client_config.pt (`class attr` at src/senaite/pfas/browser/egad_config.py:392) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-egad-config` | `.egad_config.PFASEGADConfigView` | templates/egad_config.pt (`class attr` at src/senaite/pfas/browser/egad_config.py:119) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-egad-export` | `.egad_config.PFASEGADExportView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-extraction-guide` | `.extraction_guide.PFASExtractionGuideView` | templates/extraction_guide.pt (`class attr` at src/senaite/pfas/browser/extraction_guide.py:69) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-extraction-pdf` | `.extraction_pdf.PFASExtractionPDFView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
@@ -491,8 +491,8 @@ The Py2 add-on (in-Plone, ZODB) and the Py3 worker (out-of-process) are one syst
 | `@@pfas-logbook-media` | `.logbook_media.PFASLogbookMediaView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-lot-autocomplete` | `.logbooks.PFASLotAutocompleteView` | (none found) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-macros` | `.pfas_macros.PFASMacrosView` | templates/pfas_macros.pt (`class attr` at src/senaite/pfas/browser/pfas_macros.py:32) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-method-profile-edit` | `.method_profiles.PFASMethodProfileEditView` | templates/method_profile_edit.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:113) | `*` | `src/senaite/pfas/browser/configure.zcml` |
-| `@@pfas-method-profiles` | `.method_profiles.PFASMethodProfilesView` | templates/method_profiles.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:58) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-method-profile-edit` | `.method_profiles.PFASMethodProfileEditView` | templates/method_profile_edit.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:111) | `*` | `src/senaite/pfas/browser/configure.zcml` |
+| `@@pfas-method-profiles` | `.method_profiles.PFASMethodProfilesView` | templates/method_profiles.pt (`class attr` at src/senaite/pfas/browser/method_profiles.py:56) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-method-wizard` | `.method_wizard.PFASMethodWizardView` | templates/method_wizard.pt (`class attr` at src/senaite/pfas/browser/method_wizard.py:234) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-pipette-calibration` | `.facility_qc.PFASPipetteCalibrationView` | templates/facility_pipettes.pt (`class attr` at src/senaite/pfas/browser/facility_qc.py:665) | `*` | `src/senaite/pfas/browser/configure.zcml` |
 | `@@pfas-prep-logbooks` | `.prep_logbooks.PFASPrepLogbooksView` | templates/prep_logbooks.pt (`class attr` at src/senaite/pfas/browser/prep_logbooks.py:396) | `*` | `src/senaite/pfas/browser/configure.zcml` |

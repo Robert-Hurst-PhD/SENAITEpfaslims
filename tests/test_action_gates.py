@@ -173,6 +173,34 @@ def test_unresolvable_portal_denies():
         "Forbidden", 403)
 
 
+def test_require_manager_is_anchored_at_the_portal():
+    """GAPS §46.6: the same walk-around, in the gate nine modules already used.
+    Proven live: a LabClerk opened @@pfas-method-profile-edit -- the QC
+    criteria editor -- through a reagent they had created."""
+    perms = _load_perms(["LabClerk"])
+    assert perms.require_manager(OWNED) is False
+    assert perms.require_manager(_Context()) is False
+    perms = _load_perms(["LabManager"])
+    assert perms.require_manager(OWNED) is True
+
+
+def test_no_module_keeps_a_private_copy_of_the_manager_gate():
+    """method_profiles and egad_config each carried their own copy, resolving at
+    the context, so fixing perms alone would have left the QC-criteria editor
+    open. A private gate must delegate to perms.require_manager."""
+    for module in ("method_profiles.py", "egad_config.py"):
+        func = None
+        for node in _tree(module).body:
+            if isinstance(node, ast.FunctionDef) and node.name == "_require_manager":
+                func = node
+        assert func is not None, module
+        names = {n.id for n in ast.walk(func) if isinstance(n, ast.Name)}
+        attrs = {n.attr for n in ast.walk(func) if isinstance(n, ast.Attribute)}
+        assert "require_manager" in names, "{0} does not delegate".format(module)
+        assert "getRolesInContext" not in attrs, (
+            "{0} resolves roles itself".format(module))
+
+
 def test_fails_closed():
     # A broken security context is "not permitted", never "permitted".
     assert _decide(None, "cfg", GATES) == ("Forbidden", 403)
