@@ -61,5 +61,52 @@
     </div>
   </details>
 </metal:section>
+
+<!--
+  Draws one declared TABLE (config_forms.render_table): a sub-tab per group
+  (e.g. matrix) with its set/total count, the group's unit in the column
+  headings, one row per key. Same caller contract: cf_groups, cf_form.
+-->
+<metal:table define-macro="table">
+  <div class="pfas-tabs" data-tabs="">
+    <a tal:repeat="grp cf_groups"
+       tal:attributes="class python:'pfas-tab active' if repeat['grp'].index == 0 else 'pfas-tab';
+                       data-pane string:${cf_form}-g${grp/index};
+                       href string:#${cf_form}-g${grp/index}"><tal:m tal:replace="grp/label">Matrix</tal:m><span
+       class="pfas-tab-count" tal:content="string:(${grp/set}/${grp/total})">(0/0)</span></a>
+  </div>
+  <div tal:repeat="grp cf_groups" class="pfas-pane"
+       tal:attributes="id string:${cf_form}-g${grp/index}">
+    <table class="factor-table">
+      <thead>
+        <tr>
+          <th class="rl-name">Analyte</th>
+          <th tal:repeat="col grp/columns"><span tal:replace="col/label">RL</span><span
+              class="rl-unit" tal:condition="col/unit" tal:content="string: (${col/unit})"> (ng/L)</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr tal:repeat="row grp/rows">
+          <td><span tal:content="row/label">PFOA</span>
+              <code class="rl-kw" tal:condition="python:row['sublabel'] and row['sublabel'] != row['label']"
+                    tal:content="row/sublabel">PFOA</code></td>
+          <td tal:repeat="cell row/cells">
+            <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
+                   tal:attributes="name cell/name; form cf_form; value cell/value;
+                                   step python:'1' if cell['kind'] == 'int' else 'any';
+                                   min cell/min; max cell/max; placeholder cell/placeholder;
+                                   aria-label python:'%s %s' % (row['label'], cell['label'])" />
+            <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
+                   tal:attributes="name cell/name; form cf_form; value cell/value;
+                                   aria-label python:'%s %s' % (row['label'], cell['label'])" />
+            <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
+                   tal:attributes="name cell/name; form cf_form;
+                                   checked python:'checked' if cell['checked'] else None" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</metal:table>
 </body>
 </html>

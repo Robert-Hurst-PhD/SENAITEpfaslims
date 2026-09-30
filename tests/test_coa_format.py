@@ -57,32 +57,6 @@ def test_unrecognised_text_prints_as_entered():
         "text": "see remarks", "qualifiers": [], "detected": None}
 
 
-def test_parse_form_takes_only_the_matrices_it_carried():
-    form = {"rlm.0": "Drinking Water", "rl.0.PFOA": "4", "mdl.0.PFOA": "1.2",
-            "rl.0.PFOS": "", "mdl.0.PFOS": "",
-            "rl.1.PFOA": "99"}                       # matrix 1 not marked present
-    out = rl.parse_form(form, ["Drinking Water", "Groundwater"])
-    assert out == {"Drinking Water": {"PFOA": {"rl": 4.0, "mdl": 1.2}}}
-
-
-def test_parse_form_refuses_bad_values():
-    for bad in ({"rlm.0": "W", "rl.0.PFOA": "abc"},
-                {"rlm.0": "W", "rl.0.PFOA": "-1"},
-                {"rlm.0": "W", "rl.0.PFOA": "1", "mdl.0.PFOA": "2"}):   # MDL above RL
-        try:
-            rl.parse_form(bad, ["W"])
-        except ValueError:
-            continue
-        raise AssertionError("accepted {0}".format(bad))
-
-
-def test_merge_keeps_matrices_the_form_did_not_carry():
-    existing = {"A": {"PFOA": {"rl": 1.0, "mdl": None}}, "B": {"PFOS": {"rl": 2.0, "mdl": None}}}
-    merged = rl.merge(existing, {"A": {}})
-    assert "A" not in merged and merged["B"] == existing["B"]   # emptied -> dropped
-    assert rl.merge({}, {"A": {}, "B": {}}) == {}                # nothing entered -> nothing stored
-
-
 def test_limits_come_with_the_matrix_unit():
     profile = {"unit_map": {"Drinking Water": "ng/L"},
                "reporting_limits": {"Drinking Water": {"PFOA": {"rl": 4.0, "mdl": 1.0}}}}

@@ -95,12 +95,16 @@ def current(section, stored):
 
 def stamp(section, stored):
     """Version stamp of THIS section's values only."""
+    if isinstance(section, Table):
+        return stamp_table(section, stored)
     vals = current(section, stored)
     return _history.fingerprint(dict((k, v) for k, v in vals.items() if v not in (None, u"", "")))
 
 
 def render(section, stored):
     """What the template draws: one dict per field, grouped."""
+    if isinstance(section, Table):
+        return render_table(section, stored)
     vals = current(section, stored)
     groups = []
     for title, fields in section.groups:
@@ -132,6 +136,47 @@ def _text(raw):
     return (u"%s" % raw).strip()
 
 
+_SKIP = object()           # a field whose submitted value was refused
+
+
+def _value(f, raw, saved, label=None):
+    """(value | REMOVE | _SKIP, error or None) for one submitted field.
+
+    `saved` is the value stored on the server (a choice accepts it even when
+    it is not a listed option). `label` names the field in an error; a table
+    cell passes "<row> <column>"."""
+    label = label or f.label
+    if f.kind == BOOL:
+        return raw is True or _text(raw).lower() in (u"1", u"on", u"true", u"yes"), None
+    text = _text(raw)
+    if text == u"":
+        if f.required:
+            return _SKIP, u"%s is required." % label
+        if f.blank == u"remove":
+            return REMOVE, None
+        return (u"" if f.kind in (TEXT, TEXTAREA) else None), None
+    if f.kind in (NUMBER, INT):
+        try:
+            num = float(text)
+            if f.kind == INT:
+                if num != int(num):
+                    raise ValueError
+                num = int(num)
+        except ValueError:
+            return _SKIP, u"%s must be %s, not %r." % (
+                label, u"a whole number" if f.kind == INT else u"a number", text)
+        if f.minimum is not None and num < f.minimum:
+            return _SKIP, u"%s must be at least %s." % (label, f.minimum)
+        if f.maximum is not None and num > f.maximum:
+            return _SKIP, u"%s must be at most %s." % (label, f.maximum)
+        return num, None
+    if f.kind == CHOICE:
+        allowed = [c[0] for c in f.choices]
+        if allowed and text not in allowed and text != _text(saved):
+            return _SKIP, u"%s: %r is not one of the options." % (label, text)
+    return text, None
+
+
 def parse(section, form, stored):
     """(updates {path: value|REMOVE}, errors [text]) for the submitted section.
 
@@ -143,53 +188,23 @@ def parse(section, form, stored):
     checkbox that is not submitted is False: the section's own form always
     carries all of its fields, so absence can only mean unchecked.
     """
+    if isinstance(section, Table):
+        return parse_table(section, form, stored)
     updates, errors = {}, []
     saved = current(section, stored)
     for f in section.fields():
-        raw = form.get(f.name)
-        if f.kind == BOOL:
-            updates[f.path] = raw is True or _text(raw).lower() in (u"1", u"on", u"true", u"yes")
-            continue
-        text = _text(raw)
-        if text == u"":
-            if f.required:
-                errors.append(u"%s is required." % f.label)
-            elif f.blank == u"remove":
-                updates[f.path] = REMOVE
-            else:
-                updates[f.path] = u"" if f.kind in (TEXT, TEXTAREA) else None
-            continue
-        if f.kind in (NUMBER, INT):
-            try:
-                num = float(text)
-                if f.kind == INT:
-                    if num != int(num):
-                        raise ValueError
-                    num = int(num)
-            except ValueError:
-                errors.append(u"%s must be %s, not %r." % (
-                    f.label, u"a whole number" if f.kind == INT else u"a number", text))
-                continue
-            if f.minimum is not None and num < f.minimum:
-                errors.append(u"%s must be at least %s." % (f.label, f.minimum))
-                continue
-            if f.maximum is not None and num > f.maximum:
-                errors.append(u"%s must be at most %s." % (f.label, f.maximum))
-                continue
-            updates[f.path] = num
-        elif f.kind == CHOICE:
-            allowed = [c[0] for c in f.choices]
-            if allowed and text not in allowed and text != _text(saved[f.name]):
-                errors.append(u"%s: %r is not one of the options." % (f.label, text))
-                continue
-            updates[f.path] = text
-        else:
-            updates[f.path] = text
+        value, error = _value(f, form.get(f.name), saved[f.name])
+        if error:
+            errors.append(error)
+        elif value is not _SKIP:
+            updates[f.path] = value
     return updates, errors
 
 
 def apply(section, stored, updates):
     """A copy of `stored` with the section's updates written in."""
+    if isinstance(section, Table):
+        return apply_table(section, stored, updates)
     value = copy.deepcopy(stored or {})
     base = value
     for p in section.base:
@@ -203,3 +218,179 @@ def apply(section, stored, updates):
         else:
             node[path[-1]] = new
     return value
+
+
+# ── tables: the same rules, one row per key ──────────────────────────────────
+#
+# A Table is a grid of the same fields (columns) repeated for a set of rows
+# that the stored value itself decides -- e.g. one row per analyte the matrix
+# reports, grouped by matrix. Declared with a `rows(stored)` function that
+# returns (groups, rows):
+#
+#     groups  [{"key", "label", "unit"}]         -- e.g. one per matrix
+#     rows    [{"key": (k1, k2, ...), "group", "label", "sublabel"}]
+#
+# Values live at stored[base][k1][k2]...[column path]. Only the rows listed
+# are parsed or written: a row not on the page (an analyte excluded from a
+# matrix) keeps its stored value, where the hand-written reporting-limits save
+# replaced the whole matrix and dropped it. A row whose columns are all unset
+# is removed, and an emptied parent with it, so an untouched page stores
+# nothing. Row keys travel ENCODED in field names: Zope reads ":<letter>" in a
+# name as a type converter, and analyte keywords carry colons.
+
+
+class Table(object):
+
+    def __init__(self, id, title, base, columns, rows, check=None, intro=u""):
+        self.id = id
+        self.title = title
+        self.base = tuple(base)
+        self.columns = columns      # [Field] with paths relative to the row
+        self.rows = rows            # callable(stored) -> (groups, rows)
+        self.check = check          # callable(row, {column name: value}) -> error | None
+        self.intro = intro
+
+    def fields(self):
+        return list(self.columns)
+
+
+def _enc(key):
+    """A form-name-safe token: letters and digits kept, anything else _hh
+    (so "__", the separator, never occurs inside a token)."""
+    if isinstance(key, bytes):
+        key = key.decode("utf-8")
+    out = []
+    for ch in u"%s" % key:
+        if (u"a" <= ch <= u"z") or (u"A" <= ch <= u"Z") or (u"0" <= ch <= u"9"):
+            out.append(ch)
+        else:
+            out.extend(u"_%02x" % b for b in bytearray(ch.encode("utf-8")))
+    return u"".join(out)
+
+
+def cell_name(table, row_key, column):
+    return u"__".join([u"t", _enc(table.id)] + [_enc(k) for k in row_key] +
+                      [_enc(p) for p in column.path])
+
+
+def _row_node(table, stored, row_key):
+    return _get(stored or {}, table.base + tuple(row_key)) or {}
+
+
+def _cells(table, stored, row_key):
+    node = _row_node(table, stored, row_key)
+    return dict((c.name, _get(node, c.path)) for c in table.columns)
+
+
+def stamp_table(table, stored):
+    """The listed rows' keys AND values: a change to which rows the page shows
+    (e.g. the inclusion grid) also makes an open page stale, so no field can
+    be read against a row set it was not drawn for."""
+    _groups, rows = table.rows(stored or {})
+    blob = []
+    for r in rows:
+        vals = dict((k, v) for k, v in _cells(table, stored, r["key"]).items()
+                    if v not in (None, u"", ""))
+        blob.append([list(r["key"]), vals])
+    return _history.fingerprint(blob)
+
+
+def render_table(table, stored):
+    groups, rows = table.rows(stored or {})
+    by_group = dict((g["key"], dict(g, rows=[], set=0)) for g in groups)
+    order = [g["key"] for g in groups]
+    for r in rows:
+        vals = _cells(table, stored, r["key"])
+        cells = []
+        for c in table.columns:
+            v = vals[c.name]
+            cells.append({"name": cell_name(table, r["key"], c), "kind": c.kind,
+                          "label": c.label, "min": c.minimum, "max": c.maximum,
+                          "placeholder": c.placeholder,
+                          "value": u"" if v is None else u"%s" % v,
+                          "checked": bool(v) if c.kind == BOOL else False})
+        g = by_group.get(r.get("group"))
+        if g is None:
+            continue
+        g["rows"].append({"label": r.get("label"), "sublabel": r.get("sublabel"),
+                          "cells": cells})
+        if any(vals[c.name] not in (None, u"", "") for c in table.columns):
+            g["set"] += 1
+    out = []
+    for i, key in enumerate(order):
+        g = by_group[key]
+        g["index"] = i
+        g["total"] = len(g["rows"])
+        g["columns"] = [{"label": c.label, "unit": g.get("unit") or c.unit}
+                        for c in table.columns]
+        out.append(g)
+    return out
+
+
+def parse_table(table, form, stored):
+    """(updates {row key: {column path: value}}, errors) for the listed rows."""
+    _groups, rows = table.rows(stored or {})
+    updates, errors = {}, []
+    for r in rows:
+        saved = _cells(table, stored, r["key"])
+        vals, ok = {}, True
+        for c in table.columns:
+            value, error = _value(c, form.get(cell_name(table, r["key"], c)),
+                                  saved[c.name], u"%s %s" % (r.get("label"), c.label))
+            if error:
+                errors.append(error)
+                ok = False
+            elif value is not _SKIP:
+                vals[c.path] = value
+        if ok and table.check is not None:
+            error = table.check(r, dict((c.name, vals.get(c.path)) for c in table.columns))
+            if error:
+                errors.append(error)
+        updates[tuple(r["key"])] = vals
+    return updates, errors
+
+
+def apply_table(table, stored, updates):
+    value = copy.deepcopy(stored or {})
+    existed = _get(value, table.base) is not None
+    for row_key, vals in updates.items():
+        path = table.base + tuple(row_key)
+        parent = value
+        for p in path[:-1]:
+            parent = parent.setdefault(p, {})
+        node = dict(parent.get(path[-1]) or {})
+        for cpath, new in vals.items():
+            leaf = node
+            for p in cpath[:-1]:
+                leaf = leaf.setdefault(p, {})
+            if new is REMOVE:
+                leaf.pop(cpath[-1], None)
+            else:
+                leaf[cpath[-1]] = new
+        if all(_get(node, c.path) in (None, u"") for c in table.columns):
+            for c in table.columns:            # nothing set: no row at all
+                node.pop(c.path[0], None)
+        if node:
+            parent[path[-1]] = node
+        else:
+            parent.pop(path[-1], None)
+    _prune(value, table.base, keep_base=existed)
+    return value
+
+
+def _prune(value, base, keep_base=False):
+    """Drop dicts left empty under base (a matrix with no limits), and base
+    itself only if this save created it -- an untouched page changes nothing,
+    not even an empty map into a missing one."""
+    def walk(node):
+        if not isinstance(node, dict):
+            return
+        for k in list(node):
+            walk(node[k])
+            if isinstance(node[k], dict) and not node[k]:
+                node.pop(k)
+    top = _get(value, base[:-1]) if len(base) > 1 else value
+    if isinstance(top, dict) and base[-1] in top:
+        walk(top[base[-1]])
+        if isinstance(top[base[-1]], dict) and not top[base[-1]] and not keep_base:
+            top.pop(base[-1])

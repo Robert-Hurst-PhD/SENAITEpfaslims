@@ -101,6 +101,21 @@ def case_cal_section(pg):
     return "ccv / recovery_max", True, None
 
 
+def case_rl_table(pg):
+    """Reporting Limits tab: a declared table, its own form (R2). Enters an RL
+    on the second matrix's first colon-keyword analyte (or first row), which
+    also proves hidden sub-tab cells and encoded keys reach the server."""
+    open_profile(pg, "FDA_32PFAS", "pane-rl")
+    pane = pg.locator("#section-rl-g1")
+    cells = pane.locator("input[name$='__rl']")
+    names = cells.evaluate_all("es => es.map(e => e.name)")
+    pick = next((n for n in names if "_3a" in n), names[0])   # "_3a" = an encoded ":"
+    pg.evaluate("n => { var e = document.querySelector('[name=\"' + n + '\"]'); e.value = '5'; "
+                "e.dispatchEvent(new Event('input', {bubbles: true})); }", pick)
+    save_profile_form(pg)
+    return "reporting_limits", True, None
+
+
 def case_edd_profile(pg):
     pg.goto(B + "@@pfas-egad-config#profiles"); pg.wait_for_load_state("networkidle")
     pg.evaluate("() => document.querySelectorAll('#pane-profiles details').forEach(d => d.open = true)")
@@ -130,7 +145,7 @@ def case_client_edd(pg):
 
 
 CASES = [("recovery tier", case_tier), ("rule toggle", case_toggle),
-         ("cal section", case_cal_section),
+         ("cal section", case_cal_section), ("RL table", case_rl_table),
          ("surrogate link", case_surrogate), ("EDD profile", case_edd_profile),
          ("client EDD", case_client_edd)]
 

@@ -83,4 +83,45 @@ CALIBRATION_CCV = cf.Section(
         ]),
     ])
 
-SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV])
+def _analyte_titles():
+    try:
+        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+    except Exception:          # tests: loaded without the package
+        from analyte_reference import NATIVE_ANALYTES
+    return dict((row[0], row[1]) for row in NATIVE_ANALYTES)
+
+
+def reporting_limit_rows(profile):
+    """One group per supported matrix, one row per analyte that matrix REPORTS
+    (the analyte x matrix inclusion grid decides -- PFODA is not listed under
+    FDA x Eggs, CLAUDE.md §3 rule 2). The group's unit is the matrix's unit_map
+    entry: a limit is entered in, and printed with, the unit the method
+    reports that matrix in."""
+    titles = _analyte_titles()
+    inclusion = profile.get("analyte_matrix_inclusion") or {}
+    units = profile.get("unit_map") or {}
+    groups, rows = [], []
+    for matrix in profile.get("supported_matrices") or []:
+        groups.append({"key": matrix, "label": matrix, "unit": units.get(matrix, u"")})
+        for kw in profile.get("master_analyte_set") or []:
+            if (inclusion.get(kw) or {}).get(matrix, True) is False:
+                continue
+            rows.append({"key": (matrix, kw), "group": matrix,
+                         "label": titles.get(kw, kw), "sublabel": kw})
+    return groups, rows
+
+
+def _mdl_not_above_rl(row, values):
+    rl, mdl = values.get(u"f__rl"), values.get(u"f__mdl")
+    if rl is not None and mdl is not None and mdl > rl:
+        return u"%s in %s: the MDL (%s) is above the RL (%s)." % (
+            row["sublabel"], row["group"], mdl, rl)
+    return None
+
+
+REPORTING_LIMITS = cf.Table(
+    id=u"rl", title=u"Reporting Limits", base=("reporting_limits",),
+    columns=[cf.Field("rl", u"RL", minimum=0), cf.Field("mdl", u"MDL", minimum=0)],
+    rows=reporting_limit_rows, check=_mdl_not_above_rl)
+
+SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS])

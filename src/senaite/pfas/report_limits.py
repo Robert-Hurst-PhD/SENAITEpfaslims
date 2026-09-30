@@ -11,64 +11,13 @@ result. Stored on the profile as
 and the unit comes from the profile's existing unit_map (method x matrix), so
 the certificate never prints a limit without the unit it was set in.
 
-No Zope imports: the editor, the certificate and the tests all use this.
+Edited on the Method Profile's Reporting Limits tab, a declared table
+(method_profile_sections.REPORTING_LIMITS, config_forms): parsing, the
+MDL-not-above-RL check and the merge live there, once.
+
+No Zope imports: the certificate and the tests use this.
 """
 from __future__ import absolute_import, print_function, unicode_literals
-
-
-def _num(raw):
-    raw = ("%s" % (raw if raw is not None else "")).strip()
-    if not raw:
-        return None
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        raise ValueError("not a number: {0!r}".format(raw))
-    if value < 0:
-        raise ValueError("a limit cannot be negative: {0!r}".format(raw))
-    return value
-
-
-def parse_form(form, matrices):
-    """{matrix: {kw: {"rl", "mdl"}}} for the matrices this form carried.
-
-    Field names: rlm.<i> = matrix title (marks matrix i as present),
-    rl.<i>.<kw> and mdl.<i>.<kw>. A matrix the form did not carry is absent
-    from the result, so merge() leaves it untouched -- a POST from another
-    pane can never blank the limits (the partial-POST failure of GAPS §7).
-    """
-    out = {}
-    for i, matrix in enumerate(matrices):
-        if form.get("rlm.%d" % i) != matrix:
-            continue
-        prefix_rl, prefix_mdl = "rl.%d." % i, "mdl.%d." % i
-        entries = {}
-        keys = set(k[len(prefix_rl):] for k in form if k.startswith(prefix_rl))
-        keys |= set(k[len(prefix_mdl):] for k in form if k.startswith(prefix_mdl))
-        for kw in keys:
-            rl = _num(form.get(prefix_rl + kw))
-            mdl = _num(form.get(prefix_mdl + kw))
-            if rl is not None and mdl is not None and mdl > rl:
-                raise ValueError(
-                    "{0} in {1}: the MDL ({2}) is above the RL ({3})".format(
-                        kw, matrix, mdl, rl))
-            if rl is not None or mdl is not None:
-                entries[kw] = {"rl": rl, "mdl": mdl}
-        out[matrix] = entries
-    return out
-
-
-def merge(existing, parsed):
-    """Replace only the matrices the form carried; a matrix left with no limits
-    is dropped rather than stored empty, so saving a page with nothing entered
-    writes nothing (the no-op-save audit, GAPS §51)."""
-    merged = dict(existing or {})
-    for matrix, entries in (parsed or {}).items():
-        if entries:
-            merged[matrix] = entries
-        else:
-            merged.pop(matrix, None)
-    return merged
 
 
 def limits_for(profile, matrix, keyword):

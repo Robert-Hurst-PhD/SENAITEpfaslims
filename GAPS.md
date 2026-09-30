@@ -5735,3 +5735,35 @@ Approved by the lab as the first recommendation of
 - **Backup:** `/data/qc/backup-pre-surrogate-per-method/`.
 - **Still open:** the Surrogate Map tab can now move to declared sections (R2);
   the EIS recovery limits (1633A) are unaffected and still separate.
+
+## 55. R2: tables in the framework; Reporting Limits saves on its own (2026-09-30)
+- **Built:** `config_forms.Table` — the same field rules repeated over rows the
+  stored value decides (`rows(stored) -> (groups, rows)`), with a per-row
+  check, grouped sub-tabs (`@@pfas-config-form-macros/macros/table`), and a
+  stamp covering the row keys as well as the values (a change to which rows
+  the page shows makes an open page stale). Row keys travel ENCODED in field
+  names: Zope reads ":<letter>" in a name as a type converter, and analyte
+  keywords contain colons (today all are digit:digit, which is why the old
+  names happened to survive).
+- **Reporting Limits** is the first table: `method_profile_sections.
+  REPORTING_LIMITS`, its own form `#section-rl`. The hand-written parser
+  (`report_limits.parse_form` / `merge`, the `reporting_limits_present`
+  marker) is removed.
+- **Defects fixed on the way:**
+  1. The old save replaced a whole matrix with the rows on the page, so an
+     analyte excluded from a matrix lost its RL (and got it back blank if
+     re-included). Now only listed rows are written; hidden rows keep theirs.
+  2. The editor's hand-kept list of valid tab ids omitted Reporting Limits
+     and Matrices & Units: a reload, or the redirect after saving, opened
+     Rule Toggles. Now any tab pane on the page is valid (guard test).
+- **Verified live after restart:** no-op saves of the tab on all three
+  profiles: 0 changes, 0 history; an RL typed on a HIDDEN matrix sub-tab for
+  `4:2FTS` recorded one entry and was reverted; MDL above RL refused by name;
+  the save lands back on the tab; `tools/config_history_check.py` all cases
+  pass, configuration afterwards equals before; no JS errors.
+- **Tests:** `test_config_forms.py` 26 (table round trip on live profiles and
+  with synthetic limits, empty table changes nothing, colon keys, hidden rows
+  kept, clearing removes a row, row-set stamp, bad values, no hand-written RL
+  parser, every tab reachable by link); Py3 and 2.7.
+- **Next tables:** Matrices & Units, Sample Corrections (salt factors), EIS
+  limits, Surrogate Map — each moves off hidden-JSON / marker parsing.

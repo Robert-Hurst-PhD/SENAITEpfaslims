@@ -956,36 +956,10 @@
             without one. Only the analytes the matrix reports are listed (see
             Analyte &#215; Matrix).
           </p>
-          <input type="hidden" name="reporting_limits_present" value="1" />
-          <div class="pfas-tabs" data-tabs="">
-            <a tal:repeat="grp view/reporting_limit_rows"
-               tal:attributes="class python:'pfas-tab active' if repeat['grp'].index == 0 else 'pfas-tab';
-                               data-pane string:rl-m-${grp/index};
-                               href string:#rl-m-${grp/index}"><tal:m tal:replace="grp/matrix">Matrix</tal:m><span
-               class="pfas-tab-count" tal:content="string:(${grp/set}/${grp/total})">(0/0)</span></a>
-          </div>
-          <div tal:repeat="grp view/reporting_limit_rows" class="pfas-pane"
-               tal:attributes="id string:rl-m-${grp/index}">
-            <input type="hidden" tal:attributes="name string:rlm.${grp/index}; value grp/matrix" />
-            <table class="factor-table">
-              <thead>
-                <tr>
-                  <th class="rl-name">Analyte</th>
-                  <th>RL <span class="rl-unit" tal:condition="grp/unit" tal:content="string:(${grp/unit})">(ng/L)</span></th>
-                  <th>MDL <span class="rl-unit" tal:condition="grp/unit" tal:content="string:(${grp/unit})">(ng/L)</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr tal:repeat="row grp/rows">
-                  <td><span tal:content="row/title">PFOA</span>
-                      <code class="rl-kw" tal:content="row/keyword">PFOA</code></td>
-                  <td><input type="number" step="any" min="0" class="rl-in"
-                             tal:attributes="name string:rl.${grp/index}.${row/keyword}; value row/rl" /></td>
-                  <td><input type="number" step="any" min="0" class="rl-in"
-                             tal:attributes="name string:mdl.${grp/index}.${row/keyword}; value row/mdl" /></td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- Saved ON ITS OWN (R2, config_forms table): cells belong to
+               form#section-rl through the form= attribute. -->
+          <div tal:define="cf_groups python:view.section_groups('rl'); cf_form string:section-rl">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
           </div>
         </div>
       </div>
@@ -1150,6 +1124,13 @@
     </form>
     <!-- Per-tab section forms (R2): each saves only its own section, with its
          own stale-save stamp. -->
+    <form id="section-rl" method="POST" class="pfas-section-form"
+          data-tab-label="Reporting Limits"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="rl" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp" tal:attributes="value python:view.section_stamp('rl')" />
+    </form>
     <form id="section-cal" method="POST" class="pfas-section-form"
           data-tab-label="Calibration &amp; CCV"
           tal:attributes="action string:@@pfas-method-profile-edit">
@@ -1244,9 +1225,11 @@
 
       (function () {
         var hash = location.hash.replace('#', '');
-        var valid = ['pane-toggles', 'pane-qct', 'pane-rt', 'pane-corr', 'pane-ami',
-                     'pane-sur', 'pane-eis', 'pane-cal', 'pane-lwf', 'pane-adv'];
-        var first = (hash && valid.indexOf(hash) !== -1) ? hash : 'pane-toggles';
+        /* Any tab pane on the page is valid. A hand-kept list here omitted
+           pane-rl and pane-mtx, so a reload -- or the redirect after saving --
+           on those tabs opened Rule Toggles instead. */
+        var target = hash ? document.getElementById(hash) : null;
+        var first = (target ? target.classList.contains('tab-pane') : false) ? hash : 'pane-toggles';
         pfasTabSwitch(first);
         /* The pinned action bar is drawn AFTER this script, so the Save
            button does not exist yet on the first switch: retarget it again

@@ -241,6 +241,126 @@ def test_a_method_save_never_writes_the_link_to_the_services():
     assert "quant_surrogate" not in post
 
 
+# ── tables (Reporting Limits) ────────────────────────────────────────────────
+
+RLT = mps.REPORTING_LIMITS
+
+
+def table_form(table, stored):
+    form = {}
+    for g in cf.render(table, stored):
+        for row in g["rows"]:
+            for cell in row["cells"]:
+                form[cell["name"]] = cell["value"]
+    return form
+
+
+def _with_limits(mid):
+    import copy
+    p = copy.deepcopy(_profiles()[mid])
+    groups, rows = RLT.rows(p)
+    p["reporting_limits"] = {}
+    for i, r in enumerate(rows[:12]):
+        m, kw = r["key"]
+        p["reporting_limits"].setdefault(m, {})[kw] = {"rl": 2.0 + i, "mdl": 0.5 if i % 2 else None}
+    return p
+
+
+def test_an_unchanged_table_save_changes_nothing():
+    for mid in _profiles():
+        for stored in (_profiles()[mid], _with_limits(mid)):
+            after = save(RLT, stored, table_form(RLT, stored))
+            assert ch.diff(stored, after) == [], (mid, ch.diff(stored, after)[:3])
+            assert cf.stamp(RLT, stored) == cf.stamp(RLT, after)
+
+
+def test_an_empty_table_stores_nothing_and_changes_nothing():
+    stored = _profiles()["FDA_32PFAS"]
+    for before in (dict(stored, reporting_limits={}),
+                   dict((k, v) for k, v in stored.items() if k != "reporting_limits")):
+        after = save(RLT, before, table_form(RLT, before))
+        assert after.get("reporting_limits", "absent") == before.get("reporting_limits", "absent")
+
+
+def test_a_cell_edit_is_exactly_that_cell_and_colon_keys_are_safe():
+    stored = _profiles()["FDA_32PFAS"]
+    key = next(r["key"] for r in RLT.rows(stored)[1] if ":" in r["key"][1])
+    name = cf.cell_name(RLT, key, RLT.columns[0])
+    assert ":" not in name and "." not in name and " " not in name
+    form = table_form(RLT, stored)
+    form[name] = "5"
+    assert ch.diff(stored, save(RLT, stored, form)) == [
+        (("reporting_limits",), None, {key[0]: {key[1]: {"rl": 5.0, "mdl": None}}})]
+
+
+def test_mdl_above_rl_is_refused_and_named():
+    stored = _profiles()["EPA_537_1"]
+    key = RLT.rows(stored)[1][0]["key"]
+    form = table_form(RLT, stored)
+    form[cf.cell_name(RLT, key, RLT.columns[0])] = "2"
+    form[cf.cell_name(RLT, key, RLT.columns[1])] = "3"
+    _u, errors = cf.parse(RLT, form, stored)
+    assert len(errors) == 1 and "MDL (3.0) is above the RL (2.0)" in errors[0], errors
+
+
+def test_a_row_not_on_the_page_keeps_its_value():
+    """The hand-written save replaced a whole matrix with the rows on the
+    page, dropping the RL of an analyte excluded from that matrix."""
+    import copy
+    stored = copy.deepcopy(_with_limits("EPA_537_1"))
+    m, kw = RLT.rows(stored)[1][0]["key"]
+    stored.setdefault("analyte_matrix_inclusion", {}).setdefault(kw, {})[m] = False
+    after = save(RLT, stored, table_form(RLT, stored))
+    assert after["reporting_limits"][m][kw] == stored["reporting_limits"][m][kw]
+
+
+def test_clearing_a_row_removes_it():
+    stored = _with_limits("EPA_537_1")
+    m, kw = RLT.rows(stored)[1][0]["key"]
+    form = table_form(RLT, stored)
+    for c in RLT.columns:
+        form[cf.cell_name(RLT, (m, kw), c)] = ""
+    after = save(RLT, stored, form)
+    assert kw not in after["reporting_limits"].get(m, {})
+
+
+def test_bad_limits_are_refused():
+    stored = _profiles()["EPA_537_1"]
+    key = RLT.rows(stored)[1][0]["key"]
+    for rl_value in ("abc", "-1"):
+        form = table_form(RLT, stored)
+        form[cf.cell_name(RLT, key, RLT.columns[0])] = rl_value
+        assert cf.parse(RLT, form, stored)[1], rl_value
+
+
+def test_the_reporting_limits_tab_has_no_hand_written_parser_left():
+    src = _read("method_profiles.py")
+    template = _read("templates", "method_profile_edit.pt")
+    for retired in ("reporting_limits_present", "rlm.", "report_limits.parse_form",
+                    "report_limits.merge", "reporting_limit_rows"):
+        assert retired not in src, retired
+        assert retired not in template, retired
+
+
+def test_every_tab_can_be_opened_by_its_link():
+    """A hand-kept list of valid tab ids omitted two tabs, so the redirect
+    after saving the Reporting Limits tab opened Rule Toggles -- and the Save
+    button then submitted the main form, not the tab's."""
+    template = _read("templates", "method_profile_edit.pt")
+    assert "var valid = [" not in template
+    assert "classList.contains('tab-pane')" in template
+
+
+def test_the_table_stamp_moves_when_the_rows_change():
+    import copy
+    stored = _profiles()["EPA_537_1"]
+    other = copy.deepcopy(stored)
+    m, kw = RLT.rows(stored)[1][0]["key"]
+    other.setdefault("analyte_matrix_inclusion", {}).setdefault(kw, {})[m] = False
+    assert cf.stamp(RLT, stored) != cf.stamp(RLT, other)
+    assert cf.stamp(RLT, stored) == cf.stamp(RLT, dict(stored, display_name="x"))
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]
