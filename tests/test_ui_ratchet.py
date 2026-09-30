@@ -180,6 +180,22 @@ def test_redefine_allowlist_is_not_stale():
     assert not stale, "migrated -- remove from REDEFINES_ALLOWED: {0}".format(stale)
 
 
+def test_no_double_hyphen_in_html_comments():
+    """Chameleon refuses to compile a template whose HTML comment contains
+    '--'. One such comment in pfas_sidebar.pt broke every page on the site
+    (the sidebar renders on all of them) until it was found, 2026-09-30."""
+    bad = []
+    for name in sorted(os.listdir(TEMPLATES)):
+        if not name.endswith(".pt"):
+            continue
+        with open(os.path.join(TEMPLATES, name)) as fh:
+            text = fh.read()
+        for m in re.finditer(r"<!--(.*?)-->", text, re.S):
+            if "--" in m.group(1):
+                bad.append("{0}: {1}".format(name, m.group(1).strip()[:50]))
+    assert not bad, "'--' inside an HTML comment: {0}".format(bad)
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]

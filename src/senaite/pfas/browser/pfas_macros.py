@@ -23,7 +23,7 @@ from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
-from senaite.pfas.browser.sidebar import _get_user_roles
+from senaite.pfas.browser.sidebar import _get_user_roles, sidebar_landing
 
 
 class PFASMacrosView(BrowserView):
@@ -71,6 +71,9 @@ class PFASMacrosView(BrowserView):
 
     def user_roles(self):
         return _get_user_roles(self.context)
+
+    def landing(self):
+        return sidebar_landing(self.context)
 
     def user_name(self):
         """Return the authenticated user's login name, or '' if anonymous."""

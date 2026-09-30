@@ -2,11 +2,13 @@
      tal:define="purl    view/portal_url;
                  path    view/current_path;
                  roles   view/user_roles;
+                 home    view/landing;
                  is_mgr  python:'LabManager' in roles or 'Manager' in roles;
                  is_ana  python:'Analyst' in roles or 'Verifier' in roles;
                  is_clk  python:'LabClerk' in roles;
                  sect    python:request.get('section','')"
-     aria-label="Main navigation">
+     aria-label="Main navigation"
+     tal:attributes="data-role-group home/group">
 
 <style id="pfas-sidebar-css">
 /* ── PFAS unified sidebar ───────────────────────────────────────────────── */
@@ -633,8 +635,16 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
 
 </svg>
 
-  <!-- ── Dashboard pin (always visible, above all groups) ─────────── -->
+  <!-- ── Pins (always visible, above all groups): the role's landing, from
+       workspace_home.LANDINGS (the same table the launcher redirects with),
+       then the SENAITE dashboard. ─────────────────────────────────────────── -->
   <div class="pfas-sb-pin">
+    <a class="pfas-sb-dash pfas-sb-home"
+       tal:attributes="href home/url; title string:Your workspace: ${home/label};
+                       class python:'pfas-sb-dash pfas-sb-home si-active' if path.rstrip('/').endswith(home['view']) else 'pfas-sb-dash pfas-sb-home'">
+      <span class="pfas-si-icon"><svg><use href="#ico-grid"/></svg></span>
+      <span class="pfas-sb-dash-label" tal:content="home/label">Workspace</span>
+    </a>
     <a class="pfas-sb-dash" title="Dashboard"
        tal:attributes="href purl;
                        class python:'pfas-sb-dash si-active' if path.rstrip('/').endswith('/senaite') else 'pfas-sb-dash'">
@@ -1014,34 +1024,39 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
 
 <script>
 (function () {
-  var SB_STATE_KEY = 'pfas_sb_groups';
+  /* Group state (CLAUDE.md §6C, GAPS §49): by default only the user's role
+     group and the current page's group are open. A group the user opens or
+     closes by hand is remembered per browser (localStorage) and wins over the
+     default next time. */
+  var SB_STATE_KEY = 'pfas_sb_groups_v2';
 
-  function restoreGroups() {
-    var raw;
-    try { raw = sessionStorage.getItem(SB_STATE_KEY); } catch (e) {}
-    if (!raw) return;
-    var closed;
-    try { closed = JSON.parse(raw); } catch (e) { return; }
-    if (!Array.isArray(closed)) return;
-    for (var i = 0; i < closed.length; i++) {
-      var el = document.getElementById(closed[i]);
-      if (el) el.classList.add('sg-closed');
-    }
+  function loadChoices() {
+    try { var o = JSON.parse(localStorage.getItem(SB_STATE_KEY) || '{}');
+          return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; }
   }
 
-  function saveGroups() {
-    var closed = [];
-    document.querySelectorAll('.pfas-sg.sg-closed').forEach(function (el) {
-      if (el.id) closed.push(el.id);
+  function restoreGroups() {
+    var nav = document.getElementById('sidebar');
+    var roleGroup = nav ? nav.getAttribute('data-role-group') : '';
+    var choices = loadChoices();
+    document.querySelectorAll('.pfas-sg').forEach(function (el) {
+      var open = el.id === roleGroup;
+      if (choices.hasOwnProperty(el.id)) open = choices[el.id] === 'open';
+      el.classList.toggle('sg-closed', !open);
     });
-    try { sessionStorage.setItem(SB_STATE_KEY, JSON.stringify(closed)); } catch (e) {}
+  }
+
+  function saveGroup(el) {
+    var choices = loadChoices();
+    choices[el.id] = el.classList.contains('sg-closed') ? 'closed' : 'open';
+    try { localStorage.setItem(SB_STATE_KEY, JSON.stringify(choices)); } catch (e) {}
   }
 
   window.pfasSgToggle = function (groupId) {
     var el = document.getElementById(groupId);
     if (!el) return;
     el.classList.toggle('sg-closed');
-    saveGroups();
+    saveGroup(el);
   };
 
   var _isMobile = function () { return window.innerWidth <= 768; };

@@ -235,6 +235,16 @@
       padding: var(--frame-gutter-y) var(--frame-gutter-x);
     }
 
+    /* ── Breadcrumb (top of the content area) ─────────────────────────── */
+    .pfas-crumb { display: flex; align-items: center; gap: var(--sp-2);
+                  font-size: var(--fs-sm); color: var(--s-secondary);
+                  margin: 0 0 var(--sp-3); min-height: 16px; }
+    .pfas-crumb a { color: var(--s-primary); text-decoration: none; }
+    .pfas-crumb a:hover { text-decoration: underline; }
+    .pfas-crumb-sep { color: var(--s-border); }
+    .pfas-crumb-here { color: var(--s-body); font-weight: 600; }
+    @media print { .pfas-crumb { display: none; } }
+
     /* ── Pane footer — storage path + role note ─────────────────────────── */
     .pane-footer {
       margin-top: 28px;
@@ -1115,6 +1125,9 @@
 
     <!-- Stable content area -->
     <div class="pfas-content-area" id="pfas-content-area">
+      <!-- Breadcrumb under the header title (CLAUDE.md §6C): filled from the
+           sidebar's active item, so it can never disagree with the nav. -->
+      <nav class="pfas-crumb" id="pfas-crumb" aria-label="Breadcrumb"></nav>
       <tal:body metal:define-slot="content">
         <div class="page-body">
           <p>No content.</p>
@@ -1131,6 +1144,50 @@
 
   </div><!-- /pfas-main -->
 </div><!-- /pfas-shell -->
+
+<script>
+/* Breadcrumb: your workspace > sidebar group > page. A page the sidebar does
+   not list (a worksheet's review, a batch logbook) shows workspace > title. */
+(function () {
+  var crumb = document.getElementById('pfas-crumb');
+  if (!crumb) return;
+  var home = document.querySelector('.pfas-sb-home');
+  var active = document.querySelector('.pfas-sidebar .pfas-si.si-active');
+  var title = document.querySelector('.pfas-header-title');
+  var parts = [];
+  function link(href, text) {
+    var a = document.createElement('a'); a.href = href; a.textContent = text; return a;
+  }
+  var homeText = home ? home.textContent.trim() : '';
+  if (home && !home.classList.contains('si-active')) {
+    parts.push(link(home.href, homeText));
+  }
+  var titleText = title ? title.textContent.trim() : '';
+  function bare(u) { return (u || '').split('#')[0].split('?')[0].replace(/\/+$/, ''); }
+  var samePage = !!active && bare(active.href) === bare(location.href);
+  var activeText = active ? active.textContent.trim() : '';
+  if (active) {
+    var g = active.closest('.pfas-sg');
+    var gl = g && g.querySelector('.pfas-sg-label');
+    var glText = gl ? gl.textContent.trim() : '';
+    if (glText && glText.toLowerCase() !== homeText.toLowerCase()) {
+      var s = document.createElement('span'); s.textContent = glText; parts.push(s);
+    }
+    /* a page beneath a listed item (a worksheet's review): link the item */
+    if (!samePage) parts.push(link(active.href, activeText));
+  }
+  var here = document.createElement('span');
+  here.className = 'pfas-crumb-here';
+  here.textContent = (active && samePage) ? activeText : (titleText || activeText);
+  if (here.textContent) parts.push(here);
+  if (parts.length < 2) { crumb.parentNode.removeChild(crumb); return; }
+  parts.forEach(function (p, i) {
+    if (i) { var sep = document.createElement('span'); sep.className = 'pfas-crumb-sep';
+             sep.textContent = '\u203A'; crumb.appendChild(sep); }
+    crumb.appendChild(p);
+  });
+})();
+</script>
 
 <!-- Backward-compat JS slots (placed before </body> so scripts can reference DOM) -->
 <tal:body-extra metal:define-slot="body-extra" />

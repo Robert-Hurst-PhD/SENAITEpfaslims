@@ -5121,3 +5121,44 @@ for forms; the sidebar opens on the role's landing and groups.
 current groups open). Also noted: the Facility Units "Facility Defaults"
 section is raw headings outside any card, and badges still come in several
 local variants (`.cl-badge`, `.tier-badge`, `.r2-badge`, …).
+
+### 49.7 Phase 3 — navigation: your workspace pinned, your groups open, a breadcrumb
+
+- **One routing table.** `workspace_home.LANDINGS` / `landing_for(roles)`
+  decides each role's landing and default sidebar group. The launcher's own
+  if/elif chain is gone, and the sidebar pins the same result, so the two
+  cannot disagree. All three render paths expose it as `view/landing`: the
+  core-page viewlet manager, the PFAS macro and the debug view.
+- **Sidebar.** The role's landing is pinned above Dashboard, and it was not
+  reachable from the sidebar before. By default only the role's group and the
+  current page's group are open. A group the user opens or closes by hand is
+  remembered in localStorage and wins next time. The old state was a
+  sessionStorage list of closed groups, with everything open by default.
+- **Breadcrumb** at the top of the content area, built from the sidebar's
+  active item: workspace › group › page. A page beneath a listed item (a
+  worksheet's review) links the item and ends in the page title. Same-page
+  detection uses the URL, because titles and sidebar labels differ ("Facility
+  QC — Daily Checklist" vs "Daily Checklist"). A group named like the
+  workspace is not repeated. It is hidden in print.
+- **Verified live.** Admin (Manager) and a temporary LabClerk user, created for
+  the check and deleted afterwards:
+  - `@@pfas-home` → QC Management / Bench;
+  - pins "QC Management" / "Bench";
+  - open groups: QC & Methods + current / Bench + current;
+  - crumbs such as "QC Management › Operations › Worksheets › Data Review —
+    WS-0001" and "Bench › Reagent Inventory";
+  - no JS errors.
+- **An outage, caught and fixed within the phase.** The first version's sidebar
+  comment contained `--`, which Chameleon refuses to compile inside an HTML
+  comment. Because the sidebar renders on every page, **every page on the site
+  returned an error** until the next restart carried the fix. It was found by
+  the verification script, whose checks all came back empty. New guard:
+  `test_no_double_hyphen_in_html_comments` (mutation-tested).
+- **Tests:** `tests/test_ui_navigation.py` (6) runs the real `landing_for()`:
+  - each role's landing, and the precedence Manager > Analyst > LabClerk;
+  - every default group is a real sidebar group;
+  - the launcher holds no role names of its own;
+  - the sidebar pins the landing and opens the role group;
+  - the breadcrumb comes from the nav.
+
+  Two mutations, both killed.

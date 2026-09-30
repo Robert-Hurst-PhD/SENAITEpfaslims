@@ -13,6 +13,29 @@ def _portal(context):
     return getToolByName(context, 'portal_url').getPortalObject()
 
 
+# Role -> landing, in precedence order: the ONE place that decides where a
+# role lands (CLAUDE.md §4/§5). The launcher redirects with it and the sidebar
+# pins it, so the two cannot disagree. Bench Chemist = LabClerk (decided
+# 2026-09-30). `group` is the sidebar group opened by default for that role.
+LANDINGS = (
+    (("LabManager", "Manager"), u"QC Management", "@@pfas-qc-management", "pfas-sg-qc"),
+    (("Analyst", "Verifier"),   u"Data Review",   "@@pfas-data-review-home", "pfas-sg-qc"),
+    (("LabClerk",),             u"Bench",         "@@pfas-bench", "pfas-sg-bench"),
+    (("Client",),               u"Sample Tracker", "@@pfas-track", ""),
+)
+DEFAULT_LANDING = (u"Sample Status", "@@pfas-sample-status", "pfas-sg-operations")
+
+
+def landing_for(roles):
+    """{'label', 'view', 'group'} of the landing for a set of roles."""
+    roles = set(roles or ())
+    for wanted, label, view, group in LANDINGS:
+        if roles.intersection(wanted):
+            return {"label": label, "view": view, "group": group}
+    label, view, group = DEFAULT_LANDING
+    return {"label": label, "view": view, "group": group}
+
+
 class PFASWorkspaceHomeView(BrowserView):
     """Role-aware launcher — redirects to the user's default workspace."""
 
@@ -27,16 +50,7 @@ class PFASWorkspaceHomeView(BrowserView):
         except Exception:
             roles = list(user.getRoles())
 
-        if 'LabManager' in roles or 'Manager' in roles:
-            target = '{0}/@@pfas-qc-management'.format(base)
-        elif 'Analyst' in roles or 'Verifier' in roles:
-            target = '{0}/@@pfas-data-review-home'.format(base)
-        elif 'LabClerk' in roles:
-            target = '{0}/@@pfas-bench'.format(base)
-        elif 'Client' in roles:
-            target = '{0}/@@pfas-track'.format(base)
-        else:
-            target = '{0}/@@pfas-sample-status'.format(base)
+        target = '{0}/{1}'.format(base, landing_for(roles)['view'])
 
         return self.request.response.redirect(target)
 

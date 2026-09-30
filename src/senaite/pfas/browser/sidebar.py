@@ -7,6 +7,7 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.core.browser.viewlets.sidebar import SidebarViewletManager
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.workspace_home import landing_for
 
 
 def _get_user_roles(context):
@@ -18,6 +19,14 @@ def _get_user_roles(context):
     except Exception:
         roles = list(user.getRoles())
     return roles
+
+
+def sidebar_landing(context):
+    """The current user's landing, absolute URL included, for the sidebar pin."""
+    info = dict(landing_for(_get_user_roles(context)))
+    portal = getToolByName(context, 'portal_url').getPortalObject()
+    info["url"] = "{0}/{1}".format(portal.absolute_url(), info["view"])
+    return info
 
 
 class PFASSidebarView(BrowserView):
@@ -52,6 +61,9 @@ class PFASSidebarView(BrowserView):
     def user_roles(self):
         return _get_user_roles(self.context)
 
+    def landing(self):
+        return sidebar_landing(self.context)
+
 
 class PFASSidebarManager(SidebarViewletManager):
     """Site-wide accordion sidebar — overrides core SidebarViewletManager
@@ -74,6 +86,9 @@ class PFASSidebarManager(SidebarViewletManager):
 
     def user_roles(self):
         return _get_user_roles(self.context)
+
+    def landing(self):
+        return sidebar_landing(self.context)
 
     def render(self):
         if not self.available():
