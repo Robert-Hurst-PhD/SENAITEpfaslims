@@ -5216,3 +5216,31 @@ open:
   (§46.5), it can only be whoever owns the portal, never a local creator-Owner.
   `deviations.can_manage` now delegates to `perms.ALLOWED_ROLES` instead of
   keeping its own `{LabManager, Manager}`, so the two cannot drift again.
+
+## 2026-09-30 — UI consolidation before new features: one frame, one component set
+
+**Confirmed** by the lab after the GAPS §49 audit (60 pages crawled and
+measured): about ten content frames, a sidebar that moves between core and PFAS
+pages, 51 per-page stylesheets, and three role landings that rendered unstyled.
+No new features until the UI is consolidated, in phases, each re-measured with
+`tools/ui_audit.py`:
+
+0. Defects plus a ratchet (`tests/test_ui_ratchet.py`: page-local styling can
+   only shrink).
+1. Frame and tokens in `pfas_macros.pt`: sidebar geometry, content frame,
+   title pattern, spacing, type and radius tokens on the light core palette.
+2. Shared components (buttons, table, badges, cards), migrated one sidebar
+   group at a time, deleting page CSS as it goes.
+3. Navigation: landing pinned atop the sidebar; role and current groups open.
+4. The remaining accordions become tabs (§6B).
+
+Lab answers:
+- **Title:** in the header bar, with a breadcrumb under it. No in-page H1 on
+  PFAS pages; core pages keep theirs (not overriding core).
+- **Width:** full width for tables and lists; one shared narrower width for
+  reading and form pages.
+- **Sidebar:** landing pinned at the top; the role's group and the current
+  page's group open, the rest collapsed, remembered per user.
+- **Bench Chemist is LabClerk only**, not Analyst. CLAUDE.md §4 corrected; the
+  launcher already routes LabClerk to Bench and Analyst/Verifier to Data Review,
+  so no routing change is needed. Closes the GAPS §48 question.

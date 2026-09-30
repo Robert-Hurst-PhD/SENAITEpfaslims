@@ -214,8 +214,8 @@
       border-bottom: 2px solid var(--s-border);
       padding: 0 20px;
       display: flex;
+      flex-wrap: wrap;   /* a tab past the edge was simply hidden (method profile: 11 tabs) */
       gap: 0;
-      overflow-x: auto;
     }
     .pfas-tab {
       display: inline-block;
@@ -661,7 +661,7 @@
       .page-body { max-width: 100% !important; }
 
       /* Tabs: scrollable, compact */
-      .pfas-tabs { padding: 0 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .pfas-tabs { padding: 0 6px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
       .pfas-tab { padding: 8px 10px; font-size: 12px; }
 
       /* Pane footer: stack vertically */

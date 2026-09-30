@@ -195,7 +195,7 @@ set of ACCESSIBLE workspaces; the left panel shows only what the role can reach.
 |---|---|---|---|
 | Manager / QAO / Director / Owner | LabManager (+ QC-author perms) | Create & review: QC rules, method profiles; create/process/review extractions; sign-off | QC Management |
 | Analyst (data reviewer) | Verifier / Analyst | Compare & review: extraction packet vs QC data vs instrument data — three-way verification of results | Data Review |
-| Bench Chemist | Analyst / LabClerk | Fast operational: reagent creation, documentation, SOP-deviation notes, SOP access, append corrections to a batch | Bench |
+| Bench Chemist | LabClerk (not Analyst — decided 2026-09-30) | Fast operational: reagent creation, documentation, SOP-deviation notes, SOP access, append corrections to a batch | Bench |
 | Client | Client | Minimal: their sample tracker + their published reports ONLY | Client Tracker |
 
 Only Manager/QAO/Director/Owner may edit QC criteria, method profiles, and the
@@ -328,6 +328,18 @@ Profile pages:
   mid-page.
 
 ### 6C. RULES
+
+- **One frame, measured (decided 2026-09-30, GAPS §49).** The page title lives
+  in the dark header bar, with a breadcrumb line under it; no page adds its own
+  H1 title. Tables and lists use the full content width; reading and form pages
+  (logbooks, editors, wizards) use ONE shared narrower width — never a
+  page-chosen max-width. The sidebar opens on the user's landing (pinned at the
+  top) with their role's group and the current page's group expanded and the
+  rest collapsed. `tools/ui_audit.py` measures all of this; run it before and
+  after any layout change.
+- **Page-local styling only shrinks.** `tests/test_ui_ratchet.py` pins the count
+  of per-page `<style>` blocks, `style=` attributes, hex colours and font sizes;
+  lower the ceiling in the same commit that lowers the count.
 
 - Define the shell + panel ONCE as shared templates; never restyle pages
   individually. Reuse core theme tokens.

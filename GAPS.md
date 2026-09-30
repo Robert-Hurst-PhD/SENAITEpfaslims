@@ -4916,7 +4916,7 @@ lab data, not code. Recorded, not changed.
 - `method_wizard` Title match can duplicate a MethodID (48.1).
 - Four test files depend on gitignored lab data (48.5).
 - Vocabularies code-only / Phase 6, unchanged from §45.
-- **§4 and §5 disagree on a Bench Chemist holding `Analyst`.** §4 maps Bench
+- ~~**§4 and §5 disagree on a Bench Chemist holding `Analyst`.**~~ LabClerk only — DECISIONS 2026-09-30; §4 corrected. §4 maps Bench
   Chemist to SENAITE `Analyst / LabClerk`, landing on Bench; the launcher tests
   `Analyst` before `LabClerk`, so such a user lands on Data Review. Pre-existing
   in §4 vs `workspace_home.py`; the §5 rewrite follows the code. Which role a
@@ -4924,3 +4924,83 @@ lab data, not code. Recorded, not changed.
 - Second restart after the commit: import log 329, 3 / 16 / 74 unchanged — the
   web process now serves this code. `@@pfas-deviations` not yet looked at in a
   browser.
+
+---
+
+## 49. The UI audit: one shared layout, used by almost nothing (2026-09-30)
+
+The lab reported that the site felt cluttered and scattered, and asked for a
+review before any more features. `tools/ui_audit.py` (new) logs in, walks every
+sidebar link plus the pages the sidebar does not reach (the role landings, the
+editors, one level of deep links), screenshots each at 1440×900, and measures
+the geometry that should be identical everywhere. **60 pages.**
+
+### 49.1 What was measured
+
+- **The sidebar moves.** Core pages: first row at y=60, row pitch 33px. PFAS
+  pages: y=52, 29px. `pfas_sidebar.pt` sets no line-height, so each host page's
+  line-height decides it (1.5 on core, tighter on PFAS).
+- **About ten content frames.** Real left edges (widest visible block) at
+  242, 250, 259, 262, 266, 300, 350, 526 and 580px, widths 500–1176. The two
+  big clusters:
+  - 17 pages at x=300, width 1060: they use the macro's
+    `.page-body {max-width:1100px; margin:auto; padding:20px}` *on top of*
+    `.pfas-content-area`'s own 22px gutter;
+  - 11 pages at x=242, width 1176: they fill the slot directly.
+  - Core pages sit at x=250.
+- **Two title patterns.** Core pages: breadcrumb plus an in-page H1 with an
+  icon. PFAS pages: the title only in the dark header bar.
+- **The shared components are barely used.** In screen templates,
+  `.pfas-tabs` appears on 2 pages, `.pfas-table` on 7 and `.pfas-action-bar` on
+  2. Pages instead define 63 button classes, 34 table classes, 86 card/panel
+  classes and 121 badge/status classes of their own. 51 screen templates carry
+  a page-local `<style>` (3,332 lines), with 968 `style=` attributes,
+  223 distinct hex colours against 22 tokens, and 23 font sizes (9–36px).
+  Print templates (certificates, labels, receipts) are excluded: their pt
+  sizes are deliberate.
+- **Navigation.** 44 sidebar links in 7 groups, all expanded, so the list runs
+  past the fold. **The three role landings (§5) are not in the sidebar**; the
+  only way in is a "PFAS Workspace" tile on the SENAITE dashboard. Accordions on
+  five pages, tabs on one (§6B asks for tabs).
+
+### 49.2 Phase 0 — defects fixed, ratchet added
+
+- **All three role landings rendered unstyled** (serif fallback, a stray title
+  line above the header). Cause: the macro defines the `title` slot on the
+  `<title>` element itself, and `pfas_qc_management`, `pfas_bench`,
+  `pfas_data_review_home` and `qc_grid` filled it with a bare
+  `<metal:fill>`. That replaced the `<title>` tag with loose text, so the
+  browser closed `<head>` early and the page's styles landed inside a `<p>` in
+  `<body>`. It was not the missing `xmlns`, which was the first suspect.
+  **Fixed** on all four. Verified after a restart: correct title, system font.
+- **The method profile editor's 11 tabs ran off the right edge** under
+  `overflow-x:auto` with no scroll cue, so "Lab Workflow" and "Advanced" could
+  not be seen. `.pfas-tabs` now wraps on desktop and still scrolls on phones.
+  Verified: two rows, all 11 visible.
+- **The Data Review queue showed the worksheet ID twice** (Worksheet and Title
+  columns; a worksheet's Title is its ID). The Title column is gone; a title
+  that differs from the ID is shown under it.
+- **`tests/test_ui_ratchet.py`** pins the four counts above at their current
+  values (51 / 968 / 223 / 23), so page-local styling can only shrink, and
+  requires the title slot to be filled on a `<title>` element. Four mutations,
+  all killed. The first version of the title check survived its own mutation:
+  it required the `metal:` prefix, which the broken form does not carry.
+
+38/38 test files (with `PFAS_PROFILES_PATH`, §48.5).
+
+### 49.3 Decisions and remaining phases
+
+Decisions are recorded in DECISIONS 2026-09-30 and CLAUDE.md §6C: title in the
+header bar with a breadcrumb; full width for lists and one shared narrow width
+for forms; the sidebar opens on the role's landing and groups.
+
+1. **Frame and tokens.** Fixed sidebar line-height/pitch; `.page-body` becomes
+   full width on the shared gutter; `.page-body-narrow` is the one form width,
+   left-aligned so the left edge never moves; spacing, type and radius tokens.
+2. **Components.** One button set, one table, one badge scale and one card,
+   migrated a sidebar group at a time, deleting page CSS and lowering the
+   ratchet ceilings in the same commit.
+3. **Navigation.** Landing pinned atop the sidebar; role and current groups
+   open, the rest collapsed and remembered.
+4. **Accordions → tabs** on the five remaining pages.
+5. **Not yet addressed.** `@@pfas-calibrations` is 8,500px tall.

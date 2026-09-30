@@ -1,5 +1,5 @@
 <metal:block use-macro="context/@@pfas-macros/macros/page">
-<metal:fill fill-slot="title">QC Type Grid</metal:fill>
+<title metal:fill-slot="title">QC Type Grid</title>
 <metal:fill fill-slot="content">
 
 <div class="page-body">

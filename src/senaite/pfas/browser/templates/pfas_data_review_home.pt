@@ -3,7 +3,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 
-  <metal:fill fill-slot="title">Data Review</metal:fill>
+  <title metal:fill-slot="title">Data Review</title>
 
   <metal:fill fill-slot="header-title">Data Review</metal:fill>
 

@@ -10,6 +10,7 @@
   <style>
     /* ── Data Review ────────────────────────────────────────────────────── */
     .dr-header { display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+    .dr-ws-title { font-size:12px; color:var(--s-secondary); }
     .dr-batch-title { font-size:17px; font-weight:700; color:var(--s-text); }
     .ws-badge { font-size:11px; font-weight:700; text-transform:uppercase;
                 padding:3px 9px; border-radius:10px; }
@@ -185,7 +186,6 @@
         <thead>
           <tr>
             <th>Worksheet</th>
-            <th>Title</th>
             <th>Analyst</th>
             <th>Review status</th>
             <th>Open since extraction</th>
@@ -196,8 +196,10 @@
           <tal:row tal:repeat="ws view/recent_worksheets">
             <tr>
               <td><a tal:attributes="href ws/url"
-                     tal:content="ws/id">WS</a></td>
-              <td tal:content="ws/title">Title</td>
+                     tal:content="ws/id">WS</a>
+                <div class="dr-ws-title"
+                     tal:condition="python:ws['title'] and ws['title'] != ws['id']"
+                     tal:content="ws/title">Title</div></td>
               <td class="dr-analyst" tal:content="ws/analyst">Analyst</td>
               <td>
                 <span class="dr-stage"
