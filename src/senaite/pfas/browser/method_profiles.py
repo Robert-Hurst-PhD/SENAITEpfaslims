@@ -726,11 +726,28 @@ class PFASMethodProfileEditView(BrowserView):
 
     # ── POST handler ──────────────────────────────────────────────────────────
 
-    def config_stamp(self):
-        """Version stamp of the stored profile, carried by the form."""
-        from senaite.pfas import config_history
+    @staticmethod
+    def _stamp_value(portal, mid):
+        """What this editor saves for one method: the stored profile AND the
+        method's slice of qc_rules.json (the Rule Toggles tab saves there from
+        the same form), so a colleague's toggle change also makes a save stale."""
         from senaite.pfas.method_profile_store import raw_profile
-        return config_history.stamp(raw_profile(_portal(self.context), self.method_id()))
+        try:
+            from senaite.pfas.qc.rules import get_rules
+            rules = get_rules() or {}
+        except Exception:
+            rules = {}
+        from senaite.pfas.config_history import IGNORED_KEYS
+        profile = dict((k, v) for k, v in raw_profile(portal, mid).items()
+                       if k not in IGNORED_KEYS and k not in ("updated_at", "updated_by", "_seeded"))
+        return {"profile": profile,
+                "qc_rules": {"toggles": (rules.get("method_rule_toggles") or {}).get(mid),
+                             "overrides": (rules.get("method_overrides") or {}).get(mid)}}
+
+    def config_stamp(self):
+        """Version stamp of what this editor saves, carried by the form."""
+        from senaite.pfas import config_history
+        return config_history.stamp(self._stamp_value(_portal(self.context), self.method_id()))
 
     def last_change(self):
         from senaite.pfas import config_history
@@ -749,9 +766,10 @@ class PFASMethodProfileEditView(BrowserView):
         sent = (self.request.form.get("config_stamp") or "").strip()
         if sent:
             from senaite.pfas import config_history
-            from senaite.pfas.method_profile_store import raw_profile
-            if sent != config_history.stamp(raw_profile(portal, mid)):
-                last = config_history.last_change(portal, "method_profile", mid) or {}
+            if sent != config_history.stamp(self._stamp_value(portal, mid)):
+                candidates = [e for e in (config_history.last_change(portal, "method_profile", mid),
+                                          config_history.last_change(portal, "qc_rules", "rules")) if e]
+                last = max(candidates, key=lambda e: e.get("at", "")) if candidates else {}
                 return self._redirect_error(mid, (
                     "Not saved: this profile was changed by {0} at {1} UTC after "
                     "you opened it. Reload to see their change, then re-apply "

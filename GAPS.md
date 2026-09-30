@@ -5622,8 +5622,40 @@ Approved by the lab as the first recommendation of
     remain in the history, as a trail should.
 - **Tests:** `test_config_history.py` (11). The no-op audit tool now reports
   history entries per step.
+- **Review fixes (same day):**
+  1. **Surrogate map.** It is derived from each service's
+     `pfas_quant_surrogate`, so it is no longer recorded on the profile
+     (`HISTORY_ONLY_IGNORED`) but still counts in the stamp. A profile entry
+     touching it cannot be reverted. **Surrogate links are now revertable at
+     the source:** a revert sets the service and every method profile's derived
+     row together.
+  2. **The History page needed a login only,** so a Client could read every
+     client's EDD settings. It now needs `ManageBika`, like Lab Settings.
+     Verified: a Client is refused; a LabClerk can view but cannot revert.
+  3. **The stamp now covers the method's slice of `qc_rules.json`** as well
+     (the Rule Toggles tab saves there from the same form). Verified: a stale
+     save after a toggle-only change is refused.
+  4. **A failing getter no longer records a bogus "cleared" entry,** and a
+     history write failure is logged, not raised.
+  5. **DECISIONS corrected:** only the Method Profile editor has stamps so
+     far.
+- **`tools/config_history_check.py`** proves each hook FIRES. The no-op audit
+  cannot, because hooks never raise. It makes a real edit to a recovery tier,
+  a rule toggle, a surrogate link, an EDD profile and a client's EDD settings,
+  requires the entry, and reverts or undoes each. Then it runs the two-session
+  stale-toggle test and requires the configuration to equal the starting
+  snapshot. **All passed.**
+- **Found by its first run:** the surrogate undo could not restore the link.
+  The method's dropdown lists only its own surrogates plus the current value,
+  so PFHxA was left on M2PFDA for about a minute. It was restored at the
+  source with a history note, and the configuration was verified identical.
+  **Structural note for the lab:** the link is one per service, so editing
+  PFHxA's surrogate in the EPA 537.1 editor changes it for EPA 1633A and FDA
+  too (D58).
+- **Settings registry:** tracked, but **no page writes it yet** (`set_value`
+  has only API and test callers), so there is no live edit to exercise.
 - **Not yet:**
-  - revert for the settings registry, analysis services, logbook definitions,
-    client EDD, expiry defaults, units and weight sets (recorded, reverted in
-    their own editor);
-  - version stamps on editors other than the Method Profile editor.
+  - revert for logbook definitions, client EDD, expiry defaults, units,
+    weight sets and registry settings (recorded; reverted in their own
+    editor);
+  - stamps on editors other than the Method Profile editor (with R2).

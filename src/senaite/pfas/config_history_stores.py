@@ -38,10 +38,45 @@ def register_all():
         u"EDD configuration")
     reg("qc_rules", lambda p, k: get_rules(), lambda p, k, v: qc_rules_store().save(v),
         u"QC rules")
+
+    # The quantifying-surrogate link lives on the AnalysisService (the source,
+    # D58); each method profile carries a derived copy in surrogate_map. A
+    # revert sets the source AND every profile's copy, so they cannot drift.
+    def _service(portal, keyword):
+        for svc in portal.bika_setup.bika_analysisservices.objectValues():
+            if svc.getKeyword() == keyword:
+                return svc
+        return None
+
+    def get_link(portal, keyword):
+        svc = _service(portal, keyword)
+        fld = svc.getField("pfas_quant_surrogate") if svc is not None else None
+        return {"pfas_quant_surrogate": (fld.get(svc) or "") if fld else ""}
+
+    def set_link(portal, keyword, value):
+        svc = _service(portal, keyword)
+        if svc is None:
+            raise ValueError("no analysis service %r" % keyword)
+        sur = (value or {}).get("pfas_quant_surrogate") or ""
+        fld = svc.getField("pfas_quant_surrogate")
+        config_history.track(None, "analyte_service", keyword,
+                             lambda: {"pfas_quant_surrogate": fld.get(svc) or ""},
+                             label=u"Quantifying surrogate: %s" % keyword)
+        fld.set(svc, sur)
+        for mid in method_profile_store.list_method_ids(portal):
+            prof = method_profile_store.raw_profile(portal, mid)
+            rows = prof.get("surrogate_map") or []
+            if any(r.get("analyte") == keyword for r in rows):
+                for r in rows:
+                    if r.get("analyte") == keyword:
+                        r["surrogate_is"] = sur
+                method_profile_store.save_profile(portal, mid, prof)
+
+    reg("analyte_service", get_link, set_link, u"Quantifying surrogate")
     # Recorded, reverted in their own editor: settings, analyte_service,
     # logbook_definition, logbook_defs, client_edd, reagent_expiry,
     # facility_unit, weight_set, facility_api_key (redacted).
-    for name, title in (("settings", u"Lab setting"), ("analyte_service", u"Analysis service"),
+    for name, title in (("settings", u"Lab setting"),
                         ("logbook_definition", u"Logbook definition"),
                         ("logbook_defs", u"Logbook definitions"), ("client_edd", u"Client EDD settings"),
                         ("reagent_expiry", u"Expiry defaults"), ("facility_unit", u"Facility unit"),

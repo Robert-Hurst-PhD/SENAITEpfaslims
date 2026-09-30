@@ -252,12 +252,13 @@
   <!-- Regulatory limits (MCLs / action levels) + state program links for the
        certificate's regulatory notes. Save gated at TIER_CONFIG. GAPS §50. -->
   <!-- Configuration change history (R1): who changed which setting, when,
-       before and after; revert gated at TIER_CONFIG. -->
+       before and after. Viewing needs ManageBika (like Lab Settings): it shows
+       every client's EDD settings. Revert is gated at TIER_CONFIG. -->
   <browser:page
       name="pfas-config-history"
       for="*"
       class=".config_history_view.PFASConfigHistoryView"
-      permission="zope2.View"
+      permission="senaite.core.permissions.ManageBika"
       />
 
   <browser:page

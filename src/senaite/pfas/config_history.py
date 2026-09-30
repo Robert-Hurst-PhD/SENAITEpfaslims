@@ -44,6 +44,14 @@ IGNORED_KEYS = frozenset(["updated_at", "_seeded", "matrix_uid_map",
                           "master_analyte_set", "display_analyte_set",
                           "method_id"])
 
+# Recorded elsewhere: the profile's surrogate_map is DERIVED from each
+# service's pfas_quant_surrogate (the source, D58), which history records as
+# "analyte_service" entries. Recording it on the profile too would double the
+# change, and reverting the profile copy would leave the source untouched
+# (the next editor save rebuilds the map from the services and undoes it).
+# Still part of the version STAMP: two people editing surrogates must collide.
+HISTORY_ONLY_IGNORED = frozenset(["surrogate_map"])
+
 # Stores whose values are secrets: the entry says a change happened, not what.
 REDACTED_STORES = frozenset(["facility_api_key"])
 
@@ -67,7 +75,7 @@ def diff(before, after, path=()):
     out = []
     if isinstance(before, dict) and isinstance(after, dict):
         for k in sorted(set(before) | set(after), key=lambda x: "%s" % x):
-            if not path and k in IGNORED_KEYS:
+            if not path and (k in IGNORED_KEYS or k in HISTORY_ONLY_IGNORED):
                 continue
             if k in ("updated_at", "updated_by", "_seeded"):
                 continue
@@ -224,12 +232,17 @@ def decode_json_strings(value):
     return value
 
 
+_UNREADABLE = object()
+
+
 def _safe(getter):
+    """The value through `getter`, or _UNREADABLE: a value that cannot be read
+    must not be recorded as "cleared", so the item is skipped (and logged)."""
     try:
         return decode_json_strings(json.loads(json.dumps(getter(), default=repr)))
     except Exception as exc:                                        # noqa: BLE001
         logger.warning("config_history: cannot read value: %s", exc)
-        return None
+        return _UNREADABLE
 
 
 def _who(reg):
@@ -245,24 +258,37 @@ def _who(reg):
 
 
 def _write_entries(reg):
+    """Before-commit hook. A failure here is LOGGED, not raised: history must
+    never stop the save it describes (the save's own data is already valid)."""
     for (store, key), item in sorted(reg.items.items()):
-        after = _safe(item["getter"])
-        changes = diff(item["before"], after)
-        if not changes:
-            continue
-        entry = {
-            "at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            "who": _who(reg), "store": store, "key": key, "label": item["label"],
-            "changes": [{"path": list(p), "before": b, "after": a}
-                        for p, b, a in changes],
-        }
-        if reg.note:
-            entry["note"] = reg.note
-        if store in REDACTED_STORES:
-            entry["changes"] = [{"path": list(p), "before": u"(redacted)",
-                                 "after": u"(redacted)"} for p, b, a in changes]
-            entry["redacted"] = True
-        _append(item["portal"], entry)
+        try:
+            _write_one(reg, store, key, item)
+        except Exception as exc:                                    # noqa: BLE001
+            logger.error("config_history: entry for %s/%s not written: %s",
+                         store, key, exc)
+
+
+def _write_one(reg, store, key, item):
+    after = _safe(item["getter"])
+    if item["before"] is _UNREADABLE or after is _UNREADABLE:
+        logger.warning("config_history: %s/%s unreadable; no entry", store, key)
+        return
+    changes = diff(item["before"], after)
+    if not changes:
+        return
+    entry = {
+        "at": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "who": _who(reg), "store": store, "key": key, "label": item["label"],
+        "changes": [{"path": list(p), "before": b, "after": a}
+                    for p, b, a in changes],
+    }
+    if reg.note:
+        entry["note"] = reg.note
+    if store in REDACTED_STORES:
+        entry["changes"] = [{"path": list(p), "before": u"(redacted)",
+                             "after": u"(redacted)"} for p, b, a in changes]
+        entry["redacted"] = True
+    _append(item["portal"], entry)
 
 
 def _btree(portal, create=True):
@@ -348,6 +374,9 @@ def revert(portal, eid):
         return False, u"No such change."
     if entry.get("redacted"):
         return False, u"A redacted change cannot be reverted from history."
+    if any(ch["path"] and ch["path"][0] in HISTORY_ONLY_IGNORED for ch in entry["changes"]):
+        return False, (u"This change includes the surrogate map, which is derived "
+                       u"from the analysis services: revert the service entries instead.")
     spec = STORES.get(entry["store"])
     if spec is None:
         return False, u"This kind of setting cannot be reverted from history yet."

@@ -5323,8 +5323,19 @@ Lab answers:
   export, AnalysisSpec sync and method bridge stay in step. It is refused if a
   later change touched the same settings, is recorded as its own entry, and is
   gated `TIER_CONFIG`.
-- **Stale save:** each editor carries a version stamp of the stored value. A
-  save from a page opened before someone else's change is refused before
-  anything is applied, naming who changed it and when.
+- **Stale save:** the **Method Profile editor** carries a version stamp,
+  covering the stored profile plus that method's slice of `qc_rules.json`,
+  because the Rule Toggles tab saves there from the same form. A save from a
+  page opened before someone else's change is refused before anything is
+  applied, naming who changed it and when. Other editors get stamps with the
+  schema-driven editor framework (R2).
+- **The surrogate map** is recorded once, on the analysis services (its
+  source, D58), not on the profile. A profile entry that touches it cannot be
+  reverted from history, but it still counts in the stamp.
+- **Viewing the History page** needs `ManageBika`, like Lab Settings, because
+  it shows every client's EDD settings.
+- **Failure handling:** a failing getter skips the entry (logged) rather than
+  recording "cleared", and a failure writing history is logged, never raised:
+  history must not stop the save it describes.
 - **Secrets** (the facility API key) are recorded as "changed", without the
   values.

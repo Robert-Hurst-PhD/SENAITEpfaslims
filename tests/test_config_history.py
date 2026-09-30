@@ -117,6 +117,22 @@ def test_json_text_is_compared_by_meaning():
         (("schema", 0, "type"), "text", "date")]
 
 
+def test_surrogate_map_is_recorded_on_the_services_not_the_profile():
+    before = dict(BEFORE, surrogate_map=[{"analyte": "PFOA", "surrogate_is": "M8PFOA"}])
+    after = dict(BEFORE, surrogate_map=[{"analyte": "PFOA", "surrogate_is": "M2PFOA"}])
+    assert ch.diff(before, after) == []                     # not a profile history entry
+    assert ch.stamp(before) != ch.stamp(after)              # but two editors still collide
+
+
+def test_the_history_page_is_not_open_to_every_user():
+    zcml = os.path.join(os.path.dirname(HERE), "src", "senaite", "pfas", "browser", "configure.zcml")
+    with open(zcml) as fh:
+        text = fh.read()
+    i = text.index('name="pfas-config-history"')
+    block = text[i:text.index("/>", i)]
+    assert "zope2.View" not in block, "History page readable by every logged-in user (incl. clients)"
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]
