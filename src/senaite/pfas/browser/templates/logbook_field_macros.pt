@@ -43,10 +43,12 @@
             </table>
             <button type="button" class="btn-add-row"
                     tal:attributes="onclick string:dynAddRow('${fname}')">+ Add Row</button>
+            <!-- The saved rows, server-rendered: a submit before the script
+                 serialises the table must not post "[]" over them (GAPS §51). -->
             <input type="hidden"
                    tal:attributes="id string:${fname}_json;
-                                   name string:${fname}_json"
-                   value="[]" />
+                                   name string:${fname}_json;
+                                   value python:view.stored_json(fname)" />
           </div>
         </tal:table>
 

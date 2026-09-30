@@ -1268,16 +1268,18 @@ class EPA1633AProfile(MethodProfile):
             # certificate names the compound the lab has rather than EPA's.
             criteria_name = eis_criteria_name(self.method_id, analyte)
             override = eis_overrides.get(criteria_name, {})
-            lo = float(override.get("recovery_min", default_lo))
-            hi = float(override.get("recovery_max", default_hi))
+            # A limit stored as null is UNSET: it falls back, never float(None)
+            # (the editor now saves a blank as null, not 0 -- GAPS §51).
+            lo = _limit_or(override.get("recovery_min"), default_lo)
+            hi = _limit_or(override.get("recovery_max"), default_hi)
             if matrix:
                 mat_class = _1633a_matrix_class(matrix)
                 if mat_class != "aqueous":
                     mat_override = eis_matrix.get(mat_class, {}).get(
                         criteria_name)
                     if mat_override:
-                        lo = float(mat_override.get("recovery_min", lo))
-                        hi = float(mat_override.get("recovery_max", hi))
+                        lo = _limit_or(mat_override.get("recovery_min"), lo)
+                        hi = _limit_or(mat_override.get("recovery_max"), hi)
             return QCRule(lo, hi,
                           verify_against_method=True,
                           notes="EIS limits per-analyte x matrix class "
@@ -1358,6 +1360,11 @@ class EPA1633AProfile(MethodProfile):
 # ─────────────────────────────────────────────────────────────────────────────
 # Registry
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _limit_or(value, fallback):
+    """A stored limit as float, or the fallback when it is unset (None)."""
+    return fallback if value is None else float(value)
+
 
 _PROFILES = {
     "FDA_32PFAS": FDA32PFASProfile(),

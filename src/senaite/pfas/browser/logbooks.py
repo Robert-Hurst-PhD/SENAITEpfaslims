@@ -169,8 +169,11 @@ class _LogbookBase(BrowserView):
         form carries them even before (or without) the page's script."""
         try:
             return json.dumps((self.data() or {}).get(key) or [])
-        except Exception:
-            return "[]"
+        except Exception as exc:
+            # No value rather than "[]": an empty field is refused on save,
+            # while "[]" would be taken as clearing the saved rows.
+            logger.warning("stored_json(%s): %s", key, exc)
+            return None
 
     def portal_url(self):
         return getToolByName(self.context, "portal_url")()
@@ -980,11 +983,11 @@ def _extract_data_from_schema(form, schema_fields, only_fields=None):
             continue
         ftype = field.get("type", "text")
         if ftype == "table":
-            raw = form.get(fname + "_json", "[]")
-            try:
-                data[fname] = json.loads(raw)
-            except (ValueError, TypeError):
-                data[fname] = []
+            # absent -> the saved rows stay (the caller seeds from them);
+            # unreadable -> ValueError, the save is refused (GAPS §51)
+            if fname + "_json" not in form:
+                continue
+            data[fname] = _rows_from_form(form, fname + "_json", {}, fname)
         elif ftype == "checkbox":
             data[fname] = form.get(fname) == "yes"
         else:
@@ -1446,7 +1449,10 @@ class PFASDynamicLogbookView(_LogbookBase):
         # blanked even if `only` were computed wrongly, and `only_fields`
         # confines this step to its own fields.
         data = dict(existing)
-        data.update(_extract_data_from_schema(f, schema_fields, only_fields=only))
+        try:
+            data.update(_extract_data_from_schema(f, schema_fields, only_fields=only))
+        except ValueError as exc:
+            return self._redirect_error(str(exc).replace(" ", "+"))
 
         correctable = _correctable_fields(schema_fields)
         if only is not None:

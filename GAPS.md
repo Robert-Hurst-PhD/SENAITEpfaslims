@@ -5460,9 +5460,11 @@ diffs, attributing every change to one form. A repozo backup was taken first
 2. **Method Profile: the submit serialiser never ran.** Its first step
    (`syncMatrixFactorsJson`) threw on every page, because that table had been
    replaced by named fields. This silently stopped every serialiser after it.
-   - Isomer summation, spike levels, EIS overrides and the other tables
-     relying on submit-time serialisation reached the server stale, so their
-     edits were lost.
+   - **Correction after checking every table's handlers:** each of these
+     tables *also* serialises on every input/change event, so typed edits did
+     reach the server. The broken submit step was a latent defect (it would
+     have lost any change not raised as an input event), not an observed loss
+     of data.
    - Fix: each serialiser runs isolated; a missing table leaves its hidden
      field alone (never writes `[]`); a blank number is `null`, never `0`.
 3. **Method Profile: recovery tiers lost their scope.** Once serialisers ran,
@@ -5490,7 +5492,11 @@ diffs, attributing every change to one form. A repozo backup was taken first
    - EPA 537.1 and FDA 32-PFAS were **restored**.
    - Fix: the current list is server-rendered; a bad list is refused.
      Verified: 3/3 sequence saves are no-ops.
-8. **Bench logbooks 250–253 and custom: controlled records at risk.** Rows
+8. **Bench logbooks, dynamic and guided (the live path) as well as the
+   classic 250–253 and custom pages: controlled records at risk.** The
+   dynamic/guided table fields come from `logbook_field_macros.pt`, and
+   `_extract_data_from_schema` turned an absent or unreadable table into
+   `[]`. Rows
    travel in hidden JSON fields that started `[]` and were filled by script;
    an absent field defaulted to `[]`, and 250/251/custom coerced invalid JSON
    to `[]`. A save before the script ran would replace a record's rows with
@@ -5499,14 +5505,25 @@ diffs, attributing every change to one form. A repozo backup was taken first
      `_rows_from_form` keeps the saved rows when a field is absent and
      refuses unreadable input.
 9. **Prep logbook definitions: method link.**
-   - Seeds stored the slug `fda-32-pfas`, while the pool matched the method
-     ID exactly, so **the seeded FDA prep logbooks were never offered** in the
-     pool.
+   - Seeds stored the slug `fda-32-pfas`, while the pool (built from
+     `pfas_prep_logbooks` via `logbook_store.get_logbook_defs`) matched the
+     method ID exactly. So a seeded FDA logbook, once removed from FDA's
+     sequence, **could not be added back** from the pool (all four are
+     required by default, which is why this never surfaced).
    - The edit modal's dropdown (method IDs) could not select the stored slug,
      so any save cleared the link. It was cleared once by the audit and
      restored.
    - Fix: `logbook_store.method_key` normalises both sides, seeds use the
      method ID, and the modal selects by normalised match.
+
+   - Verified live on B-002: all 8 logbook pages (dynamic 250–253, guided
+     252, classic 250/252/253) render with no JS errors and their hidden
+     fields carry the saved rows. Logbook 252's 4 samples and 1 reagent were
+     unchanged afterwards.
+10. **Pipeline: a null limit.** Now that a blank number saves as `null`, the
+    1633A EIS rule's `float(override.get("recovery_min", default))` would have
+    raised on a stored null, because the default only covers a missing key.
+    `_limit_or` treats null as unset; a guard forbids the pattern.
 
 ### 51.2 Guards
 

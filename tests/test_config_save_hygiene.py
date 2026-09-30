@@ -105,7 +105,8 @@ def test_bad_numbers_are_refused_not_coerced():
 # A literal "[]" there meant a submit before (or without) the script replaced
 # a controlled record's rows -- or a method's required logbooks -- with nothing.
 EDIT_FORMS = ("logbook_250.pt", "logbook_251.pt", "logbook_252.pt",
-              "logbook_253.pt", "logbook_custom.pt", "logbook_admin.pt")
+              "logbook_253.pt", "logbook_custom.pt", "logbook_admin.pt",
+              "logbook_field_macros.pt")
 
 
 def test_edit_forms_render_saved_rows_into_hidden_fields():
@@ -144,6 +145,27 @@ def test_logbook_rows_are_kept_when_absent_and_refused_when_broken():
         except ValueError:
             continue
         raise AssertionError("accepted %r" % broken)
+
+
+def test_pipeline_treats_a_null_limit_as_unset():
+    """The editor saves a blank number as null (it was 0, a real limit). A
+    reader doing float(row.get("recovery_min", default)) turns a stored null
+    into float(None) and stops the run: the default only covers a MISSING key."""
+    pipeline = os.path.join(ROOT, "pfas_pipeline")
+    bad = []
+    for name in sorted(os.listdir(pipeline)):
+        if not name.endswith(".py"):
+            continue
+        with open(os.path.join(pipeline, name)) as fh:
+            src = fh.read()
+        for node in ast.walk(ast.parse(src)):
+            if (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "float"
+                    and node.args and isinstance(node.args[0], ast.Call)
+                    and getattr(node.args[0].func, "attr", "") == "get"
+                    and node.args[0].args and isinstance(node.args[0].args[0], ast.Constant)
+                    and str(node.args[0].args[0].value).startswith("recovery_")):
+                bad.append("{0}:{1}".format(name, node.lineno))
+    assert not bad, "float() of a stored limit that may be null: {0}".format(bad)
 
 
 if __name__ == "__main__":
