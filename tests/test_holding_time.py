@@ -194,12 +194,15 @@ def test_the_gate_consumes_it():
     with open(tpl) as fh:
         assert "holding_time_summary" in fh.read(), (
             "the calculated verdict is not shown on the CoC tab")
-    profiles = os.path.join(ROOT, "src", "senaite", "pfas", "browser",
-                            "method_profiles.py")
-    with open(profiles) as fh:
-        prof_body = fh.read()
-    assert "mtx_holding" in prof_body and 'profile["holding_times"]' in prof_body, (
+    # Edited on the Matrices & Units tab, a declared collection (R2).
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "src", "senaite", "pfas"))
+    import method_profile_sections as mps
+    assert "holding_days" in [c.path[0] for c in mps.MATRICES.columns], (
         "the limit cannot be set from the UI (Golden Rule 1)")
+    written = mps.write_matrices({"supported_matrices": []},
+                                 [{"name": "W", "holding_days": 14.0}])
+    assert written["holding_times"] == {"W": 14}, written
 
 
 if __name__ == "__main__":

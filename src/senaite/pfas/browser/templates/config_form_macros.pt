@@ -108,5 +108,42 @@
     </table>
   </div>
 </metal:table>
+
+<!--
+  Draws one declared COLLECTION (config_forms.render_collection): a row per
+  stored item plus blank rows to add; clearing a row's name removes it. The
+  header comes from the first row's cell labels. Caller: cf_rows, cf_form.
+-->
+<metal:collection define-macro="collection">
+  <table class="factor-table">
+    <thead>
+      <tr><th tal:repeat="cell python:cf_rows[0]['cells']" tal:content="cell/label">Matrix</th></tr>
+    </thead>
+    <tbody>
+      <tr tal:repeat="row cf_rows" tal:attributes="class python:'cf-new-row' if row['new'] else None">
+        <td tal:repeat="cell row/cells">
+          <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
+                 tal:attributes="name cell/name; form cf_form; value cell/value;
+                                 placeholder cell/placeholder; aria-label cell/label" />
+          <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
+                 tal:attributes="name cell/name; form cf_form; value cell/value;
+                                 step python:'1' if cell['kind'] == 'int' else 'any';
+                                 min cell/min; max cell/max;
+                                 placeholder cell/placeholder; aria-label cell/label" />
+          <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
+                 tal:attributes="name cell/name; form cf_form; aria-label cell/label;
+                                 checked python:'checked' if cell['checked'] else None" />
+          <select tal:condition="python:cell['kind'] == 'choice'" class="rl-in"
+                  tal:attributes="name cell/name; form cf_form; aria-label cell/label">
+            <option value="">&#8212; none &#8212;</option>
+            <option tal:repeat="c cell/choices"
+                    tal:attributes="value python:c[0]; selected python:'selected' if c[0] == cell['value'] else None"
+                    tal:content="python:c[1]">ng/kg</option>
+          </select>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</metal:collection>
 </body>
 </html>

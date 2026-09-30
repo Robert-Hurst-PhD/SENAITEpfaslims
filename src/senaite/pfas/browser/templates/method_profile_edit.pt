@@ -637,86 +637,11 @@
                 Clear a matrix&#8217;s name to remove it. Blank rows at the
                 bottom add new matrices.
               </p>
-              <input type="hidden" name="matrix_settings_present" value="1" />
-              <table class="factor-table" id="matrixSettingsTable">
-                <thead>
-                  <tr>
-                    <th style="width:22%">Matrix</th>
-                    <th style="width:8%">Tier&nbsp;1</th>
-                    <th style="width:36%">Aliases (comma-separated)</th>
-                    <th style="width:18%">Reporting Unit</th>
-                    <th style="width:16%">Holding Time (days)</th>
-                  </tr>
-                </thead>
-                <tbody tal:define="units view/unit_options">
-                  <tal:rows repeat="row view/matrix_settings_rows">
-                    <tr>
-                      <td>
-                        <input type="text" style="width:100%;"
-                               tal:attributes="name string:mtx_name.${repeat/row/index};
-                                               value row/matrix" />
-                      </td>
-                      <td style="text-align:center;">
-                        <input type="checkbox" value="1"
-                               tal:attributes="name string:mtx_tight.${repeat/row/index};
-                                               checked python:row['tight']" />
-                      </td>
-                      <td>
-                        <input type="text" style="width:100%;"
-                               placeholder="deer muscle, venison, beef"
-                               tal:attributes="name string:mtx_aliases.${repeat/row/index};
-                                               value row/aliases" />
-                      </td>
-                      <td>
-                        <select style="width:100%;"
-                                tal:attributes="name string:mtx_unit.${repeat/row/index}">
-                          <option value="">&#8212; none &#8212;</option>
-                          <option tal:repeat="u units"
-                                  tal:attributes="value u;
-                                                  selected python:u == row['unit']"
-                                  tal:content="u">ng/kg</option>
-                        </select>
-                      </td>
-                      <td>
-                        <input type="number" min="0" step="1" style="width:100%;"
-                               placeholder="not set"
-                               title="Days from sample collection to extraction. Leave blank if your method document does not state one -- blank means the review refuses to judge, not that it passes."
-                               tal:attributes="name string:mtx_holding.${repeat/row/index};
-                                               value row/holding_days" />
-                      </td>
-                    </tr>
-                  </tal:rows>
-                  <tal:blank repeat="n python:range(3)">
-                    <tr tal:define="idx python:len(view.matrix_settings_rows()) + n">
-                      <td>
-                        <input type="text" style="width:100%;"
-                               placeholder="new matrix"
-                               tal:attributes="name string:mtx_name.${idx}" />
-                      </td>
-                      <td style="text-align:center;">
-                        <input type="checkbox" value="1"
-                               tal:attributes="name string:mtx_tight.${idx}" />
-                      </td>
-                      <td>
-                        <input type="text" style="width:100%;"
-                               tal:attributes="name string:mtx_aliases.${idx}" />
-                      </td>
-                      <td>
-                        <select style="width:100%;"
-                                tal:attributes="name string:mtx_unit.${idx}">
-                          <option value="">&#8212; none &#8212;</option>
-                          <option tal:repeat="u units"
-                                  tal:attributes="value u" tal:content="u">ng/kg</option>
-                        </select>
-                      </td>
-                      <td>
-                        <input type="number" min="0" step="1" style="width:100%;"
-                               tal:attributes="name string:mtx_holding.${idx}" />
-                      </td>
-                    </tr>
-                  </tal:blank>
-                </tbody>
-              </table>
+              <!-- Saved ON ITS OWN (R2, config_forms collection): inputs
+                   belong to form#section-mtx through the form= attribute. -->
+              <div tal:define="cf_rows python:view.section_groups('mtx'); cf_form string:section-mtx">
+                <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+              </div>
             </div>
           </details>
         </div>
@@ -1124,6 +1049,13 @@
     </form>
     <!-- Per-tab section forms (R2): each saves only its own section, with its
          own stale-save stamp. -->
+    <form id="section-mtx" method="POST" class="pfas-section-form"
+          data-tab-label="Matrices &amp; Units"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="mtx" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp" tal:attributes="value python:view.section_stamp('mtx')" />
+    </form>
     <form id="section-rl" method="POST" class="pfas-section-form"
           data-tab-label="Reporting Limits"
           tal:attributes="action string:@@pfas-method-profile-edit">

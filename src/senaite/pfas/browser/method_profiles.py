@@ -282,83 +282,6 @@ class PFASMethodProfileEditView(BrowserView):
             })
         return rows
 
-    def matrix_settings_rows(self):
-        """One row per supported matrix, carrying every setting keyed BY matrix.
-
-        These four were readable by the engine and writable by nobody:
-        supported_matrices, tight_matrices, matrix_aliases and unit_map. A lab
-        could not add a matrix, could not say which matrices take the tighter
-        80-120% tier, could not teach the system that "deer muscle" is
-        Meat / Muscle, and could not set a reporting unit -- all four were seed
-        constants or, in the case of the aliases, written by nothing at all.
-
-        They are one table rather than four because they are one fact about one
-        matrix, and editing them apart is how they drifted.
-        """
-        profile = self.profile()
-        matrices = profile.get("supported_matrices", []) or []
-        uid_map = profile.get("matrix_uid_map", {}) or {}
-        tight = set((profile.get("tight_matrices") or []))
-        aliases = profile.get("matrix_aliases", {}) or {}
-        units = profile.get("unit_map", {}) or {}
-        holding = profile.get("holding_times", {}) or {}
-        rows = []
-        for mtx in matrices:
-            # Blank, not 0, when unset: 0 days would read as "extract the same
-            # day", and the review must refuse to judge rather than fail.
-            days = holding.get(mtx)
-            rows.append({
-                "matrix": mtx,
-                "linked": bool(uid_map.get(mtx)),
-                "tight": mtx in tight,
-                "aliases": ", ".join(aliases.get(mtx) or []),
-                "unit": units.get(mtx, ""),
-                "holding_days": "" if days in (None, "") else days,
-            })
-        return rows
-
-    def _matrix_references(self, profile, removed):
-        """What still points at a matrix title that is going away.
-
-        Reported as a refusal rather than cleaned up silently: a matrix factor
-        or a spike level is lab data, and deciding it is disposable because a
-        title changed is not this form's call.
-        """
-        removed = set(removed)
-        found = []
-
-        factors = [e.get("matrix") for e in (profile.get("matrix_factors") or [])
-                   if isinstance(e, dict)]
-        hit = sorted(set(f for f in factors if f in removed))
-        if hit:
-            found.append("matrix factors for {0}".format(", ".join(hit)))
-
-        spikes = profile.get("spike_levels") or {}
-        hit = sorted(m for m in spikes if m in removed)
-        if hit:
-            found.append("spike levels for {0}".format(", ".join(hit)))
-
-        inclusion = profile.get("analyte_matrix_inclusion") or {}
-        included = set()
-        for per_matrix in inclusion.values():
-            if isinstance(per_matrix, dict):
-                included.update(m for m in per_matrix if m in removed)
-        if included:
-            found.append("analyte x matrix inclusion for {0}".format(
-                ", ".join(sorted(included))))
-
-        return found
-
-    def unit_options(self):
-        """Reporting units offered for a matrix. Every unit already in use is
-        included, so an existing choice is never silently dropped from the list
-        it was chosen from."""
-        common = ["ng/kg", "ug/kg", "ng/L", "ng/mL", "ug/L", "mg/kg", "pg/g"]
-        used = [u for u in sorted(
-            set((self.profile().get("unit_map", {}) or {}).values()))
-            if u and u not in common]
-        return common + used
-
     # The 1633A EIS tables are published per MATRIX CLASS, not per matrix
     # title: Sediment and Soil are both "solid". Mirrors
     # pfas_pipeline.method_profiles._1633a_matrix_class, which is what the
@@ -995,72 +918,9 @@ class PFASMethodProfileEditView(BrowserView):
         profile["per_analyte"]    = _json_field(
             "per_analyte_json",    profile.get("per_analyte", []))
 
-        # Matrices & Units — the four settings keyed by matrix, saved together
-        # because they are one fact about one matrix. Guarded by the marker
-        # field so a POST from another pane, which omits these inputs, cannot
-        # wipe the matrix list (an unchecked checkbox submits nothing).
-        if f.get("matrix_settings_present"):
-            names, tight, aliases, units, holding = [], [], {}, {}, {}
-            index = 0
-            while True:
-                key = "mtx_name.%d" % index
-                if key not in f:
-                    break
-                name = (f.get(key, "") or "").strip()
-                index += 1
-                if not name:
-                    continue  # cleared row = matrix removed
-                names.append(name)
-                if f.get("mtx_tight.%d" % (index - 1)):
-                    tight.append(name)
-                raw = (f.get("mtx_aliases.%d" % (index - 1), "") or "").strip()
-                parts = [a.strip() for a in raw.split(",") if a.strip()]
-                if parts:
-                    aliases[name] = parts
-                unit = (f.get("mtx_unit.%d" % (index - 1), "") or "").strip()
-                if unit:
-                    units[name] = unit
-                # Holding time, days from collection to extraction. Cleared =
-                # None, kept as an explicit key so the matrix still appears in
-                # the table as deliberately unset rather than absent. A
-                # non-positive or unparseable entry is stored as None: the
-                # review must refuse to judge, never judge on a bad number.
-                raw_days = (f.get("mtx_holding.%d" % (index - 1), "") or "").strip()
-                days = None
-                if raw_days:
-                    try:
-                        days = float(raw_days)
-                        days = int(days) if days == int(days) else days
-                        if days <= 0:
-                            days = None
-                    except (TypeError, ValueError):
-                        days = None
-                holding[name] = days
-            if names:
-                # §3 rule 4: surface what a rename or delete would orphan
-                # rather than dropping it. matrix_factors, spike_levels and
-                # the analyte x matrix inclusion map are all keyed by matrix
-                # TITLE, so renaming "Meat / Muscle" silently strands them --
-                # including the matrix factor that multiplies every native
-                # concentration on the certificate.
-                removed = [m for m in (profile.get("supported_matrices") or [])
-                           if m not in names]
-                if removed:
-                    orphans = self._matrix_references(profile, removed)
-                    if orphans:
-                        raise ValueError(
-                            "Removing or renaming {0} would orphan {1}. Move "
-                            "or clear that data first, or restore the matrix "
-                            "name.".format(", ".join(sorted(removed)),
-                                           "; ".join(orphans)))
-                uid_map = profile.get("matrix_uid_map", {}) or {}
-                profile["matrix_uid_map"] = {
-                    k: v for k, v in uid_map.items() if k in names}
-                profile["supported_matrices"] = names
-                profile["tight_matrices"] = tight
-                profile["matrix_aliases"] = aliases
-                profile["unit_map"] = units
-                profile["holding_times"] = holding
+        # Matrices & Units is NOT parsed here: it is its own form (config_forms
+        # collection, R2), saved by _save_section, which refuses a removal or
+        # rename that would orphan matrix-keyed data.
 
         # Reporting limits are NOT parsed here: the Reporting Limits tab is its
         # own form (config_forms table, R2), saved by _save_section.

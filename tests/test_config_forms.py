@@ -342,6 +342,18 @@ def test_the_reporting_limits_tab_has_no_hand_written_parser_left():
         assert retired not in template, retired
 
 
+def test_the_matrices_tab_has_no_hand_written_parser_left():
+    """The old handler coerced a bad holding time to "unset" and silently
+    ignored a save that cleared every matrix; both rules now live, refusing,
+    in the declared collection."""
+    src = _read("method_profiles.py")
+    template = _read("templates", "method_profile_edit.pt")
+    for retired in ("matrix_settings_present", "mtx_name.", "mtx_holding.",
+                    "matrix_settings_rows", "_matrix_references", "unit_options"):
+        assert retired not in src, retired
+        assert retired not in template, retired
+
+
 def test_every_tab_can_be_opened_by_its_link():
     """A hand-kept list of valid tab ids omitted two tabs, so the redirect
     after saving the Reporting Limits tab opened Rule Toggles -- and the Save
@@ -359,6 +371,105 @@ def test_the_table_stamp_moves_when_the_rows_change():
     other.setdefault("analyte_matrix_inclusion", {}).setdefault(kw, {})[m] = False
     assert cf.stamp(RLT, stored) != cf.stamp(RLT, other)
     assert cf.stamp(RLT, stored) == cf.stamp(RLT, dict(stored, display_name="x"))
+
+
+# ── collections (Matrices & Units) ───────────────────────────────────────────
+
+MTX = mps.MATRICES
+
+
+def coll_form(coll, stored):
+    form = {}
+    for row in cf.render(coll, stored):
+        for cell in row["cells"]:
+            if cell["kind"] == cf.BOOL:
+                if cell["checked"]:
+                    form[cell["name"]] = "on"
+            else:
+                form[cell["name"]] = cell["value"]
+    return form
+
+
+def _cell(coll, index, col):
+    return cf.collection_name(coll, index, next(c for c in coll.columns if c.path[0] == col))
+
+
+def test_an_unchanged_matrix_save_changes_nothing():
+    for mid, stored in _profiles().items():
+        after = save(MTX, stored, coll_form(MTX, stored))
+        assert ch.diff(stored, after) == [], (mid, ch.diff(stored, after)[:3])
+        for key in ("tight_matrices", "matrix_aliases"):     # absent stays absent
+            assert (key in stored) == (key in after), (mid, key)
+        assert cf.stamp(MTX, stored) == cf.stamp(MTX, after)
+
+
+def test_adding_a_matrix_writes_every_setting():
+    stored = _profiles()["EPA_537_1"]
+    n = len(stored["supported_matrices"])
+    form = coll_form(MTX, stored)
+    form[_cell(MTX, n, "name")] = "Bottled Water"
+    form[_cell(MTX, n, "unit")] = "ng/L"
+    form[_cell(MTX, n, "holding_days")] = "14"
+    form[_cell(MTX, n, "aliases")] = "bottled, spring water"
+    after = save(MTX, stored, form)
+    assert after["supported_matrices"][-1] == "Bottled Water"
+    assert after["unit_map"]["Bottled Water"] == "ng/L"
+    assert after["holding_times"]["Bottled Water"] == 14
+    assert after["matrix_aliases"]["Bottled Water"] == ["bottled", "spring water"]
+
+
+def test_a_bad_holding_time_is_refused_not_stored_as_unset():
+    stored = _profiles()["EPA_537_1"]
+    for bad in ("0", "-3", "two weeks"):
+        form = coll_form(MTX, stored)
+        form[_cell(MTX, 0, "holding_days")] = bad
+        _rows, errors = cf.parse(MTX, form, stored)
+        assert len(errors) == 1 and "Drinking Water: Holding Time" in errors[0], (bad, errors)
+
+
+def test_removing_a_matrix_with_data_is_refused_and_names_it():
+    stored = _profiles()["FDA_32PFAS"]
+    form = coll_form(MTX, stored)
+    form[_cell(MTX, 0, "name")] = ""                          # remove the first matrix
+    _rows, errors = cf.parse(MTX, form, stored)
+    assert len(errors) == 1 and "would orphan" in errors[0], errors
+
+
+def test_a_removal_with_reporting_limits_is_refused():
+    import copy
+    stored = copy.deepcopy(_profiles()["EPA_537_1"])
+    stored.pop("analyte_matrix_inclusion", None)
+    stored["reporting_limits"] = {"Surface Water": {"PFOA": {"rl": 2.0, "mdl": None}}}
+    form = coll_form(MTX, stored)
+    form[_cell(MTX, stored["supported_matrices"].index("Surface Water"), "name")] = ""
+    _rows, errors = cf.parse(MTX, form, stored)
+    assert errors and "reporting limits for Surface Water" in errors[0], errors
+
+
+def test_duplicates_nameless_rows_and_an_empty_list_are_refused():
+    stored = _profiles()["EPA_537_1"]
+    n = len(stored["supported_matrices"])
+    form = coll_form(MTX, stored)
+    form[_cell(MTX, n, "name")] = "drinking water"            # same, different case
+    assert "listed twice" in cf.parse(MTX, form, stored)[1][0]
+    form = coll_form(MTX, stored)
+    form[_cell(MTX, n, "holding_days")] = "14"                # a value but no name
+    assert "give it a name" in cf.parse(MTX, form, stored)[1][0]
+    import copy
+    bare = copy.deepcopy(stored)
+    bare.pop("analyte_matrix_inclusion", None)
+    form = coll_form(MTX, bare)
+    for i in range(n):
+        form[_cell(MTX, i, "name")] = ""
+    assert "At least one matrix" in cf.parse(MTX, form, bare)[1][0]
+
+
+def test_a_stored_unit_outside_the_list_is_kept():
+    import copy
+    stored = copy.deepcopy(_profiles()["EPA_537_1"])
+    stored["unit_map"]["Groundwater"] = "pg/mL"
+    after = save(MTX, stored, coll_form(MTX, stored))
+    assert after["unit_map"]["Groundwater"] == "pg/mL"
 
 
 if __name__ == "__main__":

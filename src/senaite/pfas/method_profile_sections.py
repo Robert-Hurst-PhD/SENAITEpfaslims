@@ -124,4 +124,116 @@ REPORTING_LIMITS = cf.Table(
     columns=[cf.Field("rl", u"RL", minimum=0), cf.Field("mdl", u"MDL", minimum=0)],
     rows=reporting_limit_rows, check=_mdl_not_above_rl)
 
-SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS])
+# ── Matrices & Units: one row per matrix, five stored keys ───────────────────
+
+COMMON_UNITS = [u"ng/kg", u"ug/kg", u"ng/L", u"ng/mL", u"ug/L", u"mg/kg", u"pg/g"]
+
+
+def unit_choices(profile):
+    """Every common unit plus every unit already in use, so an existing choice
+    is never silently dropped from the list it was chosen from."""
+    used = sorted(set(u for u in (profile.get("unit_map") or {}).values()
+                      if u and u not in COMMON_UNITS))
+    return [(u, u) for u in COMMON_UNITS + used]
+
+
+def read_matrices(profile):
+    tight = set(profile.get("tight_matrices") or [])
+    aliases = profile.get("matrix_aliases") or {}
+    units = profile.get("unit_map") or {}
+    holding = profile.get("holding_times") or {}
+    return [{"name": m, "tight": m in tight,
+             "aliases": u", ".join(aliases.get(m) or []),
+             "unit": units.get(m) or None,
+             "holding_days": holding.get(m)}
+            for m in profile.get("supported_matrices") or []]
+
+
+def _set(profile, key, value):
+    """Write a key, but leave a MISSING key missing when the new value is
+    empty: an unchanged save must not turn "absent" into "[]" (EPA 537.1 has
+    no tight_matrices or matrix_aliases key at all)."""
+    if value or key in profile:
+        profile[key] = value
+
+
+def write_matrices(profile, rows):
+    names = [r["name"] for r in rows]
+    aliases, units, holding = {}, {}, {}
+    for r in rows:
+        parts = [a.strip() for a in (r.get("aliases") or u"").split(u",") if a.strip()]
+        if parts:
+            aliases[r["name"]] = parts
+        if r.get("unit"):
+            units[r["name"]] = r["unit"]
+        days = r.get("holding_days")
+        if days is not None and days == int(days):
+            days = int(days)
+        # Kept as an explicit None: the matrix is listed as deliberately unset,
+        # and the review refuses to judge rather than passing it.
+        holding[r["name"]] = days
+    profile["supported_matrices"] = names
+    _set(profile, "tight_matrices", [r["name"] for r in rows if r.get("tight")])
+    _set(profile, "matrix_aliases", aliases)
+    _set(profile, "unit_map", units)
+    _set(profile, "holding_times", holding)
+    if "matrix_uid_map" in profile:
+        profile["matrix_uid_map"] = dict((k, v) for k, v in
+                                         (profile.get("matrix_uid_map") or {}).items()
+                                         if k in names)
+    return profile
+
+
+def matrix_references(profile, removed):
+    """What still points at a matrix title that is going away. Reported as a
+    refusal rather than cleaned up: a matrix factor, spike level or reporting
+    limit is lab data, and deciding it is disposable because a title changed
+    is not this form's call (CLAUDE.md §3 rule 4)."""
+    removed = set(removed)
+    found = []
+    factors = [e.get("matrix") for e in (profile.get("matrix_factors") or [])
+               if isinstance(e, dict)]
+    hit = sorted(set(f for f in factors if f in removed))
+    if hit:
+        found.append(u"matrix factors for %s" % u", ".join(hit))
+    hit = sorted(m for m in (profile.get("spike_levels") or {}) if m in removed)
+    if hit:
+        found.append(u"spike levels for %s" % u", ".join(hit))
+    included = set()
+    for per_matrix in (profile.get("analyte_matrix_inclusion") or {}).values():
+        if isinstance(per_matrix, dict):
+            included.update(m for m in per_matrix if m in removed)
+    if included:
+        found.append(u"analyte x matrix inclusion for %s" % u", ".join(sorted(included)))
+    hit = sorted(m for m, v in (profile.get("reporting_limits") or {}).items()
+                 if m in removed and v)
+    if hit:
+        found.append(u"reporting limits for %s" % u", ".join(hit))
+    return found
+
+
+def check_matrices(profile, rows):
+    names = set(r["name"] for r in rows)
+    removed = [m for m in (profile.get("supported_matrices") or []) if m not in names]
+    orphans = matrix_references(profile, removed) if removed else []
+    if orphans:
+        return [u"Removing or renaming %s would orphan %s. Move or clear that data "
+                u"first, or restore the matrix name." % (
+                    u", ".join(sorted(removed)), u"; ".join(orphans))]
+    return []
+
+
+MATRICES = cf.Collection(
+    id=u"mtx", title=u"Matrices & Units", noun=u"matrix", new_rows=3,
+    columns=[
+        cf.Field("name", u"Matrix", kind=cf.TEXT, placeholder=u"new matrix"),
+        cf.Field("tight", u"Tier 1", kind=cf.BOOL),
+        cf.Field("aliases", u"Aliases (comma-separated)", kind=cf.TEXT,
+                 placeholder=u"deer muscle, venison, beef"),
+        cf.Field("unit", u"Reporting Unit", kind=cf.CHOICE, choices=unit_choices),
+        cf.Field("holding_days", u"Holding Time (days)", greater_than=0,
+                 placeholder=u"not set"),
+    ],
+    read=read_matrices, write=write_matrices, check=check_matrices)
+
+SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES])

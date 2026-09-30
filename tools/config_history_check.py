@@ -116,6 +116,15 @@ def case_rl_table(pg):
     return "reporting_limits", True, None
 
 
+def case_matrices(pg):
+    """Matrices & Units: a declared collection, its own form (R2)."""
+    open_profile(pg, "EPA_537_1", "pane-mtx")
+    f = pg.locator("#pane-mtx input[name$='__holding_5fdays']").first
+    f.fill(str(int(float(f.input_value() or 14)) + 1))
+    save_profile_form(pg)
+    return "holding_times", True, None
+
+
 def case_edd_profile(pg):
     pg.goto(B + "@@pfas-egad-config#profiles"); pg.wait_for_load_state("networkidle")
     pg.evaluate("() => document.querySelectorAll('#pane-profiles details').forEach(d => d.open = true)")
@@ -146,6 +155,7 @@ def case_client_edd(pg):
 
 CASES = [("recovery tier", case_tier), ("rule toggle", case_toggle),
          ("cal section", case_cal_section), ("RL table", case_rl_table),
+         ("matrices", case_matrices),
          ("surrogate link", case_surrogate), ("EDD profile", case_edd_profile),
          ("client EDD", case_client_edd)]
 

@@ -49,7 +49,7 @@ class Field(object):
 
     def __init__(self, path, label, kind=NUMBER, unit=u"", help=u"",
                  placeholder=u"", required=False, minimum=None, maximum=None,
-                 choices=None, blank=u"unset"):
+                 choices=None, blank=u"unset", greater_than=None):
         self.path = tuple(path.split(".")) if isinstance(path, _STR) else tuple(path)
         self.name = u"f__" + u"__".join(self.path)
         self.label = label
@@ -60,7 +60,10 @@ class Field(object):
         self.required = required
         self.minimum = minimum
         self.maximum = maximum
-        self.choices = list(choices or [])
+        # a list of (value, label), or callable(stored) -> that list when the
+        # options depend on the stored value (e.g. every unit already in use)
+        self.choices = choices if callable(choices) else list(choices or [])
+        self.greater_than = greater_than  # a strict lower bound (0 < days)
         self.blank = blank          # "unset" -> None, "remove" -> key deleted
 
 
@@ -97,6 +100,8 @@ def stamp(section, stored):
     """Version stamp of THIS section's values only."""
     if isinstance(section, Table):
         return stamp_table(section, stored)
+    if isinstance(section, Collection):
+        return _history.fingerprint(section.read(stored or {}))
     vals = current(section, stored)
     return _history.fingerprint(dict((k, v) for k, v in vals.items() if v not in (None, u"", "")))
 
@@ -105,13 +110,15 @@ def render(section, stored):
     """What the template draws: one dict per field, grouped."""
     if isinstance(section, Table):
         return render_table(section, stored)
+    if isinstance(section, Collection):
+        return render_collection(section, stored)
     vals = current(section, stored)
     groups = []
     for title, fields in section.groups:
         rows = []
         for f in fields:
             v = vals[f.name]
-            choices = list(f.choices)
+            choices = _choices(f, stored)
             if f.kind == CHOICE and v not in (None, u"", "") and v not in [c[0] for c in choices]:
                 choices.append((v, u"%s (stored value)" % v))
             rows.append({
@@ -139,7 +146,11 @@ def _text(raw):
 _SKIP = object()           # a field whose submitted value was refused
 
 
-def _value(f, raw, saved, label=None):
+def _choices(f, stored):
+    return list(f.choices(stored or {})) if callable(f.choices) else list(f.choices)
+
+
+def _value(f, raw, saved, label=None, choices=None):
     """(value | REMOVE | _SKIP, error or None) for one submitted field.
 
     `saved` is the value stored on the server (a choice accepts it even when
@@ -169,9 +180,11 @@ def _value(f, raw, saved, label=None):
             return _SKIP, u"%s must be at least %s." % (label, f.minimum)
         if f.maximum is not None and num > f.maximum:
             return _SKIP, u"%s must be at most %s." % (label, f.maximum)
+        if f.greater_than is not None and num <= f.greater_than:
+            return _SKIP, u"%s must be more than %s." % (label, f.greater_than)
         return num, None
     if f.kind == CHOICE:
-        allowed = [c[0] for c in f.choices]
+        allowed = [c[0] for c in (f.choices if choices is None else choices)]
         if allowed and text not in allowed and text != _text(saved):
             return _SKIP, u"%s: %r is not one of the options." % (label, text)
     return text, None
@@ -190,10 +203,13 @@ def parse(section, form, stored):
     """
     if isinstance(section, Table):
         return parse_table(section, form, stored)
+    if isinstance(section, Collection):
+        return parse_collection(section, form, stored)
     updates, errors = {}, []
     saved = current(section, stored)
     for f in section.fields():
-        value, error = _value(f, form.get(f.name), saved[f.name])
+        value, error = _value(f, form.get(f.name), saved[f.name],
+                              choices=_choices(f, stored))
         if error:
             errors.append(error)
         elif value is not _SKIP:
@@ -205,6 +221,8 @@ def apply(section, stored, updates):
     """A copy of `stored` with the section's updates written in."""
     if isinstance(section, Table):
         return apply_table(section, stored, updates)
+    if isinstance(section, Collection):
+        return section.write(copy.deepcopy(stored or {}), updates)
     value = copy.deepcopy(stored or {})
     base = value
     for p in section.base:
@@ -394,3 +412,109 @@ def _prune(value, base, keep_base=False):
         walk(top[base[-1]])
         if isinstance(top[base[-1]], dict) and not top[base[-1]] and not keep_base:
             top.pop(base[-1])
+
+
+# ── collections: rows the user adds, renames and removes ─────────────────────
+#
+# A Collection is a list of items edited as rows -- e.g. a method's matrices,
+# where one row's settings live under several stored keys. It is declared
+# with columns (Fields, one-segment paths; the first is the row's NAME) and
+# two functions that map rows onto the stored value and back:
+#
+#     read(stored)        -> [{column name: value}]   in display order
+#     write(stored, rows) -> stored                   (given a deep copy)
+#     check(stored, rows) -> [error]                  optional: e.g. what a
+#                                                     removal or rename orphans
+#
+# The page draws every existing row plus `new_rows` blank ones. Clearing a
+# row's name removes it; a blank row with a name adds one. Rows are addressed
+# by POSITION, which is safe because the stamp is the whole read() list: if
+# anyone changed the collection after the page was drawn, the save is stale.
+
+
+class Collection(object):
+
+    def __init__(self, id, title, columns, read, write, check=None, new_rows=3,
+                 noun=u"row", intro=u""):
+        self.id = id
+        self.title = title
+        self.columns = columns
+        self.read = read
+        self.write = write
+        self.check = check
+        self.new_rows = new_rows
+        self.noun = noun
+        self.intro = intro
+
+    def fields(self):
+        return list(self.columns)
+
+    @property
+    def key(self):
+        return self.columns[0]
+
+
+def collection_name(coll, index, column):
+    return u"__".join([u"c", _enc(coll.id), u"%d" % index] + [_enc(p) for p in column.path])
+
+
+def render_collection(coll, stored):
+    rows = coll.read(stored or {})
+    out = []
+    for i in range(len(rows) + coll.new_rows):
+        vals = rows[i] if i < len(rows) else {}
+        cells = []
+        for c in coll.columns:
+            v = vals.get(c.path[0])
+            choices = _choices(c, stored)
+            if c.kind == CHOICE and v not in (None, u"", "") and v not in [x[0] for x in choices]:
+                choices.append((v, u"%s (stored value)" % v))
+            cells.append({"name": collection_name(coll, i, c), "kind": c.kind,
+                          "label": c.label, "min": c.minimum, "max": c.maximum,
+                          "placeholder": c.placeholder if i < len(rows) or c is coll.key
+                                         else u"",
+                          "choices": choices,
+                          "value": u"" if v is None else u"%s" % v,
+                          "checked": bool(v) if c.kind == BOOL else False})
+        out.append({"index": i, "new": i >= len(rows), "cells": cells})
+    return out
+
+
+def parse_collection(coll, form, stored):
+    """(rows [{column: value}], errors) -- the collection as submitted."""
+    before = coll.read(stored or {})
+    rows, errors, seen = [], [], set()
+    for i in range(len(before) + coll.new_rows):
+        old = before[i] if i < len(before) else {}
+        name, error = _value(coll.key, form.get(collection_name(coll, i, coll.key)),
+                             old.get(coll.key.path[0]))
+        if name in (None, u"", REMOVE, _SKIP):
+            if error:
+                errors.append(error)
+            elif i >= len(before):
+                filled = [c.label for c in coll.columns[1:] if c.kind != BOOL and
+                          _text(form.get(collection_name(coll, i, c)))]
+                if filled:
+                    errors.append(u"New %s %d: give it a name, or clear %s." % (
+                        coll.noun, i - len(before) + 1, u", ".join(filled)))
+            continue                    # cleared name: removed (or an unused blank row)
+        label = name
+        if name.lower() in seen:
+            errors.append(u"%s is listed twice." % name)
+            continue
+        seen.add(name.lower())
+        row = {coll.key.path[0]: name}
+        for c in coll.columns[1:]:
+            value, error = _value(c, form.get(collection_name(coll, i, c)),
+                                  old.get(c.path[0]), u"%s: %s" % (label, c.label),
+                                  choices=_choices(c, stored))
+            if error:
+                errors.append(error)
+            elif value is not _SKIP:
+                row[c.path[0]] = None if value is REMOVE else value
+        rows.append(row)
+    if not errors and not rows:
+        errors.append(u"At least one %s is needed; nothing was removed." % coll.noun)
+    if not errors and coll.check is not None:
+        errors.extend(coll.check(stored or {}, rows) or [])
+    return rows, errors

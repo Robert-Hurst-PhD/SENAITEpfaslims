@@ -5767,3 +5767,39 @@ Approved by the lab as the first recommendation of
   parser, every tab reachable by link); Py3 and 2.7.
 - **Next tables:** Matrices & Units, Sample Corrections (salt factors), EIS
   limits, Surrogate Map — each moves off hidden-JSON / marker parsing.
+
+## 56. R2: collections in the framework; Matrices & Units saves on its own (2026-09-30)
+- **Built:** `config_forms.Collection` — rows the user adds, renames and
+  removes (clear a name to remove, fill a blank row to add), declared with
+  columns plus `read(stored)` / `write(stored, rows)` / `check(stored, rows)`,
+  so one row can map onto several stored keys. Rows are addressed by
+  position; safe because the stamp is the whole collection. Also new: a field
+  may take its choices from the stored value (every unit already in use) and
+  a strict lower bound (`greater_than`).
+- **Matrices & Units** (`method_profile_sections.MATRICES`, form
+  `#section-mtx`): one row per matrix over `supported_matrices`,
+  `tight_matrices`, `matrix_aliases`, `unit_map`, `holding_times`. A key the
+  profile never had stays absent when empty, so an unchanged save is a true
+  no-op. The old marker parser and three view helpers are removed; the orphan
+  check is now the pure `matrix_references()`.
+- **Behaviour now refused instead of silent (DECISIONS rule: nothing coerced):**
+  1. a holding time of 0, negative or not a number was stored as "unset";
+  2. a save that cleared every matrix was ignored without a word;
+  3. a value typed in a blank row with no matrix name was dropped;
+  4. the same matrix listed twice (case-insensitive).
+- **Orphan check gap closed:** removing or renaming a matrix now also refuses
+  when it has reporting limits (keyed by matrix title since §50).
+- **Verified live after restart:** no-op saves of the tab on all three
+  profiles: 0 changes; a holding-time edit recorded and reverted
+  (`tools/config_history_check.py`, all cases pass, configuration afterwards
+  equals before); removing FDA "Aquatic Tissue" refused, naming its spike
+  levels and inclusion; holding time 0 refused by name; adding "Bottled Water"
+  then removing it leaves the configuration exactly as before; no JS errors.
+- **Tests:** `test_config_forms.py` 34 (+8: collection round trip on live
+  profiles with absent keys kept absent, add writes every key, bad holding
+  refused, orphan and reporting-limit refusals, duplicate / nameless / empty
+  refused, a stored unit outside the list kept, no hand-written parser left);
+  `test_holding_time.py` now checks the declared column. UI ratchet: style=
+  940 -> 925.
+- **Next:** Sample Corrections (salt + matrix factors), EIS limits, Surrogate
+  Map, Recovery Tiers.

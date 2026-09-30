@@ -41,6 +41,9 @@ STEPS = [
     ("method profile EPA 537.1: Reporting Limits", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-rl", ("button", "Save & Export")),
     ("method profile EPA 1633A: Reporting Limits", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-rl", ("button", "Save & Export")),
     ("method profile FDA 32-PFAS: Reporting Limits", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-rl", ("button", "Save & Export")),
+    ("method profile EPA 537.1: Matrices & Units", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-mtx", ("button", "Save & Export")),
+    ("method profile EPA 1633A: Matrices & Units", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-mtx", ("button", "Save & Export")),
+    ("method profile FDA 32-PFAS: Matrices & Units", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-mtx", ("button", "Save & Export")),
     # @@pfas-qc-rules redirects to Method Profiles: the rule toggles are a tab
     # of the profile editor, whose saves write qc_rules.json (covered above).
     ("QC type grid", "@@pfas-qc-type-grid", ("button", "Save Grid")),
