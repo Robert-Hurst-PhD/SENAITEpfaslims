@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Regulatory Limits</title>
+  <metal:fill fill-slot="header-title">Regulatory Limits</metal:fill>
+
+  <div metal:fill-slot="content" tal:define="editable view/can_configure">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
+    <div class="alert alert-danger" tal:repeat="e view/errors" tal:content="e">error</div>
+
+    <p class="form-note">
+      MCLs and action levels the certificate compares results with. A limit
+      reaches a certificate <strong>only once it is marked Verified</strong>;
+      the starting values were researched from the cited public sources on
+      2026-09-30 and are <strong>unverified</strong> until the laboratory
+      checks each one. A limit covering several analytes (a sum standard, or
+      linear + branched isomers) is compared with the sum of their detected
+      values. A client's state program is the state EDD profile chosen on the
+      client's EGAD page; federal limits apply to every client.
+    </p>
+
+    <form method="post">
+      <input type="hidden" name="action" value="save" />
+
+      <h3>Limits</h3>
+      <table class="pfas-table pfas-table-form">
+        <colgroup>
+          <col width="11%" /><col width="16%" /><col width="16%" /><col width="13%" />
+          <col width="8%" /><col width="9%" /><col width="13%" /><col width="8%" /><col width="6%" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Program</th><th>Label</th><th>Analytes (keywords)</th>
+            <th>Matrices (sample types)</th><th>Limit</th><th>Unit</th>
+            <th>Type</th><th>Verified</th><th>Delete</th>
+          </tr>
+        </thead>
+        <tbody tal:define="progs view/program_ids; kinds view/kinds; units view/units">
+          <tal:r repeat="r python:view.rows() + [{'index': len(view.rows()), 'id': '', 'program': 'federal', 'label': '', 'analytes_text': '', 'matrices_text': '', 'value': '', 'unit': 'ng/L', 'kind': 'MCL', 'citation': '', 'effective': '', 'status_note': '', 'url': '', 'verified': False}]">
+          <tr tal:define="i r/index">
+            <td>
+              <input type="hidden" tal:attributes="name string:lim.${i}.id; value r/id" />
+              <select tal:attributes="name string:lim.${i}.program; disabled python:not editable">
+                <option tal:repeat="p progs" tal:attributes="value p; selected python:p == r.get('program')"
+                        tal:content="p">federal</option>
+              </select>
+            </td>
+            <td><input type="text" size="22" tal:attributes="name string:lim.${i}.label; value r/label; placeholder python:'new limit' if not r['id'] else None" /></td>
+            <td><input type="text" size="22" tal:attributes="name string:lim.${i}.analytes; value r/analytes_text" /></td>
+            <td><input type="text" size="16" tal:attributes="name string:lim.${i}.matrices; value r/matrices_text" /></td>
+            <td><input type="number" step="any" min="0" size="6" tal:attributes="name string:lim.${i}.value; value r/value" /></td>
+            <td>
+              <select tal:attributes="name string:lim.${i}.unit">
+                <option tal:repeat="u units" tal:attributes="value u; selected python:u == r.get('unit')" tal:content="u">ng/L</option>
+              </select>
+            </td>
+            <td>
+              <select tal:attributes="name string:lim.${i}.kind">
+                <option tal:repeat="k kinds" tal:attributes="value k; selected python:k == r.get('kind')" tal:content="k">MCL</option>
+              </select>
+            </td>
+            <td>
+              <input type="checkbox" value="1" tal:attributes="name string:lim.${i}.verified; checked r/verified" />
+              <div class="form-note" tal:condition="r/verified_by|nothing"
+                   tal:content="string:${r/verified_by} ${r/verified_at}">by</div>
+              <span class="badge badge-quarantine" tal:condition="python:r['id'] and not r.get('verified')">unverified</span>
+            </td>
+            <td><input type="checkbox" value="1" tal:condition="r/id" tal:attributes="name string:lim.${i}.delete" /></td>
+          </tr>
+          <tr>
+            <td></td>
+            <td colspan="3">
+              <input type="text" placeholder="Citation"
+                     tal:attributes="name string:lim.${r/index}.citation; value r/citation" />
+              <input type="url" placeholder="https://..."
+                     tal:attributes="name string:lim.${r/index}.url; value r/url" />
+            </td>
+            <td colspan="5">
+              <input type="text" placeholder="Effective / compliance date"
+                     tal:attributes="name string:lim.${r/index}.effective; value r/effective" />
+              <input type="text" placeholder="Status note (e.g. proposed rescission)"
+                     tal:attributes="name string:lim.${r/index}.status_note; value r/status_note" />
+            </td>
+          </tr>
+          </tal:r>
+        </tbody>
+      </table>
+
+      <h3>Program links</h3>
+      <p class="form-note">
+        Printed under the certificate's regulatory notes as "for more
+        information". One link per line, written <code>label | https://address</code>.
+      </p>
+      <table class="pfas-table pfas-table-form">
+        <colgroup><col width="14%" /><col width="22%" /><col width="64%" /></colgroup>
+        <thead><tr><th>Program</th><th>Name on the certificate</th><th>Links</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="p view/programs">
+            <td><code tal:content="p/id">federal</code></td>
+            <td><input type="text" size="24" tal:attributes="name string:prog.${p/id}.name; value p/name" /></td>
+            <td><textarea rows="3" cols="80" tal:attributes="name string:prog.${p/id}.links"
+                          tal:content="p/links"></textarea></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="pfas-action-bar" tal:condition="editable">
+        <button type="submit" class="btn btn-primary">Save limits</button>
+      </div>
+    </form>
+  </div>
+  </div>
+</html>

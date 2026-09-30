@@ -456,6 +456,12 @@
       border-bottom: 2px solid var(--s-border);
       text-align: left;
     }
+    /* A table of form rows: fixed layout, every control fills its cell, so a
+       wide record never pushes columns off the page. Widths come from <col>. */
+    .pfas-table-form { table-layout: fixed; }
+    .pfas-table.pfas-table-form td { padding: 6px 6px; }
+    .pfas-table-form input:not([type=checkbox]), .pfas-table-form select,
+    .pfas-table-form textarea { width: 100%; }
     .pfas-table td { padding: 8px 12px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
     .pfas-table tr:last-child td { border-bottom: none; }
     .pfas-table tbody tr:hover td { background: var(--s-primary-lt); }

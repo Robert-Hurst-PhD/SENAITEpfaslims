@@ -5368,16 +5368,72 @@ was verified byte-identical to the snapshot. Every real save by the lab has the
 same effect today. Not fixed: it touches QC configuration, so it is raised with
 the lab.
 
-### 50.4 Part B — planned
+### 50.4 Part B — regulatory limits and program links (done; values UNVERIFIED)
 
-- A limits relation: analyte × matrix × program, each with value, unit, type
-  (MCL / action level / advisory), citation, effective date, link, and a
-  verified flag.
-- The program is chosen per client alongside the EDD state profile; federal
-  limits apply to drinking water on top.
-- **Note rule:**
-  - a detected result at or above the limit is an exceedance;
-  - a non-detect whose RL is above the limit is "cannot be determined";
-  - no note is printed without a resolved unit.
-- The mixture hazard index is out of scope unless asked for.
-- Values are researched with sources and loaded UNVERIFIED.
+- **`regulatory_limits.py`** stores one portal annotation holding
+  `{programs, limits}`, seeded on first read. Each limit carries: program,
+  label, analytes (keywords), matrices (sample type titles), value, unit, kind,
+  citation, effective date, status note, link, and verified (with by and when).
+- **Several analytes per limit.** Maine's sum-of-six, or PFOS as linear +
+  branched, are compared with the **sum of detected values**. Non-detects add
+  nothing, and the certificate says "sum of detected values" beside each such
+  comparison.
+- **Units** convert only within a dimension: ng/L ↔ ng/mL ↔ µg/L, and ng/kg ↔
+  ng/g ↔ µg/kg. A per-volume limit is never compared with a per-mass result.
+- **Programs:** `federal` applies to every client. The state program is the
+  client's EDD profile (`get_edd_profile_for_client`, which falls back to
+  `maine_egad` exactly as the EDD does).
+- **Evaluation:**
+  - a detected sum at or above the limit → meets or exceeds;
+  - a non-detect whose RL reaches the limit, or a non-detect with no RL →
+    cannot be determined;
+  - otherwise below;
+  - incomparable units → "not compared".
+  - **Only verified limits are used**, so no box is printed until one is
+    verified.
+- **Seeds, researched 2026-09-30 and all UNVERIFIED:**
+  - EPA NPDWR MCLs: PFOA 4.0 and PFOS 4.0 ng/L; PFHxS, PFNA and HFPO-DA 10 ng/L,
+    each annotated "rescission proposed May 2026, not final". Sources: EPA's
+    PFAS NPDWR page; the Federal Register notice of the compliance extension to
+    2031.
+  - Maine interim sum-of-6 standard: 20 ng/L, until 2027-04-26 (Maine CDC
+    Drinking Water Program page).
+  - Maine CDC PFOS action levels: milk 210 ng/L (memo 2017-03-28), beef
+    3.4 ng/g (memo 2020-08-04). **The beef limit has no matrix assigned**,
+    because "Meat / Muscle" covers more than beef.
+  - The federal Hazard Index is not seeded (out of scope; it is not a sum).
+  - Program links: EPA; Maine CDC public water systems and agriculture; Maine
+    DEP.
+- **`@@pfas-regulatory-limits`** (Reporting group, managers): one form over the
+  whole table. Save is gated `TIER_CONFIG` and added to the action-gates spec.
+  Links must be http(s) because they print on client certificates. Verifying
+  stamps who and when; a changed value or matrix re-stamps.
+- **Certificate:** a "Regulatory comparison" box per sample lists exceedances
+  and "cannot be determined" items with program, kind, limit, citation and
+  status note, then "All other results compared are below…", then the
+  programs' "For more information" links.
+- **Verified on FEED-0002** in an aborted transaction, with the PFOA MCL and
+  beef PFOS marked verified and assigned to Animal Feed:
+  - the drinking-water MCL (ng/L) was **not compared** with ng/kg feed results;
+  - beef PFOS 3.4 ng/g was converted to 3,400 ng/kg and found below;
+  - nothing persisted.
+- **A defect caught by the live save test, before it could matter.** The
+  first `_save` built its field getter as a closure over the loop counter, so
+  every row read the next row's fields. An unchanged save kept 6 of 8 limits,
+  shifted the rest, and let a `javascript:` link through. The saved copy was
+  removed. Parsing now lives in `parse_limits_form`, and
+  `test_an_unchanged_save_returns_exactly_the_same_limits` fails if the bug
+  is reintroduced (mutation-tested). Re-verified live: 8 of 8, and the bad
+  link refused.
+- **Tests:** `test_regulatory_limits.py` (12).
+- **A shared `.pfas-table-form`** (fixed layout, controls fill their cells)
+  keeps the wide editor on screen.
+
+### 50.5 For the lab
+
+- **Verify each limit** against its source, and assign the beef action level
+  to the sample type(s) that are beef.
+- **Enter RL/MDL** on each method profile.
+- **Check the FDA unit map.** Animal Feed reports in ng/kg; confirm that is
+  the unit the pipeline's values are in.
+- **Decide what to do about §50.3** (the editor's untouched-field defaults).

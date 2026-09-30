@@ -969,6 +969,13 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-egad-config"/></svg></span>
           <span class="pfas-si-label">EDD Configuration</span>
         </a>
+        <a class="pfas-si" title="Regulatory Limits: MCLs and action levels printed as certificate notes"
+           tal:condition="python:is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-regulatory-limits;
+                           class python:'pfas-si si-active' if '@@pfas-regulatory-limits' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-warning"/></svg></span>
+          <span class="pfas-si-label">Regulatory Limits</span>
+        </a>
       </div>
     </div>
 

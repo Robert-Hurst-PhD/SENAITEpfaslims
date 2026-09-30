@@ -25,6 +25,7 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 
 from senaite.pfas import coa_format
+from senaite.pfas import regulatory_limits
 from senaite.pfas import report_limits
 
 logger = logging.getLogger("senaite.pfas.coa_sections")
@@ -157,6 +158,7 @@ class PFASCoASectionsView(BrowserView):
             if when:
                 analysed.append(when)
         rows = coa_format.build_rows(data, profile, matrix, self.settings(), cas)
+        regulatory = self._regulatory(sample, data, profile, matrix, rows)
         units = sorted(set(r["unit"] for r in rows if r["unit"]))
         contact = sample.getContact()
         batch = sample.getBatch()
@@ -175,4 +177,67 @@ class PFASCoASectionsView(BrowserView):
             "rows": rows,
             "any_rl": any(r["rl"] for r in rows),
             "codes": sorted(set(c for d in data for c in d["codes"])),
+            "regulatory": regulatory,
         }
+
+    # ── regulatory notes (part B) ─────────────────────────────────────────
+
+    def _programs(self, sample):
+        """federal + the client's state program (its EDD profile)."""
+        progs = [regulatory_limits.FEDERAL]
+        try:
+            from senaite.pfas.egad_store import get_client_egad, get_edd_profile_for_client
+            client = sample.getClient()
+            pid = get_edd_profile_for_client(api.get_portal(),
+                                             get_client_egad(client) if client else {})[0]
+            if pid and pid not in progs:
+                progs.append(pid)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("coa_sections: no state program: %s", exc)
+        return progs
+
+    def _regulatory(self, sample, data, profile, matrix, rows):
+        """Verified limits for this sample's programs and matrix, evaluated.
+
+        Returns None when no verified limit applies (no box is printed)."""
+        store = regulatory_limits.get_store(api.get_portal())
+        programs = self._programs(sample)
+        limits = regulatory_limits.applicable(store.get("limits"), programs,
+                                              sample.getSampleTypeTitle())
+        if not limits:
+            return None
+        unit = next((r["unit"] for r in rows if r["unit"]), None)
+        results = {}
+        for d in data:
+            lim = report_limits.limits_for(profile, matrix, d["keyword"])
+            res = coa_format.format_result(d["result"], lim["rl"])
+            if res["detected"] is None:
+                continue                                    # unrecognised text: not compared
+            results[d["keyword"]] = {
+                "value": float(d["result"]) if res["detected"] else None,
+                "rl": lim["rl"]}
+        n = int(self.settings().get("coa_sig_figs") or 3)
+        names = store.get("programs") or {}
+        findings, below, compared = [], 0, 0
+        for l in limits:
+            ev = regulatory_limits.evaluate(l, results, unit)
+            if ev is None:
+                continue
+            compared += 1
+            prog = (names.get(l["program"]) or {}).get("name") or l["program"]
+            limit_txt = u"%s %s" % (coa_format.format_limit(l["value"]), l["unit"])
+            item = {"label": l["label"], "status": ev["status"], "program": prog,
+                    "kind": l["kind"], "limit": limit_txt, "citation": l.get("citation") or u"",
+                    "note": l.get("status_note") or u"", "sum": len(l.get("analytes") or []) > 1,
+                    "total": u"" if ev["total"] is None else u"%s %s" % (coa_format.sig_figs(ev["total"], n), unit)}
+            if ev["status"] == "below":
+                below += 1
+            else:
+                findings.append(item)
+        if not compared:
+            return None
+        links = []
+        for pid in programs:
+            for link in (names.get(pid) or {}).get("links") or []:
+                links.append(link)
+        return {"findings": findings, "below": below, "compared": compared, "links": links}

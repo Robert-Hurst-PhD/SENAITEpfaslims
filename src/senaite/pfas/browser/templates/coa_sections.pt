@@ -31,6 +31,14 @@
     .pfas-coa-legend { font-size: 8.5px; color: #555; margin-top: 4px; }
     .pfas-coa-sample { margin-bottom: 12px; page-break-inside: auto; }
     .pfas-coa-foot { font-size: 8.5px; color: #555; }
+    .pfas-coa-reg { margin-top: 8px; padding: 6px 8px; border: 1px solid #999; page-break-inside: avoid; }
+    .pfas-coa-reg .h { font-weight: 700; font-size: 10.5px; margin-bottom: 3px; }
+    .pfas-coa-reg .finding { margin: 2px 0; }
+    .pfas-coa-reg .finding.exceeds { border-left: 3px solid #a00; padding-left: 5px; }
+    .pfas-coa-reg .finding.undetermined { border-left: 3px solid #b8860b; padding-left: 5px; }
+    .pfas-coa-reg .cite { color: #555; }
+    .pfas-coa-reg .links { margin-top: 4px; color: #333; }
+    .pfas-coa-reg a { color: #1a4f7a; }
   </style>
   <div class="row section-header no-gutters pfas-coa">
     <div class="pfas-coa-head" style="width:100%">
@@ -106,6 +114,39 @@
         <span tal:condition="smp/codes" i18n:translate="">Other codes: see Quality control qualifications.</span>
         <span tal:condition="not:smp/any_rl" style="color:#a00" i18n:translate="">
           No reporting limits are configured for this method and matrix.</span>
+      </div>
+
+      <!-- Regulatory comparison (verified limits only; regulatory_limits.py). -->
+      <div class="pfas-coa-reg" tal:define="reg smp/regulatory" tal:condition="reg">
+        <div class="h" i18n:translate="">Regulatory comparison</div>
+        <tal:f repeat="f reg/findings">
+          <div class="finding" tal:attributes="class python:'finding ' + f['status']">
+            <strong tal:content="f/label">PFOA</strong>:
+            <tal:e condition="python:f['status'] == 'exceeds'">
+              <span tal:content="f/total">5.2 ng/L</span><tal:s condition="f/sum"> (sum of detected values)</tal:s>
+              <strong i18n:translate="">meets or exceeds</strong> the
+            </tal:e>
+            <tal:u condition="python:f['status'] == 'undetermined'">
+              <span i18n:translate="">not all contributing analytes were detected at a reporting limit below the</span>
+            </tal:u>
+            <tal:x condition="python:f['status'] == 'no_unit'">
+              <span i18n:translate="">not compared: the result unit cannot be converted to that of the</span>
+            </tal:x>
+            <span tal:content="string:${f/program} ${f/kind}">US EPA MCL</span>
+            of <span tal:content="f/limit">4 ng/L</span><tal:u condition="python:f['status'] == 'undetermined'">;
+              <span i18n:translate="">compliance cannot be determined</span></tal:u>.
+            <span class="cite" tal:condition="f/citation" tal:content="string:(${f/citation})"></span>
+            <em class="cite" tal:condition="f/note" tal:content="f/note"></em>
+          </div>
+        </tal:f>
+        <div tal:condition="python:reg['below'] and reg['findings']" i18n:translate="">
+          All other results compared are below the applicable limits.</div>
+        <div tal:condition="python:reg['below'] and not reg['findings']" i18n:translate="">
+          All results compared are below the applicable limits.</div>
+        <div class="links" tal:condition="reg/links">
+          <span i18n:translate="">For more information:</span>
+          <tal:l repeat="l reg/links"><a tal:attributes="href l/url" tal:content="l/label">EPA</a><tal:c condition="not:repeat/l/end"> &middot; </tal:c></tal:l>
+        </div>
       </div>
       </tal:ok>
     </div>

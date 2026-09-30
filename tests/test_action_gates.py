@@ -56,6 +56,9 @@ SPEC = [
     ("prepared_standards.py", "PFASPrepStandardsView", "PREP_STANDARD_GATES",
      {"delete": CONFIG},
      {"add", "edit", "status"}),
+    ("regulatory_limits_view.py", "PFASRegulatoryLimitsView", "REGULATORY_GATES",
+     {"save": CONFIG},
+     set()),
 ]
 
 # Views that record the lab's daily measurements. None may call the gate.

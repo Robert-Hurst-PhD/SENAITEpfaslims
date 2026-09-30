@@ -249,6 +249,15 @@
   <!-- Compact CoA sections (header / samples / footer), replacing core
        impress's header, info, summary, results, discreeter and footer on the
        PFAS certificate. GAPS §50; DECISIONS 2026-09-30. -->
+  <!-- Regulatory limits (MCLs / action levels) + state program links for the
+       certificate's regulatory notes. Save gated at TIER_CONFIG. GAPS §50. -->
+  <browser:page
+      name="pfas-regulatory-limits"
+      for="*"
+      class=".regulatory_limits_view.PFASRegulatoryLimitsView"
+      permission="zope2.View"
+      />
+
   <browser:page
       name="pfas-coa-sections"
       for="*"
