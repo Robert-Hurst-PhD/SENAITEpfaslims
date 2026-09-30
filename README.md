@@ -1,9 +1,14 @@
 # senaite.pfas — PFAS LIMS Extension for SENAITE
 
-A SENAITE add-on that turns a stock SENAITE LIMS into a PFAS-aware laboratory
-system. It ships the full analyte library, method-specific QC rulebooks,
+A SENAITE add-on that turns SENAITE LIMS into a PFAS laboratory
+system with ISO 17025 components. The goal of this project is to be open source and support 
+more laboratories to perform accredited PFAS analysis without the high barrier for entry.
+A core component of performing this analysis is lot tracking within the laboratory to pin 
+down contamination sources. It ships the full analyte library, method-specific QC rulebooks,
 barcode reagent tracking, an extraction-driven report pipeline, a run-queue
-review workflow, and multi-vendor instrument import.
+review workflow, and multi-vendor instrument import. Claude code was used to draft the initial revisions
+of this project with guided input from myself. As the project progresses more human editing will be 
+introduced to tailor the code into a refined system.
 
 ---
 
