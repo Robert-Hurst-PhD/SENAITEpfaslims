@@ -5677,13 +5677,23 @@ Approved by the lab as the first recommendation of
   - the unsaved-changes note and held first click work;
   - a blank CCV frequency is refused by name;
   - configuration afterwards equals the snapshot taken before.
+- **Also verified:** a LabClerk and an Analyst posting the section form with a
+  fresh stamp get 403 (the editor's manager gate runs before any POST), value
+  unchanged; temporary users deleted. `tools/config_history_check.py` as
+  committed: every case recorded and reverted, both stale saves refused,
+  configuration afterwards equals before. `tools/ui_audit.py`: no new JS errors
+  (six pages carried the same errors before: five `@@lims-setup?section=`
+  pages and the system map), and the editor's frame is unchanged. The pipeline
+  worker loads EPA 537.1's CCV/calibration/confirmation/IS rules from the
+  export.
 - **Found on the way:** the pinned action bar is drawn after the page script,
   so the first tab switch could not retarget the Save button (the tab's no-op
   audit submitted the main form instead). Fixed by retargeting again on
   DOMContentLoaded; the audit tool now saves each tab separately and caught it.
-- **Tests:** `test_config_forms.py` (14: round trip on the three live profiles,
+- **Tests:** `test_config_forms.py` (15: round trip on the three live profiles,
   UTF-8 bytes, blank/required/coercion rules, choice cannot be widened, section
-  isolation, stamp scope, and three wiring guards, each mutation-tested);
+  isolation, stamp scope, and four wiring guards -- including no handler
+  reading a retired request name -- each mutation-tested; runs under 2.7 too);
   `test_profile_form_guards.py`: the marker guard test now asserts the big-form
   handler writes none of the seven criteria (mutation-tested).
 - **Still open:**
@@ -5695,4 +5705,9 @@ Approved by the lab as the first recommendation of
   3. `qc_rules.json` `updated_at` is rewritten by every main-form save, even an
      unchanged one (timestamp only, predates R2).
   4. Surrogate links per method (QUESTIONS.md, raised by the lab today): plan
-     for sign-off before any code.
+     for sign-off before any code. Until then, do NOT migrate the Surrogate Map
+     tab (or any tab reading the link) to declared sections.
+  5. Operator slip: `/data/qc/backup-pre-noop-audit/` had its JSON copies
+     overwritten with the 17:46 UTC state (which matched the verified
+     post-audit snapshot); a NOTE file there says so. The repozo set
+     `/data/backups/pre-noop-audit-20260930` is intact.

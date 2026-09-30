@@ -159,7 +159,8 @@ BROWSER = os.path.join(PKG, "browser")
 
 
 def _read(*parts):
-    with open(os.path.join(BROWSER, *parts)) as fh:
+    import io
+    with io.open(os.path.join(BROWSER, *parts), encoding="utf-8") as fh:
         return fh.read()
 
 
@@ -176,8 +177,28 @@ def test_the_main_form_no_longer_carries_or_parses_a_section():
     assert "instrument_verification_present" not in _read("templates", "method_profile_edit.pt")
     apply_form = _method_source(_read("method_profiles.py"), "_apply_form")
     assert "setdefault(\"instrument_verification\"" not in apply_form
-    for f in SEC.fields():
-        assert f.name not in apply_form
+
+
+#: The request names the pre-R2 Calibration & CCV inputs used. The form no
+#: longer sends them, so a handler that still READS one gets None -- and a
+#: None written back nulls a live QC criterion.
+OLD_CAL_NAMES = ("cal_r2_min", "cal_force_origin", "cal_point_pct_dev_max",
+                 "cal_low_point_pct_dev_max", "conf_rrt_tol_pct", "conf_rt_tol_abs_min",
+                 "conf_ion_ratio_tol_pct", "conf_sn_quan_min", "conf_sn_confirm_min",
+                 "conf_require_confirm_ion_check", "conf_confirm_technique",
+                 "ccv_frequency", "ccv_recovery_min", "ccv_recovery_max",
+                 "ccv_low_level_min", "ccv_low_level_max", "is_vs_ical_avg_min",
+                 "is_vs_ical_avg_max", "is_vs_last_ccv_min", "is_vs_last_ccv_max", "is_notes")
+
+
+def test_no_handler_reads_a_retired_request_name():
+    import re
+    src = _read("method_profiles.py")
+    template = _read("templates", "method_profile_edit.pt")
+    for name in OLD_CAL_NAMES:
+        quoted = re.compile(r"[\"']%s[\"']" % name)
+        assert not quoted.search(src), "method_profiles.py reads retired field %s" % name
+        assert 'name="%s"' % name not in template, "template still sends %s" % name
 
 
 def test_every_section_input_names_its_own_form():
