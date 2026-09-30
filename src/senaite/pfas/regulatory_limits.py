@@ -257,4 +257,9 @@ def get_store(portal):
 
 
 def save_store(portal, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'regulatory_limits', "limits", lambda: get_store(portal), label=u"Regulatory limits")
+    except Exception:
+        pass
     _ann(portal)[STORE_KEY] = json.dumps(data, sort_keys=True)

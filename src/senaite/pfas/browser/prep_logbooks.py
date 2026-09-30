@@ -115,6 +115,13 @@ def _obj_to_dict(obj):
 
 
 def _populate_obj(obj, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(None, "logbook_definition", obj.getId(),
+                             lambda: _obj_to_dict(obj),
+                             label=u"Logbook definition: %s" % (data.get("title") or obj.getId()))
+    except Exception:
+        pass
     obj.title = data.get("title") or u""
     obj.logbook_slug = data.get("logbook_slug") or _slugify(data.get("title", ""))
     obj.revision = int(data.get("revision") or 1)

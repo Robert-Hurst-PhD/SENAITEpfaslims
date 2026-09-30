@@ -173,6 +173,11 @@ def save_logbook_defs(portal, defs):
     Handles: rename (title/form_num), toggle active, reorder (sort_order),
     add custom, delete custom.  Never deletes built-in slugs.
     """
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'logbook_defs', "all", lambda: get_logbook_defs(portal), label=u"Logbook definitions")
+    except Exception:
+        pass
     folder = portal.get("pfas_prep_logbooks")
     if folder is None:
         # Annotation fallback (pre-migration)

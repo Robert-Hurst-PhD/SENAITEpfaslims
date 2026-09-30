@@ -42,7 +42,8 @@ class PFASConfigHistoryView(GateMixin, BrowserView):
                 return denied
             if action == "revert":
                 # make sure the stores have registered (import side effect)
-                import senaite.pfas.method_profile_store   # noqa: F401
+                from senaite.pfas.config_history_stores import register_all
+                register_all()
                 ok, msg = config_history.revert(api.get_portal(),
                                                 self.request.form.get("eid", ""))
                 # Redirect after the POST: the revert's own entry is written
@@ -67,18 +68,22 @@ class PFASConfigHistoryView(GateMixin, BrowserView):
         return self.request.form.get("key", "")
 
     def stores(self):
-        import senaite.pfas.method_profile_store   # noqa: F401
-        return sorted((k, v["title"]) for k, v in config_history.STORES.items())
+        from senaite.pfas.config_history_stores import register_all
+        register_all()
+        names = dict((k, v["title"]) for k, v in config_history.STORES.items())
+        names.update(config_history.TITLES)
+        return sorted(names.items(), key=lambda kv: kv[1])
 
     def rows(self):
-        import senaite.pfas.method_profile_store   # noqa: F401
+        from senaite.pfas.config_history_stores import register_all
+        register_all()
         out = []
         for e in config_history.entries(api.get_portal(), self.store_filter() or None,
                                         self.key_filter() or None, limit=200):
             spec = config_history.STORES.get(e.get("store"))
             out.append({
                 "id": e["id"], "at": e["at"], "who": e.get("who"),
-                "store": spec["title"] if spec else e.get("store"),
+                "store": spec["title"] if spec else config_history.TITLES.get(e.get("store"), e.get("store")),
                 "key": e.get("key"), "label": e.get("label") or e.get("key"),
                 "note": e.get("note"),
                 "revertable": bool(spec) and not e.get("redacted"),

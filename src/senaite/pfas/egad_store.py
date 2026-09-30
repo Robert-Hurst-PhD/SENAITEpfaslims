@@ -356,6 +356,11 @@ def migrate_state_profile_vocab(portal):
 
 
 def save_edd_profile(portal, profile_id, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'edd_profile', profile_id, lambda: get_edd_profiles(portal).get(profile_id), label=u"EDD profile %s" % profile_id)
+    except Exception:
+        pass
     store = _get_store_generic(portal, EDD_PROFILES_KEY)
     store[profile_id] = json.dumps(data)
 
@@ -549,6 +554,11 @@ def get_lab_config(portal):
 
 
 def save_lab_config(portal, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'edd_config', "lab", lambda: get_lab_config(portal), label=u"EDD lab settings")
+    except Exception:
+        pass
     obj = _get_egad_singleton(portal)
     if obj is not None:
         obj.lab_json = json.dumps(data)
@@ -595,6 +605,11 @@ def get_method_egad(portal):
 
 
 def save_method_egad(portal, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'edd_config', "methods", lambda: get_method_egad(portal), label=u"EDD method settings")
+    except Exception:
+        pass
     obj = _get_egad_singleton(portal)
     if obj is not None:
         obj.method_egad_json = json.dumps(data)
@@ -647,6 +662,11 @@ def get_analyte_cas(portal):
 
 
 def save_analyte_cas(portal, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'edd_config', "cas", lambda: get_analyte_cas(portal), label=u"EDD analyte CAS")
+    except Exception:
+        pass
     obj = _get_egad_singleton(portal)
     if obj is not None:
         obj.analyte_cas_json = json.dumps(data)
@@ -677,6 +697,11 @@ def get_qualifier_map(portal):
 
 
 def save_qualifier_map(portal, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'edd_config', "qualifiers", lambda: get_qualifier_map(portal), label=u"EDD qualifier map")
+    except Exception:
+        pass
     obj = _get_egad_singleton(portal)
     if obj is not None:
         obj.qualifier_map_json = json.dumps(data)
@@ -713,6 +738,11 @@ def get_qc_type_map(portal):
 
 
 def save_qc_type_map(portal, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'edd_config', "qc_types", lambda: get_qc_type_map(portal), label=u"EDD QC type map")
+    except Exception:
+        pass
     obj = _get_egad_singleton(portal)
     if obj is not None:
         obj.qc_type_map_json = json.dumps(data)
@@ -757,6 +787,11 @@ def get_lookups(portal):
 
 
 def save_lookups(portal, data):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'edd_config', "lookups", lambda: get_lookups(portal), label=u"EDD lookups")
+    except Exception:
+        pass
     obj = _get_egad_singleton(portal)
     if obj is not None:
         obj.lookups_json = json.dumps(data)
@@ -880,6 +915,11 @@ def get_client_egad(client_obj):
 
 def save_client_egad(client_obj, data):
     """Persist EGAD settings on a SENAITE Client object."""
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(None, 'client_edd', client_obj.getId(), lambda: get_client_egad(client_obj), label=u"Client EDD settings: %s" % client_obj.Title())
+    except Exception:
+        pass
     try:
         from zope.annotation.interfaces import IAnnotations
         annotations = IAnnotations(client_obj)

@@ -134,6 +134,11 @@ def get_facility_defaults(portal=None):
 def save_facility_defaults(portal, data):
     """Store only what differs from the seed, so seed corrections still reach a
     lab that never overrode a given value."""
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'facility_defaults', "facility", lambda: get_facility_defaults(portal), label=u"Facility QC defaults")
+    except Exception:
+        pass
     seed = _defaults_seed()
     trimmed = {}
     for key, value in (data or {}).items():
@@ -399,6 +404,11 @@ def get_unit_by_sensor(sensor_id):
 
 def save_unit(data):
     """Insert or update a facility unit. Returns the unit id."""
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(None, 'facility_unit', (data or {}).get("id") or (data or {}).get("name") or "new", lambda: get_unit((data or {}).get("id")) if (data or {}).get("id") else None, label=u"Facility unit %s" % ((data or {}).get("name") or ""))
+    except Exception:
+        pass
     ensure_schema()
     uid = data.get("id") or str(uuid.uuid4())
     now = _now()
@@ -606,6 +616,11 @@ def _refresh_study_status(conn, study_id):
 
 def save_weight_set(data):
     """Upsert a reference weight set. `data["id"]` absent/None creates one."""
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(None, 'weight_set', (data or {}).get("id") or (data or {}).get("name") or "new", lambda: get_weight_set((data or {}).get("id")) if (data or {}).get("id") else None, label=u"Weight set %s" % ((data or {}).get("name") or ""))
+    except Exception:
+        pass
     ensure_schema()
     now = _now()
     wid = data.get("id") or uuid.uuid4().hex
@@ -1177,6 +1192,11 @@ def get_api_key(portal):
 
 
 def set_api_key(portal, key):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'facility_api_key', "api_key", lambda: get_api_key(portal), label=u"Sensor ingest API key")
+    except Exception:
+        pass
     from zope.annotation.interfaces import IAnnotations
     ann = IAnnotations(portal)
     ann["senaite.pfas.facility_qc.api_key"] = key

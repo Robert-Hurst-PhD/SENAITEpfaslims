@@ -77,6 +77,11 @@ def get_print_settings(portal):
 
 def save_print_settings(portal, data):
     """Persist settings (only known keys; replaces entry atomically)."""
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'print_settings', "lab", lambda: get_print_settings(portal), label=u"Print & certificate settings")
+    except Exception:
+        pass
     from zope.annotation.interfaces import IAnnotations
     clean = {k: data[k] for k in DEFAULTS if k in data}
     IAnnotations(portal)[PRINT_SETTINGS_KEY] = json.dumps(clean)

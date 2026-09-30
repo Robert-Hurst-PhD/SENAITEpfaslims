@@ -108,6 +108,15 @@ def test_fingerprint_is_stable_and_sensitive():
     assert ch.fingerprint(BEFORE) != ch.fingerprint(_after(notes="x"))
 
 
+def test_json_text_is_compared_by_meaning():
+    a = {"schema": '[{"name": "x", "type": "text"}]'}
+    b = {"schema": '[{"type": "text", "name": "x"}]'}          # same, keys reordered
+    assert ch.diff(ch.decode_json_strings(a), ch.decode_json_strings(b)) == []
+    c = {"schema": '[{"type": "date", "name": "x"}]'}
+    assert ch.diff(ch.decode_json_strings(a), ch.decode_json_strings(c)) == [
+        (("schema", 0, "type"), "text", "date")]
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]

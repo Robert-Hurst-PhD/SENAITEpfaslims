@@ -288,6 +288,11 @@ def get_library(portal):
 
 def save_library(portal, data):
     """Store only what differs from the seed."""
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'qc_qualifiers', "library", lambda: get_library(portal), label=u"QC qualifier wording")
+    except Exception:
+        pass
     trimmed = {}
     for key, _label, disposition, code in FAILURE_TYPES:
         entry = (data or {}).get(key) or {}

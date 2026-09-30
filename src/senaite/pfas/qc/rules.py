@@ -246,6 +246,12 @@ class QCRulesStore(object):
 
     def save(self, rules, updated_by=""):
         """Persist rules dict to JSON."""
+        try:   # change history (R1)
+            from senaite.pfas import config_history
+            config_history.track(None, "qc_rules", "rules", self.load,
+                                 label=u"QC rule toggles and parameters")
+        except Exception:
+            pass
         import datetime
         self._ensure_dir()
         rules["updated_by"] = updated_by

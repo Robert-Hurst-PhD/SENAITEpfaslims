@@ -169,12 +169,16 @@ def main(out_dir, only=None):
                 status = "NOT RUN: %s" % str(exc).splitlines()[0][:120]
             after = snapshot(os.path.join(out_dir, "snap_%02d_%s.json" % (
                 i, re.sub(r"[^a-z0-9]+", "_", name.lower()))))
+            h_after = after.pop("history_entries", 0) or 0
+            new_history = h_after - (before.pop("history_entries", 0) or 0)
             changes = diff(before, after)
+            after["history_entries"] = h_after
             defects = [c for c in changes if c[1] == "DEFECT"]
             results.append({"step": name, "status": status, "js_errors": list(errors),
+                            "new_history_entries": new_history,
                             "changes": [list(map(lambda v: v if isinstance(v, (str, int, float, bool, type(None))) else json.dumps(v)[:300], c)) for c in changes]})
-            print("%-34s %-8s changes=%-3d defects=%-3d %s" % (
-                name, status[:8], len(changes), len(defects), errors[:1] or ""))
+            print("%-34s %-8s changes=%-3d defects=%-3d history+%d %s" % (
+                name, status[:8], len(changes), len(defects), new_history, errors[:1] or ""))
             for c in defects[:6]:
                 print("      DEFECT %s: %s -> %s" % (c[0], json.dumps(c[2])[:90], json.dumps(c[3])[:90]))
             before = after

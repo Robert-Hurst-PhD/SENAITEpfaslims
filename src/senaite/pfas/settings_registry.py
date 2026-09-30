@@ -440,6 +440,13 @@ def set_value(portal, key, value, actor=None, allowed_tiers=None):
     if s.validate is not None:
         s.validate(coerced)
 
+    try:   # change history (R1): one trail for every setting
+        from senaite.pfas import config_history
+        config_history.track(portal, "settings", key,
+                             lambda: {"override": _load(portal).get("overrides", {}).get(key)},
+                             label=s.label or key)
+    except Exception:
+        pass
     data = _load(portal)
     overrides = data.setdefault("overrides", {})
     # Only the DIFFERENCE is stored, so a seed correction still reaches a lab

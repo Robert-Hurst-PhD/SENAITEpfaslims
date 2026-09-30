@@ -223,6 +223,11 @@ def _get_lab_settings(portal):
 
 
 def _save_lab_settings(portal, settings):
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'reagent_expiry', "defaults", lambda: get_expiry_defaults(portal), label=u"Reagent & standard expiry defaults")
+    except Exception:
+        pass
     ann = IAnnotations(portal)
     ann[_LAB_SETTINGS_KEY] = json.dumps(settings)
 

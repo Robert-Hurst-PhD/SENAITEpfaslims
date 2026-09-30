@@ -5562,3 +5562,68 @@ them (same rule as §47).
   correct.
 - **Prep-standard and prep-logbook modals** open only through the script
   that fills them.
+
+---
+
+## 52. Configuration change history (R1 of the architecture review) (2026-09-30)
+
+Approved by the lab as the first recommendation of
+`docs/CONFIG_ARCHITECTURE_REVIEW.md`. The design is in DECISIONS 2026-09-30.
+
+- **`config_history.py`** records one entry per (store, key) per transaction:
+  who, when (UTC), and each changed setting's path, before and after.
+  - Written in a before-commit hook, so conflict retries and aborts leave no
+    stray entry and a save that changes nothing records nothing.
+  - JSON stored as text is compared by meaning (a re-serialised logbook schema
+    is not a change).
+  - Timestamps, `updated_by`, `_seeded` and derived keys are ignored; the
+    installer is attributed as "installer"; the API key is redacted.
+  - Stored in a ZODB OOBTree: a documented exception to §7, because an entry
+    must commit with its change.
+- **Coverage: 21 writers** (built from the snapshot inventory, not from
+  function names):
+  - method profiles;
+  - the QC rules file;
+  - print/certificate settings and qualifier wording;
+  - regulatory limits;
+  - EDD profiles and all six EDD configuration sections;
+  - client EDD settings;
+  - facility defaults and the API key (redacted);
+  - facility units and weight sets (SQLite-backed; the entry commits with the
+    ZODB transaction, not the SQLite write);
+  - reagent expiry defaults;
+  - logbook definitions (both stores);
+  - the settings registry (one trail; its in-blob audit list is now legacy);
+  - **the quantifying-surrogate link on core AnalysisServices**, which
+    decides quantitation.
+- **Method Profile editor:**
+  - "Last changed by … on …" with a link to its history;
+  - a version stamp: a save from a page opened before someone else's change
+    is refused before anything is applied, naming who and when.
+- **`@@pfas-config-history`** (Configuration group): filter by setting and
+  key.
+  - Revert goes through the owning store's save function and is available for
+    method profiles, QC rules, print settings, qualifiers, regulatory limits,
+    facility defaults, EDD profiles and EDD sections.
+  - A revert is refused if a later change touched the same settings, is
+    recorded as "revert of …", and is gated `TIER_CONFIG` (in the action-gates
+    spec).
+  - It redirects after posting, because the revert's own entry is written at
+    commit.
+- **Verified live:**
+  - the full no-op audit (20 save forms): **zero entries and zero setting
+    changes** on every unchanged save;
+  - two browser sessions: a real edit → one entry; the stale save refused
+    naming the other user; revert restored the value; a second revert refused;
+  - real edits on print settings, qualifier wording, facility defaults, EDD
+    lab settings, regulatory limits and a prep logbook definition → each
+    wrote one correct entry, and each revertable one reverted;
+  - the configuration afterwards is identical to before. The test entries
+    remain in the history, as a trail should.
+- **Tests:** `test_config_history.py` (11). The no-op audit tool now reports
+  history entries per step.
+- **Not yet:**
+  - revert for the settings registry, analysis services, logbook definitions,
+    client EDD, expiry defaults, units and weight sets (recorded, reverted in
+    their own editor);
+  - version stamps on editors other than the Method Profile editor.

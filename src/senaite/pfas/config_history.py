@@ -69,7 +69,7 @@ def diff(before, after, path=()):
         for k in sorted(set(before) | set(after), key=lambda x: "%s" % x):
             if not path and k in IGNORED_KEYS:
                 continue
-            if k in ("updated_at", "_seeded"):
+            if k in ("updated_at", "updated_by", "_seeded"):
                 continue
             out += diff(before.get(k, _MISSING), after.get(k, _MISSING), path + (k,))
         return out
@@ -190,8 +190,12 @@ def set_note(note):
 
 
 def track(portal, store, key, getter, label=u""):
-    """Register a (store, key) about to be written in this transaction."""
+    """Register a (store, key) about to be written in this transaction.
+    `portal` may be None for stores that live outside the ZODB (files, SQLite)."""
     try:
+        if portal is None:
+            from bika.lims import api
+            portal = api.get_portal()
         txn, reg = _registry()
         ident = (store, u"%s" % key)
         if ident not in reg.items:
@@ -205,9 +209,24 @@ def track(portal, store, key, getter, label=u""):
         logger.warning("config_history.track(%s, %s): %s", store, key, exc)
 
 
+def decode_json_strings(value):
+    """JSON stored as text (a logbook's field schema) compared by meaning: the
+    same schema re-serialised with its keys in another order is not a change."""
+    if isinstance(value, dict):
+        return dict((k, decode_json_strings(v)) for k, v in value.items())
+    if isinstance(value, list):
+        return [decode_json_strings(v) for v in value]
+    if isinstance(value, basestring if str is bytes else str) and value.strip()[:1] in ("[", "{"):   # noqa: F821
+        try:
+            return decode_json_strings(json.loads(value))
+        except ValueError:
+            return value
+    return value
+
+
 def _safe(getter):
     try:
-        return json.loads(json.dumps(getter(), default=repr))
+        return decode_json_strings(json.loads(json.dumps(getter(), default=repr)))
     except Exception as exc:                                        # noqa: BLE001
         logger.warning("config_history: cannot read value: %s", exc)
         return None
@@ -305,6 +324,7 @@ def last_change(portal, store, key):
 # method bridge) stays in step. Stores register at import.
 
 STORES = {}
+TITLES = {}      # display names for stores recorded but not revertable here
 
 
 def register_store(name, getter, saver, title=u""):

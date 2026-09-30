@@ -823,6 +823,14 @@ class PFASMethodProfileEditView(BrowserView):
             if fld is None:
                 continue
             if (fld.get(svc) or "") != sur:
+                try:   # change history (R1): the link decides quantitation
+                    from senaite.pfas import config_history
+                    config_history.track(
+                        None, "analyte_service", kw,
+                        lambda svc=svc, fld=fld: {"pfas_quant_surrogate": fld.get(svc) or ""},
+                        label=u"Quantifying surrogate: %s" % kw)
+                except Exception:
+                    pass
                 fld.set(svc, sur)
                 changed += 1
         if changed:
