@@ -625,9 +625,8 @@
     var analytes = d.analytes      || [];
     var labels   = d.analyte_labels || {};
     var surr     = d.surrogates    || [];   // [{keyword,name,in_core,role,url}]
-    var map      = d.map           || {};   // effective (override or default)
-    var defaults = d.defaults      || {};
-
+    var map      = d.map           || {};   // this method's own links
+    var suggested = d.suggested    || {};   // service suggestion, rows with no link yet
     // Injection IS: prefill the field with the derived default if empty.
     var isField = document.getElementById('surrogate_is');
     /* The derived default is SHOWN, never written into the field: a value
@@ -642,49 +641,41 @@
       return;
     }
 
-    // Dropdown options = this method's DERIVED surrogate set (not the global pool)
+    /* Options: this method's own surrogates first, then every other surrogate
+       service. The method's map is the link (DECISIONS 2026-09-30); a
+       suggestion is SHOWN, never pre-selected, so it is saved only when picked. */
     var surByKw = {};
-    var baseSurOpts = '<option value="">— None —</option>';
+    var ownOpts = '', otherOpts = '';
     surr.forEach(function(s) {
       surByKw[s.keyword] = s;
-      baseSurOpts += '<option value="' + _esc(s.keyword) + '">' + _esc(s.name) + '</option>';
+      var o = '<option value="' + _esc(s.keyword) + '">' + _esc(s.name) + '</option>';
+      if (s.own) ownOpts += o; else otherOpts += o;
     });
+    var baseSurOpts = '<option value="">— None —</option>' +
+      (ownOpts ? '<optgroup label="This method">' + ownOpts + '</optgroup>' : '') +
+      (otherOpts ? '<optgroup label="Other surrogates">' + otherOpts + '</optgroup>' : '');
 
     analytes.forEach(function(kw) {
       var label   = labels[kw] || kw;
       var current = map[kw] || '';
-      var dflt    = defaults[kw] || '';
-      // include the current value as an option even if outside the derived set
       var opts = baseSurOpts;
       if (current && !surByKw[current]) {
-        opts += '<option value="' + _esc(current) + '">' + _esc(current) + '</option>';
+        opts += '<option value="' + _esc(current) + '">' + _esc(current) + ' (stored value)</option>';
       }
-      opts = opts.replace('value="' + _esc(current) + '"',
-                          'value="' + _esc(current) + '" selected');
-      // marking: default vs override, and core-service role
-      var s = surByKw[current];
-      var mark = '';
       if (current) {
-        mark += (current === dflt)
-          ? '<span class="sur-tag sur-default" title="from the analyte→surrogate master map">default</span>'
-          : '<span class="sur-tag sur-override" title="overridden (default: ' + _esc(dflt || '—') + ')">override</span>';
-        if (s && s.in_core) {
-          mark += ' <a class="sur-tag sur-core" target="_blank" href="' + _esc(s.url) +
-                  '" title="core AnalysisService · pfas_role=' + _esc(s.role) + '">&#128279; core</a>';
-        } else {
-          mark += ' <span class="sur-tag sur-nocore" title="no core AnalysisService marked pfas_role=surrogate">&#9888; not in core</span>';
-        }
-      } else if (dflt === '') {
-        mark = '<span style="font-size:11px;color:var(--s-secondary)">no labeled standard</span>';
+        opts = opts.replace('value="' + _esc(current) + '"',
+                            'value="' + _esc(current) + '" selected');
       }
       var tr = document.createElement('tr');
       tr.innerHTML =
         '<td class="pa-name">' + _esc(label) + '</td>' +
         '<td><select class="sur-map-sel" data-analyte="' + _esc(kw) + '"' +
-          ' data-default="' + _esc(dflt) + '"' +
+          ' data-saved="' + _esc(current) + '"' +
+          ' data-suggested="' + _esc(suggested[kw] || '') + '"' +
           ' onchange="syncSurrogateMapJson();updateSurMark(this)">' + opts + '</select></td>' +
-        '<td class="sur-mark">' + mark + '</td>';
+        '<td class="sur-mark"></td>';
       tbody.appendChild(tr);
+      updateSurMark(tr.querySelector('select'));
     });
     syncSurrogateMapJson();
   }
@@ -699,17 +690,41 @@
     if (el) el.value = JSON.stringify(result);
   }
 
-  /* Update just one row's default/override tag after a change (no full rebuild,
-     which would revert edits by re-reading the server payload). */
+  /* One row's marking: where the link stands on THIS method, and the core
+     service behind the chosen surrogate. */
   function updateSurMark(sel) {
     var cell = sel.closest('tr').querySelector('.sur-mark');
     if (!cell) return;
-    var cur = sel.value, dflt = sel.getAttribute('data-default') || '';
-    if (!cur) { cell.innerHTML = ''; return; }
-    cell.innerHTML = (cur === dflt)
-      ? '<span class="sur-tag sur-default">default</span>'
-      : '<span class="sur-tag sur-override" title="default: ' + _esc(dflt || '—') + '">override</span>';
+    var cur = sel.value, saved = sel.getAttribute('data-saved') || '';
+    var sug = sel.getAttribute('data-suggested') || '';
+    var data = {};
+    try { data = JSON.parse((document.getElementById('surrogate_is_data') || {value:'{}'}).value || '{}'); }
+    catch(e) {}
+    var s = null;
+    (data.surrogates || []).forEach(function(x) { if (x.keyword === cur) s = x; });
+    var mark = '';
+    if (!cur) {
+      mark = sug
+        ? '<span class="sur-tag sur-override" title="the analyte service suggests this; not saved on this method">suggested: ' +
+          _esc(sug) + '</span> <button type="button" class="btn-sm" onclick="useSurSuggestion(this)">Use</button>'
+        : '<span class="form-note">no labeled standard</span>';
+    } else {
+      mark = (cur === saved) ? '<span class="sur-tag sur-default">saved</span>'
+                             : '<span class="sur-tag sur-override">changed (was ' + _esc(saved || 'none') + ')</span>';
+      mark += (s && s.in_core)
+        ? ' <a class="sur-tag sur-core" target="_blank" href="' + _esc(s.url) + '">&#128279; core</a>'
+        : ' <span class="sur-tag sur-nocore">&#9888; not in core</span>';
+    }
+    cell.innerHTML = mark;
   }
+  function useSurSuggestion(btn) {
+    var sel = btn.closest('tr').querySelector('select');
+    sel.value = sel.getAttribute('data-suggested') || '';
+    syncSurrogateMapJson();
+    updateSurMark(sel);
+    sel.dispatchEvent(new Event('input', {bubbles: true}));   /* unsaved-changes note */
+  }
+  window.useSurSuggestion = useSurSuggestion;
   window.updateSurMark = updateSurMark;
 
   /* ── Per-Analyte Assignments table ───────────────────────────── */

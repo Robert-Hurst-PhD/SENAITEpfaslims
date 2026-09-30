@@ -237,4 +237,5 @@
 - **Needed:** the link owned by METHOD x analyte (as internal standards are),
   with existing links migrated into each method without loss. Data-model
   change: audit + migration plan for sign-off before any code (CLAUDE.md §8).
-- **Status:** open — plan to be presented after the R2 Calibration & CCV step.
+- **Status:** closed 2026-09-30 — option (a): per-method maps own the link; the
+  service field is a suggestion only. DECISIONS.md, GAPS §54.

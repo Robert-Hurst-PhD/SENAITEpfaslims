@@ -125,24 +125,27 @@ def test_every_surrogate_link_names_an_IS_KEYWORD_not_a_display_name():
            else "", wrong))
 
 
-def test_the_derivation_reproduces_the_hand_maintained_maps():
-    """The evidence that deriving EPA 537.1 applies an existing validated
-    relation rather than inventing a regulatory value (CLAUDE.md §8): the same
-    derivation reproduces the two maps a human already maintained, entry for
-    entry AND in the same order."""
+def test_every_stored_link_is_a_labelled_compound_for_a_panel_native():
+    """Until 2026-09-30 this asserted the stored FDA/1633A maps EQUAL the
+    derivation from the master table -- the evidence (2026-08-06) that deriving
+    EPA 537.1 applied an existing validated relation. Since each method owns its
+    map (DECISIONS 2026-09-30) a lab may legitimately pick a different surrogate
+    per method, so equality is no longer a property; the seeds still derive
+    (test_the_defaults_are_derived_not_copied). What must still hold: every
+    stored link joins a native in the method's panel to a labelled compound."""
     import json
     ar = _analyte_reference()
+    labelled = set(ar.get_surrogate_map_by_keyword().values())
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(root, "data", "qc", "method_profiles.json")) as fh:
+    with open(os.environ.get("PFAS_PROFILES_PATH") or os.path.join(
+            root, "data", "qc", "method_profiles.json")) as fh:
         profiles = json.load(fh)
-    for method_id in ("FDA_32PFAS", "EPA_1633A"):
-        stored = profiles[method_id].get("surrogate_map") or []
-        derived = ar.derive_surrogate_map(
-            profiles[method_id].get("master_analyte_set") or [])
-        assert stored == derived, (
-            "%s's stored surrogate_map no longer matches the derivation -- "
-            "either the master table changed or the profile was hand-edited. "
-            "stored=%d derived=%d" % (method_id, len(stored), len(derived)))
+    profiles = profiles.get("profiles", profiles)
+    for method_id, prof in profiles.items():
+        panel = set(prof.get("master_analyte_set") or [])
+        for row in prof.get("surrogate_map") or []:
+            assert row["analyte"] in panel, (method_id, row)
+            assert row["surrogate_is"] in labelled, (method_id, row)
 
 
 def test_epa_537_has_a_surrogate_map():

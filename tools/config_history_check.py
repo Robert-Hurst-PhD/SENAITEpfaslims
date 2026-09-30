@@ -87,9 +87,9 @@ def case_surrogate(pg):
     options = [o for o in sel.locator("option").evaluate_all("os => os.map(o => o.value)") if o and o != original]
     sel.select_option(options[0]); sel.dispatch_event("change")
     save_profile_form(pg)
-    # Reverted from history: the method's dropdown lists only its own
-    # surrogates plus the current value, so the original may not be offered.
-    return "Quantifying surrogate", True, None
+    # Each method owns its map (DECISIONS 2026-09-30): the change is a
+    # method-profile entry, reverted from history like any other.
+    return "surrogate_map", True, None
 
 
 def case_cal_section(pg):

@@ -5364,3 +5364,29 @@ Lab answers:
   Everything else stays optional (blank = no limit), as before.
 - **Unsaved changes on another tab** are named in the action bar, and the first
   Save that would discard them is held (a second click saves anyway).
+
+## 2026-09-30 — Surrogate links are owned per METHOD (confirmed; supersedes part of D58)
+- **Raised by the lab:** "Surrogate links are specific to methods ... similar to
+  internal standards." Under D58 one link per native lived on the core
+  AnalysisService (`pfas_quant_surrogate`) and every Method Profile save copied
+  it back over every method's `surrogate_map`, so one method's edit changed all
+  three.
+- **Decision:** each method profile's `surrogate_map` owns the native →
+  quantifying-surrogate link. The editor saves it on that method only; it is
+  never written to the services nor rebuilt from them. Option (a), chosen by
+  the lab: `pfas_quant_surrogate` stays only as the SUGGESTED surrogate shown
+  for a native with no link on a method yet — shown, never pre-selected, saved
+  only when someone clicks Use or picks it. Nothing reads it at run time.
+- **Checks on save:** the native must be in the method's panel and the surrogate
+  must be a service marked `pfas_role=surrogate` (core links no surrogate to a
+  method, so there is no separate per-method labelled set: the map IS the
+  method's surrogate set); a native listed twice is refused. The dropdown
+  offers this method's surrogates first, then every other surrogate service.
+- **History:** surrogate edits are method-profile entries, recorded and
+  revertable there (the D58-era exclusion of `surrogate_map` is gone); the
+  `analyte_service` store now records only the suggestion.
+- **Migration:** none needed. Before switching, each method's map was confirmed
+  equal to the service links for its panel (FDA 21/21, EPA 537.1 15/15,
+  EPA 1633A 25/25), so each method starts with exactly the links it had.
+- **Unchanged:** the pipeline, IS list and certificate qualifiers already read
+  the per-method map; the seeds still derive from the master table.

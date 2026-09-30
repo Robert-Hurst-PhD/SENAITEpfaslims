@@ -44,13 +44,11 @@ IGNORED_KEYS = frozenset(["updated_at", "_seeded", "matrix_uid_map",
                           "master_analyte_set", "display_analyte_set",
                           "method_id"])
 
-# Recorded elsewhere: the profile's surrogate_map is DERIVED from each
-# service's pfas_quant_surrogate (the source, D58), which history records as
-# "analyte_service" entries. Recording it on the profile too would double the
-# change, and reverting the profile copy would leave the source untouched
-# (the next editor save rebuilds the map from the services and undoes it).
-# Still part of the version STAMP: two people editing surrogates must collide.
-HISTORY_ONLY_IGNORED = frozenset(["surrogate_map"])
+# Keys counted in the version stamp but kept out of history entries. Empty
+# since 2026-09-30: the surrogate map used to be a copy derived from the
+# analysis services (D58) and was recorded there; it is now owned by each
+# method profile (DECISIONS 2026-09-30) and recorded, and reverted, with it.
+HISTORY_ONLY_IGNORED = frozenset()
 
 # Stores whose values are secrets: the entry says a change happened, not what.
 REDACTED_STORES = frozenset(["facility_api_key"])
@@ -374,9 +372,6 @@ def revert(portal, eid):
         return False, u"No such change."
     if entry.get("redacted"):
         return False, u"A redacted change cannot be reverted from history."
-    if any(ch["path"] and ch["path"][0] in HISTORY_ONLY_IGNORED for ch in entry["changes"]):
-        return False, (u"This change includes the surrogate map, which is derived "
-                       u"from the analysis services: revert the service entries instead.")
     spec = STORES.get(entry["store"])
     if spec is None:
         return False, u"This kind of setting cannot be reverted from history yet."

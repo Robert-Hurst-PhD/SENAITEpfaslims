@@ -47,10 +47,10 @@ class AnalysisServiceExtender(object):
     pfas_role            — analyte / surrogate / injection_is (the authoritative
                            source for the analyte/surrogate/IS lists).
     pfas_quant_surrogate — on an ANALYTE service: the KEYWORD of the surrogate
-                           AnalysisService that quantifies it (the native→
-                           surrogate quantification link, now living ON core
-                           services — D58). Rich editing is in the Method
-                           Profile → Surrogate Map; this field is the store.
+                           SUGGESTED when this native joins a method with no
+                           surrogate chosen yet. Not read at run time: each
+                           method's Surrogate Map owns the link (DECISIONS
+                           2026-09-30, superseding D58's "this is the store").
     """
 
     implements(ISchemaExtender)
@@ -80,12 +80,12 @@ class AnalysisServiceExtender(object):
             required=False,
             default="",
             widget=StringWidget(
-                label="Quantifying Surrogate (keyword)",
+                label="Suggested Surrogate (keyword)",
                 description=(
-                    "For an ANALYTE service: the keyword of the surrogate "
-                    "AnalysisService that quantifies this native (isotope "
-                    "dilution). Edit via the Method Profile Surrogate Map; "
-                    "this is the authoritative store on the core service."
+                    "For an ANALYTE service: the surrogate suggested when this "
+                    "native is added to a method. Only a suggestion -- each "
+                    "method chooses its own quantifying surrogate on its "
+                    "Method Profile Surrogate Map."
                 ),
                 size=20,
             ),

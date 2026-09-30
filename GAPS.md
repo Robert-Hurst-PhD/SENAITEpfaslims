@@ -5704,10 +5704,34 @@ Approved by the lab as the first recommendation of
      `sequence` copy has no reader or input. Remove it with a migration.
   3. `qc_rules.json` `updated_at` is rewritten by every main-form save, even an
      unchanged one (timestamp only, predates R2).
-  4. Surrogate links per method (QUESTIONS.md, raised by the lab today): plan
-     for sign-off before any code. Until then, do NOT migrate the Surrogate Map
-     tab (or any tab reading the link) to declared sections.
+  4. ~~Surrogate links per method~~ — done, §54.
   5. Operator slip: `/data/qc/backup-pre-noop-audit/` had its JSON copies
      overwritten with the 17:46 UTC state (which matched the verified
      post-audit snapshot); a NOTE file there says so. The repozo set
      `/data/backups/pre-noop-audit-20260930` is intact.
+
+## 54. Surrogate links per method (2026-09-30)
+- **Defect:** one surrogate link per native, stored on the analysis service and
+  copied over every method's map on each save (D58): changing a surrogate on
+  one method's Surrogate Map changed it for all three.
+- **Fix:** DECISIONS.md, same date. The map is saved as submitted on that
+  method (`_checked_surrogate_map`); `_sync_surrogate_links` and
+  `_rebuild_surrogate_map` are gone; the service field is a suggestion shown
+  with a Use button; history records surrogate edits on the method profile.
+- **Verified live after restart:** no-op saves of all three profiles change no
+  setting and record nothing (existing maps pass the new checks); EPA 537.1
+  PFHxA changed to another surrogate changed ONLY EPA 537.1 (FDA and 1633A
+  kept M5PFHxA, the service suggestion stayed M5PFHxA); history recorded
+  `surrogate_map / 0 / surrogate_is` and reverted it; a native offered as a
+  surrogate was refused by name; `tools/config_history_check.py` all cases
+  pass and configuration afterwards equals before; no JS errors; nothing at
+  startup rewrites the maps (`backfill_surrogate_maps` fills only an EMPTY map
+  and is run by hand).
+- **Tests:** `test_config_history.py` (surrogate edits recorded and revertable
+  on the profile); `test_surrogate_map.py` no longer pins live maps to the
+  global derivation — it now checks every stored link joins a panel native to
+  a labelled compound; `test_config_forms.py` guard: the editor never writes
+  `pfas_quant_surrogate` nor rebuilds the map (mutation-tested twice).
+- **Backup:** `/data/qc/backup-pre-surrogate-per-method/`.
+- **Still open:** the Surrogate Map tab can now move to declared sections (R2);
+  the EIS recovery limits (1633A) are unaffected and still separate.

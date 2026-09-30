@@ -117,11 +117,16 @@ def test_json_text_is_compared_by_meaning():
         (("schema", 0, "type"), "text", "date")]
 
 
-def test_surrogate_map_is_recorded_on_the_services_not_the_profile():
+def test_surrogate_map_is_recorded_and_revertable_on_the_profile():
+    """Each method owns its surrogate map (DECISIONS 2026-09-30): an edit is a
+    method-profile change like any other, recorded and revertable there."""
     before = dict(BEFORE, surrogate_map=[{"analyte": "PFOA", "surrogate_is": "M8PFOA"}])
     after = dict(BEFORE, surrogate_map=[{"analyte": "PFOA", "surrogate_is": "M2PFOA"}])
-    assert ch.diff(before, after) == []                     # not a profile history entry
-    assert ch.stamp(before) != ch.stamp(after)              # but two editors still collide
+    changes = ch.diff(before, after)
+    assert changes == [(("surrogate_map", 0, "surrogate_is"), "M8PFOA", "M2PFOA")]
+    assert ch.stamp(before) != ch.stamp(after)
+    entry = [{"path": list(p), "before": b, "after": a} for p, b, a in changes]
+    assert ch.diff(before, ch.reverted(after, entry)) == []
 
 
 def test_the_history_page_is_not_open_to_every_user():

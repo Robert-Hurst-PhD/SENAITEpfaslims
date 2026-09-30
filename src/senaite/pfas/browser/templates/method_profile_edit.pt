@@ -458,13 +458,14 @@
                 </div>
               </div>
               <p class="pane-intro">
-                Each native is pre-assigned its labeled surrogate from the
-                single-source native&#8594;surrogate map; the dropdown shows only
-                <strong>this method&#8217;s surrogates</strong> (derived from its
-                analyte set), not the global pool. <span class="sur-tag sur-default">default</span>
-                = from the master map; <span class="sur-tag sur-override">override</span>
-                = reassigned here; <span class="sur-tag sur-core">&#128279; core</span>
-                links the surrogate&#8217;s core AnalysisService (pfas_role);
+                The labeled surrogate that quantifies each native <strong>in this
+                method</strong>. Saved on this method only: the same native may use a
+                different surrogate under another method.
+                <span class="sur-tag sur-override">suggested</span> = a native with no
+                surrogate chosen here yet, showing its analysis service&#8217;s
+                suggestion (click Use to take it; it is not saved until you do);
+                <span class="sur-tag sur-core">&#128279; core</span> links the
+                surrogate&#8217;s core AnalysisService;
                 <span class="sur-tag sur-nocore">&#9888; not in core</span> flags a
                 surrogate with no marked core service.
               </p>
@@ -1259,7 +1260,7 @@
     /* Endpoint for stage action GIFs — shared with the logbook step builder. */
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=2"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=3"></script>
 
   </div><!-- /content slot -->
 

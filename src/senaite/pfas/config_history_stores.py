@@ -39,9 +39,9 @@ def register_all():
     reg("qc_rules", lambda p, k: get_rules(), lambda p, k, v: qc_rules_store().save(v),
         u"QC rules")
 
-    # The quantifying-surrogate link lives on the AnalysisService (the source,
-    # D58); each method profile carries a derived copy in surrogate_map. A
-    # revert sets the source AND every profile's copy, so they cannot drift.
+    # The service's pfas_quant_surrogate is only the SUGGESTED surrogate shown
+    # when a native first joins a method (DECISIONS 2026-09-30). Each method's
+    # own surrogate_map owns the link and is recorded as method_profile.
     def _service(portal, keyword):
         for svc in portal.bika_setup.bika_analysisservices.objectValues():
             if svc.getKeyword() == keyword:
@@ -57,22 +57,13 @@ def register_all():
         svc = _service(portal, keyword)
         if svc is None:
             raise ValueError("no analysis service %r" % keyword)
-        sur = (value or {}).get("pfas_quant_surrogate") or ""
         fld = svc.getField("pfas_quant_surrogate")
         config_history.track(None, "analyte_service", keyword,
                              lambda: {"pfas_quant_surrogate": fld.get(svc) or ""},
-                             label=u"Quantifying surrogate: %s" % keyword)
-        fld.set(svc, sur)
-        for mid in method_profile_store.list_method_ids(portal):
-            prof = method_profile_store.raw_profile(portal, mid)
-            rows = prof.get("surrogate_map") or []
-            if any(r.get("analyte") == keyword for r in rows):
-                for r in rows:
-                    if r.get("analyte") == keyword:
-                        r["surrogate_is"] = sur
-                method_profile_store.save_profile(portal, mid, prof)
+                             label=u"Suggested surrogate: %s" % keyword)
+        fld.set(svc, (value or {}).get("pfas_quant_surrogate") or "")
 
-    reg("analyte_service", get_link, set_link, u"Quantifying surrogate")
+    reg("analyte_service", get_link, set_link, u"Suggested surrogate")
     # Recorded, reverted in their own editor: settings, analyte_service,
     # logbook_definition, logbook_defs, client_edd, reagent_expiry,
     # facility_unit, weight_set, facility_api_key (redacted).

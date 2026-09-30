@@ -656,51 +656,77 @@ class PFASMethodProfileEditView(BrowserView):
         return {k: {"role": v["role"], "uid": v["uid"], "url": v["url"]}
                 for k, v in idx.items()}
 
+    def _checked_surrogate_map(self, profile, rows):
+        """The submitted map, refused rather than stored when it names
+        something this method cannot quantify with. Each method owns its map
+        (DECISIONS 2026-09-30); there is no separate per-method set of labelled
+        compounds in core, so the checks are: the native is in this method's
+        panel, and the surrogate is a service marked pfas_role=surrogate. A row
+        with no surrogate is "none chosen" and is not stored."""
+        idx = self._pfas_service_index()
+        surrogates = set(k for k, v in idx.items() if v["role"] == "surrogate")
+        if not surrogates:
+            raise ValueError("could not read the surrogate services to check "
+                             "the surrogate map; nothing was saved")
+        panel = set(profile.get("master_analyte_set") or [])
+        out, seen = [], set()
+        for row in rows or []:
+            analyte = (row.get("analyte") or "").strip()
+            sur = (row.get("surrogate_is") or "").strip()
+            if not analyte or not sur:
+                continue
+            if panel and analyte not in panel:
+                raise ValueError("surrogate map: %s is not in this method's analyte "
+                                 "panel" % analyte)
+            if sur not in surrogates:
+                raise ValueError("surrogate map: %s -> %s, which is not a surrogate "
+                                 "service (pfas_role=surrogate)" % (analyte, sur))
+            if analyte in seen:
+                raise ValueError("surrogate map: %s is listed twice" % analyte)
+            seen.add(analyte)
+            out.append({"analyte": analyte, "surrogate_is": sur})
+        return out
+
     def surrogate_is_data(self):
-        """JSON payload for the surrogate map table. Surrogates are DERIVED
-        per method (D57): each native's default labeled surrogate comes from the
-        single-source NATIVE_ANALYTES map; the method's surrogate SET is the
-        union of those (not the global pool). Overrides in surrogate_map win.
-        Each surrogate carries its core-service role marking (pfas_role)."""
+        """JSON payload for the surrogate map table.
+
+        The method's own surrogate_map is the link (DECISIONS 2026-09-30). A
+        native with no row yet shows its analysis service's pfas_quant_surrogate
+        as a SUGGESTION -- shown, never pre-selected, so it is only saved when
+        someone picks it. The dropdown offers every surrogate service, this
+        method's own first."""
         from senaite.pfas.analyte_reference import NATIVE_ANALYTES
         kw_to_display = {row[0]: row[1] for row in NATIVE_ANALYTES}
 
-        # SOURCE OF TRUTH: core AnalysisServices (pfas_role + quant link), D58.
         idx = self._pfas_service_index()
         surrogate_svcs = {k: v for k, v in idx.items() if v["role"] == "surrogate"}
         injection_svcs = {k: v for k, v in idx.items() if v["role"] == "injection_is"}
 
         profile = self.profile()
         keywords = profile.get("master_analyte_set", [])
-        # profile override (rare) still wins over the service link
-        override = {}
+        map_dict = {}
         for row in profile.get("surrogate_map", []):
-            if row.get("analyte"):
-                override[row["analyte"]] = row.get("surrogate_is", "")
-
-        map_dict, defaults, used = {}, {}, set()
+            if row.get("analyte") and row.get("surrogate_is"):
+                map_dict[row["analyte"]] = row["surrogate_is"]
+        suggested = {}
         for kw in keywords:
-            # DEFAULT = the analyte service's own pfas_quant_surrogate link
-            svc_link = idx.get(kw, {}).get("quant_surrogate", "")
-            defaults[kw] = svc_link
-            eff = override.get(kw) or svc_link
-            map_dict[kw] = eff
-            if eff:
-                used.add(eff)
+            if kw not in map_dict:
+                link = idx.get(kw, {}).get("quant_surrogate", "")
+                if link:
+                    suggested[kw] = link
 
-        # the method's surrogate SET (derived from services actually used)
-        method_surrogates = []
-        for s in sorted(used):
-            sv = surrogate_svcs.get(s) or idx.get(s, {})
-            method_surrogates.append({
-                "keyword": s,
-                "name": sv.get("name", s),
-                "in_core": bool(sv) and idx.get(s, {}).get("role") == "surrogate",
-                "role": idx.get(s, {}).get("role", ""),
-                "url": sv.get("url", ""),
-            })
+        own = set(map_dict.values())
 
-        # injection IS — from the core injection_is service(s)
+        def _entry(s):
+            sv = idx.get(s, {})
+            return {"keyword": s, "name": sv.get("name", s),
+                    "in_core": sv.get("role") == "surrogate",
+                    "role": sv.get("role", ""), "url": sv.get("url", ""),
+                    "own": s in own}
+
+        method_surrogates = ([_entry(s) for s in sorted(own)] +
+                             [_entry(s) for s in sorted(surrogate_svcs) if s not in own])
+
         inj = [{"keyword": k, "name": v["name"]} for k, v in sorted(injection_svcs.items())]
         inj_default = profile.get("surrogate_is", "") or (inj[0]["keyword"] if inj else "")
 
@@ -709,7 +735,7 @@ class PFASMethodProfileEditView(BrowserView):
             "analyte_labels": {kw: kw_to_display.get(kw, kw) for kw in keywords},
             "surrogates":     method_surrogates,
             "map":            map_dict,
-            "defaults":       defaults,
+            "suggested":      suggested,
             "injection_is":   inj,
             "injection_is_default": inj_default,
             "core_roles":     {k: v["role"] for k, v in idx.items()},
@@ -843,67 +869,12 @@ class PFASMethodProfileEditView(BrowserView):
         except Exception:
             logger.exception("QC rules save failed for %s", mid)
 
-        # D58: the native→surrogate link lives ON the core analyte services.
-        # Write the surrogate-map selections back to pfas_quant_surrogate, then
-        # rebuild the profile's surrogate_map FROM the services (the authoritative
-        # source) so the pipeline export stays complete + canonical.
-        try:
-            self._sync_surrogate_links(profile)
-            self._rebuild_surrogate_map(profile)
-            save_profile(portal, mid, profile)
-        except Exception:
-            logger.exception("surrogate link sync failed for %s", mid)
+        # The surrogate map is saved above, as submitted, on THIS method only
+        # (DECISIONS 2026-09-30, superseding D58's write-back): it is no longer
+        # copied to the analysis services nor rebuilt from them, which is what
+        # made one method's edit change the link for every method.
 
         return self._redirect_saved(mid)
-
-    def _rebuild_surrogate_map(self, profile):
-        """profile.surrogate_map (the pipeline export) = the pfas_quant_surrogate
-        of every master-set analyte service. Services are the source (D58)."""
-        idx = self._pfas_service_index()
-        rows = []
-        for kw in profile.get("master_analyte_set", []):
-            sur = idx.get(kw, {}).get("quant_surrogate", "")
-            if sur:
-                rows.append({"analyte": kw, "surrogate_is": sur})
-        profile["surrogate_map"] = rows
-
-    def _sync_surrogate_links(self, profile):
-        """Persist each native's chosen surrogate onto its core AnalysisService's
-        pfas_quant_surrogate field (the authoritative link, D58)."""
-        selections = {}
-        for row in (profile.get("surrogate_map") or []):
-            a = row.get("analyte")
-            if a:
-                selections[a] = row.get("surrogate_is", "") or ""
-        if not selections:
-            return
-        from bika.lims import api
-        setup_cat = api.get_tool("senaite_catalog_setup")
-        by_kw = {}
-        for b in setup_cat(portal_type="AnalysisService"):
-            svc = b.getObject()
-            by_kw[svc.getKeyword()] = svc
-        changed = 0
-        for kw, sur in selections.items():
-            svc = by_kw.get(kw)
-            if svc is None:
-                continue
-            fld = svc.getField("pfas_quant_surrogate")
-            if fld is None:
-                continue
-            if (fld.get(svc) or "") != sur:
-                try:   # change history (R1): the link decides quantitation
-                    from senaite.pfas import config_history
-                    config_history.track(
-                        None, "analyte_service", kw,
-                        lambda svc=svc, fld=fld: {"pfas_quant_surrogate": fld.get(svc) or ""},
-                        label=u"Quantifying surrogate: %s" % kw)
-                except Exception:
-                    pass
-                fld.set(svc, sur)
-                changed += 1
-        if changed:
-            logger.info("synced %d surrogate links to core services", changed)
 
     def _apply_qc_rules(self, mid):
         """Write this method's rule toggles + param overrides (and any global
@@ -1048,8 +1019,9 @@ class PFASMethodProfileEditView(BrowserView):
         else:
             profile["matrix_factors"] = _json_field(
                 "matrix_factors_json", profile.get("matrix_factors", []))
-        profile["surrogate_map"]  = _json_field(
-            "surrogate_map_json",  profile.get("surrogate_map", []))
+        if "surrogate_map_json" in f:
+            profile["surrogate_map"] = self._checked_surrogate_map(
+                profile, _json_field("surrogate_map_json", []))
         profile["per_analyte"]    = _json_field(
             "per_analyte_json",    profile.get("per_analyte", []))
 

@@ -218,12 +218,27 @@ def test_a_section_save_runs_nothing_else_in_the_post_chain():
     rule off and rewrite the links."""
     post = _method_source(_read("method_profiles.py"), "_handle_post")
     branch = post.index("return self._save_section(")
-    for later in ("_apply_form", "_apply_qc_rules", "_sync_surrogate_links"):
+    for later in ("_apply_form", "_apply_qc_rules"):
         assert branch < post.index(later), later
     save = _method_source(_read("method_profiles.py"), "_save_section")
-    for writer in ("_apply_form", "_apply_qc_rules", "_sync_surrogate_links"):
+    for writer in ("_apply_form", "_apply_qc_rules", "surrogate"):
         assert writer not in save, writer
     assert "config_forms.stamp(" in save and "save_profile(" in save
+
+
+
+def test_a_method_save_never_writes_the_link_to_the_services():
+    """Each method owns its surrogate map (DECISIONS 2026-09-30). Writing it to
+    the analysis service, or rebuilding the map from the services, is what made
+    one method's edit change every method -- neither may come back into the
+    editor. The service field is read only as a suggestion."""
+    import re
+    src = _read("method_profiles.py")
+    assert "_rebuild_surrogate_map" not in src and "_sync_surrogate_links" not in src
+    assert not re.search(r"pfas_quant_surrogate[\"']\)\s*\.\s*set\(|fld\.set\(svc", src), (
+        "the Method Profile editor writes pfas_quant_surrogate again")
+    post = _method_source(src, "_handle_post")
+    assert "quant_surrogate" not in post
 
 
 if __name__ == "__main__":
