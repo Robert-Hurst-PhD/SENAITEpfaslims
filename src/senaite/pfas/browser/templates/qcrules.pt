@@ -292,12 +292,8 @@
                                    onclick string:selectMethod('${sec/method_id}')"
                    tal:content="sec/method_label">FDA 32-PFAS</div>
             </tal:tabs>
-            <button type="button" class="method-tab-add" title="Add method override tab"
-                    onclick="addMethodTab()" style="
-                      margin-left:6px; padding:4px 10px; cursor:pointer;
-                      background:var(--s-primary); color:#fff; border:none;
-                      border-radius:4px 4px 0 0; font-size:13px; font-weight:700;
-                      align-self:flex-end; margin-bottom:0;">
+            <button type="button" class="btn btn-primary method-tab-add" title="Add method override tab"
+                    onclick="addMethodTab()" style="margin-left:6px;align-self:flex-end;margin-bottom:0">
               +
             </button>
           </div>
@@ -340,8 +336,7 @@
           <p class="form-note">Advanced: edit the full QC rules document as raw JSON, then click Apply to populate the form.</p>
           <textarea id="rawJson" class="json-editor"
                     tal:content="view/rules_json"></textarea>
-          <button type="button" onclick="applyJson()"
-                  style="margin-top:8px;padding:6px 14px;cursor:pointer">
+          <button type="button" onclick="applyJson()" class="btn" style="margin-top:8px">
             Apply JSON to form
           </button>
         <div class="pane-footer">

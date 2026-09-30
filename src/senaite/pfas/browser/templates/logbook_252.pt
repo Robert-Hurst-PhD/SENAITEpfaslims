@@ -7,6 +7,7 @@
   <title metal:fill-slot="title">FM-ENV-003: Extraction Log</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
+    .btn-add-row { margin-top: 8px; }   /* look: shared .btn-sm */
     .lb-form { max-width: 1000px; }
     .lb-section { margin-bottom: 28px; }
     .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
@@ -34,17 +35,12 @@
     .sup-table td { padding: 4px 8px; border-bottom: 1px solid var(--s-border); }
     .sup-table td input { width: 100%; padding: 4px 8px; font-size: 12px;
                           border: 1px solid var(--s-input-border); border-radius: 4px; }
-    .btn-add-row { margin-top: 8px; padding: 5px 14px; background: #f8f9fa;
-                   border: 1px dashed var(--s-border); border-radius: 6px;
-                   font-size: 12px; cursor: pointer; color: var(--s-secondary); }
-    .btn-del-row { background: none; border: none; cursor: pointer; color: #dc3545; font-size: 13px; padding: 2px 4px; }
+    .btn-del-row { background: none; border: none; cursor: pointer; color: var(--s-danger); font-size: 13px; padding: 2px 4px; }
     .checkbox-field { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; }
     .sig-block { display: flex; gap: 40px; flex-wrap: wrap; }
     .sig-field { display: flex; flex-direction: column; }
     .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
     .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border); }
-    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
-                border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
     .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
                    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
     .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
@@ -143,7 +139,7 @@
           </thead>
           <tbody id="samples-body"></tbody>
         </table>
-        <button type="button" class="btn-add-row"
+        <button type="button" class="btn-sm btn-add-row"
                 onclick="addSampleRow()" id="add-sample-btn">
           + Add Sample Row
         </button>
@@ -156,7 +152,7 @@
           <thead><tr><th>Reagent</th><th>Vendor</th><th>Lot #</th><th>Expiry</th><th></th></tr></thead>
           <tbody id="reagents-body"></tbody>
         </table>
-        <button type="button" class="btn-add-row" onclick="addSupRow('reagents','reagents-body',reagentsData)">+ Add Reagent</button>
+        <button type="button" class="btn-sm btn-add-row" onclick="addSupRow('reagents','reagents-body',reagentsData)">+ Add Reagent</button>
       </div>
 
       <!-- Standards -->
@@ -166,7 +162,7 @@
           <thead><tr><th>Standard</th><th>Vendor</th><th>Lot #</th><th>Expiry</th><th></th></tr></thead>
           <tbody id="standards-body"></tbody>
         </table>
-        <button type="button" class="btn-add-row" onclick="addSupRow('standards','standards-body',standardsData)">+ Add Standard</button>
+        <button type="button" class="btn-sm btn-add-row" onclick="addSupRow('standards','standards-body',standardsData)">+ Add Standard</button>
       </div>
 
       <!-- Extraction Materials -->
@@ -176,7 +172,7 @@
           <thead><tr><th>Material</th><th>Lot #</th><th></th></tr></thead>
           <tbody id="materials-body"></tbody>
         </table>
-        <button type="button" class="btn-add-row" onclick="addMatRow()">+ Add Material</button>
+        <button type="button" class="btn-sm btn-add-row" onclick="addMatRow()">+ Add Material</button>
       </div>
 
       <!-- Needle cleaned -->

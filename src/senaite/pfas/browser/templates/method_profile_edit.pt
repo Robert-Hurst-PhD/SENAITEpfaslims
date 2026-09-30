@@ -63,10 +63,6 @@
     .factor-table .del-btn { background: none; border: none; cursor: pointer; color: var(--s-danger);
                               font-size: 16px; padding: 2px 6px; line-height: 1; }
     .factor-table .del-btn:hover { opacity: .75; }
-    .btn-add-row { background: none; border: 1px solid var(--s-primary);
-                   color: var(--s-primary); border-radius: 4px;
-                   padding: 6px 14px; cursor: pointer; font-size: 12px; font-weight: 600; }
-    .btn-add-row:hover { background: var(--s-primary-lt); }
 
     .stage-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px;
                   background: #fff; }
@@ -116,7 +112,7 @@
     /* Mobile: wide data tables scroll inside their section instead of
        bleeding past the card border (consistent with .table-wrap). */
     .section-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .tab-pane .factor-table, .tab-pane .pfas-table { max-width: 100%; }
+    .tab-pane .factor-table { max-width: 100%; }
     .inclusion-grid { border-collapse: collapse; font-size: 12px; }
     .inclusion-grid th { background: var(--s-light); padding: 5px 10px;
                          border-bottom: 2px solid var(--s-border); text-align: center;
@@ -411,7 +407,7 @@
                 </thead>
                 <tbody id="isomerBody"></tbody>
               </table>
-              <button type="button" class="btn-add-row" onclick="addIsomerRow()">+ Add pair</button>
+              <button type="button" class="btn-sm btn-add-row" onclick="addIsomerRow()">+ Add pair</button>
               <input type="hidden" name="isomer_summation_json" id="isomer_summation_json"
                      tal:attributes="value view/isomer_summation_json" />
             </div>
@@ -566,7 +562,7 @@
               <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
                      tal:attributes="value view/recovery_tiers_json" />
               <div id="recoveryTiersContainer"></div>
-              <button type="button" class="btn-add-row" style="margin-top:4px"
+              <button type="button" class="btn-sm btn-add-row" style="margin-top:4px"
                       onclick="addRecoveryTier()">+ Add Tier</button>
             </div>
           </details>
@@ -858,7 +854,7 @@
                   </thead>
                   <tbody id="eisOverrideBody"></tbody>
                 </table>
-                <button type="button" class="btn-add-row" onclick="addEisRow()">+ Add row</button>
+                <button type="button" class="btn-sm btn-add-row" onclick="addEisRow()">+ Add row</button>
                 <input type="hidden" name="eis_overrides_json" id="eis_overrides_json"
                        tal:attributes="value view/eis_overrides_json" />
               </div>
@@ -1175,7 +1171,7 @@
                 Drag rows to reorder (order field updates automatically).
               </p>
               <div id="stage-list"></div>
-              <button type="button" class="btn-add-row" onclick="addStageCard()">+ Add stage</button>
+              <button type="button" class="btn-sm btn-add-row" onclick="addStageCard()">+ Add stage</button>
               <input type="hidden" name="extraction_stages_json" id="extraction_stages_json"
                      tal:attributes="value view/extraction_stages_json" />
             </div>

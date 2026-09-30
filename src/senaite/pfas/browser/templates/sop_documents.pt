@@ -242,8 +242,7 @@
                              tal:attributes="value sop/sop_id"/>
                       <input type="hidden" name="rev_num"
                              tal:attributes="value dr/rev_num"/>
-                      <button type="submit" class="btn-sm"
-                              style="background:#28a745;color:#fff;border-color:#28a745">
+                      <button type="submit" class="btn-sm btn-success">
                         Activate Rev <tal:n tal:replace="dr/rev_num">1</tal:n>
                       </button>
                     </form>
@@ -259,8 +258,7 @@
                         onsubmit="return confirm('Delete this document? It will be moved to Archived; its number is not reused.');">
                     <input type="hidden" name="action" value="delete_sop"/>
                     <input type="hidden" name="sop_id" tal:attributes="value sop/sop_id"/>
-                    <button type="submit" class="btn-sm"
-                            style="background:#dc3545;color:#fff;border-color:#dc3545">Delete</button>
+                    <button type="submit" class="btn-sm btn-danger">Delete</button>
                   </form>
                 </tal:mgr>
               </div>

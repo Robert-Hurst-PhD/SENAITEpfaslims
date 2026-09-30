@@ -7,6 +7,7 @@
   <title metal:fill-slot="title">Import Studio — Instrument Mapping</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
+    .btn-save-profile { width: 100%; }   /* look: shared .btn-primary */
     .studio-layout { display: flex; gap: 24px; align-items: flex-start; }
     .studio-main   { flex: 1 1 auto; min-width: 0; }
     .studio-side   { flex: 0 0 260px; }
@@ -75,10 +76,6 @@
     .profile-card textarea { min-height: 60px; resize: vertical; }
     .calc-explainer { font-size: 11px; color: #6c757d; margin-top: -8px; margin-bottom: 12px;
                       line-height: 1.4; }
-    .btn-save-profile { width: 100%; padding: 9px; background: var(--s-primary); color: #fff;
-                        border: none; border-radius: 7px; font-size: 13px;
-                        font-weight: 600; cursor: pointer; }
-    .btn-save-profile:hover { opacity: .9; }
 
     /* ── Existing profiles list ──────────────────────────── */
     .saved-profiles { margin-top: 20px; }
@@ -449,10 +446,7 @@
                style="display:none;" />
 
         <div style="margin-top:16px;">
-          <button type="submit" id="upload-btn"
-                  style="padding:9px 24px;background:var(--s-primary);color:#fff;
-                         border:none;border-radius:7px;font-size:13px;font-weight:600;
-                         cursor:pointer;opacity:.5;">
+          <button type="submit" id="upload-btn" class="btn btn-primary" style="opacity:.5">
             Detect &amp; Map Columns &#8594;
           </button>
         </div>
@@ -620,7 +614,7 @@
               <textarea id="s-notes" name="notes"
                         placeholder="e.g. export settings, quirks..."></textarea>
 
-              <button class="btn-save-profile" type="submit"
+              <button class="btn btn-primary btn-save-profile" type="submit"
                       onclick="return prepSave()">
                 Save Profile
               </button>
@@ -679,7 +673,7 @@
                 <input type="text" name="reason" placeholder="reason"
                        tal:condition="not:p/retired"
                        style="width:130px;padding:3px 6px;font-size:11px;border:1px solid var(--s-border);border-radius:4px;"/>
-                <button class="btn-action" type="submit"
+                <button class="btn btn-action" type="submit"
                         tal:content="python:'Reactivate' if p['retired'] else 'Retire'">Retire</button>
               </form>
             </td>

@@ -177,14 +177,14 @@
                       tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
                   <input type="hidden" name="action" value="move_up"/>
                   <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
-                  <button type="submit" class="btn btn-secondary btn-sm"
+                  <button type="submit" class="btn-sm btn-secondary"
                           tal:condition="not:repeat/lb/start">&#8593;</button>
                 </form>
                 <form method="POST"
                       tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
                   <input type="hidden" name="action" value="move_down"/>
                   <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
-                  <button type="submit" class="btn btn-secondary btn-sm"
+                  <button type="submit" class="btn-sm btn-secondary"
                           tal:condition="not:repeat/lb/end">&#8595;</button>
                 </form>
               </div>
@@ -209,7 +209,7 @@
                 <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
                 <input class="inline-input" style="min-width:220px;" type="text"
                        name="title" tal:attributes="value lb/title"/>
-                <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                <button type="submit" class="btn-sm btn-primary">Save</button>
               </form>
             </td>
 
@@ -235,7 +235,7 @@
                       tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
                   <input type="hidden" name="action" value="toggle"/>
                   <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
-                  <button type="submit" class="btn btn-secondary btn-sm"
+                  <button type="submit" class="btn-sm btn-secondary"
                           tal:content="python:'Hide' if lb.get('active') else 'Show'">
                     Hide
                   </button>
@@ -245,7 +245,7 @@
                       onsubmit="return confirm('Delete this logbook? It moves to Archived; its FM-ENV number is not reused. PDF revisions and batch data are preserved.')">
                   <input type="hidden" name="action" value="archive_logbook"/>
                   <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
-                  <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                  <button type="submit" class="btn-sm btn-danger">Delete</button>
                 </form>
               </div>
             </td>
@@ -340,14 +340,14 @@
             </summary>
 
             <div style="margin-top:10px" tal:condition="di/active_rev">
-              <a class="btn btn-secondary btn-sm" target="_blank"
+              <a class="btn-sm btn-secondary" target="_blank"
                  tal:attributes="href python:view.portal_url()+'/@@pfas-logbook-admin?action=download_logbook_doc&slug='+lb['slug']+'&rev_num='+str(di['active_rev']['rev_num'])+'&view=1'">View active PDF</a>
               <form method="POST" style="display:inline"
                     tal:condition="not:di/user_signed"
                     tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
                 <input type="hidden" name="action" value="sign_logbook_doc"/>
                 <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
-                <button type="submit" class="btn btn-primary btn-sm">Sign / acknowledge active revision</button>
+                <button type="submit" class="btn-sm btn-primary">Sign / acknowledge active revision</button>
               </form>
             </div>
 
@@ -358,7 +358,7 @@
                   <input type="hidden" name="action" value="activate_logbook_doc"/>
                   <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
                   <input type="hidden" name="rev_num" tal:attributes="value dr/rev_num"/>
-                  <button type="submit" class="btn btn-sm" style="background:#28a745;color:#fff;border-color:#28a745">
+                  <button type="submit" class="btn-sm btn-success">
                     Activate Rev <tal:n tal:replace="dr/rev_num">1</tal:n></button>
                 </form>
               </tal:d>
@@ -393,7 +393,7 @@
               <input type="file" name="doc_file" accept=".pdf,application/pdf" required="required"/>
               <input type="text" name="release_notes" placeholder="What changed in this revision"
                      style="min-width:220px;margin:0 6px"/>
-              <button type="submit" class="btn btn-primary btn-sm">Upload (draft)</button>
+              <button type="submit" class="btn-sm btn-primary">Upload (draft)</button>
             </form>
           </details>
         </tal:each>
@@ -419,7 +419,7 @@
                         tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
                     <input type="hidden" name="action" value="restore_logbook"/>
                     <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
-                    <button type="submit" class="btn btn-secondary btn-sm">Restore</button>
+                    <button type="submit" class="btn-sm btn-secondary">Restore</button>
                   </form>
                 </td>
               </tr>

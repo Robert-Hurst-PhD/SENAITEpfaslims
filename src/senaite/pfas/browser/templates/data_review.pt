@@ -55,15 +55,6 @@
     /* action bar */
     .dr-action-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap;
                      padding:14px 0; border-top:1px solid var(--s-border); margin-top:8px; }
-    .btn-submit { background:var(--s-primary); color:#fff; border:none; border-radius:5px;
-                  padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer; }
-    .btn-submit:disabled { background:#aaa; cursor:not-allowed; }
-    .btn-approve { background:#28a745; color:#fff; border:none; border-radius:5px;
-                   padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer; }
-    .btn-reject  { background:#dc3545; color:#fff; border:none; border-radius:5px;
-                   padding:8px 20px; font-size:13px; font-weight:700; cursor:pointer; }
-    .btn-action  { background:var(--s-bg-alt); color:var(--s-text); border:1px solid var(--s-border);
-                   border-radius:5px; padding:6px 14px; font-size:12px; cursor:pointer; }
 
     /* msg */
     .dr-msg { padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:13px; }
@@ -241,9 +232,7 @@
             <strong>Active non-conformance(s) reference this worksheet</strong> — review
             before releasing data.
             <tal:row tal:repeat="dev active_devs">
-              <a style="display:inline-block;margin:4px 6px 0 0;padding:2px 9px;
-                        border-radius:10px;font-size:11px;font-weight:700;
-                        background:#856404;color:#fff;text-decoration:none"
+              <a class="btn-sm btn-warn" style="margin:4px 6px 0 0"
                  tal:attributes="href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}">
                 <tal:v tal:replace="dev/dev_id"/> (<tal:v tal:replace="python:dev.get('status','').replace('_',' ').title()"/>)
               </a>
@@ -414,7 +403,7 @@
                 <input type="text" name="initials" required="required"
                        placeholder="Initials" maxlength="6"
                        style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;"/>
-                <button class="btn-action" type="submit">
+                <button class="btn btn-action" type="submit">
                   Sign &amp; Mark Reviewed
                 </button>
               </form>
@@ -438,8 +427,7 @@
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="assign_batch_samples"/>
             <input type="hidden" name="batch_id" tal:attributes="value view/batch_id"/>
-            <button class="btn-action" type="submit"
-                    style="background:#856404;color:#fff;border:none;">
+            <button class="btn btn-warn btn-action" type="submit">
               Receive &amp; assign batch samples
             </button>
           </form>
@@ -472,7 +460,7 @@
             publisher with the samples pre-selected).
           </p>
           <!-- First issue: straight to the publisher. -->
-          <a class="btn-approve" style="text-decoration:none;display:inline-block;"
+          <a class="btn btn-success btn-approve"
              tal:condition="not:view/is_reissue"
              tal:attributes="href purl">Generate COA →</a>
 
@@ -497,7 +485,7 @@
                 <textarea name="reason" rows="2" required="required"
                           placeholder="Reason for reissuing this certificate"
                           style="flex:1;min-width:240px;font-size:12px;padding:4px 6px;"></textarea>
-                <button type="submit" class="btn-approve" style="border:0;cursor:pointer;">
+                <button type="submit" class="btn btn-success btn-approve">
                   Record reason &amp; generate COA →
                 </button>
               </form>
@@ -529,7 +517,7 @@
           <form method="post"
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="submit_for_review"/>
-            <button class="btn-submit" type="submit"
+            <button class="btn btn-primary btn-submit" type="submit"
                     tal:attributes="disabled python:None if view.all_items_pass() else 'disabled'">
               Submit for Review
             </button>
@@ -547,12 +535,12 @@
           <form method="post"
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="approve_release"/>
-            <button class="btn-approve" type="submit">Approve Release</button>
+            <button class="btn btn-success btn-approve" type="submit">Approve Release</button>
           </form>
           <form method="post"
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="reject"/>
-            <button class="btn-reject" type="submit">Reject / Send Back</button>
+            <button class="btn btn-danger btn-reject" type="submit">Reject / Send Back</button>
           </form>
         </tal:mgr_btns>
       </div>
@@ -636,7 +624,7 @@
       </tal:coc_data>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;">
-        <a class="btn-action"
+        <a class="btn btn-action"
            tal:attributes="href string:${view/batch_url}/@@pfas-logbook-dynamic?slug=coc">
           <i class="fas fa-external-link-alt" style="font-size:11px;"></i>
           Open CoC Form
@@ -649,7 +637,7 @@
             <input type="hidden" name="item_key" value="coc"/>
             <input type="hidden" name="tab" value="coc"/>
             <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
-            <button class="btn-action" type="submit">Mark CoC Reviewed</button>
+            <button class="btn btn-action" type="submit">Mark CoC Reviewed</button>
           </form>
         </tal:coc_check_btn>
       </div>
@@ -704,7 +692,7 @@
               <input type="text" name="initials" required="required" maxlength="6" placeholder="RB"
                      style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;width:70px;text-transform:uppercase;"/>
             </label>
-            <button class="btn-action" type="submit">Sign &amp; Correct</button>
+            <button class="btn btn-action" type="submit">Sign &amp; Correct</button>
           </form>
           <p style="font-size:11px;color:var(--s-secondary);margin-top:6px;">
             Corrections never overwrite silently: the previous value, your
@@ -891,11 +879,11 @@
             filled in for this worksheet.
           </p>
           <div style="display:flex;gap:10px;margin-top:10px;">
-            <a class="btn-action"
+            <a class="btn btn-action"
                tal:attributes="href string:${view/batch_url}/@@pfas-logbook-dynamic?slug=251">
                Open FM-ENV-251
             </a>
-            <a class="btn-action"
+            <a class="btn btn-action"
                tal:attributes="href string:${view/batch_url}/@@pfas-logbook-dynamic?slug=252">
                Open FM-ENV-252
             </a>
@@ -1209,7 +1197,7 @@
             <input type="hidden" name="item_key" value="final_data"/>
             <input type="hidden" name="tab" value="final_data"/>
             <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
-            <button class="btn-action" type="submit">Mark Final Data Reviewed</button>
+            <button class="btn btn-action" type="submit">Mark Final Data Reviewed</button>
           </form>
         </tal:fd_check>
       </div>
@@ -1237,7 +1225,7 @@
                   <input type="hidden" name="action" value="download_report"/>
                   <input type="hidden" name="filename"
                          tal:attributes="value f/filename"/>
-                  <button class="btn-action" type="submit">
+                  <button class="btn btn-action" type="submit">
                     <i class="fas fa-download" style="font-size:11px;"></i> Download
                   </button>
                 </form>
@@ -1260,7 +1248,7 @@
             <input id="ir-file-input" type="file" name="report_file"
                    accept=".pdf,.csv,.tsv,.txt"
                    style="display:block;margin:10px auto;"/>
-            <button class="btn-action" type="submit">Upload</button>
+            <button class="btn btn-action" type="submit">Upload</button>
           </form>
         </div>
       </tal:can_upload>
@@ -1304,7 +1292,7 @@
             <input type="hidden" name="item_key" value="instrument_report"/>
             <input type="hidden" name="tab" value="instrument_report"/>
             <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
-            <button class="btn-action" type="submit">Mark Instrument Report Reviewed</button>
+            <button class="btn btn-action" type="submit">Mark Instrument Report Reviewed</button>
           </form>
         </tal:ir_check>
       </div>

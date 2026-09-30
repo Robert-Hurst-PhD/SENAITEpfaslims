@@ -7,6 +7,7 @@
   <title metal:fill-slot="title">FM-ENV-250: Solvent / Reagent Prep Log</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
+    .btn-add-row { margin-top: 8px; }   /* look: shared .btn-sm */
     .lb-form { max-width: 900px; }
     .lb-section { margin-bottom: 28px; }
     .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
@@ -31,12 +32,8 @@
     .dyn-table td input { width: 100%; padding: 5px 8px; font-size: 12px;
                           border: 1px solid var(--s-input-border); border-radius: 4px; }
     .dyn-table td input:focus { outline: none; border-color: var(--s-primary); }
-    .btn-add-row { margin-top: 8px; padding: 5px 14px; background: #f8f9fa;
-                   border: 1px dashed var(--s-border); border-radius: 6px;
-                   font-size: 12px; cursor: pointer; color: var(--s-secondary); }
-    .btn-add-row:hover { background: #e9ecef; color: var(--s-dark); }
     .btn-del-row { background: none; border: none; cursor: pointer;
-                   color: #dc3545; font-size: 14px; padding: 2px 6px; }
+                   color: var(--s-danger); font-size: 14px; padding: 2px 6px; }
     .expiry-rule { font-size: 11px; color: #856404; margin-left: 8px; }
     /* Signature block */
     .sig-block { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 16px; }
@@ -44,9 +41,6 @@
     .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
     /* Submit */
     .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border); }
-    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
-                border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
-    .btn-save:hover { background: var(--s-primary-dk); }
     .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
                    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
     .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
@@ -138,7 +132,7 @@
           </thead>
           <tbody id="solutions-body"></tbody>
         </table>
-        <button type="button" class="btn-add-row" onclick="addSolutionRow()">
+        <button type="button" class="btn-sm btn-add-row" onclick="addSolutionRow()">
           + Add Solution
         </button>
       </div>
@@ -160,10 +154,10 @@
           <tbody id="chemicals-body"></tbody>
         </table>
         <div style="display:flex;gap:8px;margin-top:8px;">
-          <button type="button" class="btn-add-row" onclick="addChemicalRow()">
+          <button type="button" class="btn-sm btn-add-row" onclick="addChemicalRow()">
             + Add Chemical (manual)
           </button>
-          <button type="button" class="btn-add-row"
+          <button type="button" class="btn-sm btn-add-row"
                   style="border-color:#1a73e8;color:#1a73e8;"
                   onclick="openInvLookup()">
             &#128196; From Inventory

@@ -142,10 +142,9 @@
 
 <tal:hr metal:fill-slot="header-right">
   <tal:mgr tal:condition="view/can_edit">
-    <button class="btn btn-primary btn-sm"
-            style="margin-right:6px"
+    <button class="btn-sm btn-primary" style="margin-right:6px"
             onclick="openDevModal('deviation')">+ New Deviation</button>
-    <button class="btn btn-secondary btn-sm"
+    <button class="btn-sm btn-secondary"
             onclick="openDevModal('car')">+ New CAR</button>
   </tal:mgr>
 </tal:hr>
@@ -357,8 +356,7 @@
                   </select>
                 </div>
                 <button type="button" id="ws_find_btn" onclick="findWorksheets()"
-                        class="btn btn-secondary btn-sm"
-                        style="white-space:nowrap">
+                        class="btn-sm btn-secondary" style="white-space:nowrap">
                   Find Worksheets
                 </button>
               </div>
@@ -451,7 +449,7 @@
                   <input type="hidden" name="action" value="complete_ca"/>
                   <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
                   <input type="hidden" name="ca_id"  tal:attributes="value ca/ca_id"/>
-                  <button type="submit" class="btn btn-secondary btn-sm">Mark Complete</button>
+                  <button type="submit" class="btn-sm btn-secondary">Mark Complete</button>
                 </form>
               </tal:complete_btn>
             </tal:ca_sop>
@@ -491,7 +489,7 @@
                     <input type="hidden" name="action" value="acknowledge_training"/>
                     <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
                     <input type="hidden" name="ca_id"  tal:attributes="value ca/ca_id"/>
-                    <button type="submit" class="btn btn-primary btn-sm">
+                    <button type="submit" class="btn-sm btn-primary">
                       I acknowledge this training
                     </button>
                   </form>
@@ -504,7 +502,7 @@
                   <input type="hidden" name="action" value="complete_ca"/>
                   <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
                   <input type="hidden" name="ca_id"  tal:attributes="value ca/ca_id"/>
-                  <button type="submit" class="btn btn-secondary btn-sm">Mark Complete</button>
+                  <button type="submit" class="btn-sm btn-secondary">Mark Complete</button>
                 </form>
               </tal:mgr_complete>
             </tal:ca_training>
@@ -531,7 +529,7 @@
                 <!-- View/print notification letter -->
                 <a target="_blank"
                    tal:attributes="href string:${view/portal_url}/@@pfas-deviations?action=generate_notification&dev_id=${dev/dev_id}&ca_id=${ca/ca_id}"
-                   class="btn btn-secondary btn-sm">
+                   class="btn-sm btn-secondary">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                        stroke="currentColor" stroke-width="2"
                        stroke-linecap="round" stroke-linejoin="round"
@@ -552,7 +550,7 @@
                     <input type="hidden" name="action" value="mark_notification_sent"/>
                     <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
                     <input type="hidden" name="ca_id"  tal:attributes="value ca/ca_id"/>
-                    <button type="submit" class="btn btn-primary btn-sm">
+                    <button type="submit" class="btn-sm btn-primary">
                       Mark as Sent
                     </button>
                   </form>
@@ -647,7 +645,7 @@
                 </div>
               </div>
 
-              <button type="submit" class="btn btn-primary btn-sm">Add Corrective Action</button>
+              <button type="submit" class="btn-sm btn-primary">Add Corrective Action</button>
             </form>
           </div>
         </tal:add_ca_section>
@@ -822,7 +820,7 @@
                   </span>
                 </td>
                 <td>
-                  <a class="btn btn-secondary btn-sm"
+                  <a class="btn-sm btn-secondary"
                      tal:attributes="href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}">
                     View &#8594;
                   </a>

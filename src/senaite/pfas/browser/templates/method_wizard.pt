@@ -86,18 +86,6 @@
     /* Action buttons */
     .wiz-actions { display: flex; gap: 12px; margin-top: 24px; padding-top: 16px;
                    border-top: 1px solid var(--s-border); }
-    .btn-primary { padding: 9px 22px; background: var(--s-primary); color: #fff;
-                   border: none; border-radius: 7px; font-size: 13px; font-weight: 600;
-                   cursor: pointer; }
-    .btn-primary:hover { background: var(--s-primary-dk); }
-    .btn-secondary { padding: 9px 18px; background: #fff; color: var(--s-body);
-                     border: 1px solid var(--s-border); border-radius: 7px;
-                     font-size: 13px; cursor: pointer; text-decoration: none;
-                     display: inline-flex; align-items: center; }
-    .btn-secondary:hover { background: #f8f9fa; }
-    .btn-success { padding: 9px 22px; background: #28a745; color: #fff;
-                   border: none; border-radius: 7px; font-size: 13px; font-weight: 600;
-                   cursor: pointer; }
 
     /* Spec status table */
     .spec-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }

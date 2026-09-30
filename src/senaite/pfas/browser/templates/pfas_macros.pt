@@ -487,7 +487,9 @@
        Heights come from --ctl-h / --ctl-h-sm and match the inputs, so a toolbar
        of search box + select + buttons lines up. Pages must not redefine these
        names (tests/test_ui_ratchet.py). */
-    .btn, .btn-sm, .btn-save {
+    .btn, .btn-sm, .btn-lg, .btn-save,
+    .btn-primary, .btn-secondary, .btn-danger, .btn-warn, .btn-success {
+      /* a variant used alone (class="btn-primary") still gets a size */
       display: inline-flex; align-items: center; justify-content: center;
       gap: 6px; height: var(--ctl-h); padding: 0 14px;
       font-family: inherit; font-size: var(--fs-base); font-weight: 600;

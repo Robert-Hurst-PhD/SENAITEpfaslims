@@ -194,7 +194,7 @@
         <label>Lead Analyst</label>
         <input type="text" name="analyst" placeholder="Your name" required="required" />
 
-        <button class="btn btn-lg btn-primary btn-start" type="submit">Begin Extraction &#8594;</button>
+        <button class="btn-lg btn-primary btn-start" type="submit">Begin Extraction &#8594;</button>
       </form>
     </div>
     </tal:start>
@@ -210,7 +210,7 @@
         All stages recorded. Generate the traceability PDF below.
       </p>
       <a tal:attributes="href view/pdf_url" target="_blank">
-        <button class="btn btn-lg btn-pdf">&#128196; Download Extraction Logbook PDF</button>
+        <button class="btn-lg btn-pdf">&#128196; Download Extraction Logbook PDF</button>
       </a>
       <br/><br/>
       <a tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
@@ -273,8 +273,7 @@
                  tal:attributes="src murl;
                                  alt python:stage.get('media_alt','') or stage.get('name','')" />
             <div>
-              <button type="button" class="btn-sm btn-add-sol" id="eg-replay-btn"
-                      style="margin-top:8px">&#8635; Replay</button>
+              <button type="button" class="btn-sm btn-add-sol" id="eg-replay-btn" style="margin-top:8px">&#8635; Replay</button>
             </div>
           </div>
         </tal:media>
@@ -303,7 +302,7 @@
           <div class="eg-card" id="reagent-card">
             <h3>Reagents — Verify Lot &amp; Expiry</h3>
             <div id="reagent-rows"></div>
-            <button type="button" class="btn-sm btn-add-sol" style="margin-top:6px;"
+            <button type="button" class="btn-sm btn-add-sol" style="margin-top:6px"
                     onclick="addReagentRow('','','','','')">+ Add Reagent</button>
           </div>
           </tal:rgs>
@@ -336,7 +335,7 @@
               This becomes the parentage record in the final PDF.
             </p>
             <div id="ped-rows"></div>
-            <button type="button" class="btn-sm btn-add-sol" style="border-color:#1a73e8;color:#1a73e8;"
+            <button type="button" class="btn-sm btn-add-sol" style="border-color:#1a73e8;color:#1a73e8"
                     onclick="addPedigreeStandard()">+ Add Standard</button>
             <input type="hidden" name="pedigree_json_stage" id="pedigree_hidden" value="{}" />
           </div>
@@ -351,7 +350,7 @@
 
           <!-- ── Stage actions ── -->
           <div class="stage-actions">
-            <button class="btn btn-lg btn-success btn-complete" type="submit"
+            <button class="btn-lg btn-success btn-complete" type="submit"
                     onclick="return prepStageSubmit()">
               &#10003; Complete Stage
               <tal:next tal:condition="python:(stage.get('order',0) or 0) &lt; view.total_stages()">
@@ -374,8 +373,7 @@
                    tal:attributes="value python:view.session().get('analyst','')"
                    placeholder="Reviewing analyst sign-off" />
             <br/>
-            <button type="submit"
-                    style="padding:12px 28px;background:#155724;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+            <button type="submit" class="btn btn-success">
               Finalize &amp; Create PDF
             </button>
           </form>

@@ -124,7 +124,7 @@
                tal:attributes="checked ps/show_signoff"/>
         <label for="sso" style="font-weight:400;">Show QA sign-off block on controlled records</label></div>
 
-      <button class="btn btn-primary" type="submit" style="margin-top:8px;">
+      <button class="btn btn-primary" type="submit" style="margin-top:8px">
         Save Print Settings
       </button>
     </form>
@@ -193,7 +193,7 @@
           </tr>
         </tbody>
       </table>
-      <button class="btn btn-primary" type="submit" style="margin-top:8px;">
+      <button class="btn btn-primary" type="submit" style="margin-top:8px">
         Save QC Qualifiers
       </button>
     </form>

@@ -5080,3 +5080,44 @@ for forms; the sidebar opens on the role's landing and groups.
   Reporting, Configuration and the logbooks 250–253 (controlled forms: compare
   print previews too).
 
+
+### 49.6 Phase 2 — every group migrated; no page redefines a shared component
+
+- **QC & Methods, Facility QC, Instruments & Import, Reporting, logbooks.** Local
+  copies of the button set removed from the profile editor, Method Wizard,
+  Control Charts, Data Review, Calibrations, Import Studio, Run Builder, all
+  three EGAD/EDD pages, logbooks 250–253 and the custom logbook. Hook classes
+  are kept (`btn-approve`, `btn-approve-run` inside a script string,
+  `btn-add-row`, `btn-dl`, `btn-save`), with the shared class beside them.
+- **47 inline-styled buttons inventoried; 21 moved** onto the shared set by a
+  mechanical pass. Variant is taken from the inline background, size from the
+  font/padding; margins, width, float and opacity stay inline; visual
+  properties go. Deliberately left alone:
+  - the camera-scanner overlay's dark UI;
+  - an 18px glyph button;
+  - buttons whose inline style is layout only.
+- **Bare variants get a size.** `class="btn-primary"` alone (Method Wizard, QC
+  grid) had depended on a page-local rule. The variants now carry the base
+  size, and the source order (base → size → colour) keeps
+  `.btn-sm.btn-primary` small.
+- **Class attributes normalised** (32): duplicates removed, size before
+  variant before hook, and `btn` dropped where `btn-sm`/`btn-lg` is present.
+  No script compares a whole class string, which was checked before this ran.
+- **`REDEFINES_ALLOWED` is empty** (16 → 0): no page may redefine a shared
+  component from here on.
+- **Ratchet:** `style=` 959 → 940, hex 211 → 210. Pages with a `<style>`
+  block are still 51: pages keep their layout CSS, and only component looks
+  moved.
+- **The helper that deleted rules also removed one phone-only rule** inside an
+  `@media` block (Control Charts' full-width Apply button). It was restored,
+  and the helper now skips anything nested in `@media`. The Bench commit was
+  checked and lost none.
+- **Verified after restart** on 32 pages: every one returns 200 with no JS errors
+  and no browser-default (unstyled) button. The two logbooks checked under print
+  emulation show 0 action buttons. Earlier: the reagent modals open and the
+  Logbook Setup tabs switch.
+
+**Next in §49.3:** Phase 3 navigation (landing pinned atop the sidebar; role and
+current groups open). Also noted: the Facility Units "Facility Defaults"
+section is raw headings outside any card, and badges still come in several
+local variants (`.cl-badge`, `.tier-badge`, `.r2-badge`, …).

@@ -83,7 +83,7 @@
                                   selected python:m == view.reference_method()"
                   tal:content="m">FDA_32PFAS</option>
         </select>
-        <button class="btn btn-primary" type="submit" style="margin-left:8px;">
+        <button class="btn btn-primary" type="submit" style="margin-left:8px">
           Save
         </button>
       </form>

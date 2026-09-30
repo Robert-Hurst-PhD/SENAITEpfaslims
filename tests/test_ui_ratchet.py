@@ -32,8 +32,8 @@ SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
 MAX_PAGES_WITH_STYLE_BLOCK = 51
-MAX_STYLE_ATTRIBUTES = 959
-MAX_DISTINCT_HEX = 211
+MAX_STYLE_ATTRIBUTES = 940
+MAX_DISTINCT_HEX = 210
 MAX_DISTINCT_FONT_SIZES = 23
 
 
@@ -149,15 +149,9 @@ def test_no_page_resizes_the_shared_frame():
 SHARED_COMPONENTS = ("btn", "btn-sm", "btn-save", "btn-primary", "btn-secondary",
                      "btn-danger", "btn-warn", "btn-link", "btn-success", "badge",
                      "status-badge", "pfas-table", "pfas-tabs", "pfas-tab")
-# Pages still carrying such overrides, 2026-09-30. Remove a page as it is
-# migrated; never add one.
-REDEFINES_ALLOWED = {
-    "controlchart.pt", "egad_batches.pt", "egad_client_config.pt",
-    "egad_config.pt", "logbook_250.pt", "logbook_251.pt", "logbook_252.pt",
-    "logbook_253.pt", "logbook_custom.pt",
-    "method_profile_edit.pt", "method_wizard.pt",
-    "run_builder.pt",
-}
+# Pages still carrying such overrides. Emptied 2026-09-30 when the last group
+# was migrated (it started at 16); keep it empty.
+REDEFINES_ALLOWED = set()
 
 
 def _redefiners():

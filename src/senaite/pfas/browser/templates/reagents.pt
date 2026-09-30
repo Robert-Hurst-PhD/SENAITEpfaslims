@@ -441,8 +441,7 @@
                   <input type="hidden" name="action" value="restore" />
                   <input type="hidden" name="uid"
                          tal:attributes="value python:rg.get('uid','')" />
-                  <button class="btn-sm" type="submit"
-                          style="color:#1a7a3a;border-color:#1a7a3a;">Restore</button>
+                  <button class="btn-sm" type="submit" style="color:#1a7a3a;border-color:#1a7a3a">Restore</button>
                 </form>
                 <small style="font-size:10px;color:#888;display:block;margin-top:2px;"
                        tal:content="python:rg.get('archived_at','')[:10]"></small>
@@ -609,7 +608,6 @@
                 <input type="text" name="lot_number" id="f-lot" required="required"
                        placeholder="Scan or type lot #" />
                 <button type="button" class="btn btn-scan"
-                        style="font-size:11px;padding:6px 10px;"
                         onclick="openScanModal('lot')">&#128247;</button>
               </div>
               <p class="field-hint">Barcode scanners auto-fill this field (they act as keyboards)</p>

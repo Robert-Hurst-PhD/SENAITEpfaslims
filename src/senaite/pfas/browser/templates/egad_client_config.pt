@@ -25,9 +25,6 @@
     .form-hint   { font-size: 11px; color: var(--s-secondary); margin-top: 3px; }
     .form-row    { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
                    gap: 14px; }
-    .btn-save   { background: var(--s-primary); color: #fff; border: none;
-                  border-radius: 4px; padding: 8px 24px; cursor: pointer;
-                  font-size: 13px; font-weight: 600; }
     .toggle-row  { display: flex; align-items: center; gap: 12px; padding: 12px;
                    background: var(--s-light); border: 1px solid var(--s-border);
                    border-radius: 6px; margin-bottom: 14px; }

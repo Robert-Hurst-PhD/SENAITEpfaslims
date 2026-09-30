@@ -37,12 +37,6 @@
     /* Actions */
     .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border);
                     display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
-                border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
-    .btn-save:hover { background: var(--s-primary-dk); }
-    .btn-dl { padding: 9px 18px; background: #28a745; color: #fff;
-              border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
-    .btn-dl:hover { background: #1e7e34; }
     .sig-block { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 8px; }
     .sig-field { display: flex; flex-direction: column; }
     .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
@@ -310,7 +304,7 @@
 
       <div class="form-actions">
         <button class="btn-save" type="submit">Save Logbook</button>
-        <button class="btn-dl" type="submit" name="action" value="download_csv">
+        <button class="btn btn-success btn-dl" type="submit" name="action" value="download_csv">
           &#8595; Download Cal Ladder CSV
         </button>
         <button type="button" class="btn-print-preview" onclick="window.print()">

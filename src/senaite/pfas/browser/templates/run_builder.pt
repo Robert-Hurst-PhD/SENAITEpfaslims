@@ -52,7 +52,6 @@
     .rb-chip button:hover { background:var(--s-primary-lt); color:var(--s-body); }
     .rb-add { display:flex; gap:6px; margin-top:6px; align-items:center; }
     .rb-add select { max-width:280px; }
-    .rb-add .btn-sm { font-size:12px; padding:5px 10px; }
     .rb-ro .rb-chip button, .rb-ro .rb-add { display:none; }
     /* single drag-and-drop run sequence */
     .rb-seqlist { display:flex; flex-direction:column; gap:5px; padding:8px;
@@ -256,7 +255,7 @@
                 <option tal:repeat="v vocab" tal:attributes="value v/code"
                         tal:content="python:(('Calibrator list') if v['code']=='CAL' else (v['label']+' ('+v['code']+')'))">MB</option>
               </select>
-              <button type="button" class="btn btn-secondary btn-sm"
+              <button type="button" class="btn-sm btn-secondary"
                       id="seq-add-btn">+ add</button>
             </div>
           </div>
@@ -385,7 +384,7 @@
             <span tal:content="m/method_id">FDA</span> ·
             CCV/<span tal:content="m/ccv_interval">6</span>
           </span>
-          <a class="btn btn-primary" style="margin-left:auto;font-size:12px;"
+          <a class="btn btn-primary" style="margin-left:auto;font-size:12px"
              tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?action=download_csv&batch_id=${m/batch_id}">
             Download worklist CSV
           </a>

@@ -44,13 +44,6 @@
                        margin: 0 0 14px 0; padding-bottom: 8px;
                        border-bottom: 1px solid var(--s-border); }
 
-    .btn-save   { background: var(--s-primary); color: #fff; border: none;
-                  border-radius: 4px; padding: 8px 24px; cursor: pointer;
-                  font-size: 13px; font-weight: 600; }
-    .btn-save:hover { background: var(--s-primary-dk); }
-    .btn-danger { background: #c62828; color: #fff; border: none;
-                  border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 12px; }
-
     /* CAS table */
     .cas-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .cas-table th { background: var(--s-light); padding: 7px 8px; text-align: left;
@@ -78,11 +71,7 @@
                   border: 1px solid var(--s-input-border); border-radius: 3px; }
     .map-select { width: 100%; padding: 5px 8px; font-size: 13px;
                   border: 1px solid var(--s-input-border); border-radius: 3px; }
-    .btn-add-row { font-size: 12px; padding: 5px 12px; cursor: pointer;
-                   background: var(--s-light); border: 1px solid var(--s-border);
-                   border-radius: 3px; }
-    .btn-add-row:hover { background: var(--s-bg); }
-    .btn-rm  { background: none; border: none; color: #c62828; cursor: pointer;
+    .btn-rm  { background: none; border: none; color: var(--s-danger); cursor: pointer;
                font-size: 16px; line-height: 1; padding: 2px 4px; }
 
     /* Lookup info */
@@ -458,7 +447,7 @@
         </tbody>
       </table>
       <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
-        <button class="btn-add-row" onclick="addQualRow()">+ Add Row</button>
+        <button class="btn-sm btn-add-row" onclick="addQualRow()">+ Add Row</button>
         <button class="btn-save" onclick="saveQualifiers()">Save Qualifier Mapping</button>
       </div>
     </div>
@@ -501,7 +490,7 @@
         </tbody>
       </table>
       <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
-        <button class="btn-add-row" onclick="addQCTRow()">+ Add Row</button>
+        <button class="btn-sm btn-add-row" onclick="addQCTRow()">+ Add Row</button>
         <button class="btn-save" onclick="saveQCTypes()">Save QC Type Mapping</button>
       </div>
     </div>
@@ -557,7 +546,7 @@
                  style="display:none"
                  onchange="showFileName(this)" />
           <button type="button" onclick="document.getElementById('lookup_xlsx').click()"
-                  class="btn-add-row">Browse</button>
+                  class="btn-sm btn-add-row">Browse</button>
           <div id="file-name" style="font-size:12px;color:var(--s-primary);margin-top:8px"></div>
         </div>
         <button class="btn-save" onclick="refreshLookups();return false">
@@ -690,7 +679,7 @@
                       tal:content="p/analyte_naming_json"></textarea></label>
         </div>
 
-        <button class="btn btn-primary" type="submit" style="margin-top:10px;">Save profile</button>
+        <button class="btn btn-primary" type="submit" style="margin-top:10px">Save profile</button>
       </form>
     </details>
   </div>

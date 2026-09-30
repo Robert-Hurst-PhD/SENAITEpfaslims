@@ -37,16 +37,6 @@
     .data-table input:focus { border-color:var(--s-input-border);
                               background:#fff; outline:none; }
     .data-table tr:hover td { background:var(--s-primary-lt); }
-    .btn { display:inline-block; padding:5px 14px; font-size:12px; font-weight:600;
-           border-radius:4px; cursor:pointer; border:none; }
-    .btn-primary   { background:var(--s-primary); color:#fff; }
-    .btn-secondary { background:var(--s-light); color:var(--s-body);
-                     border:1px solid var(--s-border); }
-    .btn-danger    { background:#ffebee; color:#c62828;
-                     border:1px solid #ef9a9a; }
-    .btn-sm { padding:3px 9px; font-size:11px; }
-    .btn-primary:hover   { opacity:.9; }
-    .btn-secondary:hover { background:var(--s-border); }
     .actions-bar { display:flex; gap:10px; align-items:center; margin-top:8px; }
     .alert-ok { background:#e8f5e9; border:1px solid #a5d6a7; color:#2e7d32;
                 padding:10px 14px; border-radius:4px; margin-bottom:14px;
@@ -120,7 +110,7 @@
           </tbody>
         </table>
         <div class="actions-bar" style="margin-top:10px;">
-          <button type="button" class="btn btn-secondary btn-sm"
+          <button type="button" class="btn-sm btn-secondary"
                   onclick="addRow()">+ Add Row</button>
         </div>
         <input type="hidden" name="rows_json" id="rows_json"

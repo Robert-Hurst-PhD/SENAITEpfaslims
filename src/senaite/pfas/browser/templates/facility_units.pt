@@ -55,9 +55,7 @@
       <input type="text" name="api_key" style="width:380px;padding:6px 8px;font-size:12px;
              font-family:monospace;border:1px solid var(--s-input-border);border-radius:4px;"
              tal:attributes="value view/api_key" placeholder="paste generated key here"/>
-      <button type="submit"
-              style="padding:6px 14px;background:var(--s-primary);color:#fff;
-                     border:none;border-radius:4px;cursor:pointer;font-size:12px">Save</button>
+      <button type="submit" class="btn btn-primary">Save</button>
     </form>
   </div>
 
@@ -93,9 +91,7 @@
                   onsubmit="return confirm('Deactivate this unit?')">
               <input type="hidden" name="action" value="delete"/>
               <input type="hidden" name="unit_id" tal:attributes="value u/id"/>
-              <button type="submit" tal:condition="python:u.get('active')"
-                      style="font-size:11px;color:var(--s-danger);background:none;
-                             border:none;cursor:pointer;padding:0">Deactivate</button>
+              <button type="submit" tal:condition="python:u.get('active')" class="btn-sm btn-danger">Deactivate</button>
             </form>
           </td>
         </tr>
@@ -194,14 +190,10 @@
       </div>
 
       <div style="margin-top:12px;display:flex;gap:8px;">
-        <button type="submit"
-                style="padding:7px 20px;background:var(--s-primary);color:#fff;
-                       border:none;border-radius:4px;cursor:pointer;font-weight:600">
+        <button type="submit" class="btn btn-primary">
           Save Unit
         </button>
-        <button type="button" onclick="resetForm()"
-                style="padding:7px 16px;background:var(--s-light);color:var(--s-body);
-                       border:1px solid var(--s-border);border-radius:4px;cursor:pointer">
+        <button type="button" onclick="resetForm()" class="btn">
           Clear
         </button>
       </div>
@@ -270,7 +262,7 @@
                    tal:attributes="value d/balance_tolerance" /></td>
       </tr>
     </table>
-    <button class="btn btn-primary" type="submit" style="margin-top:10px;">
+    <button class="btn btn-primary" type="submit" style="margin-top:10px">
       Save Facility Defaults
     </button>
   </form>

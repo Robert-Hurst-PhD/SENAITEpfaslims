@@ -32,11 +32,6 @@
     .date-range { display: flex; gap: 6px; align-items: center; }
     .date-range input[type=date] { width: 148px; }
     .date-range span { font-size: 11px; color: var(--s-secondary); }
-    .filter-bar .apply-btn {
-      padding: 7px 16px; background: var(--s-primary); color: #fff;
-      border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
-      font-weight: 600; white-space: nowrap; }
-    .filter-bar .apply-btn:hover { background: var(--s-primary-dk); }
     .filter-bar .reset-link { font-size: 11px; color: var(--s-secondary);
                               align-self: center; white-space: nowrap; }
 
@@ -84,9 +79,6 @@
                   border-bottom: 1px solid var(--s-border);
                   color: var(--s-secondary); font-weight: 700; }
     table.vt td { padding: 4px 8px; border-bottom: 1px solid var(--s-border); }
-
-    .badge { display: inline-block; padding: 1px 7px; border-radius: 10px;
-             font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .badge-ok   { background: #d4edda; color: #155724; }
     .badge-warn { background: #fff3cd; color: #856404; }
     .badge-rej  { background: #f8d7da; color: #721c24; }
@@ -239,7 +231,7 @@
       <label for="show_history">Incl. superseded</label>
     </div>
 
-    <button class="apply-btn" type="submit">Apply</button>
+    <button class="btn btn-primary apply-btn" type="submit">Apply</button>
     <a class="reset-link"
        tal:attributes="href string:${context/absolute_url}/@@pfas-control-chart">Reset</a>
   </form>
