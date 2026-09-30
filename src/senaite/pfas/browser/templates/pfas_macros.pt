@@ -221,6 +221,15 @@
                                     margin-bottom: var(--sp-5); }
     .pfas-tab:hover { color: var(--s-body); text-decoration: none; }
     .pfas-tab-count { font-weight: 400; color: var(--s-secondary); margin-left: 4px; }
+    /* Small status tags beside a table row (declared sections: suggested,
+       core-linked, unlinked). Defined once here; they were a page-local
+       <style> on the Surrogate Map tab that other tabs silently relied on. */
+    .sur-tag { font-size: var(--fs-xs); padding: 1px 7px; border-radius: 8px; font-weight: 700;
+               display: inline-block; text-decoration: none; margin-left: 4px; }
+    .sur-default  { background: var(--s-primary-lt); color: var(--s-primary-dk); }
+    .sur-override { background: var(--s-warn-lt); color: var(--s-warn-text); }
+    .sur-core     { background: var(--s-success-lt); color: var(--s-success-text); }
+    .sur-nocore   { background: var(--s-danger-lt); color: var(--s-danger-dk); }
     .pfas-tab-flag  { color: var(--s-danger); margin-left: 4px; }
     @media print { .pfas-pane[hidden] { display: block !important; } }   /* print every pane */
     .pfas-tab.active { color: var(--s-primary); border-bottom-color: var(--s-primary); }
@@ -1157,6 +1166,19 @@
 </div><!-- /pfas-shell -->
 
 <script>
+/* Declared-section "Use" buttons (config_forms): take a shown suggestion
+   into its field -- a suggestion is never pre-selected, so it is only saved
+   when someone picks it. */
+document.addEventListener('click', function (ev) {
+  var btn = ev.target.closest ? ev.target.closest('[data-cf-use]') : null;
+  if (!btn) return;
+  var field = document.querySelector('[name="' + btn.getAttribute('data-cf-use') + '"]');
+  if (!field) return;
+  field.value = btn.getAttribute('data-cf-value');
+  field.dispatchEvent(new Event('input', {bubbles: true}));
+  field.dispatchEvent(new Event('change', {bubbles: true}));
+});
+
 /* Shared tabs (CLAUDE.md §6B): a strip marked data-tabs switches the panes its
    tabs name in data-pane. The open tab is kept in the URL hash, so a reload or
    a shared link opens the same tab. Define once; pages only write markup:

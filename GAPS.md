@@ -5866,3 +5866,38 @@ Approved by the lab as the first recommendation of
   check all cases pass, configuration afterwards equals before; the EIS tab
   (and its form) is absent for EPA 537.1; no JS errors.
 - **Tests:** `test_config_forms.py` 46; UI ratchet style= 911 -> 901.
+
+## 59. R2: Surrogate Map tab saves on its own (2026-09-30)
+- **Declared** (`method_profile_sections`): `INJECTION_IS` (a section),
+  `SURROGATE_MAP` and `SURROGATE_CHAIN` (tables), one form `#section-sur`.
+  The page supplies the core services in env.
+  1. Injection IS is now a CHOICE of injection-IS services (was free text);
+     unset = the method's derived default, as before.
+  2. The map offers EVERY surrogate service, this method's own first (the old
+     JS dropdown offered only surrogates already in use, so a method could
+     not switch a native to a surrogate it did not yet use). A native with no
+     link shows the service's suggestion and a Use button -- shown, never
+     pre-selected -- through a shared `[data-cf-use]` handler.
+  3. The chain's choices are the injection-IS services (they were the map's
+     surrogates plus the current IS).
+- **Removed:** `_checked_surrogate_map` (its checks are now the declared
+  choices: panel rows only, surrogate services only), the hidden JSON field
+  and data blob, the JS table builder / serialiser / marks, the chain marker
+  parser, six view helpers. The `.sur-tag` styles, which other tabs already
+  used, moved from a page-local `<style>` into the shared macro.
+- **Framework:** tables may take page data in their rows (`rows_take_env`,
+  keys still from the stored value alone); a blank field whose stored value
+  is "" keeps "" -- the audit caught two unchanged saves turning EPA 537.1 /
+  1633A `surrogate_is` from "" into null (the history diff treats them as
+  equal, so the unit test missed it until tightened; mutation-tested). The two
+  values were restored by an instance-run script.
+- **Verified live after restart:** no-op saves of all seven migrated tabs on
+  all three profiles: 0 changes; a surrogate edit recorded and reverted
+  (history check all cases pass, configuration afterwards equals before);
+  FDA shows 32 natives, 20 chain rows, 27 surrogate choices; the Use handler
+  sets its field; no JS errors.
+- **Tests:** `test_config_forms.py` 52; UI ratchet style= 901 -> 893, hex
+  209 -> 208.
+- **Remaining Method Profile tabs:** Recovery Tiers, QC Types, Analyte x
+  Matrix (+ isomer sums, per-analyte), Lab Workflow, Rule Toggles, Advanced --
+  the JSON-grid tabs.

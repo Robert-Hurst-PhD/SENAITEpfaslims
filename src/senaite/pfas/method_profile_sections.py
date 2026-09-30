@@ -457,6 +457,130 @@ def _eis_class(key, label):
 
 EIS_CLASSES = [(_eis_class(k, l), l) for k, l in EIS_MATRIX_CLASSES]
 
+
+# ── Surrogate Map: injection IS, native -> surrogate, surrogate -> injection IS
+# Each method owns its map (DECISIONS 2026-09-30). The page supplies the core
+# services in env["services"] = {keyword: {"role", "name", "quant_surrogate"}}.
+
+def _services(env, role):
+    return dict((k, v) for k, v in ((env or {}).get("services") or {}).items()
+                if v.get("role") == role)
+
+
+def injection_choices(profile, env=None):
+    svcs = _services(env, u"injection_is")
+    return [(k, svcs[k].get("name") or k) for k in sorted(svcs)]
+
+
+def _map_rows(profile):
+    return [r for r in (profile.get("surrogate_map") or [])
+            if isinstance(r, dict) and r.get("analyte")]
+
+
+def surrogate_choices(profile, env=None):
+    """Every surrogate service, this method's own first -- a method may pick
+    any labelled surrogate, not only the ones it already uses."""
+    svcs = _services(env, u"surrogate")
+    own = []
+    for r in _map_rows(profile):
+        s = r.get("surrogate_is")
+        if s in svcs and s not in own:
+            own.append(s)
+    rest = sorted(k for k in svcs if k not in own)
+    return [(k, svcs[k].get("name") or k) for k in own + rest]
+
+
+INJECTION_IS = cf.Section(
+    id=u"sur_is", title=u"Injection IS", base=(),
+    groups=[(u"Injection IS", [
+        cf.Field("surrogate_is", u"Injection IS", kind=cf.CHOICE, choices=injection_choices,
+                 help=u"The single internal standard every surrogate recovery is "
+                      u"quantified against (a core service marked "
+                      u"pfas_role=injection_is). Unset: the method's derived default."),
+    ])])
+
+
+def surrogate_map_rows(profile, env=None):
+    titles = _analyte_titles()
+    linked = set(r["analyte"] for r in _map_rows(profile) if r.get("surrogate_is"))
+    svcs = (env or {}).get("services") or {}
+    rows = []
+    for kw in profile.get("master_analyte_set") or []:
+        row = {"key": (kw,), "group": u"sur", "label": titles.get(kw, kw), "sublabel": kw}
+        hint = (svcs.get(kw) or {}).get("quant_surrogate")
+        if kw not in linked and hint:
+            row["suggest"] = (hint, (svcs.get(hint) or {}).get("name") or hint)
+        rows.append(row)
+    return _one_group(u"sur", u"Surrogate map"), rows
+
+
+def read_surrogate_map(profile):
+    return dict(((r["analyte"],), {"surrogate_is": r.get("surrogate_is") or None})
+                for r in _map_rows(profile))
+
+
+def write_surrogate_map(profile, updates, env=None):
+    def build(kw, vals, old):
+        sur = vals.get(("surrogate_is",))
+        if not sur:
+            return None                     # none chosen: no row
+        entry = dict(old)
+        entry.update({"analyte": kw, "surrogate_is": sur})
+        return entry
+    existing = _map_rows(profile)
+    order = [(kw,) for kw in profile.get("master_analyte_set") or [] if (kw,) in updates]
+    out = _merge_rows(existing, "analyte", updates, order, build)
+    _set(profile, "surrogate_map", out)
+    return profile
+
+
+SURROGATE_MAP = cf.Table(
+    id=u"sur", title=u"Surrogate Map", base=("surrogate_map",),
+    columns=[cf.Field("surrogate_is", u"Quantifying Surrogate", kind=cf.CHOICE,
+                      choices=surrogate_choices)],
+    rows=surrogate_map_rows, rows_take_env=True,
+    read=read_surrogate_map, write=write_surrogate_map)
+
+
+def chain_rows(profile):
+    """One row per surrogate the map uses (so the two halves of the chain
+    cannot disagree about which compounds are surrogates), plus any surrogate
+    the chain already names."""
+    chain = profile.get("surrogate_is_chain") or {}
+    names = []
+    for r in _map_rows(profile):
+        s = (r.get("surrogate_is") or u"").strip()
+        if s and s not in names:
+            names.append(s)
+    names += [n for n in sorted(chain) if n not in names]
+    return (_one_group(u"chain", u"Surrogate chain"),
+            [{"key": (n,), "group": u"chain", "label": n} for n in names])
+
+
+def read_chain(profile):
+    return dict(((k,), {"injection_is": v or None})
+                for k, v in (profile.get("surrogate_is_chain") or {}).items())
+
+
+def write_chain(profile, updates, env=None):
+    chain = dict(profile.get("surrogate_is_chain") or {})
+    for (name,), vals in updates.items():
+        chosen = vals.get(("injection_is",))
+        if chosen:
+            chain[name] = chosen
+        else:
+            chain.pop(name, None)
+    _set(profile, "surrogate_is_chain", chain)
+    return profile
+
+
+SURROGATE_CHAIN = cf.Table(
+    id=u"surchain", title=u"Surrogate -> Injection IS", base=("surrogate_is_chain",),
+    columns=[cf.Field("injection_is", u"Quantified against", kind=cf.CHOICE,
+                      choices=injection_choices)],
+    rows=chain_rows, read=read_chain, write=write_chain)
+
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
-                                    SALT, MATRIX_FACTORS, EIS] +
+                                    SALT, MATRIX_FACTORS, EIS, INJECTION_IS,
+                                    SURROGATE_MAP, SURROGATE_CHAIN] +
                 [c for c, _l in EIS_CLASSES])

@@ -568,118 +568,7 @@
     if (el) el.value = JSON.stringify(tiers);
   }
 
-  /* ── Surrogate Map — simple analyte → IS table ───────────────── */
-
-  function buildSurrogateMapTable() {
-    var tbody = document.getElementById('surMapBody');
-    if (!tbody) return;
-    var d = {};
-    try { d = JSON.parse((document.getElementById('surrogate_is_data') || {value:'{}'}).value || '{}'); }
-    catch(e) { return; }
-    var analytes = d.analytes      || [];
-    var labels   = d.analyte_labels || {};
-    var surr     = d.surrogates    || [];   // [{keyword,name,in_core,role,url}]
-    var map      = d.map           || {};   // this method's own links
-    var suggested = d.suggested    || {};   // service suggestion, rows with no link yet
-    // Injection IS: prefill the field with the derived default if empty.
-    var isField = document.getElementById('surrogate_is');
-    /* The derived default is SHOWN, never written into the field: a value
-       put here by script is saved as if the lab had chosen it (GAPS §51). */
-    if (isField && !isField.value && d.injection_is_default) {
-      isField.placeholder = 'derived: ' + d.injection_is_default;
-    }
-
-    tbody.innerHTML = '';
-    if (!analytes.length) {
-      tbody.innerHTML = '<tr><td colspan="3" style="color:var(--s-secondary);font-size:12px;padding:8px">No analytes configured.</td></tr>';
-      return;
-    }
-
-    /* Options: this method's own surrogates first, then every other surrogate
-       service. The method's map is the link (DECISIONS 2026-09-30); a
-       suggestion is SHOWN, never pre-selected, so it is saved only when picked. */
-    var surByKw = {};
-    var ownOpts = '', otherOpts = '';
-    surr.forEach(function(s) {
-      surByKw[s.keyword] = s;
-      var o = '<option value="' + _esc(s.keyword) + '">' + _esc(s.name) + '</option>';
-      if (s.own) ownOpts += o; else otherOpts += o;
-    });
-    var baseSurOpts = '<option value="">— None —</option>' +
-      (ownOpts ? '<optgroup label="This method">' + ownOpts + '</optgroup>' : '') +
-      (otherOpts ? '<optgroup label="Other surrogates">' + otherOpts + '</optgroup>' : '');
-
-    analytes.forEach(function(kw) {
-      var label   = labels[kw] || kw;
-      var current = map[kw] || '';
-      var opts = baseSurOpts;
-      if (current && !surByKw[current]) {
-        opts += '<option value="' + _esc(current) + '">' + _esc(current) + ' (stored value)</option>';
-      }
-      if (current) {
-        opts = opts.replace('value="' + _esc(current) + '"',
-                            'value="' + _esc(current) + '" selected');
-      }
-      var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td class="pa-name">' + _esc(label) + '</td>' +
-        '<td><select class="sur-map-sel" data-analyte="' + _esc(kw) + '"' +
-          ' data-saved="' + _esc(current) + '"' +
-          ' data-suggested="' + _esc(suggested[kw] || '') + '"' +
-          ' onchange="syncSurrogateMapJson();updateSurMark(this)">' + opts + '</select></td>' +
-        '<td class="sur-mark"></td>';
-      tbody.appendChild(tr);
-      updateSurMark(tr.querySelector('select'));
-    });
-    syncSurrogateMapJson();
-  }
-
-  function syncSurrogateMapJson() {
-    var result = [];
-    document.querySelectorAll('#surMapBody .sur-map-sel').forEach(function(sel) {
-      var analyte = sel.getAttribute('data-analyte');
-      if (analyte) result.push({analyte: analyte, surrogate_is: sel.value});
-    });
-    var el = document.getElementById('surrogate_map_json');
-    if (el) el.value = JSON.stringify(result);
-  }
-
-  /* One row's marking: where the link stands on THIS method, and the core
-     service behind the chosen surrogate. */
-  function updateSurMark(sel) {
-    var cell = sel.closest('tr').querySelector('.sur-mark');
-    if (!cell) return;
-    var cur = sel.value, saved = sel.getAttribute('data-saved') || '';
-    var sug = sel.getAttribute('data-suggested') || '';
-    var data = {};
-    try { data = JSON.parse((document.getElementById('surrogate_is_data') || {value:'{}'}).value || '{}'); }
-    catch(e) {}
-    var s = null;
-    (data.surrogates || []).forEach(function(x) { if (x.keyword === cur) s = x; });
-    var mark = '';
-    if (!cur) {
-      mark = sug
-        ? '<span class="sur-tag sur-override" title="the analyte service suggests this; not saved on this method">suggested: ' +
-          _esc(sug) + '</span> <button type="button" class="btn-sm" onclick="useSurSuggestion(this)">Use</button>'
-        : '<span class="form-note">no labeled standard</span>';
-    } else {
-      mark = (cur === saved) ? '<span class="sur-tag sur-default">saved</span>'
-                             : '<span class="sur-tag sur-override">changed (was ' + _esc(saved || 'none') + ')</span>';
-      mark += (s && s.in_core)
-        ? ' <a class="sur-tag sur-core" target="_blank" href="' + _esc(s.url) + '">&#128279; core</a>'
-        : ' <span class="sur-tag sur-nocore">&#9888; not in core</span>';
-    }
-    cell.innerHTML = mark;
-  }
-  function useSurSuggestion(btn) {
-    var sel = btn.closest('tr').querySelector('select');
-    sel.value = sel.getAttribute('data-suggested') || '';
-    syncSurrogateMapJson();
-    updateSurMark(sel);
-    sel.dispatchEvent(new Event('input', {bubbles: true}));   /* unsaved-changes note */
-  }
-  window.useSurSuggestion = useSurSuggestion;
-  window.updateSurMark = updateSurMark;
+  /* Surrogate Map: a declared table (R2), server-rendered -- no JS. */
 
   /* ── Per-Analyte Assignments table ───────────────────────────── */
 
@@ -835,7 +724,6 @@
     buildRecoveryTiersGrid();
     buildAMIGrid();
     buildSpikeMatrixSections();
-    buildSurrogateMapTable();
     buildPerAnalyteTable();
   });
 
@@ -846,7 +734,7 @@
   var profileForm = document.getElementById('profile-form');
   if (profileForm) profileForm.addEventListener('submit', function() {
     [syncIsomerJson, syncSpikeLevelsJson,
-     syncStageJson, syncRecoveryTiersJson, syncSurrogateMapJson,
+     syncStageJson, syncRecoveryTiersJson,
      syncAMIJson, syncPerAnalyteJson].forEach(function (fn) {
       try { fn(); } catch (e) {
         if (window.console) console.error('method profile: ' + (fn.name || 'sync') + ' failed', e);

@@ -92,7 +92,14 @@
                     tal:content="row/sublabel">PFOA</code>
               <span tal:condition="row/note"
                     tal:attributes="class python:'sur-tag sur-nocore' if row['warn'] else 'sur-tag sur-core'"
-                    tal:content="row/note">core type</span></td>
+                    tal:content="row/note">core type</span>
+              <tal:s condition="row/suggest">
+                <span class="sur-tag sur-override" title="suggested; not saved until you use it"
+                      tal:content="string:suggested: ${row/suggest/label}">suggested: 13C8-PFOA</span>
+                <button type="button" class="btn-sm"
+                        tal:attributes="data-cf-use row/suggest/target;
+                                        data-cf-value row/suggest/value">Use</button>
+              </tal:s></td>
           <td tal:repeat="cell row/cells">
             <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
                    tal:attributes="name cell/name; form cf_form; value cell/value;

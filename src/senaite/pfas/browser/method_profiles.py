@@ -187,9 +187,6 @@ class PFASMethodProfileEditView(BrowserView):
         entry = qca.get(self.RECOVERY_TIER_QC_TYPE, {}) or {}
         return json.dumps(entry.get("tiers", []), indent=2)
 
-    def surrogate_map_json(self):
-        return json.dumps(self.profile().get("surrogate_map", []), indent=2)
-
     def per_analyte_json(self):
         from senaite.pfas.method_profile_store import DEFAULT_PROFILES
         per_a = self.profile().get("per_analyte") or []
@@ -372,47 +369,6 @@ class PFASMethodProfileEditView(BrowserView):
     def show_eis_overrides(self):
         return self.method_id() == "EPA_1633A"
 
-    def surrogate_chain_rows(self):
-        """Which injection IS each labelled SURROGATE is quantified against.
-
-        The second half of the quantification chain: native -> surrogate
-        (the drag-and-drop map) -> injection IS. It is what distinguishes a
-        surrogate, which is diluted along with the sample, from the injection
-        standard, which is added at reconstitution and must not be scaled --
-        the distinction that made a dilution's surrogates look like failures.
-
-        Rows come from the surrogate map, so the two halves cannot disagree
-        about which compounds are surrogates.
-        """
-        profile = self.profile()
-        chain = profile.get("surrogate_is_chain", {}) or {}
-        surrogates = []
-        for row in (profile.get("surrogate_map") or []):
-            name = (row.get("surrogate_is") or "").strip()
-            if name and name not in surrogates:
-                surrogates.append(name)
-        for name in sorted(chain):
-            if name not in surrogates:
-                surrogates.append(name)
-        return [{"surrogate": name, "injection_is": chain.get(name, "")}
-                for name in surrogates]
-
-    def injection_is_options(self):
-        """Candidate injection standards: the labelled compounds this method
-        knows about, so the choice cannot name something that is not in the run."""
-        options = []
-        for row in (self.profile().get("surrogate_map") or []):
-            name = (row.get("surrogate_is") or "").strip()
-            if name and name not in options:
-                options.append(name)
-        for name in (self.profile().get("surrogate_is_chain") or {}).values():
-            if name and name not in options:
-                options.append(name)
-        current = (self.profile().get("surrogate_is") or "").strip()
-        if current and current not in options:
-            options.append(current)
-        return sorted(options)
-
     # ── Surrogate IS lane data ────────────────────────────────────────────────
 
     def _pfas_service_index(self):
@@ -448,99 +404,11 @@ class PFASMethodProfileEditView(BrowserView):
         return {k: {"role": v["role"], "uid": v["uid"], "url": v["url"]}
                 for k, v in idx.items()}
 
-    def _checked_surrogate_map(self, profile, rows):
-        """The submitted map, refused rather than stored when it names
-        something this method cannot quantify with. Each method owns its map
-        (DECISIONS 2026-09-30); there is no separate per-method set of labelled
-        compounds in core, so the checks are: the native is in this method's
-        panel, and the surrogate is a service marked pfas_role=surrogate. A row
-        with no surrogate is "none chosen" and is not stored."""
-        idx = self._pfas_service_index()
-        surrogates = set(k for k, v in idx.items() if v["role"] == "surrogate")
-        if not surrogates:
-            raise ValueError("could not read the surrogate services to check "
-                             "the surrogate map; nothing was saved")
-        panel = set(profile.get("master_analyte_set") or [])
-        out, seen = [], set()
-        for row in rows or []:
-            analyte = (row.get("analyte") or "").strip()
-            sur = (row.get("surrogate_is") or "").strip()
-            if not analyte or not sur:
-                continue
-            if panel and analyte not in panel:
-                raise ValueError("surrogate map: %s is not in this method's analyte "
-                                 "panel" % analyte)
-            if sur not in surrogates:
-                raise ValueError("surrogate map: %s -> %s, which is not a surrogate "
-                                 "service (pfas_role=surrogate)" % (analyte, sur))
-            if analyte in seen:
-                raise ValueError("surrogate map: %s is listed twice" % analyte)
-            seen.add(analyte)
-            out.append({"analyte": analyte, "surrogate_is": sur})
-        return out
-
-    def surrogate_is_data(self):
-        """JSON payload for the surrogate map table.
-
-        The method's own surrogate_map is the link (DECISIONS 2026-09-30). A
-        native with no row yet shows its analysis service's pfas_quant_surrogate
-        as a SUGGESTION -- shown, never pre-selected, so it is only saved when
-        someone picks it. The dropdown offers every surrogate service, this
-        method's own first."""
-        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
-        kw_to_display = {row[0]: row[1] for row in NATIVE_ANALYTES}
-
-        idx = self._pfas_service_index()
-        surrogate_svcs = {k: v for k, v in idx.items() if v["role"] == "surrogate"}
-        injection_svcs = {k: v for k, v in idx.items() if v["role"] == "injection_is"}
-
-        profile = self.profile()
-        keywords = profile.get("master_analyte_set", [])
-        map_dict = {}
-        for row in profile.get("surrogate_map", []):
-            if row.get("analyte") and row.get("surrogate_is"):
-                map_dict[row["analyte"]] = row["surrogate_is"]
-        suggested = {}
-        for kw in keywords:
-            if kw not in map_dict:
-                link = idx.get(kw, {}).get("quant_surrogate", "")
-                if link:
-                    suggested[kw] = link
-
-        own = set(map_dict.values())
-
-        def _entry(s):
-            sv = idx.get(s, {})
-            return {"keyword": s, "name": sv.get("name", s),
-                    "in_core": sv.get("role") == "surrogate",
-                    "role": sv.get("role", ""), "url": sv.get("url", ""),
-                    "own": s in own}
-
-        method_surrogates = ([_entry(s) for s in sorted(own)] +
-                             [_entry(s) for s in sorted(surrogate_svcs) if s not in own])
-
-        inj = [{"keyword": k, "name": v["name"]} for k, v in sorted(injection_svcs.items())]
-        inj_default = profile.get("surrogate_is", "") or (inj[0]["keyword"] if inj else "")
-
-        return json.dumps({
-            "analytes":       keywords,
-            "analyte_labels": {kw: kw_to_display.get(kw, kw) for kw in keywords},
-            "surrogates":     method_surrogates,
-            "map":            map_dict,
-            "suggested":      suggested,
-            "injection_is":   inj,
-            "injection_is_default": inj_default,
-            "core_roles":     {k: v["role"] for k, v in idx.items()},
-        })
-
     def display_name(self):
         return self.profile().get("display_name", self.method_id())
 
     def description(self):
         return self.profile().get("description", "")
-
-    def surrogate_is(self):
-        return self.profile().get("surrogate_is", "")
 
     # ── POST handler ──────────────────────────────────────────────────────────
 
@@ -587,7 +455,8 @@ class PFASMethodProfileEditView(BrowserView):
         """What a declared section needs from the site that the profile does
         not hold: the reagent inventory's standard lots (salt CoA lots)."""
         if getattr(self, "_section_env", None) is None:
-            self._section_env = {"standard_lots": self.standard_lot_options()}
+            self._section_env = {"standard_lots": self.standard_lot_options(),
+                                 "services": self._pfas_service_index()}
         return self._section_env
 
     def section_groups(self, section_id):
@@ -774,8 +643,6 @@ class PFASMethodProfileEditView(BrowserView):
                                          profile.get("display_name", "")).strip()
         profile["description"]  = f.get("description",
                                          profile.get("description", "")).strip()
-        profile["surrogate_is"] = f.get("surrogate_is",
-                                         profile.get("surrogate_is", "")).strip()
 
         # Instrument verification (calibration, CCV, IS response, confirmation)
         # is NOT parsed here any more: the Calibration & CCV tab is its own
@@ -820,9 +687,6 @@ class PFASMethodProfileEditView(BrowserView):
         # _save_section. The old fallbacks that re-read a hidden JSON copy of
         # each on every other save are gone with them -- no field sent either.
 
-        if "surrogate_map_json" in f:
-            profile["surrogate_map"] = self._checked_surrogate_map(
-                profile, _json_field("surrogate_map_json", []))
         profile["per_analyte"]    = _json_field(
             "per_analyte_json",    profile.get("per_analyte", []))
 
@@ -836,16 +700,8 @@ class PFASMethodProfileEditView(BrowserView):
         # EIS limits (per-analyte and per matrix class) are NOT parsed here:
         # they are declared collections on their own tab form (R2).
 
-        # Surrogate -> injection IS. Saved from named per-surrogate fields so
-        # the chain is edited as a choice per row, not as JSON.
-        if f.get("surrogate_chain_present"):
-            chain = {}
-            for row in self.surrogate_chain_rows():
-                name = row["surrogate"]
-                chosen = (f.get("surchain.%s" % name, "") or "").strip()
-                if chosen:
-                    chain[name] = chosen
-            profile["surrogate_is_chain"] = chain
+        # The injection IS, surrogate map and surrogate chain are NOT parsed
+        # here: the Surrogate Map tab is its own form (R2, declared sections).
 
         profile["isomer_summation"] = _json_field(
             "isomer_summation_json",

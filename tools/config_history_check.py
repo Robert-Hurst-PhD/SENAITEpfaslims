@@ -82,10 +82,10 @@ def case_toggle(pg):
 
 def case_surrogate(pg):
     open_profile(pg, "EPA_537_1", "pane-sur")
-    sel = pg.locator("#surMapBody select").first
+    sel = pg.locator("#pane-sur select[name^='t__sur__']").first
     original = sel.input_value()
     options = [o for o in sel.locator("option").evaluate_all("os => os.map(o => o.value)") if o and o != original]
-    sel.select_option(options[0]); sel.dispatch_event("change")
+    sel.select_option(options[0])
     save_profile_form(pg)
     # Each method owns its map (DECISIONS 2026-09-30): the change is a
     # method-profile entry, reverted from history like any other.

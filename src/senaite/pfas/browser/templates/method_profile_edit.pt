@@ -433,61 +433,30 @@
       <!-- ── Tab: Surrogate Map ─────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-sur">
         <div class="page-body-narrow">
+          <!-- Saved ON ITS OWN (R2): the injection IS, the surrogate map and
+               the surrogate chain all belong to form#section-sur. -->
+          <div tal:define="cf_groups python:view.section_groups('sur_is'); cf_form string:section-sur">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
 
           <details open="open">
             <summary>Surrogate Map (native analyte &#8594; quantifying surrogate)</summary>
             <div class="section-body">
-              <style>
-                .sur-tag { font-size:var(--fs-xs); padding:1px 7px; border-radius:8px; font-weight:700;
-                           display:inline-block; text-decoration:none; }
-                .sur-default { background:#e8f4f8; color:#387493; }
-                .sur-override { background:#fff3cd; color:#856404; }
-                .sur-core { background:#d4edda; color:#155724; margin-left:4px; }
-                .sur-nocore { background:#f8d7da; color:#721c24; margin-left:4px; }
-              </style>
-              <div class="field-grid" style="margin-bottom:14px">
-                <div class="field-row">
-                  <label for="surrogate_is">Injection IS</label>
-                  <div class="field-sublabel">
-                    The single IS all surrogate recoveries quantify against
-                    (core service, pfas_role=injection_is &#8212; e.g. M4PFOA).
-                    Pre-filled from the derived default.
-                  </div>
-                  <input type="text" id="surrogate_is" name="surrogate_is"
-                         tal:attributes="value view/surrogate_is" />
-                </div>
-              </div>
               <p class="pane-intro">
                 The labeled surrogate that quantifies each native <strong>in this
                 method</strong>. Saved on this method only: the same native may use a
-                different surrogate under another method.
-                <span class="sur-tag sur-override">suggested</span> = a native with no
-                surrogate chosen here yet, showing its analysis service&#8217;s
-                suggestion (click Use to take it; it is not saved until you do);
-                <span class="sur-tag sur-core">&#128279; core</span> links the
-                surrogate&#8217;s core AnalysisService;
-                <span class="sur-tag sur-nocore">&#9888; not in core</span> flags a
-                surrogate with no marked core service.
+                different surrogate under another method. Any surrogate service may
+                be picked; this method&#8217;s own are listed first.
+                <span class="sur-tag sur-override">suggested</span> = a native with
+                no surrogate chosen here yet, showing its analysis service&#8217;s
+                suggestion: click Use to take it. It is not saved until you do.
               </p>
-              <table class="factor-table" id="surMapTable">
-                <thead>
-                  <tr>
-                    <th style="width:40%">Native Analyte</th>
-                    <th style="width:35%">Quantifying Surrogate</th>
-                    <th style="width:25%">Source / Core</th>
-                  </tr>
-                </thead>
-                <tbody id="surMapBody"></tbody>
-              </table>
-              <input type="hidden" name="surrogate_map_json" id="surrogate_map_json"
-                     tal:attributes="value view/surrogate_map_json" />
-              <input type="hidden" id="surrogate_is_data"
-                     tal:attributes="value view/surrogate_is_data" />
+              <div tal:define="cf_groups python:view.section_groups('sur'); cf_form string:section-sur">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
             </div>
           </details>
 
-        </div>
-      
           <details>
             <summary>Surrogate &#8594; Injection Internal Standard</summary>
             <div class="section-body">
@@ -500,39 +469,16 @@
                 dilution, so its response must not be scaled. Getting this
                 backwards makes a dilution&#8217;s surrogates look like
                 recovery failures. Under FDA 32-PFAS every surrogate quantifies
-                against 13C4-PFOA.
+                against 13C4-PFOA. Rows follow the map as saved: save a map
+                change first to see a new surrogate here.
               </p>
-              <input type="hidden" name="surrogate_chain_present" value="1" />
-              <table class="factor-table">
-                <thead>
-                  <tr>
-                    <th style="width:50%">Surrogate</th>
-                    <th style="width:50%">Quantified against</th>
-                  </tr>
-                </thead>
-                <tbody tal:define="opts view/injection_is_options">
-                  <tr tal:repeat="row view/surrogate_chain_rows">
-                    <td>
-                      <span tal:content="row/surrogate"
-                            style="font-family: var(--font-mono);font-size:var(--fs-sm);">M8PFOA</span>
-                    </td>
-                    <td>
-                      <select style="width:100%;"
-                              tal:attributes="name string:surchain.${row/surrogate}">
-                        <option value="">&#8212; not set &#8212;</option>
-                        <option tal:repeat="o opts"
-                                tal:attributes="value o;
-                                                selected python:o == row['injection_is']"
-                                tal:content="o">M4PFOA</option>
-                      </select>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <div tal:define="cf_groups python:view.section_groups('surchain'); cf_form string:section-sur">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
             </div>
           </details>
-
-</div><!-- /pane-sur -->
+        </div>
+      </div><!-- /pane-sur -->
 
       <!-- ── Tab: Recovery Tiers ────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-rt">
@@ -932,6 +878,16 @@
     </form>
     <!-- Per-tab section forms (R2): each saves only its own section, with its
          own stale-save stamp. -->
+    <form id="section-sur" method="POST" class="pfas-section-form"
+          data-tab-label="Surrogate Map"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="sur_is,sur,surchain" />
+      <input type="hidden" name="_pane" value="pane-sur" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__sur_is" tal:attributes="value python:view.section_stamp('sur_is')" />
+      <input type="hidden" name="section_stamp__sur" tal:attributes="value python:view.section_stamp('sur')" />
+      <input type="hidden" name="section_stamp__surchain" tal:attributes="value python:view.section_stamp('surchain')" />
+    </form>
     <form id="section-eis" method="POST" class="pfas-section-form"
           tal:condition="view/show_eis_overrides"
           data-tab-label="EIS Limits"
@@ -1080,7 +1036,7 @@
     /* Endpoint for stage action GIFs — shared with the logbook step builder. */
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=5"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=6"></script>
 
   </div><!-- /content slot -->
 

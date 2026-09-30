@@ -167,6 +167,8 @@ def _value(f, raw, saved, label=None, choices=None):
             return _SKIP, u"%s is required." % label
         if f.blank == u"remove":
             return REMOVE, None
+        if saved in (u"", ""):
+            return saved, None            # stored empty stays empty: not "" -> None
         return (u"" if f.kind in (TEXT, TEXTAREA) else None), None
     if f.kind in (NUMBER, INT):
         try:
@@ -267,8 +269,12 @@ class Table(object):
     rows that differ from the default."""
 
     def __init__(self, id, title, base, columns, rows, check=None, intro=u"",
-                 read=None, write=None):
+                 read=None, write=None, rows_take_env=False):
         self.id = id
+        # rows(stored, env) when the rows show page data (e.g. a suggestion);
+        # their KEYS must still come from `stored` alone, since the stamp is
+        # taken without env
+        self.rows_take_env = rows_take_env
         self.title = title
         self.read = read
         self.write = write
@@ -305,6 +311,12 @@ def _row_node(table, stored, row_key):
     return _get(stored or {}, table.base + tuple(row_key)) or {}
 
 
+def _rows(table, stored, env=None):
+    if table.rows_take_env:
+        return table.rows(stored or {}, env)
+    return table.rows(stored or {})
+
+
 def _cells(table, stored, row_key):
     if table.read is not None:
         vals = table.read(stored or {}).get(tuple(row_key)) or {}
@@ -317,7 +329,7 @@ def stamp_table(table, stored):
     """The listed rows' keys AND values: a change to which rows the page shows
     (e.g. the inclusion grid) also makes an open page stale, so no field can
     be read against a row set it was not drawn for."""
-    _groups, rows = table.rows(stored or {})
+    _groups, rows = _rows(table, stored)
     blob = []
     for r in rows:
         vals = dict((k, v) for k, v in _cells(table, stored, r["key"]).items()
@@ -327,7 +339,7 @@ def stamp_table(table, stored):
 
 
 def render_table(table, stored, env=None):
-    groups, rows = table.rows(stored or {})
+    groups, rows = _rows(table, stored, env)
     by_group = dict((g["key"], dict(g, rows=[], set=0)) for g in groups)
     order = [g["key"] for g in groups]
     for r in rows:
@@ -346,8 +358,12 @@ def render_table(table, stored, env=None):
         g = by_group.get(r.get("group"))
         if g is None:
             continue
+        suggest = r.get("suggest")          # (value, label): shown, never pre-selected
         g["rows"].append({"label": r.get("label"), "sublabel": r.get("sublabel"),
-                          "note": r.get("note"), "warn": r.get("warn"), "cells": cells})
+                          "note": r.get("note"), "warn": r.get("warn"), "cells": cells,
+                          "suggest": ({"value": suggest[0], "label": suggest[1],
+                                       "target": cells[0]["name"]}
+                                      if suggest and not vals[table.columns[0].name] else None)})
         if any(vals[c.name] not in (None, u"", "") for c in table.columns):
             g["set"] += 1
     out = []
@@ -363,7 +379,7 @@ def render_table(table, stored, env=None):
 
 def parse_table(table, form, stored, env=None):
     """(updates {row key: {column path: value}}, errors) for the listed rows."""
-    _groups, rows = table.rows(stored or {})
+    _groups, rows = _rows(table, stored, env)
     updates, errors = {}, []
     for r in rows:
         saved = _cells(table, stored, r["key"])

@@ -378,6 +378,19 @@ def test_the_eis_tab_has_no_hand_written_parser_left():
         assert retired not in js, retired
 
 
+def test_the_surrogate_tab_has_no_hand_written_parser_left():
+    src = _read("method_profiles.py")
+    template = _read("templates", "method_profile_edit.pt")
+    js = _read("static", "method_profile_edit.js")
+    for retired in ("surrogate_map_json", "surrogate_is_data", "surrogate_chain_present",
+                    "surchain.", "_checked_surrogate_map", "buildSurrogateMapTable",
+                    "syncSurrogateMapJson", "useSurSuggestion"):
+        assert retired not in src, retired
+        assert retired not in template, retired
+        assert retired not in js, retired
+    assert 'profile["surrogate_is"]' not in src
+
+
 def test_every_tab_can_be_opened_by_its_link():
     """A hand-kept list of valid tab ids omitted two tabs, so the redirect
     after saving the Reporting Limits tab opened Rule Toggles -- and the Save
@@ -624,6 +637,82 @@ def test_clearing_every_class_row_removes_the_class_only():
     after = save(solid, stored, form)
     assert "solid" not in after["eis_matrix_overrides"]
     assert after["eis_matrix_overrides"]["tissue"] == stored["eis_matrix_overrides"]["tissue"]
+
+
+# ── Surrogate Map ────────────────────────────────────────────────────────────
+
+SUR_IS, SUR, CHAIN = mps.INJECTION_IS, mps.SURROGATE_MAP, mps.SURROGATE_CHAIN
+
+
+def _services():
+    svcs = {"M4PFOA": {"role": "injection_is", "name": "13C4-PFOA"},
+            "M2PFTeDA": {"role": "surrogate", "name": "13C2-PFTeDA"}}
+    for p in _profiles().values():
+        for r in p.get("surrogate_map") or []:
+            svcs.setdefault(r["surrogate_is"], {"role": "surrogate", "name": r["surrogate_is"]})
+    return {"services": svcs}
+
+
+def section_form(section, stored, env):
+    form = {}
+    for g in cf.render(section, stored, env):
+        for row in g["fields"]:
+            form[row["name"]] = row["value"]
+    return form
+
+
+def test_unchanged_surrogate_saves_change_nothing():
+    env = _services()
+    for mid, stored in _profiles().items():
+        for table in (SUR, CHAIN):
+            after = env_save(table, stored, env_form(table, stored, env), env)
+            assert ch.diff(stored, after) == [], (mid, table.id, ch.diff(stored, after)[:3])
+        updates, errors = cf.parse(SUR_IS, section_form(SUR_IS, stored, env), stored, env)
+        after = cf.apply(SUR_IS, stored, updates)
+        assert not errors and ch.diff(stored, after) == [], mid
+        # stricter than the history diff, which treats "" and None as equal:
+        # the audit does not, and an unchanged save must not rewrite either
+        assert after.get("surrogate_is", "absent") == stored.get("surrogate_is", "absent"), mid
+
+
+def test_a_surrogate_that_is_not_a_surrogate_service_is_refused():
+    env, stored = _services(), _profiles()["EPA_537_1"]
+    key = SUR.rows(stored, env)[1][0]["key"]
+    form = env_form(SUR, stored, env)
+    form[cf.cell_name(SUR, key, SUR.columns[0])] = "PFNA"          # a native
+    assert "not one of the options" in cf.parse(SUR, form, stored, env)[1][0]
+
+
+def test_any_surrogate_service_may_be_picked_not_only_ones_in_use():
+    env, stored = _services(), _profiles()["EPA_537_1"]
+    key = SUR.rows(stored, env)[1][0]["key"]
+    form = env_form(SUR, stored, env)
+    form[cf.cell_name(SUR, key, SUR.columns[0])] = "M2PFTeDA"
+    after = env_save(SUR, stored, form, env)
+    assert [r for r in after["surrogate_map"] if r["analyte"] == key[0]][0]["surrogate_is"] == "M2PFTeDA"
+
+
+def test_a_suggestion_is_shown_but_never_selected():
+    import copy
+    env, stored = _services(), copy.deepcopy(_profiles()["EPA_537_1"])
+    kw = stored["surrogate_map"][0]["analyte"]
+    stored["surrogate_map"] = stored["surrogate_map"][1:]            # kw has no link now
+    env["services"][kw] = {"role": "analyte", "quant_surrogate": "M8PFOA"}
+    row = [r for r in cf.render(SUR, stored, env)[0]["rows"] if r["sublabel"] == kw][0]
+    assert row["suggest"]["value"] == "M8PFOA" and row["cells"][0]["value"] == ""
+    after = env_save(SUR, stored, env_form(SUR, stored, env), env)
+    assert kw not in [r["analyte"] for r in after["surrogate_map"]]  # not saved unless picked
+
+
+def test_clearing_a_link_removes_its_row_and_the_chain_follows_the_map():
+    env, stored = _services(), _profiles()["FDA_32PFAS"]
+    assert [r["key"][0] for r in CHAIN.rows(stored)[1]][:3] == \
+        [r["surrogate_is"] for r in stored["surrogate_map"]][:3]
+    key = (stored["surrogate_map"][0]["analyte"],)
+    form = env_form(SUR, stored, env)
+    form[cf.cell_name(SUR, key, SUR.columns[0])] = ""
+    after = env_save(SUR, stored, form, env)
+    assert key[0] not in [r["analyte"] for r in after["surrogate_map"]]
 
 
 if __name__ == "__main__":
