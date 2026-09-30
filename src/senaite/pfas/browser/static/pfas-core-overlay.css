@@ -16,21 +16,12 @@
  * the rules below apply to every core listing of that class — which is the
  * intended, consistent result.
  *
- * Token values are duplicated from pfas_macros.pt :root here because core pages
- * do not load the PFAS macro stylesheet.  Keep in sync with pfas_macros.pt.
+ * Tokens are NOT defined here: pfas-tokens.css is the single definition, linked
+ * immediately before this file (see templates/core_overlay_link.pt).
  * ========================================================================== */
 
-:root {
-  --s-primary:      #428aaf;
-  --s-primary-dk:   #387493;
-  --s-primary-lt:   #e8f4f8;
-  --s-dark:         #343a40;
-  --s-body:         #293333;
-  --s-secondary:    #6c757d;
-  --s-light:        #f8f9fa;
-  --s-bg:           #ffffff;
-  --s-border:       #dee2e6;
-}
+/* Tokens come from pfas-tokens.css, linked just before this file by the same
+   viewlet -- one definition for core and PFAS pages alike. */
 
 /* ── Listing tables: header + hover match PFAS .pfas-table pattern ────────── */
 table.contentstable > thead > tr > th,
@@ -116,3 +107,9 @@ dl.portalMessage.info {
                                      must be width-constrained for wrap to apply */
   }
 }
+
+/* ── Frame: the sidebar starts under the header on every page (GAPS §49) ────
+   Core's header wrapper is Bootstrap `.mb-2`, an 8px margin that PFAS pages do
+   not have, so the sidebar sat at y=60 on core pages and y=52 on PFAS pages and
+   jumped whenever you crossed between them. */
+body:not(.pfas-app) > div.mb-2 { margin-bottom: 0 !important; }  /* Bootstrap utilities are !important */

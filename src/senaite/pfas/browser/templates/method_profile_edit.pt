@@ -12,7 +12,7 @@
     .tab-pane         { display: none; }
     .tab-pane.active  { display: block; }
 
-    .page-body { max-width: 900px; }
+    /* width: the shared .page-body-narrow (--form-width), not a local cap */
 
     .json-area { width: 100%; min-height: 160px; font-family: "Fira Code", monospace;
                  font-size: 12px; padding: 8px; border: 1px solid var(--s-input-border);
@@ -260,7 +260,7 @@
 
       <!-- ── Tab: Rule Toggles & QC Run (qc_rules.json, per method) ──────── -->
       <div class="tab-pane" id="pane-toggles">
-        <div class="page-body">
+        <div class="page-body-narrow">
           <p class="pane-intro">
             Which QC-engine rules fire for <strong tal:content="view/display_name">this
             method</strong> when the pipeline evaluates a run. Turn a rule off to
@@ -311,7 +311,7 @@
 
       <!-- ── Tab: Analyte × Matrix ─────────────────────────────────────── -->
       <div class="tab-pane" id="pane-ami">
-        <div class="page-body">
+        <div class="page-body-narrow">
 
           <details open="open">
             <summary>Method Information</summary>
@@ -422,7 +422,7 @@
 
       <!-- ── Tab: Surrogate Map ─────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-sur">
-        <div class="page-body">
+        <div class="page-body-narrow">
 
           <details open="open">
             <summary>Surrogate Map (native analyte &#8594; quantifying surrogate)</summary>
@@ -525,7 +525,7 @@
 
       <!-- ── Tab: Recovery Tiers ────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-rt">
-        <div class="page-body">
+        <div class="page-body-narrow">
 
           <div class="section-group-hdr">Spike QC Criteria (LFSM / LFB)</div>
           <p class="pane-intro">
@@ -600,7 +600,7 @@
 
       <!-- ── Tab: Sample Corrections (per-method, applied to ALL samples) ── -->
       <div class="tab-pane" id="pane-mtx">
-        <div class="page-body">
+        <div class="page-body-narrow">
           <p class="pane-intro">
             Which matrices this method supports, and everything the engine
             decides <strong>from the matrix</strong>. All four of these were
@@ -712,7 +712,7 @@
       </div>
 
       <div class="tab-pane" id="pane-corr">
-        <div class="page-body">
+        <div class="page-body-narrow">
           <p class="pane-intro">
             Concentration corrections applied to <strong>every sample</strong>
             for this method &#8212; not just QC. These are core method
@@ -834,7 +834,7 @@
 
       <!-- ── Tab: EIS Limits ────────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-eis">
-        <div class="page-body">
+        <div class="page-body-narrow">
           <tal:eis tal:condition="view/show_eis_overrides">
             <details>
               <summary>EIS Recovery Overrides
@@ -934,7 +934,7 @@
 
       <!-- ── Tab: Calibration ───────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-cal">
-        <div class="page-body">
+        <div class="page-body-narrow">
           <div style="background:var(--s-primary-lt);border:1px solid #bee5eb;border-radius:8px;
                       padding:9px 14px;font-size:12px;color:#0c5460;margin-bottom:14px;">
             These tabs (Calibration / CCV / IS Response) hold THIS METHOD&#8217;s
@@ -1141,7 +1141,7 @@
 
       <!-- ── Tab: Lab Workflow (guided extraction stages) ───────────────── -->
       <div class="tab-pane" id="pane-lwf">
-        <div class="page-body">
+        <div class="page-body-narrow">
           <p class="json-hint" style="max-width:760px;">
             This method&#8217;s bench workflow: the stages defined here become the
             step-by-step <strong>Guided Extraction</strong> inside the batch&#8217;s
@@ -1185,7 +1185,7 @@
       </div><!-- /pane-lwf -->
       <!-- ── Tab: QC Types (per-method enable toggles) ─────────────────── -->
       <div class="tab-pane" id="pane-qct">
-        <div class="page-body">
+        <div class="page-body-narrow">
           <details open="open">
             <summary>Associated QC Types</summary>
             <div class="section-body">
@@ -1223,7 +1223,7 @@
 
       <!-- ── Tab: Advanced (qc_rules global defaults + raw JSON) ─────────── -->
       <div class="tab-pane" id="pane-adv">
-        <div class="page-body">
+        <div class="page-body-narrow">
           <details open="open">
             <summary>Global Engine Defaults (all methods)</summary>
             <div class="section-body">

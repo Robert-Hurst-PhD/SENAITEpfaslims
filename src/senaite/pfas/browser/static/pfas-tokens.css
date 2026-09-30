@@ -1,0 +1,64 @@
+/* ============================================================================
+ * pfas-tokens.css — the ONE definition of the PFAS design tokens.
+ * ----------------------------------------------------------------------------
+ * Loaded by BOTH page types so they share one source (GAPS §49, CLAUDE.md §1.7):
+ *   - PFAS workspace pages: <link> in pfas_macros.pt's page macro;
+ *   - core SENAITE pages:   the senaite.pfas.core-overlay-css viewlet, ahead of
+ *                           pfas-core-overlay.css.
+ * Before this file the palette was typed out twice ("keep in sync"), and pages
+ * used four tokens nobody defined. Change a value here and it changes on every
+ * page; add a token here, never in a page.
+ * ========================================================================== */
+
+:root {
+  /* ── Palette (senaite.core 2.6 Bootstrap 4 base, light theme) ─────────── */
+  --s-primary:      #428aaf;
+  --s-primary-dk:   #387493;
+  --s-primary-lt:   #e8f4f8;
+  --s-dark:         #343a40;
+  --s-body:         #293333;
+  --s-secondary:    #6c757d;
+  --s-light:        #f8f9fa;
+  --s-bg:           #ffffff;
+  --s-border:       #dee2e6;
+  --s-input-border: #ced4da;
+  --s-input-text:   #495057;
+  --s-success:      #28a745;
+  --s-danger:       #dc3545;
+  --s-warning:      #fd7e14;
+  --s-focus-ring:   rgba(66,138,175,.25);
+
+  /* Aliases for names pages already used without a definition. */
+  --s-text:         var(--s-body);
+  --s-bg-alt:       var(--s-light);
+  --s-bg-light:     var(--s-light);
+  --pfas-rail-border: rgba(255,255,255,.12);
+
+  /* ── Spacing scale ────────────────────────────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* ── Type scale ───────────────────────────────────────────────────────── */
+  --fs-xs:   11px;   /* table headers, badges, captions */
+  --fs-sm:   12px;   /* secondary text, dense tables    */
+  --fs-base: 13px;   /* body text, table cells          */
+  --fs-md:   14px;   /* emphasised body                 */
+  --fs-lg:   16px;   /* section headings                */
+  --fs-xl:   20px;   /* page-level figures              */
+
+  /* ── Shape ────────────────────────────────────────────────────────────── */
+  --radius:    4px;
+  --radius-lg: 6px;
+
+  /* ── Frame: identical on every page (CLAUDE.md §6C) ───────────────────── */
+  --pfas-header-h:    52px;
+  --pfas-panel-width: 220px;
+  --pfas-rail-width:  48px;
+  --frame-gutter-x:   30px;    /* sidebar edge → content: x = 220 + 30 = 250, as core */
+  --frame-gutter-y:   16px;
+  --form-width:       960px;   /* the one narrow width for reading/form pages */
+}

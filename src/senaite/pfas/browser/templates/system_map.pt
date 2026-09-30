@@ -33,7 +33,7 @@
   <tal:t metal:fill-slot="header-title">System Map</tal:t>
 
   <div metal:fill-slot="content">
-  <div class="page-body" style="max-width:1180px;">
+  <div class="page-body">
 
     <p class="map-intro">
       A live map of how each role’s workspace connects through the add-on to core

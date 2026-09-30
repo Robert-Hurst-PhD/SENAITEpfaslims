@@ -94,7 +94,7 @@
   </tal:r>
 
   <div metal:fill-slot="content">
-  <div class="page-body" style="max-width:1200px">
+  <div class="page-body">
 
     <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>

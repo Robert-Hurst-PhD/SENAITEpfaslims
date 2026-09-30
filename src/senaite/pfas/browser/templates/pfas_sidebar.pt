@@ -11,6 +11,10 @@
 <style id="pfas-sidebar-css">
 /* ── PFAS unified sidebar ───────────────────────────────────────────────── */
 #sidebar.pfas-sidebar {
+  /* Fixed line-height: without it each host page decided the row pitch
+     (34px on core pages at line-height 1.5, 29px on PFAS pages), GAPS §49. */
+  line-height: 16px;
+  font-size: 13px;
   min-width: 220px;
   max-width: 220px;
   background: #f8f9fa;
@@ -45,6 +49,8 @@
 
 /* ── Group (accordion) ─────────────────────────────────────────────────── */
 .pfas-sg-head {
+  line-height: 16px;   /* a <button>: does not inherit line-height on PFAS pages */
+  font-family: inherit;
   display: flex;
   align-items: center;
   width: 100%;

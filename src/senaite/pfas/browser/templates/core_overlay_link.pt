@@ -1,5 +1,7 @@
 <tal:overlay xmlns:tal="http://xml.zope.org/namespaces/tal"
              tal:define="portal context/@@plone_portal_state/portal_url">
   <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-tokens.css" />
+  <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-core-overlay.css" />
 </tal:overlay>

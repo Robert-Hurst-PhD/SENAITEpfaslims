@@ -118,7 +118,7 @@
   <tal:t metal:fill-slot="header-title">Logbook Management</tal:t>
 
   <div metal:fill-slot="content">
-  <div style="max-width:960px;margin:0 auto;">
+  <div class="page-body-narrow">
 
     <!-- Save confirmation -->
     <tal:saved tal:condition="view/saved">

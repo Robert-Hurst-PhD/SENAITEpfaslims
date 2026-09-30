@@ -8,6 +8,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title metal:define-slot="title">LIMS Tool</title>
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-tokens.css" />
   <!-- Font Awesome 5 Solid — font face + icon glyphs used by the PFAS sidebar.
        senaite.core.css is not loaded on PFAS workspace pages (they bypass
        Plone's main_template), so we inline the @font-face, the .fas base
@@ -66,28 +68,8 @@
     .fa-wrench:before{content:"\f0ad"}
   </style>
   <style>
-    /* ── SENAITE palette tokens (senaite.core 2.6 Bootstrap 4 base) ─────── */
-    :root {
-      --s-primary:      #428aaf;
-      --s-primary-dk:   #387493;
-      --s-primary-lt:   #e8f4f8;
-      --s-dark:         #343a40;
-      --s-body:         #293333;
-      --s-secondary:    #6c757d;
-      --s-light:        #f8f9fa;
-      --s-bg:           #ffffff;
-      --s-border:       #dee2e6;
-      --s-input-border: #ced4da;
-      --s-input-text:   #495057;
-      --s-success:      #28a745;
-      --s-danger:       #dc3545;
-      --s-warning:      #fd7e14;
-      --s-focus-ring:   rgba(66,138,175,.25);
-
-      --pfas-panel-width:  220px;
-      --pfas-rail-width:   48px;
-      --pfas-header-h:     52px;
-    }
+    /* Tokens (palette, spacing, type, shape, frame) live in ONE file,
+       static/pfas-tokens.css, linked above and shared with core pages. */
 
     /* ── Reset ───────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -245,7 +227,7 @@
          this (extra breathing room); pages that fill the slot directly (SOPs,
          Deviations/CARs, batch logbooks, facility, calibrations, ...) get their
          spacing from here. */
-      padding: 18px 22px;
+      padding: var(--frame-gutter-y) var(--frame-gutter-x);
     }
 
     /* ── Pane footer — storage path + role note ─────────────────────────── */
@@ -304,8 +286,13 @@
     .alert-info    { background: var(--s-primary-lt); border: 1px solid #bee5eb; color: #0c5460; }
 
     /* ── Content containers ──────────────────────────────────────────────── */
-    .page-body        { max-width: 1100px; margin: 0 auto; padding: 20px; }
-    .page-body-narrow { max-width: 900px;  margin: 0 auto; padding: 20px; }
+    /* ONE frame (CLAUDE.md §6C, GAPS §49). The content area's gutter is the
+       only page padding, so every page starts at the same x. Lists and tables
+       take the full width; reading/form pages take the one --form-width,
+       left-aligned so the left edge never moves between pages. A page must not
+       set its own max-width on these. */
+    .page-body        { max-width: none;              margin: 0; padding: 0; }
+    .page-body-narrow { max-width: var(--form-width); margin: 0; padding: 0; }
 
     /* ── Cards ───────────────────────────────────────────────────────────── */
     details, .pfas-card {
@@ -460,7 +447,7 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
       gap: 16px;
-      padding: 24px;
+      padding: 0;   /* the content gutter already frames the grid */
     }
     .pfas-ws-card {
       background: var(--s-bg);

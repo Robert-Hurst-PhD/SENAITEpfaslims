@@ -5004,3 +5004,41 @@ for forms; the sidebar opens on the role's landing and groups.
    open, the rest collapsed and remembered.
 4. **Accordions → tabs** on the five remaining pages.
 5. **Not yet addressed.** `@@pfas-calibrations` is 8,500px tall.
+
+### 49.4 Phase 1 — one frame (done)
+
+- **Tokens defined once.** `static/pfas-tokens.css` is linked by the page macro
+  AND by the core-overlay viewlet. The palette had been typed out twice ("keep
+  in sync"). Added: spacing, type, radius and frame tokens. The four tokens
+  pages used without a definition (`--s-text` ×15, `--s-bg-alt`, `--s-bg-light`,
+  `--pfas-rail-border`) are now defined as aliases of what those rules were
+  already inheriting.
+- **Sidebar geometry fixed on every page.** It sets its own `line-height`
+  (16px); the group headings are `<button>`s, which do not inherit one, so they
+  set it too. Core's header wrapper (Bootstrap `.mb-2`, an `!important` 8px
+  margin) is zeroed in the overlay. Two attempts failed first:
+  `:first-of-type` counts by tag, and the page loader is the first `<div>`;
+  then the rule lost to Bootstrap's `!important`.
+  - **Measured after:** core and PFAS both at sidebar top 52, first row 125,
+    30px pitch. Before: 60/136/34 vs 52/119/29.
+- **One content frame.** A single gutter (`--frame-gutter-x` 30px, so content
+  starts at x=250 as on core pages). `.page-body` is full width, and
+  `.page-body-narrow` is the one `--form-width` (960px), left-aligned. The
+  private caps are removed:
+  - the method profile editor's local 900px rule (it now uses the form width);
+  - inline caps on Prepared Standards (1200), Prep Logbooks (1100), EDD
+    profiles (1100) and System Map (1180);
+  - centred 960px wrappers on Logbook Setup and Delivered EDDs;
+  - the landing grid's extra 24px padding.
+- **Guards added to `test_ui_ratchet.py`:** tokens defined only in
+  `pfas-tokens.css`; no page re-declares `.page-body` widths in a style block
+  **or inline** (the inline form was found after the first version shipped).
+  Each guard was mutation-tested. Ceilings lowered: `style=` 968 → 962, hex
+  223 → 222.
+- **Audit after Phase 1:** 44 of 59 pages at x=250, the rest being:
+  - three facility logs whose cards measure by their inner padding (the card
+    itself sits on the frame);
+  - Run Builder's grid;
+  - the client Sample Tracker, which has no frame by design (§6C);
+  - the Extraction Guide's deliberately centred start screen.
+
