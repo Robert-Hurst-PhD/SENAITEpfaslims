@@ -22,6 +22,8 @@ HISTORY_GATES = {"revert": TIER_CONFIG}
 def _show(value):
     if value is None:
         return u"(unset)"
+    if value in (u"", ""):
+        return u"(empty)"
     if isinstance(value, (dict, list)):
         text = json.dumps(value, sort_keys=True)
         return text if len(text) <= 160 else text[:157] + u"..."

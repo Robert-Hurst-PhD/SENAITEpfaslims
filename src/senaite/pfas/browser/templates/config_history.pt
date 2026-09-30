@@ -35,7 +35,8 @@
 
     <p tal:condition="not:view/rows" class="form-note">No changes recorded yet.</p>
 
-    <table class="pfas-table" tal:condition="view/rows">
+    <table class="pfas-table pfas-table-form" tal:condition="view/rows">
+      <colgroup><col width="12%" /><col width="8%" /><col width="20%" /><col width="52%" /><col width="8%" /></colgroup>
       <thead>
         <tr><th>When (UTC)</th><th>Who</th><th>Setting</th><th>Changes</th><th></th></tr>
       </thead>
@@ -45,7 +46,7 @@
           <td tal:content="r/who">admin</td>
           <td>
             <strong tal:content="r/label">EPA 537.1</strong>
-            <div class="form-note" tal:content="r/store">Method profile</div>
+            <div class="form-note" tal:condition="python:r['store'] != r['label']" tal:content="r/store">Method profile</div>
             <div class="form-note" tal:condition="r/note" tal:content="r/note">revert of ...</div>
           </td>
           <td>
