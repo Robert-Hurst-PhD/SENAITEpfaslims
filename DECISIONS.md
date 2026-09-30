@@ -5246,3 +5246,18 @@ Lab answers:
 - **Bench Chemist is LabClerk only**, not Analyst. CLAUDE.md §4 corrected; the
   launcher already routes LabClerk to Bench and Analyst/Verifier to Data Review,
   so no routing change is needed. Closes the GAPS §48 question.
+
+## 2026-09-30 — Sidebar: user pins replace the role-landing pin; controls one size up
+
+**Confirmed** by the lab after reviewing Phases 0–3:
+- **The role-landing pin is removed.** The lab asked why "QC Management" had
+  its own entry at the top. The role still decides which sidebar group opens
+  by default, and `@@pfas-home` still routes by role.
+- **Pins, Windows-Explorer style.** Anyone can pin any sidebar page under
+  Dashboard. Pins are **stored on the server per user**, so they follow the
+  person to any lab computer; the lab chose this over per-browser storage.
+  Stored as paths only, and rendered as copies of the user's own sidebar
+  links, so a pin can never show a page that user cannot reach.
+- **Controls one size up:** buttons and inputs 32 → 36px, small buttons
+  24 → 28px ("some of the buttons are now a little too small"). Core
+  Bootstrap is 38 / 31.

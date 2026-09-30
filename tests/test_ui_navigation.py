@@ -78,11 +78,14 @@ def test_launcher_has_no_private_routing():
     raise AssertionError("PFASWorkspaceHomeView not found")
 
 
-def test_sidebar_pins_the_landing_and_opens_the_role_group():
+def test_sidebar_opens_the_role_group_without_a_landing_pin():
+    """The role-landing pin (Phase 3) was removed on lab feedback 2026-09-30:
+    'why does QC Management have its own widget at the top?'. The role still
+    decides which group opens; @@pfas-home still routes by role."""
     with open(SIDEBAR_PT) as fh:
         pt = fh.read()
     assert "home    view/landing" in pt, "sidebar does not read view/landing"
-    assert 'href home/url' in pt, "no pinned link to the landing"
+    assert "pfas-sb-home" not in pt, "the role-landing pin is back"
     assert 'data-role-group home/group' in pt, "role group not exposed to the script"
     assert "getAttribute('data-role-group')" in pt, "script ignores the role group"
     # DECISIONS 2026-09-30: remembered per USER -- lab terminals are shared
@@ -90,11 +93,53 @@ def test_sidebar_pins_the_landing_and_opens_the_role_group():
         "remembered group state is not keyed by user")
 
 
+def test_user_pins_are_wired():
+    with open(SIDEBAR_PT) as fh:
+        pt = fh.read()
+    assert 'id="pfas-sb-pinned"' in pt, "no pinned area under Dashboard"
+    assert "data-pins view/pins_json" in pt and "@@pfas-sidebar-pins" in pt
+    assert "data-token context/@@authenticator/token" in pt, "pin POST has no CSRF token"
+    # pins are copies of the user's own sidebar links -- never a second list of labels
+    assert "cloneNode(true)" in pt
+
+
+PINS = os.path.join(BROWSER, "sidebar_pins.py")
+
+
+def _valid_path():
+    tree = _tree(PINS)
+    keep = [n for n in tree.body if (isinstance(n, ast.Assign) and any(
+        getattr(t, "id", "") == "_PATH_RE" for t in n.targets))
+        or (isinstance(n, ast.FunctionDef) and n.name == "valid_path")]
+    ns = {"re": re}
+    exec(compile(ast.Module(body=keep, type_ignores=[]), PINS, "exec"), ns)
+    return ns["valid_path"]
+
+
+def test_pin_paths_are_plain_sidebar_paths():
+    ok = _valid_path()
+    for good in ("@@pfas-reagents", "samples", "lims-setup?section=storage",
+                 "bika_setup/bika_analysisspecs"):
+        assert ok(good), good
+    for bad in ("", "/senaite/samples", "http://evil/x", "../../etc", "a//b",
+                "<script>", "x" * 201, "javascript:alert(1)"):
+        assert not ok(bad), bad
+
+
+def test_pin_endpoint_checks_the_authenticator():
+    tree = _tree(PINS)
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    assert "CheckAuthenticator" in names, "pin POST is not CSRF-checked"
+    assert "IDisableCSRFProtection" not in names, "pin POST switches CSRF off"
+
+
 def test_breadcrumb_comes_from_the_sidebar():
     with open(MACROS_PT) as fh:
         pt = fh.read()
     assert 'id="pfas-crumb"' in pt
-    assert ".pfas-sidebar .pfas-si.si-active" in pt, "breadcrumb not derived from the nav"
+    # scoped to the main list: a pinned copy of the active item has no group
+    assert ".pfas-sidebar .pfas-sb-scroll .pfas-si.si-active" in pt, (
+        "breadcrumb not derived from the nav's main list")
 
 
 if __name__ == "__main__":

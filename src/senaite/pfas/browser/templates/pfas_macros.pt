@@ -396,8 +396,8 @@
     .pfas-content-area textarea {
       font-family: inherit;
       font-size: var(--fs-base);
-      line-height: 18px;          /* 18 + 2×6 + 2×1 = --ctl-h, level with buttons */
-      padding: 6px 10px;
+      line-height: 18px;          /* 18 + 2×8 + 2×1 = 36 = --ctl-h, level with buttons */
+      padding: 8px 10px;
       border: 1px solid var(--s-input-border, #ced4da);
       border-radius: 4px;
       color: var(--s-input-text, #495057);
@@ -1146,21 +1146,16 @@
 </div><!-- /pfas-shell -->
 
 <script>
-/* Breadcrumb: your workspace > sidebar group > page. A page the sidebar does
-   not list (a worksheet's review, a batch logbook) shows workspace > title. */
+/* Breadcrumb: sidebar group > page. A page beneath a listed item (a
+   worksheet's review) links the item and ends in the page title. */
 (function () {
   var crumb = document.getElementById('pfas-crumb');
   if (!crumb) return;
-  var home = document.querySelector('.pfas-sb-home');
-  var active = document.querySelector('.pfas-sidebar .pfas-si.si-active');
+  var active = document.querySelector('.pfas-sidebar .pfas-sb-scroll .pfas-si.si-active');   /* not a pinned copy */
   var title = document.querySelector('.pfas-header-title');
   var parts = [];
   function link(href, text) {
     var a = document.createElement('a'); a.href = href; a.textContent = text; return a;
-  }
-  var homeText = home ? home.textContent.trim() : '';
-  if (home && !home.classList.contains('si-active')) {
-    parts.push(link(home.href, homeText));
   }
   var titleText = title ? title.textContent.trim() : '';
   function bare(u) { return (u || '').split('#')[0].split('?')[0].replace(/\/+$/, ''); }
@@ -1170,7 +1165,7 @@
     var g = active.closest('.pfas-sg');
     var gl = g && g.querySelector('.pfas-sg-label');
     var glText = gl ? gl.textContent.trim() : '';
-    if (glText && glText.toLowerCase() !== homeText.toLowerCase()) {
+    if (glText) {
       var s = document.createElement('span'); s.textContent = glText; parts.push(s);
     }
     /* a page beneath a listed item (a worksheet's review): link the item */

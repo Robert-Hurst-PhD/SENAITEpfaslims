@@ -8,6 +8,8 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.core.browser.viewlets.sidebar import SidebarViewletManager
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.workspace_home import landing_for
+from senaite.pfas.browser.sidebar_pins import get_pins
+import json
 
 
 def _get_user_roles(context):
@@ -27,6 +29,11 @@ def sidebar_landing(context):
     portal = getToolByName(context, 'portal_url').getPortalObject()
     info["url"] = "{0}/{1}".format(portal.absolute_url(), info["view"])
     return info
+
+
+def sidebar_pins_json(context):
+    """The current user's pinned sidebar paths, as JSON for the <nav>."""
+    return json.dumps(get_pins(context))
 
 
 class PFASSidebarView(BrowserView):
@@ -64,6 +71,9 @@ class PFASSidebarView(BrowserView):
     def landing(self):
         return sidebar_landing(self.context)
 
+    def pins_json(self):
+        return sidebar_pins_json(self.context)
+
 
 class PFASSidebarManager(SidebarViewletManager):
     """Site-wide accordion sidebar — overrides core SidebarViewletManager
@@ -89,6 +99,9 @@ class PFASSidebarManager(SidebarViewletManager):
 
     def landing(self):
         return sidebar_landing(self.context)
+
+    def pins_json(self):
+        return sidebar_pins_json(self.context)
 
     def render(self):
         if not self.available():

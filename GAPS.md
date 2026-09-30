@@ -5209,3 +5209,38 @@ unavailable for about a minute.
    outside any card.
 4. **Calibrations** is 8,500px tall; **Reagent Inventory** carries five
    actions on every row.
+
+### 49.9 Lab review: pins under Dashboard, larger controls, no role-landing pin
+
+- **`sidebar_pins.py`** keeps one portal annotation, `{user id: [path, …]}`,
+  with at most 20 pins. Paths must be plain portal-relative sidebar paths: no
+  scheme, no leading slash, no `..`, no `//`. `POST @@pfas-sidebar-pins`
+  (path, pinned, `_authenticator`) is CSRF-checked with `CheckAuthenticator`,
+  unlike the handlers that switch protection off. The sidebar passes the pins,
+  the endpoint and the token on `<nav>`. Its script copies the matching
+  sidebar link into the area under Dashboard, adds an unpin ×, and puts a
+  hover pin button on every link.
+- **Active-item lookups are now scoped to the main list** (breadcrumb and
+  group auto-open). A pinned copy of the current page carries `si-active` too,
+  but belongs to no group.
+- **Controls:** `--ctl-h` 36px and `--ctl-h-sm` 28px, with input padding
+  raised so inputs stay level with buttons.
+- **Verified live** (admin):
+  - pinned two pages, then saw them in a **fresh browser context** on a core
+    page, i.e. they follow the user;
+  - clicking a pin navigates, with breadcrumb "Instruments & Import › Import
+    Studio";
+  - unpinning restored the empty list;
+  - a POST without the token → 403;
+  - no JS errors;
+  - buttons measure 36 and 28px.
+
+  First version: the 22px hover buttons made every sidebar row 36px tall. They
+  are 16px now, and rows measure 30px again.
+- **Tests:** `test_ui_navigation.py` 9 tests: no role-landing pin; pins wired
+  with the token; pins are copies of sidebar links; pin-path validation run on
+  the real function against good and hostile paths; the endpoint checks the
+  authenticator.
+- **Not done:**
+  - pins cannot be reordered (they appear in pin order);
+  - the pin annotation is per portal; a deleted user's pins stay until removed.

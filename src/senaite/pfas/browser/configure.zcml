@@ -122,6 +122,15 @@
       permission="zope2.View"
       />
 
+  <!-- Per-user sidebar pins (Windows-Explorer-style, under Dashboard).
+       POST path + pinned + _authenticator; stored per user on the portal. -->
+  <browser:page
+      name="pfas-sidebar-pins"
+      for="*"
+      class=".sidebar_pins.PFASSidebarPinsView"
+      permission="zope2.View"
+      />
+
   <!-- PFAS dashboard tiles viewlet — REMOVED (Round 6).
        PFAS tools are now integrated directly into @@lims-setup groups via
        VirtualTile entries in lims_setup.py SETUP_GROUPS.  The dark bottom

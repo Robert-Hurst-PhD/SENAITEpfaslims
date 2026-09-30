@@ -59,8 +59,8 @@
   --fs-xl:   20px;   /* page-level figures              */
 
   /* ── Controls: one height for buttons and inputs in a toolbar ─────────── */
-  --ctl-h:    32px;
-  --ctl-h-sm: 24px;    /* dense row actions */
+  --ctl-h:    36px;    /* 32 read as too small (lab feedback 2026-09-30); core .btn is 38 */
+  --ctl-h-sm: 28px;    /* dense row actions; 24 read as too small; core .btn-sm is 31 */
   --ctl-h-lg: 44px;    /* wizard steps at the bench: gloved-hand touch target */
 
   /* ── Shape ────────────────────────────────────────────────────────────── */

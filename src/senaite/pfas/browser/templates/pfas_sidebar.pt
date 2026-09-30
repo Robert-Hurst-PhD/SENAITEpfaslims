@@ -9,7 +9,11 @@
                  is_clk  python:'LabClerk' in roles;
                  sect    python:request.get('section','')"
      aria-label="Main navigation"
-     tal:attributes="data-role-group home/group; data-user me">
+     tal:attributes="data-role-group home/group; data-user me;
+                     data-pins view/pins_json;
+                     data-pins-url string:${purl}/@@pfas-sidebar-pins;
+                     data-portal purl;
+                     data-token context/@@authenticator/token">
 
 <style id="pfas-sidebar-css">
 /* ── PFAS unified sidebar ───────────────────────────────────────────────── */
@@ -94,6 +98,24 @@
 #sidebar.pfas-sidebar.toggled .pfas-sg-items { display: block; }
 
 /* ── Sidebar item ─────────────────────────────────────────────────────── */
+/* ── Sidebar pins (sidebar_pins.py) ─────────────────────────────────── */
+.pfas-sb-pinned.has-pins { border-top: 1px solid #dee2e6; padding: 4px 0; }
+.pfas-pin-btn {
+  /* 16px = the row's line-height, so a pin button never makes a row taller */
+  margin-left: auto; flex: 0 0 auto; width: 20px; height: 16px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; border-radius: 3px; cursor: pointer;
+  color: #6c757d; opacity: 0; transition: opacity .1s;
+}
+.pfas-pin-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor;
+                    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pfas-si:hover .pfas-pin-btn, .pfas-pin-btn:focus { opacity: 1; }
+.pfas-pin-btn:hover { background: #e9ecef; color: #293333; }
+.pfas-sb-scroll .pfas-pin-btn.is-pinned { opacity: .7; color: #428aaf; }
+.pfas-si-pinned .pfas-pin-btn { font-size: 15px; line-height: 1; }
+#pfas-shell.panel-collapsed .pfas-pin-btn,
+#sidebar.pfas-sidebar.toggled .pfas-pin-btn { display: none; }
+
 .pfas-si {
   display: flex;
   align-items: center;
@@ -629,6 +651,12 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
   </symbol>
 
+  <!-- Pin (sidebar pins) -->
+  <symbol id="ico-pin" viewBox="0 0 24 24">
+    <path d="M9 3h6l-1 6 4 4H6l4-4z"/>
+    <line x1="12" y1="13" x2="12" y2="21"/>
+  </symbol>
+
   <!-- Collapse arrow -->
   <symbol id="ico-chevron-left" viewBox="0 0 24 24">
     <polyline points="15 18 9 12 15 6"/>
@@ -636,22 +664,17 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
 
 </svg>
 
-  <!-- ── Pins (always visible, above all groups): the role's landing, from
-       workspace_home.LANDINGS (the same table the launcher redirects with),
-       then the SENAITE dashboard. ─────────────────────────────────────────── -->
+  <!-- ── Dashboard, then the user's own pins (Windows-Explorer style). Pins
+       are filled by the script from data-pins: each is a copy of the user's
+       own sidebar link for that path (sidebar_pins.py). ────────────────── -->
   <div class="pfas-sb-pin">
-    <a class="pfas-sb-dash pfas-sb-home"
-       tal:attributes="href home/url; title string:Your workspace: ${home/label};
-                       class python:'pfas-sb-dash pfas-sb-home si-active' if path.rstrip('/').endswith(home['view']) else 'pfas-sb-dash pfas-sb-home'">
-      <span class="pfas-si-icon"><svg><use href="#ico-grid"/></svg></span>
-      <span class="pfas-sb-dash-label" tal:content="home/label">Workspace</span>
-    </a>
     <a class="pfas-sb-dash" title="Dashboard"
        tal:attributes="href purl;
                        class python:'pfas-sb-dash si-active' if path.rstrip('/').endswith('/senaite') else 'pfas-sb-dash'">
       <span class="pfas-si-icon"><svg><use href="#ico-home"/></svg></span>
       <span class="pfas-sb-dash-label">Dashboard</span>
     </a>
+    <div class="pfas-sb-pinned" id="pfas-sb-pinned"></div>
   </div>
 
   <div class="pfas-sb-scroll">
@@ -1102,7 +1125,7 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   };
 
   function autoExpandActiveGroup() {
-    var active = document.querySelector('.pfas-si.si-active');
+    var active = document.querySelector('.pfas-sb-scroll .pfas-si.si-active');   /* not a pinned copy */
     if (!active) return;
     var group = active.closest('.pfas-sg');
     if (group) group.classList.remove('sg-closed');
@@ -1110,6 +1133,74 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
 
   restoreGroups();
   autoExpandActiveGroup();
+})();
+
+/* ── Sidebar pins: the user's pinned pages under Dashboard ─────────────
+   Each pin is a copy of the user's own sidebar link for that path, so label,
+   icon and permission come from the sidebar itself; a path the user can no
+   longer see is not shown. Saved on the server per user (sidebar_pins.py). */
+(function () {
+  var nav = document.getElementById('sidebar');
+  var box = document.getElementById('pfas-sb-pinned');
+  if (!nav || !box) return;
+  var portal = (nav.getAttribute('data-portal') || '').replace(/\/+$/, '');
+  var url = nav.getAttribute('data-pins-url');
+  var token = nav.getAttribute('data-token') || '';
+  var pins;
+  try { pins = JSON.parse(nav.getAttribute('data-pins') || '[]'); } catch (e) { pins = []; }
+  if (!Array.isArray(pins)) pins = [];
+  var items = Array.prototype.slice.call(nav.querySelectorAll('.pfas-sb-scroll .pfas-si[href]'));
+
+  function rel(href) {
+    var h = (href || '').split('#')[0];
+    return h.indexOf(portal + '/') === 0 ? h.slice(portal.length + 1) : null;
+  }
+  function itemFor(path) {
+    for (var i = 0; i < items.length; i++) if (rel(items[i].href) === path) return items[i];
+    return null;
+  }
+  function pinButton(onClick, pinned, unpinGlyph) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pfas-pin-btn' + (pinned ? ' is-pinned' : '');
+    b.title = pinned ? 'Unpin' : 'Pin under Dashboard';
+    b.setAttribute('aria-label', b.title);
+    if (unpinGlyph) { b.textContent = '\u00D7'; }
+    else { b.innerHTML = '\u003csvg>\u003cuse href="#ico-pin"/>\u003c/svg>'; }
+    b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); onClick(); });
+    return b;
+  }
+  function save(path, on) {
+    var fd = new FormData();
+    fd.append('path', path); fd.append('pinned', on ? '1' : '0'); fd.append('_authenticator', token);
+    fetch(url, {method: 'POST', body: fd, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && Array.isArray(d.pins)) { pins = d.pins; render(); } })
+      .catch(function () {});
+  }
+  function render() {
+    box.innerHTML = '';
+    pins.forEach(function (p) {
+      var src = itemFor(p);
+      if (!src) return;
+      var a = src.cloneNode(true);
+      a.classList.add('pfas-si-pinned');
+      var old = a.querySelector('.pfas-pin-btn');
+      if (old) old.parentNode.removeChild(old);
+      a.appendChild(pinButton(function () { save(p, false); }, true, true));
+      box.appendChild(a);
+    });
+    box.classList.toggle('has-pins', box.children.length > 0);
+    items.forEach(function (it) {
+      var p = rel(it.href);
+      if (!p) return;
+      var old = it.querySelector('.pfas-pin-btn');
+      if (old) old.parentNode.removeChild(old);
+      var on = pins.indexOf(p) >= 0;
+      it.appendChild(pinButton(function () { save(p, !on); }, on, false));
+    });
+  }
+  render();
 })();
 
 /* ── Core SENAITE page: replace SENAITE logo + inject sidebar toggle ── */
