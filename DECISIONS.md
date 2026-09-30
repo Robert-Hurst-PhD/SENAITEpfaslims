@@ -5194,3 +5194,24 @@ change, which is what an audited system should require anyway — a silent chang
 to a Method's description at restart is not something ISO 17025 §8.3 document
 control can account for.
 
+
+## 2026-09-29 — Seeded objects are matched on a stable key; the profile keeps re-running; Owner stays
+
+**Confirmed** by the lab (GAPS §48), three answers to questions GAPS §46/§47 left
+open:
+
+- **Match on a stable key, Title as fallback.** The installer finds a seeded
+  Method by `MethodID`, a service by `Keyword` and a sample type by `Prefix`, and
+  falls back to Title only when no object carries the key. A Title match whose
+  key is set to something else is a different object and is never adopted.
+  Types with no stable key (categories, containers, preservations, storage
+  locations) stay on Title. A lab rename of a seeded object no longer seeds a
+  duplicate beside it at the next restart.
+- **Keep re-running the profile at start, idempotent.** Not moved to versioned
+  upgrade steps. The guard is `tests/test_installer_idempotence.py`, and the
+  §47.4 contract gains a clause: a new seeder fills only **and matches on a
+  stable key where the type has one**.
+- **Zope's `Owner` stays in the configuration tier.** Resolved at the portal
+  (§46.5), it can only be whoever owns the portal, never a local creator-Owner.
+  `deviations.can_manage` now delegates to `perms.ALLOWED_ROLES` instead of
+  keeping its own `{LabManager, Manager}`, so the two cannot drift again.

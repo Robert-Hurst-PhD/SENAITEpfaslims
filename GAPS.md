@@ -4486,8 +4486,7 @@ surfaces" invited — would have stopped the lab recording temperatures.
   warning every time.
 - Vocabularies remain code-only, so the console's Vocabulary group is empty and
   says so. Retire-not-delete with usage counts is Phase 6.
-- **CLAUDE.md §5 still describes ten workspaces** when the 2026-09-18 decision was
-  two landings, which leaves §9's "which workspace does it live in?" unanswerable.
+- ~~**CLAUDE.md §5 still describes ten workspaces.**~~ Rewritten — §48.4.
 
 ---
 
@@ -4698,12 +4697,12 @@ clerk and redirects a manager to the unified console, as before.
 ### Still open
 
 - Nothing further on authorisation beyond the `Owner` question below.
-- **Does Zope's `Owner` belong in either tier at all?** CLAUDE.md §4's business
+- ~~**Does Zope's `Owner` belong in either tier at all?**~~ Kept — §48.3. CLAUDE.md §4's business
   "Owner" maps to SENAITE `LabManager`; Zope's `Owner` is the creator-of-object
   role. Its presence in `ALLOWED_ROLES` looks like a name collision, not a
   decision. With portal anchoring it only matters for whoever owns the portal.
 - ~~The refused buttons are still visible.~~ Done — §46.7.
-- `deviations.can_manage` omits `Owner`; everything else includes it.
+- ~~`deviations.can_manage` omits `Owner`.~~ Delegates to `perms` — §48.3.
 - Everything else in §45's list is unchanged.
 
 ---
@@ -4784,7 +4783,8 @@ fresh one.
 | `setup_automation_group`, `setup_*_catalog`, `migrate_*_from_annotations` | create-if-missing / migrate-if-present | code |
 | `_stamp_pfas_role` | re-stamps an identity annotation, not editable | code |
 
-A new seeder must be added to this table, and must fill only.
+A new seeder must be added to this table, must fill only, and must match on a
+stable key where the type has one (§48.1).
 
 **Trade-off, recorded in DECISIONS:** a correction to the CSV seeds no longer
 reaches objects that already exist. It needs an explicit upgrade step.
@@ -4799,15 +4799,120 @@ logbook seeder writes no field the editor's form carries; the editor never reads
 
 ### Still open
 
-- **Title is the match key.** A seeded Method, service or sample type the lab
+- ~~**Title is the match key.**~~ Stable key first — §48.1. A seeded Method, service or sample type the lab
   RENAMES is not found at the next restart, and a fresh copy is created from the
   seed. Both extra sample types today (`FDA 32-PFAS in Food LFSM` / `LFSMD`) are
   lab-added, not re-creations, so it has not happened yet. Matching on a stable
   key (MethodID, Keyword, Prefix) is a design decision — asked.
-- **Whether the profile should re-run at start at all.** Stopping it would also
+- ~~**Whether the profile should re-run at start at all.**~~ Keeps re-running — §48.2. Stopping it would also
   stop `post_install`'s migrations, which then need proper upgrade steps. Asked,
   not changed.
 - `seed_default_profiles` still re-exports `method_profiles.json` from ZODB on
   every start (§22.3); harmless while the file is only ever written through the
   store, which is the rule.
 
+
+---
+
+## 48. Seeds are found by their key; Owner stays, in one place; §5 rewritten (2026-09-29)
+
+The lab answered the three questions §46 and §47 left open. Decisions are
+recorded in DECISIONS.md; this section covers what changed and how it was proven.
+
+### 48.1 A renamed seed is found, not re-seeded
+
+`_get_or_create` takes an optional `key=(accessor, value)` and matches it
+before Title: Method → `getMethodID`, AnalysisService → `getKeyword` (both
+calls), SampleType → `getPrefix`. Title is the fallback only when **no** object
+carries the key, and it refuses a Title match whose key is set to something
+else. That matters because not everything is under `if created:`:
+`_stamp_pfas_role` stamps whatever object is returned, so a loose fallback would
+decide which service gets a PFAS role. If two objects share a key, the one whose
+Title matches wins and a warning is logged.
+
+**Live, before:** 3 Methods, 16 sample types, 74 services. None of the three
+types has a duplicate key, and every seeded object carries its key, so this
+selects exactly the same objects as Title did.
+
+**Live, after:** `method-2` retitled `… PROBE48`, then a restart. Import log 328
+confirms the profile re-ran. Result: still 3 Methods, the rename survived, and
+16 / 74 unchanged. The title was then restored. The pre-fix bug was deliberately
+**not** reproduced live: it would have created a second Method with
+`MethodID=EPA_537_1`, and the cal-code lookup keys on that.
+
+**Renames are now safe for the installer, not for everything.** Other code
+still matches on Title:
+- **Sample type titles are the matrix vocabulary** in `method_profile_store`
+  (`_FDA_MATRICES`, `_EPA537_MATRICES`, the unit map) and in
+  `egad_store._DEFAULT_MATRIX_MAP`. Renaming a sample type in SENAITE setup
+  detaches it from the method × matrix panel. This is CLAUDE.md §3 rule 4
+  (referential integrity on rename), and it is open.
+- `method_bridge.get_core_method` uses the stored UID first. Its Title fallback
+  is only reached before backfill, and all three associations have a UID.
+- `method_wizard` looks for an existing Method by Title, so it can create a
+  second Method with a MethodID that already exists. Open.
+
+### 48.2 The profile keeps re-running
+
+Kept, as the lab decided. The guard is `test_installer_idempotence.py`, which
+already existed from §47. Its contract (§47.4) now also requires a new seeder to
+match on a stable key where the type has one.
+
+### 48.3 Owner stays; deviations delegates
+
+`deviations.can_manage` used its own `{LabManager, Manager}`. It now calls
+`has_role_at_portal(self.context, ALLOWED_ROLES)`. It had already resolved roles
+at the portal, so adding Owner cannot reach a deviation's creator. Checked live
+with throwaway users in an **aborted** transaction (none left behind):
+
+    user        roles at portal          can_manage
+    t48clerk    LabClerk                 False
+    t48owner    LabClerk + Owner@portal  True
+    t48mgr      LabManager               True
+
+One behaviour change: the old check fell back to `user.getRoles()` if it could
+not resolve the portal. The shared check denies instead, as every other gate
+does.
+
+### 48.4 CLAUDE.md §5
+
+§5 now describes the three landings `@@pfas-home` actually routes to (QC
+Management, Data Review, Bench) plus Client Tracker, and lists the rest as §6A
+sidebar groups. §9's "which workspace?" is reworded to "which sidebar group, and
+is it a tile on a landing?". The Data Review text now also says the release
+cascades to the analyses (§5 G1). Before, it said the worksheet transitions
+directly, which had never worked.
+
+### 48.5 Tests
+
+- `test_installer_idempotence.py`, 12 tests:
+  - a static AST check that each keyed call passes the right accessor;
+  - six behavioural tests that run the **real** `_get_or_create`, extracted
+    from source with `bika.lims.api` stubbed, against a fake folder.
+  - Six mutations, all killed: dropped key, wrong accessor, key ignored,
+    fallback adopts a mismatched key, no Title preference on a shared key, no
+    Title fallback.
+- `test_action_gates.py`: `can_manage` must delegate with `ALLOWED_ROLES` and
+  hold no private role list. Two mutations, both killed.
+
+**37/37 test files, but only with `PFAS_PROFILES_PATH` set.**
+`test_fault_injection`, `test_profiles`, `test_salt_correction` and
+`test_unconfigured_criteria` fail on a bare host, both at `fcd142b` and now.
+Without the variable, `pfas_pipeline.method_profiles` falls back to
+`/data/qc/method_profiles.json`, which exists only in the containers, and then
+to built-in defaults.
+
+Run the suite as:
+
+    PFAS_PROFILES_PATH=$PWD/data/qc/method_profiles.json python3 tests/test_X.py
+
+`data/` is gitignored, so **a fresh clone cannot pass these four**. They test
+lab data, not code. Recorded, not changed.
+
+### Still open
+
+- Sample type rename breaks the matrix vocabulary (48.1). Needs a stable
+  matrix key (the Prefix), which is a data-model change → plan first (§8).
+- `method_wizard` Title match can duplicate a MethodID (48.1).
+- Four test files depend on gitignored lab data (48.5).
+- Vocabularies code-only / Phase 6, unchanged from §45.

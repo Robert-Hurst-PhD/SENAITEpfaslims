@@ -20,6 +20,10 @@ Pinned here, statically (the installer needs Zope):
      the editor's form exposes.
   4. The logbook editor does not read `builtin` from the form, which does not
      send it -- every save cleared the flag and only the restart put it back.
+  5. (GAPS §48) Methods, services and sample types are matched on their stable
+     key (MethodID / Keyword / Prefix) before Title, so a renamed seed is found
+     rather than re-seeded; a Title match carrying a DIFFERENT key is never
+     adopted. Exercised on the real function against a fake container.
 """
 import ast
 import os
@@ -101,7 +105,12 @@ def test_seed_setters_only_touch_objects_just_created():
 
 def test_get_or_create_reports_whether_it_created():
     func = _func(_tree(SETUP), "_get_or_create")
-    returns = [n for n in ast.walk(func) if isinstance(n, ast.Return)]
+    nested = set()
+    for n in ast.walk(func):
+        if isinstance(n, ast.FunctionDef) and n is not func:
+            nested.update(ast.walk(n))
+    returns = [n for n in ast.walk(func)
+               if isinstance(n, ast.Return) and n not in nested]
     assert returns and all(isinstance(r.value, ast.Tuple) and len(r.value.elts) == 2
                            for r in returns), "must return (obj, created)"
 
@@ -175,6 +184,150 @@ def test_editor_does_not_read_builtin_from_the_form():
                 and getattr(node.func.value, "id", "") == "f"):
             raise AssertionError("builtin read from the form at line {0}".format(
                 node.lineno))
+
+
+# ── 5. Stable-key matching (GAPS §48) ──────────────────────────────────────
+
+KEYED_CALLS = {"Method": "getMethodID", "AnalysisService": "getKeyword",
+               "SampleType": "getPrefix"}
+
+
+def test_keyed_types_pass_their_stable_key():
+    func = _func(_tree(SETUP), "setup_handler")
+    seen = {}
+    for node in ast.walk(func):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "_get_or_create" and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)):
+            continue
+        ptype = node.args[1].value
+        if ptype not in KEYED_CALLS:
+            continue
+        kws = {k.arg: k.value for k in node.keywords}
+        key = kws.get("key")
+        assert isinstance(key, ast.Tuple) and isinstance(key.elts[0], ast.Constant), \
+            "{0} call at line {1} passes no key".format(ptype, node.lineno)
+        assert key.elts[0].value == KEYED_CALLS[ptype], \
+            "{0} keyed on {1}".format(ptype, key.elts[0].value)
+        seen[ptype] = seen.get(ptype, 0) + 1
+    assert seen == {"Method": 1, "AnalysisService": 2, "SampleType": 1}, seen
+
+
+class _Obj(object):
+    def __init__(self, title, **keys):
+        self._title = title
+        self._keys = keys
+
+    def Title(self):
+        return self._title
+
+    def __getattr__(self, name):
+        if name.startswith("get"):
+            return lambda: self.__dict__["_keys"].get(name, "")
+        raise AttributeError(name)
+
+
+class _Folder(object):
+    def __init__(self, *objs):
+        self.objs = list(objs)
+
+    def objectValues(self):
+        return list(self.objs)
+
+
+def _load_get_or_create():
+    """The real _get_or_create, with bika.lims.api replaced by a stub."""
+    import logging
+    import types
+    tree = _tree(SETUP)
+    fn = _func(tree, "_get_or_create")
+    mod = ast.Module(body=[fn], type_ignores=[])
+    api = types.ModuleType("bika.lims.api")
+
+    def create(container, ptype, title=None, **kw):
+        obj = _Obj(title)
+        container.objs.append(obj)
+        return obj
+    api.create = create
+    lims = types.ModuleType("bika.lims")
+    lims.api = api
+    bika = types.ModuleType("bika")
+    bika.lims = lims
+    saved = {k: sys.modules.get(k) for k in ("bika", "bika.lims", "bika.lims.api")}
+    sys.modules.update({"bika": bika, "bika.lims": lims, "bika.lims.api": api})
+    ns = {"logger": logging.getLogger("t")}
+    exec(compile(mod, SETUP, "exec"), ns)
+    return ns["_get_or_create"], saved
+
+
+def _with_goc(check):
+    goc, saved = _load_get_or_create()
+    try:
+        check(goc)
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+
+def test_renamed_seed_is_found_by_key_not_reseeded():
+    def check(goc):
+        renamed = _Obj("Drinking Water (lab name)", getPrefix="DW")
+        folder = _Folder(renamed)
+        obj, created = goc(folder, "SampleType", "Drinking Water",
+                           key=("getPrefix", "DW"))
+        assert obj is renamed and not created
+        assert len(folder.objs) == 1
+    _with_goc(check)
+
+
+def test_key_beats_title():
+    def check(goc):
+        by_title = _Obj("Soil", getPrefix="")
+        by_key = _Obj("Soil (renamed)", getPrefix="SOIL")
+        obj, created = goc(_Folder(by_title, by_key), "SampleType", "Soil",
+                           key=("getPrefix", "SOIL"))
+        assert obj is by_key and not created
+    _with_goc(check)
+
+
+def test_title_match_with_other_key_is_not_adopted():
+    def check(goc):
+        other = _Obj("PFOA", getKeyword="PFOA_LAB")
+        folder = _Folder(other)
+        obj, created = goc(folder, "AnalysisService", "PFOA",
+                           key=("getKeyword", "PFOA"))
+        assert created and obj is not other
+    _with_goc(check)
+
+
+def test_title_fallback_when_key_unset():
+    def check(goc):
+        unkeyed = _Obj("EPA 537.1", getMethodID="")
+        obj, created = goc(_Folder(unkeyed), "Method", "EPA 537.1",
+                           key=("getMethodID", "EPA_537_1"))
+        assert obj is unkeyed and not created
+    _with_goc(check)
+
+
+def test_shared_key_prefers_matching_title():
+    def check(goc):
+        a = _Obj("Lab copy", getPrefix="MILK")
+        b = _Obj("Milk", getPrefix="MILK")
+        obj, _ = goc(_Folder(a, b), "SampleType", "Milk",
+                     key=("getPrefix", "MILK"))
+        assert obj is b
+    _with_goc(check)
+
+
+def test_unkeyed_types_stay_on_title():
+    def check(goc):
+        cat = _Obj("PFAS")
+        obj, created = goc(_Folder(cat), "AnalysisCategory", "PFAS")
+        assert obj is cat and not created
+    _with_goc(check)
 
 
 if __name__ == "__main__":

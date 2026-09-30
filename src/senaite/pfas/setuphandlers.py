@@ -42,7 +42,7 @@ def _stamp_pfas_role(obj, role):
                        getattr(obj, "getKeyword", lambda: "?")(), role, exc)
 
 
-def _get_or_create(container, portal_type, title, **kw):
+def _get_or_create(container, portal_type, title, key=None, **kw):
     """Idempotent get-or-create using bika.lims.api. Returns (obj, created).
 
     THIS RUNS ON EVERY RESTART, not only on install: the container's buildout
@@ -52,12 +52,42 @@ def _get_or_create(container, portal_type, title, **kw):
     the lab set there -- proven live: a Method description edited in SENAITE
     setup came back as the CSV text after one restart.
 
-    Matched by Title, so an object the lab RENAMES is not found and a fresh copy
-    is created from the seed (GAPS §47.4).
+    ``key`` is ``(accessor_name, value)`` for a type with a stable identifier
+    (Method -> getMethodID, AnalysisService -> getKeyword, SampleType ->
+    getPrefix). The key is matched FIRST, so an object the lab renames is still
+    found and no copy is seeded next to it (GAPS §48). Title is the fallback
+    only when no object carries the key, and a Title match whose key is set to
+    something ELSE is a different object, never adopted -- what this returns
+    has a role stamped on it even when not created. Types with no stable key
+    (categories, containers, preservations, storage locations) pass no key and
+    stay on Title.
     """
     from bika.lims import api
-    existing = [o for o in container.objectValues()
-                if getattr(o, "Title", lambda: None)() == title]
+
+    def _key_of(o):
+        try:
+            return getattr(o, key[0])() or ""
+        except Exception:
+            return ""
+
+    def _title_of(o):
+        return getattr(o, "Title", lambda: None)()
+
+    objs = container.objectValues()
+    if key is not None and key[1]:
+        keyed = [o for o in objs if _key_of(o) == key[1]]
+        if keyed:
+            if len(keyed) > 1:
+                logger.warning("%s: %d objects share %s=%r; preferring Title %r",
+                               portal_type, len(keyed), key[0], key[1], title)
+                titled = [o for o in keyed if _title_of(o) == title]
+                if titled:
+                    return titled[0], False
+            return keyed[0], False
+        existing = [o for o in objs if _title_of(o) == title
+                    and _key_of(o) in ("", key[1])]
+    else:
+        existing = [o for o in objs if _title_of(o) == title]
     if existing:
         return existing[0], False
     try:
@@ -90,7 +120,8 @@ def setup_handler(context):
     method_folder = portal["methods"]
     methods = {}
     for row in _read("methods.csv"):
-        m, created = _get_or_create(method_folder, "Method", row["Title"])
+        m, created = _get_or_create(method_folder, "Method", row["Title"],
+                                    key=("getMethodID", row["MethodID"]))
         if created:
             try:
                 m.setMethodID(row["MethodID"])
@@ -104,6 +135,7 @@ def setup_handler(context):
     pfas_cat = categories[u"PFAS"]
     for row in _read("analysis_services.csv"):
         svc, created = _get_or_create(svc_folder, "AnalysisService", row["Title"],
+                                      key=("getKeyword", row["Keyword"]),
                                       Keyword=row["Keyword"], Category=pfas_cat)
         if created:
             # The collapse onto one category was a one-time migration of
@@ -126,6 +158,7 @@ def setup_handler(context):
     is_cat = categories[u"PFAS - Internal Standards"]
     for row in _read("internal_standards.csv"):
         svc, created = _get_or_create(svc_folder, "AnalysisService", row["Title"],
+                                      key=("getKeyword", row["Keyword"]),
                                       Keyword=row["Keyword"], Category=is_cat)
         if created:
             try:
@@ -138,6 +171,7 @@ def setup_handler(context):
     st_folder = new_setup["sampletypes"]
     for row in _read("sample_types.csv"):
         st, created = _get_or_create(st_folder, "SampleType", row["Title"],
+                                     key=("getPrefix", row["Prefix"]),
                                      Prefix=row["Prefix"])
         if created:
             try:

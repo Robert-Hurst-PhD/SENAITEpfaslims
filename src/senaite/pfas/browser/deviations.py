@@ -9,6 +9,7 @@ from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from zope.annotation.interfaces import IAnnotations
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import ALLOWED_ROLES, has_role_at_portal
 from senaite.pfas.qc_deviation import (
     get_registry as _get_registry,
     save_registry as _save_registry,
@@ -155,8 +156,9 @@ class PFASDeviationView(BrowserView):
             return list(user.getRoles())
 
     def can_manage(self):
-        roles = self._user_roles()
-        return "LabManager" in roles or "Manager" in roles
+        # The same portal-anchored tier as every other configuration gate
+        # (perms.ALLOWED_ROLES), so the two cannot drift apart again (GAPS §48).
+        return has_role_at_portal(self.context, ALLOWED_ROLES)
 
     def can_edit(self):
         """Any lab role may edit open/in-progress records; only managers may close."""

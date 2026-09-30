@@ -324,6 +324,22 @@ def test_bench_logs_stay_open():
 
 # ── 4. Roles are resolved at the portal, everywhere ─────────────────────────
 
+def test_deviations_manage_tier_is_the_config_tier():
+    """GAPS §48. deviations.can_manage kept its own {LabManager, Manager} and so
+    omitted Owner, unlike every other configuration gate. Owner stays in the
+    tier (decided 2026-09-29); the check now delegates, so the two cannot drift."""
+    cls = _class(_tree("deviations.py"), "PFASDeviationView")
+    func = _method(cls, "can_manage")
+    calls = [n for n in ast.walk(func) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Name) and n.func.id == "has_role_at_portal"]
+    assert calls, "can_manage does not delegate to perms.has_role_at_portal"
+    arg = calls[0].args[1]
+    assert isinstance(arg, ast.Name) and arg.id == "ALLOWED_ROLES", (
+        "can_manage passes its own role set")
+    strs = {n.value for n in ast.walk(func) if isinstance(n, ast.Constant)
+            and isinstance(n.value, str)}
+    assert not strs & {"LabManager", "Manager", "Owner"}, "private role list"
+
 def test_every_role_lookup_is_at_the_portal():
     """GAPS §46.5-8. Every view here is `for="*"`, and SENAITE grants Owner
     locally -- to an object's creator, and to each client's contacts on their

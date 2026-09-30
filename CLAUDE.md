@@ -214,46 +214,52 @@ do not build robotics now, but do not preclude it.
 
 ## 5. THE WORKSPACE ARCHITECTURE (role-scoped views onto the truth)
 
-The system is organized into subject workspaces, gated by role (§4). Each
-workspace is the SAME panel layout (§6), scoped to one subject and one role's
-needs. A role-aware **workspace launcher** is the landing page; native SENAITE
-pages remain reachable underneath. (Replace-vs-alongside native nav: current
-decision = alongside/launcher; revisitable.)
+A workspace is a role's **landing page**: a tile grid (the
+`PFASQCManagementView` pattern, `browser/workspace_home.py`) that gives a
+daily-driver role a queue rather than a menu. Only a role that needs that
+at-a-glance view gets one; **every other subject is a group of links in the
+§6A sidebar**, not a workspace (decided 2026-09-18, DECISIONS.md — "two
+landings, not ten"). Native SENAITE pages stay reachable underneath.
 
-Workspaces:
-- **QC Management** (Manager/QAO) — method profiles, QC rule toggles, recovery
-  tiers, control charts review, sign-off. Default for Manager.
-- **Data Review** (Analyst) — per-worksheet release gating via a 5-item
-  checklist (all must pass before submission):
+The role-aware launcher `@@pfas-home` sends each role (§4) to its landing:
+
+| Landing | View | Who lands there |
+|---|---|---|
+| **QC Management** | `@@pfas-qc-management` | LabManager / Manager |
+| **Data Review** | `@@pfas-data-review-home` | Analyst / Verifier |
+| **Bench** | `@@pfas-bench` | LabClerk (Bench Chemist) |
+| **Client Tracker** | `@@pfas-track` | Client — minimal, separate, see §6C |
+
+What each landing is for:
+- **QC Management** (Manager/QAO) — method profiles, QC rules, control charts,
+  calibrations, the review queue, deviations, facility QC, SOPs; sign-off.
+- **Data Review** (Analyst) — tiles onto the per-worksheet release queue
+  `@@pfas-data-review` (a different view: that is the queue, this is the
+  landing). Release is gated by a 5-item checklist, all of which must pass
+  before submission:
     (1) Chain of Custody — sample receipt conditions verified (manual)
     (2) Reagent/Standard Traceability — 3-level chain auto-resolved (auto)
     (3) QC Summary — recovery results vs method acceptance criteria (auto)
     (4) Final Data Summary — analyst review of reported results (manual)
     (5) Instrument Report — raw data file attached and reviewed (manual)
-  Analyst submits when all five pass (Worksheet → to_be_verified); Manager
-  approves (Worksheet → verified). This is the formal technical review
-  required under ISO 17025 §7.8.4. Default for Analyst.
-- **Facility QC** (Manager/QAO) — environmental monitoring and equipment
-  verification dashboard (ISO 17025 §6.4): temperature sensors, balance
-  verification, reagent water, waste, eyewash. Reviewed by QAO independently
-  of batch release. Records in SQLite (/data/qc/facility_monitoring.db).
-- **Bench** (Bench Chemist) — reagent creation, prepared standards (with
-  parent-reagent traceability chain), logbooks/documentation, SOP access,
-  SOP-deviation notes, append corrections to a batch. Default for Bench
-  Chemist. Built so a robot service account can perform the same actions.
-- **Sample Workflow** (Manager/Analyst) — walks Method -> Matrix -> Batch ->
-  Samples -> Results: receive -> extract -> run -> review -> report.
-- **Method & Analyte Setup** (Manager) — the relational config: analyte x matrix
-  inclusion, surrogate map, factors, units, CAS map; the new-method wizard.
-- **Instrument & Import** (Manager/Analyst) — Import Studio (column mapping per
-  instrument+software version), instruments, calibrations.
-- **Reporting & EDD** (Manager/Analyst) — report assembly, EGAD EDD generation
-  + delivery.
-- **Client Tracker** (Client) — minimal, separate, see §6.
+  The Analyst submits when all five pass; the Manager verifies. Both actions
+  cascade to the worksheet's ANALYSES first — the worksheet's own transition
+  only opens once they have moved (GAPS §5). This is the formal technical review
+  required under ISO 17025 §7.8.4.
+- **Bench** (Bench Chemist) — reagent inventory, prepared standards (with
+  parent-reagent traceability chain), batch logbooks, SOPs, deviations. Built
+  so a robot service account can perform the same actions (§4).
 
-Every workspace's analyte lists, criteria, and actions are views onto the §3
-relational spine and obey the §4 role permissions. A workspace never invents
-data the model doesn't own.
+**Not workspaces — sidebar groups (§6A):** Facility QC, Sample Workflow,
+Method & Analyte Setup, Instrument & Import, Reporting & EDD, and
+Configuration (which holds the lab-admin settings console `@@pfas-lab-settings`,
+GAPS §45). A new landing for any of these is a new decision, not a gap.
+
+**So "which workspace does it live in?" (§9) means:** which sidebar group, and
+whether it belongs as a tile on one of the three landings. Every landing's
+analyte lists, criteria, and actions are views onto the §3 relational spine and
+obey the §4 role permissions. A landing never invents data the model doesn't
+own.
 
 ---
 
@@ -415,7 +421,8 @@ Profile pages:
 - Does every analyte list respect the Method x Matrix panel (not a flat list)?
 - Can every value name its full parentage up the tree?
 - Is this criterion scoped to the method that actually uses it?
-- Which ROLE (§4) can see/edit this, and which WORKSPACE (§5) does it live in?
+- Which ROLE (§4) can see/edit this, and where does it live (§5) — which
+  sidebar group, and is it a tile on one of the three landings?
 - Am I using the shared panel layout (§6) and core theme tokens, not bespoke
   styling?
 - If it can't be expressed as a view onto §3 scoped by §4 rendered in §6 —
