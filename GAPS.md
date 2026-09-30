@@ -4916,3 +4916,11 @@ lab data, not code. Recorded, not changed.
 - `method_wizard` Title match can duplicate a MethodID (48.1).
 - Four test files depend on gitignored lab data (48.5).
 - Vocabularies code-only / Phase 6, unchanged from §45.
+- **§4 and §5 disagree on a Bench Chemist holding `Analyst`.** §4 maps Bench
+  Chemist to SENAITE `Analyst / LabClerk`, landing on Bench; the launcher tests
+  `Analyst` before `LabClerk`, so such a user lands on Data Review. Pre-existing
+  in §4 vs `workspace_home.py`; the §5 rewrite follows the code. Which role a
+  bench chemist holds is the lab's call — asked.
+- Second restart after the commit: import log 329, 3 / 16 / 74 unchanged — the
+  web process now serves this code. `@@pfas-deviations` not yet looked at in a
+  browser.

@@ -5167,7 +5167,8 @@ with whoever actually holds copyright.
   permissions needs a rolemap grant, and the only safe way to apply one on this
   instance would have been a bespoke `bin/instance run` script, because the
   GenericSetup profile must not be re-run (§45: it clobbers overrides and raises
-  on `QC_REF_SPEC`). The requirement was per-action gating in two tiers; a role
+  on `QC_REF_SPEC`). *(Superseded: it re-runs on every start — GAPS §47,
+  §48; kept, and made fill-only.)* The requirement was per-action gating in two tiers; a role
   check per action meets it, and nine modules already gate this way.
 - **Tier `config`** = `Manager`, `LabManager`, `Owner` (unchanged
   `ALLOWED_ROLES`). **Tier `site_admin`** = `Manager`, `Owner` only — a LabManager
