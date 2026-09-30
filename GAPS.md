@@ -5278,3 +5278,106 @@ unavailable for about a minute.
   - no sidebar label truncates;
   - 32-page sweep: all 200, no JS errors, no unstyled buttons, logbooks still
     hide buttons in print.
+
+---
+
+## 50. The certificate: from four sparse pages to a conventional compact report (2026-09-30)
+
+The lab asked for final reports that are compact and "typical like a normal
+reporting format", with more configuration, notes on analytes meeting an MCL
+or action level, and links to state programs. Part A (layout and
+configuration) is done; part B (regulatory limits and links) is planned below.
+
+### 50.1 What the certificate was (FEED-0002, rendered via the publish preview)
+
+Four A4 pages for 32 results:
+- the 11-row summary sat alone on page 1;
+- "USDA/FDA 32-PFAS in Food v10" was repeated under every analyte;
+- the Unit column was empty, and there was no RL, MDL, CAS or qualifier
+  column;
+- the header was a SENAITE logo with a footer of "Laboratory Information • • •
+  / Phone : • Fax : •";
+- the 3-tier sign-off filled three-quarters of a page;
+- "Result out of client specified range" appeared with no ranges set;
+- results were in alphabetical order.
+
+The default impress template **is** the PFAS certificate
+(`senaite.impress.default_template`), so this was what clients received.
+
+**The data was thinner than the layout suggested.** FEED-0002's 32 analyses
+carry no unit, no interim RL/MDL fields and no dilution. Results are stored
+raw (`30.1745785496`) or as text (`BLoQ`, `LOD`).
+
+### 50.2 Part A — done
+
+- **`report_limits.py`** stores `reporting_limits[matrix][analyte] = {rl, mdl}`
+  on the method profile. `parse_form` only takes the matrices the form marked
+  present and refuses non-numbers, negative values and an MDL above the RL.
+  `merge` replaces only those matrices, so another pane's POST cannot blank
+  them (the §7 partial-POST failure). `limits_for` resolves the limits with the
+  matrix unit; `canonical_matrix` follows `matrix_aliases`.
+- **Method Profile editor → Reporting Limits tab.** One shared sub-tab per
+  matrix, showing only the analytes that matrix reports, with `n/total` set
+  counts. Verified: EPA 537.1 lists 18 analytes over 3 matrices; 1633A lists 40
+  over 9.
+- **`coa_format.py`** holds the conventions:
+  - significant figures without exponent notation;
+  - limits print as configured;
+  - the non-detect rules in DECISIONS;
+  - rows follow the method's analyte order, and unexpected results are kept,
+    listed after the rest;
+  - QC remark codes join the qualifier column.
+- **`browser/coa_sections.py` + `coa_sections.pt`:**
+  - header with lab identity from Print Settings (name, address/phone/email,
+    accreditation, logo) plus report ID and issue date;
+  - one compact block of sample facts;
+  - one results table: Analyte | CAS | Result (detects bold) | Qual | RL | MDL
+    | Units [| Dil.];
+  - a legend, with a red line when no RLs are configured;
+  - a footer from Print Settings.
+
+  A placeholder CAS in the analyte reference prints "—", never the word
+  PLACEHOLDER (PFTrDS).
+- **Certificate settings** (Print Settings → Certificate, also listed in the
+  Lab Settings console): the non-detect format, significant figures (2–4), the
+  CAS / MDL / dilution columns, and a compact or full sign-off.
+- **Compact sign-off:** the three tiers on one row. The QC qualifications box
+  no longer splits across a page break, and the sign-off now comes after the
+  notes.
+- **Result:** FEED-0002 is one page of results plus a short second page for
+  the QC qualifications and sign-off.
+- **Tests:** `test_coa_format.py`, 13 tests on the real modules. The comment
+  guard now also scans `templates/reports/`.
+- **Sidebar:** the pin button is overlaid on the row edge. A hidden pin still
+  took 20px and truncated the bold active label ("Method Profiles & …").
+
+### 50.3 Found: a plain Save in the Method Profile editor changes values nobody touched (open)
+
+Saving EPA 537.1 through the real form (Reporting Limits tab, PFOA RL 4 / MDL
+1), with `method_profiles.json` snapshotted first as memory requires, changed
+more than the RL:
+- `surrogate_is` went `""` → `"M4PFOA"` (a select defaulting to its first
+  option);
+- `instrument_verification.confirmation` gained `confirm_technique: "LC-HRMS"`;
+- plus harmless normalisations (missing keys → `{}` / `[]`, and `media: ""` on
+  extraction stages).
+
+`_seeded` clearing is by design: a user save marks the profile CUSTOMISED. The
+profile was **restored from the snapshot through the store**, and the export
+was verified byte-identical to the snapshot. Every real save by the lab has the
+same effect today. Not fixed: it touches QC configuration, so it is raised with
+the lab.
+
+### 50.4 Part B — planned
+
+- A limits relation: analyte × matrix × program, each with value, unit, type
+  (MCL / action level / advisory), citation, effective date, link, and a
+  verified flag.
+- The program is chosen per client alongside the EDD state profile; federal
+  limits apply to drinking water on top.
+- **Note rule:**
+  - a detected result at or above the limit is an exceedance;
+  - a non-detect whose RL is above the limit is "cannot be determined";
+  - no note is printed without a resolved unit.
+- The mixture hazard index is out of scope unless asked for.
+- Values are researched with sources and loaded UNVERIFIED.

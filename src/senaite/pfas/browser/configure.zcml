@@ -246,6 +246,16 @@
   <!-- Controlled CoA attestation (D65 A2): renders the 3-tier authorization
        block (prepared/verified/authorized) from the live workflow actors.
        Called from the PFAS Certificate of Analysis impress template. -->
+  <!-- Compact CoA sections (header / samples / footer), replacing core
+       impress's header, info, summary, results, discreeter and footer on the
+       PFAS certificate. GAPS §50; DECISIONS 2026-09-30. -->
+  <browser:page
+      name="pfas-coa-sections"
+      for="*"
+      class=".coa_sections.PFASCoASectionsView"
+      permission="zope2.View"
+      />
+
   <browser:page
       name="pfas-coa-attestation"
       for="*"

@@ -5261,3 +5261,36 @@ Lab answers:
 - **Controls one size up:** buttons and inputs 32 → 36px, small buttons
   24 → 28px ("some of the buttons are now a little too small"). Core
   Bootstrap is 38 / 31.
+
+## 2026-09-30 — Certificate: compact conventional layout; RL/MDL in the method profile; "< RL" + U
+
+**Confirmed** by the lab (GAPS §50):
+- **Report program** (for part B, regulatory limits and state links): per
+  client, with the state EDD profile the client already selects. Federal limits
+  apply on top for drinking water.
+- **RL / MDL** are configured in the method profile per analyte × matrix (a new
+  "Reporting Limits" tab), not carried per result. Units come from the
+  profile's existing unit map, so a limit always prints with the unit it was set
+  in.
+- **Non-detects** print as "< RL" with a U qualifier. A numeric result below
+  its RL is reported the same way. No J (estimated) flag was chosen, so none is
+  applied. With no RL configured a non-detect prints "ND", never an invented
+  limit.
+- **Regulatory values:** researched with citations and loaded as UNVERIFIED
+  until the lab confirms each one (part B).
+
+**Implementation decisions (mine, recorded for review):**
+- **Lab identity on the certificate comes from Print Settings,** the record
+  the lab maintains. Core's Laboratory record was empty, which is why the
+  certificate printed "Laboratory Information • • •".
+- **Core impress sections replaced on the PFAS certificate (§6C):**
+  - header, info, alerts, summary, results, discreeter and footer, by the
+    compact PFAS sections in `browser/coa_sections.py`;
+  - signatures, as before, by the controlled attestation.
+  - Core's controls, JS, CSS, interpretations, remarks and attachments are used
+    unchanged.
+  - **Upgrade risk:** a core change to a replaced section is not picked up. The
+    wrappers keep impress's `row section-*` classes, so its paginator still
+    places and repeats them.
+- **Core's discreeter is not rendered.** It printed "Result out of client
+  specified range" on every certificate, whether or not ranges were set.

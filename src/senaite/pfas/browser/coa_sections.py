@@ -1,0 +1,178 @@
+# -*- coding: utf-8 -*-
+"""Compact Certificate of Analysis sections (GAPS §50, part A).
+
+Replaces core impress's header, info, summary, results, discreeter and footer
+sections on the PFAS certificate with a conventional lab report layout:
+
+  header   lab identity from Print Settings (the one place the lab maintains
+           it; core's Laboratory record was empty, so certificates printed
+           "Laboratory Information * * *")
+  sample   one compact block of sample facts, not a page of its own
+  results  one table: Analyte | CAS | Result | Qual | RL | MDL | Units [| Dil]
+           in the method's analyte order, with the method stated once
+  legend   what U, RL and MDL mean, and the QC codes in use
+
+Formatting rules live in coa_format.py; limits and units in report_limits.py.
+Core sections replaced here are listed in DECISIONS 2026-09-30 (§6C).
+Python 2.7 compatible.
+"""
+from __future__ import absolute_import
+
+import logging
+
+from bika.lims import api
+from Products.Five.browser import BrowserView
+from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+
+from senaite.pfas import coa_format
+from senaite.pfas import report_limits
+
+logger = logging.getLogger("senaite.pfas.coa_sections")
+
+# Analyses in these states never appear on a certificate.
+_EXCLUDED_STATES = ("retracted", "rejected", "cancelled", "invalid")
+
+
+def _fmt_date(value):
+    if not value:
+        return u""
+    try:
+        return value.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return u"%s" % value
+
+
+class PFASCoASectionsView(BrowserView):
+    """Called from templates/reports/CertificateOfAnalysis.pt with the
+    impress collection; renders one of: header, samples, footer."""
+
+    template = ViewPageTemplateFile("templates/coa_sections.pt")
+
+    def __call__(self, collection=None, report_view=None, section="samples"):
+        self.collection = collection or []
+        self.report_view = report_view
+        self.section = section
+        return self.template()
+
+    # ── settings / identity ───────────────────────────────────────────────
+
+    def settings(self):
+        if not hasattr(self, "_settings"):
+            from senaite.pfas.print_settings import get_print_settings
+            self._settings = get_print_settings(api.get_portal())
+        return self._settings
+
+    def show(self, key):
+        return bool(self.settings().get(key))
+
+    def lab(self):
+        s = self.settings()
+        contact = [x for x in (s.get("lab_address"), s.get("lab_phone"),
+                               s.get("lab_email")) if x]
+        return {"name": s.get("lab_name") or u"",
+                "contact": u" · ".join(contact),
+                "accreditation": s.get("accreditation") or u"",
+                "logo": s.get("logo_url") or u""}
+
+    def doc_meta(self):
+        """Report ID (with its prospective revision) and issue date for the
+        header -- the same identity the controlled-document stamp prints."""
+        from DateTime import DateTime
+        meta = {"report_id": u"", "issued": DateTime().strftime("%Y-%m-%d")}
+        try:
+            att = api.get_portal().restrictedTraverse("@@pfas-coa-attestation")
+            meta["report_id"] = att.controlled_doc_meta(self.collection).get("report_id") or u""
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("coa_sections: no report id: %s", exc)
+        return meta
+
+    # ── samples ───────────────────────────────────────────────────────────
+
+    def samples(self):
+        out = []
+        for model in self.collection:
+            try:
+                sample = api.get_object(model)
+            except Exception:
+                continue
+            try:
+                out.append(self._sample(sample))
+            except Exception as exc:                        # noqa: BLE001
+                # A certificate must never silently lose a sample.
+                logger.exception("coa_sections: %s", exc)
+                out.append({"id": api.get_id(sample), "error": u"%s" % exc})
+        return out
+
+    def _analyses(self, sample):
+        found = []
+        for an in sample.objectValues():
+            if getattr(an, "portal_type", "") != "Analysis":
+                continue
+            try:
+                if an.getHidden():
+                    continue
+            except Exception:
+                pass
+            if api.get_review_status(an) in _EXCLUDED_STATES:
+                continue
+            found.append(an)
+        return found
+
+    def _method(self, analyses):
+        for an in analyses:
+            try:
+                m = an.getMethod()
+            except Exception:
+                m = None
+            if m is not None:
+                return m
+        return None
+
+    def _sample(self, sample):
+        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+        from senaite.pfas.method_profile_store import get_profile
+        from senaite.pfas.qc_qualification import parse_remark_codes
+
+        analyses = self._analyses(sample)
+        method = self._method(analyses)
+        method_id = method.getMethodID() if method is not None else u""
+        profile = get_profile(api.get_portal(), method_id) if method_id else {}
+        matrix = report_limits.canonical_matrix(profile, sample.getSampleTypeTitle())
+        titles = dict((r[0], r[1]) for r in NATIVE_ANALYTES)
+        # A placeholder CAS in the analyte reference must never print as a
+        # CAS number; the EDD refuses it separately (CLAUDE.md §3 REPORT).
+        cas = dict((r[0], r[2] if r[2] and "PLACEHOLDER" not in r[2].upper() else u"\u2014")
+                   for r in NATIVE_ANALYTES)
+
+        data, analysed = [], []
+        for an in analyses:
+            kw = an.getKeyword()
+            try:
+                codes = parse_remark_codes(an.getRemarks() or u"")
+            except Exception:
+                codes = []
+            data.append({"keyword": kw, "title": titles.get(kw) or an.Title(),
+                         "result": an.getResult(), "codes": codes})
+            when = an.getResultCaptureDate()
+            if when:
+                analysed.append(when)
+        rows = coa_format.build_rows(data, profile, matrix, self.settings(), cas)
+        units = sorted(set(r["unit"] for r in rows if r["unit"]))
+        contact = sample.getContact()
+        batch = sample.getBatch()
+        return {
+            "id": api.get_id(sample),
+            "client": sample.getClient().Title() if sample.getClient() else u"",
+            "contact": contact.getFullname() if contact else u"",
+            "client_sid": sample.getClientSampleID() or u"",
+            "matrix": sample.getSampleTypeTitle() or u"",
+            "batch": batch.getId() if batch else u"",
+            "sampled": _fmt_date(sample.getDateSampled()),
+            "received": _fmt_date(sample.getDateReceived()),
+            "analysed": _fmt_date(max(analysed)) if analysed else u"",
+            "method": method.Title() if method is not None else u"",
+            "units": u", ".join(units),
+            "rows": rows,
+            "any_rl": any(r["rl"] for r in rows),
+            "codes": sorted(set(c for d in data for c in d["codes"])),
+        }

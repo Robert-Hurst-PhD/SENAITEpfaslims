@@ -30,6 +30,12 @@
       .pfas-coa-attestation .jt { color: #666; font-size: 11px; }
       .pfas-coa-attestation .dt { color: #555; font-size: 11px;
         white-space: nowrap; }
+      .pfas-coa-attestation table.coa-att-compact { width: 100%; border-collapse: collapse; }
+      .pfas-coa-attestation table.coa-att-compact td { width: 33%; vertical-align: top;
+        padding: 4px 8px 4px 0; border-bottom: 0; font-size: 10px; }
+      .pfas-coa-attestation table.coa-att-compact .role { font-size: 9px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .03em; color: #555; margin-bottom: 2px; }
+      .pfas-coa-attestation .sig-sm { max-height: 26px; max-width: 120px; display: block; }
       .pfas-coa-attestation .coa-att-note {
         margin-top: 10px; font-size: 10px; color: #666; font-style: italic; }
     </style>
@@ -42,7 +48,7 @@
       </span>
     </div>
 
-    <table class="coa-att-tbl">
+    <table class="coa-att-tbl" tal:condition="python:view.style() == 'full'">
       <!-- Prepared by (analyst[s] who submitted) -->
       <tr>
         <td class="role" i18n:translate="">Prepared by</td>
@@ -106,6 +112,23 @@
                  i18n:translate="">Authorized signatory</div>
             <div class="dt" tal:content="a/date"></div>
           </div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Compact sign-off (default, Print Settings > Certificate): one row, the
+         three tiers side by side; a signature image if one is on file, no
+         empty signature space otherwise. -->
+    <table class="coa-att-compact" tal:condition="python:view.style() != 'full'">
+      <tr>
+        <td tal:repeat="tier python:[('Prepared by', sig['prepared']), ('Verified by', sig['verified']), ('Authorized by', [sig['authorized']] if sig['authorized'] else [])]">
+          <div class="role" tal:content="python:tier[0]">Prepared by</div>
+          <tal:p repeat="p python:tier[1]">
+            <img class="sig-sm" tal:condition="p/signature_url" tal:attributes="src p/signature_url"/>
+            <div><span class="nm" tal:content="p/fullname"></span>
+                 <span class="dt" tal:content="p/date"></span></div>
+          </tal:p>
+          <div tal:condition="not:python:tier[1]">&mdash;</div>
         </td>
       </tr>
     </table>

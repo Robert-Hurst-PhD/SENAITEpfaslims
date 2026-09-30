@@ -8,6 +8,10 @@
          tal:content="view/display_name">Method Profile</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
+    .rl-name { width: 50%; }
+    .rl-unit { text-transform: none; }
+    .rl-in { width: 100%; }
+    .rl-kw { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--s-secondary); margin-left: 6px; }
     /* ── Method profile editor ────────────────────────────────────────── */
     .tab-pane         { display: none; }
     .tab-pane.active  { display: block; }
@@ -221,6 +225,8 @@
       <a class="pfas-tab" data-pane="pane-eis" href="#pane-eis"
          onclick="pfasTabSwitch('pane-eis'); return false;"
          tal:attributes="style python:'' if view.show_eis_overrides() else 'display:none'">EIS Limits</a>
+      <a class="pfas-tab" data-pane="pane-rl" href="#pane-rl"
+         onclick="pfasTabSwitch('pane-rl'); return false;">Reporting Limits</a>
       <a class="pfas-tab" data-pane="pane-cal" href="#pane-cal"
          onclick="pfasTabSwitch('pane-cal'); return false;">Calibration &amp; CCV</a>
       <a class="pfas-tab" data-pane="pane-lwf" href="#pane-lwf"
@@ -929,6 +935,52 @@
       </div><!-- /pane-eis -->
 
       <!-- ── Tab: Calibration ───────────────────────────────────────────── -->
+      <!-- Reporting limits: RL / MDL per analyte x matrix, printed on the
+           certificate with the matrix unit (report_limits.py). -->
+      <div class="tab-pane" id="pane-rl">
+        <div class="page-body">
+          <p class="json-hint">
+            The reporting limit (RL) and method detection limit (MDL) the
+            certificate prints for each analyte, per matrix, in the unit the
+            method reports that matrix in. A non-detect prints as
+            &#8220;&lt; RL&#8221;; an analyte with no RL here prints its result
+            without one. Only the analytes the matrix reports are listed (see
+            Analyte &#215; Matrix).
+          </p>
+          <input type="hidden" name="reporting_limits_present" value="1" />
+          <div class="pfas-tabs" data-tabs="">
+            <a tal:repeat="grp view/reporting_limit_rows"
+               tal:attributes="class python:'pfas-tab active' if repeat['grp'].index == 0 else 'pfas-tab';
+                               data-pane string:rl-m-${grp/index};
+                               href string:#rl-m-${grp/index}"><tal:m tal:replace="grp/matrix">Matrix</tal:m><span
+               class="pfas-tab-count" tal:content="string:(${grp/set}/${grp/total})">(0/0)</span></a>
+          </div>
+          <div tal:repeat="grp view/reporting_limit_rows" class="pfas-pane"
+               tal:attributes="id string:rl-m-${grp/index}">
+            <input type="hidden" tal:attributes="name string:rlm.${grp/index}; value grp/matrix" />
+            <table class="factor-table">
+              <thead>
+                <tr>
+                  <th class="rl-name">Analyte</th>
+                  <th>RL <span class="rl-unit" tal:condition="grp/unit" tal:content="string:(${grp/unit})">(ng/L)</span></th>
+                  <th>MDL <span class="rl-unit" tal:condition="grp/unit" tal:content="string:(${grp/unit})">(ng/L)</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr tal:repeat="row grp/rows">
+                  <td><span tal:content="row/title">PFOA</span>
+                      <code class="rl-kw" tal:content="row/keyword">PFOA</code></td>
+                  <td><input type="number" step="any" min="0" class="rl-in"
+                             tal:attributes="name string:rl.${grp/index}.${row/keyword}; value row/rl" /></td>
+                  <td><input type="number" step="any" min="0" class="rl-in"
+                             tal:attributes="name string:mdl.${grp/index}.${row/keyword}; value row/mdl" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div class="tab-pane" id="pane-cal">
         <div class="page-body-narrow">
           <div style="background:var(--s-primary-lt);border:1px solid #bee5eb;border-radius:8px;

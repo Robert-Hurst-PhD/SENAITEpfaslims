@@ -124,6 +124,37 @@
                tal:attributes="checked ps/show_signoff"/>
         <label for="sso" style="font-weight:400;">Show QA sign-off block on controlled records</label></div>
 
+      <!-- Certificate of Analysis layout (coa_sections.py / coa_format.py). -->
+      <h3 id="certificate">Certificate of Analysis</h3>
+      <p class="hint">
+        The compact results table on the certificate. Reporting and detection
+        limits are set per analyte and matrix on each method profile
+        (<em>Reporting Limits</em> tab); the unit comes from the method's
+        matrix units.
+      </p>
+      <div class="ps-row"><label>Non-detects print as</label>
+        <select name="coa_nd_format">
+          <option value="lt_rl" tal:attributes="selected python:ps.get('coa_nd_format','lt_rl')=='lt_rl'">&lt; RL, with a U qualifier</option>
+          <option value="nd" tal:attributes="selected python:ps.get('coa_nd_format')=='nd'">ND, with a U qualifier</option>
+          <option value="raw" tal:attributes="selected python:ps.get('coa_nd_format')=='raw'">As stored (BLoQ, LOD, value)</option>
+        </select></div>
+      <div class="ps-row"><label>Significant figures</label>
+        <select name="coa_sig_figs">
+          <option tal:repeat="n python:['2','3','4']" tal:attributes="value n; selected python:str(ps.get('coa_sig_figs','3'))==n"
+                  tal:content="n">3</option>
+        </select></div>
+      <div class="ps-row"><label>Sign-off layout</label>
+        <select name="coa_signature_style">
+          <option value="compact" tal:attributes="selected python:ps.get('coa_signature_style','compact')=='compact'">Compact: one line per signatory</option>
+          <option value="full" tal:attributes="selected python:ps.get('coa_signature_style')=='full'">Full: signature space per signatory</option>
+        </select></div>
+      <div class="ps-check"><input type="checkbox" name="coa_show_cas" id="cas" tal:attributes="checked ps/coa_show_cas|nothing"/>
+        <label for="cas">CAS number column</label></div>
+      <div class="ps-check"><input type="checkbox" name="coa_show_mdl" id="mdl" tal:attributes="checked ps/coa_show_mdl|nothing"/>
+        <label for="mdl">MDL column</label></div>
+      <div class="ps-check"><input type="checkbox" name="coa_show_dilution" id="dil" tal:attributes="checked ps/coa_show_dilution|nothing"/>
+        <label for="dil">Dilution column</label></div>
+
       <button class="btn btn-primary" type="submit" style="margin-top:8px">
         Save Print Settings
       </button>

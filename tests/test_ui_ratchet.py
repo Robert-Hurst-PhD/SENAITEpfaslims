@@ -27,7 +27,7 @@ STATIC = os.path.join(BROWSER, "static")
 TOKENS = "pfas-tokens.css"
 
 PRINT = {"receipt.pt", "label_print.pt", "qc_review_report.pt",
-         "coa_attestation.pt"}
+         "coa_attestation.pt", "coa_sections.pt"}
 SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
@@ -185,10 +185,14 @@ def test_no_double_hyphen_in_html_comments():
     '--'. One such comment in pfas_sidebar.pt broke every page on the site
     (the sidebar renders on all of them) until it was found, 2026-09-30."""
     bad = []
-    for name in sorted(os.listdir(TEMPLATES)):
+    reports = os.path.join(ROOT, "src", "senaite", "pfas", "templates", "reports")
+    paths = [os.path.join(TEMPLATES, n) for n in sorted(os.listdir(TEMPLATES))]
+    paths += [os.path.join(reports, n) for n in sorted(os.listdir(reports))]
+    for path in paths:
+        name = os.path.basename(path)
         if not name.endswith(".pt"):
             continue
-        with open(os.path.join(TEMPLATES, name)) as fh:
+        with open(path) as fh:
             text = fh.read()
         for m in re.finditer(r"<!--(.*?)-->", text, re.S):
             if "--" in m.group(1):

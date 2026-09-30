@@ -392,6 +392,36 @@ class PFASMethodProfileEditView(BrowserView):
                            "count": len(rows), "blank_start": len(rows)})
         return groups
 
+    def reporting_limit_rows(self):
+        """RL / MDL per analyte for each supported matrix (DECISIONS 2026-09-30).
+
+        Lists only the analytes the matrix reports -- the analyte x matrix
+        inclusion grid decides, so PFODA does not appear under FDA x Eggs
+        (CLAUDE.md §3 rule 2). The unit is the matrix's unit_map entry: a limit
+        is entered in, and printed with, the unit the method reports in.
+        """
+        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+        titles = {row[0]: row[1] for row in NATIVE_ANALYTES}
+        profile = self.profile()
+        limits = profile.get("reporting_limits", {}) or {}
+        inclusion = profile.get("analyte_matrix_inclusion", {}) or {}
+        units = profile.get("unit_map", {}) or {}
+        out = []
+        for i, matrix in enumerate(profile.get("supported_matrices", []) or []):
+            per = limits.get(matrix, {}) or {}
+            rows = []
+            for kw in profile.get("master_analyte_set", []) or []:
+                if (inclusion.get(kw) or {}).get(matrix, True) is False:
+                    continue
+                entry = per.get(kw, {}) or {}
+                rows.append({"keyword": kw, "title": titles.get(kw, kw),
+                             "rl": "" if entry.get("rl") is None else entry.get("rl"),
+                             "mdl": "" if entry.get("mdl") is None else entry.get("mdl")})
+            out.append({"index": i, "matrix": matrix, "unit": units.get(matrix, ""),
+                        "rows": rows, "total": len(rows),
+                        "set": len([r for r in rows if r["rl"] != ""])})
+        return out
+
     def standard_lot_options(self):
         """Standard / Reference-Material lots from the reagent inventory, for
         the CoA-lot dropdown. Expired lots are flagged so they aren't picked."""
@@ -1041,6 +1071,16 @@ class PFASMethodProfileEditView(BrowserView):
                 profile["matrix_aliases"] = aliases
                 profile["unit_map"] = units
                 profile["holding_times"] = holding
+
+        # Reporting limits (RL/MDL) per analyte x matrix. Only the matrices the
+        # form carried are replaced (report_limits.parse_form), so a POST from
+        # any other pane leaves them alone.
+        if f.get("reporting_limits_present"):
+            from senaite.pfas import report_limits
+            parsed = report_limits.parse_form(
+                f, profile.get("supported_matrices", []) or [])
+            profile["reporting_limits"] = report_limits.merge(
+                profile.get("reporting_limits", {}), parsed)
 
         # EIS limits per analyte x matrix class. Named fields rather than a
         # JSON blob, so the value a lab verified against its method copy is

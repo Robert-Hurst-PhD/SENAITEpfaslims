@@ -5,12 +5,12 @@
        (senaite.pfas, D65). Registered via plone:static as a
        senaite.impress.reports template, so it appears in the impress picker as
        "senaite.pfas:CertificateOfAnalysis.pt". Built ON core impress (§6C,
-       Golden Rule 2): reuses every core render_* section verbatim. The only
-       PFAS divergence is the SIGNATURES section (A2), which is replaced with a
-       controlled 3-tier attestation resolved from the live workflow actors.
-
-       A1: identical to core Default.pt — verifies the plumbing renders the
-       stock report before any divergence is introduced.
+       Golden Rule 2): core's controls, JS, CSS, interpretations, remarks and
+       attachments sections are used as they are. Replaced (DECISIONS
+       2026-09-30, GAPS §50): header, info, alerts, summary, results,
+       discreeter and footer by the compact PFAS sections (coa_sections.py),
+       and signatures by the controlled attestation (D65 A2). Upgrade risk:
+       a core change to those sections is not picked up here.
        ══════════════════════════════════════════════════════════════════════ -->
 
   <!-- REPORT CONTROLS -->
@@ -37,20 +37,12 @@
     }
   </style>
 
-  <!-- REPORT HEADER -->
-  <tal:t replace="structure python:view.render_header(context, **options)" />
-
-  <!-- REPORT INFO -->
-  <tal:t replace="structure python:view.render_info(context, **options)" />
-
-  <!-- REPORT ALERTS -->
-  <tal:t replace="structure python:view.render_alerts(context, **options)" />
-
-  <!-- REPORT SUMMARY -->
-  <tal:t replace="structure python:view.render_summary(context, **options)" />
-
-  <!-- REPORT RESULTS -->
-  <tal:t replace="structure python:view.render_results(context, **options)" />
+  <!-- COMPACT CoA (GAPS §50, DECISIONS 2026-09-30): PFAS header, one block of
+       sample facts and one results table per sample replace core's header,
+       info, alerts, summary and results sections. Lab identity comes from
+       Print Settings; RL/MDL/units from the method profile. -->
+  <tal:t replace="structure python:context.restrictedTraverse('@@pfas-coa-sections')(collection=view.collection, report_view=view, section='header')" />
+  <tal:t replace="structure python:context.restrictedTraverse('@@pfas-coa-sections')(collection=view.collection, report_view=view, section='samples')" />
 
   <!-- RESULTS INTERPRETATION -->
   <tal:t replace="structure python:view.render_interpretations(context, **options)" />
@@ -61,15 +53,9 @@
   <!-- REPORT ATTACHMENTS -->
   <tal:t replace="structure python:view.render_attachments(context, **options)" />
 
-  <!-- CONTROLLED CoA ATTESTATION (PFAS, D65 A2) — replaces core's
-       render_signatures. Resolves the actual workflow actors (prepared /
-       verified / authorized) from the samples on this certificate. `context`
-       here is the portal; the attestation view is traversed off it and handed
-       the report's collection of SuperModels + the impress report view. -->
-  <tal:t replace="structure python:context.restrictedTraverse('@@pfas-coa-attestation')(collection=view.collection, report_view=view)" />
 
-  <!-- REPORT DISCREETER -->
-  <tal:t replace="structure python:view.render_discreeter(context, **options)" />
+  <!-- Core's discreeter is not rendered: it printed "Result out of client
+       specified range" on every certificate, ranges or not. -->
 
 
   <!-- ACCREDITATION SCOPE (PFAS) — printed ABOVE the QC qualifications and in
@@ -120,7 +106,7 @@
   <tal:quals define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
                      quals python:att.qc_qualifications(view.collection);"
              condition="quals">
-    <div style="margin-top:14px; padding:8px 10px; border:1px solid #bbb;">
+    <div style="margin-top:14px; padding:8px 10px; border:1px solid #bbb; page-break-inside:avoid;">
       <div style="font-weight:bold; font-size:12px; margin-bottom:4px;"
            i18n:translate="">Quality control qualifications</div>
       <div style="font-size:10px; color:#444; margin-bottom:6px;"
@@ -145,8 +131,15 @@
     </div>
   </tal:quals>
 
-  <!-- REPORT FOOTER -->
-  <tal:t replace="structure python:view.render_footer(context, **options)" />
+  <!-- CONTROLLED CoA ATTESTATION (PFAS, D65 A2) — replaces core's
+       render_signatures. Resolves the actual workflow actors (prepared /
+       verified / authorized) from the samples on this certificate. `context`
+       here is the portal; the attestation view is traversed off it and handed
+       the report's collection of SuperModels + the impress report view. -->
+  <tal:t replace="structure python:context.restrictedTraverse('@@pfas-coa-attestation')(collection=view.collection, report_view=view)" />
+
+  <!-- FOOTER (repeated on every page by the impress paginator) -->
+  <tal:t replace="structure python:context.restrictedTraverse('@@pfas-coa-sections')(collection=view.collection, report_view=view, section='footer')" />
 
   <!-- CONTROLLED-DOCUMENT STAMP (PFAS, D65 A3) — report identity + revision
        (prospective at render time) and the uncontrolled-when-printed notice. -->

@@ -49,6 +49,14 @@ class PFASCoAAttestationView(BrowserView):
         self.meta = self.controlled_doc_meta(self.collection)
         return self.attestation()
 
+    def style(self):
+        """'compact' (default) or 'full', from Print Settings > Certificate."""
+        try:
+            from senaite.pfas.print_settings import get_print_settings
+            return get_print_settings(api.get_portal()).get("coa_signature_style") or "compact"
+        except Exception:
+            return "compact"
+
     def controlled_doc_meta(self, collection=None):
         """Controlled-document identity for the primary sample. Computed at
         RENDER time, i.e. BEFORE the publish transition writes the log entry —

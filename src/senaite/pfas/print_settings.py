@@ -38,6 +38,14 @@ DEFAULTS = {
     "qao_initials":       "",
     "director_initials":  "",
     "show_signoff":       True,
+    # Certificate of Analysis layout (GAPS §50, decided 2026-09-30). Read by
+    # browser/coa_sections.py; formatting rules live in coa_format.py.
+    "coa_show_cas":        True,
+    "coa_show_mdl":        True,
+    "coa_show_dilution":   False,     # no dilution is recorded per result yet
+    "coa_nd_format":       "lt_rl",   # lt_rl = "< RL" + U | nd = "ND" + U | raw
+    "coa_sig_figs":        "3",
+    "coa_signature_style": "compact", # compact = one line per signatory | full
 }
 
 

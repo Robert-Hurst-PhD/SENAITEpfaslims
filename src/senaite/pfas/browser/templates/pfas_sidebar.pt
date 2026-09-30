@@ -101,15 +101,18 @@
 /* ── Sidebar pins (sidebar_pins.py) ─────────────────────────────────── */
 .pfas-sb-pinned.has-pins { border-top: 1px solid #dee2e6; padding: 4px 0; }
 .pfas-pin-btn {
-  /* 16px = the row's line-height, so a pin button never makes a row taller */
-  margin-left: auto; flex: 0 0 auto; width: 20px; height: 16px; padding: 0;
+  /* Overlaid on the row's right edge: it takes no width (a hidden button
+     that did truncated labels) and no height (16px = the row's line). */
+  position: absolute; right: 6px; top: 50%; margin-top: -8px;
+  width: 20px; height: 16px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   background: none; border: 0; border-radius: 3px; cursor: pointer;
   color: #6c757d; opacity: 0; transition: opacity .1s;
 }
 .pfas-pin-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor;
                     stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.pfas-si:hover .pfas-pin-btn, .pfas-pin-btn:focus { opacity: 1; }
+.pfas-si:hover .pfas-pin-btn, .pfas-pin-btn:focus { opacity: 1; background: #f8f9fa; }
+.pfas-si { position: relative; }
 .pfas-pin-btn:hover { background: #e9ecef; color: #293333; }
 .pfas-sb-scroll .pfas-pin-btn.is-pinned { opacity: .7; color: #428aaf; }
 .pfas-si-pinned .pfas-pin-btn { font-size: var(--fs-md); line-height: 1; }
