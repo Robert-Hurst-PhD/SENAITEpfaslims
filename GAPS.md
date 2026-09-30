@@ -5042,3 +5042,41 @@ for forms; the sidebar opens on the role's landing and groups.
   - the client Sample Tracker, which has no frame by design (§6C);
   - the Extraction Guide's deliberately centred start screen.
 
+### 49.5 Phase 2 — one component set; Bench group migrated
+
+- **The set, in the macro only.** `.btn` and `.btn-sm` set size (from
+  `--ctl-h` 32px and `--ctl-h-sm` 24px, level with inputs); `.btn-lg`
+  (`--ctl-h-lg` 44px) is for bench wizard steps. The variants set only colour:
+  `-primary`, `-secondary`, `-danger`, `-warn`, `-success` and `-link`. A bare
+  `.btn` / `.btn-sm` is neutral. `.btn-save` stays as the primary save action
+  because the print block keys on it. These rules are deliberately **not** in
+  `pfas-tokens.css` or the core overlay, because `.btn` and `.badge` are
+  Bootstrap's names on core pages. The heights come from measuring core's
+  Bootstrap `.btn-sm` (31px) and PFAS inputs (34px, now 32px via an 18px
+  line-height).
+- **Shared tabs work on `<button>`s** (border/background reset), and an in-page
+  tab strip sits on the frame edge.
+- **Guard:** `test_no_new_page_redefines_a_shared_component` holds an allowlist
+  of the pages that still override a shared name. It started at 16 pages and
+  may only shrink; a companion test fails when an entry has been migrated but
+  is still listed.
+- **Bench group migrated:** Reagent Inventory, Prep Logbooks, Prepared
+  Standards, Logbook Setup, Extraction Guide and Controlled Documents
+  (Deviations and Batch Logbooks already used the shared set). The rule
+  throughout was to delete *rules*, not class names:
+  - JS hooks (`open-coa-modal`, `rg-edit-btn`, `admin-tab-btn`, `btn-move`,
+    `btn-remove`, the Extraction Guide's generated buttons) keep their class,
+    with the shared class added beside it, including inside the scripts'
+    `className` strings;
+  - print hooks (`btn-add-row`) likewise keep theirs.
+  - Off-palette colours are gone: purple Scan Label, orange Print Label, Google
+    blue, green dashed. Reagent Inventory's local `.btn-sm` pill override, the
+    reason its buttons matched nothing else, is deleted.
+  - Allowlist: 16 → 12 pages. Hex colours: 222 → 211. `style=`: 962 → 959.
+- **Verified after restart:** all 8 Bench pages load with no JS errors; the
+  reagent Edit and CoA modals open, and Logbook Setup's tabs switch. Screenshots
+  show the Reagent toolbar at one 32px height with one primary action.
+- **Remaining groups:** QC & Methods, Facility QC, Instruments & Import,
+  Reporting, Configuration and the logbooks 250–253 (controlled forms: compare
+  print previews too).
+

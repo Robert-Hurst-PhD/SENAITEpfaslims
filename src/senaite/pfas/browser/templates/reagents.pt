@@ -42,14 +42,6 @@
 
     /* .badge base and common badge-* colors are now global (pfas_macros) */
 
-    /* ── Action buttons (page-specific) ─────────────── */
-    .btn-scan { padding:8px 16px; background:#6610f2; color:#fff;
-                border:none; border-radius:4px; font-size:13px; font-weight:600;
-                cursor:pointer; white-space:nowrap; }
-    .btn-scan:hover { opacity:.9; }
-    .btn-ocr { padding:8px 16px; background:#20c997; color:#fff;
-               border:none; border-radius:4px; font-size:13px; font-weight:600;
-               cursor:pointer; white-space:nowrap; }
 
     /* ── Add/Edit modal ──────────────────────────────── */
     .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
@@ -119,15 +111,9 @@
     .coa-copy-value { flex:1; font-family:monospace; font-size:13px; padding:5px 9px;
                       background:#f8f9fa; border:1px solid var(--s-border); border-radius:5px;
                       overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .btn-copy { padding:4px 10px; font-size:11px; border-radius:5px; cursor:pointer;
-                border:1px solid var(--s-border); background:#fff; white-space:nowrap; }
-    .btn-copy.copied { background:#d4edda; border-color:#c3e6cb; color:#155724; }
+    .btn-copy.copied { background:var(--s-success-lt); border-color:var(--s-success-lt); color:var(--s-success-text); }
     .coa-supplier-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-    .coa-supplier-btn { flex:1 1 200px; padding:9px 12px; border-radius:7px; font-size:12px;
-                        font-weight:600; cursor:pointer; text-decoration:none; text-align:center;
-                        display:block; border:1px solid var(--s-border); background:#fff;
-                        color:var(--s-dark); }
-    .coa-supplier-btn:hover { background:#f0f0f0; text-decoration:none; }
+    .coa-supplier-btn { flex:1 1 200px; }   /* look: shared .btn */
     .coa-note { font-size:11px; color:var(--s-secondary); margin-top:14px;
                 line-height:1.6; padding:10px; background:#f8f9fa; border-radius:6px; }
     .coa-upload-area label.upload-label { display:inline-flex; align-items:center; gap:8px;
@@ -214,15 +200,6 @@
     .scan-tab-pane.active { display:block; }
     .cam-lookup-input { flex:1; padding:6px 8px; font-size:12px; background:#222;
                         color:#fff; border:1px solid #555; border-radius:5px; }
-      /* Row action pills — consistent with status badges (site pattern) */
-    .btn-sm { font-size:11px; font-weight:700; padding:2px 10px; border-radius:10px;
-              background:#e8f4f8; color:#387493; border:1px solid #cfe5ee;
-              cursor:pointer; text-decoration:none; display:inline-block; line-height:1.6; }
-    .btn-sm:hover { background:#d7ecf3; color:#2d5f7d; text-decoration:none; }
-    .btn-sm.btn-danger { background:#fdecea; color:#a33; border-color:#f2c6c2; }
-    .btn-sm.btn-danger:hover { background:#f8d7da; }
-    .btn-sm.btn-warn { background:#fff3cd; color:#856404; border-color:#ffeeba; }
-    .btn-sm.btn-warn:hover { background:#ffe8a1; }
   </style>
   </tal:styles>
 </head>
@@ -329,21 +306,21 @@
                     tal:content="python:pair[1]"></option>
           </tal:opts>
         </select>
-        <button type="submit" class="btn-sm">Filter</button>
+        <button type="submit" class="btn">Filter</button>
         <a tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
-           class="btn-sm" style="text-decoration:none;">Clear</a>
+           class="btn">Clear</a>
         <tal:arc tal:condition="view/is_production_mode">
           <a tal:condition="not:view/show_archived"
              tal:attributes="href string:${view/portal_url}/@@pfas-reagents?show_archived=1"
-             class="btn-sm" style="text-decoration:none;">Show Archived</a>
+             class="btn">Show Archived</a>
           <a tal:condition="view/show_archived"
              tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
-             class="btn-sm" style="text-decoration:none;background:#e2e3e5;">Hide Archived</a>
+             class="btn">Hide Archived</a>
         </tal:arc>
       </form>
-      <button type="button" class="btn-scan" onclick="openScanModal('barcode')"
+      <button type="button" class="btn btn-scan" onclick="openScanModal('barcode')"
               title="Scan a barcode or switch to OCR inside the scanner">&#128247; Scan Label</button>
-      <button type="button" class="btn-primary" onclick="openAddForm()">+ Add Reagent</button>
+      <button type="button" class="btn btn-primary" onclick="openAddForm()">+ Add Reagent</button>
     </div>
 
     <!-- ─── Reagent table ───────────────────────────────────── -->
@@ -517,23 +494,23 @@
           <div class="coa-copy-row">
             <span class="coa-copy-label">Cat. No.</span>
             <span class="coa-copy-value" id="coa-cat-val">—</span>
-            <button class="btn-copy" onclick="copyCoaField('coa-cat-val', this)">Copy</button>
+            <button class="btn-sm btn-copy" onclick="copyCoaField('coa-cat-val', this)">Copy</button>
           </div>
           <div class="coa-copy-row">
             <span class="coa-copy-label">Lot No.</span>
             <span class="coa-copy-value" id="coa-lot-val">—</span>
-            <button class="btn-copy" onclick="copyCoaField('coa-lot-val', this)">Copy</button>
+            <button class="btn-sm btn-copy" onclick="copyCoaField('coa-lot-val', this)">Copy</button>
           </div>
           <div class="coa-supplier-grid">
-            <a class="coa-supplier-btn" target="_blank" rel="noopener"
+            <a class="btn coa-supplier-btn" target="_blank" rel="noopener"
                href="https://www.sigmaaldrich.com/US/en/documents-search?tab=coa">
               Sigma-Aldrich / MilliporeSigma &#8599;
             </a>
-            <a class="coa-supplier-btn" target="_blank" rel="noopener"
+            <a class="btn coa-supplier-btn" target="_blank" rel="noopener"
                href="https://www.fishersci.com/search/documents?type=certificates">
               Thermo Fisher / Fisher Scientific &#8599;
             </a>
-            <a class="coa-supplier-btn" target="_blank" rel="noopener"
+            <a class="btn coa-supplier-btn" target="_blank" rel="noopener"
                href="https://us.vwr.com/store/productDocuments">
               VWR / Avantor &#8599;
             </a>
@@ -572,7 +549,7 @@
         </div>
 
         <div class="form-actions">
-          <button class="btn-sm" onclick="closeCoaModal()">Close</button>
+          <button class="btn" onclick="closeCoaModal()">Close</button>
         </div>
       </div>
     </div>
@@ -631,7 +608,7 @@
               <div class="lot-scan-row">
                 <input type="text" name="lot_number" id="f-lot" required="required"
                        placeholder="Scan or type lot #" />
-                <button type="button" class="btn-scan"
+                <button type="button" class="btn btn-scan"
                         style="font-size:11px;padding:6px 10px;"
                         onclick="openScanModal('lot')">&#128247;</button>
               </div>
@@ -708,8 +685,8 @@
           </div>
 
           <div class="form-actions">
-            <button type="submit" class="btn-primary">Save Reagent</button>
-            <button type="button" class="btn-sm"
+            <button type="submit" class="btn btn-primary">Save Reagent</button>
+            <button type="button" class="btn"
                     onclick="closeModal('rg-modal')">Cancel</button>
           </div>
         </form>

@@ -32,8 +32,8 @@ SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
 MAX_PAGES_WITH_STYLE_BLOCK = 51
-MAX_STYLE_ATTRIBUTES = 962
-MAX_DISTINCT_HEX = 222
+MAX_STYLE_ATTRIBUTES = 959
+MAX_DISTINCT_HEX = 211
 MAX_DISTINCT_FONT_SIZES = 23
 
 
@@ -53,7 +53,9 @@ def _counts():
         attrs += text.count('style="')
         hexes.update(h.lower() for h in re.findall(r"#[0-9a-fA-F]{3,6}\b", text))
         for v in re.findall(r"(?<![-\w])font-size\s*:\s*([^;\"}]+)", text):
-            sizes.add(v.replace("!important", "").strip())
+            v = v.replace("!important", "").strip()
+            if not v.startswith("var(--fs-"):   # a type-scale token is the goal
+                sizes.add(v)
     return pages, attrs, len(hexes), len(sizes)
 
 
@@ -139,6 +141,49 @@ def test_no_page_resizes_the_shared_frame():
     # tracker.pt is the client-facing tracker: no sidebar, no frame (§6C).
     bad = [b for b in bad if not b.startswith("tracker.pt")]
     assert not bad, "page re-declares the frame: {0}".format(bad)
+
+
+# Names the shared layout owns. A page rule for one of these overrides the
+# component everywhere on that page -- Reagent Inventory turned .btn-sm into a
+# rounded pill, which is why its buttons matched nothing else.
+SHARED_COMPONENTS = ("btn", "btn-sm", "btn-save", "btn-primary", "btn-secondary",
+                     "btn-danger", "btn-warn", "btn-link", "btn-success", "badge",
+                     "status-badge", "pfas-table", "pfas-tabs", "pfas-tab")
+# Pages still carrying such overrides, 2026-09-30. Remove a page as it is
+# migrated; never add one.
+REDEFINES_ALLOWED = {
+    "controlchart.pt", "egad_batches.pt", "egad_client_config.pt",
+    "egad_config.pt", "logbook_250.pt", "logbook_251.pt", "logbook_252.pt",
+    "logbook_253.pt", "logbook_custom.pt",
+    "method_profile_edit.pt", "method_wizard.pt",
+    "run_builder.pt",
+}
+
+
+def _redefiners():
+    found = {}
+    for name, text in _screen_templates():
+        if name in SHARED:
+            continue
+        for css in re.findall(r"<style[^>]*>(.*?)</style>", text, re.S):
+            css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+            for sel, _ in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+                for c in SHARED_COMPONENTS:
+                    if re.search(r"\." + re.escape(c) + r"(?![\w-])", sel):
+                        found.setdefault(name, set()).add(c)
+    return found
+
+
+def test_no_new_page_redefines_a_shared_component():
+    found = _redefiners()
+    new = sorted(set(found) - REDEFINES_ALLOWED)
+    assert not new, "pages redefine shared components: {0}".format(
+        dict((n, sorted(found[n])) for n in new))
+
+
+def test_redefine_allowlist_is_not_stale():
+    stale = sorted(REDEFINES_ALLOWED - set(_redefiners()))
+    assert not stale, "migrated -- remove from REDEFINES_ALLOWED: {0}".format(stale)
 
 
 if __name__ == "__main__":

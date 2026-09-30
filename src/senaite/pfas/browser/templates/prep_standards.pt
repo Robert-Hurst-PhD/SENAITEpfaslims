@@ -62,9 +62,6 @@
     .mini-table td { padding:3px 4px; border-bottom:1px solid var(--s-border); }
     .mini-table input { width:100%; padding:4px 6px; border:1px solid var(--s-input-border);
                         border-radius:3px; font-size:12px; }
-    .btn-add-row { font-size:11px; padding:3px 10px; background:var(--s-primary-lt);
-                   color:var(--s-primary); border:1px solid var(--s-primary);
-                   border-radius:4px; cursor:pointer; margin-top:5px; }
 
     /* Reagent lookup */
     .reagent-lookup { position:relative; }
@@ -381,7 +378,7 @@
               </thead>
               <tbody id="analytesBody"></tbody>
             </table>
-            <button type="button" class="btn-add-row" onclick="addAnalyteRow()">+ Add Analyte</button>
+            <button type="button" class="btn-sm btn-add-row" onclick="addAnalyteRow()">+ Add Analyte</button>
           </div>
 
           <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;

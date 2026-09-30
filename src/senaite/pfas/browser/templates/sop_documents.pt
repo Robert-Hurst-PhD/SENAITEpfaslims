@@ -78,17 +78,6 @@
       border-radius:4px; }
     .fld textarea { min-height:70px; resize:vertical; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
-    .btn-primary { padding:7px 20px; background:var(--s-primary); color:#fff;
-                   border:none; border-radius:4px; cursor:pointer; font-weight:600; font-size:13px; }
-    .btn-ghost  { padding:7px 16px; background:transparent; color:var(--s-secondary);
-                  border:1px solid var(--s-border); border-radius:4px; cursor:pointer; font-size:13px; }
-    .btn-sm { padding:4px 12px; font-size:11px; font-weight:600; cursor:pointer;
-              border-radius:4px; border:1px solid var(--s-border);
-              background:var(--s-light); color:var(--s-body); }
-    .btn-sm:hover { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
-    .btn-sign { padding:7px 18px; background:#28a745; color:#fff;
-                border:none; border-radius:4px; cursor:pointer;
-                font-weight:700; font-size:13px; }
 
     /* ── alert banner ── */
     .sop-banner { padding:10px 16px; border-radius:6px; margin-bottom:14px;
@@ -142,7 +131,7 @@
     <strong style="font-size:15px;color:var(--s-body)">Documents</strong>
     <span style="flex:1"></span>
     <tal:mgr tal:condition="can_mgr">
-      <button class="btn-primary" onclick="openSOPModal()">+ New Document</button>
+      <button class="btn btn-primary" onclick="openSOPModal()">+ New Document</button>
     </tal:mgr>
   </div>
 
@@ -317,7 +306,7 @@
                           <input type="hidden" name="action" value="sign_sop"/>
                           <input type="hidden" name="sop_id"
                                  tal:attributes="value sop/sop_id"/>
-                          <button type="submit" class="btn-sign">
+                          <button type="submit" class="btn btn-success btn-sign">
                             &#10003; I have read and will follow this document to the best of my abilities
                           </button>
                         </form>
@@ -486,8 +475,8 @@
           <input type="file" name="sop_file" accept=".pdf,application/pdf" required/>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn-ghost" onclick="closeSopModal()">Cancel</button>
-          <button type="submit" class="btn-primary">Upload</button>
+          <button type="button" class="btn" onclick="closeSopModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Upload</button>
         </div>
       </form>
     </div>

@@ -11,6 +11,8 @@ should be identical everywhere:
   buttons                    -- distinct (height|font-size|radius|bg) styles
                                 inside the content area only
   scroll_h                   -- height of the content scroller
+  js_errors                  -- uncaught exceptions / console errors on load:
+                                a restyle that breaks a click handler shows here
 
 Run on the host (needs the playwright package + chromium) against the running
 stack:
@@ -92,6 +94,10 @@ def crawl(out_dir):
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_context(viewport={"width": 1440, "height": 900}).new_page()
+        errors = []
+        page.on("pageerror", lambda exc: errors.append("pageerror: " + str(exc)[:160]))
+        page.on("console", lambda msg: errors.append("console: " + msg.text[:160])
+                if msg.type == "error" else None)
         page.goto(BASE + "/login")
         page.fill("input[name=__ac_name]", "admin")
         page.fill("input[name=__ac_password]", _password())
@@ -123,6 +129,7 @@ def crawl(out_dir):
                 continue
             seen.add(url)
             slug = _slug(url)
+            del errors[:]
             try:
                 page.goto(url, timeout=60000)
                 page.wait_for_load_state("networkidle", timeout=30000)
@@ -130,7 +137,8 @@ def crawl(out_dir):
                 page.screenshot(path=os.path.join(out_dir, slug + ".png"))
             except Exception as exc:
                 data = {"error": str(exc)[:200]}
-            data.update(group=group, label=label, url=url, slug=slug)
+            data.update(group=group, label=label, url=url, slug=slug,
+                        js_errors=list(errors))
             rows.append(data)
             print("{0:22} {1:34} {2}".format(group[:22], label[:34],
                                              data.get("left", data.get("error", "-"))),
@@ -158,6 +166,10 @@ def summary(rows):
     print("\nSidebar geometry (kind, top, row pitch):")
     for k, v in sidebars.most_common():
         print("  {0:3} {1}".format(v, k))
+    broken = [(r["label"], r["js_errors"]) for r in rows if r.get("js_errors")]
+    print("\nPages with JavaScript errors: {0}".format(len(broken)))
+    for label, errs in broken:
+        print("  {0}: {1}".format(label[:34], errs[0]))
     pfas_btn = [k for k in buttons if k[0] == "pfas"]
     print("\nButton styles inside PFAS content: {0} distinct".format(len(pfas_btn)))
     for (kind, k), v in buttons.most_common():

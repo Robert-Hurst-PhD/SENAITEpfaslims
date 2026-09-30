@@ -7,6 +7,10 @@
   <title metal:fill-slot="title">Extraction Guide</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
+    /* Buttons use the shared set (.btn, .btn-sm, .btn-lg + variants); only
+       layout that is specific to this page stays here. */
+    .btn-start   { width:100%; }
+    .btn-add-sol { margin-top:8px; }
     /* ── Touch-friendly tablet layout ─────────────────────── */
     body { touch-action: manipulation; }
     .eg-layout { display:flex; min-height:80vh; gap:0; }
@@ -74,8 +78,6 @@
     .reagent-status-sel { font-size:12px; padding:6px 8px; border:1px solid var(--s-input-border);
                           border-radius:6px; }
     .reagent-status-sel.flagged { border-color:#dc3545; background:#fff5f5; }
-    .btn-scan-sm { padding:7px 12px; background:#6610f2; color:#fff; border:none;
-                   border-radius:6px; font-size:12px; cursor:pointer; white-space:nowrap; }
     .exp-warn { color:#856404; font-size:11px; font-weight:700; }
     .exp-expired { color:#dc3545; font-size:11px; font-weight:700; }
     .inv-match { font-size:11px; color:#1a73e8; cursor:pointer; }
@@ -96,12 +98,7 @@
     .sol-field label { font-size:11px; font-weight:600; margin-bottom:3px; }
     .sol-field input { padding:6px 8px; font-size:12px;
                        border:1px solid var(--s-input-border); border-radius:5px; }
-    .btn-add-sol  { margin-top:8px; padding:5px 14px; font-size:12px;
-                    background:#f0fff4; border:1px dashed #28a745;
-                    border-radius:6px; cursor:pointer; color:#155724; }
-    .btn-label    { padding:6px 12px; background:#fd7e14; color:#fff; border:none;
-                    border-radius:6px; font-size:12px; cursor:pointer; }
-    .btn-del-sol  { background:none; border:none; color:#dc3545;
+    .btn-del-sol  { background:none; border:none; color:var(--s-danger);
                     cursor:pointer; font-size:14px; float:right; }
 
     /* ── Pedigree section ────────────────────────────────────── */
@@ -119,10 +116,7 @@
     .ped-field label { font-size:11px; font-weight:600; margin-bottom:3px; }
     .ped-field input { padding:5px 8px; font-size:12px;
                        border:1px solid var(--s-input-border); border-radius:5px; }
-    .btn-add-ped-lvl { font-size:11px; padding:3px 10px; background:#e8f0fe;
-                       border:1px solid #90caf9; border-radius:5px;
-                       cursor:pointer; color:#1a73e8; margin-top:4px; }
-    .btn-del-ped-lvl { background:none; border:none; color:#dc3545;
+    .btn-del-ped-lvl { background:none; border:none; color:var(--s-danger);
                        font-size:13px; cursor:pointer; }
 
     /* ── Deviations ──────────────────────────────────────────── */
@@ -133,13 +127,6 @@
     /* ── Action buttons ──────────────────────────────────────── */
     .stage-actions { display:flex; gap:12px; margin-top:20px; flex-wrap:wrap;
                      padding-top:16px; border-top:2px solid var(--s-border); }
-    .btn-complete { padding:14px 32px; background:#28a745; color:#fff; border:none;
-                    border-radius:8px; font-size:15px; font-weight:700;
-                    cursor:pointer; touch-action:manipulation; }
-    .btn-complete:hover { background:#218838; }
-    .btn-complete:disabled { opacity:.5; cursor:not-allowed; }
-    .btn-save-ped { padding:10px 20px; background:#1a73e8; color:#fff; border:none;
-                    border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; }
 
     /* ── Start screen ────────────────────────────────────────── */
     .eg-start { max-width:500px; margin:40px auto; text-align:center; }
@@ -149,16 +136,11 @@
     .start-form label { font-size:13px; font-weight:600; display:block; margin-bottom:4px; }
     .start-form select, .start-form input { width:100%; padding:10px 12px; font-size:14px;
       border:1px solid var(--s-input-border); border-radius:8px; margin-bottom:14px; box-sizing:border-box; }
-    .btn-start { width:100%; padding:14px; background:var(--s-primary); color:#fff;
-                 border:none; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; }
 
     /* ── Done screen ─────────────────────────────────────────── */
     .eg-done { text-align:center; padding:40px 20px; }
     .eg-done .check { font-size:64px; margin-bottom:16px; }
     .eg-done h2 { font-size:24px; font-weight:800; margin-bottom:8px; color:#28a745; }
-    .btn-pdf { padding:14px 32px; background:#dc3545; color:#fff; border:none;
-               border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; }
-    .btn-pdf:hover { background:#c82333; }
 
     /* ── Alerts ─────────────────────────────────────────────── */
     .alert-ok    { background:#d4edda; border:1px solid #c3e6cb; color:#155724;
@@ -212,7 +194,7 @@
         <label>Lead Analyst</label>
         <input type="text" name="analyst" placeholder="Your name" required="required" />
 
-        <button class="btn-start" type="submit">Begin Extraction &#8594;</button>
+        <button class="btn btn-lg btn-primary btn-start" type="submit">Begin Extraction &#8594;</button>
       </form>
     </div>
     </tal:start>
@@ -228,7 +210,7 @@
         All stages recorded. Generate the traceability PDF below.
       </p>
       <a tal:attributes="href view/pdf_url" target="_blank">
-        <button class="btn-pdf">&#128196; Download Extraction Logbook PDF</button>
+        <button class="btn btn-lg btn-pdf">&#128196; Download Extraction Logbook PDF</button>
       </a>
       <br/><br/>
       <a tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
@@ -291,7 +273,7 @@
                  tal:attributes="src murl;
                                  alt python:stage.get('media_alt','') or stage.get('name','')" />
             <div>
-              <button type="button" class="btn-add-sol" id="eg-replay-btn"
+              <button type="button" class="btn-sm btn-add-sol" id="eg-replay-btn"
                       style="margin-top:8px">&#8635; Replay</button>
             </div>
           </div>
@@ -321,7 +303,7 @@
           <div class="eg-card" id="reagent-card">
             <h3>Reagents — Verify Lot &amp; Expiry</h3>
             <div id="reagent-rows"></div>
-            <button type="button" class="btn-add-sol" style="margin-top:6px;"
+            <button type="button" class="btn-sm btn-add-sol" style="margin-top:6px;"
                     onclick="addReagentRow('','','','','')">+ Add Reagent</button>
           </div>
           </tal:rgs>
@@ -339,7 +321,7 @@
           <div class="eg-card" id="solutions-card">
             <h3>Solutions Prepared at This Stage</h3>
             <div id="sol-rows"></div>
-            <button type="button" class="btn-add-sol" onclick="addSolutionRow()">
+            <button type="button" class="btn-sm btn-add-sol" onclick="addSolutionRow()">
               + Prepare a New Solution / Label
             </button>
           </div>
@@ -354,7 +336,7 @@
               This becomes the parentage record in the final PDF.
             </p>
             <div id="ped-rows"></div>
-            <button type="button" class="btn-add-sol" style="border-color:#1a73e8;color:#1a73e8;"
+            <button type="button" class="btn-sm btn-add-sol" style="border-color:#1a73e8;color:#1a73e8;"
                     onclick="addPedigreeStandard()">+ Add Standard</button>
             <input type="hidden" name="pedigree_json_stage" id="pedigree_hidden" value="{}" />
           </div>
@@ -369,7 +351,7 @@
 
           <!-- ── Stage actions ── -->
           <div class="stage-actions">
-            <button class="btn-complete" type="submit"
+            <button class="btn btn-lg btn-success btn-complete" type="submit"
                     onclick="return prepStageSubmit()">
               &#10003; Complete Stage
               <tal:next tal:condition="python:(stage.get('order',0) or 0) &lt; view.total_stages()">
@@ -470,7 +452,7 @@
         '\u003cinput class="reagent-lot-field" type="text" placeholder="Lot #"'+
                ' value="'+esc(r.lot)+'"'+
                ' oninput="reagentData['+i+'].lot=this.value;syncReagents()"/>'+
-        '\u003cbutton type="button" class="btn-scan-sm" onclick="scanReagentLot('+i+')">&#128247;\u003c/button>'+
+        '\u003cbutton type="button" class="btn btn-scan-sm" onclick="scanReagentLot('+i+')">&#128247;\u003c/button>'+
         '\u003cinput class="reagent-exp-field" type="date" value="'+esc(r.expiry)+'"'+
                ' oninput="reagentData['+i+'].expiry=this.value;renderReagents()"/>'+
         (ec ? '\u003cspan class="'+ec+'">'+(ec==='exp-expired'?'EXPIRED':'EXPIRING')+'\u003c/span>' : '')+
@@ -580,8 +562,8 @@
                    ' oninput="solutionsData['+i+'].storage=this.value;syncSolutions()"/>\u003c/div>'+
         '\u003c/div>'+
         '\u003cdiv style="margin-top:10px;display:flex;gap:8px;">'+
-          '\u003cbutton type="button" class="btn-label" onclick="printLabel('+i+')">&#127991; Print Label\u003c/button>'+
-          '\u003cbutton type="button" class="btn-scan-sm" onclick="saveSolutionToInventory('+i+')">+ Add to Inventory\u003c/button>'+
+          '\u003cbutton type="button" class="btn btn-label" onclick="printLabel('+i+')">&#127991; Print Label\u003c/button>'+
+          '\u003cbutton type="button" class="btn btn-scan-sm" onclick="saveSolutionToInventory('+i+')">+ Add to Inventory\u003c/button>'+
         '\u003c/div>';
       el.appendChild(div);
     });
@@ -724,7 +706,7 @@
                 'onclick="deletePedLevel(\''+stdName.replace(/'/g,"\\'")+'\',' + li + ')">&#215;\u003c/button>';
         html += '\u003c/div>';
       });
-      html += '\u003cbutton type="button" class="btn-add-ped-lvl" onclick="addPedLevel(\''+stdName.replace(/'/g,"\\'")+'\')">' +
+      html += '\u003cbutton type="button" class="btn-sm btn-add-ped-lvl" onclick="addPedLevel(\''+stdName.replace(/'/g,"\\'")+'\')">' +
               '+ Add Dilution Level\u003c/button>';
       div.innerHTML = html;
       el.appendChild(div);

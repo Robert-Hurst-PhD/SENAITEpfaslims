@@ -200,6 +200,7 @@
       gap: 0;
     }
     .pfas-tab {
+      background: none; border: 0; font-family: inherit;   /* also for <button> tabs */
       display: inline-block;
       padding: 10px 16px;
       font-size: 13px;
@@ -212,6 +213,10 @@
       cursor: pointer;
       transition: color .1s;
     }
+    /* A tab strip inside the content (not the header strip) sits on the frame
+       edge and keeps its distance from the panel below. */
+    .pfas-content-area .pfas-tabs { padding: 0; background: none;
+                                    margin-bottom: var(--sp-5); }
     .pfas-tab:hover { color: var(--s-body); text-decoration: none; }
     .pfas-tab.active { color: var(--s-primary); border-bottom-color: var(--s-primary); }
 
@@ -365,6 +370,7 @@
        some boxes were a different font, size or taller than others. Pages may
        still set width or override with a class; this is only the baseline.
        Checkboxes, radios and file inputs are intentionally excluded. */
+    .pfas-content-area select:not([multiple]):not([size]) { height: var(--ctl-h); }
     .pfas-content-area input[type=text],
     .pfas-content-area input[type=number],
     .pfas-content-area input[type=date],
@@ -379,9 +385,9 @@
     .pfas-content-area select,
     .pfas-content-area textarea {
       font-family: inherit;
-      font-size: 13px;
-      line-height: 1.4;
-      padding: 7px 10px;
+      font-size: var(--fs-base);
+      line-height: 18px;          /* 18 + 2×6 + 2×1 = --ctl-h, level with buttons */
+      padding: 6px 10px;
       border: 1px solid var(--s-input-border, #ced4da);
       border-radius: 4px;
       color: var(--s-input-text, #495057);
@@ -473,38 +479,43 @@
     .pfas-ws-card-desc  { font-size: 12px; color: var(--s-secondary); line-height: 1.4; }
 
     /* ── Buttons ─────────────────────────────────────────────────────────── */
-    .btn {
-      display: inline-block; padding: 8px 20px; border-radius: 4px;
-      font-size: 13px; font-weight: 600; cursor: pointer;
-      border: none; text-decoration: none;
+    /* ── Buttons: ONE set (GAPS §49, Phase 2) ───────────────────────────
+       Size and colour are independent: .btn and .btn-sm set only size, the
+       variants set only colour, so any size combines with any variant. A bare
+       .btn / .btn-sm is the neutral (secondary) look. .btn-save is the primary
+       save action; the print block keys on it, so the name stays.
+       Heights come from --ctl-h / --ctl-h-sm and match the inputs, so a toolbar
+       of search box + select + buttons lines up. Pages must not redefine these
+       names (tests/test_ui_ratchet.py). */
+    .btn, .btn-sm, .btn-save {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px; height: var(--ctl-h); padding: 0 14px;
+      font-family: inherit; font-size: var(--fs-base); font-weight: 600;
+      line-height: 1; white-space: nowrap; vertical-align: middle;
+      border: 1px solid var(--s-border); border-radius: var(--radius);
+      background: var(--s-bg); color: var(--s-body);
+      cursor: pointer; text-decoration: none;
     }
-    .btn-primary { background: var(--s-primary); color: #fff; }
-    .btn-primary:hover { background: var(--s-primary-dk); text-decoration: none; color: #fff; }
-    .btn-secondary {
-      background: transparent; color: var(--s-secondary);
-      border: 1px solid var(--s-border);
-    }
-    .btn-secondary:hover { background: var(--s-light); text-decoration: none; }
-    .btn-danger  { background: var(--s-danger); color: #fff; }
-    .btn-danger:hover { opacity: .85; }
-    .btn-link {
-      background: none; border: none; color: var(--s-primary);
-      padding: 0; cursor: pointer; font-size: 13px; text-decoration: underline;
-    }
-    /* .btn-save and .btn-sm were referenced app-wide (and by the print block
-       below) but never defined globally — each template carried its own copy,
-       so any template that forgot one rendered a raw browser button. Local
-       definitions still win on source order; these are the fallback. */
-    .btn-save { padding: 9px 24px; background: var(--s-primary); color: #fff;
-                border: none; border-radius: 7px; font-size: 13px;
-                font-weight: 600; cursor: pointer; }
-    .btn-save:hover { background: var(--s-primary-dk); }
-    .btn-sm { font-size: 11px; font-weight: 600; padding: 4px 12px;
-              border-radius: 4px; background: var(--s-light);
-              color: var(--s-secondary); border: 1px solid var(--s-border);
-              cursor: pointer; text-decoration: none; display: inline-block; }
-    .btn-sm:hover { background: var(--s-primary-lt); color: var(--s-body);
-                    text-decoration: none; }
+    .btn:hover, .btn-sm:hover { background: var(--s-light); color: var(--s-body);
+                                text-decoration: none; }
+    .btn:disabled, .btn-sm:disabled, .btn-save:disabled { opacity: .55; cursor: not-allowed; }
+    .btn-sm { height: var(--ctl-h-sm); padding: 0 10px; font-size: var(--fs-sm); }
+    .btn-lg { height: var(--ctl-h-lg); padding: 0 28px; font-size: var(--fs-md); }
+
+    .btn-primary, .btn-save { background: var(--s-primary); border-color: var(--s-primary); color: #fff; }
+    .btn-primary:hover, .btn-save:hover { background: var(--s-primary-dk);
+                                          border-color: var(--s-primary-dk); color: #fff; }
+    .btn-secondary { background: var(--s-bg); border-color: var(--s-border); color: var(--s-body); }
+    .btn-danger { background: var(--s-bg); border-color: var(--s-danger-bd); color: var(--s-danger); }
+    .btn-danger:hover { background: var(--s-danger-lt); border-color: var(--s-danger);
+                        color: var(--s-danger-dk); }
+    .btn-success { background: var(--s-success); border-color: var(--s-success); color: #fff; }
+    .btn-success:hover { background: var(--s-success-text); border-color: var(--s-success-text); color: #fff; }
+    .btn-warn { background: var(--s-bg); border-color: var(--s-warn-bd); color: var(--s-warn-text); }
+    .btn-warn:hover { background: var(--s-warn-lt); color: var(--s-warn-text); }
+    .btn-link { background: none; border-color: transparent; color: var(--s-primary);
+                height: auto; padding: 0 2px; text-decoration: underline; }
+    .btn-link:hover { background: none; color: var(--s-primary-dk); }
 
     /* ── Legacy save-bar (inside content slot — stays sticky in scroll area) */
     .save-bar {

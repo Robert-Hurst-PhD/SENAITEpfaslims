@@ -27,6 +27,14 @@
   --s-danger:       #dc3545;
   --s-warning:      #fd7e14;
   --s-focus-ring:   rgba(66,138,175,.25);
+  --s-danger-lt:    #fdecea;   /* tinted fills for status and quiet buttons */
+  --s-danger-bd:    #f1b0b7;
+  --s-danger-dk:    #a71d2a;
+  --s-warn-lt:      #fff3cd;
+  --s-warn-bd:      #ffdf7e;
+  --s-warn-text:    #856404;
+  --s-success-lt:   #d4edda;
+  --s-success-text: #155724;
 
   /* Aliases for names pages already used without a definition. */
   --s-text:         var(--s-body);
@@ -49,6 +57,11 @@
   --fs-md:   14px;   /* emphasised body                 */
   --fs-lg:   16px;   /* section headings                */
   --fs-xl:   20px;   /* page-level figures              */
+
+  /* ── Controls: one height for buttons and inputs in a toolbar ─────────── */
+  --ctl-h:    32px;
+  --ctl-h-sm: 24px;    /* dense row actions */
+  --ctl-h-lg: 44px;    /* wizard steps at the bench: gloved-hand touch target */
 
   /* ── Shape ────────────────────────────────────────────────────────────── */
   --radius:    4px;

@@ -47,9 +47,6 @@
     .analyte-editor td { padding:3px 4px; border-bottom:1px solid var(--s-border); }
     .analyte-editor input { width:100%; padding:4px 6px; border:1px solid var(--s-input-border);
                             border-radius:3px; font-size:12px; }
-    .btn-add-row { font-size:11px; padding:3px 10px; background:var(--s-primary-lt);
-                   color:var(--s-primary); border:1px solid var(--s-primary);
-                   border-radius:4px; cursor:pointer; margin-top:4px; }
 
     .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
     /* Flash messages use global .alert .alert-success / .alert-error */
@@ -58,19 +55,6 @@
                       border-radius:6px; font-size:12px; }
     .revision-panel summary { cursor:pointer; font-weight:700; font-size:12px;
                                color:var(--s-primary); }
-    .btn-warn   { background:#fff3cd; border:1px solid #ffc107; color:#856404; }
-    .btn-warn:hover { background:#ffc107; color:#fff; }
-    .btn-danger { background:#f8d7da; border:1px solid #dc3545; color:#842029; }
-    .btn-danger:hover { background:#dc3545; color:#fff; }
-      /* Row action pills — consistent with status badges (site pattern) */
-    .btn-sm { font-size:11px; font-weight:700; padding:2px 10px; border-radius:10px;
-              background:#e8f4f8; color:#387493; border:1px solid #cfe5ee;
-              cursor:pointer; text-decoration:none; display:inline-block; line-height:1.6; }
-    .btn-sm:hover { background:#d7ecf3; color:#2d5f7d; text-decoration:none; }
-    .btn-sm.btn-danger { background:#fdecea; color:#a33; border-color:#f2c6c2; }
-    .btn-sm.btn-danger:hover { background:#f8d7da; }
-    .btn-sm.btn-warn { background:#fff3cd; color:#856404; border-color:#ffeeba; }
-    .btn-sm.btn-warn:hover { background:#ffe8a1; }
     /* ── Form builder ─────────────────────────────────────────────── */
     .fb-region { border:1px solid var(--s-border); border-radius:8px; padding:0; }
     .fb-tabs { display:flex; align-items:center; gap:2px; border-bottom:1px solid var(--s-border);
@@ -396,7 +380,7 @@
               <div id="fbFieldList" class="fb-list"></div>
               <div class="fb-addbar">
                 <select id="fbNewType"></select>
-                <button type="button" class="btn-add-row" id="fbAddField">+ Add Field</button>
+                <button type="button" class="btn-sm btn-add-row" id="fbAddField">+ Add Field</button>
               </div>
               <div class="fb-errors" id="fbErrors" style="display:none"></div>
             </div>
@@ -413,7 +397,7 @@
               <div class="fb-banner" id="fbStep252" style="display:none"></div>
               <div id="fbStepList" class="fb-list"></div>
               <div class="fb-addbar">
-                <button type="button" class="btn-add-row" id="fbAddStep">+ Add Step</button>
+                <button type="button" class="btn-sm btn-add-row" id="fbAddStep">+ Add Step</button>
                 <button type="button" class="btn-sm" id="fbSeedSteps"
                         title="Create one step per line of the Procedure text">
                   Seed steps from Procedure</button>
@@ -467,7 +451,7 @@
               </thead>
               <tbody id="analyteBody"></tbody>
             </table>
-            <button type="button" class="btn-add-row" onclick="addAnalyteRow()">+ Add Analyte</button>
+            <button type="button" class="btn-sm btn-add-row" onclick="addAnalyteRow()">+ Add Analyte</button>
             <input type="hidden" name="analyte_template_json" id="analyteJson" value="[]" />
           </div>
 
