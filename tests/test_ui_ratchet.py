@@ -105,6 +105,27 @@ def _all_styles():
                 yield "static/" + name, fh.read()
 
 
+def test_the_typeface_is_served_from_the_addon():
+    """Nunito (decided 2026-09-30) is bundled, with its licence, and named
+    first in --font-sans; no page may load a font from a third-party CDN
+    (offline labs, and no lab page should call out to one)."""
+    with open(os.path.join(STATIC, "pfas-tokens.css")) as fh:
+        tokens = fh.read()
+    assert re.search(r'--font-sans:\s*"Nunito"', tokens), "Nunito is not the first sans font"
+    for url in re.findall(r'url\("([^"]+)"\)', tokens):
+        assert not url.startswith(("http", "//")), url
+        assert os.path.isfile(os.path.join(STATIC, url)), "missing font file %s" % url
+    assert os.path.isfile(os.path.join(STATIC, "fonts", "OFL.txt")), "font licence not shipped"
+    for folder in (TEMPLATES, STATIC):
+        for name in os.listdir(folder):
+            path = os.path.join(folder, name)
+            if os.path.isfile(path) and name.endswith((".pt", ".css", ".js")):
+                with open(path) as fh:
+                    body = fh.read()
+                for cdn in ("fonts.googleapis", "fonts.gstatic", "use.typekit", "fontsource"):
+                    assert cdn not in body, "%s loads fonts from %s" % (name, cdn)
+
+
 def test_tokens_are_defined_once():
     """The palette was typed out in the macro AND the core overlay ("keep in
     sync"). A shared token is defined in pfas-tokens.css and nowhere else."""

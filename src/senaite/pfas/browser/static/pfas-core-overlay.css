@@ -113,3 +113,13 @@ dl.portalMessage.info {
    not have, so the sidebar sat at y=60 on core pages and y=52 on PFAS pages and
    jumped whenever you crossed between them. */
 body:not(.pfas-app) > div.mb-2 { margin-bottom: 0 !important; }  /* Bootstrap utilities are !important */
+
+
+/* ── One typeface on core pages too (pfas-tokens.css --font-sans): Samples,
+   Batches, Worksheets and Setup used Bootstrap's system stack, so text changed
+   face between a core listing and the PFAS page next to it. Form controls do
+   not inherit a font by default, so they are named. ─────────────────────── */
+body, button, input, select, textarea, .btn, .form-control, .popover, .tooltip {
+  font-family: var(--font-sans);
+}
+code, pre, kbd, samp { font-family: var(--font-mono); }

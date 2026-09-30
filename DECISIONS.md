@@ -5390,3 +5390,15 @@ Lab answers:
   EPA 1633A 25/25), so each method starts with exactly the links it had.
 - **Unchanged:** the pipeline, IS list and certificate qualifiers already read
   the per-method map; the seeds still derive from the master table.
+
+## 2026-09-30 — Typeface: Nunito, bundled (confirmed: lab asked for "more rounded")
+- `--font-sans` now starts with Nunito, a rounded sans-serif (SIL OFL 1.1,
+  compatible with shipping inside this GPLv2 add-on; licence at
+  `static/fonts/OFL.txt`). Two variable-weight woff2 files (latin, latin-ext;
+  ~75 KB) are served from the add-on, not a font CDN: pages work offline and
+  no lab page calls a third party. System fonts remain the fallback.
+- Applied on PFAS pages AND core SENAITE pages (`pfas-core-overlay.css`),
+  including form controls, which do not inherit a font by default.
+- Print templates (labels, receipt, QC review report) keep their own fonts:
+  label layouts are sized to them. Monospace (keywords, codes) unchanged.
+- Guard: `test_ui_ratchet.test_the_typeface_is_served_from_the_addon`.

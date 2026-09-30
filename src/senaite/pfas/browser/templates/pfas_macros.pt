@@ -75,6 +75,8 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     /* ── App shell layout ────────────────────────────────────────────────── */
+    body.pfas-app button, body.pfas-app input,
+    body.pfas-app select, body.pfas-app textarea { font-family: inherit; }
     body.pfas-app {
       font-family: var(--font-sans);
       font-size: var(--fs-base);
