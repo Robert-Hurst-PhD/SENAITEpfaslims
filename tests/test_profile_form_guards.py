@@ -78,47 +78,43 @@ def test_every_marker_the_form_emits_is_honoured_by_the_handler():
             "the form emits %s but the save handler never checks it" % marker)
 
 
-def test_the_instrument_criteria_are_behind_a_guard():
-    """The specific regression. These seven were nulled by a partial POST."""
-    tree = ast.parse(_handler_source(), HANDLER)
+def test_the_instrument_criteria_are_saved_only_by_their_own_section():
+    """The specific regression. These seven were nulled by a partial POST.
+
+    Since R2 (2026-09-30) the guard is structural rather than a marker: the
+    big-form handler writes NONE of them, and the Calibration & CCV section
+    (method_profile_sections, config_forms) is the only writer -- and it
+    parses only when its own form is submitted. Any assignment of one of these
+    keys back in the handler would re-open the partial-POST hole.
+    """
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "src", "senaite", "pfas"))
+    import method_profile_sections as mps
     victims = ("point_pct_dev_max", "ion_ratio_tol_pct", "rrt_tol_pct",
                "sn_quan_min", "sn_confirm_min", "vs_ical_avg_min",
                "require_confirm_ion_check")
+    declared = set(f.path[-1] for f in mps.CALIBRATION_CCV.fields())
+    assert set(victims) <= declared, sorted(set(victims) - declared)
 
-    guarded = set()
+    written = set()
 
     class Visitor(ast.NodeVisitor):
-        def __init__(self):
-            self.depth_guards = []
-
-        def visit_If(self, node):
-            test = ast.dump(node.test)
-            self.depth_guards.append("instrument_verification_present" in test)
-            for child in node.body:
-                self.visit(child)
-            self.depth_guards.pop()
-            for child in node.orelse:
-                self.visit(child)
-
-        def visit_Subscript(self, node):
-            # py<3.9 wraps the key in ast.Index; py>=3.9 puts the Constant
-            # directly on .slice. Unwrapping blindly turns the Constant into
-            # the plain string and then asks a str for .value -- which is how
-            # this test first reported a false failure.
-            key = node.slice
-            if key.__class__.__name__ == "Index":
-                key = key.value
-            name = key.value if hasattr(key, "value") else getattr(key, "s", None)
-            if isinstance(name, str) and name in victims and any(self.depth_guards):
-                guarded.add(name)
+        def visit_Assign(self, node):
+            for t in node.targets:
+                if isinstance(t, ast.Subscript):
+                    key = t.slice
+                    if key.__class__.__name__ == "Index":
+                        key = key.value
+                    name = key.value if hasattr(key, "value") else getattr(key, "s", None)
+                    if name in victims:
+                        written.add(name)
             self.generic_visit(node)
 
-    Visitor().visit(tree)
-    missing = sorted(set(victims) - guarded)
-    assert not missing, (
-        "these instrument criteria are written outside the "
-        "instrument_verification_present guard, so a partial POST would null "
-        "them again: %s" % missing)
+    Visitor().visit(ast.parse(_handler_source(), HANDLER))
+    assert not written, (
+        "the big-form handler writes %s again -- a POST from any other tab "
+        "would null it; it belongs to the Calibration & CCV section only"
+        % sorted(written))
 
 
 def test_absent_means_unchanged_not_zero():

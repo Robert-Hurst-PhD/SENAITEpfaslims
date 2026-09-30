@@ -226,3 +226,15 @@
   A resolution that depends on everyone agreeing to use one spelling is not a
   resolution — it is an assumption with no enforcement.
   See `docs/ISO17025_DESIGN.md` §5.
+
+## Q — Surrogate links per method (raised 2026-09-30)
+- **Raised by the lab:** "Surrogate links are specific to methods. This will
+  need to be revised. Similar to internal standards."
+- **Today (D58):** one quantifying-surrogate link per native, stored on the
+  core AnalysisService (`pfas_quant_surrogate`) and shared by every method;
+  each profile's `surrogate_map` is derived from it. An edit on one method's
+  Surrogate Map tab therefore changes the link for all three methods.
+- **Needed:** the link owned by METHOD x analyte (as internal standards are),
+  with existing links migrated into each method without loss. Data-model
+  change: audit + migration plan for sign-off before any code (CLAUDE.md §8).
+- **Status:** open — plan to be presented after the R2 Calibration & CCV step.

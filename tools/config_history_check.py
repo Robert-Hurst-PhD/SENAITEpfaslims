@@ -92,6 +92,15 @@ def case_surrogate(pg):
     return "Quantifying surrogate", True, None
 
 
+def case_cal_section(pg):
+    """Calibration & CCV tab: its own form and save (R2)."""
+    open_profile(pg, "EPA_537_1", "pane-cal")
+    f = pg.locator("[name=f__ccv__recovery_max]")
+    f.fill(str(float(f.input_value()) + 1))
+    save_profile_form(pg)                       # the button now submits this tab
+    return "ccv / recovery_max", True, None
+
+
 def case_edd_profile(pg):
     pg.goto(B + "@@pfas-egad-config#profiles"); pg.wait_for_load_state("networkidle")
     pg.evaluate("() => document.querySelectorAll('#pane-profiles details').forEach(d => d.open = true)")
@@ -121,6 +130,7 @@ def case_client_edd(pg):
 
 
 CASES = [("recovery tier", case_tier), ("rule toggle", case_toggle),
+         ("cal section", case_cal_section),
          ("surrogate link", case_surrogate), ("EDD profile", case_edd_profile),
          ("client EDD", case_client_edd)]
 
@@ -143,6 +153,27 @@ def stale_toggle(browser, password):
     verdict = err.first.inner_text().strip()[:120] if err.count() else "NOT REFUSED"
     print("stale save after a toggle-only change:", verdict)
     print("  undo:", revert(a, "method_rule_toggles"))
+
+
+def stale_section(browser, password):
+    """Two sessions on the Calibration & CCV tab: A saves a change, B saves
+    the same tab from its stale page and must be refused."""
+    def session():
+        ctx = browser.new_context(viewport={"width": 1440, "height": 900})
+        pg = ctx.new_page()
+        pg.goto(B + "login"); pg.fill("input[name=__ac_name]", "admin")
+        pg.fill("input[name=__ac_password]", password)
+        pg.click("button[type=submit], input[type=submit]"); pg.wait_for_load_state("networkidle")
+        return pg
+    a, b = session(), session()
+    open_profile(a, "EPA_537_1", "pane-cal"); open_profile(b, "EPA_537_1", "pane-cal")
+    f = a.locator("[name=f__ccv__recovery_max]")
+    f.fill(str(float(f.input_value()) + 1))
+    save_profile_form(a)
+    save_profile_form(b)
+    err = b.locator(".alert-error")
+    print("stale section save:", err.first.inner_text().strip()[:140] if err.count() else "NOT REFUSED")
+    print("  undo:", revert(a, "ccv / recovery_max"))
 
 
 def main(out_dir):
@@ -171,6 +202,10 @@ def main(out_dir):
             stale_toggle(browser, pw)
         except Exception as exc:                                        # noqa: BLE001
             print("stale toggle test FAILED:", str(exc).splitlines()[0][:140])
+        try:
+            stale_section(browser, pw)
+        except Exception as exc:                                        # noqa: BLE001
+            print("stale section test FAILED:", str(exc).splitlines()[0][:140])
         print("js errors:", errors or "none")
         browser.close()
     end = audit.snapshot(os.path.join(out_dir, "check_after.json"))

@@ -238,8 +238,9 @@
 
   <tal:ab metal:fill-slot="action-bar">
     <div class="pfas-action-bar">
-      <button type="submit" form="profile-form" class="btn btn-primary">Save &amp; Export</button>
+      <button type="submit" form="profile-form" id="profile-save" class="btn btn-primary">Save &amp; Export</button>
       <a class="btn btn-secondary" href="@@pfas-method-profiles">Cancel</a>
+      <span id="profile-unsaved" class="form-note" role="status"></span>
     </div>
   </tal:ab>
 
@@ -1007,188 +1008,14 @@
             before the criteria below take effect for this method.
           </div>
 
-          <!-- Marker guard, same purpose as matrix_settings_present: every
-               instrument criterion below is written UNCONDITIONALLY, so a POST
-               that does not carry these inputs would null the calibration,
-               CCV, IS-response and confirmation limits. Verified by doing it:
-               a partial POST wiped point_pct_dev_max, ion_ratio_tol_pct,
-               rrt_tol_pct, sn_quan_min and the IS window on the live FDA
-               profile. -->
-          <input type="hidden" name="instrument_verification_present" value="1" />
-
-          <details>
-            <summary>Calibration</summary>
-            <div class="section-body">
-              <div class="field-grid">
-                <div class="field-row">
-                  <label for="cal_r2_min">R&#178; Minimum</label>
-                  <input type="number" id="cal_r2_min" name="cal_r2_min"
-                         step="0.001" min="0.900" max="1.000"
-                         tal:attributes="value python:view.cal().get('r2_min', 0.990)" />
-                  <span class="hint">e.g. 0.990 (FDA) or 0.995 (generic)</span>
-                </div>
-                <div class="field-row">
-                  <label for="cal_point_pct_dev_max">Point % Deviation Max</label>
-                  <input type="number" id="cal_point_pct_dev_max" name="cal_point_pct_dev_max"
-                         step="0.1" min="0"
-                         tal:attributes="value python:view.cal().get('point_pct_dev_max', '')" />
-                  <span class="hint">Each cal point must be within &#177;N% of curve. Leave blank for no limit.</span>
-                </div>
-                <div class="field-row">
-                  <label for="cal_low_point_pct_dev_max">Low-Level Point % Dev Max</label>
-                  <input type="number" id="cal_low_point_pct_dev_max" name="cal_low_point_pct_dev_max"
-                         step="0.1" min="0"
-                         tal:attributes="value python:view.cal().get('low_point_pct_dev_max') or ''" />
-                  <span class="hint">Wider limit for lowest calibration level (e.g. 50 for EPA 537.1).</span>
-                </div>
-                <div class="field-row">
-                  <div class="check-row">
-                    <input type="checkbox" id="cal_force_origin" name="cal_force_origin"
-                           tal:attributes="checked python:'checked' if view.cal().get('force_origin') else None" />
-                    <label for="cal_force_origin">Force through origin</label>
-                  </div>
-                  <span class="hint">Required by EPA 537.1 IS calibration technique</span>
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <details>
-            <summary>Chromatographic Confirmation &amp; Signal Quality</summary>
-            <div class="section-body">
-              <div class="field-grid">
-                <div class="field-row">
-                  <label for="conf_ion_ratio_tol_pct">Ion Ratio Tolerance &#177; %</label>
-                  <input type="number" id="conf_ion_ratio_tol_pct" name="conf_ion_ratio_tol_pct"
-                         step="0.1" min="0"
-                         tal:attributes="value python:view.confirmation().get('ion_ratio_tol_pct') or ''" />
-                  <span class="hint">30 for FDA; 50 for EPA 1633A; blank for 537.1 (no criterion)</span>
-                </div>
-                <div class="field-row">
-                  <label for="conf_rrt_tol_pct">Relative RT Tolerance %</label>
-                  <input type="number" id="conf_rrt_tol_pct" name="conf_rrt_tol_pct"
-                         step="0.1" min="0"
-                         tal:attributes="value python:view.confirmation().get('rrt_tol_pct') or ''" />
-                  <span class="hint">1.0 for FDA (RRT &#177;1% of standard RT).</span>
-                </div>
-                <div class="field-row">
-                  <label for="conf_rt_tol_abs_min">Absolute RT Tolerance (min)</label>
-                  <input type="number" id="conf_rt_tol_abs_min" name="conf_rt_tol_abs_min"
-                         step="0.01" min="0"
-                         tal:attributes="value python:view.confirmation().get('rt_tol_abs_min') or ''" />
-                  <span class="hint">0.05 for EPA 537.1.</span>
-                </div>
-                <div class="field-row">
-                  <label for="conf_sn_quan_min">S/N Min &#8212; Quantitation Ion</label>
-                  <input type="number" id="conf_sn_quan_min" name="conf_sn_quan_min"
-                         step="0.1" min="0"
-                         tal:attributes="value python:view.confirmation().get('sn_quan_min', 3.0)" />
-                </div>
-                <div class="field-row">
-                  <label for="conf_sn_confirm_min">S/N Min &#8212; Confirm Ion (optional)</label>
-                  <input type="number" id="conf_sn_confirm_min" name="conf_sn_confirm_min"
-                         step="0.1" min="0"
-                         tal:attributes="value python:view.confirmation().get('sn_confirm_min') or ''" />
-                  <span class="hint">1.0 for EPA 1633A.</span>
-                </div>
-                <div class="field-row field-row-wide">
-                  <label for="conf_confirm_technique">Confirmation technique for single-transition analytes</label>
-                  <input type="text" id="conf_confirm_technique" name="conf_confirm_technique"
-                         placeholder="LC-HRMS"
-                         tal:attributes="value python:view.confirmation().get('confirm_technique') or ''" />
-                  <span class="hint">FDA &#167;10.2(4) requires a positive for a
-                    single-transition analyte (PFBA, PFPeA) to be confirmed by an
-                    orthogonal technique, and cites LC-HRMS as an example &#8212; it
-                    is not the only route. Name the one this lab uses; the review
-                    prompt quotes it. Switch the prompt off entirely under QC Rules
-                    &#8594; Single-Transition Confirmation.</span>
-                </div>
-                <div class="field-row field-row-wide">
-                  <div class="check-row">
-                    <input type="checkbox" id="conf_require_confirm_ion_check"
-                           name="conf_require_confirm_ion_check"
-                           tal:attributes="checked python:'checked' if view.confirmation().get('require_confirm_ion_check') else None" />
-                    <label for="conf_require_confirm_ion_check">
-                      Require qualifier ion check for all analytes
-                    </label>
-                  </div>
-                  <span class="hint">ON for FDA 32-PFAS and EPA 1633A; OFF for EPA 537.1.</span>
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <div class="section-group-hdr">Continuing Verification</div>
-
-          <details>
-            <summary>Continuing Calibration Verification (CCV)</summary>
-            <div class="section-body">
-              <div class="field-grid">
-                <div class="field-row">
-                  <label for="ccv_frequency">CCV Frequency (every N samples)</label>
-                  <input type="number" id="ccv_frequency" name="ccv_frequency"
-                         step="1" min="1"
-                         tal:attributes="value python:view.ccv().get('frequency', 10)" />
-                  <span class="hint">6 for FDA 32-PFAS; 10 for EPA 537.1 / 1633A</span>
-                </div>
-                <div class="field-row">
-                  <label for="ccv_recovery_min">Recovery Min %</label>
-                  <input type="number" id="ccv_recovery_min" name="ccv_recovery_min" step="0.1"
-                         tal:attributes="value python:view.ccv().get('recovery_min', 70.0)" />
-                </div>
-                <div class="field-row">
-                  <label for="ccv_recovery_max">Recovery Max %</label>
-                  <input type="number" id="ccv_recovery_max" name="ccv_recovery_max" step="0.1"
-                         tal:attributes="value python:view.ccv().get('recovery_max', 130.0)" />
-                </div>
-                <div class="field-row">
-                  <label for="ccv_low_level_min">Low-Level Min % (optional)</label>
-                  <input type="number" id="ccv_low_level_min" name="ccv_low_level_min" step="0.1"
-                         tal:attributes="value python:view.ccv().get('low_level_min') or ''" />
-                  <span class="hint">Wider window for the lowest CCC/CCV level.</span>
-                </div>
-                <div class="field-row">
-                  <label for="ccv_low_level_max">Low-Level Max % (optional)</label>
-                  <input type="number" id="ccv_low_level_max" name="ccv_low_level_max" step="0.1"
-                         tal:attributes="value python:view.ccv().get('low_level_max') or ''" />
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <details>
-            <summary>Internal Standard (IS) / Surrogate Response</summary>
-            <div class="section-body">
-              <div class="field-grid">
-                <div class="field-row">
-                  <label for="is_vs_ical_avg_min">vs. ICAL Average Min %</label>
-                  <input type="number" id="is_vs_ical_avg_min" name="is_vs_ical_avg_min" step="0.1"
-                         tal:attributes="value python:view.is_section().get('vs_ical_avg_min') or ''" />
-                </div>
-                <div class="field-row">
-                  <label for="is_vs_ical_avg_max">vs. ICAL Average Max %</label>
-                  <input type="number" id="is_vs_ical_avg_max" name="is_vs_ical_avg_max" step="0.1"
-                         tal:attributes="value python:view.is_section().get('vs_ical_avg_max') or ''" />
-                </div>
-                <div class="field-row">
-                  <label for="is_vs_last_ccv_min">vs. Last CCV Min % (optional)</label>
-                  <input type="number" id="is_vs_last_ccv_min" name="is_vs_last_ccv_min" step="0.1"
-                         tal:attributes="value python:view.is_section().get('vs_last_ccv_min') or ''" />
-                  <span class="hint">EPA 537.1 &#167;9.3.4 requires this second condition.</span>
-                </div>
-                <div class="field-row">
-                  <label for="is_vs_last_ccv_max">vs. Last CCV Max % (optional)</label>
-                  <input type="number" id="is_vs_last_ccv_max" name="is_vs_last_ccv_max" step="0.1"
-                         tal:attributes="value python:view.is_section().get('vs_last_ccv_max') or ''" />
-                </div>
-                <div class="field-row field-row-wide">
-                  <label for="is_notes">Notes</label>
-                  <input type="text" id="is_notes" name="is_notes"
-                         tal:attributes="value python:view.is_section().get('notes', '')" />
-                </div>
-              </div>
-            </div>
-          </details>
+          <!-- Saved ON ITS OWN (R2, config_forms): these inputs belong to
+               form#section-cal (below profile-form) through the form=
+               attribute, and the main Save & Export no longer carries or
+               parses them. The action-bar button submits this tab's form
+               while this tab is open. -->
+          <div tal:define="cf_groups python:view.section_groups('cal'); cf_form string:section-cal">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
 
         </div>
       </div><!-- /pane-cal -->
@@ -1320,6 +1147,15 @@
       </div><!-- /pane-adv -->
 
     </form>
+    <!-- Per-tab section forms (R2): each saves only its own section, with its
+         own stale-save stamp. -->
+    <form id="section-cal" method="POST" class="pfas-section-form"
+          data-tab-label="Calibration &amp; CCV"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="cal" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp" tal:attributes="value python:view.section_stamp('cal')" />
+    </form>
 
     <script>
     (function () {
@@ -1334,11 +1170,61 @@
         if (pane) pane.classList.add('active');
         var tab = document.querySelector('#method-profile-tabs [data-pane="' + paneId + '"]');
         if (tab) tab.classList.add('active');
+        /* R2: a tab with its own section form saves only that form; every
+           other tab saves the main profile form. */
+        var own = document.getElementById('section-' + paneId.replace('pane-', ''));
+        var save = document.getElementById('profile-save');
+        if (save) save.setAttribute('form', own ? own.id : 'profile-form');
+        if (window.pfasUnsavedNote) window.pfasUnsavedNote();
         try {
           history.replaceState(null, '', location.pathname + location.search + '#' + paneId);
         } catch (e) {}
       }
       window.pfasTabSwitch = pfasTabSwitch;
+
+      /* Unsaved changes on a form the Save button does not submit are lost on
+         the redirect after saving -- one Save used to cover every tab. Name
+         them in the action bar, and refuse the first submit that would drop
+         them (a second click saves anyway and discards them). */
+      (function () {
+        var dirty = {};
+        var warned = false;
+        function label(id) {
+          var f = document.getElementById(id);
+          return (f ? f.getAttribute('data-tab-label') : '') || 'the other tabs';
+        }
+        function others() {
+          var save = document.getElementById('profile-save');
+          var target = save ? save.getAttribute('form') : '';
+          return Object.keys(dirty).filter(function (id) { return id !== target ? dirty[id] : false; });
+        }
+        window.pfasUnsavedNote = function () {
+          var note = document.getElementById('profile-unsaved');
+          if (!note) return;
+          var o = others();
+          note.textContent = o.length ? ('Unsaved changes on ' + o.map(label).join(', ') +
+                                         ' \u2014 saved separately; save that tab first.') : '';
+        };
+        document.addEventListener('input', track, true);
+        document.addEventListener('change', track, true);
+        function track(e) {
+          var f = e.target ? e.target.form : null;
+          if (!f || !f.id) return;
+          dirty[f.id] = true;
+          warned = false;
+          window.pfasUnsavedNote();
+        }
+        document.addEventListener('submit', function (e) {
+          var o = others().filter(function (id) { return id !== e.target.id; });
+          if (o.length ? !warned : false) {
+            e.preventDefault();
+            warned = true;
+            var note = document.getElementById('profile-unsaved');
+            if (note) note.textContent = 'Not saved yet: ' + o.map(label).join(', ') +
+              ' has unsaved changes that this save would discard. Save that tab first, or click Save again to discard them.';
+          }
+        }, true);
+      })();
 
       /* Rule Toggles: grey out a rule's param inputs when it is toggled off */
       (function () {
@@ -1359,7 +1245,12 @@
         var hash = location.hash.replace('#', '');
         var valid = ['pane-toggles', 'pane-qct', 'pane-rt', 'pane-corr', 'pane-ami',
                      'pane-sur', 'pane-eis', 'pane-cal', 'pane-lwf', 'pane-adv'];
-        pfasTabSwitch((hash && valid.indexOf(hash) !== -1) ? hash : 'pane-toggles');
+        var first = (hash && valid.indexOf(hash) !== -1) ? hash : 'pane-toggles';
+        pfasTabSwitch(first);
+        /* The pinned action bar is drawn AFTER this script, so the Save
+           button does not exist yet on the first switch: retarget it again
+           once the page is parsed. */
+        document.addEventListener('DOMContentLoaded', function () { pfasTabSwitch(first); });
       })();
     })();
     </script>

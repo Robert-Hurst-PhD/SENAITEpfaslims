@@ -33,6 +33,11 @@ STEPS = [
     ("method profile EPA 537.1", "@@pfas-method-profile-edit?method_id=EPA_537_1", ("button", "Save & Export")),
     ("method profile EPA 1633A", "@@pfas-method-profile-edit?method_id=EPA_1633A", ("button", "Save & Export")),
     ("method profile FDA 32-PFAS", "@@pfas-method-profile-edit?method_id=FDA_32PFAS", ("button", "Save & Export")),
+    # The Calibration & CCV tab is its own form (R2): opened on that tab, the
+    # action-bar button submits only that section.
+    ("method profile EPA 537.1: Calibration & CCV", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-cal", ("button", "Save & Export")),
+    ("method profile EPA 1633A: Calibration & CCV", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-cal", ("button", "Save & Export")),
+    ("method profile FDA 32-PFAS: Calibration & CCV", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-cal", ("button", "Save & Export")),
     # @@pfas-qc-rules redirects to Method Profiles: the rule toggles are a tab
     # of the profile editor, whose saves write qc_rules.json (covered above).
     ("QC type grid", "@@pfas-qc-type-grid", ("button", "Save Grid")),

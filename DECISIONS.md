@@ -5339,3 +5339,28 @@ Lab answers:
   history must not stop the save it describes.
 - **Secrets** (the facility API key) are recorded as "changed", without the
   values.
+
+## 2026-09-30 — R2: declared configuration sections, one save per tab (confirmed)
+- **Context:** docs/CONFIG_ARCHITECTURE_REVIEW.md R2, approved 2026-09-30. Every
+  save defect in GAPS §51 was a rule broken by one hand-written form.
+- **Decision:** a settings section is declared once (`config_forms.Field` /
+  `Section`: kind, unit, limits, required, path) and rendered, parsed, stamped
+  and saved by one module. Rules: a default is a placeholder, never a value; a
+  blank number is unset (None), blank text is empty; a required field left
+  blank, a non-number or an out-of-limits value is refused with the field named;
+  a choice always offers, and accepts, its STORED value (taken on the server,
+  never from the browser); a save parses only its own section; each section has
+  its own stale-save stamp; the save goes through the store's save function so
+  history and the JSON export apply.
+- **Method Profile editor:** migrated one tab at a time. Calibration & CCV is
+  first: its own form (`#section-cal`, inputs joined by the HTML `form=`
+  attribute), the action-bar Save button submits the open tab's form, and the
+  big form no longer carries or parses those fields (the
+  `instrument_verification_present` marker and block are gone). A section save
+  runs nothing else in the POST chain — the rule-toggle and surrogate-link
+  writers read fields that form does not carry.
+- **Required on this tab:** calibration r², CCV frequency, CCV recovery min/max.
+  Before, a blank in these kept the old value silently; now it is refused.
+  Everything else stays optional (blank = no limit), as before.
+- **Unsaved changes on another tab** are named in the action bar, and the first
+  Save that would discard them is held (a second click saves anyway).

@@ -113,6 +113,15 @@
       permission="zope2.Public"
       />
 
+  <!-- Declared configuration section macro (config_forms.py, R2) —
+       context/@@pfas-config-form-macros/macros/section -->
+  <browser:page
+      name="pfas-config-form-macros"
+      for="*"
+      class=".config_form_macros.PFASConfigFormMacrosView"
+      permission="zope2.Public"
+      />
+
   <!-- Unified accordion sidebar — used by PFASSidebarManager (core pages)
        and called directly from pfas_macros.pt (PFAS workspace pages). -->
   <browser:page

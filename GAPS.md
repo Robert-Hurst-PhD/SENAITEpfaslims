@@ -5659,3 +5659,40 @@ Approved by the lab as the first recommendation of
     weight sets and registry settings (recorded; reverted in their own
     editor);
   - stamps on editors other than the Method Profile editor (with R2).
+
+## 53. R2 started: declared sections; Calibration & CCV saves on its own (2026-09-30)
+- **Built:** `config_forms.py` (render / parse / stamp / apply, pure, Py2.7 +
+  Py3), `method_profile_sections.py` (the Calibration & CCV declaration),
+  `@@pfas-config-form-macros` (one macro draws any declared section), and the
+  Method Profile editor's per-tab save (`_save_section`). DECISIONS.md, same date.
+- **Verified live after restart:**
+  - no-op save of the tab on all three profiles: 0 changes, 0 history entries;
+  - a real edit (EPA 537.1 CCV recovery max 130 → 131) recorded as exactly one
+    change, reached `/data/qc/method_profiles.json`, and survived a restart
+    (the installer re-run);
+  - two sessions on the tab: the stale save is refused, naming who and when;
+    a stale main-form save after a section save is also refused (the whole-
+    profile stamp covers every tab);
+  - a fresh main-form save leaves the section untouched;
+  - the unsaved-changes note and held first click work;
+  - a blank CCV frequency is refused by name;
+  - configuration afterwards equals the snapshot taken before.
+- **Found on the way:** the pinned action bar is drawn after the page script,
+  so the first tab switch could not retarget the Save button (the tab's no-op
+  audit submitted the main form instead). Fixed by retargeting again on
+  DOMContentLoaded; the audit tool now saves each tab separately and caught it.
+- **Tests:** `test_config_forms.py` (14: round trip on the three live profiles,
+  UTF-8 bytes, blank/required/coercion rules, choice cannot be widened, section
+  isolation, stamp scope, and three wiring guards, each mutation-tested);
+  `test_profile_form_guards.py`: the marker guard test now asserts the big-form
+  handler writes none of the seven criteria (mutation-tested).
+- **Still open:**
+  1. Migrate the remaining tabs (Matrices & Units, Recovery Tiers, Reporting
+     Limits, ...) and then the other settings pages to declared sections.
+  2. `instrument_verification.sequence.ccv_frequency` duplicates
+     `ccv.frequency`. The Run Builder and ruleset read `ccv.frequency`; the
+     `sequence` copy has no reader or input. Remove it with a migration.
+  3. `qc_rules.json` `updated_at` is rewritten by every main-form save, even an
+     unchanged one (timestamp only, predates R2).
+  4. Surrogate links per method (QUESTIONS.md, raised by the lab today): plan
+     for sign-off before any code.

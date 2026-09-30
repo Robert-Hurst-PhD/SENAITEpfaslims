@@ -1,0 +1,65 @@
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<body>
+<!--
+  Draws one declared configuration section (config_forms.render).
+
+  Caller defines, ON A WRAPPING ELEMENT:
+      cf_groups   config_forms.render(section, stored)
+      cf_form     id of the form element the inputs belong to (HTML form=
+                  attribute, so a section can sit inside another form's markup)
+
+  A default is a placeholder, never a value: an empty input saves as unset.
+-->
+<metal:section define-macro="section">
+  <details tal:repeat="g cf_groups" open="open">
+    <summary tal:content="g/title">Calibration</summary>
+    <div class="section-body">
+      <div class="field-grid">
+        <div tal:repeat="fld g/fields"
+             tal:attributes="class python:'field-row field-row-wide' if fld['kind'] in ('text', 'textarea') else 'field-row'">
+          <tal:bool condition="python:fld['kind'] == 'bool'">
+            <div class="check-row">
+              <input type="checkbox" value="on"
+                     tal:attributes="id fld/name; name fld/name; form cf_form;
+                                     checked python:'checked' if fld['checked'] else None" />
+              <label tal:attributes="for fld/name" tal:content="fld/label">Label</label>
+            </div>
+          </tal:bool>
+          <tal:other condition="python:fld['kind'] != 'bool'">
+            <label tal:attributes="for fld/name">
+              <span tal:replace="fld/label">Label</span><span tal:condition="fld/unit"
+                    tal:replace="string: (${fld/unit})" /><span tal:condition="fld/required"
+                    class="req" title="required"> *</span>
+            </label>
+            <input tal:condition="python:fld['kind'] in ('number', 'int')" type="number"
+                   tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
+                                   placeholder fld/placeholder;
+                                   step python:'1' if fld['kind'] == 'int' else 'any';
+                                   min fld/min; max fld/max;
+                                   required python:'required' if fld['required'] else None" />
+            <input tal:condition="python:fld['kind'] == 'text'" type="text"
+                   tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
+                                   placeholder fld/placeholder;
+                                   required python:'required' if fld['required'] else None" />
+            <textarea tal:condition="python:fld['kind'] == 'textarea'" rows="3"
+                      tal:attributes="id fld/name; name fld/name; form cf_form;
+                                      placeholder fld/placeholder"
+                      tal:content="fld/value"></textarea>
+            <select tal:condition="python:fld['kind'] == 'choice'"
+                    tal:attributes="id fld/name; name fld/name; form cf_form">
+              <option value="" tal:condition="not:fld/required">(unset)</option>
+              <option tal:repeat="c fld/choices"
+                      tal:attributes="value python:c[0]; selected python:'selected' if c[0] == fld['value'] else None"
+                      tal:content="python:c[1]">option</option>
+            </select>
+          </tal:other>
+          <span class="hint" tal:condition="fld/help" tal:content="fld/help">hint</span>
+        </div>
+      </div>
+    </div>
+  </details>
+</metal:section>
+</body>
+</html>

@@ -754,12 +754,63 @@ class PFASMethodProfileEditView(BrowserView):
         return config_history.last_change(_portal(self.context), "method_profile",
                                           self.method_id())
 
+    # ── declared sections (R2, config_forms) ─────────────────────────────────
+    # A tab migrated to config_forms is its own form and its own save: only its
+    # fields are parsed, against its own stamp, and nothing else in the POST
+    # chain runs -- the rule-toggle and surrogate-link writers read fields this
+    # form does not carry, and would switch every rule off / rewrite the links.
+
+    def section_groups(self, section_id):
+        from senaite.pfas import config_forms
+        from senaite.pfas.method_profile_sections import SECTIONS
+        from senaite.pfas.method_profile_store import raw_profile
+        return config_forms.render(SECTIONS[section_id],
+                                   raw_profile(_portal(self.context), self.method_id()))
+
+    def section_stamp(self, section_id):
+        from senaite.pfas import config_forms
+        from senaite.pfas.method_profile_sections import SECTIONS
+        from senaite.pfas.method_profile_store import raw_profile
+        return config_forms.stamp(SECTIONS[section_id],
+                                  raw_profile(_portal(self.context), self.method_id()))
+
+    def _save_section(self, portal, mid, section_id):
+        from senaite.pfas import config_forms, config_history
+        from senaite.pfas.method_profile_sections import SECTIONS
+        from senaite.pfas.method_profile_store import raw_profile
+        section = SECTIONS.get(section_id)
+        if section is None:
+            return self._redirect_error(mid, "Unknown section: %s" % section_id)
+        pane = "pane-" + section.id
+        stored = raw_profile(portal, mid)
+        if not stored:
+            return self._redirect_error(mid, "No profile for %s" % mid, pane)
+        sent = (self.request.form.get("section_stamp") or "").strip()
+        if sent != config_forms.stamp(section, stored):
+            last = config_history.last_change(portal, "method_profile", mid) or {}
+            return self._redirect_error(mid, (
+                u"Not saved: {0} was changed by {1} at {2} UTC after you opened "
+                u"it. Reload to see their change, then re-apply yours.").format(
+                    section.title, last.get("who", "someone"), last.get("at", "?")), pane)
+        updates, errors = config_forms.parse(section, self.request.form, stored)
+        if errors:
+            return self._redirect_error(mid, u"Not saved: " + u" ".join(errors), pane)
+        profile = config_forms.apply(section, get_profile(portal, mid), updates)
+        # A user-saved profile is no longer factory-default (the installer
+        # re-runs on every start and treats _seeded profiles as its own).
+        profile.pop("_seeded", None)
+        save_profile(portal, mid, profile)
+        return self._redirect_saved(mid, pane)
+
     def _handle_post(self):
         mid = self.request.form.get("method_id", "").strip()
         if not mid:
             return self._redirect_error("", "method_id is required")
 
         portal = _portal(self.context)
+        section_id = (self.request.form.get("_section") or "").strip()
+        if section_id:
+            return self._save_section(portal, mid, section_id)
         # Stale-save protection (R1): refuse, before applying anything, a save
         # made from a page opened before someone else changed this profile --
         # the second save used to replace the first without a word.
@@ -935,73 +986,11 @@ class PFASMethodProfileEditView(BrowserView):
         profile["surrogate_is"] = f.get("surrogate_is",
                                          profile.get("surrogate_is", "")).strip()
 
-        # Instrument verification — calibration, CCV, IS response and
-        # chromatographic confirmation. Every value below is assigned
-        # UNCONDITIONALLY: `_float` returns None for an absent field and that
-        # None is stored, so a POST that omits these inputs does not "leave
-        # them alone", it NULLS them.
-        #
-        # Guarded by a marker field for the same reason as matrix_settings and
-        # the recovery tiers below. This was found by doing it: a partial POST
-        # carrying only the Matrices & Units pane wiped point_pct_dev_max,
-        # ion_ratio_tol_pct, rrt_tol_pct, sn_quan_min, sn_confirm_min,
-        # require_confirm_ion_check and the whole IS-response window off the
-        # live FDA profile. The full form always submits every pane, so normal
-        # use never hit it -- which is exactly why it survived.
-        if f.get("instrument_verification_present"):
-            # Calibration
-            cal = profile.setdefault(
-                "instrument_verification", {}).setdefault("calibration", {})
-            r2 = _float("cal_r2_min")
-            if r2 is not None:
-                cal["r2_min"] = r2
-            cal["force_origin"]          = _bool("cal_force_origin")
-            cal["point_pct_dev_max"]     = _float("cal_point_pct_dev_max")
-            cal["low_point_pct_dev_max"] = _float("cal_low_point_pct_dev_max")
-
-            # Every section below is written into instrument_verification, which
-            # is the structure the engine reads. Writing the flat keys meant an
-            # edit here never reached a QC decision.
-            iv = profile.setdefault("instrument_verification", {})
-
-            # CCV
-            ccv = iv.setdefault("ccv", {})
-            freq = _int("ccv_frequency")
-            if freq is not None:
-                ccv["frequency"] = freq
-            ccv["recovery_min"]  = _float("ccv_recovery_min", ccv.get("recovery_min"))
-            ccv["recovery_max"]  = _float("ccv_recovery_max", ccv.get("recovery_max"))
-            ccv["low_level_min"] = _float("ccv_low_level_min")
-            ccv["low_level_max"] = _float("ccv_low_level_max")
-
-            # IS / surrogate response
-            is_ = iv.setdefault("is_response", {})
-            is_["vs_ical_avg_min"] = _float("is_vs_ical_avg_min")
-            is_["vs_ical_avg_max"] = _float("is_vs_ical_avg_max")
-            is_["vs_last_ccv_min"] = _float("is_vs_last_ccv_min")
-            is_["vs_last_ccv_max"] = _float("is_vs_last_ccv_max")
-            is_["notes"]           = f.get("is_notes", "").strip()
-
-            # Chromatographic confirmation
-            conf = iv.setdefault("confirmation", {})
-            conf["rrt_tol_pct"]              = _float("conf_rrt_tol_pct")
-            conf["rt_tol_abs_min"]           = _float("conf_rt_tol_abs_min")
-            conf["ion_ratio_tol_pct"]        = _float("conf_ion_ratio_tol_pct")
-            conf["sn_quan_min"]              = _float("conf_sn_quan_min")
-            conf["sn_confirm_min"]           = _float("conf_sn_confirm_min")
-            conf["require_confirm_ion_check"] = _bool("conf_require_confirm_ion_check")
-            # How a single-transition positive is confirmed. FDA §10.2(4) cites
-            # LC-HRMS; it is not the only orthogonal route, so the lab names its
-            # own and the review prompt quotes it. Blank falls back to the cited
-            # default rather than producing a prompt naming no technique.
-            # Stored as entered: blank stays blank. The reader (pfas_pipeline
-            # method_profiles) applies the LC-HRMS fallback; writing it here
-            # recorded a choice the lab never made on every save (GAPS §51).
-            technique = f.get("conf_confirm_technique", "").strip()
-            if technique:
-                conf["confirm_technique"] = technique
-            else:
-                conf.pop("confirm_technique", None)
+        # Instrument verification (calibration, CCV, IS response, confirmation)
+        # is NOT parsed here any more: the Calibration & CCV tab is its own
+        # form, saved by _save_section (R2). This form no longer carries those
+        # inputs, and the old handler assigned every one unconditionally --
+        # parsing them here would null them on every Save & Export.
 
         # Recovery tiers are written back to the structure the engine reads.
         # Guarded by the field's presence so a POST from another pane cannot
@@ -1264,15 +1253,15 @@ class PFASMethodProfileEditView(BrowserView):
 
         return profile
 
-    def _redirect_saved(self, mid):
-        url = "{}/@@pfas-method-profile-edit?method_id={}&saved=1".format(
-            self.context.absolute_url(), mid)
+    def _redirect_saved(self, mid, pane=""):
+        url = "{}/@@pfas-method-profile-edit?method_id={}&saved=1{}".format(
+            self.context.absolute_url(), mid, "#" + pane if pane else "")
         self.request.response.redirect(url)
         return ""
 
-    def _redirect_error(self, mid, msg):
-        url = "{}/@@pfas-method-profile-edit?method_id={}&error={}".format(
+    def _redirect_error(self, mid, msg, pane=""):
+        url = "{}/@@pfas-method-profile-edit?method_id={}&error={}{}".format(
             self.context.absolute_url(), mid,
-            urllib.quote(msg.encode("utf-8")))
+            urllib.quote(msg.encode("utf-8")), "#" + pane if pane else "")
         self.request.response.redirect(url)
         return ""
