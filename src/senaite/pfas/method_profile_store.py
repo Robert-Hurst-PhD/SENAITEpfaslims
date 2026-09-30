@@ -1120,6 +1120,19 @@ def get_profile(portal, method_id):
         return copy.deepcopy(dflt) if dflt else _unknown_profile(method_id)
 
 
+def raw_profile(portal, method_id):
+    """The profile exactly as stored (no default back-fill), or {}: what the
+    change history diffs and a version stamp is taken from."""
+    folder = _get_profiles_folder(portal)
+    try:
+        if folder is not None and method_id in folder:
+            return json.loads(folder[method_id].profile_json or "{}")
+        raw = get_profile_store(portal).get(method_id)
+        return json.loads(raw) if raw else {}
+    except (ValueError, TypeError):
+        return {}
+
+
 def save_profile(portal, method_id, data):
     """
     Persist data (dict) for method_id.  Replaces the entire entry atomically.
@@ -1135,6 +1148,15 @@ def save_profile(portal, method_id, data):
     # to be written on purpose.
     if isinstance(data, dict):
         data["method_id"] = method_id
+    # Change history (R1): one entry per profile per transaction, recording
+    # who changed which criterion from what to what.
+    try:
+        from senaite.pfas import config_history
+        config_history.track(portal, "method_profile", method_id,
+                             lambda: raw_profile(portal, method_id),
+                             label=(data or {}).get("display_name") or method_id)
+    except Exception as exc:                                        # noqa: BLE001
+        logger.warning("save_profile: history not tracked for %s: %s", method_id, exc)
     # D4: connect matrices to the canonical core SampleType — persist a
     # title->UID map so each profile's matrices reference the core object.
     # Additive: supported_matrices stays a list of titles for backward compat;
@@ -1456,3 +1478,14 @@ def seed_default_profiles(portal):
         export_profiles_to_file(portal)
     except Exception as exc:
         logger.warning("Profiles seeded but export failed: %s", exc)
+
+
+def _register_history():
+    from senaite.pfas import config_history
+    config_history.register_store(
+        "method_profile", raw_profile,
+        lambda portal, key, value: save_profile(portal, key, value),
+        title=u"Method profile")
+
+
+_register_history()

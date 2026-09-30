@@ -100,6 +100,11 @@ def _get_or_create(container, portal_type, title, key=None, **kw):
 
 
 def setup_handler(context):
+    try:   # installer and seeder writes are attributed to "installer" in history
+        from senaite.pfas.config_history import set_actor
+        set_actor(u"installer")
+    except Exception:
+        pass
     marker = context.readDataFile("senaite.pfas.install.txt")
     if marker is None:
         return
@@ -855,6 +860,11 @@ def setup_automation_group(portal):
 
 
 def post_install(context):
+    try:   # installer and seeder writes are attributed to "installer" in history
+        from senaite.pfas.config_history import set_actor
+        set_actor(u"installer")
+    except Exception:
+        pass
     logger.info("senaite.pfas post_install")
     # Defensive portal resolution: in some invocation contexts (e.g. a
     # bin/instance interpreter bootstrap) `context` is a RequestContainer with

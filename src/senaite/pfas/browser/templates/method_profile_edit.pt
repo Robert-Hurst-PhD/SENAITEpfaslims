@@ -249,12 +249,19 @@
       Profile saved and exported to <code>/data/qc/method_profiles.json</code>.
       The pipeline worker will use the new values on the next batch run.
     </div>
+    <p class="form-note" tal:define="lc view/last_change" tal:condition="lc">
+      Last changed by <strong tal:content="lc/who">user</strong>
+      on <span tal:content="string:${lc/at} UTC">date</span>
+      (<span tal:content="python:len(lc['changes'])">1</span> setting(s))
+      &middot; <a tal:attributes="href string:${view/portal_url}/@@pfas-config-history?store=method_profile&amp;key=${view/method_id}">history</a>
+    </p>
     <div class="alert alert-error" tal:condition="view/error">
       <span tal:content="view/error">Error message</span>
     </div>
 
     <form id="profile-form" method="POST"
           tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="config_stamp" tal:attributes="value view/config_stamp" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <!-- marker so a save also writes the qc_rules store (D52); the
            qc_toggles_present marker lives in the QC Types pane below -->

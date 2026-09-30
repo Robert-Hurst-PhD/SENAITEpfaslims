@@ -23,7 +23,8 @@ from zope.annotation.interfaces import IAnnotations
 
 SKIP_ANNOTATIONS = ("senaite.pfas.tracking", "senaite.pfas.import_studio_audit",
                     "senaite.pfas.spec_sync_audit", "senaite.pfas.sidebar_pins",
-                    "senaite.pfas.wizard_sessions")   # logs / per-user, not settings
+                    "senaite.pfas.wizard_sessions",
+                    "senaite.pfas.config_history")   # logs / per-user, not settings
 
 
 def plain(value, depth=0):
@@ -61,6 +62,9 @@ def snapshot(portal):
     snap = {"annotations": {}, "folders": {}, "services": {}, "clients": {},
             "refdefs": {}, "files": {}}
     ann = IAnnotations(portal)
+    # Counted, not diffed: an unchanged save must add no history entry.
+    history = ann.get("senaite.pfas.config_history")
+    snap["history_entries"] = len(history) if history is not None else 0
     for key in sorted(ann.keys()):
         if "pfas" in key.lower() and not key.startswith(SKIP_ANNOTATIONS):
             snap["annotations"][key] = plain(ann[key])

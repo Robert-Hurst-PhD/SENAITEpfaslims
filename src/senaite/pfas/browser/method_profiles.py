@@ -726,12 +726,36 @@ class PFASMethodProfileEditView(BrowserView):
 
     # ── POST handler ──────────────────────────────────────────────────────────
 
+    def config_stamp(self):
+        """Version stamp of the stored profile, carried by the form."""
+        from senaite.pfas import config_history
+        from senaite.pfas.method_profile_store import raw_profile
+        return config_history.stamp(raw_profile(_portal(self.context), self.method_id()))
+
+    def last_change(self):
+        from senaite.pfas import config_history
+        return config_history.last_change(_portal(self.context), "method_profile",
+                                          self.method_id())
+
     def _handle_post(self):
         mid = self.request.form.get("method_id", "").strip()
         if not mid:
             return self._redirect_error("", "method_id is required")
 
         portal = _portal(self.context)
+        # Stale-save protection (R1): refuse, before applying anything, a save
+        # made from a page opened before someone else changed this profile --
+        # the second save used to replace the first without a word.
+        sent = (self.request.form.get("config_stamp") or "").strip()
+        if sent:
+            from senaite.pfas import config_history
+            from senaite.pfas.method_profile_store import raw_profile
+            if sent != config_history.stamp(raw_profile(portal, mid)):
+                last = config_history.last_change(portal, "method_profile", mid) or {}
+                return self._redirect_error(mid, (
+                    "Not saved: this profile was changed by {0} at {1} UTC after "
+                    "you opened it. Reload to see their change, then re-apply "
+                    "yours.").format(last.get("who", "someone"), last.get("at", "?")))
         profile = get_profile(portal, mid)   # start from existing to preserve unknown keys
 
         try:

@@ -5294,3 +5294,37 @@ Lab answers:
     places and repeats them.
 - **Core's discreeter is not rendered.** It printed "Result out of client
   specified range" on every certificate, whether or not ranges were set.
+
+## 2026-09-30 — Configuration change history (R1): ZODB, one entry per key per transaction
+
+**Confirmed** by the lab ("sounds great") as the first recommendation of
+`docs/CONFIG_ARCHITECTURE_REVIEW.md`.
+
+- **What is recorded:** every save of a configuration store records who, when
+  (UTC) and each changed setting's value before and after. Changes are
+  path-level, e.g. `qc_acceptance / LFSM / tiers / 0 / recovery_max: 130 →
+  131`.
+- **What is not:** a save that changes nothing records nothing. Timestamps,
+  seeding markers and derived keys (`matrix_uid_map`, `master_analyte_set`,
+  `display_analyte_set`) are ignored. Writes by the installer and seeders are
+  attributed to "installer".
+- **Where it is stored: an exception to CLAUDE.md §7.** §7 puts time-series,
+  cross-object data in SQLite; this history is kept in the ZODB instead (one
+  OOBTree on the portal, keyed timestamp + uuid) **because an entry must commit
+  or roll back with the change it describes.** Zope retries a conflicted
+  transaction by re-running the request, so a separate SQLite log would record
+  a retried save twice and keep an entry for a save that was then aborted. The
+  BTree keeps each write small, and the history is not capped (the settings
+  registry's in-blob audit list stops at 500).
+- **How:** a store calls `config_history.track()` before writing. The "before"
+  value is captured on the first write in the transaction, and one entry is
+  written in a before-commit hook, so a request saving twice records once.
+- **Revert** goes through the owning store's save function, so the JSON
+  export, AnalysisSpec sync and method bridge stay in step. It is refused if a
+  later change touched the same settings, is recorded as its own entry, and is
+  gated `TIER_CONFIG`.
+- **Stale save:** each editor carries a version stamp of the stored value. A
+  save from a page opened before someone else's change is refused before
+  anything is applied, naming who changed it and when.
+- **Secrets** (the facility API key) are recorded as "changed", without the
+  values.

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Configuration History</title>
+  <metal:fill fill-slot="header-title">Configuration History</metal:fill>
+
+  <div metal:fill-slot="content" tal:define="editable view/can_configure">
+  <div class="page-body">
+
+    <div tal:condition="view/message"
+         tal:attributes="class python:'alert alert-success' if view.message['ok'] else 'alert alert-danger'"
+         tal:content="view/message/text">message</div>
+
+    <p class="form-note">
+      Every change to laboratory configuration: who made it, when (UTC), and
+      each setting's value before and after. One entry per save. A revert puts
+      one change back through the page that owns the setting and is recorded
+      as a change of its own; it is refused if a later change touched the
+      same settings.
+    </p>
+
+    <form method="get" class="pfas-filter-bar">
+      <select name="store">
+        <option value="">All settings</option>
+        <option tal:repeat="s view/stores"
+                tal:attributes="value python:s[0]; selected python:s[0] == view.store_filter()"
+                tal:content="python:s[1]">Method profile</option>
+      </select>
+      <input type="text" name="key" placeholder="e.g. EPA_537_1" tal:attributes="value view/key_filter" />
+      <button type="submit" class="btn">Filter</button>
+    </form>
+
+    <p tal:condition="not:view/rows" class="form-note">No changes recorded yet.</p>
+
+    <table class="pfas-table" tal:condition="view/rows">
+      <thead>
+        <tr><th>When (UTC)</th><th>Who</th><th>Setting</th><th>Changes</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr tal:repeat="r view/rows">
+          <td tal:content="r/at">2026-09-30 12:00:00</td>
+          <td tal:content="r/who">admin</td>
+          <td>
+            <strong tal:content="r/label">EPA 537.1</strong>
+            <div class="form-note" tal:content="r/store">Method profile</div>
+            <div class="form-note" tal:condition="r/note" tal:content="r/note">revert of ...</div>
+          </td>
+          <td>
+            <div tal:repeat="c r/changes">
+              <code tal:content="c/path">qc_acceptance / LFSM</code>:
+              <span tal:content="c/before">130</span> &#8594;
+              <strong tal:content="c/after">131</strong>
+            </div>
+          </td>
+          <td>
+            <form method="post" tal:condition="python:editable and r['revertable']">
+              <input type="hidden" name="action" value="revert" />
+              <input type="hidden" name="store" tal:attributes="value view/store_filter" />
+              <input type="hidden" name="key" tal:attributes="value view/key_filter" />
+              <input type="hidden" name="eid" tal:attributes="value r/id" />
+              <button type="submit" class="btn-sm btn-warn">Revert</button>
+            </form>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  </div>
+</html>

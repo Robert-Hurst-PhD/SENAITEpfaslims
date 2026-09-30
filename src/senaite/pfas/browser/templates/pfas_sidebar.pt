@@ -994,6 +994,12 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-grid"/></svg></span>
           <span class="pfas-si-label">Lab Settings</span>
         </a>
+        <a class="pfas-si" title="Configuration History: who changed which setting, when, before and after"
+           tal:attributes="href string:${purl}/@@pfas-config-history;
+                           class python:'pfas-si si-active' if '@@pfas-config-history' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
+          <span class="pfas-si-label">Configuration History</span>
+        </a>
         <a class="pfas-si" title="System Map — clickable navigation diagram"
            tal:attributes="href string:${purl}/@@pfas-system-map;
                            class python:'pfas-si si-active' if '@@pfas-system-map' in path else 'pfas-si'">

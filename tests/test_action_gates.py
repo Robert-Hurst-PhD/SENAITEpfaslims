@@ -59,6 +59,9 @@ SPEC = [
     ("regulatory_limits_view.py", "PFASRegulatoryLimitsView", "REGULATORY_GATES",
      {"save": CONFIG},
      set()),
+    ("config_history_view.py", "PFASConfigHistoryView", "HISTORY_GATES",
+     {"revert": CONFIG},
+     set()),
 ]
 
 # Views that record the lab's daily measurements. None may call the gate.
