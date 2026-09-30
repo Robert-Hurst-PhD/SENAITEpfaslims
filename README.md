@@ -167,7 +167,7 @@ senaite_pfas/
 
 Copyright (C) 2026 PFAS Lab.
 
-> **Set the copyright holder.** "PFAS Lab" is the author string already
+> **Set the copyright holder.** "Robert Hurst" is the author string already
 > declared in `setup.py` and is used here for consistency, not because it
 > is the legal holder. Replace it with the person or entity that actually
 > holds copyright — it appears here and in `setup.py`.
