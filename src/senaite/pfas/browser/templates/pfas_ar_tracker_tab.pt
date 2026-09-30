@@ -22,8 +22,8 @@
       margin-bottom: 14px;
     }
     .pfas-tracking-number {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 24px;
+      font-family: var(--font-mono);
+      font-size: var(--fs-2xl);
       font-weight: 900;
       color: #1a237e;
       letter-spacing: .08em;
@@ -35,7 +35,7 @@
     }
     .pfas-no-tracking {
       color: #9e9e9e;
-      font-size: 13px;
+      font-size: var(--fs-base);
       font-style: italic;
     }
     .pfas-tracker-links {
@@ -45,20 +45,20 @@
       gap: 6px;
     }
     .pfas-tracker-links a {
-      font-size: 12px;
+      font-size: var(--fs-sm);
       color: #1565c0;
     }
   </style>
 
   <div class="pfas-tracker-card">
     <div class="pfas-tracker-header">
-      <i class="fas fa-map-marker-alt" style="font-size:20px;color:#1a237e;"></i>
-      <strong style="font-size:15px;">PFAS Sample Tracker</strong>
+      <i class="fas fa-map-marker-alt" style="font-size:var(--fs-xl);color:#1a237e;"></i>
+      <strong style="font-size:var(--fs-md);">PFAS Sample Tracker</strong>
     </div>
 
     <!-- Has tracking number -->
     <tal:hasnum tal:condition="info/tracking_number">
-      <div style="font-size:12px;color:#616161;">Tracking number</div>
+      <div style="font-size:var(--fs-sm);color:#616161;">Tracking number</div>
       <div class="pfas-tracking-number" tal:content="info/tracking_number">
         PF-260611-A3K9
       </div>

@@ -14,8 +14,8 @@
   .stat-box { background:var(--s-bg); border-radius:6px; padding:10px 16px;
               border:1px solid var(--s-border);
               box-shadow:0 1px 3px rgba(0,0,0,.06); min-width:80px; text-align:center; }
-  .stat-box .sv { font-size:20px; font-weight:700; color:var(--s-dark); }
-  .stat-box .sl { font-size:10px; color:var(--s-secondary); text-transform:uppercase;
+  .stat-box .sv { font-size:var(--fs-xl); font-weight:700; color:var(--s-dark); }
+  .stat-box .sl { font-size:var(--fs-xs); color:var(--s-secondary); text-transform:uppercase;
                   letter-spacing:.05em; margin-top:2px; }
   .stat-box.good .sv { color:var(--s-success); }
   .stat-box.warn .sv { color:var(--s-warning); }
@@ -25,16 +25,16 @@
                 border:1px solid var(--s-border);
                 padding:10px 14px; margin-bottom:14px;
                 display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
-  .filter-bar label { font-size:10px; color:var(--s-secondary); font-weight:700;
+  .filter-bar label { font-size:var(--fs-xs); color:var(--s-secondary); font-weight:700;
                       text-transform:uppercase; display:block; margin-bottom:2px; }
   .filter-bar select, .filter-bar input[type=number] {
     padding:5px 8px; border:1px solid var(--s-input-border); border-radius:4px;
-    font-size:13px; background:#fafafa; color:var(--s-input-text); }
+    font-size:var(--fs-base); background:#fafafa; color:var(--s-input-text); }
 
   /* Run-date pills */
   .run-pills { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
   .run-pill { padding:5px 14px; border-radius:20px; border:1px solid var(--s-border);
-              font-size:12px; font-weight:600; cursor:pointer; background:var(--s-bg);
+              font-size:var(--fs-sm); font-weight:600; cursor:pointer; background:var(--s-bg);
               color:var(--s-body); transition:all .15s; }
   .run-pill:hover { border-color:var(--s-primary); color:var(--s-primary); }
   .run-pill.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
@@ -44,9 +44,9 @@
   .run-header { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
                 padding:10px 0; border-bottom:2px solid var(--s-border);
                 margin-bottom:14px; }
-  .run-header h3 { margin:0; font-size:15px; font-weight:700; flex:1; }
-  .run-header .run-meta { font-size:12px; color:var(--s-secondary); }
-  .pass-badge { padding:3px 12px; border-radius:12px; font-size:12px; font-weight:700;
+  .run-header h3 { margin:0; font-size:var(--fs-md); font-weight:700; flex:1; }
+  .run-header .run-meta { font-size:var(--fs-sm); color:var(--s-secondary); }
+  .pass-badge { padding:3px 12px; border-radius:12px; font-size:var(--fs-sm); font-weight:700;
                 white-space:nowrap; }
   .pass-ok   { background:var(--s-primary-lt); color:var(--s-primary); }
   .pass-fail { background:#f8d7da; color:#721c24; }
@@ -60,8 +60,8 @@
                   overflow:hidden; }
   .card-head { padding:10px 14px 8px; border-bottom:1px solid var(--s-border);
                display:flex; align-items:center; gap:8px; }
-  .card-head .analyte-name { font-size:14px; font-weight:700; flex:1; color:var(--s-dark); }
-  .r2-badge { padding:2px 10px; border-radius:10px; font-size:11px; font-weight:700; }
+  .card-head .analyte-name { font-size:var(--fs-base); font-weight:700; flex:1; color:var(--s-dark); }
+  .r2-badge { padding:2px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:700; }
   .r2-ok   { background:var(--s-primary-lt); color:var(--s-primary); }
   .r2-fail { background:#f8d7da; color:#721c24; }
   /* .badge base is global; page-specific badge colours: */
@@ -73,38 +73,38 @@
   .card-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
                    padding:6px 14px; background:#f8f9fa;
                    border-bottom:1px solid var(--s-border); }
-  .card-controls label { font-size:10px; color:var(--s-secondary); font-weight:700;
+  .card-controls label { font-size:var(--fs-xs); color:var(--s-secondary); font-weight:700;
                          text-transform:uppercase; }
-  .card-controls select { font-size:11px; padding:3px 6px;
+  .card-controls select { font-size:var(--fs-xs); padding:3px 6px;
                           border:1px solid var(--s-input-border); border-radius:3px;
                           background:#fff; color:var(--s-input-text); }
-  .save-ovr { font-size:11px; padding:3px 10px; border:none; border-radius:3px;
+  .save-ovr { font-size:var(--fs-xs); padding:3px 10px; border:none; border-radius:3px;
               cursor:pointer; background:var(--s-primary); color:#fff; }
   .save-ovr:hover { opacity:.85; }
 
   /* Plots */
   .card-plots { padding:10px 12px; }
   .plot-section { margin-bottom:10px; }
-  .plot-label { font-size:10px; font-weight:700; color:var(--s-secondary);
+  .plot-label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
                 text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
   .plot-canvas-wrap { position:relative; height:170px; }
   .plot-canvas-wrap.plot-sm { height:110px; }
   .plot-empty { height:80px; display:flex; align-items:center; justify-content:center;
-                font-size:11px; color:var(--s-secondary); font-style:italic; }
+                font-size:var(--fs-xs); color:var(--s-secondary); font-style:italic; }
 
-  .eq-line { font-size:11px; color:var(--s-secondary); font-family:monospace;
+  .eq-line { font-size:var(--fs-xs); color:var(--s-secondary); font-family: var(--font-mono);
              padding:4px 14px 8px; overflow:hidden; text-overflow:ellipsis;
              white-space:nowrap; }
 
   /* Response-ratio info icon */
-  .rr-info { color:var(--s-secondary); cursor:help; font-size:9px;
+  .rr-info { color:var(--s-secondary); cursor:help; font-size:var(--fs-xs);
              margin-left:3px; border:1px solid var(--s-border);
              border-radius:50%; padding:0 3px; font-style:normal; }
 
   /* CCB blank chips */
   .ccb-chips { display:flex; gap:6px; flex-wrap:wrap;
                padding:3px 12px 6px; }
-  .ccb-chip { padding:2px 10px; border-radius:12px; font-size:11px; font-weight:600; }
+  .ccb-chip { padding:2px 10px; border-radius:12px; font-size:var(--fs-xs); font-weight:600; }
   .ccb-chip.pass { background:#d4edda; color:#155724; }
   .ccb-chip.fail { background:#f8d7da; color:#721c24; }
 
@@ -115,12 +115,12 @@
   .cal-detail-modal.open { display:flex; }
   .cal-detail-box { background:#fff; border-radius:10px; padding:22px 24px;
     max-width:400px; width:92%; box-shadow:0 8px 32px rgba(0,0,0,.22); }
-  .cal-detail-box h4 { margin:0 0 14px; font-size:14px; display:flex;
+  .cal-detail-box h4 { margin:0 0 14px; font-size:var(--fs-base); display:flex;
     align-items:center; gap:8px; }
   .cal-detail-close { margin-left:auto; background:none; border:none;
-    cursor:pointer; font-size:20px; color:#666; line-height:1; }
+    cursor:pointer; font-size:var(--fs-xl); color:#666; line-height:1; }
   .cal-detail-table { width:100%; border-collapse:collapse; }
-  .cal-detail-table td { padding:4px 0; font-size:12px; }
+  .cal-detail-table td { padding:4px 0; font-size:var(--fs-sm); }
   .cal-detail-table td:first-child { font-weight:600; color:#666;
     padding-right:14px; white-space:nowrap; width:42%; }
 
@@ -128,12 +128,12 @@
   .approve-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
                  padding:10px 14px; background:var(--s-bg);
                  border:1px solid var(--s-border); border-radius:6px; margin-top:4px; }
-  .approve-bar .approve-label { font-size:12px; font-weight:600; flex:1; }
+  .approve-bar .approve-label { font-size:var(--fs-sm); font-weight:600; flex:1; }
 
   .save-banner { background:#d4edda; border:1px solid #c3e6cb; border-radius:4px;
                  padding:8px 14px; margin-bottom:12px; color:#155724; font-weight:600; }
   .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
-  .pf-path { font-size:11px; color:var(--s-secondary); margin-top:12px; }
+  .pf-path { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:12px; }
   </style>
   </tal:styles>
 </head>
@@ -821,14 +821,14 @@
     if (IS_MGR) {
       if (allApproved) {
         approveBar = '<div class="approve-bar"><span class="approve-label">Run '+run.run_date+'</span>'
-                    +'<span style="color:var(--s-success);font-size:12px;font-weight:700">✓ All analytes approved</span></div>';
+                    +'<span style="color:var(--s-success);font-size:var(--fs-sm);font-weight:700">✓ All analytes approved</span></div>';
       } else {
         approveBar = '<form class="approve-bar" method="POST" action="'+CAL_URL+'">'
                     +'<input type="hidden" name="action" value="approve_run">'
                     +'<input type="hidden" name="run_date" value="'+run.run_date+'">'
                     +(run.analytes[0]&&run.analytes[0].method ? '<input type="hidden" name="method" value="'+run.analytes[0].method+'">' : '')
                     +'<span class="approve-label">Approve run '+run.run_date+'</span>'
-                    +(anyApproved ? '<span style="font-size:11px;color:var(--s-warning)">Partial approval</span>' : '')
+                    +(anyApproved ? '<span style="font-size:var(--fs-xs);color:var(--s-warning)">Partial approval</span>' : '')
                     +'<button type="submit" class="btn btn-success btn-approve-run"'
                     +' onclick="return confirm(\'Approve all '+n+' analytes in run '+run.run_date+'?\')">Approve run (✓ '+n+')</button>'
                     +'</form>';
@@ -838,7 +838,7 @@
     var runsHTML = [
       '<div class="run-section" id="run-'+run.run_date.replace(/-/g,'')+'">',
       '<div class="run-header">',
-      '  <h3>'+run.run_date+(run.run_time?' <span style="font-weight:400;color:var(--s-secondary);font-size:13px">@ '+run.run_time+'</span>':'')+'</h3>',
+      '  <h3>'+run.run_date+(run.run_time?' <span style="font-weight:400;color:var(--s-secondary);font-size:var(--fs-base)">@ '+run.run_time+'</span>':'')+'</h3>',
       (meta ? '<span class="run-meta">'+meta+'</span>' : ''),
       passBadge,
       '</div>',
@@ -854,9 +854,9 @@
   function renderAll(runs) {
     var area = document.getElementById('cal-runs-area');
     if (!runs||runs.length===0) {
-      area.innerHTML = '<div class="empty-state"><p style="font-size:28px">▶</p>'
+      area.innerHTML = '<div class="empty-state"><p style="font-size:var(--fs-2xl)">▶</p>'
                       +'<p>No calibration records found.</p>'
-                      +'<p style="font-size:11px">Import instrument data to populate calibrations.</p></div>';
+                      +'<p style="font-size:var(--fs-xs)">Import instrument data to populate calibrations.</p></div>';
       return;
     }
     area.innerHTML = runs.map(renderRun).join('\n');

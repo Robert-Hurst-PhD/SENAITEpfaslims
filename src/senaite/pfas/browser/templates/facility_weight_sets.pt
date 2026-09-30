@@ -9,31 +9,31 @@
   <style>
     .log-form { background:var(--s-bg); border:1px solid var(--s-border);
                 border-radius:8px; padding:16px; margin-bottom:18px; }
-    .log-form h3 { font-size:13px; font-weight:700; margin:0 0 4px; color:var(--s-body); }
-    .log-form .hint { font-size:11px; color:var(--s-secondary); margin:0 0 12px; }
+    .log-form h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 4px; color:var(--s-body); }
+    .log-form .hint { font-size:var(--fs-xs); color:var(--s-secondary); margin:0 0 12px; }
     .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
-    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
-    .fld input, .fld select { padding:6px 8px; font-size:13px;
+    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
+    .fld input, .fld select { padding:6px 8px; font-size:var(--fs-base);
                  border:1px solid var(--s-input-border); border-radius:4px;
                  color:var(--s-input-text); }
     .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
     .fld-row .fld { flex:1; min-width:140px; }
-    .chk { display:flex; align-items:center; gap:6px; font-size:12px;
+    .chk { display:flex; align-items:center; gap:6px; font-size:var(--fs-sm);
            color:var(--s-body); margin-bottom:10px; }
-    .log-table { width:100%; border-collapse:collapse; font-size:12px; }
-    .log-table th { background:var(--s-light); padding:7px 10px; font-size:11px;
+    .log-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
+    .log-table th { background:var(--s-light); padding:7px 10px; font-size:var(--fs-xs);
                     font-weight:700; color:var(--s-secondary);
                     border-bottom:2px solid var(--s-border); text-align:left; }
     .log-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
                     vertical-align:top; }
     .p-ok  { background:#d4edda; color:#155724; padding:2px 9px; border-radius:8px;
-             font-size:10px; font-weight:700; }
+             font-size:var(--fs-xs); font-weight:700; }
     .p-fail { background:#f8d7da; color:#721c24; padding:2px 9px; border-radius:8px;
-              font-size:10px; font-weight:700; }
+              font-size:var(--fs-xs); font-weight:700; }
     .why { background:var(--s-light); border-left:3px solid var(--s-border);
-           padding:10px 14px; font-size:12px; color:var(--s-secondary);
+           padding:10px 14px; font-size:var(--fs-sm); color:var(--s-secondary);
            margin-bottom:18px; border-radius:0 4px 4px 0; }
-    .prob { color:#8a1c1c; font-size:11px; display:block; }
+    .prob { color:#8a1c1c; font-size:var(--fs-xs); display:block; }
   </style>
   </tal:styles>
 </head>
@@ -94,18 +94,18 @@
       <div class="chk">
         <input type="checkbox" name="nist_traceable" value="1" checked="checked"
                id="nist" />
-        <label for="nist" style="font-size:12px">Calibration is NIST-traceable</label>
+        <label for="nist" style="font-size:var(--fs-sm)">Calibration is NIST-traceable</label>
       </div>
       <div class="chk">
         <input type="checkbox" name="active" value="1" checked="checked" id="act" />
-        <label for="act" style="font-size:12px">In service</label>
+        <label for="act" style="font-size:var(--fs-sm)">In service</label>
       </div>
       <div class="fld"><label>Notes</label><input type="text" name="notes" /></div>
       <button type="submit" class="btn btn-primary">Save weight set</button>
     </form>
   </div>
 
-  <h3 style="font-size:13px;margin:0 0 8px">Registered sets</h3>
+  <h3 style="font-size:var(--fs-base);margin:0 0 8px">Registered sets</h3>
   <table class="log-table">
     <thead><tr>
       <th>Set</th><th>Class</th><th>Calibration laboratory</th>

@@ -8,42 +8,42 @@
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .bal-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
-    .bal-nav a { padding:5px 14px; border-radius:16px; font-size:12px; font-weight:600;
+    .bal-nav a { padding:5px 14px; border-radius:16px; font-size:var(--fs-sm); font-weight:600;
                  text-decoration:none; background:var(--s-light);
                  border:1px solid var(--s-border); color:var(--s-body); }
     .bal-nav a.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
     .form-card { background:var(--s-bg); border:1px solid var(--s-border);
                  border-radius:8px; padding:16px; margin-bottom:18px; }
-    .form-card h3 { font-size:13px; font-weight:700; margin:0 0 12px; color:var(--s-body); }
-    .wp-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .form-card h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 12px; color:var(--s-body); }
+    .wp-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
     .wp-table th { background:var(--s-light); padding:7px 10px; text-align:left;
-                   font-size:11px; font-weight:700; color:var(--s-secondary);
+                   font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
                    border-bottom:2px solid var(--s-border); }
     .wp-table td { padding:8px 10px; border-bottom:1px solid var(--s-border);
                    vertical-align:middle; }
     .wp-table input[type=number] { width:120px; padding:5px 7px;
                                     border:1px solid var(--s-input-border);
-                                    border-radius:4px; font-size:13px; }
+                                    border-radius:4px; font-size:var(--fs-base); }
     .dev-cell { font-weight:600; }
     .dev-pass { color:var(--s-success); }
     .dev-fail { color:var(--s-danger); }
-    .history-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .history-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
     .history-table th { background:var(--s-light); padding:6px 10px;
-                        font-size:11px; font-weight:700; color:var(--s-secondary);
+                        font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
                         border-bottom:2px solid var(--s-border); text-align:left; }
     .history-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
     .p-ok { background:#d4edda; color:#155724; padding:2px 9px;
-             border-radius:8px; font-size:10px; font-weight:700; }
+             border-radius:8px; font-size:var(--fs-xs); font-weight:700; }
     .p-fail { background:#f8d7da; color:#721c24; padding:2px 9px;
-               border-radius:8px; font-size:10px; font-weight:700; }
+               border-radius:8px; font-size:var(--fs-xs); font-weight:700; }
     .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
-    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
-    .fld input, .fld select { padding:6px 8px; font-size:13px;
+    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
+    .fld input, .fld select { padding:6px 8px; font-size:var(--fs-base);
                  border:1px solid var(--s-input-border); border-radius:4px;
                  color:var(--s-input-text); }
-    .hint { font-size:11px; color:var(--s-secondary); margin:0 0 10px; }
+    .hint { font-size:var(--fs-xs); color:var(--s-secondary); margin:0 0 10px; }
     .hint-bad { color:#8a1c1c; font-weight:600; }
-    .traced { font-size:11px; color:var(--s-secondary); }
+    .traced { font-size:var(--fs-xs); color:var(--s-secondary); }
     .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
     .fld-row .fld { flex:1; min-width:120px; }
   </style>
@@ -161,17 +161,17 @@
     <div class="form-card">
       <h3>Verification History</h3>
       <tal:no-hist tal:condition="python:not view.history()">
-        <p style="color:var(--s-secondary);font-size:12px">No verifications recorded yet.</p>
+        <p style="color:var(--s-secondary);font-size:var(--fs-sm)">No verifications recorded yet.</p>
       </tal:no-hist>
       <tal:each tal:repeat="v view/history" tal:condition="python:bool(view.history())">
         <div style="margin-bottom:14px;">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-            <strong style="font-size:12px" tal:content="v/verified_date"></strong>
-            <span style="font-size:12px;color:var(--s-secondary)"
+            <strong style="font-size:var(--fs-sm)" tal:content="v/verified_date"></strong>
+            <span style="font-size:var(--fs-sm);color:var(--s-secondary)"
                   tal:content="string:by ${v/operator}"></span>
             <span tal:attributes="class python:'p-ok' if v['passed'] else 'p-fail'"
                   tal:content="python:'PASS' if v['passed'] else 'FAIL'"></span>
-            <span style="font-size:11px;color:var(--s-secondary)"
+            <span style="font-size:var(--fs-xs);color:var(--s-secondary)"
                   tal:content="python:v.get('notes','')"></span>
           </div>
           <div class="traced" style="margin-bottom:6px">

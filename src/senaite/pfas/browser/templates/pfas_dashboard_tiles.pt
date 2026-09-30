@@ -14,7 +14,7 @@
       gap: 8px;
     }
     .pfas-section-head h2 {
-      font-size: 14px;
+      font-size: var(--fs-base);
       font-weight: 700;
       margin: 0;
       letter-spacing: .04em;
@@ -23,7 +23,7 @@
     .pfas-section-head .pfas-badge {
       background: rgba(255,255,255,.2);
       border-radius: 3px;
-      font-size: 11px;
+      font-size: var(--fs-xs);
       padding: 1px 7px;
     }
     .pfas-tiles {
@@ -54,16 +54,16 @@
       text-decoration: none;
     }
     .pfas-tile-icon {
-      font-size: 20px;
+      font-size: var(--fs-xl);
       color: #428aaf;
     }
     .pfas-tile-title {
-      font-size: 13px;
+      font-size: var(--fs-base);
       font-weight: 700;
       color: #293333;
     }
     .pfas-tile-desc {
-      font-size: 11px;
+      font-size: var(--fs-xs);
       color: #6c757d;
       line-height: 1.4;
     }

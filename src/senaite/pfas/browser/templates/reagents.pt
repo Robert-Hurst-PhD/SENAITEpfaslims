@@ -11,30 +11,30 @@
     .rg-toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
                   margin-bottom:20px; }
     .rg-toolbar input[type=text] { flex:1; min-width:200px; max-width:360px;
-      padding:8px 12px; font-size:13px; border:1px solid var(--s-input-border);
+      padding:8px 12px; font-size:var(--fs-base); border:1px solid var(--s-input-border);
       border-radius:4px; }
-    .rg-toolbar select { padding:8px 10px; font-size:13px;
+    .rg-toolbar select { padding:8px 10px; font-size:var(--fs-base);
       border:1px solid var(--s-input-border); border-radius:4px; }
 
     /* ── Summary cards ───────────────────────────────── */
     .rg-summary { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
     .rg-card { flex:1 1 140px; background:#f8f9fa; border:1px solid var(--s-border);
                border-radius:10px; padding:14px 18px; text-align:center; }
-    .rg-card .rg-num { font-size:28px; font-weight:800; color:var(--s-primary); }
-    .rg-card .rg-lbl { font-size:12px; color:var(--s-secondary); margin-top:4px; }
+    .rg-card .rg-num { font-size:var(--fs-2xl); font-weight:800; color:var(--s-primary); }
+    .rg-card .rg-lbl { font-size:var(--fs-sm); color:var(--s-secondary); margin-top:4px; }
     .rg-card.warn .rg-num { color:#856404; }
     .rg-card.danger .rg-num { color:#dc3545; }
 
     /* ── Reagent table ───────────────────────────────── */
-    .rg-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .rg-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
     .rg-table th { background:#f8f9fa; padding:8px 10px; text-align:left;
                    border-bottom:2px solid var(--s-border); font-weight:700; white-space:nowrap; }
     .rg-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
                    vertical-align:middle; }
     .rg-table tr:hover td { background:var(--s-primary-lt); }
     .rg-name { font-weight:600; }
-    .rg-cat { font-family:monospace; font-size:11px; color:#555; }
-    .rg-lot { font-family:monospace; font-size:11px; font-weight:700; }
+    .rg-cat { font-family: var(--font-mono); font-size:var(--fs-xs); color:#555; }
+    .rg-lot { font-family: var(--font-mono); font-size:var(--fs-xs); font-weight:700; }
 
     /* ── Expiry cell colours ─────────────────────────── */
     .exp-expired { color:#dc3545; font-weight:700; }
@@ -50,117 +50,117 @@
     .modal-box { background:#fff; border-radius:12px; padding:24px; width:90%;
                  max-width:620px; max-height:90vh; overflow-y:auto;
                  box-shadow:0 8px 32px rgba(0,0,0,.25); }
-    .modal-box h2 { font-size:16px; font-weight:700; margin:0 0 18px;
+    .modal-box h2 { font-size:var(--fs-lg); font-weight:700; margin:0 0 18px;
                     padding-bottom:8px; border-bottom:2px solid var(--s-border); }
     .form-row { display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap; }
     .form-field { display:flex; flex-direction:column; flex:1 1 180px; }
     .form-field.full { flex:1 1 100%; }
-    .form-field label { font-size:12px; font-weight:600; color:var(--s-dark); margin-bottom:3px; }
+    .form-field label { font-size:var(--fs-sm); font-weight:600; color:var(--s-dark); margin-bottom:3px; }
     .form-field input, .form-field select, .form-field textarea {
-      padding:7px 10px; font-size:13px;
+      padding:7px 10px; font-size:var(--fs-base);
       border:1px solid var(--s-input-border); border-radius:6px; }
     .form-field textarea { min-height:60px; resize:vertical; }
     .form-actions { display:flex; gap:10px; margin-top:18px; padding-top:14px;
                     border-top:1px solid var(--s-border); }
-    .field-hint { font-size:11px; color:var(--s-secondary); margin-top:3px; }
+    .field-hint { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:3px; }
     .lot-scan-row { display:flex; gap:8px; align-items:center; }
     .lot-scan-row input { flex:1; }
 
     /* ── Camera/OCR modals ───────────────────────────── */
     .cam-modal-box { background:#111; color:#fff; border-radius:12px; padding:20px;
                      width:90%; max-width:520px; }
-    .cam-modal-box h2 { font-size:15px; font-weight:700; margin:0 0 14px; color:#fff; }
+    .cam-modal-box h2 { font-size:var(--fs-md); font-weight:700; margin:0 0 14px; color:#fff; }
     #cam-video { width:100%; border-radius:8px; margin-bottom:12px; background:#000; }
-    .cam-result { font-size:13px; padding:10px; background:#1a1a2e;
+    .cam-result { font-size:var(--fs-base); padding:10px; background:#1a1a2e;
                   border-radius:6px; min-height:40px; word-break:break-all; }
     .cam-result strong { color:#00ff88; }
     .cam-btn-row { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
-    .cam-btn-row button { flex:1; padding:8px; font-size:12px; border:none;
+    .cam-btn-row button { flex:1; padding:8px; font-size:var(--fs-sm); border:none;
                           border-radius:6px; cursor:pointer; font-weight:600; }
     .btn-use-result { background:#00ff88; color:#000; }
     .btn-cancel-cam { background:#444; color:#fff; }
     #ocr-capture-btn { background:#20c997; color:#fff; }
-    #ocr-status { font-size:11px; color:#aaa; margin-top:6px; min-height:20px; }
-    .cam-device-sel { width:100%; padding:6px; font-size:12px;
+    #ocr-status { font-size:var(--fs-xs); color:#aaa; margin-top:6px; min-height:20px; }
+    .cam-device-sel { width:100%; padding:6px; font-size:var(--fs-sm);
                       background:#222; color:#fff; border:1px solid #555;
                       border-radius:5px; margin-bottom:10px; }
 
     /* ── Inventory lookup widget (used by logbooks) ──── */
-    .rg-lookup-badge { display:inline-block; font-size:11px; padding:2px 8px;
+    .rg-lookup-badge { display:inline-block; font-size:var(--fs-xs); padding:2px 8px;
                        background:#e8f0fe; color:#1a73e8; border-radius:8px;
                        cursor:pointer; margin-left:6px; }
 
     /* ── Alerts ─────────────────────────────────────── */
     .alert-ok    { background:#d4edda; border:1px solid #c3e6cb; color:#155724;
-                   padding:10px 16px; border-radius:8px; margin-bottom:16px; font-size:13px; }
+                   padding:10px 16px; border-radius:8px; margin-bottom:16px; font-size:var(--fs-base); }
     .alert-error { background:#f8d7da; border:1px solid #f5c6cb; color:#721c24;
-                   padding:10px 16px; border-radius:8px; margin-bottom:16px; font-size:13px; }
-    .section-title { font-size:16px; font-weight:700; color:var(--s-dark);
+                   padding:10px 16px; border-radius:8px; margin-bottom:16px; font-size:var(--fs-base); }
+    .section-title { font-size:var(--fs-lg); font-weight:700; color:var(--s-dark);
                      margin:0 0 16px; padding-bottom:8px; border-bottom:2px solid var(--s-border); }
 
     /* ── CoA helper modal ───────────────────────────── */
     .coa-tabs { display:flex; gap:0; margin-bottom:16px; border-bottom:2px solid var(--s-border); }
-    .coa-tab { padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer;
+    .coa-tab { padding:8px 16px; font-size:var(--fs-base); font-weight:600; cursor:pointer;
                border:none; background:none; color:var(--s-secondary);
                border-bottom:3px solid transparent; margin-bottom:-2px; }
     .coa-tab.active { color:var(--s-primary); border-bottom-color:var(--s-primary); }
     .coa-panel { display:none; }
     .coa-panel.active { display:block; }
     .coa-copy-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-    .coa-copy-label { font-size:12px; font-weight:600; color:var(--s-dark); width:64px; flex-shrink:0; }
-    .coa-copy-value { flex:1; font-family:monospace; font-size:13px; padding:5px 9px;
+    .coa-copy-label { font-size:var(--fs-sm); font-weight:600; color:var(--s-dark); width:64px; flex-shrink:0; }
+    .coa-copy-value { flex:1; font-family: var(--font-mono); font-size:var(--fs-base); padding:5px 9px;
                       background:#f8f9fa; border:1px solid var(--s-border); border-radius:5px;
                       overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .btn-copy.copied { background:var(--s-success-lt); border-color:var(--s-success-lt); color:var(--s-success-text); }
     .coa-supplier-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
     .coa-supplier-btn { flex:1 1 200px; }   /* look: shared .btn */
-    .coa-note { font-size:11px; color:var(--s-secondary); margin-top:14px;
+    .coa-note { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:14px;
                 line-height:1.6; padding:10px; background:#f8f9fa; border-radius:6px; }
     .coa-upload-area label.upload-label { display:inline-flex; align-items:center; gap:8px;
                                           padding:9px 18px; border-radius:7px;
                                           background:var(--s-primary); color:#fff;
-                                          font-size:13px; font-weight:600; cursor:pointer; }
+                                          font-size:var(--fs-base); font-weight:600; cursor:pointer; }
     .coa-upload-area label.upload-label:hover { opacity:.9; }
 
     /* ── Scan match / log panel ─────────────────────── */
     .scan-match-card { background:#1a2a1a; border:1px solid #2a4a2a; border-radius:8px;
                        padding:14px; margin-bottom:12px; }
-    .scan-match-label { font-size:11px; color:#8aaa8a; margin-bottom:4px; }
-    .scan-match-name  { font-size:15px; font-weight:700; color:#00ff88; margin-bottom:10px; }
+    .scan-match-label { font-size:var(--fs-xs); color:#8aaa8a; margin-bottom:4px; }
+    .scan-match-name  { font-size:var(--fs-md); font-weight:700; color:#00ff88; margin-bottom:10px; }
     .scan-match-row   { display:flex; gap:12px; flex-wrap:wrap; }
     .scan-match-item  { flex:1 1 100px; }
-    .scan-match-key   { font-size:10px; color:#888; }
-    .scan-match-val   { font-size:12px; color:#ccc; font-family:monospace; }
-    .scan-log-label   { font-size:11px; color:#aaa; margin-bottom:4px; }
+    .scan-match-key   { font-size:var(--fs-xs); color:#888; }
+    .scan-match-val   { font-size:var(--fs-sm); color:#ccc; font-family: var(--font-mono); }
+    .scan-log-label   { font-size:var(--fs-xs); color:#aaa; margin-bottom:4px; }
     .scan-log-textarea { width:100%; box-sizing:border-box; padding:7px 10px;
-                         font-size:12px; background:#222; color:#fff;
+                         font-size:var(--fs-sm); background:#222; color:#fff;
                          border:1px solid #555; border-radius:6px;
                          resize:vertical; min-height:50px; }
-    .scan-count-badge { display:inline-block; font-size:10px; padding:1px 6px;
+    .scan-count-badge { display:inline-block; font-size:var(--fs-xs); padding:1px 6px;
                         background:#e8e8ff; color:#5555bb; border-radius:8px; }
 
     /* ── OCR extracted fields ───────────────────────── */
     .ocr-fields    { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:0; }
     .ocr-field     { flex:1 1 120px; background:#1a1a2e; border:1px solid #333;
                      border-radius:5px; padding:6px 8px; }
-    .ocr-field-key { display:block; font-size:10px; color:#888; margin-bottom:2px; }
-    .ocr-field-val { display:block; font-size:12px; color:#666; font-family:monospace;
+    .ocr-field-key { display:block; font-size:var(--fs-xs); color:#888; margin-bottom:2px; }
+    .ocr-field-val { display:block; font-size:var(--fs-sm); color:#666; font-family: var(--font-mono);
                      word-break:break-all; }
     .ocr-field-val.found { color:#00ff88; font-weight:700; }
 
     /* Code chip strip */
     .ocr-chips-wrap { margin-top:10px; }
-    .ocr-chips-label { font-size:10px; color:#888; margin-bottom:5px; }
+    .ocr-chips-label { font-size:var(--fs-xs); color:#888; margin-bottom:5px; }
     .ocr-chips     { display:flex; flex-wrap:wrap; gap:4px; }
-    .ocr-chip      { display:inline-block; padding:3px 8px; font-size:11px;
-                     font-family:monospace; background:#1a1a3a; color:#aaaaff;
+    .ocr-chip      { display:inline-block; padding:3px 8px; font-size:var(--fs-xs);
+                     font-family: var(--font-mono); background:#1a1a3a; color:#aaaaff;
                      border:1px solid #3333aa; border-radius:4px; cursor:pointer;
                      transition:background 0.15s; }
     .ocr-chip:hover { background:#2a2a5a; color:#fff; border-color:#6666cc; }
 
     /* ── Mode banner ───────────────────────────────────── */
     .mode-banner { display:flex; align-items:center; gap:12px; padding:10px 16px;
-                   border-radius:8px; margin-bottom:16px; font-size:13px; }
+                   border-radius:8px; margin-bottom:16px; font-size:var(--fs-base); }
     .mode-banner a { font-weight:700; text-decoration:none; margin-left:auto; }
     .mode-test    { background:#fff3cd; border:1px solid #ffc107; color:#856404; }
     .mode-test a  { color:#856404; }
@@ -168,12 +168,12 @@
     .mode-prod a  { color:#155724; }
 
     /* ── Test badge on reagent rows ─────────────────── */
-    .badge-test { display:inline-block; font-size:9px; padding:1px 5px;
+    .badge-test { display:inline-block; font-size:var(--fs-xs); padding:1px 5px;
                   background:#e2e3e5; color:#6c757d; border-radius:8px;
                   margin-left:4px; vertical-align:middle; }
     /* ── Archived row ───────────────────────────────── */
     tr.rg-archived td { opacity:0.55; }
-    .badge-archived { display:inline-block; font-size:9px; padding:1px 5px;
+    .badge-archived { display:inline-block; font-size:var(--fs-xs); padding:1px 5px;
                       background:#ccc; color:#555; border-radius:8px; margin-left:4px;
                       vertical-align:middle; }
 
@@ -184,21 +184,21 @@
                    border-radius:0 0 7px 7px; box-shadow:0 4px 12px rgba(0,0,0,.12);
                    max-height:220px; overflow-y:auto; z-index:2000; }
     .af-dropdown.open { display:block; }
-    .af-item { padding:8px 12px; font-size:12px; cursor:pointer; border-bottom:1px solid #f0f0f0; }
+    .af-item { padding:8px 12px; font-size:var(--fs-sm); cursor:pointer; border-bottom:1px solid #f0f0f0; }
     .af-item:last-child { border-bottom:none; }
     .af-item:hover { background:#f0f4ff; }
     .af-item-name { font-weight:600; color:var(--s-dark); }
-    .af-item-meta { font-size:11px; color:var(--s-secondary); margin-top:2px; }
+    .af-item-meta { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:2px; }
 
     /* ── Unified scan modal tabs ─────────────────────── */
     .scan-tabs { display:flex; border-bottom:1px solid #444; margin:8px 0 0; }
-    .scan-tab  { flex:1; padding:8px; font-size:12px; font-weight:600; cursor:pointer;
+    .scan-tab  { flex:1; padding:8px; font-size:var(--fs-sm); font-weight:600; cursor:pointer;
                  border:none; background:none; color:#888;
                  border-bottom:2px solid transparent; margin-bottom:-1px; }
     .scan-tab.active { color:#00ff88; border-bottom-color:#00ff88; }
     .scan-tab-pane { display:none; padding-top:10px; }
     .scan-tab-pane.active { display:block; }
-    .cam-lookup-input { flex:1; padding:6px 8px; font-size:12px; background:#222;
+    .cam-lookup-input { flex:1; padding:6px 8px; font-size:var(--fs-sm); background:#222;
                         color:#fff; border:1px solid #555; border-radius:5px; }
   </style>
   </tal:styles>
@@ -243,32 +243,32 @@
     <details style="margin-bottom:18px;border:1px solid var(--s-border);border-radius:8px;padding:10px 16px;background:var(--s-bg);"
              tal:condition="view/can_configure"
              tal:define="ed view/expiry_defaults">
-      <summary style="font-size:13px;font-weight:700;cursor:pointer;">
+      <summary style="font-size:var(--fs-base);font-weight:700;cursor:pointer;">
         Expiry Defaults
-        <span style="font-weight:400;font-size:11px;color:var(--s-secondary);margin-left:8px;">
+        <span style="font-weight:400;font-size:var(--fs-xs);color:var(--s-secondary);margin-left:8px;">
           preset periods assigned when a reagent/standard has no stated expiry
         </span>
       </summary>
       <form method="post" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;">
         <input type="hidden" name="action" value="save_expiry_defaults"/>
-        <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+        <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
           Reagent (from receipt, days)
           <input type="number" name="reagent_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
                  tal:attributes="value ed/reagent_default_days"/></label>
-        <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+        <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
           Mobile phase (from opening, days)
           <input type="number" name="mobile_phase_open_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
                  tal:attributes="value ed/mobile_phase_open_days"/></label>
-        <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+        <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
           Other opened (days)
           <input type="number" name="opened_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
                  tal:attributes="value ed/opened_default_days"/></label>
-        <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+        <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
           Prepared standard (from prep, days)
           <input type="number" name="prepared_std_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
                  tal:attributes="value ed/prepared_std_default_days"/></label>
         <button class="btn btn-primary" type="submit">Save Defaults</button>
-        <span style="font-size:11px;color:var(--s-secondary);max-width:340px;">
+        <span style="font-size:var(--fs-xs);color:var(--s-secondary);max-width:340px;">
           In-house preps also inherit a parent lot's expiry when it is tighter
           than their own.
         </span>
@@ -344,7 +344,7 @@
         <tr tal:attributes="class python:'rg-archived' if rg.get('is_archived') else None">
           <td>
             <div class="rg-name" tal:content="python:rg.get('name','')"></div>
-            <div style="font-size:11px;color:var(--s-secondary);"
+            <div style="font-size:var(--fs-xs);color:var(--s-secondary);"
                  tal:content="python:rg.get('category','')"></div>
             <tal:sc tal:define="sc python:rg.get('scan_count',0)">
               <span class="scan-count-badge"
@@ -443,7 +443,7 @@
                          tal:attributes="value python:rg.get('uid','')" />
                   <button class="btn-sm" type="submit" style="color:#1a7a3a;border-color:#1a7a3a">Restore</button>
                 </form>
-                <small style="font-size:10px;color:#888;display:block;margin-top:2px;"
+                <small style="font-size:var(--fs-xs);color:#888;display:block;margin-top:2px;"
                        tal:content="python:rg.get('archived_at','')[:10]"></small>
               </tal:arch>
             </tal:prod_del>
@@ -486,7 +486,7 @@
 
         <!-- Find panel -->
         <div class="coa-panel active" id="coa-panel-find">
-          <p style="font-size:13px;color:var(--s-secondary);margin-bottom:14px;">
+          <p style="font-size:var(--fs-base);color:var(--s-secondary);margin-bottom:14px;">
             Copy these values into the supplier's CoA search form, then download
             the PDF and return here to upload it.
           </p>
@@ -525,7 +525,7 @@
         <!-- Upload panel -->
         <div class="coa-panel" id="coa-panel-upload">
           <div class="coa-upload-area" style="margin-top:8px;">
-            <p style="font-size:13px;color:var(--s-secondary);margin-bottom:14px;">
+            <p style="font-size:var(--fs-base);color:var(--s-secondary);margin-bottom:14px;">
               Select the CoA PDF or image to attach to this reagent.
               An existing CoA will be replaced.
             </p>
@@ -537,7 +537,7 @@
                 <i class="fas fa-file-upload"></i> Choose File
               </label>
               <span id="coa-file-name"
-                    style="margin-left:10px;font-size:12px;color:var(--s-secondary);">
+                    style="margin-left:10px;font-size:var(--fs-sm);color:var(--s-secondary);">
                 No file selected
               </span>
               <input type="file" id="coa-file-input" name="coa_file"
@@ -717,7 +717,7 @@
             <div class="cam-result" id="scan-result">
               <span style="color:#aaa;">Point the camera at a barcode...</span>
             </div>
-            <p style="font-size:11px;color:#aaa;margin-top:6px;">
+            <p style="font-size:var(--fs-xs);color:#aaa;margin-top:6px;">
               Supports CODE128, CODE39, QR, EAN, DataMatrix and more.
               USB barcode scanners also work — just click the Lot # field and scan.
             </p>
@@ -737,15 +737,15 @@
               </button>
               <button class="btn-cancel-cam" onclick="closeScanner()">Cancel</button>
             </div>
-            <div id="ocr-status" style="font-size:11px;color:#aaa;min-height:16px;">
+            <div id="ocr-status" style="font-size:var(--fs-xs);color:#aaa;min-height:16px;">
               Aim at the label, then press Capture.
             </div>
             <div class="cam-result" id="ocr-result"
-                 style="white-space:pre-wrap; font-size:10px; min-height:36px;
+                 style="white-space:pre-wrap; font-size:var(--fs-xs); min-height:36px;
                         max-height:70px; overflow-y:auto; margin-top:6px;"></div>
             <!-- Parsed fields shown after OCR -->
             <div id="ocr-extracted" style="display:none; margin-top:10px;">
-              <div style="font-size:11px;color:#8aaa8a;font-weight:600;margin-bottom:6px;">
+              <div style="font-size:var(--fs-xs);color:#8aaa8a;font-weight:600;margin-bottom:6px;">
                 Extracted from label:
               </div>
               <div class="ocr-fields">
@@ -773,7 +773,7 @@
 
             <!-- Lookup row -->
             <div style="margin-top:10px;">
-              <div style="font-size:11px;color:#aaa;margin-bottom:4px;">
+              <div style="font-size:var(--fs-xs);color:#aaa;margin-bottom:4px;">
                 Look-up value (auto-filled from lot # &#8212; edit if needed):
               </div>
               <div style="display:flex;gap:6px;">
@@ -781,7 +781,7 @@
                        placeholder="Lot # or cat # to search&#8230;" />
                 <button onclick="useOCRLookup()"
                         style="background:#00ff88;color:#000;border:none;border-radius:6px;
-                               padding:6px 12px;font-size:12px;font-weight:600;
+                               padding:6px 12px;font-size:var(--fs-sm);font-weight:600;
                                cursor:pointer;white-space:nowrap;">Look Up</button>
               </div>
             </div>
@@ -818,7 +818,7 @@
           <div class="cam-btn-row" style="margin-top:12px;">
             <button class="btn-use-result"
                     onclick="logAndClose()">Log &#38; Close</button>
-            <button style="background:#1a1a3a;color:#aaaaff;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;padding:8px;"
+            <button style="background:#1a1a3a;color:#aaaaff;font-size:var(--fs-sm);border:none;border-radius:6px;cursor:pointer;font-weight:600;padding:8px;"
                     onclick="logAndContinue()">Log &#38; Scan Next</button>
             <button class="btn-cancel-cam"
                     onclick="backToCamera()">Back</button>

@@ -9,13 +9,13 @@
   <style>
     .lb-form { max-width: 860px; }
     .lb-section { margin-bottom: 28px; }
-    .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
+    .lb-section h3 { font-size: var(--fs-base); font-weight: 700; color: var(--s-dark);
                      margin-bottom: 12px; padding-bottom: 6px;
                      border-bottom: 2px solid var(--s-border); }
     .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
     .lb-field { display: flex; flex-direction: column; }
-    .lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
-    .lb-input, .lb-select { padding: 7px 10px; font-size: 13px;
+    .lb-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-input, .lb-select { padding: 7px 10px; font-size: var(--fs-base);
                               border: 1px solid var(--s-input-border); border-radius: 6px; }
     .lb-input:focus, .lb-select:focus { outline: none; border-color: var(--s-primary); }
     .lb-input-sm { width: 100px; }
@@ -23,14 +23,14 @@
     .lb-input-lg { width: 260px; }
     .lb-lot { width: 200px; }
     /* Cal table */
-    .cal-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .cal-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .cal-table th { background: #f8f9fa; padding: 7px 10px; text-align: left;
                     border-bottom: 2px solid var(--s-border); font-weight: 700; }
     .cal-table td { padding: 5px 8px; border-bottom: 1px solid var(--s-border); }
     .cal-table td:first-child { font-weight: 600; color: var(--s-dark); }
-    .cal-table td input[type="number"] { width: 110px; padding: 4px 8px; font-size: 12px;
+    .cal-table td input[type="number"] { width: 110px; padding: 4px 8px; font-size: var(--fs-sm);
                                           border: 1px solid var(--s-input-border); border-radius: 4px; }
-    .cal-table td input[type="text"]   { width: 160px; padding: 4px 8px; font-size: 12px;
+    .cal-table td input[type="text"]   { width: 160px; padding: 4px 8px; font-size: var(--fs-sm);
                                           border: 1px solid var(--s-input-border); border-radius: 4px; }
     /* PDS section */
     .pds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
@@ -39,14 +39,14 @@
                     display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
     .sig-block { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 8px; }
     .sig-field { display: flex; flex-direction: column; }
-    .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .sig-field label { font-size: var(--fs-sm); font-weight: 600; margin-bottom: 3px; }
     .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
     .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
     .inj-builder-note {
       background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460;
-      padding: 10px 16px; border-radius: 8px; font-size: 12px; margin-top: 8px;
+      padding: 10px 16px; border-radius: 8px; font-size: var(--fs-sm); margin-top: 8px;
     }
   </style>
   </tal:styles>
@@ -188,7 +188,7 @@
       <!-- Calibration Points -->
       <div class="lb-section">
         <h3>Calibration Ladder</h3>
-        <p style="font-size:12px; color:var(--s-secondary); margin-bottom:8px;">
+        <p style="font-size:var(--fs-sm); color:var(--s-secondary); margin-bottom:8px;">
           Default concentrations follow the FDA 32-PFAS serial dilution
           (20 &#8594; 0.039 ng/mL).  Edit concentrations if your prep differs.
           This data is exported to the injection builder.
@@ -252,7 +252,7 @@
       <div class="lb-section">
         <h3>Notes</h3>
         <div class="corr-field" data-field="notes">
-          <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:13px; border:1px solid var(--s-input-border); border-radius:6px;"
+          <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:var(--fs-base); border:1px solid var(--s-input-border); border-radius:6px;"
                     tal:content="python:view.data().get('notes','')"></textarea>
           <div style="margin-top:4px;">
             <button class="btn-correct" type="button" onclick="toggleCorrect('notes')">correct notes</button>

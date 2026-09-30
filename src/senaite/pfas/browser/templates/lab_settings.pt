@@ -17,38 +17,36 @@
        into theme tokens would touch a dozen templates, so it is its own cleanup,
        not something to smuggle in here. */
     .ls-why { background:var(--s-light); border-left:3px solid var(--s-border);
-              padding:10px 14px; font-size:12px; color:var(--s-secondary);
+              padding:10px 14px; font-size:var(--fs-sm); color:var(--s-secondary);
               margin-bottom:16px; border-radius:0 4px 4px 0; }
     .ls-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;
               background:var(--s-bg); border:1px solid var(--s-border);
               border-radius:8px; padding:12px 14px; margin-bottom:16px; }
     .ls-fld { display:flex; flex-direction:column; gap:3px; }
-    .ls-fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
-    .ls-fld input, .ls-fld select { padding:6px 8px; font-size:13px;
+    .ls-fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
+    .ls-fld input, .ls-fld select { padding:6px 8px; font-size:var(--fs-base);
               border:1px solid var(--s-input-border); border-radius:4px;
               color:var(--s-input-text); }
     .ls-alert { display:block; padding:10px 14px; border-radius:6px;
-                margin-bottom:16px; font-size:13px; font-weight:600;
+                margin-bottom:16px; font-size:var(--fs-base); font-weight:600;
                 background:#f8d7da; color:#721c24; text-decoration:none; }
     .ls-alert:hover { text-decoration:underline; }
     .ls-ok { background:#d4edda; color:#155724; font-weight:400; }
     .ls-group { border:1px solid var(--s-border); border-radius:8px;
                 margin-bottom:14px; background:var(--s-bg); }
-    .ls-group > summary { cursor:pointer; padding:11px 14px; font-size:13px;
-                font-weight:700; color:var(--s-body); }
-    .ls-count { font-weight:400; color:var(--s-secondary); font-size:12px; }
-    .ls-table { width:100%; border-collapse:collapse; font-size:12px; }
-    .ls-table th { background:var(--s-light); padding:7px 10px; font-size:11px;
+    .ls-count { font-weight:400; color:var(--s-secondary); font-size:var(--fs-sm); }
+    .ls-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
+    .ls-table th { background:var(--s-light); padding:7px 10px; font-size:var(--fs-xs);
                 font-weight:700; color:var(--s-secondary); text-align:left;
                 border-top:1px solid var(--s-border);
                 border-bottom:2px solid var(--s-border); }
     .ls-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
                 vertical-align:top; }
-    .ls-key { font-family:monospace; font-size:11px; color:var(--s-secondary); }
+    .ls-key { font-family: var(--font-mono); font-size:var(--fs-xs); color:var(--s-secondary); }
     .ls-val { font-weight:600; color:var(--s-body); }
-    .ls-seed { color:var(--s-secondary); font-size:11px; }
-    .ls-judge { font-size:10px; font-weight:700; color:#8a1c1c; }
-    .ls-empty { padding:12px 14px; font-size:12px; color:var(--s-secondary); }
+    .ls-seed { color:var(--s-secondary); font-size:var(--fs-xs); }
+    .ls-judge { font-size:var(--fs-xs); font-weight:700; color:#8a1c1c; }
+    .ls-empty { padding:12px 14px; font-size:var(--fs-sm); color:var(--s-secondary); }
     /* Wide table scrolls inside its own box, as every other PFAS table does. */
     .ls-scroll { overflow-x:auto; }
   </style>
@@ -122,24 +120,26 @@
     </div>
   </form>
 
+  <!-- One tab per settings group (CLAUDE.md §6B: tabs, not a long accordion).
+       The first group with rows under the current filter opens first; counts
+       stay shown-of-total so a filtered tab never reads as the whole group. -->
+  <tal:first tal:define="firstid python:([g['id'] for g in groups if g['shown']] or [groups[0]['id'] if groups else ''])[0]">
+  <div class="pfas-tabs" data-tabs="">
+    <a tal:repeat="g groups"
+       tal:attributes="class python:'pfas-tab active' if g['id'] == firstid else 'pfas-tab';
+                       data-pane string:ls-${g/id};
+                       href string:#ls-${g/id}">
+      <tal:l tal:replace="g/label">Group</tal:l><span class="pfas-tab-count"><tal:c
+        tal:condition="python:g['shown'] == g['total']">(<tal:n tal:replace="g/total">0</tal:n>)</tal:c><tal:c
+        tal:condition="python:g['shown'] != g['total']">(<tal:n tal:replace="g/shown">0</tal:n> of <tal:t tal:replace="g/total">0</tal:t>)</tal:c></span><span
+        class="pfas-tab-flag" tal:condition="g/unset"
+        tal:attributes="title string:${g/unset} not configured">&#9888; <tal:n tal:replace="g/unset">1</tal:n></span>
+    </a>
+  </div>
+  </tal:first>
+
   <tal:groups tal:repeat="g groups">
-    <details class="ls-group" tal:attributes="open python:bool(g['shown'])">
-      <summary>
-        <tal:l tal:replace="g/label">Group</tal:l>
-        <span class="ls-count">
-          <!-- Shown-of-total, because a section reading "(2)" while the lab has 27
-               wording settings would be actively misleading under a filter. -->
-          <tal:c tal:condition="python:g['shown'] == g['total']">
-            (<tal:n tal:replace="g/total">0</tal:n>)
-          </tal:c>
-          <tal:c tal:condition="python:g['shown'] != g['total']">
-            (<tal:n tal:replace="g/shown">0</tal:n> of <tal:t tal:replace="g/total">0</tal:t>)
-          </tal:c>
-          <tal:u tal:condition="g/unset">
-            &middot; <tal:n tal:replace="g/unset">1</tal:n> not configured
-          </tal:u>
-        </span>
-      </summary>
+    <div class="pfas-pane ls-group" tal:attributes="id string:ls-${g/id}">
 
       <div class="ls-scroll" tal:condition="g/rows">
         <table class="ls-table">
@@ -201,7 +201,7 @@
           never list a setting that changes nothing.
         </tal:none>
       </div>
-    </details>
+    </div>
   </tal:groups>
 
   <p class="ls-seed" style="margin-top:14px">

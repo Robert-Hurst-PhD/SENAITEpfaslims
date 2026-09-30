@@ -34,7 +34,7 @@ SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 MAX_PAGES_WITH_STYLE_BLOCK = 51
 MAX_STYLE_ATTRIBUTES = 940
 MAX_DISTINCT_HEX = 210
-MAX_DISTINCT_FONT_SIZES = 23
+MAX_DISTINCT_FONT_SIZES = 3   # the 36-64px display glyphs; all text uses var(--fs-*)
 
 
 def _screen_templates():
@@ -194,6 +194,22 @@ def test_no_double_hyphen_in_html_comments():
             if "--" in m.group(1):
                 bad.append("{0}: {1}".format(name, m.group(1).strip()[:50]))
     assert not bad, "'--' inside an HTML comment: {0}".format(bad)
+
+
+def test_text_uses_the_type_scale():
+    """GAPS §49.10: 23 font sizes (9-28px) became the seven --fs-* tokens,
+    matched to core's 14px body text. A literal size below 32px (display
+    glyphs are larger) or a font family other than the tokens is drift."""
+    bad = []
+    for name, text in _screen_templates():
+        for m in re.finditer(r"(?<![-\w])font-size\s*:\s*(\d+(?:\.\d+)?)(px|pt|em|rem)", text):
+            if m.group(2) != "px" or float(m.group(1)) < 32:
+                bad.append("{0}: {1}".format(name, m.group(0)))
+        for m in re.finditer(r"font-family\s*:\s*([^;\"}]+)", text):
+            v = m.group(1).strip()
+            if not (v.startswith("var(--font-") or v == "inherit" or "Font Awesome" in v):
+                bad.append("{0}: font-family {1}".format(name, v[:40]))
+    assert not bad, "{0} off-scale: {1}".format(len(bad), bad[:8])
 
 
 if __name__ == "__main__":

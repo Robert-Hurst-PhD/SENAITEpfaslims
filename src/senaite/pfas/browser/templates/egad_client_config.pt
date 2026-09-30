@@ -9,26 +9,26 @@
   <style>
     .section-card { background: var(--s-bg); border: 1px solid var(--s-border);
                     border-radius: 6px; padding: 18px; margin-bottom: 18px; }
-    .section-card h3 { font-size: 13px; font-weight: 700; color: var(--s-primary);
+    .section-card h3 { font-size: var(--fs-base); font-weight: 700; color: var(--s-primary);
                        margin: 0 0 14px 0; padding-bottom: 8px;
                        border-bottom: 1px solid var(--s-border); }
     .form-group { margin-bottom: 14px; }
-    .form-label { font-size: 12px; font-weight: 600; color: var(--s-secondary);
+    .form-label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-secondary);
                   text-transform: uppercase; letter-spacing: .04em;
                   display: block; margin-bottom: 4px; }
-    .form-input  { width: 100%; padding: 7px 10px; font-size: 13px;
+    .form-input  { width: 100%; padding: 7px 10px; font-size: var(--fs-base);
                    border: 1px solid var(--s-input-border); border-radius: 4px;
                    background: #fff; box-sizing: border-box; }
-    .form-select { width: 100%; padding: 7px 10px; font-size: 13px;
+    .form-select { width: 100%; padding: 7px 10px; font-size: var(--fs-base);
                    border: 1px solid var(--s-input-border); border-radius: 4px;
                    background: #fff; box-sizing: border-box; }
-    .form-hint   { font-size: 11px; color: var(--s-secondary); margin-top: 3px; }
+    .form-hint   { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: 3px; }
     .form-row    { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
                    gap: 14px; }
     .toggle-row  { display: flex; align-items: center; gap: 12px; padding: 12px;
                    background: var(--s-light); border: 1px solid var(--s-border);
                    border-radius: 6px; margin-bottom: 14px; }
-    .toggle-lbl  { font-size: 14px; font-weight: 600; }
+    .toggle-lbl  { font-size: var(--fs-base); font-weight: 600; }
     .gov-enabled { background: #e8f5e9; border-color: #a5d6a7; }
     .save-banner { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px;
                    padding: 10px 16px; margin-bottom: 16px; color: #155724; font-weight: 600; }
@@ -42,7 +42,7 @@
       &#8592; EGAD Config
     </a>
     <h1 style="margin:8px 0 4px">EDD Settings — ${context/Title}</h1>
-    <p style="margin:0;color:var(--s-secondary);font-size:13px">
+    <p style="margin:0;color:var(--s-secondary);font-size:var(--fs-base)">
       Per-client EGAD EDD settings.  Government-agency flag enables EDD generation
       when publishing reports for this client.
     </p>
@@ -120,21 +120,21 @@
             <input type="checkbox" id="per_report_override_default"
                    name="per_report_override_default" value="1"
                    tal:attributes="checked python:cfg.get('per_report_override_default', True)" />
-            <label for="per_report_override_default" style="font-size:13px">
+            <label for="per_report_override_default" style="font-size:var(--fs-base)">
               Generate EDD by default when publishing (can be unchecked per report)
             </label>
           </div>
           <div style="margin-top:12px">
-            <label for="edd_profile" style="font-size:13px;font-weight:700;display:block;margin-bottom:3px">
+            <label for="edd_profile" style="font-size:var(--fs-base);font-weight:700;display:block;margin-bottom:3px">
               EDD format profile</label>
             <select id="edd_profile" name="edd_profile"
-                    style="padding:6px 10px;border:1px solid var(--s-border);border-radius:4px;font-size:13px;">
+                    style="padding:6px 10px;border:1px solid var(--s-border);border-radius:4px;font-size:var(--fs-base);">
               <option tal:repeat="p view/edd_profile_options"
                       tal:attributes="value p/id;
                                       selected python:p['id'] == cfg.get('edd_profile', 'maine_egad')"
                       tal:content="p/name">Maine EGAD</option>
             </select>
-            <div style="font-size:11px;color:var(--s-secondary);margin-top:3px">
+            <div style="font-size:var(--fs-xs);color:var(--s-secondary);margin-top:3px">
               Which state/program EDD format this client's exports use
               (profiles are managed under EGAD Config → EDD Format Profiles).
             </div>

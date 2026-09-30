@@ -10,15 +10,15 @@
     /* ── layout ── */
     .sop-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
     .sop-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
-    .sop-tab { padding:5px 14px; border-radius:16px; font-size:12px; font-weight:600;
+    .sop-tab { padding:5px 14px; border-radius:16px; font-size:var(--fs-sm); font-weight:600;
                text-decoration:none; background:var(--s-light);
                border:1px solid var(--s-border); color:var(--s-body); cursor:pointer; }
     .sop-tab.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
 
     /* ── table ── */
-    .sop-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .sop-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
     .sop-table th { background:var(--s-light); padding:8px 12px; text-align:left;
-                    font-size:11px; font-weight:700; color:var(--s-secondary);
+                    font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
                     text-transform:uppercase; letter-spacing:.04em;
                     border-bottom:2px solid var(--s-border); }
     .sop-table td { padding:9px 12px; border-bottom:1px solid var(--s-border); vertical-align:middle; }
@@ -32,14 +32,14 @@
     .badge-ok   { background:#d4edda; color:#155724; }
     .badge-warn { background:#fff3cd; color:#856404; }
     .badge-method { background:var(--s-light); color:var(--s-secondary);
-                    font-size:11px; font-weight:600; }
+                    font-size:var(--fs-xs); font-weight:600; }
 
     /* ── detail panel ── */
     .sop-detail { display:none; background:#f8f9fa; border-top:2px solid var(--s-primary);
                   padding:16px; }
     .sop-detail.open { display:block; }
     .sop-detail-tabs { display:flex; gap:6px; margin-bottom:14px; }
-    .sop-dtab { padding:5px 14px; border-radius:4px; font-size:12px; font-weight:600;
+    .sop-dtab { padding:5px 14px; border-radius:4px; font-size:var(--fs-sm); font-weight:600;
                 background:var(--s-light); border:1px solid var(--s-border); cursor:pointer; }
     .sop-dtab.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
     .sop-dpanel { display:none; }
@@ -51,14 +51,14 @@
 
     /* ── sign-off roster ── */
     .sig-roster { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-    .sig-chip { padding:4px 12px; border-radius:12px; font-size:11px; font-weight:600; }
+    .sig-chip { padding:4px 12px; border-radius:12px; font-size:var(--fs-xs); font-weight:600; }
     .sig-chip.signed   { background:#d4edda; color:#155724; }
     .sig-chip.unsigned { background:#f8d7da; color:#721c24; }
 
     /* ── rev history ── */
-    .rev-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
+    .rev-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); margin-top:10px; }
     .rev-table th { background:var(--s-light); padding:6px 10px; text-align:left;
-                    font-size:11px; font-weight:700; color:var(--s-secondary);
+                    font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
                     border-bottom:2px solid var(--s-border); }
     .rev-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
 
@@ -70,18 +70,18 @@
     .sop-modal { background:#fff; border-radius:8px; padding:24px; width:520px;
                  max-width:95vw; max-height:90vh; overflow-y:auto;
                  box-shadow:0 8px 32px rgba(0,0,0,.2); }
-    .sop-modal h3 { margin:0 0 16px; font-size:16px; color:var(--s-body); }
+    .sop-modal h3 { margin:0 0 16px; font-size:var(--fs-lg); color:var(--s-body); }
     .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:12px; }
-    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); text-transform:uppercase; }
+    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); text-transform:uppercase; }
     .fld input,.fld select,.fld textarea {
-      padding:7px 9px; font-size:13px; border:1px solid var(--s-input-border);
+      padding:7px 9px; font-size:var(--fs-base); border:1px solid var(--s-input-border);
       border-radius:4px; }
     .fld textarea { min-height:70px; resize:vertical; }
     .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
 
     /* ── alert banner ── */
     .sop-banner { padding:10px 16px; border-radius:6px; margin-bottom:14px;
-                  font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; }
+                  font-size:var(--fs-base); font-weight:600; display:flex; align-items:center; gap:8px; }
     .sop-banner.warn { background:#fff3cd; color:#856404; border:1px solid #ffc107; }
     .sop-banner.success { background:#d4edda; color:#155724; border:1px solid #28a745; }
     .sop-banner.error { background:#f8d7da; color:#721c24; border:1px solid #dc3545; }
@@ -128,7 +128,7 @@
 
   <!-- ── Toolbar ──────────────────────────────────────────────────────────── -->
   <div class="sop-toolbar">
-    <strong style="font-size:15px;color:var(--s-body)">Documents</strong>
+    <strong style="font-size:var(--fs-md);color:var(--s-body)">Documents</strong>
     <span style="flex:1"></span>
     <tal:mgr tal:condition="can_mgr">
       <button class="btn btn-primary" onclick="openSOPModal()">+ New Document</button>
@@ -311,7 +311,7 @@
                       </div>
                     </tal:unsigned>
                     <tal:signed tal:condition="sop/user_signed">
-                      <div style="margin-top:10px;color:#155724;font-size:12px;font-weight:600">
+                      <div style="margin-top:10px;color:#155724;font-size:var(--fs-sm);font-weight:600">
                         &#10003; You have signed this revision.
                       </div>
                     </tal:signed>
@@ -355,11 +355,11 @@
                      tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
                      tal:attributes="id string:panel-${sop_id_js}-signoffs">
                   <tal:hasrev tal:condition="sop/active_rev">
-                    <p style="font-size:12px;color:var(--s-secondary);margin:0 0 10px">
+                    <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 10px">
                       Showing sign-offs for Rev <strong tal:content="python:sop['active_rev']['rev_num']">1</strong>.
                       Activating a new revision clears all sign-offs.
                     </p>
-                    <p style="font-size:12px;font-weight:600;color:var(--s-secondary)">
+                    <p style="font-size:var(--fs-sm);font-weight:600;color:var(--s-secondary)">
                       <tal:count tal:replace="sop/signer_count">0</tal:count> signed
                     </p>
                     <div class="sig-roster">
@@ -414,7 +414,7 @@
           </tr>
         </tbody>
       </table>
-      <p style="font-size:11px;color:var(--s-secondary,#6c757d);margin-top:6px">
+      <p style="font-size:var(--fs-xs);color:var(--s-secondary,#6c757d);margin-top:6px">
         Deleted document numbers are never reused — the next new document of
         that type always takes the next number in its sequence.
       </p>

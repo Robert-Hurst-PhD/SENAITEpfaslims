@@ -17,17 +17,17 @@
 
 /* ── sections and field rows ─────────────────────────────────────────────── */
 .lb-section { margin-bottom: 24px; }
-.lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
+.lb-section h3 { font-size: var(--fs-base); font-weight: 700; color: var(--s-dark);
                  margin-bottom: 10px; padding-bottom: 6px;
                  border-bottom: 2px solid var(--s-border); }
 .lb-fields-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
 .lb-field { display: flex; flex-direction: column; min-width: 160px; }
-.lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+.lb-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
 .lb-field-wide { width: 100%; }
 
 /* ── inputs ──────────────────────────────────────────────────────────────── */
 .lb-input, .lb-textarea {
-  padding: 7px 10px; font-size: 13px; border: 1px solid var(--s-input-border);
+  padding: 7px 10px; font-size: var(--fs-base); border: 1px solid var(--s-input-border);
   border-radius: 6px; color: var(--s-body);
 }
 .lb-input:focus, .lb-textarea:focus { outline: none; border-color: var(--s-primary); }
@@ -37,19 +37,19 @@
 .lb-textarea { width: 100%; min-height: 70px; resize: vertical; }
 
 /* ── dynamic tables ──────────────────────────────────────────────────────── */
-.dyn-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dyn-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .dyn-table th { background: #f8f9fa; padding: 6px 10px; text-align: left;
                 border-bottom: 2px solid var(--s-border); font-weight: 700; }
 .dyn-table td { padding: 4px 6px; border-bottom: 1px solid var(--s-border); }
-.dyn-table td input { width: 100%; padding: 5px 8px; font-size: 12px;
+.dyn-table td input { width: 100%; padding: 5px 8px; font-size: var(--fs-sm);
                       border: 1px solid var(--s-input-border); border-radius: 4px; }
 .dyn-table td input:focus { outline: none; border-color: var(--s-primary); }
 .btn-add-row { margin-top: 8px; padding: 5px 14px; background: #f8f9fa;
                border: 1px dashed var(--s-border); border-radius: 6px;
-               font-size: 12px; cursor: pointer; color: var(--s-secondary); }
+               font-size: var(--fs-sm); cursor: pointer; color: var(--s-secondary); }
 .btn-add-row:hover { background: #e9ecef; color: var(--s-dark); }
 .btn-del-row { background: none; border: none; cursor: pointer;
-               color: #dc3545; font-size: 14px; padding: 2px 6px; }
+               color: #dc3545; font-size: var(--fs-base); padding: 2px 6px; }
 
 /* ── lot / reagent autocomplete ──────────────────────────────────────────── */
 .lot-ac-wrap { position: relative; display: inline-block; }
@@ -59,29 +59,29 @@
                    box-shadow: 0 4px 12px rgba(0,0,0,.12); z-index: 200;
                    max-height: 200px; overflow-y: auto; }
 .lot-ac-dropdown.open { display: block; }
-.lot-ac-item { padding: 7px 10px; font-size: 12px; cursor: pointer; }
+.lot-ac-item { padding: 7px 10px; font-size: var(--fs-sm); cursor: pointer; }
 .lot-ac-item:hover { background: var(--s-primary-lt); }
-.lot-ac-sub { font-size: 10px; color: var(--s-secondary); }
+.lot-ac-sub { font-size: var(--fs-xs); color: var(--s-secondary); }
 /* A lot that is in date and unexhausted can still block release — a parent not
    in inventory, or in-house water with no Type 1 log for the day. The picker used
    to offer those silently, so the analyst found out at data review. GAPS §33.11. */
 .lot-ac-item.lot-blocked { background: #fff6f6; }
 .lot-ac-item.lot-blocked:hover { background: #ffecec; }
-.lot-ac-warn { display: block; font-size: 10px; color: #8a1c1c; font-weight: 600;
+.lot-ac-warn { display: block; font-size: var(--fs-xs); color: #8a1c1c; font-weight: 600;
                margin-top: 2px; }
 
 /* ── row struck as not-applicable (paper-logbook convention) ─────────────── */
 .btn-na-row { background: none; border: none; cursor: pointer;
-              color: var(--s-secondary); font-size: 13px; padding: 2px 6px; }
+              color: var(--s-secondary); font-size: var(--fs-base); padding: 2px 6px; }
 .btn-na-row:hover { color: var(--s-dark); }
 .dyn-table tr.row-na td { background: #f6f7f8; }
 .dyn-table tr.row-na td input { text-decoration: line-through; color: #8a8f94;
                                 background: #f1f3f4; border-style: dashed; }
 .row-na-note { display: inline-flex; align-items: center; gap: 5px;
-               font-size: 10px; color: #856404; background: #fff8e1;
+               font-size: var(--fs-xs); color: #856404; background: #fff8e1;
                border: 1px solid #ffe082; border-radius: 3px;
                padding: 1px 5px; white-space: nowrap; }
-.row-na-ini { width: 52px; font-size: 11px; padding: 3px 5px;
+.row-na-ini { width: 52px; font-size: var(--fs-xs); padding: 3px 5px;
               border: 1px solid #ffc107; border-radius: 3px; }
 
 @media print {
@@ -93,7 +93,7 @@
 
 /* ── defaulted lot hint ──────────────────────────────────────────────────── */
 .lot-default-hint.lot-hint-bad { color: #8a1c1c; font-weight: 600; }
-.lot-default-hint { font-size: 10px; color: var(--s-secondary);
+.lot-default-hint { font-size: var(--fs-xs); color: var(--s-secondary);
                     background: var(--s-primary-lt); border-radius: 3px;
                     padding: 1px 5px; margin-left: 6px; white-space: nowrap; }
 @media print { .lot-default-hint { display: none !important; } }

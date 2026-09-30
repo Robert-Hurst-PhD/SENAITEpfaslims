@@ -50,13 +50,19 @@
   --sp-5: 24px;
   --sp-6: 32px;
 
-  /* ── Type scale ───────────────────────────────────────────────────────── */
-  --fs-xs:   11px;   /* table headers, badges, captions */
-  --fs-sm:   12px;   /* secondary text, dense tables    */
-  --fs-base: 13px;   /* body text, table cells          */
-  --fs-md:   14px;   /* emphasised body                 */
-  --fs-lg:   16px;   /* section headings                */
-  --fs-xl:   20px;   /* page-level figures              */
+  /* ── Type (GAPS §49.10) ─────────────────────────────────────────────────
+     Matched to core SENAITE, whose listings set body/table text at 14px:
+     PFAS pages had drifted to 12-13px with much at 9-11px, so text changed
+     size between pages. Every screen template now uses only these sizes. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --fs-xs:   11px;   /* table headers, badges, captions  */
+  --fs-sm:   13px;   /* secondary text                   */
+  --fs-base: 14px;   /* body text, table cells (= core)  */
+  --fs-md:   15px;   /* emphasised body                  */
+  --fs-lg:   16px;   /* section headings                 */
+  --fs-xl:   20px;   /* page-level headings              */
+  --fs-2xl:  28px;   /* stat figures                     */
 
   /* ── Controls: one height for buttons and inputs in a toolbar ─────────── */
   --ctl-h:    36px;    /* 32 read as too small (lab feedback 2026-09-30); core .btn is 38 */

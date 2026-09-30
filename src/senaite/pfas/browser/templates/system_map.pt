@@ -7,7 +7,7 @@
   <title metal:fill-slot="title">System Map</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
-    .map-intro { color: var(--s-secondary); font-size: 13px; margin: 0 0 16px; max-width: 900px; }
+    .map-intro { color: var(--s-secondary); font-size: var(--fs-base); margin: 0 0 16px; max-width: 900px; }
     .map-wrap {
       border: 1px solid var(--s-border); border-radius: 10px; background: var(--s-bg);
       padding: 14px 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
@@ -22,10 +22,10 @@
     }
     .pfas-map-svg a:focus { outline: none; }
     .pfas-map-svg a:focus .clickable rect { stroke-width: 3.4; }
-    .map-legend { display: flex; flex-wrap: wrap; gap: 16px 26px; margin-top: 16px; font-size: 12px; color: var(--s-secondary); }
+    .map-legend { display: flex; flex-wrap: wrap; gap: 16px 26px; margin-top: 16px; font-size: var(--fs-sm); color: var(--s-secondary); }
     .map-legend .chip { display: inline-flex; align-items: center; gap: 7px; }
     .map-legend .sw { width: 26px; height: 13px; border-radius: 3px; border: 1px solid #adb5bd; display: inline-block; }
-    .map-hint { font-size: 12px; color: var(--s-secondary); margin-top: 6px; }
+    .map-hint { font-size: var(--fs-sm); color: var(--s-secondary); margin-top: 6px; }
   </style>
   </tal:styles>
 </head>

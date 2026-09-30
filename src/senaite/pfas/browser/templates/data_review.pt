@@ -10,9 +10,9 @@
   <style>
     /* ── Data Review ────────────────────────────────────────────────────── */
     .dr-header { display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
-    .dr-ws-title { font-size:12px; color:var(--s-secondary); }
-    .dr-batch-title { font-size:17px; font-weight:700; color:var(--s-text); }
-    .ws-badge { font-size:11px; font-weight:700; text-transform:uppercase;
+    .dr-ws-title { font-size:var(--fs-sm); color:var(--s-secondary); }
+    .dr-batch-title { font-size:var(--fs-lg); font-weight:700; color:var(--s-text); }
+    .ws-badge { font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
                 padding:3px 9px; border-radius:10px; }
     .ws-open    { background:#fff3cd; color:#856404; }
     .ws-verify  { background:#cce5ff; color:#004085; }
@@ -21,7 +21,7 @@
 
     .dr-tabs { display:flex; gap:0; border-bottom:2px solid var(--s-border);
                margin-bottom:20px; flex-wrap:wrap; }
-    .dr-tab  { padding:8px 16px; cursor:pointer; font-size:13px; font-weight:600;
+    .dr-tab  { padding:8px 16px; cursor:pointer; font-size:var(--fs-base); font-weight:600;
                border-bottom:3px solid transparent; margin-bottom:-2px;
                color:var(--s-secondary); text-decoration:none; white-space:nowrap; }
     .dr-tab:hover { color:var(--s-primary); }
@@ -41,11 +41,11 @@
     .cl-card.pending { border-left:4px solid var(--s-border); }
     .cl-badge.cl-blocked { background:#fff3cd; color:#856404; }
     .cl-badge.cl-pending { background:#f1f3f5; color:var(--s-secondary); }
-    .cl-card-reason { font-size:11.5px; color:#856404; margin-top:6px;
+    .cl-card-reason { font-size:var(--fs-xs); color:#856404; margin-top:6px;
                       line-height:1.45; }
-    .cl-card-title { font-size:13px; font-weight:700; color:var(--s-text); }
-    .cl-card-sub   { font-size:11px; color:var(--s-secondary); }
-    .cl-badge { font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 7px;
+    .cl-card-title { font-size:var(--fs-base); font-weight:700; color:var(--s-text); }
+    .cl-card-sub   { font-size:var(--fs-xs); color:var(--s-secondary); }
+    .cl-badge { font-size:var(--fs-xs); font-weight:700; text-transform:uppercase; padding:2px 7px;
                 border-radius:8px; display:inline-block; }
     .cl-pass { background:#d4edda; color:#155724; }
     .cl-fail { background:#f8d7da; color:#721c24; }
@@ -57,20 +57,20 @@
                      padding:14px 0; border-top:1px solid var(--s-border); margin-top:8px; }
 
     /* msg */
-    .dr-msg { padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:13px; }
+    .dr-msg { padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:var(--fs-base); }
     .dr-msg.ok    { background:#d4edda; color:#155724; }
     .dr-msg.error { background:#f8d7da; color:#721c24; }
 
     /* submission info */
-    .dr-sig-row { font-size:12px; color:var(--s-secondary); }
+    .dr-sig-row { font-size:var(--fs-sm); color:var(--s-secondary); }
     .dr-sig-row strong { color:var(--s-text); }
 
     /* traceability */
     .tree-section { margin-bottom:22px; }
-    .tree-heading { font-size:13px; font-weight:700; color:var(--s-text); margin-bottom:10px;
+    .tree-heading { font-size:var(--fs-base); font-weight:700; color:var(--s-text); margin-bottom:10px;
                     padding-bottom:4px; border-bottom:1px solid var(--s-border); }
     .tree-row  { display:grid; grid-template-columns:180px 1fr; gap:8px; padding:6px 0;
-                 border-bottom:1px solid #f0f0f0; font-size:12px; }
+                 border-bottom:1px solid #f0f0f0; font-size:var(--fs-sm); }
     .tree-label { font-weight:600; color:var(--s-secondary); }
     .tree-val   { color:var(--s-text); }
     .tree-link  { color:var(--s-primary); text-decoration:none; }
@@ -78,45 +78,45 @@
     .tree-sub   { padding-left:20px; }
     .tree-unresolved { color:#dc3545; font-weight:600; }
     .tree-warn-box { background:#f8d7da; color:#721c24; padding:10px 14px; border-radius:6px;
-                     margin-bottom:14px; font-size:12px; }
+                     margin-bottom:14px; font-size:var(--fs-sm); }
 
     /* QC matrix */
     .qc-matrix-wrap { overflow-x:auto; }
-    .qc-matrix { border-collapse:collapse; font-size:12px; min-width:100%; }
+    .qc-matrix { border-collapse:collapse; font-size:var(--fs-sm); min-width:100%; }
     .qc-matrix th { background:var(--s-light); color:var(--s-secondary); padding:6px 10px;
-                    text-align:left; white-space:nowrap; font-size:11px;
+                    text-align:left; white-space:nowrap; font-size:var(--fs-xs);
                     text-transform:uppercase; letter-spacing:.04em;
                     border-bottom:2px solid var(--s-border); }
     .qc-matrix td { padding:5px 10px; border-bottom:1px solid var(--s-border); white-space:nowrap; }
     .qc-matrix tr:hover td { background:#f8f9fa; }
     .qc-cell-ok   { background:#d4edda; color:#155724; border-radius:4px;
-                    padding:1px 5px; font-weight:700; font-size:10px; }
+                    padding:1px 5px; font-weight:700; font-size:var(--fs-xs); }
     .qc-cell-fail { background:#f8d7da; color:#721c24; border-radius:4px;
-                    padding:1px 5px; font-weight:700; font-size:10px; }
+                    padding:1px 5px; font-weight:700; font-size:var(--fs-xs); }
     .qc-cell-warn { background:#fff3cd; color:#856404; border-radius:4px;
-                    padding:1px 5px; font-weight:700; font-size:10px; }
-    .qc-cell-na   { color:#aaa; font-size:11px; }
+                    padding:1px 5px; font-weight:700; font-size:var(--fs-xs); }
+    .qc-cell-na   { color:#aaa; font-size:var(--fs-xs); }
 
     /* final data */
-    .fd-table { border-collapse:collapse; width:100%; font-size:12px; }
+    .fd-table { border-collapse:collapse; width:100%; font-size:var(--fs-sm); }
     .fd-table th { background:var(--s-light); color:var(--s-secondary); padding:6px 10px; text-align:left;
-                   font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+                   font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.04em;
                    border-bottom:2px solid var(--s-border); }
     .fd-table td { padding:5px 10px; border-bottom:1px solid var(--s-border); }
     .fd-table tr:hover td { background:var(--s-primary-lt); }
 
     /* pending-review worklist — canonical listing look (matches SOPs / CARs /
        Batch Logbooks / Prep Logbooks) */
-    .dr-worklist { width:100%; border-collapse:collapse; font-size:13px; }
+    .dr-worklist { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
     .dr-worklist th { background:var(--s-light); padding:8px 12px; text-align:left;
-                      font-size:11px; color:var(--s-secondary); text-transform:uppercase;
+                      font-size:var(--fs-xs); color:var(--s-secondary); text-transform:uppercase;
                       font-weight:700; letter-spacing:.04em; }
     .dr-worklist td { padding:9px 12px; border-top:1px solid var(--s-border);
                       vertical-align:middle; }
     .dr-worklist tr:hover td { background:var(--s-primary-lt); }
     .dr-worklist .dr-num { font-variant-numeric:tabular-nums; white-space:nowrap; }
     .dr-worklist .dr-analyst { color:var(--s-dark); }
-    .dr-stage { display:inline-block; font-size:11px; font-weight:700;
+    .dr-stage { display:inline-block; font-size:var(--fs-xs); font-weight:700;
                 padding:2px 9px; border-radius:11px; white-space:nowrap; }
     .dr-stage-open { background:#fff3e0; color:#b26a00; }
     .dr-stage-review { background:#e8f4f8; color:#155e75; }
@@ -124,22 +124,22 @@
     /* instrument report */
     .ir-file-list { margin-bottom:20px; }
     .ir-file-row { display:flex; align-items:center; gap:10px; padding:8px 0;
-                   border-bottom:1px solid var(--s-border); font-size:12px; }
+                   border-bottom:1px solid var(--s-border); font-size:var(--fs-sm); }
     .ir-file-name { flex:1; font-weight:600; color:var(--s-text); }
     .ir-upload-box { border:2px dashed var(--s-border); border-radius:8px; padding:20px;
                      text-align:center; background:var(--s-bg-alt); margin-bottom:20px; }
-    .ir-upload-box label { font-size:13px; font-weight:600; cursor:pointer; color:var(--s-primary); }
+    .ir-upload-box label { font-size:var(--fs-base); font-weight:600; cursor:pointer; color:var(--s-primary); }
 
     .csv-preview-wrap { overflow:auto; max-height:400px; margin-top:14px; }
-    .csv-preview { border-collapse:collapse; font-size:11px; }
+    .csv-preview { border-collapse:collapse; font-size:var(--fs-xs); }
     .csv-preview th { background:#495057; color:#fff; padding:4px 8px; }
     .csv-preview td { padding:3px 8px; border-bottom:1px solid #dee2e6; }
 
     /* CoC */
     .coc-summary { display:grid; grid-template-columns:1fr 1fr; gap:10px 20px;
-                   font-size:13px; margin-bottom:18px; }
+                   font-size:var(--fs-base); margin-bottom:18px; }
     .coc-field  { display:flex; flex-direction:column; gap:2px; }
-    .coc-label  { font-size:11px; color:var(--s-secondary); text-transform:uppercase; }
+    .coc-label  { font-size:var(--fs-xs); color:var(--s-secondary); text-transform:uppercase; }
     .coc-value  { font-weight:600; color:var(--s-text); }
     .coc-bool-ok { color:#28a745; }
     .coc-bool-fail { color:#dc3545; }
@@ -166,7 +166,7 @@
   <!-- ── No worksheet selected ─────────────────────────────────────────── -->
   <tal:no_ws tal:condition="not:view/batch_id">
     <div class="page-body">
-      <p style="color:var(--s-secondary); font-size:13px;">
+      <p style="color:var(--s-secondary); font-size:var(--fs-base);">
         Select a Worksheet to open its data review. Each row shows the analyst
         responsible for the analysis, whether the case is with the analyst or in
         peer review, how long it has been open since extraction, and — once
@@ -202,7 +202,7 @@
             </tr>
           </tal:row>
           <tr tal:condition="not:view/recent_worksheets">
-            <td colspan="6" style="color:#aaa;font-size:12px;">No worksheets are currently open or awaiting review.</td>
+            <td colspan="6" style="color:#aaa;font-size:var(--fs-sm);">No worksheets are currently open or awaiting review.</td>
           </tr>
         </tbody>
       </table>
@@ -226,8 +226,8 @@
       <tal:has_devs tal:condition="active_devs">
         <div style="background:#fff3cd;color:#856404;border:1px solid #ffc107;
                     border-radius:6px;padding:10px 14px;margin-bottom:14px;
-                    font-size:13px;display:flex;align-items:flex-start;gap:10px">
-          <span style="font-size:16px;flex-shrink:0">&#9888;</span>
+                    font-size:var(--fs-base);display:flex;align-items:flex-start;gap:10px">
+          <span style="font-size:var(--fs-lg);flex-shrink:0">&#9888;</span>
           <div>
             <strong>Active non-conformance(s) reference this worksheet</strong> — review
             before releasing data.
@@ -253,8 +253,8 @@
         <tal:out_of_scope tal:condition="accred/out_of_scope">
           <div style="background:#f8d7da;color:#721c24;border:1px solid #dc3545;
                       border-radius:6px;padding:10px 14px;margin-bottom:14px;
-                      font-size:13px;display:flex;align-items:flex-start;gap:10px">
-            <span style="font-size:16px;flex-shrink:0">&#9888;</span>
+                      font-size:var(--fs-base);display:flex;align-items:flex-start;gap:10px">
+            <span style="font-size:var(--fs-lg);flex-shrink:0">&#9888;</span>
             <div>
               <strong>Outside accreditation scope</strong>
               <tal:preview tal:condition="python:accred.get('mode') == 'preview'">
@@ -282,7 +282,7 @@
         <tal:not_recorded tal:condition="python:accred.get('mode') == 'not_recorded'">
           <div style="background:#e2e3e5;color:#383d41;border:1px solid #adb5bd;
                       border-radius:6px;padding:10px 14px;margin-bottom:14px;
-                      font-size:13px">
+                      font-size:var(--fs-base)">
             <strong>Governing criteria not recorded</strong> — this worksheet was
             verified before the criteria were frozen at review, so what it was
             judged against cannot be stated. No accreditation claim is made
@@ -293,7 +293,7 @@
         <tal:uncompared tal:condition="python:(not accred.get('out_of_scope')) and accred.get('mode') != 'not_recorded' and accred.get('uncompared')">
           <div style="background:#fff3cd;color:#856404;border:1px solid #ffc107;
                       border-radius:6px;padding:10px 14px;margin-bottom:14px;
-                      font-size:13px">
+                      font-size:var(--fs-base)">
             <strong>No departure detected</strong> — but
             <tal:n tal:replace="accred/uncompared"/> of
             <tal:t tal:replace="python:accred.get('uncompared', 0) + accred.get('compared', 0)"/>
@@ -402,7 +402,7 @@
                 <input type="hidden" name="tab" value="overview"/>
                 <input type="text" name="initials" required="required"
                        placeholder="Initials" maxlength="6"
-                       style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;"/>
+                       style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;"/>
                 <button class="btn btn-action" type="submit">
                   Sign &amp; Mark Reviewed
                 </button>
@@ -417,7 +417,7 @@
         <div style="background:#fff3cd;border:1px solid #ffeeba;color:#856404;
                     border-radius:8px;padding:12px 16px;margin-bottom:16px;
                     display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
-          <div style="flex:1;min-width:260px;font-size:12.5px;">
+          <div style="flex:1;min-width:260px;font-size:var(--fs-sm);">
             <strong>No analyses are assigned to this worksheet.</strong>
             Assignment must happen <em>before</em> results are submitted —
             afterwards SENAITE's workflow forbids it (already-submitted
@@ -454,7 +454,7 @@
                tal:condition="python:purl and view.all_items_pass()">
         <div class="tree-section">
           <div class="tree-heading">Client Report (COA)</div>
-          <p style="font-size:12px;color:var(--s-secondary);margin:0 0 8px;">
+          <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 8px;">
             All five review gates passed — generate the client Certificate of
             Analysis for this worksheet's samples (opens SENAITE's report
             publisher with the samples pre-selected).
@@ -469,10 +469,10 @@
           <tal:reissue tal:condition="view/is_reissue">
             <div style="background:#fff3cd;border:1px solid #ffe69c;border-radius:6px;
                         padding:10px 12px;margin-top:6px;">
-              <div style="font-weight:600;font-size:13px;color:#856404;margin-bottom:6px;">
+              <div style="font-weight:600;font-size:var(--fs-base);color:#856404;margin-bottom:6px;">
                 Amended reissue — this sample was already published
               </div>
-              <p style="font-size:12px;color:var(--s-secondary);margin:0 0 8px;">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 8px;">
                 State the reason for reissuing. It is recorded against the new
                 revision in the Controlled Publications register. The original
                 report is not modified.
@@ -484,7 +484,7 @@
                        tal:attributes="value view/batch_uid"/>
                 <textarea name="reason" rows="2" required="required"
                           placeholder="Reason for reissuing this certificate"
-                          style="flex:1;min-width:240px;font-size:12px;padding:4px 6px;"></textarea>
+                          style="flex:1;min-width:240px;font-size:var(--fs-sm);padding:4px 6px;"></textarea>
                 <button type="submit" class="btn btn-success btn-approve">
                   Record reason &amp; generate COA →
                 </button>
@@ -523,7 +523,7 @@
             </button>
           </form>
           <tal:incomplete tal:condition="not:view/all_items_pass">
-            <span style="font-size:12px;color:#dc3545;">
+            <span style="font-size:var(--fs-sm);color:#dc3545;">
               Complete all checklist items before submitting.
             </span>
           </tal:incomplete>
@@ -617,7 +617,7 @@
           </div>
         </tal:with_coc>
         <tal:no_coc tal:condition="not:coc/client_name|nothing">
-          <p style="color:var(--s-secondary);font-size:13px;">
+          <p style="color:var(--s-secondary);font-size:var(--fs-base);">
             CoC not yet completed for this batch.
           </p>
         </tal:no_coc>
@@ -626,7 +626,7 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;">
         <a class="btn btn-action"
            tal:attributes="href string:${view/batch_url}/@@pfas-logbook-dynamic?slug=coc">
-          <i class="fas fa-external-link-alt" style="font-size:11px;"></i>
+          <i class="fas fa-external-link-alt" style="font-size:var(--fs-xs);"></i>
           Open CoC Form
         </a>
         <tal:coc_check_btn
@@ -636,7 +636,7 @@
             <input type="hidden" name="action" value="check_item"/>
             <input type="hidden" name="item_key" value="coc"/>
             <input type="hidden" name="tab" value="coc"/>
-            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
+            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
             <button class="btn btn-action" type="submit">Mark CoC Reviewed</button>
           </form>
         </tal:coc_check_btn>
@@ -667,34 +667,34 @@
             </tbody>
           </table>
           <p tal:condition="not:corr"
-             style="font-size:12px;color:var(--s-secondary);">No corrections recorded.</p>
+             style="font-size:var(--fs-sm);color:var(--s-secondary);">No corrections recorded.</p>
         </tal:corr>
 
         <tal:corr_form tal:condition="view/can_act">
           <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;"
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="correct_field"/>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Field
-              <select name="field" style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;">
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Field
+              <select name="field" style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:var(--fs-sm);">
                 <option value="sample_collection_date">Sample Collection Date</option>
                 <option value="lab_received_date">Lab Received Date</option>
               </select>
             </label>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Corrected value
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Corrected value
               <input type="date" name="new_value" required="required"
-                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;"/>
+                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:var(--fs-sm);"/>
             </label>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Reason
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Reason
               <input type="text" name="reason" placeholder="e.g. transcription error"
-                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;width:200px;"/>
+                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:var(--fs-sm);width:200px;"/>
             </label>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Initials *
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Initials *
               <input type="text" name="initials" required="required" maxlength="6" placeholder="RB"
-                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:12px;width:70px;text-transform:uppercase;"/>
+                     style="padding:5px;border:1px solid var(--s-border);border-radius:4px;font-size:var(--fs-sm);width:70px;text-transform:uppercase;"/>
             </label>
             <button class="btn btn-action" type="submit">Sign &amp; Correct</button>
           </form>
-          <p style="font-size:11px;color:var(--s-secondary);margin-top:6px;">
+          <p style="font-size:var(--fs-xs);color:var(--s-secondary);margin-top:6px;">
             Corrections never overwrite silently: the previous value, your
             initials and the date are recorded and shown in the final review.
           </p>
@@ -790,7 +790,7 @@
                     <tal:pr tal:repeat="par ps/parent_reagents">
                       <div class="tree-row">
                         <span class="tree-label">
-                          <i class="fas fa-level-up-alt fa-rotate-90" style="font-size:9px;margin-right:4px;"></i>
+                          <i class="fas fa-level-up-alt fa-rotate-90" style="font-size:var(--fs-xs);margin-right:4px;"></i>
                           Parent reagent
                         </span>
                         <span class="tree-val">
@@ -874,7 +874,7 @@
 
         <tal:empty_tree
             tal:condition="python:not t.get('direct_reagents') and not t.get('direct_standards') and not t.get('prepared_standards')">
-          <p style="color:var(--s-secondary);font-size:13px;">
+          <p style="color:var(--s-secondary);font-size:var(--fs-base);">
             No traceability data found. Ensure FM-ENV-251 and FM-ENV-252 logbooks are
             filled in for this worksheet.
           </p>
@@ -900,7 +900,7 @@
       <tal:qcs tal:define="qc view/get_qc_summary">
 
         <tal:qc_err tal:condition="qc/error|nothing">
-          <p style="color:var(--s-secondary);font-size:13px;">
+          <p style="color:var(--s-secondary);font-size:var(--fs-base);">
             QC data unavailable:
             <tal:t tal:replace="qc/error">error</tal:t>.
             <tal:no_db tal:condition="python:qc.get('error')=='db_unavailable'">
@@ -915,10 +915,10 @@
             <span tal:attributes="class python:'cl-badge ' + ('cl-pass' if qc.get('overall_pass') else 'cl-fail')"
                   tal:content="python:'Overall: PASS' if qc.get('overall_pass') else 'Overall: FAIL'">
             </span>
-            <span style="font-size:12px;color:var(--s-secondary);"
+            <span style="font-size:var(--fs-sm);color:var(--s-secondary);"
                   tal:content="python:str(qc.get('result_count',0)) + ' QC results'">0 results</span>
             <tal:rd tal:condition="qc/run_date|nothing">
-              <span style="font-size:12px;color:var(--s-secondary);"
+              <span style="font-size:var(--fs-sm);color:var(--s-secondary);"
                     tal:content="python:'Run: ' + str(qc.get('run_date',''))">date</span>
             </tal:rd>
           </div>
@@ -945,7 +945,7 @@
                               <span tal:attributes="class python:'qc-cell-' + cell.get('status','ok')"
                                     tal:content="python:cell.get('badge','')">PASS</span>
                               <tal:n tal:condition="python:cell.get('n',1) > 1">
-                                <span style="font-size:10px;color:#999;margin-left:3px;"
+                                <span style="font-size:var(--fs-xs);color:#999;margin-left:3px;"
                                       tal:content="python:'n=' + str(cell.get('n',1))">n=1</span>
                               </tal:n>
                             </tal:with_cell>
@@ -963,7 +963,7 @@
           </tal:has_rows>
 
           <tal:no_rows tal:condition="not:qc/rows|nothing">
-            <p style="color:var(--s-secondary);font-size:13px;">
+            <p style="color:var(--s-secondary);font-size:var(--fs-base);">
               No QC results found for this batch in the database.
             </p>
           </tal:no_rows>
@@ -976,7 +976,7 @@
     <div class="dr-tab-pane"
          tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'samples' else 'dr-tab-pane'">
       <tal:s tal:define="samples view/sample_results_page">
-        <p style="font-size:12px;color:var(--s-secondary);max-width:760px;">
+        <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:760px;">
           Every field-sample result per analyte, with its retention time and
           qualifier-ion ratio, and any QC flag that becomes a reported
           qualifier. Rows with a flag are highlighted.
@@ -990,10 +990,10 @@
             <div class="tree-heading">
               <span tal:content="s/sample_id">EGG-0001</span>
               <span tal:condition="s/n_flagged"
-                    style="color:#721c24;font-size:11px;margin-left:8px;">
+                    style="color:#721c24;font-size:var(--fs-xs);margin-left:8px;">
                 &#9888; <tal:n tal:content="s/n_flagged">1</tal:n> flagged</span>
               <span tal:condition="not:s/n_flagged"
-                    style="color:#155724;font-size:11px;margin-left:8px;">all pass</span>
+                    style="color:#155724;font-size:var(--fs-xs);margin-left:8px;">all pass</span>
             </div>
             <div class="qc-matrix-wrap">
               <table class="qc-matrix">
@@ -1022,7 +1022,7 @@
     <div class="dr-tab-pane"
          tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'spike_qc' else 'dr-tab-pane'">
       <tal:sq tal:define="page view/spike_qc_page">
-        <p style="font-size:12px;color:var(--s-secondary);max-width:760px;">
+        <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:760px;">
           Spike QC recoveries and duplicate RPD per analyte, checked against
           this method's acceptance windows. The spec each cell was judged
           against is shown in the header.
@@ -1032,7 +1032,7 @@
         <div class="tree-warn-box" tal:condition="page/pending_spikes"
              style="border-left:4px solid #c0841a;">
           <strong>Spike level needed before these can be evaluated.</strong>
-          <p style="font-size:12px;margin:6px 0 12px;">
+          <p style="font-size:var(--fs-sm);margin:6px 0 12px;">
             Neither the extraction log nor the method records how much was
             spiked, so recovery cannot be calculated. Enter what was used —
             it is saved onto this batch's extraction record, attributed to you.
@@ -1043,7 +1043,7 @@
             <input type="hidden" name="injection"
                    tal:attributes="value p/injection" />
             <input type="hidden" name="level" tal:attributes="value p/level" />
-            <span style="font-size:12px;min-width:260px;">
+            <span style="font-size:var(--fs-sm);min-width:260px;">
               <strong tal:content="p/injection">injection</strong>
               <em tal:condition="p/parent"
                   style="color:var(--s-secondary);">
@@ -1053,7 +1053,7 @@
             <input type="number" step="any" min="0" name="spike_ppt"
                    placeholder="ppt" required="required"
                    style="width:110px;padding:4px 8px;" />
-            <label style="font-size:11.5px;color:var(--s-secondary);"
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);"
                    tal:condition="view/is_manager">
               <input type="checkbox" name="set_method_nominal" value="yes" />
               also set as this method's nominal level
@@ -1074,7 +1074,7 @@
                 <tal:th tal:repeat="t page/types">
                   <th tal:define="sp python:page['specs'].get(t, {})">
                     <span tal:content="t">LFSM</span>
-                    <div style="font-weight:400;font-size:10px;text-transform:none;">
+                    <div style="font-weight:400;font-size:var(--fs-xs);text-transform:none;">
                       <tal:r tal:condition="python:sp.get('recovery_min') is not None">
                         <tal:x tal:content="sp/recovery_min">80</tal:x>&#8211;<tal:y tal:content="sp/recovery_max">120</tal:y>%</tal:r>
                       <tal:rp tal:condition="python:sp.get('rpd_max') is not None">
@@ -1096,7 +1096,7 @@
                             tal:content="python:cell.get('badge','')">PASS</span>
                       <tal:v tal:condition="cell/values|nothing"
                              tal:repeat="v cell/values">
-                        <div style="font-size:10px;color:var(--s-secondary);"
+                        <div style="font-size:var(--fs-xs);color:var(--s-secondary);"
                              tal:condition="v/recovery|nothing"
                              tal:content="python:'%.0f%%' % v['recovery']">96%</div>
                       </tal:v>
@@ -1115,7 +1115,7 @@
     <div class="dr-tab-pane"
          tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'final_data' else 'dr-tab-pane'">
 
-      <p style="color:var(--s-secondary);font-size:12px;margin-bottom:14px;">
+      <p style="color:var(--s-secondary);font-size:var(--fs-sm);margin-bottom:14px;">
         <i class="fas fa-info-circle"></i>
         Full column layout is pending FDA Calculator PDF confirmation.
         Basic results shown below.
@@ -1150,7 +1150,7 @@
                     <td tal:content="row/qualifier|string:">—</td>
                     <td tal:content="row/result|string:—">—</td>
                     <td tal:content="row/unit|string:—">—</td>
-                    <td><span class="cl-badge cl-auto" style="font-size:10px;"
+                    <td><span class="cl-badge cl-auto" style="font-size:var(--fs-xs);"
                               tal:content="row/review_state|string:">state</span></td>
                   </tr>
                 </tal:row>
@@ -1159,7 +1159,7 @@
           </div>
         </tal:has_rows>
         <tal:no_rows tal:condition="not:rows|nothing">
-          <p style="color:var(--s-secondary);font-size:13px;">
+          <p style="color:var(--s-secondary);font-size:var(--fs-base);">
             No results found for this worksheet.
           </p>
         </tal:no_rows>
@@ -1168,14 +1168,14 @@
              (editable under Reporting → EGAD Config), never hardcoded here -->
         <tal:leg tal:define="legend view/qualifier_legend" tal:condition="legend">
           <div style="margin-top:16px;">
-            <div style="font-size:12px;font-weight:700;color:var(--s-secondary);
+            <div style="font-size:var(--fs-sm);font-weight:700;color:var(--s-secondary);
                         text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">
               Qualifier legend
               <a tal:attributes="href string:${view/portal_url}/@@pfas-egad-config"
                  style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px;
-                        font-size:11px;color:var(--s-primary);">edit map →</a>
+                        font-size:var(--fs-xs);color:var(--s-primary);">edit map →</a>
             </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11px;color:var(--s-secondary);">
+            <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:var(--fs-xs);color:var(--s-secondary);">
               <span tal:repeat="q legend">
                 <strong tal:content="q/our_qualifier"
                         style="color:var(--s-body);">N.D.</strong>
@@ -1196,7 +1196,7 @@
             <input type="hidden" name="action" value="check_item"/>
             <input type="hidden" name="item_key" value="final_data"/>
             <input type="hidden" name="tab" value="final_data"/>
-            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
+            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
             <button class="btn btn-action" type="submit">Mark Final Data Reviewed</button>
           </form>
         </tal:fd_check>
@@ -1216,9 +1216,9 @@
             <tal:f tal:repeat="f files">
               <div class="ir-file-row">
                 <span class="ir-file-name" tal:content="f/filename">file.pdf</span>
-                <span style="color:var(--s-secondary);font-size:11px;"
+                <span style="color:var(--s-secondary);font-size:var(--fs-xs);"
                       tal:content="python:str(f.get('size_kb','?')) + ' KB'">—</span>
-                <span style="color:var(--s-secondary);font-size:11px;"
+                <span style="color:var(--s-secondary);font-size:var(--fs-xs);"
                       tal:content="f/uploaded_at">—</span>
                 <form method="post"
                       tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
@@ -1226,7 +1226,7 @@
                   <input type="hidden" name="filename"
                          tal:attributes="value f/filename"/>
                   <button class="btn btn-action" type="submit">
-                    <i class="fas fa-download" style="font-size:11px;"></i> Download
+                    <i class="fas fa-download" style="font-size:var(--fs-xs);"></i> Download
                   </button>
                 </form>
               </div>
@@ -1242,7 +1242,7 @@
                 tal:attributes="action string:${view/batch_url}/@@pfas-data-review">
             <input type="hidden" name="action" value="upload_instrument_report"/>
             <label for="ir-file-input">
-              <i class="fas fa-cloud-upload-alt" style="font-size:20px;display:block;margin-bottom:6px;"></i>
+              <i class="fas fa-cloud-upload-alt" style="font-size:var(--fs-xl);display:block;margin-bottom:6px;"></i>
               Click to upload instrument report (PDF, CSV, TSV)
             </label>
             <input id="ir-file-input" type="file" name="report_file"
@@ -1291,7 +1291,7 @@
             <input type="hidden" name="action" value="check_item"/>
             <input type="hidden" name="item_key" value="instrument_report"/>
             <input type="hidden" name="tab" value="instrument_report"/>
-            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:12px;border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
+            <input type="text" name="initials" required="required" placeholder="Initials" maxlength="6" style="width:74px;padding:4px 6px;font-size:var(--fs-sm);border:1px solid var(--s-border);border-radius:4px;text-transform:uppercase;margin-right:6px;"/>
             <button class="btn btn-action" type="submit">Mark Instrument Report Reviewed</button>
           </form>
         </tal:ir_check>

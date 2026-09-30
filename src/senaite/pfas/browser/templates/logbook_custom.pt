@@ -12,26 +12,26 @@
   <style>
     .section-card { background:var(--s-bg); border:1px solid var(--s-border);
                     border-radius:6px; padding:20px; margin-bottom:18px; }
-    .section-card h3 { font-size:13px; font-weight:700; color:var(--s-primary);
+    .section-card h3 { font-size:var(--fs-base); font-weight:700; color:var(--s-primary);
                        margin:0 0 14px; padding-bottom:8px;
                        border-bottom:1px solid var(--s-border); }
     .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
     .form-group { display:flex; flex-direction:column; gap:4px; }
-    .form-label { font-size:11px; font-weight:700; color:var(--s-secondary);
+    .form-label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
                   text-transform:uppercase; letter-spacing:.04em; }
-    .form-input  { padding:7px 10px; font-size:13px;
+    .form-input  { padding:7px 10px; font-size:var(--fs-base);
                    border:1px solid var(--s-input-border); border-radius:4px; }
     .form-input:focus { outline:none; border-color:var(--s-primary); }
     textarea.form-input { min-height:80px; resize:vertical; }
 
     /* Data table */
-    .data-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .data-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
     .data-table th { background:var(--s-light); color:var(--s-secondary);
-                     font-size:11px; font-weight:700; text-transform:uppercase;
+                     font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
                      letter-spacing:.04em; padding:7px 10px; text-align:left;
                      border-bottom:2px solid var(--s-border); }
     .data-table td { padding:6px 8px; border-bottom:1px solid var(--s-border); }
-    .data-table input { width:100%; padding:4px 6px; font-size:12px;
+    .data-table input { width:100%; padding:4px 6px; font-size:var(--fs-sm);
                         border:1px solid transparent; border-radius:3px;
                         background:transparent; }
     .data-table input:focus { border-color:var(--s-input-border);
@@ -40,8 +40,8 @@
     .actions-bar { display:flex; gap:10px; align-items:center; margin-top:8px; }
     .alert-ok { background:#e8f5e9; border:1px solid #a5d6a7; color:#2e7d32;
                 padding:10px 14px; border-radius:4px; margin-bottom:14px;
-                font-size:13px; font-weight:600; }
-    .no-cols { font-size:13px; color:var(--s-secondary); font-style:italic; }
+                font-size:var(--fs-base); font-weight:600; }
+    .no-cols { font-size:var(--fs-base); color:var(--s-secondary); font-style:italic; }
   </style>
   </tal:styles>
 </head>

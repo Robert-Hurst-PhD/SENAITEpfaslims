@@ -14,21 +14,21 @@
 
     /* width: the shared .page-body-narrow (--form-width), not a local cap */
 
-    .json-area { width: 100%; min-height: 160px; font-family: "Fira Code", monospace;
-                 font-size: 12px; padding: 8px; border: 1px solid var(--s-input-border);
+    .json-area { width: 100%; min-height: 160px; font-family: var(--font-mono);
+                 font-size: var(--fs-sm); padding: 8px; border: 1px solid var(--s-input-border);
                  border-radius: 4px; background: #fafafa; resize: vertical; }
     .json-area:focus { outline: none; border-color: var(--s-primary);
                        box-shadow: 0 0 0 3px var(--s-focus-ring); }
     /* Descriptive hint text uses the SYSTEM font (was monospace — the source
        of the cross-page font inconsistency). Inline field names use <code>. */
-    .json-hint { font-size: 11px; color: var(--s-secondary); margin-top: 4px;
+    .json-hint { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: 4px;
                  line-height: 1.5; }
-    .json-hint code { font-family: "Fira Code", monospace; }
+    .json-hint code { font-family: var(--font-mono); }
     /* Prose intro/description text — system sans-serif, NOT monospace.
        Use for tab descriptions (json-hint is for JSON-field hints only). */
-    .pane-intro { font-size: 12px; color: var(--s-secondary); line-height: 1.5;
+    .pane-intro { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.5;
                   max-width: 760px; margin: 0 0 14px; }
-    .pane-intro code { font-family: "Fira Code", monospace; font-size: 11px; }
+    .pane-intro code { font-family: var(--font-mono); font-size: var(--fs-xs); }
 
     /* Pill toggle switch (ported from the original QC Rules page) */
     .toggle-switch { position: relative; display: inline-block;
@@ -47,21 +47,21 @@
                                   opacity: .55; }
     .rule-params.rule-off label { color: var(--s-secondary); opacity: .7; }
 
-    .factor-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px; }
+    .factor-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); margin-bottom: 10px; }
     .factor-table th { background: var(--s-light); color: var(--s-secondary);
-                       font-size: 11px; font-weight: 700; text-transform: uppercase;
+                       font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
                        letter-spacing: .04em; padding: 7px 10px;
                        border-bottom: 2px solid var(--s-border); text-align: left; }
     .factor-table td { padding: 5px 6px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
     .factor-table tr:last-child td { border-bottom: none; }
     .factor-table input[type=text],
     .factor-table input[type=number] { padding: 5px 8px; border: 1px solid var(--s-input-border);
-                                        border-radius: 4px; font-size: 13px; background: #fafafa;
+                                        border-radius: 4px; font-size: var(--fs-base); background: #fafafa;
                                         color: var(--s-input-text); width: 100%; }
     .factor-table input:focus { outline: none; border-color: var(--s-primary);
                                  box-shadow: 0 0 0 2px var(--s-focus-ring); }
     .factor-table .del-btn { background: none; border: none; cursor: pointer; color: var(--s-danger);
-                              font-size: 16px; padding: 2px 6px; line-height: 1; }
+                              font-size: var(--fs-lg); padding: 2px 6px; line-height: 1; }
     .factor-table .del-btn:hover { opacity: .75; }
 
     .stage-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px;
@@ -70,40 +70,40 @@
     .stage-card-hdr { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
                       background: var(--s-light); border-radius: 6px 6px 0 0;
                       border-bottom: 1px solid var(--s-border); }
-    .stage-card-hdr .drag-handle { cursor: grab; color: var(--s-secondary); font-size: 16px;
+    .stage-card-hdr .drag-handle { cursor: grab; color: var(--s-secondary); font-size: var(--fs-lg);
                                     user-select: none; flex-shrink: 0; }
-    .stage-card-hdr .stage-card-title { flex: 1; font-size: 13px; font-weight: 600;
+    .stage-card-hdr .stage-card-title { flex: 1; font-size: var(--fs-base); font-weight: 600;
                                          color: var(--s-primary); }
     .stage-card-hdr .del-btn { background: none; border: none; cursor: pointer;
-                                color: var(--s-danger); font-size: 16px; line-height: 1; padding: 0 4px; }
+                                color: var(--s-danger); font-size: var(--fs-lg); line-height: 1; padding: 0 4px; }
     .stage-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
     .stage-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
     .stage-row label { display: flex; flex-direction: column; gap: 3px;
-                       font-size: 11px; font-weight: 600; color: var(--s-secondary); }
+                       font-size: var(--fs-xs); font-weight: 600; color: var(--s-secondary); }
     .stage-row label input[type=text],
     .stage-row label input[type=number] { padding: 5px 8px; border: 1px solid var(--s-input-border);
-                                           border-radius: 4px; font-size: 13px;
+                                           border-radius: 4px; font-size: var(--fs-base);
                                            font-family: inherit; background: #fff; }
     .stage-row label input:focus { outline: none; border-color: var(--s-primary); }
     .cb-label { flex-direction: row !important; align-items: center !important; gap: 6px !important;
-                font-size: 13px !important; font-weight: 500 !important; color: var(--s-text) !important;
+                font-size: var(--fs-base) !important; font-weight: 500 !important; color: var(--s-text) !important;
                 cursor: pointer; }
     .cb-label input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
 
-    .pa-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .pa-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .pa-table th { background: var(--s-light); padding: 6px 8px; text-align: left;
-                   border-bottom: 2px solid var(--s-border); font-size: 11px; font-weight: 700;
+                   border-bottom: 2px solid var(--s-border); font-size: var(--fs-xs); font-weight: 700;
                    text-transform: uppercase; letter-spacing: .04em; color: var(--s-secondary);
                    white-space: nowrap; }
     .pa-table td { padding: 4px 6px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
     .pa-table tr:hover td { background: var(--s-light); }
-    .pa-table .pa-name { font-family: "Fira Code", monospace; font-size: 12px; white-space: nowrap; }
+    .pa-table .pa-name { font-family: var(--font-mono); font-size: var(--fs-sm); white-space: nowrap; }
     .pa-table input[type=text] { width: 100%; box-sizing: border-box; padding: 3px 5px;
                                   border: 1px solid var(--s-border); border-radius: 3px;
-                                  font-size: 11px; font-family: inherit; }
-    .pa-table input[type=text].pa-mono { font-family: "Fira Code", monospace; }
+                                  font-size: var(--fs-xs); font-family: inherit; }
+    .pa-table input[type=text].pa-mono { font-family: var(--font-mono); }
     .pa-table select { padding: 3px 5px; border: 1px solid var(--s-border); border-radius: 3px;
-                       font-size: 11px; background: #fff; }
+                       font-size: var(--fs-xs); background: #fff; }
     .pa-table input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
     .pa-tier-1 { color: var(--s-primary); font-weight: 600; }
     .pa-tier-3 { color: var(--s-secondary); font-style: italic; }
@@ -113,79 +113,79 @@
        bleeding past the card border (consistent with .table-wrap). */
     .section-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .tab-pane .factor-table { max-width: 100%; }
-    .inclusion-grid { border-collapse: collapse; font-size: 12px; }
+    .inclusion-grid { border-collapse: collapse; font-size: var(--fs-sm); }
     .inclusion-grid th { background: var(--s-light); padding: 5px 10px;
                          border-bottom: 2px solid var(--s-border); text-align: center;
-                         font-size: 11px; font-weight: 700; text-transform: uppercase;
+                         font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
                          letter-spacing: .04em; color: var(--s-secondary); white-space: nowrap; }
     .inclusion-grid th.analyte-col { text-align: left; min-width: 130px; padding-left: 6px; }
     .inclusion-grid td { padding: 3px 8px; border-bottom: 1px solid var(--s-border); }
-    .inclusion-grid td.analyte-name { font-size: 12px; font-family: "Fira Code", monospace;
+    .inclusion-grid td.analyte-name { font-size: var(--fs-sm); font-family: var(--font-mono);
                                        color: var(--s-text); white-space: nowrap; }
     .inclusion-grid td.check-cell { text-align: center; min-width: 90px; }
     .inclusion-grid input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
     .inclusion-grid tr:last-child td { border-bottom: none; }
     .inclusion-grid tr:hover td { background: var(--s-primary-lt, #f0f4ff); }
     .ami-bulk-btn { background: none; border: 1px solid var(--s-border); border-radius: 3px;
-                    cursor: pointer; font-size: 11px; padding: 1px 5px; margin: 0 2px;
+                    cursor: pointer; font-size: var(--fs-xs); padding: 1px 5px; margin: 0 2px;
                     color: var(--s-secondary); line-height: 1.4; }
     .ami-bulk-btn:hover { border-color: var(--s-primary); color: var(--s-primary); }
     .ami-col-ctrl { display: block; margin-top: 4px; }
     .ami-row-btn { background: none; border: none; cursor: pointer; padding: 0;
-                   color: var(--s-text); font-family: "Fira Code", monospace; font-size: 12px;
+                   color: var(--s-text); font-family: var(--font-mono); font-size: var(--fs-sm);
                    text-align: left; width: 100%; }
     .ami-row-btn:hover { color: var(--s-primary); text-decoration: underline; }
-    .ami-excluded { color: var(--s-danger, #c0392b); font-size: 11px; display: block; }
+    .ami-excluded { color: var(--s-danger, #c0392b); font-size: var(--fs-xs); display: block; }
 
     .section-group-hdr { padding: 7px 14px; background: var(--s-light);
                          border: 1px solid var(--s-border); border-radius: 4px;
-                         font-size: 10px; font-weight: 700; letter-spacing: .1em;
+                         font-size: var(--fs-xs); font-weight: 700; letter-spacing: .1em;
                          text-transform: uppercase; color: var(--s-secondary);
                          margin: 22px 0 8px 0; }
 
     .factor-table select, .sur-map-sel { padding: 4px 6px; border: 1px solid var(--s-input-border);
-                                          border-radius: 4px; font-size: 12px; background: #fafafa;
+                                          border-radius: 4px; font-size: var(--fs-sm); background: #fafafa;
                                           color: var(--s-input-text); width: 100%; }
 
     .spike-matrix-section { border: 1px solid var(--s-border); border-radius: 6px;
                              margin-bottom: 12px; background: #fff; overflow: hidden; }
     .spike-matrix-hdr { padding: 7px 12px; background: var(--s-light);
                         border-bottom: 1px solid var(--s-border);
-                        font-size: 12px; font-weight: 700; color: var(--s-primary); }
+                        font-size: var(--fs-sm); font-weight: 700; color: var(--s-primary); }
 
     .tier-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px; background: #fff; }
     .tier-card-hdr { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
                      background: var(--s-light); border-radius: 6px 6px 0 0;
                      border-bottom: 1px solid var(--s-border); }
     .tier-badge { flex-shrink: 0; background: var(--s-primary); color: #fff; border-radius: 10px;
-                  padding: 1px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+                  padding: 1px 8px; font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
     .tier-desc { flex: 1; border: 1px solid transparent; border-radius: 4px; padding: 3px 6px;
-                 font-size: 13px; font-family: inherit; background: transparent; color: var(--s-text); }
+                 font-size: var(--fs-base); font-family: inherit; background: transparent; color: var(--s-text); }
     .tier-desc:focus { outline: none; border-color: var(--s-primary); background: #fff;
                        box-shadow: 0 0 0 2px var(--s-focus-ring); }
     .tier-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-    .tier-limits { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 13px; }
+    .tier-limits { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: var(--fs-base); }
     .tier-limits label { display: flex; align-items: center; gap: 5px; font-weight: 600;
-                         font-size: 11px; color: var(--s-secondary); }
+                         font-size: var(--fs-xs); color: var(--s-secondary); }
     .tier-limits input[type=number] { width: 70px; padding: 4px 6px; border: 1px solid var(--s-input-border);
-                                       border-radius: 4px; font-size: 13px; background: #fafafa;
+                                       border-radius: 4px; font-size: var(--fs-base); background: #fafafa;
                                        color: var(--s-text); }
     .tier-limits input:focus { outline: none; border-color: var(--s-primary); }
     .tier-chipfield { border-top: 1px dashed var(--s-border); padding-top: 7px; }
-    .tier-chipfield > label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+    .tier-chipfield > label { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
                                letter-spacing: .04em; color: var(--s-secondary); display: block;
                                margin-bottom: 5px; }
     .tier-chip-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .tier-chip { display: inline-flex; align-items: center; gap: 3px; border-radius: 10px;
-                 padding: 2px 7px; font-size: 11px; font-family: "Fira Code", monospace;
+                 padding: 2px 7px; font-size: var(--fs-xs); font-family: var(--font-mono);
                  background: #e8f5e9; border: 1px solid #81c784; color: #2e7d32;
                  user-select: none; }
     .tier-chip.mat-chip { background: #fff3e0; border-color: #ffb74d; color: #e65100; }
     .tier-chip.nostd-chip { background: #fce4ec; border-color: #ef9a9a; color: #b71c1c; }
     .tier-chip-rm { background: none; border: none; cursor: pointer; padding: 0 0 0 2px;
-                    color: inherit; font-size: 13px; line-height: 1; opacity: .7; }
+                    color: inherit; font-size: var(--fs-base); line-height: 1; opacity: .7; }
     .tier-chip-rm:hover { opacity: 1; }
-    .tier-add-sel { font-size: 11px; padding: 3px 5px; border: 1px dashed var(--s-border);
+    .tier-add-sel { font-size: var(--fs-xs); padding: 3px 5px; border: 1px dashed var(--s-border);
                     border-radius: 10px; color: var(--s-secondary); background: #fafafa;
                     cursor: pointer; max-width: 200px; }
     .tier-add-sel:focus { outline: none; border-color: var(--s-primary); }
@@ -286,10 +286,10 @@
                     tal:attributes="data-rule row/key;
                                     class python:'rule-params rule-off' if not row['enabled'] else 'rule-params'">
                   <span tal:condition="not:row/has_params"
-                        style="color:var(--s-secondary);font-size:12px;">&#8212;</span>
+                        style="color:var(--s-secondary);font-size:var(--fs-sm);">&#8212;</span>
                   <tal:p tal:repeat="p row/params">
                     <label style="display:inline-flex;align-items:center;gap:5px;
-                                  margin:0 12px 4px 0;font-size:12px;">
+                                  margin:0 12px 4px 0;font-size:var(--fs-sm);">
                       <span tal:content="p/label" style="color:var(--s-secondary);">min</span>
                       <input type="number" step="any" style="width:90px;"
                              tal:attributes="name string:rulelimit.${p/name};
@@ -341,7 +341,7 @@
                 and uncheck any analytes not reportable under this method before
                 production use.
               </div>
-              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
                 Each checked cell means the analyte is <strong>reportable</strong> in
                 that matrix. Unchecked analytes are excluded from the surrogate map,
                 recovery tiers, QC checks, reports, and EDD for that matrix.
@@ -350,7 +350,7 @@
               </p>
               <div class="inclusion-wrap">
                 <div id="amiGridContainer">
-                  <em style="color:var(--s-secondary);font-size:12px">Loading&#8230;</em>
+                  <em style="color:var(--s-secondary);font-size:var(--fs-sm)">Loading&#8230;</em>
                 </div>
               </div>
               <input type="hidden" id="ami_grid_data"
@@ -364,7 +364,7 @@
           <details>
             <summary>Per-Analyte Assignments</summary>
             <div class="section-body">
-              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
                 <strong>No IS</strong> &#8212; analyte has no labeled IS; its tier is controlled
                 entirely by the Recovery Tiers No-Std list.
                 <strong>Confirm Ion</strong> &#8212; qualifier MRM transition (precursor&#62;product,
@@ -424,7 +424,7 @@
             <summary>Surrogate Map (native analyte &#8594; quantifying surrogate)</summary>
             <div class="section-body">
               <style>
-                .sur-tag { font-size:10px; padding:1px 7px; border-radius:8px; font-weight:700;
+                .sur-tag { font-size:var(--fs-xs); padding:1px 7px; border-radius:8px; font-weight:700;
                            display:inline-block; text-decoration:none; }
                 .sur-default { background:#e8f4f8; color:#387493; }
                 .sur-override { background:#fff3cd; color:#856404; }
@@ -499,7 +499,7 @@
                   <tr tal:repeat="row view/surrogate_chain_rows">
                     <td>
                       <span tal:content="row/surrogate"
-                            style="font-family:'Fira Code',monospace;font-size:12px;">M8PFOA</span>
+                            style="font-family: var(--font-mono);font-size:var(--fs-sm);">M8PFOA</span>
                     </td>
                     <td>
                       <select style="width:100%;"
@@ -532,7 +532,7 @@
           <details open="open">
             <summary>Spike Levels (LFB / LFSM) by Matrix</summary>
             <div class="section-body">
-              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
                 Set the spike concentration (ppt) for each level and matrix.
                 LFSMD uses the same levels as LFSM.
                 The pipeline matches injection names (e.g.
@@ -551,7 +551,7 @@
           <details>
             <summary>Recovery Acceptance (LFSM / LFB / LCS)</summary>
             <div class="section-body">
-              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
                 The recovery windows applied to the spike QC above. Each tier
                 card sets the recovery window (min/max %) and optional RSD limit.
                 <strong>Key Analytes</strong> &#8212; analytes subject to this tier&#39;s stricter limits.
@@ -571,7 +571,7 @@
           <details open="open">
             <summary>Sample Duplicate RPD</summary>
             <div class="section-body">
-              <p style="font-size:12px;color:var(--s-secondary);margin-bottom:10px">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
                 Precision check on a field sample run in duplicate: the maximum
                 Relative Percent Difference between the two results.
                 RPD&nbsp;=&nbsp;|A&nbsp;&#8722;&nbsp;B|&nbsp;/&nbsp;((A+B)/2)&nbsp;&#215;&nbsp;100.
@@ -741,7 +741,7 @@
                   <tr tal:repeat="row view/salt_adjustment_rows">
                     <td>
                       <span tal:content="row/label"
-                            style="font-family:'Fira Code',monospace;font-size:12px;">PFOS</span>
+                            style="font-family: var(--font-mono);font-size:var(--fs-sm);">PFOS</span>
                     </td>
                     <td>
                       <input type="number" step="0.0001" min="0" max="1"
@@ -762,7 +762,7 @@
                     </td>
                   </tr>
                   <tr tal:condition="not:view/salt_adjustment_rows">
-                    <td colspan="3" style="color:var(--s-secondary);font-size:12px;">
+                    <td colspan="3" style="color:var(--s-secondary);font-size:var(--fs-sm);">
                       No analytes in this method&#8217;s master set yet &#8212;
                       configure the Analyte&nbsp;&#215;&nbsp;Matrix tab first.
                     </td>
@@ -770,7 +770,7 @@
                 </tbody>
               </table>
               <p tal:condition="not:view/standard_lot_options"
-                 style="font-size:11px;color:#856404;margin-top:8px;">
+                 style="font-size:var(--fs-xs);color:#856404;margin-top:8px;">
                 No <strong>Standard / Reference Material</strong> lots are in the
                 Reagent Inventory yet, so the CoA-lot dropdown is empty. Add your
                 reference-standard lots there to enable traceability linking.
@@ -808,14 +808,14 @@
                     </td>
                     <td>
                       <span tal:condition="row/linked"
-                            style="font-size:11px;background:#e8f4f8;color:#387493;padding:2px 8px;border-radius:8px;">&#128279; core type</span>
+                            style="font-size:var(--fs-xs);background:#e8f4f8;color:#387493;padding:2px 8px;border-radius:8px;">&#128279; core type</span>
                       <span tal:condition="not:row/linked"
-                            style="font-size:11px;color:#a33;"
+                            style="font-size:var(--fs-xs);color:#a33;"
                             title="No matrix_uid_map entry ties this matrix to a core SampleType">&#9888; unlinked</span>
                     </td>
                   </tr>
                   <tr tal:condition="not:view/matrix_adjustment_rows">
-                    <td colspan="3" style="color:var(--s-secondary);font-size:12px;">
+                    <td colspan="3" style="color:var(--s-secondary);font-size:var(--fs-sm);">
                       No matrices in this method&#8217;s Analyte&nbsp;&#215;&nbsp;Matrix
                       map yet &#8212; configure that tab first.
                     </td>
@@ -834,7 +834,7 @@
           <tal:eis tal:condition="view/show_eis_overrides">
             <details>
               <summary>EIS Recovery Overrides
-                <span style="font-size:11px;color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span>
+                <span style="font-size:var(--fs-xs);color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span>
               </summary>
               <div class="section-body">
                 <div class="alert alert-warn" style="margin-bottom:10px">
@@ -862,7 +862,7 @@
 
             <details>
               <summary>EIS Recovery Limits per Matrix Class
-                <span style="font-size:11px;color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span>
+                <span style="font-size:var(--fs-xs);color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span>
               </summary>
               <div class="section-body">
                 <p class="json-hint">
@@ -874,7 +874,7 @@
                 </p>
                 <input type="hidden" name="eis_matrix_present" value="1" />
                 <tal:group repeat="grp view/eis_matrix_rows">
-                  <h4 style="margin:14px 0 6px;font-size:13px;"
+                  <h4 style="margin:14px 0 6px;font-size:var(--fs-base);"
                       tal:content="string:${grp/label} (${grp/count})">Solid</h4>
                   <table class="factor-table">
                     <thead>
@@ -932,7 +932,7 @@
       <div class="tab-pane" id="pane-cal">
         <div class="page-body-narrow">
           <div style="background:var(--s-primary-lt);border:1px solid #bee5eb;border-radius:8px;
-                      padding:9px 14px;font-size:12px;color:#0c5460;margin-bottom:14px;">
+                      padding:9px 14px;font-size:var(--fs-sm);color:#0c5460;margin-bottom:14px;">
             These tabs (Calibration / CCV / IS Response) hold THIS METHOD&#8217;s
             instrument-verification <strong>acceptance parameters</strong>
             (exported with the profile). Whether each engine <em>rule</em> is
@@ -941,7 +941,7 @@
           </div>
 
           <div class="section-group-hdr">Instrument QC Criteria</div>
-          <div class="alert alert-info" style="font-size:12px;margin-bottom:10px;">
+          <div class="alert alert-info" style="font-size:var(--fs-sm);margin-bottom:10px;">
             &#8505; QC types (MB, LFB, LFSMD, etc.) must be <strong>enabled</strong> in
             the <a tal:attributes="href string:${view/portal_url}/@@pfas-qc-type-grid"
                    style="color:var(--s-primary);">QC Type Grid</a>
@@ -1145,7 +1145,7 @@
             workflow here once, and every batch&#8217;s extraction log follows it.
           </p>
           <div style="background:var(--s-light);border:1px solid var(--s-border);
-                      border-radius:8px;padding:10px 14px;font-size:12px;
+                      border-radius:8px;padding:10px 14px;font-size:var(--fs-sm);
                       color:var(--s-secondary);max-width:760px;margin-bottom:14px;">
             <strong style="color:var(--s-body);">Stage flags explained</strong><br/>
             <strong>Creates Solution</strong> — completing this stage records a new
@@ -1185,7 +1185,7 @@
           <details open="open">
             <summary>Associated QC Types</summary>
             <div class="section-body">
-              <p style="font-size:12px;color:var(--s-secondary);max-width:640px;">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:640px;">
                 Toggle which QC types this method runs. Enabled types drive the
                 QC engine and auto-sync per-matrix Analysis Specifications;
                 disabled types are skipped everywhere. Types marked
@@ -1205,9 +1205,9 @@
                     <td tal:content="q/label">Laboratory Control Sample</td>
                     <td>
                       <span tal:condition="q/has_recovery"
-                            style="font-size:11px;background:#e8f4f8;color:#387493;padding:2px 8px;border-radius:8px;">recovery → specs</span>
+                            style="font-size:var(--fs-xs);background:#e8f4f8;color:#387493;padding:2px 8px;border-radius:8px;">recovery → specs</span>
                       <span tal:condition="not:q/has_recovery"
-                            style="font-size:11px;color:var(--s-secondary);">limits only</span>
+                            style="font-size:var(--fs-xs);color:var(--s-secondary);">limits only</span>
                     </td>
                   </tr>
                 </tbody>
@@ -1233,12 +1233,12 @@
                 <tbody>
                   <tr tal:repeat="g view/global_criteria_fields">
                     <td><label tal:content="g/label"
-                               style="font-size:12px;color:var(--s-secondary);">label</label></td>
+                               style="font-size:var(--fs-sm);color:var(--s-secondary);">label</label></td>
                     <td style="width:150px;">
                       <input type="number" step="any" style="width:120px;"
                              tal:attributes="name string:qcglobal.${g/key}; value g/value" />
                       <span tal:condition="g/unit" tal:content="g/unit"
-                            style="font-size:11px;color:var(--s-secondary);">%</span>
+                            style="font-size:var(--fs-xs);color:var(--s-secondary);">%</span>
                     </td>
                   </tr>
                 </tbody>

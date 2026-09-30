@@ -17,9 +17,9 @@
     .instr-list li { padding: 10px 14px; border: 1px solid var(--s-border);
                      border-radius: 8px; margin-bottom: 8px; display: flex;
                      justify-content: space-between; align-items: center; }
-    .instr-list li .instr-title { font-weight: 600; font-size: 13px; }
-    .profile-badge { font-size: 11px; color: var(--s-secondary); margin-left: 8px; }
-    .instr-action  { font-size: 12px; }
+    .instr-list li .instr-title { font-weight: 600; font-size: var(--fs-base); }
+    .profile-badge { font-size: var(--fs-xs); color: var(--s-secondary); margin-left: 8px; }
+    .instr-action  { font-size: var(--fs-sm); }
 
     /* ── Upload area ──────────────────────────────────────── */
     .upload-box { border: 2px dashed var(--s-border); border-radius: 12px;
@@ -28,36 +28,36 @@
                   transition: border-color .15s; }
     .upload-box:hover, .upload-box.drag-over { border-color: var(--s-primary); background: #f0f4ff; }
     .upload-box .upload-icon { font-size: 36px; margin-bottom: 10px; }
-    .upload-box p  { font-size: 14px; color: var(--s-secondary); margin: 0; }
+    .upload-box p  { font-size: var(--fs-base); color: var(--s-secondary); margin: 0; }
     /* file input is rendered outside .upload-box; hidden via inline style */
-    .upload-chosen { font-size: 12px; color: var(--s-primary); margin-top: 8px; font-weight: 600; }
+    .upload-chosen { font-size: var(--fs-sm); color: var(--s-primary); margin-top: 8px; font-weight: 600; }
 
     /* ── Detection banner ─────────────────────────────────── */
     .detect-banner { border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
-                     font-size: 13px; display: flex; gap: 12px; align-items: center; }
+                     font-size: var(--fs-base); display: flex; gap: 12px; align-items: center; }
     .detect-banner.high  { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
     .detect-banner.med   { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; }
     .detect-banner.low   { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
-    .detect-banner strong { font-size: 14px; }
-    .conf-pill { font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    .detect-banner strong { font-size: var(--fs-base); }
+    .conf-pill { font-size: var(--fs-xs); padding: 2px 8px; border-radius: 10px;
                  background: rgba(0,0,0,.12); font-weight: 700; }
 
     /* ── Mapping grid ─────────────────────────────────────── */
-    .mapping-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .mapping-grid { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .mapping-grid th { background: #f8f9fa; padding: 8px 10px; text-align: left;
                        border-bottom: 2px solid var(--s-border); font-weight: 700; }
     .mapping-grid td { padding: 5px 8px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
-    .mapping-grid td.col-name  { font-family: monospace; font-size: 11px; color: #333; max-width: 160px;
+    .mapping-grid td.col-name  { font-family: var(--font-mono); font-size: var(--fs-xs); color: #333; max-width: 160px;
                                   word-break: break-all; }
-    .mapping-grid td.col-preview { font-family: monospace; font-size: 10px; color: #666; max-width: 200px; }
-    .mapping-grid select { width: 100%; padding: 4px 6px; font-size: 12px;
+    .mapping-grid td.col-preview { font-family: var(--font-mono); font-size: var(--fs-xs); color: #666; max-width: 200px; }
+    .mapping-grid select { width: 100%; padding: 4px 6px; font-size: var(--fs-sm);
                            border: 1px solid var(--s-input-border); border-radius: 5px; }
     .mapping-grid select.mapped   { border-color: #28a745; background: #f0fff4; }
     .mapping-grid select.ignored  { border-color: #adb5bd; background: #f8f9fa; color: #6c757d; }
 
     /* ── Preview rows ─────────────────────────────────────── */
-    .preview-table { width: 100%; border-collapse: collapse; font-size: 10px;
-                     font-family: monospace; margin-bottom: 20px; overflow-x: auto; display: block; }
+    .preview-table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs);
+                     font-family: var(--font-mono); margin-bottom: 20px; overflow-x: auto; display: block; }
     .preview-table th { background: #f8f9fa; padding: 4px 6px;
                         border: 1px solid var(--s-border); font-weight: 700; }
     .preview-table td { padding: 3px 6px; border: 1px solid var(--s-border); white-space: nowrap; }
@@ -65,45 +65,45 @@
     /* ── Side: save profile form ─────────────────────────── */
     .profile-card { background: #f8f9fa; border: 1px solid var(--s-border);
                     border-radius: 10px; padding: 18px; }
-    .profile-card h3 { font-size: 13px; font-weight: 700; margin: 0 0 14px; }
-    .profile-card label { font-size: 12px; font-weight: 600; display: block;
+    .profile-card h3 { font-size: var(--fs-base); font-weight: 700; margin: 0 0 14px; }
+    .profile-card label { font-size: var(--fs-sm); font-weight: 600; display: block;
                           margin-bottom: 3px; color: var(--s-dark); }
     .profile-card input[type=text],
     .profile-card select,
-    .profile-card textarea { width: 100%; padding: 6px 8px; font-size: 12px;
+    .profile-card textarea { width: 100%; padding: 6px 8px; font-size: var(--fs-sm);
                               border: 1px solid var(--s-input-border); border-radius: 5px;
                               margin-bottom: 12px; box-sizing: border-box; }
     .profile-card textarea { min-height: 60px; resize: vertical; }
-    .calc-explainer { font-size: 11px; color: #6c757d; margin-top: -8px; margin-bottom: 12px;
+    .calc-explainer { font-size: var(--fs-xs); color: #6c757d; margin-top: -8px; margin-bottom: 12px;
                       line-height: 1.4; }
 
     /* ── Existing profiles list ──────────────────────────── */
     .saved-profiles { margin-top: 20px; }
-    .saved-profiles h4 { font-size: 12px; font-weight: 700; margin-bottom: 8px;
+    .saved-profiles h4 { font-size: var(--fs-sm); font-weight: 700; margin-bottom: 8px;
                          color: var(--s-secondary); text-transform: uppercase; letter-spacing: .5px; }
-    .profile-row { font-size: 11px; padding: 5px 0;
+    .profile-row { font-size: var(--fs-xs); padding: 5px 0;
                    border-bottom: 1px solid var(--s-border); display: flex;
                    justify-content: space-between; align-items: center; }
-    .profile-row .pv-tag { font-family: monospace; font-size: 11px; font-weight: 700; }
+    .profile-row .pv-tag { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 700; }
     .profile-row .pv-vendor { color: var(--s-secondary); }
-    .pv-calc { font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+    .pv-calc { font-size: var(--fs-xs); padding: 1px 6px; border-radius: 8px; font-weight: 600; }
     .pv-calc.final { background: #d4edda; color: #155724; }
     .pv-calc.raw   { background: #cce5ff; color: #004085; }
 
     /* ── Alerts ────────────────────────────────────────────── */
     .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
     .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
     .alert-info  { background: #cce5ff; border: 1px solid #b8daff; color: #004085;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
 
-    .section-title { font-size: 16px; font-weight: 700; color: var(--s-dark);
+    .section-title { font-size: var(--fs-lg); font-weight: 700; color: var(--s-dark);
                      margin: 0 0 18px; padding-bottom: 8px;
                      border-bottom: 2px solid var(--s-border); }
     .instr-selector { margin-bottom: 20px; }
-    .instr-selector label { font-weight: 600; font-size: 13px; margin-right: 10px; }
-    .instr-selector select { padding: 7px 10px; font-size: 13px;
+    .instr-selector label { font-weight: 600; font-size: var(--fs-base); margin-right: 10px; }
+    .instr-selector select { padding: 7px 10px; font-size: var(--fs-base);
                               border: 1px solid var(--s-input-border); border-radius: 6px;
                               min-width: 280px; }
   </style>
@@ -284,7 +284,7 @@
           '<span><span class="pv-tag">' + esc(p.version) + '</span> ' +
           '<span class="pv-vendor">' + esc(p.vendor) + '</span> ' +
           '<span class="pv-calc ' + esc(p.calc_mode) + '">' + esc(p.calc_mode) + '</span></span>' +
-          '<a href="' + esc(editUrl) + '" style="font-size:11px;font-weight:600;">Edit &#8594;</a>';
+          '<a href="' + esc(editUrl) + '" style="font-size:var(--fs-xs);font-weight:600;">Edit &#8594;</a>';
         list.appendChild(div);
       });
     }
@@ -320,7 +320,7 @@
       banner.className = 'detect-banner ' + (conf >= 80 ? 'high' : conf >= 40 ? 'med' : 'low');
       banner.style.display = '';
       banner.innerHTML =
-        '<span style="font-size:20px;">&#128270;</span>' +
+        '<span style="font-size:var(--fs-xl);">&#128270;</span>' +
         '<div><strong>Auto-detected: ' + esc(vname) + '</strong> ' +
         '<span class="conf-pill">' + conf + '% confidence</span>' +
         (r.auto_version ? '<br><small>Detected version: <code>' + esc(r.auto_version) + '</code></small>' : '') +
@@ -398,13 +398,13 @@
 
       <h2 class="section-title">Step 1 — Select Instrument &amp; Upload a Test File</h2>
 
-      <p style="color:var(--s-secondary);font-size:13px;margin-bottom:20px;">
+      <p style="color:var(--s-secondary);font-size:var(--fs-base);margin-bottom:20px;">
         Drop any raw instrument export (CSV or TXT). The studio will auto-detect the
         software format, suggest a column-to-purpose mapping, and let you fine-tune
         every column before saving a reusable profile to the instrument record.
       </p>
 
-      <p style="font-size:13px;" tal:condition="not:view/can_configure">
+      <p style="font-size:var(--fs-base);" tal:condition="not:view/can_configure">
         Instrument mappings are lab configuration: a Manager or LabManager
         authors, retires and reactivates them. Saved profiles are listed below.
       </p>
@@ -466,7 +466,7 @@
               </span>
               <span class="instr-action">
                 <a tal:attributes="href python:'{0}/@@pfas-import-studio?instrument_uid={1}'.format(view.portal_url(), instr['uid'])"
-                   style="font-size:12px;">Upload new &#8594;</a>
+                   style="font-size:var(--fs-sm);">Upload new &#8594;</a>
               </span>
             </div>
             <!-- Per-profile edit links -->
@@ -474,7 +474,7 @@
             <ul style="list-style:none;padding:0;margin:6px 0 0 0;">
               <tal:prow tal:repeat="prof instr/profiles">
               <li style="display:flex;justify-content:space-between;align-items:center;
-                         padding:4px 0;border-top:1px solid var(--s-border);font-size:11px;">
+                         padding:4px 0;border-top:1px solid var(--s-border);font-size:var(--fs-xs);">
                 <span>
                   <code style="font-weight:700;" tal:content="prof/version">3.4</code>
                   <span style="color:var(--s-secondary);margin-left:6px;"
@@ -484,7 +484,7 @@
                 </span>
                 <a tal:condition="view/can_configure"
                    tal:attributes="href python:'{0}/@@pfas-import-studio?action=edit_profile&amp;instrument_uid={1}&amp;version={2}'.format(view.portal_url(), instr['uid'], prof['version'])"
-                   style="font-size:11px;font-weight:600;">Edit &#8594;</a>
+                   style="font-size:var(--fs-xs);font-weight:600;">Edit &#8594;</a>
               </li>
               </tal:prow>
             </ul>
@@ -519,7 +519,7 @@
 
           <!-- Data preview table -->
           <div style="overflow-x:auto;margin-bottom:20px;">
-            <p style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--s-secondary);">
+            <p style="font-size:var(--fs-sm);font-weight:700;margin-bottom:6px;color:var(--s-secondary);">
               DATA PREVIEW (first 3 rows)</p>
             <table class="preview-table" id="preview-table">
               <thead><tr id="preview-head"></tr></thead>
@@ -528,11 +528,11 @@
           </div>
 
           <!-- Mapping grid -->
-          <p style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--s-secondary);">
+          <p style="font-size:var(--fs-sm);font-weight:700;margin-bottom:6px;color:var(--s-secondary);">
             COLUMN MAPPING &mdash;
             <span id="mapped-count">0</span> of <span id="total-count">0</span> columns assigned
             &nbsp;|&nbsp;
-            <a href="#" onclick="autoIgnoreAll();return false;" style="font-size:11px;">Ignore all</a>
+            <a href="#" onclick="autoIgnoreAll();return false;" style="font-size:var(--fs-xs);">Ignore all</a>
           </p>
           <div class="table-wrap">
           <table class="mapping-grid">
@@ -551,16 +551,16 @@
           <div id="calc-chain-box"
                style="display:none;margin-top:24px;background:#f0f8ff;
                       border:1px solid #b8daff;border-radius:8px;padding:16px;">
-            <p style="font-size:13px;font-weight:700;margin:0 0 8px;color:#004085;">
+            <p style="font-size:var(--fs-base);font-weight:700;margin:0 0 8px;color:#004085;">
               Raw-mode calculation chain</p>
-            <p style="font-size:12px;color:#004085;margin:0;">
+            <p style="font-size:var(--fs-sm);color:#004085;margin:0;">
               <strong>Reported result</strong> =
               (<em>native_area</em> / <em>IS_area</em>) &times;
               <em>cal_factor</em> &times;
               <em>salt_factor</em> &times;
               <em>matrix_factor</em>
             </p>
-            <ul style="font-size:11px;color:#555;margin:8px 0 0 16px;padding:0;">
+            <ul style="font-size:var(--fs-xs);color:#555;margin:8px 0 0 16px;padding:0;">
               <li><em>native_area</em> &larr; column mapped to "Raw Peak Area (native)"</li>
               <li><em>IS_area</em> &larr; column mapped to "IS Peak Area"</li>
               <li><em>cal_factor</em> &larr; computed from the calibration curve (FM-ENV-251)</li>
@@ -634,7 +634,7 @@
       <!-- Back link -->
       <div style="margin-top:24px;">
         <a href="#" onclick="showLanding();return false;"
-           style="font-size:13px;color:var(--s-secondary);">
+           style="font-size:var(--fs-base);color:var(--s-secondary);">
           &#8592; Upload a different file
         </a>
       </div>
@@ -644,7 +644,7 @@
     <div class="profile-card" style="margin-top:22px;"
          tal:define="profiles view/saved_profiles">
       <h3>Saved Import Profiles</h3>
-      <p style="font-size:11px;color:var(--s-secondary);margin:0 0 10px;">
+      <p style="font-size:var(--fs-xs);color:var(--s-secondary);margin:0 0 10px;">
         Retired profiles are refused by the pipeline (imports stop rather than
         use a withdrawn mapping). Every retirement is written to the audit log.
       </p>
@@ -660,9 +660,9 @@
             <td tal:content="p/n_columns">8</td>
             <td>
               <span tal:condition="not:p/retired"
-                    style="font-size:11px;background:#d4edda;color:#155724;padding:2px 8px;border-radius:8px;">active</span>
+                    style="font-size:var(--fs-xs);background:#d4edda;color:#155724;padding:2px 8px;border-radius:8px;">active</span>
               <span tal:condition="p/retired"
-                    style="font-size:11px;background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:8px;">RETIRED</span>
+                    style="font-size:var(--fs-xs);background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:8px;">RETIRED</span>
             </td>
             <td tal:condition="view/can_configure">
               <form method="post" style="display:flex;gap:6px;align-items:center;">
@@ -672,7 +672,7 @@
                 <input type="hidden" name="version" tal:attributes="value p/version"/>
                 <input type="text" name="reason" placeholder="reason"
                        tal:condition="not:p/retired"
-                       style="width:130px;padding:3px 6px;font-size:11px;border:1px solid var(--s-border);border-radius:4px;"/>
+                       style="width:130px;padding:3px 6px;font-size:var(--fs-xs);border:1px solid var(--s-border);border-radius:4px;"/>
                 <button class="btn btn-action" type="submit"
                         tal:content="python:'Reactivate' if p['retired'] else 'Retire'">Retire</button>
               </form>
@@ -681,16 +681,16 @@
         </tbody>
       </table>
       </div>
-      <p tal:condition="not:profiles" style="font-size:12px;color:var(--s-secondary);">
+      <p tal:condition="not:profiles" style="font-size:var(--fs-sm);color:var(--s-secondary);">
         No saved profiles yet — upload an instrument export above to create one.
       </p>
 
       <tal:log tal:define="log view/studio_audit" tal:condition="log">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;
+        <div style="font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;
                     letter-spacing:.04em;color:var(--s-secondary);margin:14px 0 6px;">
           Profile audit history
         </div>
-        <div style="font-size:11px;color:var(--s-secondary);"
+        <div style="font-size:var(--fs-xs);color:var(--s-secondary);"
              tal:repeat="e log">
           <span tal:content="e/ts">ts</span> —
           <strong tal:content="e/action">retire</strong>

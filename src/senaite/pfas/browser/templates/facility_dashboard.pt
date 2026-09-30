@@ -13,22 +13,22 @@
                 border-radius:8px; padding:14px 16px;
                 box-shadow:0 1px 4px rgba(0,0,0,.06); }
     .fqc-card-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-    .fqc-icon { font-size:18px; color:var(--s-primary); width:24px; text-align:center; }
-    .fqc-name { font-weight:600; font-size:13px; color:var(--s-body); flex:1; }
-    .fqc-loc  { font-size:11px; color:var(--s-secondary); }
-    .fqc-reading { font-size:22px; font-weight:700; margin:4px 0; color:var(--s-body); }
-    .fqc-reading small { font-size:13px; font-weight:400; color:var(--s-secondary); }
-    .fqc-meta { font-size:11px; color:var(--s-secondary); margin-bottom:6px; }
+    .fqc-icon { font-size:var(--fs-xl); color:var(--s-primary); width:24px; text-align:center; }
+    .fqc-name { font-weight:600; font-size:var(--fs-base); color:var(--s-body); flex:1; }
+    .fqc-loc  { font-size:var(--fs-xs); color:var(--s-secondary); }
+    .fqc-reading { font-size:var(--fs-xl); font-weight:700; margin:4px 0; color:var(--s-body); }
+    .fqc-reading small { font-size:var(--fs-base); font-weight:400; color:var(--s-secondary); }
+    .fqc-meta { font-size:var(--fs-xs); color:var(--s-secondary); margin-bottom:6px; }
     .fqc-badge { display:inline-block; padding:3px 10px; border-radius:10px;
-                 font-size:11px; font-weight:700; text-transform:uppercase; }
+                 font-size:var(--fs-xs); font-weight:700; text-transform:uppercase; }
     .fqc-ok          { background:#d4edda; color:#155724; }
     .fqc-fail        { background:#f8d7da; color:#721c24; }
     .fqc-warn        { background:#fff3cd; color:#856404; }
     .fqc-pending     { background:var(--s-light); color:var(--s-secondary); }
     .fqc-action { margin-top:8px; }
-    .fqc-action a { font-size:11px; color:var(--s-primary); text-decoration:none; }
+    .fqc-action a { font-size:var(--fs-xs); color:var(--s-primary); text-decoration:none; }
     .fqc-action a:hover { text-decoration:underline; }
-    .fqc-section-head { font-size:11px; font-weight:700; text-transform:uppercase;
+    .fqc-section-head { font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
                         letter-spacing:.06em; color:var(--s-secondary);
                         margin:22px 0 8px; border-bottom:1px solid var(--s-border);
                         padding-bottom:5px; }
@@ -42,7 +42,7 @@
     summary  view/summary;
     purl     view/portal_url;
   ">
-  <p style="font-size:12px;color:var(--s-secondary);margin:0 0 18px">
+  <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 18px">
     ISO 17025 daily instrument and environmental verifications.
     <a tal:attributes="href string:${purl}/@@pfas-facility-units"
        style="color:var(--s-primary)">Manage units &rarr;</a>
@@ -94,7 +94,7 @@
                   </div>
                 </tal:has-reading>
                 <tal:no-reading tal:condition="python:not r">
-                  <div class="fqc-reading" style="font-size:14px;color:var(--s-secondary)">No data yet</div>
+                  <div class="fqc-reading" style="font-size:var(--fs-base);color:var(--s-secondary)">No data yet</div>
                 </tal:no-reading>
               </tal:reading>
               <span tal:attributes="class python:'fqc-badge '+view.status_class(unit['status'])"

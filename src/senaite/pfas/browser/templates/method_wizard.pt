@@ -22,29 +22,29 @@
     .wiz-step-num {
       width: 26px; height: 26px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+      font-size: var(--fs-xs); font-weight: 700; flex-shrink: 0; margin-top: 1px;
     }
     .wiz-step-item.status-done     .wiz-step-num { background: var(--s-primary); color: #fff; }
     .wiz-step-item.status-defaults .wiz-step-num { background: #0c5460; color: #fff; }
     .wiz-step-item.status-pending  .wiz-step-num { background: #e9ecef; color: var(--s-secondary); }
     .wiz-step-item.is-current      .wiz-step-num { box-shadow: 0 0 0 3px var(--s-focus-ring); }
-    .wiz-step-label { font-size: 12px; line-height: 1.4; color: var(--s-body); }
+    .wiz-step-label { font-size: var(--fs-sm); line-height: 1.4; color: var(--s-body); }
     .wiz-step-item.is-current .wiz-step-label { font-weight: 700; }
 
     /* ── Main panel ─────────────────────────────────────────────────── */
     .wiz-main { flex: 1; min-width: 0; }
 
     .wiz-step-header { margin-bottom: 16px; }
-    .wiz-step-header h2 { font-size: 18px; color: var(--s-dark); margin-bottom: 4px; }
-    .wiz-step-header .step-num-label { font-size: 12px; color: var(--s-secondary); }
+    .wiz-step-header h2 { font-size: var(--fs-xl); color: var(--s-dark); margin-bottom: 4px; }
+    .wiz-step-header .step-num-label { font-size: var(--fs-sm); color: var(--s-secondary); }
 
     .wiz-explain {
-      font-size: 13px; color: var(--s-body); line-height: 1.7;
+      font-size: var(--fs-base); color: var(--s-body); line-height: 1.7;
       background: #f8f9fa; border-left: 3px solid var(--s-primary);
       padding: 12px 16px; border-radius: 0 6px 6px 0; margin-bottom: 20px;
     }
     .wiz-depends {
-      font-size: 12px; color: #856404; background: #fff3cd;
+      font-size: var(--fs-sm); color: #856404; background: #fff3cd;
       border: 1px solid #ffeeba; border-radius: 6px;
       padding: 8px 14px; margin-bottom: 20px;
     }
@@ -52,10 +52,10 @@
     /* ── Forms ──────────────────────────────────────────────────────── */
     .wiz-form { max-width: 640px; }
     .wiz-field { margin-bottom: 16px; }
-    .wiz-field label { display: block; font-size: 13px; font-weight: 600;
+    .wiz-field label { display: block; font-size: var(--fs-base); font-weight: 600;
                        color: var(--s-dark); margin-bottom: 4px; }
     .wiz-input, .wiz-textarea, .wiz-select {
-      width: 100%; padding: 8px 12px; font-size: 13px;
+      width: 100%; padding: 8px 12px; font-size: var(--fs-base);
       border: 1px solid var(--s-input-border); border-radius: 6px;
       color: var(--s-body); box-sizing: border-box;
     }
@@ -67,18 +67,18 @@
 
     /* Checkbox lists */
     .check-section { margin-bottom: 20px; }
-    .check-section h4 { font-size: 13px; font-weight: 700;
+    .check-section h4 { font-size: var(--fs-base); font-weight: 700;
                         color: var(--s-dark); margin-bottom: 10px; }
     .check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
                   gap: 6px; }
     .check-item { display: flex; align-items: center; gap: 8px;
                   padding: 6px 10px; border: 1px solid var(--s-border);
-                  border-radius: 6px; font-size: 13px; cursor: pointer; }
+                  border-radius: 6px; font-size: var(--fs-base); cursor: pointer; }
     .check-item:hover { background: #f8f9fa; }
     .check-item input[type="checkbox"] { flex-shrink: 0; }
     .check-item input[type="radio"]    { flex-shrink: 0; }
     .check-item .cat-tag {
-      margin-left: auto; font-size: 10px; color: var(--s-secondary);
+      margin-left: auto; font-size: var(--fs-xs); color: var(--s-secondary);
       background: #e9ecef; padding: 1px 7px; border-radius: 8px; white-space: nowrap;
     }
     .check-item.is-linked { background: #f0f7fb; border-color: #b8d9ee; }
@@ -88,40 +88,40 @@
                    border-top: 1px solid var(--s-border); }
 
     /* Spec status table */
-    .spec-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+    .spec-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); margin-bottom: 16px; }
     .spec-table th { text-align: left; padding: 8px 12px; background: #f8f9fa;
                      border-bottom: 2px solid var(--s-border); font-weight: 700; }
     .spec-table td { padding: 8px 12px; border-bottom: 1px solid var(--s-border); }
     .badge-ok      { background: #d4edda; color: #155724; padding: 2px 10px;
-                     border-radius: 8px; font-size: 11px; font-weight: 700; }
+                     border-radius: 8px; font-size: var(--fs-xs); font-weight: 700; }
     .badge-missing { background: #f8d7da; color: #721c24; padding: 2px 10px;
-                     border-radius: 8px; font-size: 11px; font-weight: 700; }
+                     border-radius: 8px; font-size: var(--fs-xs); font-weight: 700; }
 
     /* Or divider */
     .or-divider { display: flex; align-items: center; gap: 12px;
-                  color: var(--s-secondary); font-size: 12px; margin: 16px 0; }
+                  color: var(--s-secondary); font-size: var(--fs-sm); margin: 16px 0; }
     .or-divider::before, .or-divider::after {
       content: ""; flex: 1; height: 1px; background: var(--s-border); }
 
     /* Alerts */
     .wiz-alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
                        padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
-                       font-size: 13px; }
+                       font-size: var(--fs-base); }
     .wiz-alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
                        padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
-                       font-size: 13px; }
+                       font-size: var(--fs-base); }
 
     /* Landing page */
     .landing-card { background: var(--s-bg); border: 1px solid var(--s-border);
                     border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
-    .landing-card h3 { font-size: 15px; margin-bottom: 6px; }
-    .landing-card .meta { font-size: 12px; color: var(--s-secondary); margin-bottom: 12px; }
+    .landing-card h3 { font-size: var(--fs-md); margin-bottom: 6px; }
+    .landing-card .meta { font-size: var(--fs-sm); color: var(--s-secondary); margin-bottom: 12px; }
 
     /* Complete state */
     .wiz-complete { text-align: center; padding: 40px 20px; }
     .wiz-complete .check-big { font-size: 56px; color: #28a745; margin-bottom: 16px; }
-    .wiz-complete h2 { font-size: 22px; color: var(--s-dark); margin-bottom: 8px; }
-    .wiz-complete p  { color: var(--s-secondary); font-size: 14px; margin-bottom: 24px; }
+    .wiz-complete h2 { font-size: var(--fs-xl); color: var(--s-dark); margin-bottom: 8px; }
+    .wiz-complete p  { color: var(--s-secondary); font-size: var(--fs-base); margin-bottom: 24px; }
   </style>
   </tal:styles>
 </head>
@@ -142,7 +142,7 @@
     <!-- ============================================================ -->
     <tal:landing tal:condition="not:view/wid">
 
-      <p style="font-size:14px; color:var(--s-body); margin-bottom:28px; max-width:680px; line-height:1.7;">
+      <p style="font-size:var(--fs-base); color:var(--s-body); margin-bottom:28px; max-width:680px; line-height:1.7;">
         This wizard walks you through standing up a new analytical method in
         SENAITE: creating the Method record, linking the analytes, selecting
         sample types, setting QC criteria, and associating instruments.
@@ -161,7 +161,7 @@
 
       <!-- Existing sessions -->
       <tal:sessions tal:condition="view/existing_sessions">
-        <h3 style="margin:32px 0 12px; font-size:14px; color:var(--s-dark);">
+        <h3 style="margin:32px 0 12px; font-size:var(--fs-base); color:var(--s-dark);">
           In-progress wizards
         </h3>
         <tal:each tal:repeat="sess view/existing_sessions">
@@ -335,7 +335,7 @@
                     </tal:depts>
                   </div>
                   <p tal:condition="not:view/departments"
-                     style="font-size:12px; color:#721c24;">
+                     style="font-size:var(--fs-sm); color:#721c24;">
                     No departments found. Create one in
                     <a tal:attributes="href string:${base}/setup/departments">Setup &#8594; Departments</a>.
                   </p>
@@ -379,7 +379,7 @@
 
                 <div class="check-section">
                   <h4>Select analytes and internal standards for this method</h4>
-                  <p style="font-size:12px; color:var(--s-secondary); margin-bottom:10px;">
+                  <p style="font-size:var(--fs-sm); color:var(--s-secondary); margin-bottom:10px;">
                     Currently linked services are pre-checked.
                     Unchecking a service will NOT remove the method link from
                     previously-linked services on re-submission -- add and verify
@@ -401,7 +401,7 @@
                     </tal:svcs>
                   </div>
                   <p tal:condition="not:view/all_services"
-                     style="font-size:12px; color:#721c24;">
+                     style="font-size:var(--fs-sm); color:#721c24;">
                     No analysis services found. Create them in
                     <a tal:attributes="href string:${base}/bika_setup/bika_analysisservices">
                       Analysis Services</a>.
@@ -443,7 +443,7 @@
                     </tal:sts>
                   </div>
                   <p tal:condition="not:view/sample_types"
-                     style="font-size:12px; color:#721c24;">
+                     style="font-size:var(--fs-sm); color:#721c24;">
                     No sample types found. Create them in
                     <a tal:attributes="href string:${base}/setup/sampletypes">Sample Types</a>.
                   </p>
@@ -464,7 +464,7 @@
             <!-- ================================================ -->
             <tal:step5 tal:condition="python: step == 5">
               <div class="wiz-form">
-                <p style="font-size:13px; margin-bottom:16px;">
+                <p style="font-size:var(--fs-base); margin-bottom:16px;">
                   <strong>Current status:</strong>
                   <span tal:content="view/profile_status_label">...</span>
                 </p>
@@ -473,11 +473,11 @@
                    tal:attributes="href view/profile_edit_url">
                   Open Method Profile Editor &#8594;
                 </a>
-                <p style="font-size:12px; color:var(--s-secondary); margin-top:12px;">
+                <p style="font-size:var(--fs-sm); color:var(--s-secondary); margin-top:12px;">
                   The editor opens in a new tab. Save your changes there, then
                   return here and click "Confirmed" below.
                 </p>
-                <p style="font-size:12px; margin-top:12px;">
+                <p style="font-size:var(--fs-sm); margin-top:12px;">
                   Once your profile is saved, review which QC types are active
                   for this method in the QC Type Grid:
                 </p>
@@ -531,7 +531,7 @@
                               Create spec &#8594;
                             </a>
                             <span tal:condition="row/has_spec"
-                                  style="color:var(--s-secondary); font-size:12px;">
+                                  style="color:var(--s-secondary); font-size:var(--fs-sm);">
                               &#10003; OK
                             </span>
                           </td>
@@ -541,7 +541,7 @@
                   </table>
                 </tal:has-types>
                 <p tal:condition="not:view/sample_types_spec_status"
-                   style="font-size:13px; color:var(--s-secondary);">
+                   style="font-size:var(--fs-base); color:var(--s-secondary);">
                   No sample types were selected in Step 4. Return to Step 4 to
                   select sample types, then come back here to create their specs.
                 </p>
@@ -585,7 +585,7 @@
                     </tal:locs>
                   </div>
                   <p tal:condition="not:view/storage_locations"
-                     style="font-size:12px; color:var(--s-secondary);">
+                     style="font-size:var(--fs-sm); color:var(--s-secondary);">
                     No storage locations found.
                   </p>
                 </div>
@@ -606,7 +606,7 @@
                     </tal:conts>
                   </div>
                   <p tal:condition="not:view/containers"
-                     style="font-size:12px; color:var(--s-secondary);">
+                     style="font-size:var(--fs-sm); color:var(--s-secondary);">
                     No containers found.
                   </p>
                 </div>
@@ -626,7 +626,7 @@
             <!-- ================================================ -->
             <tal:step8 tal:condition="python: step == 8">
               <div class="wiz-form">
-                <p style="font-size:13px; margin-bottom:16px;">
+                <p style="font-size:var(--fs-base); margin-bottom:16px;">
                   Review and adjust QC rule toggles for this method in the
                   QC Rules editor. Defaults are pre-loaded from the Method
                   Profile you configured in Step 5.
@@ -636,7 +636,7 @@
                    tal:attributes="href view/qcrules_url">
                   Open QC Rules &#8594;
                 </a>
-                <p style="font-size:12px; color:var(--s-secondary); margin-top:12px;">
+                <p style="font-size:var(--fs-sm); color:var(--s-secondary); margin-top:12px;">
                   Changes are saved automatically in the QC Rules editor.
                   Return here and click "Rules Reviewed" when done.
                 </p>
@@ -681,7 +681,7 @@
                     </tal:instrs>
                   </div>
                   <p tal:condition="not:view/instruments"
-                     style="font-size:12px; color:var(--s-secondary);">
+                     style="font-size:var(--fs-sm); color:var(--s-secondary);">
                     No instruments found. Create them in
                     <a tal:attributes="href string:${base}/bika_setup/bika_instruments">
                       Instruments</a>.

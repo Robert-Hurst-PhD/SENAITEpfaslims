@@ -4,23 +4,23 @@
     .pfas-projlink { margin:10px 0 16px; border:1px solid #dee2e6;
       border-left:4px solid #428aaf; border-radius:8px; background:#e8f4f8;
       padding:12px 16px; }
-    .pfas-projlink-label { font-size:11px; font-weight:700; letter-spacing:.05em;
+    .pfas-projlink-label { font-size:var(--fs-xs); font-weight:700; letter-spacing:.05em;
       text-transform:uppercase; color:#6c757d; }
-    .pfas-projlink-title { font-size:15px; font-weight:700; color:#293333; margin-top:2px; }
-    .pfas-projlink-meta { font-size:12px; color:#6c757d; margin-top:3px; }
-    .pfas-projlink-none { font-size:13px; color:#6c757d; font-style:italic; }
-    .pfas-projlink-warn { font-size:12px; color:#8a6d3b; margin-top:4px; }
+    .pfas-projlink-title { font-size:var(--fs-md); font-weight:700; color:#293333; margin-top:2px; }
+    .pfas-projlink-meta { font-size:var(--fs-sm); color:#6c757d; margin-top:3px; }
+    .pfas-projlink-none { font-size:var(--fs-base); color:#6c757d; font-style:italic; }
+    .pfas-projlink-warn { font-size:var(--fs-sm); color:#8a6d3b; margin-top:4px; }
     .pfas-projlink-form { margin-top:10px; display:flex; align-items:center;
       gap:8px; flex-wrap:wrap; }
     .pfas-projlink-form select { padding:5px 8px; border:1px solid #dee2e6;
       border-radius:5px; min-width:260px; }
     .pfas-projlink-btn { background:#428aaf; color:#fff; border:none; font-weight:600;
-      font-size:13px; padding:7px 14px; border-radius:5px; cursor:pointer; }
+      font-size:var(--fs-base); padding:7px 14px; border-radius:5px; cursor:pointer; }
     .pfas-projlink-btn:hover { background:#387493; }
     .pfas-projlink-btn-clear { background:#a94442; }
     .pfas-projlink-btn-clear:hover { background:#8b3a37; }
-    .pfas-projlink-msg-ok { color:#2f7d3c; font-size:12px; margin-top:6px; }
-    .pfas-projlink-msg-error { color:#a94442; font-size:12px; margin-top:6px; }
+    .pfas-projlink-msg-ok { color:#2f7d3c; font-size:var(--fs-sm); margin-top:6px; }
+    .pfas-projlink-msg-error { color:#a94442; font-size:var(--fs-sm); margin-top:6px; }
   </style>
   <div class="pfas-projlink">
     <div class="pfas-projlink-label">PFAS Project</div>

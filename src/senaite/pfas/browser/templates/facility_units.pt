@@ -7,32 +7,32 @@
   <title metal:fill-slot="title">Facility Units Registry</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
-    .units-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .units-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
     .units-table th { background:var(--s-light); padding:7px 10px; text-align:left;
                       font-weight:700; color:var(--s-secondary); border-bottom:2px solid var(--s-border); }
     .units-table td { padding:8px 10px; border-bottom:1px solid var(--s-border); vertical-align:middle; }
     .units-table tr:last-child td { border-bottom:none; }
     .units-table tr.inactive td { color:var(--s-secondary); text-decoration:line-through; }
     .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
-    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
     .fld input, .fld select, .fld textarea {
-      padding:6px 8px; font-size:13px; border:1px solid var(--s-input-border);
+      padding:6px 8px; font-size:var(--fs-base); border:1px solid var(--s-input-border);
       border-radius:4px; color:var(--s-input-text); }
     .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
     .fld-row .fld { flex:1; min-width:140px; }
     .form-card { background:var(--s-bg); border:1px solid var(--s-border);
                  border-radius:8px; padding:16px; margin-bottom:18px; }
-    .form-card h3 { font-size:13px; font-weight:700; margin:0 0 12px; color:var(--s-body); }
-    .weight-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+    .form-card h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 12px; color:var(--s-body); }
+    .weight-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); margin-top:8px; }
     .weight-table th { background:var(--s-light); padding:6px 8px;
                        border-bottom:1px solid var(--s-border); font-weight:600; }
     .weight-table td { padding:5px 8px; border-bottom:1px solid var(--s-border); }
     .weight-table input { width:90px; padding:3px 6px; border:1px solid var(--s-input-border);
-                          border-radius:3px; font-size:12px; }
+                          border-radius:3px; font-size:var(--fs-sm); }
     .api-card { background:var(--s-light); border:1px solid var(--s-border);
                 border-radius:8px; padding:14px 16px; margin-bottom:18px; }
     .inactive-badge { background:#f8d7da; color:#721c24; padding:1px 8px;
-                      border-radius:8px; font-size:10px; font-weight:700; }
+                      border-radius:8px; font-size:var(--fs-xs); font-weight:700; }
   </style>
   </tal:styles>
 </head>
@@ -44,16 +44,16 @@
   <!-- API key. Site admins only: the key authenticates the sensor ingest
        endpoint, so SHOWING it is as sensitive as changing it (GAPS §46.7). -->
   <div class="api-card" tal:condition="view/can_site_admin">
-    <strong style="font-size:12px;color:var(--s-body)">Sensor Ingest API Key</strong>
-    <p style="font-size:11px;color:var(--s-secondary);margin:4px 0 10px">
+    <strong style="font-size:var(--fs-sm);color:var(--s-body)">Sensor Ingest API Key</strong>
+    <p style="font-size:var(--fs-xs);color:var(--s-secondary);margin:4px 0 10px">
       Set on the Raspberry Pi in <code>/etc/pfas_sensor.conf</code> as
       <code>api_key = ...</code>. The Pi sends this in every POST request.
     </p>
     <form method="POST" tal:attributes="action string:${purl}/@@pfas-facility-units"
           style="display:flex;gap:8px;align-items:center;">
       <input type="hidden" name="action" value="save_api_key"/>
-      <input type="text" name="api_key" style="width:380px;padding:6px 8px;font-size:12px;
-             font-family:monospace;border:1px solid var(--s-input-border);border-radius:4px;"
+      <input type="text" name="api_key" style="width:380px;padding:6px 8px;font-size:var(--fs-sm);
+             font-family: var(--font-mono);border:1px solid var(--s-input-border);border-radius:4px;"
              tal:attributes="value view/api_key" placeholder="paste generated key here"/>
       <button type="submit" class="btn btn-primary">Save</button>
     </form>
@@ -63,7 +63,7 @@
   <div class="form-card">
     <h3>Registered Units</h3>
     <tal:no-units tal:condition="python:not view.units()">
-      <p style="color:var(--s-secondary);font-size:12px">No units yet.</p>
+      <p style="color:var(--s-secondary);font-size:var(--fs-sm)">No units yet.</p>
     </tal:no-units>
     <table class="units-table" tal:condition="python:bool(view.units())">
       <tr>
@@ -83,7 +83,7 @@
             <span tal:condition="python:not u.get('active')" class="inactive-badge">Inactive</span>
           </td>
           <td tal:condition="view/can_configure">
-            <a style="font-size:11px;color:var(--s-primary);cursor:pointer;text-decoration:none"
+            <a style="font-size:var(--fs-xs);color:var(--s-primary);cursor:pointer;text-decoration:none"
                tal:attributes="onclick string:editUnit('${u/id}')">Edit</a>
             &nbsp;
             <form method="POST" style="display:inline"
@@ -177,7 +177,7 @@
 
       <!-- Balance weight points -->
       <div id="balance-fields" style="display:none">
-        <p style="font-size:11px;color:var(--s-secondary);margin:0 0 6px">
+        <p style="font-size:var(--fs-xs);color:var(--s-secondary);margin:0 0 6px">
           Configure nominal weights and acceptance tolerances for this balance.
         </p>
         <table class="weight-table" id="weightTable">
@@ -217,7 +217,7 @@
         tal:define="d view/facility_defaults">
     <input type="hidden" name="action" value="save_defaults" />
 
-    <h3 style="font-size:14px;margin-top:14px;">Balance weight points</h3>
+    <h3 style="font-size:var(--fs-base);margin-top:14px;">Balance weight points</h3>
     <p class="form-note">
       One point per line: <code>nominal_g, label, tolerance_g</code>.
       A line that cannot be parsed is skipped and logged rather than applied
@@ -226,13 +226,13 @@
     <tal:b repeat="bt view/balance_unit_types">
       <div style="margin-bottom:10px;">
         <label style="font-weight:600;" tal:content="bt/label">Balance</label>
-        <textarea rows="5" style="width:100%;font-family:monospace;font-size:12px;"
+        <textarea rows="5" style="width:100%;font-family: var(--font-mono);font-size:var(--fs-sm);"
                   tal:attributes="name string:bal_points.${bt/key}"
                   tal:content="python:d['balance_points_text'].get(bt['key'], '')"></textarea>
       </div>
     </tal:b>
 
-    <h3 style="font-size:14px;margin-top:14px;">Acceptance defaults</h3>
+    <h3 style="font-size:var(--fs-base);margin-top:14px;">Acceptance defaults</h3>
     <table class="pfas-table" style="max-width:640px;">
       <tr>
         <td>Eye wash temperature range (&#176;C)</td>

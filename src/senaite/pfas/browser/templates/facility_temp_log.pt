@@ -8,7 +8,7 @@
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .temp-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
-    .temp-nav a { padding:5px 14px; border-radius:16px; font-size:12px; font-weight:600;
+    .temp-nav a { padding:5px 14px; border-radius:16px; font-size:var(--fs-sm); font-weight:600;
                   text-decoration:none; background:var(--s-light);
                   border:1px solid var(--s-border); color:var(--s-body); }
     .temp-nav a.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
@@ -16,34 +16,34 @@
                   border-radius:8px; padding:16px; margin-bottom:18px; }
     .chart-canvas-wrap { position:relative; height:300px; }
     .day-filter { display:flex; gap:8px; align-items:center; margin-bottom:14px;
-                  font-size:12px; }
-    .day-filter a { padding:3px 10px; border-radius:10px; font-size:11px; font-weight:600;
+                  font-size:var(--fs-sm); }
+    .day-filter a { padding:3px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:600;
                     text-decoration:none; background:var(--s-light);
                     border:1px solid var(--s-border); color:var(--s-body); }
     .day-filter a.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
     .study-section { background:var(--s-bg); border:1px solid var(--s-border);
                      border-radius:8px; padding:16px; margin-bottom:18px; }
-    .study-section h3 { font-size:13px; font-weight:700; color:var(--s-body); margin:0 0 12px; }
+    .study-section h3 { font-size:var(--fs-base); font-weight:700; color:var(--s-body); margin:0 0 12px; }
     .study-row { display:flex; gap:12px; flex-wrap:wrap; align-items:center;
-                 padding:8px 0; border-bottom:1px solid var(--s-border); font-size:12px; }
+                 padding:8px 0; border-bottom:1px solid var(--s-border); font-size:var(--fs-sm); }
     .study-row:last-child { border-bottom:none; }
-    .study-badge { padding:2px 10px; border-radius:10px; font-size:11px; font-weight:700; }
+    .study-badge { padding:2px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:700; }
     .study-pass { background:#d4edda; color:#155724; }
     .study-fail { background:#f8d7da; color:#721c24; }
     .study-pending { background:var(--s-light); color:var(--s-secondary); }
     .point-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
                   margin-top:12px; }
     .point-cell { border:1px solid var(--s-border); border-radius:6px;
-                  padding:10px; background:var(--s-light); font-size:11px; }
+                  padding:10px; background:var(--s-light); font-size:var(--fs-xs); }
     .point-cell label { display:block; font-weight:600; color:var(--s-secondary);
                         margin-bottom:4px; }
     .point-cell input { width:100%; box-sizing:border-box; padding:4px 6px;
-                        font-size:12px; border:1px solid var(--s-input-border);
+                        font-size:var(--fs-sm); border:1px solid var(--s-input-border);
                         border-radius:4px; }
     .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
-    .fld label { font-size:11px; font-weight:600; color:var(--s-secondary); }
+    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
     .fld input, .fld select, .fld textarea {
-      padding:6px 8px; font-size:13px; border:1px solid var(--s-input-border);
+      padding:6px 8px; font-size:var(--fs-base); border:1px solid var(--s-input-border);
       border-radius:4px; color:var(--s-input-text); }
     .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
     .fld-row .fld { flex:1; min-width:140px; }
@@ -84,7 +84,7 @@
     <!-- Chart -->
     <div class="chart-wrap">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <strong style="font-size:13px" tal:content="unit/name">Unit</strong>
+        <strong style="font-size:var(--fs-base)" tal:content="unit/name">Unit</strong>
         <div class="day-filter">
           Show:
           <tal:each tal:repeat="d python:[7,14,30,90]">
@@ -98,7 +98,7 @@
       <div class="chart-canvas-wrap">
         <canvas id="tempChart"></canvas>
       </div>
-      <div style="font-size:11px;color:var(--s-secondary);margin-top:6px;">
+      <div style="font-size:var(--fs-xs);color:var(--s-secondary);margin-top:6px;">
         Acceptance range:
         <tal:mn tal:replace="python:unit.get('temp_min','—')"/>–<tal:mx tal:replace="python:unit.get('temp_max','—')"/>&deg;C
         <tal:h tal:condition="python:unit.get('humidity_min') is not None">
@@ -111,7 +111,7 @@
     <!-- Temperature studies -->
     <div class="study-section">
       <h3>Quarterly Temperature Studies (NIST Verification)</h3>
-      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
+      <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 12px">
         Five time-point readings over a day compared against a NIST-traceable reference thermometer.
         Required at unit installation and every quarter thereafter.
       </p>
@@ -126,20 +126,20 @@
           <span tal:attributes="class python:'study-badge study-'+s['status']"
                 tal:content="python:s['status'].upper()"></span>
           <a tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}"
-             style="font-size:11px;color:var(--s-primary);margin-left:auto">
+             style="font-size:var(--fs-xs);color:var(--s-primary);margin-left:auto">
             Enter / view data &rarr;
           </a>
         </div>
       </tal:each>
       <tal:none tal:condition="python:not view.studies()">
-        <p style="font-size:12px;color:var(--s-secondary)">No studies recorded yet.</p>
+        <p style="font-size:var(--fs-sm);color:var(--s-secondary)">No studies recorded yet.</p>
       </tal:none>
 
       <!-- Study detail -->
       <tal:detail tal:define="det view/study_detail" tal:condition="det">
         <div style="margin-top:16px;padding:14px;background:var(--s-light);
                     border-radius:6px;border:1px solid var(--s-border);">
-          <strong style="font-size:12px">
+          <strong style="font-size:var(--fs-sm)">
             Study <tal:d tal:replace="python:det['study']['study_date']"/> —
             NIST <tal:s tal:replace="python:det['study']['nist_serial']"/>
             (tol ±<tal:t tal:replace="python:det['study']['tolerance']"/>&deg;C)
@@ -181,7 +181,7 @@
 
       <!-- New study form -->
       <details style="margin-top:14px;">
-        <summary style="font-size:12px;font-weight:600;cursor:pointer;color:var(--s-primary)">
+        <summary style="font-size:var(--fs-sm);font-weight:600;cursor:pointer;color:var(--s-primary)">
           + New Temperature Study
         </summary>
         <form method="POST" style="margin-top:12px;"

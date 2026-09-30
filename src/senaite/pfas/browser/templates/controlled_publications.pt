@@ -10,20 +10,20 @@
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .cp-head { margin-bottom: 16px; }
-    .cp-title { font-size: 17px; font-weight: 700; color: var(--s-text); }
-    .cp-sub { color: var(--s-secondary); font-size: 13px; margin-top: 4px; }
-    table.cp-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .cp-title { font-size: var(--fs-lg); font-weight: 700; color: var(--s-text); }
+    .cp-sub { color: var(--s-secondary); font-size: var(--fs-base); margin-top: 4px; }
+    table.cp-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
     table.cp-tbl th { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--s-border);
-      font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--s-secondary); }
+      font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .03em; color: var(--s-secondary); }
     table.cp-tbl td { padding: 8px 10px; border-bottom: 1px solid var(--s-border);
       vertical-align: top; }
-    .cp-rid { font-weight: 700; font-family: monospace; }
-    .cp-badge { font-size: 11px; font-weight: 700; text-transform: uppercase;
+    .cp-rid { font-weight: 700; font-family: var(--font-mono); }
+    .cp-badge { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
       padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
     .cp-current { background: #d4edda; color: #155724; }
     .cp-superseded { background: #f8f9fa; color: #6c757d; }
     .cp-flag { background: #f8d7da; color: #721c24; font-weight: 700;
-      padding: 2px 8px; border-radius: 10px; font-size: 11px; white-space: nowrap; }
+      padding: 2px 8px; border-radius: 10px; font-size: var(--fs-xs); white-space: nowrap; }
     .cp-reason { color: var(--s-text); }
     .cp-empty { padding: 30px; text-align: center; color: var(--s-secondary); }
   </style>
@@ -94,7 +94,7 @@
                        tal:attributes="value r/revision"/>
                 <input type="text" name="reason" required="required"
                        placeholder="Reason for this reissue"
-                       style="font-size:12px; padding:2px 6px; min-width:180px;"/>
+                       style="font-size:var(--fs-sm); padding:2px 6px; min-width:180px;"/>
                 <button type="submit" class="cp-badge cp-current"
                         style="border:0; cursor:pointer;"
                         i18n:translate="">Record</button>

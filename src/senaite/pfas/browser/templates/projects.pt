@@ -9,9 +9,9 @@
   <style>
     .pj-toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
                   margin-bottom:16px; }
-    .pj-code { font-family:monospace; font-weight:700; }
+    .pj-code { font-family: var(--font-mono); font-weight:700; }
     .pj-notes-cell { max-width:220px; white-space:normal; color:var(--s-secondary);
-                     font-size:12px; }
+                     font-size:var(--fs-sm); }
     .pj-muted { color:var(--s-secondary); font-style:italic; }
   </style>
   </tal:styles>

@@ -8,75 +8,63 @@
   <title metal:fill-slot="title">EDD Configuration</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
-    /* ── EGAD Config panel styles ─────────────────────────────────── */
-    .egad-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--s-border);
-                 margin-bottom: 20px; flex-wrap: wrap; }
-    .egad-tab  { padding: 9px 18px; font-size: 13px; font-weight: 600;
-                 cursor: pointer; border: 1px solid transparent;
-                 border-bottom: none; border-radius: 4px 4px 0 0;
-                 color: var(--s-secondary); background: var(--s-light); margin-right: 2px;
-                 transition: background .15s; text-decoration: none; }
-    .egad-tab:hover { background: var(--s-bg); color: var(--s-body); }
-    .egad-tab.active { background: var(--s-bg); color: var(--s-primary);
-                       border-color: var(--s-border); position: relative;
-                       bottom: -2px; z-index: 1; }
     .egad-tab-pane { display: none; }
     .egad-tab-pane.active { display: block; }
 
     .form-group { margin-bottom: 14px; }
-    .form-label { font-size: 12px; font-weight: 600; color: var(--s-secondary);
+    .form-label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-secondary);
                   text-transform: uppercase; letter-spacing: .04em;
                   display: block; margin-bottom: 4px; }
-    .form-input  { width: 100%; padding: 7px 10px; font-size: 13px;
+    .form-input  { width: 100%; padding: 7px 10px; font-size: var(--fs-base);
                    border: 1px solid var(--s-input-border); border-radius: 4px;
                    background: #fff; box-sizing: border-box; }
     .form-input:focus { outline: 2px solid var(--s-primary); }
-    .form-select { width: 100%; padding: 7px 10px; font-size: 13px;
+    .form-select { width: 100%; padding: 7px 10px; font-size: var(--fs-base);
                    border: 1px solid var(--s-input-border); border-radius: 4px;
                    background: #fff; box-sizing: border-box; }
-    .form-hint   { font-size: 11px; color: var(--s-secondary); margin-top: 3px; }
+    .form-hint   { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: 3px; }
     .form-row    { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
                    gap: 14px; }
 
     .section-card { background: var(--s-bg); border: 1px solid var(--s-border);
                     border-radius: 6px; padding: 18px; margin-bottom: 18px; }
-    .section-card h3 { font-size: 13px; font-weight: 700; color: var(--s-primary);
+    .section-card h3 { font-size: var(--fs-base); font-weight: 700; color: var(--s-primary);
                        margin: 0 0 14px 0; padding-bottom: 8px;
                        border-bottom: 1px solid var(--s-border); }
 
     /* CAS table */
-    .cas-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .cas-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .cas-table th { background: var(--s-light); padding: 7px 8px; text-align: left;
-                    font-size: 11px; font-weight: 700; text-transform: uppercase;
+                    font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
                     letter-spacing: .04em; border-bottom: 2px solid var(--s-border); }
     .cas-table td { padding: 5px 8px; border-bottom: 1px solid var(--s-border);
                     vertical-align: middle; }
     .cas-table tr:hover td { background: var(--s-light); }
-    .cas-input  { width: 100%; padding: 4px 6px; font-size: 12px;
+    .cas-input  { width: 100%; padding: 4px 6px; font-size: var(--fs-sm);
                   border: 1px solid var(--s-input-border); border-radius: 3px; }
     .cas-input.blocking { border-color: #c62828; background: #fff5f5; }
-    .blocking-badge { font-size: 10px; font-weight: 700; color: #c62828;
+    .blocking-badge { font-size: var(--fs-xs); font-weight: 700; color: #c62828;
                       background: #ffebee; padding: 1px 6px; border-radius: 8px; }
-    .manual-badge   { font-size: 10px; font-weight: 700; color: #e65100;
+    .manual-badge   { font-size: var(--fs-xs); font-weight: 700; color: #e65100;
                       background: #fff3e0; padding: 1px 6px; border-radius: 8px; }
 
     /* Qualifier/QC mapping tables */
-    .map-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .map-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
     .map-table th { background: var(--s-light); padding: 7px 10px;
-                    text-align: left; font-size: 11px; font-weight: 700;
+                    text-align: left; font-size: var(--fs-xs); font-weight: 700;
                     text-transform: uppercase; border-bottom: 2px solid var(--s-border); }
     .map-table td { padding: 6px 10px; border-bottom: 1px solid var(--s-border); }
     .map-table tr:hover td { background: var(--s-light); }
-    .map-input  { width: 100%; padding: 5px 8px; font-size: 13px;
+    .map-input  { width: 100%; padding: 5px 8px; font-size: var(--fs-base);
                   border: 1px solid var(--s-input-border); border-radius: 3px; }
-    .map-select { width: 100%; padding: 5px 8px; font-size: 13px;
+    .map-select { width: 100%; padding: 5px 8px; font-size: var(--fs-base);
                   border: 1px solid var(--s-input-border); border-radius: 3px; }
     .btn-rm  { background: none; border: none; color: var(--s-danger); cursor: pointer;
-               font-size: 16px; line-height: 1; padding: 2px 4px; }
+               font-size: var(--fs-lg); line-height: 1; padding: 2px 4px; }
 
     /* Lookup info */
     .lookup-stat { display: inline-block; background: var(--s-light); border: 1px solid var(--s-border);
-                   border-radius: 4px; padding: 4px 10px; font-size: 12px; margin: 3px 4px 3px 0; }
+                   border-radius: 4px; padding: 4px 10px; font-size: var(--fs-sm); margin: 3px 4px 3px 0; }
     .lookup-stat strong { color: var(--s-primary); }
 
     .save-banner { background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px;
@@ -94,7 +82,7 @@
     .method-block { border: 1px solid var(--s-border); border-radius: 6px;
                     margin-bottom: 14px; overflow: hidden; }
     .method-block-head { background: var(--s-light); padding: 9px 14px;
-                         font-size: 13px; font-weight: 700; color: var(--s-body);
+                         font-size: var(--fs-base); font-weight: 700; color: var(--s-body);
                          border-bottom: 1px solid var(--s-border); }
     .method-block-body { padding: 14px; }
 
@@ -112,7 +100,7 @@
       &#8592; Site Setup
     </a>
     <h1 style="margin:8px 0 4px">EDD Configuration</h1>
-    <p style="margin:0;color:var(--s-secondary);font-size:13px">
+    <p style="margin:0;color:var(--s-secondary);font-size:var(--fs-base)">
       Configure lab-global, method, and per-analyte settings for
       Electronic Data Deliverable (EDD v6.0) submission to Maine DEP.
     </p>
@@ -131,33 +119,36 @@
   </tal:blocking>
 
   <!-- Tab nav -->
-  <div class="egad-tabs">
+  <div class="pfas-tabs egad-tabs">
     <a class="egad-tab active" id="tab-lab" href="#" onclick="switchTab('lab');return false">
       <i class="fas fa-flask"></i> Lab Settings
     </a>
-    <a class="egad-tab" id="tab-methods" href="#" onclick="switchTab('methods');return false">
+    <a class="pfas-tab egad-tab" id="tab-methods" href="#" onclick="switchTab('methods');return false">
       <i class="fas fa-vials"></i> Methods
     </a>
-    <a class="egad-tab" id="tab-cas" href="#" onclick="switchTab('cas');return false">
+    <a class="pfas-tab egad-tab" id="tab-cas" href="#" onclick="switchTab('cas');return false">
       <i class="fas fa-table"></i> Analyte CAS
       <tal:cnt tal:condition="python:view.blocking_cas_count() > 0">
         <span class="blocking-badge">${view/blocking_cas_count} missing</span>
       </tal:cnt>
     </a>
-    <a class="egad-tab" id="tab-qualifiers" href="#" onclick="switchTab('qualifiers');return false">
+    <a class="pfas-tab egad-tab" id="tab-qualifiers" href="#" onclick="switchTab('qualifiers');return false">
       <i class="fas fa-tag"></i> Qualifiers
     </a>
-    <a class="egad-tab" id="tab-qc_types" href="#" onclick="switchTab('qc_types');return false">
+    <a class="pfas-tab egad-tab" id="tab-qc_types" href="#" onclick="switchTab('qc_types');return false">
       <i class="fas fa-clipboard-check"></i> QC Types
     </a>
-    <a class="egad-tab" id="tab-lookups" href="#" onclick="switchTab('lookups');return false">
+    <a class="pfas-tab egad-tab" id="tab-lookups" href="#" onclick="switchTab('lookups');return false">
       <i class="fas fa-sync-alt"></i> Refresh Lookups
     </a>
-    <a class="egad-tab" id="tab-test_edd" href="#"
+    <a class="pfas-tab egad-tab" id="tab-test_edd" href="#"
        onclick="switchTab('test_edd');return false">
       <i class="fas fa-vial"></i> Test EDD
     </a>
-    <a class="egad-tab"
+    <a class="pfas-tab egad-tab" id="tab-profiles" href="#" onclick="switchTab('profiles');return false">
+      <i class="fas fa-layer-group"></i> EDD Profiles
+    </a>
+    <a class="pfas-tab egad-tab"
        tal:attributes="href string:${view/portal_url}/@@pfas-egad-batches"
        style="margin-left:auto;">
       <i class="fas fa-download"></i> Batch EDDs
@@ -326,7 +317,7 @@
   <div id="pane-cas" class="egad-tab-pane">
     <div class="section-card">
       <h3><i class="fas fa-atom"></i> Analyte → CAS_NO Mapping (Maine EGAD)</h3>
-      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
+      <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 12px">
         32 of 34 analytes are auto-matched from CAS_LUP (CATEGORY=PFC).
         Entries marked <span class="blocking-badge">BLOCKING</span> must be
         assigned before EDD submission.
@@ -341,9 +332,9 @@
       <tal:manual tal:repeat="row view/analyte_cas_rows">
         <div tal:condition="row/needs_manual"
              style="background:#fff8e1;border-left:3px solid #f59e0b;border-radius:4px;padding:8px 12px;margin:0 0 12px;">
-          <strong style="font-size:11px;color:#92400e">&#9888; Manual DEP Code Required — <span tal:content="row/keyword">PFUnDS</span></strong>
+          <strong style="font-size:var(--fs-xs);color:#92400e">&#9888; Manual DEP Code Required — <span tal:content="row/keyword">PFUnDS</span></strong>
           <span tal:condition="python:row['keyword']=='PFUnDS'"
-                style="font-size:11px;color:#78350f;display:block;margin-top:2px">
+                style="font-size:var(--fs-xs);color:#78350f;display:block;margin-top:2px">
             <strong>PFUnDS</strong> (CAS 749786-16-1) is not in Maine EGAD&#8217;s CAS_LUP.
             Contact Maine DEP to request a DEP##### code, then enter it in the
             <em>CAS_NO</em> field below. The PARAMETER_NAME should follow
@@ -396,7 +387,7 @@
                   <span class="manual-badge">manual</span>
                 </tal:manual>
                 <tal:ok tal:condition="python:not row['is_blocking'] and not row['needs_manual']">
-                  <span style="color:var(--s-success);font-size:12px">&#10003;</span>
+                  <span style="color:var(--s-success);font-size:var(--fs-sm)">&#10003;</span>
                 </tal:ok>
               </td>
             </tr>
@@ -414,7 +405,7 @@
   <div id="pane-qualifiers" class="egad-tab-pane">
     <div class="section-card">
       <h3><i class="fas fa-tag"></i> Qualifier Translation</h3>
-      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
+      <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 12px">
         Map your lab's reporting qualifiers to EGAD CONCENTRATION_QUALIFIER_LUP codes.
         Editable by Manager / QAO / Lab Director / Owner only.
       </p>
@@ -457,7 +448,7 @@
   <div id="pane-qc_types" class="egad-tab-pane">
     <div class="section-card">
       <h3><i class="fas fa-clipboard-check"></i> QC Type Translation</h3>
-      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 12px">
+      <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 12px">
         Map your pipeline's QC type labels to EGAD QA_QC_TYPE_LUP codes.
         Every batch's QC rows (MB, LFSM, CCV, duplicates) must appear in the EDD.
       </p>
@@ -500,7 +491,7 @@
   <div id="pane-lookups" class="egad-tab-pane">
     <div class="section-card">
       <h3><i class="fas fa-sync-alt"></i> Refresh Maine EGAD Lookup Tables</h3>
-      <p style="font-size:12px;color:var(--s-secondary);margin:0 0 14px">
+      <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 14px">
         Maine DEP updates EGAD_Lookup_Tables.xlsx periodically.
         Upload the new version here to refresh valid codes for qualifiers,
         QC types, units, sample types, tests, and prep methods.
@@ -510,14 +501,14 @@
 
       <tal:lup tal:define="info view/lookups_info">
       <div style="margin-bottom:14px">
-        <strong style="font-size:13px">Current lookup tables</strong>
+        <strong style="font-size:var(--fs-base)">Current lookup tables</strong>
         <tal:ref tal:condition="info/last_refresh">
-          <span style="font-size:11px;color:var(--s-secondary);margin-left:8px">
+          <span style="font-size:var(--fs-xs);color:var(--s-secondary);margin-left:8px">
             Last refreshed: ${info/last_refresh}
           </span>
         </tal:ref>
         <tal:noref tal:condition="python:not info.get('last_refresh')">
-          <span style="font-size:11px;color:#e65100;margin-left:8px">
+          <span style="font-size:var(--fs-xs);color:#e65100;margin-left:8px">
             (using seeded defaults — upload EGAD_Lookup_Tables.xlsx to refresh)
           </span>
         </tal:noref>
@@ -537,8 +528,8 @@
         <div class="file-upload-zone" id="drop-zone"
              ondragover="event.preventDefault()"
              ondrop="handleDrop(event)">
-          <i class="fas fa-file-excel" style="font-size:28px;color:var(--s-secondary);margin-bottom:8px;display:block"></i>
-          <div style="font-size:13px;margin-bottom:8px">
+          <i class="fas fa-file-excel" style="font-size:var(--fs-2xl);color:var(--s-secondary);margin-bottom:8px;display:block"></i>
+          <div style="font-size:var(--fs-base);margin-bottom:8px">
             Drag &amp; drop <code>EGAD_Lookup_Tables.xlsx</code> here, or click to browse.
           </div>
           <input type="file" id="lookup_xlsx" name="lookup_xlsx"
@@ -547,7 +538,7 @@
                  onchange="showFileName(this)" />
           <button type="button" onclick="document.getElementById('lookup_xlsx').click()"
                   class="btn-sm btn-add-row">Browse</button>
-          <div id="file-name" style="font-size:12px;color:var(--s-primary);margin-top:8px"></div>
+          <div id="file-name" style="font-size:var(--fs-sm);color:var(--s-primary);margin-top:8px"></div>
         </div>
         <button class="btn-save" onclick="refreshLookups();return false">
           Upload &amp; Refresh Lookups
@@ -557,7 +548,7 @@
 
     <div class="section-card">
       <h3><i class="fas fa-info-circle"></i> About Maine EGAD Lookup Codes</h3>
-      <p style="font-size:12px;color:var(--s-secondary)">
+      <p style="font-size:var(--fs-sm);color:var(--s-secondary)">
         Download the current lookup tables from the
         <a href="https://www.maine.gov/dep/spills/egad/data-entry.html"
            target="_blank" rel="noopener">Maine DEP EGAD Data Entry page</a>.
@@ -570,19 +561,19 @@
   <div id="pane-test_edd" class="egad-tab-pane">
     <div class="section-card">
       <h3><i class="fas fa-vial"></i> Generate Test EDD Preview</h3>
-      <p style="font-size:13px; color:var(--s-secondary); margin-bottom:16px;">
+      <p style="font-size:var(--fs-base); color:var(--s-secondary); margin-bottom:16px;">
         Enter a Batch ID to validate EDD generation without downloading the
         file.  The preview runs the full EDD builder and reports any blocking
         or warning errors.
       </p>
       <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
         <div>
-          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">
+          <label style="display:block; font-size:var(--fs-sm); font-weight:600; margin-bottom:4px;">
             Batch ID
           </label>
           <input id="test-edd-batch-id" type="text"
                  placeholder="e.g. B20260615-001"
-                 style="padding:6px 10px; font-size:13px; border:1px solid var(--s-border);
+                 style="padding:6px 10px; font-size:var(--fs-base); border:1px solid var(--s-border);
                         border-radius:4px; width:220px;" />
         </div>
         <button class="btn-save" onclick="runEddPreview()" style="margin-bottom:1px;">
@@ -593,10 +584,12 @@
     </div>
   </div><!-- /pane-test_edd -->
 
+<!-- ── EDD PROFILES tab (was a section shown under every tab) ──────── -->
+<div id="pane-profiles" class="egad-tab-pane">
 <div class="page-body" id="edd-profiles">
   <div style="border:1px solid var(--s-border);border-radius:10px;background:var(--s-bg);padding:16px 18px;">
-    <h3 style="font-size:14px;font-weight:700;margin:0 0 6px;">EDD Format Profiles</h3>
-    <p style="font-size:12px;color:var(--s-secondary);max-width:760px;">
+    <h3 style="font-size:var(--fs-base);font-weight:700;margin:0 0 6px;">EDD Format Profiles</h3>
+    <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:760px;">
       The EDD engine is profile-driven: <strong>maine_egad</strong> is the seeded
       Maine DEP format; clone it into other state programs. Each profile owns its
       state&#8217;s format (column subset/order, heading aliases, SampleType&#8594;code map)
@@ -609,21 +602,21 @@
     <form method="post" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
       <input type="hidden" name="section" value="edd_profiles"/>
       <input type="hidden" name="edd_action" value="clone"/>
-      <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Clone from
+      <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">Clone from
         <select name="source_id" style="padding:6px;border:1px solid var(--s-border);border-radius:4px;">
           <option tal:repeat="p view/edd_profiles" tal:attributes="value p/id" tal:content="p/name">maine</option>
         </select></label>
-      <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">New profile name
+      <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">New profile name
         <input type="text" name="new_name" placeholder="e.g. Maine EGAD — biota sub-profile"
                style="padding:6px;border:1px solid var(--s-border);border-radius:4px;width:260px;"/></label>
       <button class="btn btn-primary" type="submit">Clone profile</button>
     </form>
 
     <details tal:repeat="p view/edd_profiles" style="border:1px solid var(--s-border);border-radius:8px;padding:10px 14px;margin-bottom:10px;">
-      <summary style="font-size:13px;font-weight:700;cursor:pointer;">
+      <summary style="font-size:var(--fs-base);font-weight:700;cursor:pointer;">
         <span tal:content="p/name">name</span>
-        <code style="font-size:11px;color:var(--s-primary);margin-left:6px;" tal:content="p/id">id</code>
-        <span style="font-weight:400;font-size:11px;color:var(--s-secondary);margin-left:8px;">
+        <code style="font-size:var(--fs-xs);color:var(--s-primary);margin-left:6px;" tal:content="p/id">id</code>
+        <span style="font-weight:400;font-size:var(--fs-xs);color:var(--s-secondary);margin-left:8px;">
           state: <tal:s tal:content="p/state">ME</tal:s> ·
           <tal:n tal:content="p/n_columns">53</tal:n> columns · base: <tal:b tal:content="p/base">-</tal:b>
         </span>
@@ -633,23 +626,23 @@
         <input type="hidden" name="edd_action" value="save"/>
         <input type="hidden" name="profile_id" tal:attributes="value p/id"/>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+          <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
             Columns (one per line, order = output order; must be Maine-superset names)
-            <textarea name="columns" rows="10" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+            <textarea name="columns" rows="10" style="font-family: var(--font-mono);font-size:var(--fs-xs);padding:6px;border:1px solid var(--s-border);border-radius:4px;"
                       tal:content="p/columns_text"></textarea></label>
           <div>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-bottom:10px;">
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-bottom:10px;">
               SampleType &#8594; SAMPLE_TYPE code map (JSON)
-              <textarea name="matrix_map_json" rows="5" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+              <textarea name="matrix_map_json" rows="5" style="font-family: var(--font-mono);font-size:var(--fs-xs);padding:6px;border:1px solid var(--s-border);border-radius:4px;"
                         tal:content="p/matrix_map_json"></textarea></label>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
               Column heading aliases (JSON, e.g. {"CAS_NO": "CAS Number"})
-              <textarea name="aliases_json" rows="4" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+              <textarea name="aliases_json" rows="4" style="font-family: var(--font-mono);font-size:var(--fs-xs);padding:6px;border:1px solid var(--s-border);border-radius:4px;"
                         tal:content="p/aliases_json"></textarea></label>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">Display name
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">Display name
               <input type="text" name="name" tal:attributes="value p/name"
                      style="padding:6px;border:1px solid var(--s-border);border-radius:4px;"/></label>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">State code (e.g. ME, NH)
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">State code (e.g. ME, NH)
               <input type="text" name="state" tal:attributes="value p/state"
                      style="padding:6px;border:1px solid var(--s-border);border-radius:4px;width:120px;"/></label>
           </div>
@@ -657,25 +650,25 @@
 
         <!-- D63: state vocabulary — this state program's own translations -->
         <div style="border-top:1px solid var(--s-border);margin-top:14px;padding-top:12px;">
-          <div style="font-size:12px;font-weight:700;margin-bottom:2px;">State vocabulary</div>
-          <p style="font-size:11px;color:var(--s-secondary);max-width:760px;margin:0 0 10px;">
+          <div style="font-size:var(--fs-sm);font-weight:700;margin-bottom:2px;">State vocabulary</div>
+          <p style="font-size:var(--fs-xs);color:var(--s-secondary);max-width:760px;margin:0 0 10px;">
             How this state program names things. Real CAS stays single-sourced from
             the analyte library; <code>code_override</code> is only where the state
             uses its own code (e.g. Maine <code>DEP18026</code>) instead of CAS.
           </p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
               Qualifier map (JSON list: our_qualifier &#8594; egad_code)
-              <textarea name="qualifier_map_json" rows="8" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+              <textarea name="qualifier_map_json" rows="8" style="font-family: var(--font-mono);font-size:var(--fs-xs);padding:6px;border:1px solid var(--s-border);border-radius:4px;"
                         tal:content="p/qualifier_map_json"></textarea></label>
-            <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
               QC-type map (JSON list: our_qc_type &#8594; egad_code)
-              <textarea name="qc_type_map_json" rows="8" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+              <textarea name="qc_type_map_json" rows="8" style="font-family: var(--font-mono);font-size:var(--fs-xs);padding:6px;border:1px solid var(--s-border);border-radius:4px;"
                         tal:content="p/qc_type_map_json"></textarea></label>
           </div>
-          <label style="font-size:11px;color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">
+          <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;margin-top:10px;">
             Analyte naming (JSON: keyword &#8594; {parameter_name, code_override, note})
-            <textarea name="analyte_naming_json" rows="10" style="font-family:monospace;font-size:11px;padding:6px;border:1px solid var(--s-border);border-radius:4px;"
+            <textarea name="analyte_naming_json" rows="10" style="font-family: var(--font-mono);font-size:var(--fs-xs);padding:6px;border:1px solid var(--s-border);border-radius:4px;"
                       tal:content="p/analyte_naming_json"></textarea></label>
         </div>
 
@@ -684,6 +677,7 @@
     </details>
   </div>
 </div>
+</div><!-- /pane-profiles -->
 </div><!-- content -->
 
 
@@ -695,7 +689,7 @@ var EGAD_QCT_CODES  = <tal:q tal:replace="structure python:__import__('json').du
 window.PORTAL_URL   = '${view/portal_url}';
 
 /* ── Tab switching with URL-hash persistence ─────────────────────────── */
-var _VALID_TABS = ['lab','methods','cas','qualifiers','qc_types','lookups','test_edd'];
+var _VALID_TABS = ['lab','methods','cas','qualifiers','qc_types','lookups','test_edd','profiles'];
 function switchTab(name) {
   if (_VALID_TABS.indexOf(name) === -1) name = 'lab';
   document.querySelectorAll('.egad-tab').forEach(function(el){el.classList.remove('active');});
@@ -863,11 +857,11 @@ function runEddPreview() {
       var html =
         '<div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:8px;">' +
         '<span style="font-weight:700; color:' + statusColor + ';">' + escHtml(statusText) + CLOSE_SPAN +
-        '<span style="color:var(--s-secondary); font-size:12px;">Rows: ' + data.row_count +
+        '<span style="color:var(--s-secondary); font-size:var(--fs-sm);">Rows: ' + data.row_count +
         ' | File: ' + escHtml(data.filename || '—') + CLOSE_SPAN +
         CLOSE_DIV;
       if (data.validation_report) {
-        html += '<pre style="font-size:11px; white-space:pre-wrap; background:var(--s-bg); ' +
+        html += '<pre style="font-size:var(--fs-xs); white-space:pre-wrap; background:var(--s-bg); ' +
                 'padding:10px; border-radius:4px; border:1px solid var(--s-border); ' +
                 'max-height:320px; overflow-y:auto;">' +
                 escHtml(data.validation_report) + CLOSE_PRE;

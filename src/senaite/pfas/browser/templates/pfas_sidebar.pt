@@ -21,7 +21,7 @@
   /* Fixed line-height: without it each host page decided the row pitch
      (34px on core pages at line-height 1.5, 29px on PFAS pages), GAPS §49. */
   line-height: 16px;
-  font-size: 13px;
+  font-size: var(--fs-sm);   /* nav: 13px keeps every label on one line */
   min-width: 220px;
   max-width: 220px;
   background: #f8f9fa;
@@ -67,7 +67,7 @@
   cursor: pointer;
   text-align: left;
   color: #6c757d;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .07em;
@@ -76,7 +76,7 @@
 .pfas-sg-head:hover { color: #343a40; }
 .pfas-sg-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .pfas-sg-arrow {
-  font-size: 10px;
+  font-size: var(--fs-xs);
   transition: transform .15s;
   display: inline-block;
   color: #adb5bd;
@@ -112,7 +112,7 @@
 .pfas-si:hover .pfas-pin-btn, .pfas-pin-btn:focus { opacity: 1; }
 .pfas-pin-btn:hover { background: #e9ecef; color: #293333; }
 .pfas-sb-scroll .pfas-pin-btn.is-pinned { opacity: .7; color: #428aaf; }
-.pfas-si-pinned .pfas-pin-btn { font-size: 15px; line-height: 1; }
+.pfas-si-pinned .pfas-pin-btn { font-size: var(--fs-md); line-height: 1; }
 #pfas-shell.panel-collapsed .pfas-pin-btn,
 #sidebar.pfas-sidebar.toggled .pfas-pin-btn { display: none; }
 
@@ -123,7 +123,7 @@
   padding: 7px 12px 7px 16px;
   color: #495057;
   text-decoration: none;
-  font-size: 13px;
+  font-size: var(--fs-sm);   /* nav: 13px keeps every label on one line */
   border-left: 3px solid transparent;
   overflow: hidden;
   transition: color .1s, background .1s;
@@ -178,7 +178,7 @@
   padding: 10px 12px 10px 16px;
   color: #495057;
   text-decoration: none;
-  font-size: 13px;
+  font-size: var(--fs-sm);   /* nav: 13px keeps every label on one line */
   font-weight: 600;
   border-left: 3px solid transparent;
 }
@@ -216,7 +216,7 @@ body:not(.pfas-app) #senaite-toolbar .collapse {
   justify-content: flex-end !important;
 }
 body:not(.pfas-app) .navbar-brand {
-  font-size: 17px;
+  font-size: var(--fs-lg);
   font-weight: 600;
   color: #fff !important;
   letter-spacing: -.01em;
@@ -236,7 +236,7 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-toggle {
 }
 body:not(.pfas-app) #senaite-toolbar .nav-link i.fas,
 body:not(.pfas-app) #senaite-toolbar .dropdown-toggle i.fas {
-  font-size: 18px !important;
+  font-size: var(--fs-xl) !important;
 }
 body:not(.pfas-app) #senaite-toolbar .navbar-nav { gap: 0 !important; }
 body:not(.pfas-app) #senaite-toolbar .nav-link:hover,
@@ -256,7 +256,7 @@ body:not(.pfas-app) .pfas-core-toggle {
   outline: none; color: rgba(255,255,255,.7); cursor: pointer;
   width: 48px; height: 52px;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0; padding: 0;
+  font-size: var(--fs-xl); flex-shrink: 0; padding: 0;
   transition: color .12s, background .12s;
 }
 body:not(.pfas-app) .pfas-core-toggle:hover {
@@ -297,7 +297,7 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   border: none;
   cursor: pointer;
   color: #adb5bd;
-  font-size: 15px;
+  font-size: var(--fs-md);
   transition: color .1s;
 }
 .pfas-sb-collapse-btn:hover { color: #6c757d; }
@@ -378,7 +378,7 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     min-width: 0 !important;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 14px !important;
+    font-size: var(--fs-base) !important;
     margin: 0 4px !important;
   }
   /* Bootstrap mobile sets navbar-nav to column — override so icons stay in one row */
@@ -1224,7 +1224,7 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     }
     var name = clean[0] || 'LIMS';
     brand.textContent = name;
-    brand.style.cssText = 'color:#fff;font-size:16px;font-weight:600;letter-spacing:-.01em;white-space:nowrap';
+    brand.style.cssText = 'color:#fff;font-size:var(--fs-lg);font-weight:600;letter-spacing:-.01em;white-space:nowrap';
   }
 
   function injectSidebarToggle() {

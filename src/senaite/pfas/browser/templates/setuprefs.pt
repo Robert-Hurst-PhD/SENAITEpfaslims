@@ -12,15 +12,15 @@
                  border: 1px solid var(--s-border);
                  box-shadow: 0 1px 3px rgba(0,0,0,.06);
                  padding: 16px 20px; margin-bottom: 18px; }
-    .info-card h2 { font-size: 14px; font-weight: 700; margin-bottom: 10px;
+    .info-card h2 { font-size: var(--fs-base); font-weight: 700; margin-bottom: 10px;
                     color: var(--s-primary); }
-    .info-card p  { font-size: 12px; color: var(--s-secondary); line-height: 1.6; margin-bottom: 6px; }
+    .info-card p  { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.6; margin-bottom: 6px; }
 
-    .ref-table { width: 100%; border-collapse: collapse; font-size: 12px;
+    .ref-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm);
                  background: var(--s-bg); border-radius: 6px;
                  box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
     .ref-table th { background: var(--s-dark); color: #fff; padding: 8px 12px;
-                    text-align: left; font-size: 11px; text-transform: uppercase;
+                    text-align: left; font-size: var(--fs-xs); text-transform: uppercase;
                     letter-spacing: .05em; font-weight: 700; }
     .ref-table td { padding: 8px 12px; border-bottom: 1px solid var(--s-border); }
     .ref-table tr:last-child td { border-bottom: none; }
@@ -37,9 +37,9 @@
                      border: 1px solid var(--s-border);
                      box-shadow: 0 1px 3px rgba(0,0,0,.06);
                      padding: 14px 18px; margin-bottom: 18px; }
-    .existing-list h2 { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--s-body); }
+    .existing-list h2 { font-size: var(--fs-base); font-weight: 700; margin-bottom: 8px; color: var(--s-body); }
     .existing-list ul { list-style: none; margin: 0; }
-    .existing-list li { font-size: 12px; color: var(--s-success); padding: 2px 0; }
+    .existing-list li { font-size: var(--fs-sm); color: var(--s-success); padding: 2px 0; }
     .existing-list li::before { content: "\2713  "; }
 
     .action-bar { background: var(--s-bg); border-radius: 6px;
@@ -48,10 +48,10 @@
                   padding: 16px 18px; margin-top: 20px;
                   display: flex; gap: 12px; align-items: center; }
     .btn-run { background: var(--s-primary); color: #fff; border: none; border-radius: 4px;
-               padding: 12px 32px; cursor: pointer; font-size: 14px; font-weight: 700; }
+               padding: 12px 32px; cursor: pointer; font-size: var(--fs-base); font-weight: 700; }
     .btn-run:hover { background: var(--s-primary-dk); }
     .btn-run:disabled { background: var(--s-secondary); cursor: not-allowed; }
-    .action-note { font-size: 11px; color: var(--s-secondary); line-height: 1.5; }
+    .action-note { font-size: var(--fs-xs); color: var(--s-secondary); line-height: 1.5; }
   </style>
   </tal:styles>
 </head>
@@ -64,7 +64,7 @@
   <div metal:fill-slot="content">
     <!-- Which method's acceptance limits the global Reference Definitions use -->
     <div style="border:1px solid var(--s-border,#ddd);padding:12px;margin:14px 0;">
-      <h3 style="font-size:14px;margin:0 0 6px;">Reference range source</h3>
+      <h3 style="font-size:var(--fs-base);margin:0 0 6px;">Reference range source</h3>
       <p class="form-note" style="max-width:64em;">
         Reference Definitions are <strong>global</strong> in SENAITE &#8212; one
         per QC code &#8212; while acceptance limits are per <strong>method</strong>.
@@ -130,7 +130,7 @@
             <li tal:content="t">PFAS CCV</li>
           </tal:it>
         </ul>
-        <p tal:condition="not:existing" style="font-size:12px;color:var(--s-secondary)">
+        <p tal:condition="not:existing" style="font-size:var(--fs-sm);color:var(--s-secondary)">
           None found yet &#8212; run the setup below to create them.
         </p>
       </tal:ex>

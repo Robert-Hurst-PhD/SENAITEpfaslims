@@ -76,8 +76,8 @@
 
     /* ── App shell layout ────────────────────────────────────────────────── */
     body.pfas-app {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-size: 14px;
+      font-family: var(--font-sans);
+      font-size: var(--fs-base);
       background: var(--s-light);
       color: var(--s-body);
       display: flex;
@@ -105,7 +105,7 @@
       border: none;
       border-right: 1px solid var(--pfas-rail-border);
       color: rgba(255,255,255,.65);
-      font-size: 18px;
+      font-size: var(--fs-xl);
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -115,7 +115,7 @@
     .pfas-header-toggle:hover { color: #fff; background: rgba(255,255,255,.06); }
     .pfas-header-title {
       flex: 1;
-      font-size: 17px;
+      font-size: var(--fs-lg);
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
@@ -129,7 +129,7 @@
     }
     .pfas-header-right a {
       color: rgba(255,255,255,.65);
-      font-size: 12px;
+      font-size: var(--fs-sm);
       text-decoration: none;
       white-space: nowrap;
     }
@@ -149,18 +149,18 @@
 
     /* Context badge */
     .header-badge {
-      font-family: monospace;
-      font-size: 12px;
+      font-family: var(--font-mono);
+      font-size: var(--fs-sm);
       background: rgba(255,255,255,.15);
       padding: 3px 9px;
       border-radius: 4px;
     }
-    .header-meta { font-size: 12px; color: rgba(255,255,255,.70); }
+    .header-meta { font-size: var(--fs-sm); color: rgba(255,255,255,.70); }
     .header-meta code {
       background: rgba(255,255,255,.12);
       padding: 1px 5px;
       border-radius: 3px;
-      font-size: 11px;
+      font-size: var(--fs-xs);
     }
 
     /* ── Shell: left panel + main ────────────────────────────────────────── */
@@ -203,7 +203,7 @@
       background: none; border: 0; font-family: inherit;   /* also for <button> tabs */
       display: inline-block;
       padding: 10px 16px;
-      font-size: 13px;
+      font-size: var(--fs-base);
       font-weight: 600;
       color: var(--s-secondary);
       text-decoration: none;
@@ -218,6 +218,9 @@
     .pfas-content-area .pfas-tabs { padding: 0; background: none;
                                     margin-bottom: var(--sp-5); }
     .pfas-tab:hover { color: var(--s-body); text-decoration: none; }
+    .pfas-tab-count { font-weight: 400; color: var(--s-secondary); margin-left: 4px; }
+    .pfas-tab-flag  { color: var(--s-danger); margin-left: 4px; }
+    @media print { .pfas-pane[hidden] { display: block !important; } }   /* print every pane */
     .pfas-tab.active { color: var(--s-primary); border-bottom-color: var(--s-primary); }
 
     /* ── Stable content area (scrollable) ────────────────────────────────── */
@@ -256,7 +259,7 @@
       flex-wrap: wrap;
       gap: 16px;
       align-items: center;
-      font-size: 11px;
+      font-size: var(--fs-xs);
       color: var(--s-secondary);
     }
     .pane-footer .pf-role {
@@ -268,11 +271,11 @@
       text-transform: uppercase;
       letter-spacing: .04em;
     }
-    .pane-footer .pf-path { font-family: monospace; font-size: 11px; }
+    .pane-footer .pf-path { font-family: var(--font-mono); font-size: var(--fs-xs); }
 
     /* ── Role badge in header-right ─────────────────────────────────────── */
     .role-badge {
-      font-size: 11px;
+      font-size: var(--fs-xs);
       font-weight: 700;
       background: rgba(255,255,255,.15);
       color: rgba(255,255,255,.90);
@@ -321,7 +324,7 @@
     summary, .pfas-card-head {
       padding: 11px 16px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: var(--fs-base);
       font-weight: 600;
       background: var(--s-light);
       border-radius: 6px;
@@ -334,7 +337,7 @@
     details[open] summary { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); }
     .pfas-card-head { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); cursor: default; }
     summary::-webkit-details-marker { display: none; }
-    summary::before { content: "\25B6"; font-size: 10px; transition: transform .15s; color: var(--s-secondary); }
+    summary::before { content: "\25B6"; font-size: var(--fs-xs); transition: transform .15s; color: var(--s-secondary); }
     details[open] summary::before { transform: rotate(90deg); }
     .section-body, .pfas-card-body { padding: 16px; }
 
@@ -346,7 +349,7 @@
     }
     .field-row { display: flex; flex-direction: column; }
     .field-row label {
-      font-size: 11px;
+      font-size: var(--fs-xs);
       color: var(--s-secondary);
       margin-bottom: 4px;
       font-weight: 700;
@@ -361,7 +364,7 @@
       padding: 7px 9px;
       border: 1px solid var(--s-input-border);
       border-radius: 4px;
-      font-size: 13px;
+      font-size: var(--fs-base);
       background: #fafafa;
       color: var(--s-input-text);
       width: 100%;
@@ -371,7 +374,7 @@
       border-color: var(--s-primary);
       box-shadow: 0 0 0 3px var(--s-focus-ring);
     }
-    .field-row .hint { font-size: 10px; color: var(--s-secondary); margin-top: 3px; }
+    .field-row .hint { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: 3px; }
 
     /* ── Consistent text-field baseline (define once, §7) ─────────────────────
        Every text/number/date/email input, <select> and <textarea> in the
@@ -420,7 +423,7 @@
     /* ── Checkboxes ──────────────────────────────────────────────────────── */
     .check-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
     .check-row label {
-      font-size: 13px; color: var(--s-body); font-weight: normal;
+      font-size: var(--fs-base); color: var(--s-body); font-weight: normal;
       text-transform: none; letter-spacing: normal;
     }
     .check-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
@@ -441,11 +444,11 @@
     .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
 
     /* ── Tables ──────────────────────────────────────────────────────────── */
-    .pfas-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .pfas-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
     .pfas-table th {
       background: var(--s-light);
       color: var(--s-secondary);
-      font-size: 11px;
+      font-size: var(--fs-xs);
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: .04em;
@@ -484,9 +487,9 @@
       text-decoration: none;
       color: var(--s-body);
     }
-    .pfas-ws-card-icon { font-size: 22px; color: var(--s-primary); line-height: 1; }
-    .pfas-ws-card-title { font-size: 15px; font-weight: 600; }
-    .pfas-ws-card-desc  { font-size: 12px; color: var(--s-secondary); line-height: 1.4; }
+    .pfas-ws-card-icon { font-size: var(--fs-xl); color: var(--s-primary); line-height: 1; }
+    .pfas-ws-card-title { font-size: var(--fs-md); font-weight: 600; }
+    .pfas-ws-card-desc  { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.4; }
 
     /* ── Buttons ─────────────────────────────────────────────────────────── */
     /* ── Buttons: ONE set (GAPS §49, Phase 2) ───────────────────────────
@@ -544,7 +547,7 @@
 
     /* ── Generic status badges ──────────────────────────────────────────── */
     .badge {
-      display: inline-block; font-size: 10px; font-weight: 700;
+      display: inline-block; font-size: var(--fs-xs); font-weight: 700;
       padding: 2px 8px; border-radius: 10px; white-space: nowrap;
       text-transform: uppercase; letter-spacing: .03em;
     }
@@ -564,11 +567,11 @@
 
     /* ── Mono badges ─────────────────────────────────────────────────────── */
     .mono-badge {
-      font-family: monospace; font-size: 12px; color: var(--s-primary);
+      font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--s-primary);
       background: var(--s-primary-lt); padding: 2px 7px; border-radius: 3px;
     }
     .status-badge {
-      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      font-size: var(--fs-xs); padding: 2px 8px; border-radius: 10px;
       font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     }
     .status-ok   { background: #d4edda; color: #155724; }
@@ -578,7 +581,7 @@
     /* ── Logbook breadcrumb ──────────────────────────────────────────────── */
     .lb-breadcrumb {
       display: flex; align-items: center; gap: 6px;
-      font-size: 11px; color: var(--s-secondary);
+      font-size: var(--fs-xs); color: var(--s-secondary);
       padding: 8px 0 16px 0;
     }
     .lb-breadcrumb a { color: var(--s-secondary); text-decoration: none; }
@@ -590,7 +593,7 @@
     .btn-print-preview {
       padding: 9px 18px; background: #f8f9fa; color: var(--s-secondary);
       border: 1px solid var(--s-border); border-radius: 7px;
-      font-size: 13px; font-weight: 600; cursor: pointer;
+      font-size: var(--fs-base); font-weight: 600; cursor: pointer;
     }
     .btn-print-preview:hover { background: #e9ecef; }
 
@@ -598,7 +601,7 @@
     @media (max-width: 768px) {
       /* Header: compact — hide plain back-links, keep role badge + context nav */
       .pfas-header { padding: 0 8px 0 0; min-height: 44px; }
-      .pfas-header-title { font-size: 13px; }
+      .pfas-header-title { font-size: var(--fs-base); }
       .pfas-header-right { gap: 6px; }
       .pfas-header-right .back-link { display: none; }
       .pfas-header-right .header-meta { display: none; }
@@ -672,7 +675,7 @@
 
       /* Tabs: scrollable, compact */
       .pfas-tabs { padding: 0 6px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-      .pfas-tab { padding: 8px 10px; font-size: 12px; }
+      .pfas-tab { padding: 8px 10px; font-size: var(--fs-sm); }
 
       /* Pane footer: stack vertically */
       .pane-footer { flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -688,22 +691,22 @@
     /* ── shared stepper (guided logbooks; reusable by any multi-step page) ── */
     .pfas-stepper { display:flex; flex-direction:column; gap:3px; }
     .pfas-stepper-head { margin-bottom:8px; }
-    .pfas-stepper-title { font-size:12px; font-weight:700; text-transform:uppercase;
+    .pfas-stepper-title { font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
                           letter-spacing:.04em; color:var(--s-secondary); }
-    .pfas-stepper-sub { font-size:11.5px; color:var(--s-secondary); margin-top:2px; }
+    .pfas-stepper-sub { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:2px; }
     .pfas-stepper-progress { margin:4px 0 10px; }
     .pfas-stepper-bar { height:6px; border-radius:3px; background:var(--s-light);
                         overflow:hidden; border:1px solid var(--s-border); }
     .pfas-stepper-fill { height:100%; background:#2e7d32; transition:width .2s; }
-    .pfas-stepper-pct { font-size:10.5px; color:var(--s-secondary); margin-top:3px; }
+    .pfas-stepper-pct { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:3px; }
     .pfas-step-item { display:flex; align-items:center; gap:9px; padding:8px 10px;
                       border-radius:6px; text-decoration:none; color:var(--s-body);
-                      font-size:12.5px; border:1px solid transparent; }
+                      font-size:var(--fs-sm); border:1px solid transparent; }
     a.pfas-step-item:hover { background:var(--s-primary-lt); }
     .pfas-step-item.is-current { background:var(--s-bg); border-color:var(--s-border);
                                  font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.06); }
     .pfas-step-num { flex:0 0 22px; height:22px; border-radius:50%; display:flex;
-                     align-items:center; justify-content:center; font-size:11px;
+                     align-items:center; justify-content:center; font-size:var(--fs-xs);
                      font-weight:700; border:1px solid var(--s-border);
                      background:var(--s-bg); color:var(--s-secondary); }
     .pfas-step-num.status-done { background:#2e7d32; border-color:#2e7d32; color:#fff; }
@@ -714,9 +717,9 @@
     .pfas-signoff { margin: 22px 0 6px; border: 1px solid var(--s-border, #ccc);
       border-radius: 6px; padding: 12px 14px; background: #fcfcfd;
       page-break-inside: avoid; }
-    .pfas-signoff-title { font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    .pfas-signoff-title { font-size: var(--fs-sm); font-weight: 700; letter-spacing: .04em;
       text-transform: uppercase; color: #444; margin-bottom: 8px; }
-    .pfas-signoff-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .pfas-signoff-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .pfas-signoff-tbl td { padding: 10px 8px; vertical-align: bottom;
       border-top: 1px solid #eee; }
     .pfas-signoff-tbl .so-role { width: 96px; font-weight: 600; color: #555;
@@ -727,7 +730,7 @@
     .pfas-signoff .so-stamp { max-height: 40px; max-width: 140px; }
     .pfas-signoff .so-line { display: inline-block; min-width: 90px;
       border-bottom: 1px solid #888; }
-    .pfas-signoff-foot { margin-top: 8px; font-size: 11px; color: #92400e;
+    .pfas-signoff-foot { margin-top: 8px; font-size: var(--fs-xs); color: #92400e;
       background: #fff8e1; border-left: 3px solid #f59e0b; padding: 5px 8px;
       border-radius: 3px; }
 
@@ -739,11 +742,11 @@
         border-bottom: 2px solid #000; margin: 0 0 12px; padding-bottom: 8px; }
       .pfas-ph-row  { display: flex; gap: 14px; align-items: center; }
       .pfas-ph-logo { max-height: 46px; }
-      .pfas-ph-name { font-size: 16px; font-weight: 700; color: #000; }
-      .pfas-ph-sub  { font-size: 10px; color: #333; }
-      .pfas-ph-date { margin-left: auto; font-size: 10px; color: #333; }
+      .pfas-ph-name { font-size: var(--fs-lg); font-weight: 700; color: #000; }
+      .pfas-ph-sub  { font-size: var(--fs-xs); color: #333; }
+      .pfas-ph-date { margin-left: auto; font-size: var(--fs-xs); color: #333; }
       .pfas-printfoot { display: block !important; position: fixed;
-        bottom: 0; left: 0; right: 0; font-size: 9px; color: #444;
+        bottom: 0; left: 0; right: 0; font-size: var(--fs-xs); color: #444;
         border-top: 1px solid #999; padding-top: 3px; text-align: center; }
       .pfas-header { display: none !important; }
       #sidebar.pfas-sidebar { display: none !important; }
@@ -761,32 +764,32 @@
       table { page-break-inside: auto; }
       tr { page-break-inside: avoid; }
       .lb-section h3 { border-bottom: 1px solid #999 !important; }
-      body { font-size: 11px; overflow: visible !important; height: auto !important; }
+      body { font-size: var(--fs-xs); overflow: visible !important; height: auto !important; }
     }
 
     /* ── GLP field correction model (logbooks) ── */
-    .btn-correct { background: none; border: none; color: #bbb; font-size: 10px;
+    .btn-correct { background: none; border: none; color: #bbb; font-size: var(--fs-xs);
                    cursor: pointer; padding: 0 3px; text-decoration: underline;
                    font-weight: normal; margin-left: 5px; vertical-align: middle; }
     .btn-correct:hover { color: var(--s-dark); }
     .corr-existing { display: flex; align-items: baseline; gap: 6px;
-                     flex-wrap: wrap; font-size: 12px; margin-bottom: 3px; }
+                     flex-wrap: wrap; font-size: var(--fs-sm); margin-bottom: 3px; }
     .corr-struck { text-decoration: line-through; color: #999; }
-    .corr-arrow { color: #999; font-size: 11px; }
-    .corr-meta { font-size: 10px; color: #856404; background: #fff8e1;
+    .corr-arrow { color: #999; font-size: var(--fs-xs); }
+    .corr-meta { font-size: var(--fs-xs); color: #856404; background: #fff8e1;
                  border: 1px solid #ffe082; border-radius: 3px;
                  padding: 1px 5px; white-space: nowrap; }
     .corr-panel { display: none; margin-top: 5px; padding: 7px 10px;
                   background: #fff8e1; border: 1px solid #ffc107;
                   border-radius: 6px; gap: 8px; align-items: center; flex-wrap: wrap; }
     .corr-panel.open { display: flex; }
-    .corr-panel label { font-size: 11px; color: #856404; font-weight: 600;
+    .corr-panel label { font-size: var(--fs-xs); color: #856404; font-weight: 600;
                         white-space: nowrap; margin: 0; }
-    .corr-panel input { padding: 4px 8px; font-size: 12px;
+    .corr-panel input { padding: 4px 8px; font-size: var(--fs-sm);
                         border: 1px solid #ffc107; border-radius: 4px; background: #fff; }
     .corr-initials { width: 52px !important; }
     .corr-cancel { background: none; border: none; cursor: pointer;
-                   color: #856404; font-size: 15px; line-height: 1; padding: 0 3px; }
+                   color: #856404; font-size: var(--fs-md); line-height: 1; padding: 0 3px; }
     @media print {
       .btn-correct, .corr-panel { display: none !important; }
       .has-correction > input, .has-correction > textarea,
@@ -800,16 +803,16 @@
       color: rgba(255,255,255,.65); border-radius: 4px;
       text-decoration: none; transition: color .12s, background .12s;
     }
-    .pfas-hdr-btn i.fas { font-size: 19px; }
+    .pfas-hdr-btn i.fas { font-size: var(--fs-xl); }
     .pfas-hdr-btn:hover {
       color: #fff; background: rgba(255,255,255,.1); text-decoration: none;
     }
-    .pfas-hdr-userbtn i.fas { font-size: 19px; }
+    .pfas-hdr-userbtn i.fas { font-size: var(--fs-xl); }
     .pfas-hdr-user { position: static; flex-shrink: 0; }
     .pfas-hdr-userbtn {
       display: flex; align-items: center; gap: 2px;
       background: none; border: none; padding: 4px 6px; border-radius: 4px;
-      color: rgba(255,255,255,.75); cursor: pointer; font-size: 15px;
+      color: rgba(255,255,255,.75); cursor: pointer; font-size: var(--fs-md);
       font-family: inherit; transition: color .12s, background .12s;
     }
     .pfas-hdr-userbtn:hover { color: #fff; background: rgba(255,255,255,.1); }
@@ -833,13 +836,13 @@
     .pfas-hdr-userdrop a.pfas-hdr-useritem {
       display: flex; align-items: center; gap: 8px;
       padding: 0.35rem 1.25rem; color: #212529;
-      text-decoration: none; font-size: 14px; white-space: nowrap;
+      text-decoration: none; font-size: var(--fs-base); white-space: nowrap;
       transition: background .1s;
     }
     .pfas-hdr-userdrop a.pfas-hdr-useritem:hover {
       background: #f8f9fa; color: #1a1e21; text-decoration: none;
     }
-    .pfas-hdr-userdrop a.pfas-hdr-useritem i.fas { color: #6c757d; font-size: 13px; width: 14px; }
+    .pfas-hdr-userdrop a.pfas-hdr-useritem i.fas { color: #6c757d; font-size: var(--fs-base); width: 14px; }
     .pfas-hdr-userdrop a.pfas-hdr-logout { color: #dc3545; }
     .pfas-hdr-userdrop a.pfas-hdr-logout:hover { background: #f8d7da; color: #a71d2a; }
     .pfas-hdr-userdrop a.pfas-hdr-logout i.fas { color: #dc3545; }
@@ -1144,6 +1147,44 @@
 
   </div><!-- /pfas-main -->
 </div><!-- /pfas-shell -->
+
+<script>
+/* Shared tabs (CLAUDE.md §6B): a strip marked data-tabs switches the panes its
+   tabs name in data-pane. The open tab is kept in the URL hash, so a reload or
+   a shared link opens the same tab. Define once; pages only write markup:
+     <div class="pfas-tabs" data-tabs>
+       <a class="pfas-tab active" data-pane="p1" href="#p1">One</a> ...
+     </div>
+     <div class="pfas-pane" id="p1">...</div>                                */
+(function () {
+  var strips = document.querySelectorAll('.pfas-tabs[data-tabs]');
+  Array.prototype.forEach.call(strips, function (strip) {
+    var tabs = Array.prototype.slice.call(strip.querySelectorAll('.pfas-tab[data-pane]'));
+    if (!tabs.length) return;
+    function show(id, remember) {
+      tabs.forEach(function (t) {
+        var on = t.getAttribute('data-pane') === id;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        var pane = document.getElementById(t.getAttribute('data-pane'));
+        if (pane) pane.hidden = !on;
+      });
+      if (remember && window.history && history.replaceState) history.replaceState(null, '', '#' + id);
+    }
+    tabs.forEach(function (t) {
+      t.setAttribute('role', 'tab');
+      t.addEventListener('click', function (ev) { ev.preventDefault(); show(t.getAttribute('data-pane'), true); });
+    });
+    var wanted = location.hash.slice(1), initial = null;
+    tabs.forEach(function (t) { if (t.getAttribute('data-pane') === wanted) initial = wanted; });
+    if (!initial) {
+      var act = strip.querySelector('.pfas-tab.active') || tabs[0];
+      initial = act.getAttribute('data-pane');
+    }
+    show(initial, false);
+  });
+})();
+</script>
 
 <script>
 /* Breadcrumb: sidebar group > page. A page beneath a listed item (a

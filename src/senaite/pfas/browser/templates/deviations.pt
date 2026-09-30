@@ -11,7 +11,7 @@
     .dev-page { padding: 0 0 40px; }   /* gutter comes from .pfas-content-area */
     .dev-filter-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px;
                       align-items:center; }
-    .dev-filter-btn { padding:5px 14px; border-radius:20px; font-size:12px;
+    .dev-filter-btn { padding:5px 14px; border-radius:20px; font-size:var(--fs-sm);
                       border:1px solid var(--s-border); background:#fff;
                       cursor:pointer; color:var(--s-body); text-decoration:none; }
     .dev-filter-btn:hover { background:var(--s-primary-lt); }
@@ -20,17 +20,17 @@
     .dev-filter-sep { width:1px; height:20px; background:var(--s-border);
                       margin:0 4px; }
     /* ── List table ─────────────────────────────────────────── */
-    .dev-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .dev-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
     .dev-table th { background:var(--s-light); font-weight:700;
                     padding:8px 12px; text-align:left;
                     border-bottom:2px solid var(--s-border);
                     color:var(--s-secondary); text-transform:uppercase;
-                    font-size:11px; letter-spacing:.04em; }
+                    font-size:var(--fs-xs); letter-spacing:.04em; }
     .dev-table td { padding:9px 12px; border-bottom:1px solid var(--s-border);
                     vertical-align:middle; }
     .dev-table tr:hover td { background:var(--s-primary-lt); }
     .dev-empty { text-align:center; padding:40px; color:var(--s-secondary);
-                 font-size:13px; }
+                 font-size:var(--fs-base); }
     /* ── Badges (page-specific — base .badge is global) ─────── */
     .badge-deviation  { background:#e8f0fe; color:#1a56db; }
     .badge-car        { background:#fce8ff; color:#6b21a8; }
@@ -42,34 +42,34 @@
     .risk-orange { background:#ffe8d6; color:#743e12; }
     .risk-red    { background:#f8d7da; color:#721c24; }
     /* ── Detail view ────────────────────────────────────────── */
-    .dev-breadcrumb { font-size:12px; color:var(--s-secondary);
+    .dev-breadcrumb { font-size:var(--fs-sm); color:var(--s-secondary);
                       margin-bottom:14px; }
     .dev-breadcrumb a { color:var(--s-primary); text-decoration:none; }
     .dev-detail-header { display:flex; align-items:center; gap:10px;
                          margin-bottom:18px; flex-wrap:wrap; }
-    .dev-detail-id { font-size:18px; font-weight:700; color:var(--s-body); }
-    .dev-filed-meta { font-size:12px; color:var(--s-secondary); margin-left:auto; }
+    .dev-detail-id { font-size:var(--fs-xl); font-weight:700; color:var(--s-body); }
+    .dev-filed-meta { font-size:var(--fs-sm); color:var(--s-secondary); margin-left:auto; }
     /* ── Tabs ────────────────────────────────────────────────── */
     .dev-tabs { display:flex; gap:0; border-bottom:2px solid var(--s-border);
                 margin-bottom:20px; }
-    .dev-tab { padding:9px 18px; font-size:13px; font-weight:600; cursor:pointer;
+    .dev-tab { padding:9px 18px; font-size:var(--fs-base); font-weight:600; cursor:pointer;
                text-decoration:none; color:var(--s-secondary);
                border-bottom:2px solid transparent; margin-bottom:-2px; }
     .dev-tab:hover { color:var(--s-primary); }
     .dev-tab.active { color:var(--s-primary);
                       border-bottom-color:var(--s-primary); }
     /* ── Tab content ─────────────────────────────────────────── */
-    .dev-section-label { font-size:11px; font-weight:700; text-transform:uppercase;
+    .dev-section-label { font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
                          letter-spacing:.08em; color:var(--s-secondary);
                          margin-bottom:4px; margin-top:16px; }
-    .dev-section-value { font-size:13px; color:var(--s-body);
+    .dev-section-value { font-size:var(--fs-base); color:var(--s-body);
                          margin-bottom:12px; white-space:pre-wrap; }
     .dev-form-group { margin-bottom:14px; }
-    .dev-form-group label { display:block; font-size:12px; font-weight:600;
+    .dev-form-group label { display:block; font-size:var(--fs-sm); font-weight:600;
                             color:var(--s-secondary); margin-bottom:4px; }
     .dev-form-group input, .dev-form-group textarea, .dev-form-group select {
       width:100%; padding:7px 10px; border:1px solid var(--s-input-border);
-      border-radius:4px; font-size:13px; color:var(--s-input-text);
+      border-radius:4px; font-size:var(--fs-base); color:var(--s-input-text);
       background:#fafafa; box-sizing:border-box; }
     .dev-form-group input:focus, .dev-form-group textarea:focus,
     .dev-form-group select:focus { outline:none; border-color:var(--s-primary);
@@ -79,9 +79,9 @@
     .risk-matrix-wrap { overflow-x:auto; margin:16px 0; }
     .risk-matrix { border-collapse:collapse; }
     .risk-matrix td, .risk-matrix th {
-      width:56px; height:44px; text-align:center; font-size:12px;
+      width:56px; height:44px; text-align:center; font-size:var(--fs-sm);
       border:1px solid #fff; cursor:default; }
-    .risk-matrix .rm-axis { background:var(--s-light); font-size:10px; font-weight:700;
+    .risk-matrix .rm-axis { background:var(--s-light); font-size:var(--fs-xs); font-weight:700;
                              color:var(--s-secondary); cursor:default; }
     .rm-cell { font-weight:700; transition:outline .1s; }
     .rm-cell.clickable { cursor:pointer; }
@@ -92,17 +92,17 @@
     .rm-cell.risk-orange { background:#fd7e14; color:#fff; }
     .rm-cell.risk-red    { background:#dc3545; color:#fff; }
     .risk-score-display { display:inline-block; padding:5px 14px; border-radius:6px;
-                          font-weight:700; font-size:13px; margin-top:8px; }
+                          font-weight:700; font-size:var(--fs-base); margin-top:8px; }
     /* ── Corrective actions ──────────────────────────────────── */
     .ca-card { border:1px solid var(--s-border); border-radius:6px;
                padding:14px 16px; margin-bottom:12px; }
     .ca-card-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-    .ca-type-label { font-size:11px; font-weight:700; text-transform:uppercase;
+    .ca-type-label { font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
                      letter-spacing:.06em; padding:2px 8px; border-radius:10px; }
     .ca-sop_revision  { background:#e8f0fe; color:#1a56db; }
     .ca-training      { background:#fce8ff; color:#6b21a8; }
     .ca-notification  { background:#fff3cd; color:#856404; }
-    .ca-ack-list { margin:8px 0; font-size:12px; }
+    .ca-ack-list { margin:8px 0; font-size:var(--fs-sm); }
     .ca-ack-item { display:flex; align-items:center; gap:6px; padding:2px 0; }
     .ca-ack-check { color:var(--s-success); font-weight:700; }
     .ca-ack-pend  { color:var(--s-secondary); }
@@ -111,7 +111,7 @@
                       padding:16px; margin-top:16px; }
     .ca-type-options { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
     .ca-type-opt { padding:6px 14px; border:1px solid var(--s-border);
-                   border-radius:20px; font-size:12px; cursor:pointer;
+                   border-radius:20px; font-size:var(--fs-sm); cursor:pointer;
                    background:#fff; color:var(--s-body); }
     .ca-type-opt.selected { background:var(--s-primary); color:#fff;
                             border-color:var(--s-primary); }
@@ -123,16 +123,16 @@
     .dev-modal { background:#fff; border-radius:8px; padding:24px;
                  max-width:640px; width:100%; max-height:90vh;
                  overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,.18); }
-    .dev-modal-title { font-size:16px; font-weight:700; margin-bottom:16px;
+    .dev-modal-title { font-size:var(--fs-lg); font-weight:700; margin-bottom:16px;
                        color:var(--s-body); }
     .dev-modal-footer { display:flex; justify-content:flex-end; gap:8px;
                         margin-top:16px; padding-top:16px;
                         border-top:1px solid var(--s-border); }
     /* ── Closure ─────────────────────────────────────────────── */
-    .closure-check { display:flex; align-items:center; gap:8px; font-size:13px;
+    .closure-check { display:flex; align-items:center; gap:8px; font-size:var(--fs-base);
                      padding:6px 0; }
-    .closure-check .icon-ok  { color:var(--s-success); font-size:16px; }
-    .closure-check .icon-nok { color:var(--s-danger); font-size:16px; }
+    .closure-check .icon-ok  { color:var(--s-success); font-size:var(--fs-lg); }
+    .closure-check .icon-nok { color:var(--s-danger); font-size:var(--fs-lg); }
   </style>
   </metal:extra>
 </head>
@@ -246,7 +246,7 @@
             <div class="risk-matrix-wrap">
               <table class="risk-matrix">
                 <tr>
-                  <td class="rm-axis" style="font-size:9px">L\S</td>
+                  <td class="rm-axis" style="font-size:var(--fs-xs)">L\S</td>
                   <td class="rm-axis">S=1</td>
                   <td class="rm-axis">S=2</td>
                   <td class="rm-axis">S=3</td>
@@ -297,7 +297,7 @@
               <div class="risk-matrix-wrap">
                 <table class="risk-matrix" id="detail-risk-matrix">
                   <tr>
-                    <td class="rm-axis" style="font-size:9px">L\S</td>
+                    <td class="rm-axis" style="font-size:var(--fs-xs)">L\S</td>
                     <td class="rm-axis">S=1</td><td class="rm-axis">S=2</td>
                     <td class="rm-axis">S=3</td><td class="rm-axis">S=4</td>
                     <td class="rm-axis">S=5</td>
@@ -344,10 +344,10 @@
               <!-- Method selector drives the worksheet lookup (not a saved field) -->
               <div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-end">
                 <div style="flex:1">
-                  <div style="font-size:11px;color:#888;margin-bottom:3px">Method</div>
+                  <div style="font-size:var(--fs-xs);color:#888;margin-bottom:3px">Method</div>
                   <select id="ws_lookup_method"
                           style="width:100%;padding:5px 8px;border:1px solid #ccc;
-                                 border-radius:4px;font-size:13px">
+                                 border-radius:4px;font-size:var(--fs-base)">
                     <option value="">&#8212; select method &#8212;</option>
                     <tal:m tal:repeat="m view/available_methods">
                       <option tal:attributes="value m/id"
@@ -361,7 +361,7 @@
                 </button>
               </div>
               <!-- Results rendered by JS -->
-              <div id="ws_results" style="margin-bottom:8px;font-size:12px"></div>
+              <div id="ws_results" style="margin-bottom:8px;font-size:var(--fs-sm)"></div>
               <!-- Actual saved field — auto-populated from checklist or manual -->
               <textarea name="affected_worksheets" id="ws_textarea" rows="2"
                         placeholder="IDs appear here automatically, or enter manually..."
@@ -430,13 +430,13 @@
                 <tal:v tal:replace="python:'Complete' if castatus == 'complete' else 'Pending'"/>
               </span>
             </div>
-            <div style="font-size:13px;color:var(--s-body);margin-bottom:10px"
+            <div style="font-size:var(--fs-base);color:var(--s-body);margin-bottom:10px"
                  tal:content="ca/description"/>
 
             <!-- SOP Revision CA -->
             <tal:ca_sop tal:condition="python:ca.get('type') == 'sop_revision'">
               <tal:sop_id tal:condition="ca/sop_id">
-                <div style="font-size:12px;color:#666;margin-bottom:8px">
+                <div style="font-size:var(--fs-sm);color:#666;margin-bottom:8px">
                   SOP: <strong tal:content="ca/sop_id"/>
                   <tal:rev tal:condition="ca/new_rev_num">
                     — Rev <tal:v tal:replace="ca/new_rev_num"/>
@@ -457,7 +457,7 @@
             <!-- Training CA -->
             <tal:ca_training tal:condition="python:ca.get('type') == 'training'">
               <div class="ca-ack-list">
-                <div style="font-size:11px;font-weight:700;color:#888;
+                <div style="font-size:var(--fs-xs);font-weight:700;color:#888;
                             text-transform:uppercase;margin-bottom:4px">
                   Required Acknowledgments
                 </div>
@@ -471,7 +471,7 @@
                     </span>
                     <span tal:content="uid"/>
                     <tal:acked tal:condition="is_acked">
-                      <span style="color:#aaa;font-size:11px">
+                      <span style="color:#aaa;font-size:var(--fs-xs)">
                         (<tal:v tal:replace="python:acks[uid].get('acked_at','')[:10]"/>)
                       </span>
                     </tal:acked>
@@ -509,7 +509,7 @@
 
             <!-- Notification CA -->
             <tal:ca_notif tal:condition="python:ca.get('type') == 'notification'">
-              <div style="font-size:12px;margin-bottom:8px">
+              <div style="font-size:var(--fs-sm);margin-bottom:8px">
                 <strong>Subtype:</strong>
                 <span tal:replace="python:'Retest Offer' if ca.get('subtype') == 'retest' else 'Impact Notification'"/>
                 &nbsp;&bull;&nbsp;
@@ -520,7 +520,7 @@
                 </tal:ws>
               </div>
               <tal:notif_text tal:condition="ca/notification_text">
-                <div style="font-size:12px;color:#555;background:#f8f8f8;
+                <div style="font-size:var(--fs-sm);color:#555;background:#f8f8f8;
                             padding:8px;border-radius:4px;white-space:pre-wrap;
                             margin-bottom:8px"
                      tal:content="ca/notification_text"/>
@@ -556,7 +556,7 @@
                   </form>
                 </tal:mark_sent>
                 <tal:sent_at tal:condition="ca/sent_at">
-                  <span style="font-size:11px;color:#888">
+                  <span style="font-size:var(--fs-xs);color:#888">
                     Sent <tal:v tal:replace="python:ca.get('sent_at','')[:10]"/>
                   </span>
                 </tal:sent_at>
@@ -564,7 +564,7 @@
             </tal:ca_notif>
 
             <tal:completed_info tal:condition="python:ca.get('completed_at')">
-              <div style="font-size:11px;color:#aaa;margin-top:8px">
+              <div style="font-size:var(--fs-xs);color:#aaa;margin-top:8px">
                 Completed <tal:v tal:replace="python:ca.get('completed_at','')[:10]"/>
                 by <tal:v tal:replace="python:ca.get('completed_by','')"/>
               </div>
@@ -575,7 +575,7 @@
         <!-- Add CA form (manager, non-closed) -->
         <tal:add_ca_section tal:condition="python:view.can_manage() and dev.get('status') != 'closed'">
           <div class="ca-add-section">
-            <div style="font-size:13px;font-weight:700;color:var(--s-body);
+            <div style="font-size:var(--fs-base);font-weight:700;color:var(--s-body);
                         margin-bottom:12px">+ Add Corrective Action</div>
             <form method="post" id="add-ca-form"
                   tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
@@ -668,7 +668,7 @@
         <tal:not_closed tal:condition="python:dev.get('status') != 'closed'">
           <!-- CA completion checklist -->
           <div style="margin-bottom:20px">
-            <div style="font-size:13px;font-weight:700;color:var(--s-body);
+            <div style="font-size:var(--fs-base);font-weight:700;color:var(--s-body);
                         margin-bottom:10px">Corrective Action Status</div>
             <tal:no_cas tal:condition="python:not dev.get('corrective_actions')">
               <div class="closure-check">
@@ -704,7 +704,7 @@
                 Close <tal:v tal:replace="python:dev.get('type','').upper()"/> (QAO Sign-off)
               </button>
               <tal:pending_msg tal:condition="python:not dev.get('all_cas_complete')">
-                <span style="font-size:12px;color:#dc3545;margin-left:10px">
+                <span style="font-size:var(--fs-sm);color:#dc3545;margin-left:10px">
                   All corrective actions must be complete before closure.
                 </span>
               </tal:pending_msg>
@@ -784,7 +784,7 @@
           <tbody>
             <tal:row tal:repeat="dev devs">
               <tr>
-                <td style="font-weight:700;font-family:monospace"
+                <td style="font-weight:700;font-family: var(--font-mono)"
                     tal:content="dev/dev_id"/>
                 <td>
                   <span tal:define="dtype dev/type"
@@ -792,7 +792,7 @@
                     <tal:v tal:replace="python:dtype.upper()"/>
                   </span>
                 </td>
-                <td style="color:#888;font-size:12px"
+                <td style="color:#888;font-size:var(--fs-sm)"
                     tal:content="dev/filed_at"/>
                 <td tal:content="dev/event_label"/>
                 <td>
@@ -875,18 +875,18 @@
         <div class="risk-matrix-wrap">
           <table class="risk-matrix" id="new-dev-risk-matrix">
             <tr>
-              <td class="rm-axis" style="font-size:9px">L\S</td>
-              <td class="rm-axis">S=1<br/><span style="font-weight:400;font-size:9px">Insig.</span></td>
-              <td class="rm-axis">S=2<br/><span style="font-weight:400;font-size:9px">Minor</span></td>
-              <td class="rm-axis">S=3<br/><span style="font-weight:400;font-size:9px">Moderate</span></td>
-              <td class="rm-axis">S=4<br/><span style="font-weight:400;font-size:9px">Major</span></td>
-              <td class="rm-axis">S=5<br/><span style="font-weight:400;font-size:9px">Catastrop.</span></td>
+              <td class="rm-axis" style="font-size:var(--fs-xs)">L\S</td>
+              <td class="rm-axis">S=1<br/><span style="font-weight:400;font-size:var(--fs-xs)">Insig.</span></td>
+              <td class="rm-axis">S=2<br/><span style="font-weight:400;font-size:var(--fs-xs)">Minor</span></td>
+              <td class="rm-axis">S=3<br/><span style="font-weight:400;font-size:var(--fs-xs)">Moderate</span></td>
+              <td class="rm-axis">S=4<br/><span style="font-weight:400;font-size:var(--fs-xs)">Major</span></td>
+              <td class="rm-axis">S=5<br/><span style="font-weight:400;font-size:var(--fs-xs)">Catastrop.</span></td>
             </tr>
             <tal:lrow tal:repeat="li python:[5,4,3,2,1]">
               <tr>
                 <td class="rm-axis">
                   L=<tal:v tal:replace="li"/><br/>
-                  <span style="font-weight:400;font-size:9px"
+                  <span style="font-weight:400;font-size:var(--fs-xs)"
                         tal:replace="python:view.likelihood_label(li).split(' — ')[1] if ' — ' in view.likelihood_label(li) else ''"/>
                 </td>
                 <tal:scol tal:repeat="si python:[1,2,3,4,5]">
@@ -1109,7 +1109,7 @@
       html += '<label style="display:block;padding:2px 0;cursor:pointer">'
             + '<input type="checkbox" class="ws-check" value="' + ws.id + '" '
             + checked + ' onchange="syncWorksheets()">&nbsp;'
-            + '<code style="font-size:12px">' + ws.id + '</code>'
+            + '<code style="font-size:var(--fs-sm)">' + ws.id + '</code>'
             + (ws.created ? ' <span style="color:#aaa">(' + ws.created + ')</span>' : '')
             + '</label>';
     });

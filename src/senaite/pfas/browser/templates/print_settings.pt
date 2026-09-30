@@ -9,15 +9,15 @@
   <style>
     .ps-form { max-width: 720px; }
     .ps-row { display:flex; flex-direction:column; gap:3px; margin-bottom:14px; }
-    .ps-row label { font-size:12px; font-weight:700; color:var(--s-body); }
-    .ps-row .hint { font-size:11px; color:var(--s-secondary); }
+    .ps-row label { font-size:var(--fs-sm); font-weight:700; color:var(--s-body); }
+    .ps-row .hint { font-size:var(--fs-xs); color:var(--s-secondary); }
     .ps-row input[type=text] { padding:7px 10px; border:1px solid var(--s-border);
-      border-radius:4px; font-size:13px; }
+      border-radius:4px; font-size:var(--fs-base); }
     .ps-check { display:flex; gap:8px; align-items:center; margin-bottom:10px;
-      font-size:13px; }
+      font-size:var(--fs-base); }
     .ps-preview { border:1px dashed var(--s-border); border-radius:8px;
       padding:14px 16px; margin:18px 0; background:#fff; }
-    .ps-prev-label { font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+    .ps-prev-label { font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.04em;
       color:var(--s-secondary); margin-bottom:8px; font-weight:700; }
   </style>
   </tal:styles>
@@ -33,7 +33,7 @@
       now uses the updated header/footer.
     </div>
 
-    <p style="font-size:13px;color:var(--s-secondary);max-width:720px;">
+    <p style="font-size:var(--fs-base);color:var(--s-secondary);max-width:720px;">
       One template for every printed form. The header/footer below is applied
       automatically when ANY page is printed (FM-ENV logbooks, Chain of
       Custody, SOP copies), so audit copies are consistent site-wide.
@@ -46,17 +46,17 @@
         <img tal:condition="ps/logo_url" tal:attributes="src ps/logo_url"
              style="max-height:46px;"/>
         <div>
-          <div style="font-size:16px;font-weight:700;" tal:content="ps/lab_name">Lab</div>
-          <div style="font-size:10px;color:#333;">
+          <div style="font-size:var(--fs-lg);font-weight:700;" tal:content="ps/lab_name">Lab</div>
+          <div style="font-size:var(--fs-xs);color:#333;">
             <tal:a tal:replace="ps/lab_address"/><tal:p tal:condition="ps/lab_phone"> · <tal:x tal:replace="ps/lab_phone"/></tal:p><tal:e tal:condition="ps/lab_email"> · <tal:x tal:replace="ps/lab_email"/></tal:e>
           </div>
-          <div style="font-size:10px;color:#333;" tal:condition="ps/accreditation"
+          <div style="font-size:var(--fs-xs);color:#333;" tal:condition="ps/accreditation"
                tal:content="ps/accreditation">accreditation</div>
         </div>
-        <div style="margin-left:auto;font-size:10px;color:#333;"
+        <div style="margin-left:auto;font-size:var(--fs-xs);color:#333;"
              tal:condition="ps/show_print_date">Printed: 2026-07-02 12:00</div>
       </div>
-      <div style="font-size:9px;color:#444;border-top:1px solid #999;margin-top:10px;padding-top:3px;text-align:center;"
+      <div style="font-size:var(--fs-xs);color:#444;border-top:1px solid #999;margin-top:10px;padding-top:3px;text-align:center;"
            tal:condition="ps/show_page_footer" tal:content="ps/footer_text">footer</div>
     </div>
 
@@ -96,7 +96,7 @@
         <label for="spf" style="font-weight:400;">Show page footer</label></div>
 
       <!-- ── QA sign-off attestation signers ──────────────────────────────── -->
-      <h3 style="font-size:14px;font-weight:700;margin:18px 0 4px;">QA Sign-off Attestation</h3>
+      <h3 style="font-size:var(--fs-base);font-weight:700;margin:18px 0 4px;">QA Sign-off Attestation</h3>
       <p class="hint" style="margin:0 0 10px;">
         The 3-tier sign-off block (Prepared → Verified → Authorized) printed on
         SOPs, reagent/standard prep logs and prepared standards. Choose the
@@ -168,7 +168,7 @@
           <tr tal:repeat="row view/qualifier_rows">
             <td>
               <strong tal:content="row/label">Surrogate recovery</strong>
-              <div style="font-size:11px;color:var(--s-secondary);"
+              <div style="font-size:var(--fs-xs);color:var(--s-secondary);"
                    tal:condition="row/customised">edited by the lab</div>
             </td>
             <td>
@@ -186,7 +186,7 @@
                                      value row/code" />
             </td>
             <td>
-              <textarea rows="4" style="width:100%;font-size:12px;"
+              <textarea rows="4" style="width:100%;font-size:var(--fs-sm);"
                         tal:attributes="name string:qual_text.${row/key}"
                         tal:content="row/statement"></textarea>
             </td>

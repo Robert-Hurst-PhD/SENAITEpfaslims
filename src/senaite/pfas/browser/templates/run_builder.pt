@@ -11,21 +11,21 @@
     @media (max-width:900px){ .rb-grid { grid-template-columns:1fr; } }
     .rb-card { border:1px solid var(--s-border); border-radius:10px;
                background:var(--s-bg); padding:16px 18px; min-width:0; }
-    .rb-card h3 { font-size:14px; font-weight:700; margin:0 0 12px; }
+    .rb-card h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 12px; }
     .rb-row { display:flex; flex-direction:column; gap:3px; margin-bottom:12px; }
-    .rb-row label { font-size:12px; font-weight:700; }
-    .rb-row .hint { font-size:11px; color:var(--s-secondary); }
+    .rb-row label { font-size:var(--fs-sm); font-weight:700; }
+    .rb-row .hint { font-size:var(--fs-xs); color:var(--s-secondary); }
     .rb-row input, .rb-row select, .rb-row textarea {
       width:100%; max-width:100%; box-sizing:border-box;
       padding:7px 10px; border:1px solid var(--s-border); border-radius:4px;
-      font-size:13px; }
-    .rb-ctx { display:flex; gap:10px 22px; flex-wrap:wrap; font-size:12px;
+      font-size:var(--fs-base); }
+    .rb-ctx { display:flex; gap:10px 22px; flex-wrap:wrap; font-size:var(--fs-sm);
               background:var(--s-light); border-radius:8px; padding:10px 14px;
               margin-bottom:12px; }
     .rb-ctx b { color:var(--s-body); }
-    .rb-seq { font-size:12px; width:100%; border-collapse:collapse; }
+    .rb-seq { font-size:var(--fs-sm); width:100%; border-collapse:collapse; }
     .rb-seq th { background:var(--s-light); color:var(--s-secondary);
-                 text-transform:uppercase; font-size:10.5px; padding:5px 10px;
+                 text-transform:uppercase; font-size:var(--fs-xs); padding:5px 10px;
                  text-align:left; }
     .rb-seq td { padding:4px 10px; border-bottom:1px solid var(--s-border); }
     .rb-type-Blank    { color:var(--s-secondary); }
@@ -34,20 +34,20 @@
     .rb-type-Sample   { color:#155724; }
     /* run-template editor */
     .rb-tpl-block { margin-bottom:14px; }
-    .rb-tpl-block > label { font-size:12px; font-weight:700; display:block;
+    .rb-tpl-block > label { font-size:var(--fs-sm); font-weight:700; display:block;
                             margin-bottom:6px; }
     .rb-chips { display:flex; flex-wrap:wrap; gap:6px; min-height:34px;
                 padding:6px; border:1px dashed var(--s-border); border-radius:6px;
                 background:var(--s-light); }
     .rb-chips:empty::before { content:"none"; color:var(--s-secondary);
-                              font-size:12px; padding:2px 4px; }
+                              font-size:var(--fs-sm); padding:2px 4px; }
     .rb-chip { display:inline-flex; align-items:center; gap:4px;
                background:var(--s-bg); border:1px solid var(--s-border);
-               border-radius:14px; padding:3px 4px 3px 10px; font-size:12px; }
+               border-radius:14px; padding:3px 4px 3px 10px; font-size:var(--fs-sm); }
     .rb-chip .lbl { font-weight:600; }
-    .rb-chip .code { color:var(--s-secondary); font-size:10.5px; }
+    .rb-chip .code { color:var(--s-secondary); font-size:var(--fs-xs); }
     .rb-chip button { border:none; background:transparent; cursor:pointer;
-                      font-size:12px; line-height:1; padding:2px 3px;
+                      font-size:var(--fs-sm); line-height:1; padding:2px 3px;
                       color:var(--s-secondary); border-radius:3px; }
     .rb-chip button:hover { background:var(--s-primary-lt); color:var(--s-body); }
     .rb-add { display:flex; gap:6px; margin-top:6px; align-items:center; }
@@ -59,17 +59,17 @@
                   background:var(--s-light); max-width:540px; }
     .rb-seqrow { display:flex; align-items:center; gap:9px; background:var(--s-bg);
                  border:1px solid var(--s-border); border-radius:6px;
-                 padding:7px 9px; font-size:12.5px; cursor:grab; }
+                 padding:7px 9px; font-size:var(--fs-sm); cursor:grab; }
     .rb-seqrow.dragging { opacity:.35; }
-    .rb-seqrow .grip { color:var(--s-secondary); font-size:15px; line-height:1;
+    .rb-seqrow .grip { color:var(--s-secondary); font-size:var(--fs-md); line-height:1;
                        cursor:grab; user-select:none; }
     .rb-seqrow .lbl { font-weight:600; flex:1; }
-    .rb-seqrow .code { color:var(--s-secondary); font-size:10.5px; }
+    .rb-seqrow .code { color:var(--s-secondary); font-size:var(--fs-xs); }
     .rb-seqrow.samples { background:#eef7ee; border-color:#bcdcbc; }
     .rb-seqrow.cal     { background:#eef4f8; border-color:#bcd3e0; }
     .rb-seqrow.blank   { background:#f6f6f7; }
     .rb-seqrow .del { border:none; background:transparent; cursor:pointer;
-                      color:var(--s-secondary); font-size:14px; line-height:1;
+                      color:var(--s-secondary); font-size:var(--fs-base); line-height:1;
                       padding:2px 5px; border-radius:3px; }
     .rb-seqrow .del:hover { background:var(--s-primary-lt); color:var(--s-body); }
     .rb-ro .rb-seqrow { cursor:default; }
@@ -91,7 +91,7 @@
       Run built and saved to the batch manifest — download the worklist below.
     </div>
 
-    <p style="font-size:13px;color:var(--s-secondary);max-width:860px;">
+    <p style="font-size:var(--fs-base);color:var(--s-secondary);max-width:860px;">
       The run derives from the batch: its <strong>method</strong> selects the
       method's own extraction logbook, which supplies the samples with their
       per-sample <strong>matrix</strong> and <strong>spike</strong>; the CCV
@@ -140,7 +140,7 @@
             </table>
           </div>
           <p tal:condition="not:ctx/rows"
-             style="font-size:12px;color:#856404;background:#fff3cd;border-radius:6px;padding:8px 12px;">
+             style="font-size:var(--fs-sm);color:#856404;background:#fff3cd;border-radius:6px;padding:8px 12px;">
             No samples found in the method's extraction logbook or linked to
             this batch — complete the extraction log, or add sample names below.
           </p>
@@ -170,7 +170,7 @@
               <label>Additional sample names (optional, one per line)</label>
               <textarea name="extra_samples" rows="3"></textarea>
             </div>
-            <label style="font-size:12px;display:flex;gap:8px;align-items:center;margin:2px 0 14px;">
+            <label style="font-size:var(--fs-sm);display:flex;gap:8px;align-items:center;margin:2px 0 14px;">
               <input type="checkbox" name="include_cal" checked="checked"
                      style="width:auto;"/>
               Include calibration curve (method's single-source ladder)
@@ -182,7 +182,7 @@
         <!-- ── 2. Import instrument data ────────────────────────────────── -->
         <div class="rb-card">
           <h3>2 · Import instrument data</h3>
-          <p style="font-size:12px;color:var(--s-secondary);">
+          <p style="font-size:var(--fs-sm);color:var(--s-secondary);">
             Upload the instrument's finished export. It is placed in the
             pipeline watch directory and imported into the QC database (a
             saved, active Import Studio mapping is required — imports refuse
@@ -209,10 +209,10 @@
       <div class="rb-card" style="margin-top:22px;"
            tal:attributes="class python:'rb-card' + ('' if editable else ' rb-ro')">
         <h3>Run template — how this method builds its worklist
-          <span style="font-weight:400;font-size:12px;color:var(--s-secondary);"
+          <span style="font-weight:400;font-size:var(--fs-sm);color:var(--s-secondary);"
                 tal:content="ctx/method_id">FDA</span>
         </h3>
-        <p style="font-size:12px;color:var(--s-secondary);margin-top:-4px;">
+        <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-top:-4px;">
           One ordered run sequence — <strong>drag rows to reorder</strong>. The
           calibrator list opens the CCV-bracketed body; each extraction QC and
           field-sample injection after it counts toward the <em>CCV every N</em>
@@ -260,13 +260,13 @@
             </div>
           </div>
 
-          <p style="font-size:12px;color:var(--s-secondary);">
+          <p style="font-size:var(--fs-sm);color:var(--s-secondary);">
             Bracketing: a <b>CCV</b> is inserted automatically every
             <span tal:content="ctx/ccv_interval">6</span> injections
             (interval from the method profile) — you don't add or position it.
           </p>
 
-          <p style="font-size:11px;color:var(--s-secondary);">
+          <p style="font-size:var(--fs-xs);color:var(--s-secondary);">
             The <b>Calibrator list</b> row expands at build time to the method's
             calibration standards + one opening bracket injection — only when
             <em>Include calibration curve</em> is ticked above. The
@@ -275,7 +275,7 @@
           </p>
           <button class="btn btn-primary" type="submit"
                   tal:condition="editable">Save run template</button>
-          <p style="font-size:12px;color:var(--s-secondary);"
+          <p style="font-size:var(--fs-sm);color:var(--s-secondary);"
              tal:condition="not:editable">
             Read-only — a Manager can edit this run template.
           </p>
@@ -378,13 +378,13 @@
       <div class="rb-card" style="margin-top:22px;">
         <h3 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
           <span>Built run — <span tal:content="m/batch_id">B</span></span>
-          <span style="font-weight:400;font-size:12px;color:var(--s-secondary);">
+          <span style="font-weight:400;font-size:var(--fs-sm);color:var(--s-secondary);">
             <span tal:content="m/built_at">ts</span> by
             <span tal:content="m/built_by">INI</span> ·
             <span tal:content="m/method_id">FDA</span> ·
             CCV/<span tal:content="m/ccv_interval">6</span>
           </span>
-          <a class="btn btn-primary" style="margin-left:auto;font-size:12px"
+          <a class="btn btn-primary" style="margin-left:auto;font-size:var(--fs-sm)"
              tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?action=download_csv&batch_id=${m/batch_id}">
             Download worklist CSV
           </a>
@@ -396,7 +396,7 @@
             <tbody>
               <tr tal:repeat="r m/rows">
                 <td tal:content="r/vial">1</td>
-                <td style="font-family:monospace;" tal:content="r/name">name</td>
+                <td style="font-family: var(--font-mono);" tal:content="r/name">name</td>
                 <td style="color:var(--s-secondary);"
                     tal:content="python:r.get('description','')">desc</td>
                 <td><span tal:attributes="class string:rb-type-${r/type}"

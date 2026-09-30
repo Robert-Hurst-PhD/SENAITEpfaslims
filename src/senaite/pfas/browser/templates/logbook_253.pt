@@ -10,42 +10,42 @@
     .btn-add-row { margin-top: 8px; }   /* look: shared .btn-sm */
     .lb-form { max-width: 1000px; }
     .lb-section { margin-bottom: 28px; }
-    .lb-section h3 { font-size: 14px; font-weight: 700; color: var(--s-dark);
+    .lb-section h3 { font-size: var(--fs-base); font-weight: 700; color: var(--s-dark);
                      margin-bottom: 12px; padding-bottom: 6px;
                      border-bottom: 2px solid var(--s-border); }
     .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
     .lb-field { display: flex; flex-direction: column; }
-    .lb-field label { font-size: 12px; font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
-    .lb-input, .lb-select { padding: 7px 10px; font-size: 13px;
+    .lb-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-input, .lb-select { padding: 7px 10px; font-size: var(--fs-base);
                               border: 1px solid var(--s-input-border); border-radius: 6px; }
     .lb-input-sm { width: 90px; } .lb-input-md { width: 180px; } .lb-input-lg { width: 260px; }
     /* Sample processing table */
-    .proc-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .proc-table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
     .proc-table th { background: #f8f9fa; padding: 5px 6px; text-align: left;
-                     border-bottom: 2px solid var(--s-border); font-weight: 700; font-size: 11px; }
+                     border-bottom: 2px solid var(--s-border); font-weight: 700; font-size: var(--fs-xs); }
     .proc-table td { padding: 3px 4px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
     .proc-table td input[type="text"], .proc-table td input[type="number"],
     .proc-table td select {
-      width: 100%; padding: 4px 5px; font-size: 11px;
+      width: 100%; padding: 4px 5px; font-size: var(--fs-xs);
       border: 1px solid var(--s-input-border); border-radius: 4px; }
     .proc-table td.yn-cell { width: 50px; text-align: center; }
     .proc-table td input[type="checkbox"] { width: auto; }
     /* Materials table */
-    .sup-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .sup-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .sup-table th { background: #f8f9fa; padding: 6px 10px; border-bottom: 2px solid var(--s-border); font-weight: 700; }
     .sup-table td { padding: 4px 8px; border-bottom: 1px solid var(--s-border); }
-    .sup-table td input { width: 100%; padding: 4px 8px; font-size: 12px;
+    .sup-table td input { width: 100%; padding: 4px 8px; font-size: var(--fs-sm);
                           border: 1px solid var(--s-input-border); border-radius: 4px; }
-    .btn-del-row { background: none; border: none; cursor: pointer; color: var(--s-danger); font-size: 13px; padding: 2px 4px; }
-    .checkbox-field { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 8px; }
+    .btn-del-row { background: none; border: none; cursor: pointer; color: var(--s-danger); font-size: var(--fs-base); padding: 2px 4px; }
+    .checkbox-field { display: flex; align-items: center; gap: 8px; font-size: var(--fs-base); margin-top: 8px; }
     .sig-block { display: flex; gap: 40px; flex-wrap: wrap; }
-    .sig-field label { font-size: 12px; font-weight: 600; margin-bottom: 3px; display: block; }
+    .sig-field label { font-size: var(--fs-sm); font-weight: 600; margin-bottom: 3px; display: block; }
     .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border); }
     .alert-ok    { background: #d4edda; border: 1px solid #c3e6cb; color: #155724;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
     .alert-error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24;
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
-    .sample-factor-note { font-size: 11px; color: #856404; margin-top: 4px; }
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
+    .sample-factor-note { font-size: var(--fs-xs); color: #856404; margin-top: 4px; }
   </style>
   </tal:styles>
 </head>
@@ -174,7 +174,7 @@
       <div class="lb-section">
         <h3>Notes</h3>
         <div class="corr-field" data-field="notes">
-          <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:13px; border:1px solid var(--s-input-border); border-radius:6px;"
+          <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:var(--fs-base); border:1px solid var(--s-input-border); border-radius:6px;"
                     tal:content="python:view.data().get('notes','')"></textarea>
           <div style="margin-top:4px;">
             <button class="btn-correct" type="button" onclick="toggleCorrect('notes')">correct notes</button>

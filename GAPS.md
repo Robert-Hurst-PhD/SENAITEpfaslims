@@ -5244,3 +5244,37 @@ unavailable for about a minute.
 - **Not done:**
   - pins cannot be reordered (they appear in pin order);
   - the pin annotation is per portal; a deleted user's pins stay until removed.
+
+### 49.10 Phase 4 (tabs) and one type scale
+
+- **Shared tab behaviour in the macro.** A `.pfas-tabs[data-tabs]` strip
+  switches the `.pfas-pane` panels named in its tabs' `data-pane`; the URL hash
+  remembers the open tab, and print shows every pane. Pages write markup only.
+- **Lab Settings:** its four settings groups became tabs, each carrying its
+  shown-of-total count and a ⚠ count of unset items. The first group with rows
+  under the current filter opens first.
+- **EDD Configuration:** the profile editors were a section rendered under
+  *every* tab. They are now an "EDD Profiles" tab (`#profiles`), and the page's
+  own tab strip uses the shared tab styles (its `switchTab` script is kept, as
+  saving and the server's active-tab logic use it).
+- **Left as they are, by §6B's wording:**
+  - Prep Logbooks' six "Rev N history" panels are per-row disclosures, not page
+    sections;
+  - Reagent Inventory's Expiry Defaults and the one on Controlled Documents are
+    single disclosures.
+- **Fonts.** Core listings set body text at 14px, while PFAS pages had drifted
+  to 12–13px with much at 9–11px, and there were 23 sizes in all. The seven
+  `--fs-*` tokens are now the only text sizes in screen templates: 1,090
+  declarations mapped (9–11.5 → 11, 12 → 13, 13–14 → 14, 15, 16–17 → 16,
+  18–22 → 20, 24–28 → 28). Monospace was declared four ways and is now one
+  `--font-mono` (53 stacks); the body font is `--font-sans`. The sidebar uses
+  the 13px step, because at 14px three labels truncated.
+  - Measured after: PFAS table text 13–14px (was 12px); distinct sizes 23 → 3
+    (the 36–64px display glyphs).
+  - Guard `test_text_uses_the_type_scale` (mutation-tested): no literal size
+    under 32px and no font family other than the tokens.
+- **Verified after restart:**
+  - tabs switch, the hash survives reload, and `#profiles` opens EDD Profiles;
+  - no sidebar label truncates;
+  - 32-page sweep: all 200, no JS errors, no unstyled buttons, logbooks still
+    hide buttons in print.
