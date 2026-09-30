@@ -125,6 +125,15 @@ def case_matrices(pg):
     return "holding_times", True, None
 
 
+def case_corrections(pg):
+    """Sample Corrections: two declared tables saved by one form (R2)."""
+    open_profile(pg, "FDA_32PFAS", "pane-corr")
+    f = pg.locator("#pane-corr input[name^='t__mf__Milk__']")
+    f.fill(str(float(f.input_value()) + 1))
+    save_profile_form(pg)
+    return "matrix_factors", True, None
+
+
 def case_edd_profile(pg):
     pg.goto(B + "@@pfas-egad-config#profiles"); pg.wait_for_load_state("networkidle")
     pg.evaluate("() => document.querySelectorAll('#pane-profiles details').forEach(d => d.open = true)")
@@ -155,7 +164,7 @@ def case_client_edd(pg):
 
 CASES = [("recovery tier", case_tier), ("rule toggle", case_toggle),
          ("cal section", case_cal_section), ("RL table", case_rl_table),
-         ("matrices", case_matrices),
+         ("matrices", case_matrices), ("corrections", case_corrections),
          ("surrogate link", case_surrogate), ("EDD profile", case_edd_profile),
          ("client EDD", case_client_edd)]
 

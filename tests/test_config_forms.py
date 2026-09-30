@@ -354,6 +354,19 @@ def test_the_matrices_tab_has_no_hand_written_parser_left():
         assert retired not in template, retired
 
 
+def test_the_corrections_tab_has_no_hand_written_parser_left():
+    """The old handler also re-read salt_adjustment_factors_json and
+    matrix_factors_json on EVERY save whose marker was absent -- fields no
+    page sends, so the fallback only ever re-stored what was there."""
+    src = _read("method_profiles.py")
+    template = _read("templates", "method_profile_edit.pt")
+    for retired in ("salt_present", "\"matrix_present\"", "salt_factor.", "salt_lot.",
+                    "matrix_factor.", "salt_adjustment_factors_json", "matrix_factors_json",
+                    "salt_adjustment_rows", "matrix_adjustment_rows"):
+        assert retired not in src, retired
+        assert retired not in template, retired
+
+
 def test_every_tab_can_be_opened_by_its_link():
     """A hand-kept list of valid tab ids omitted two tabs, so the redirect
     after saving the Reporting Limits tab opened Rule Toggles -- and the Save
@@ -470,6 +483,85 @@ def test_a_stored_unit_outside_the_list_is_kept():
     stored["unit_map"]["Groundwater"] = "pg/mL"
     after = save(MTX, stored, coll_form(MTX, stored))
     assert after["unit_map"]["Groundwater"] == "pg/mL"
+
+
+# ── Sample Corrections (salt + matrix factors) ───────────────────────────────
+
+SALT, MF = mps.SALT, mps.MATRIX_FACTORS
+LOTS = {"standard_lots": [{"uid": "lotA", "label": "Std A", "lot_number": "A-1"},
+                          {"uid": "lotB", "label": "Std B", "lot_number": "B-2", "expired": True}]}
+
+
+def env_form(table, stored, env=None):
+    form = {}
+    for g in cf.render(table, stored, env):
+        for row in g["rows"]:
+            for cell in row["cells"]:
+                form[cell["name"]] = cell["value"]
+    return form
+
+
+def env_save(table, stored, form, env=None):
+    updates, errors = cf.parse(table, form, stored, env)
+    assert not errors, errors
+    return cf.apply(table, stored, updates, env)
+
+
+def test_unchanged_correction_saves_change_nothing():
+    """FDA carries a salt row whose lot is NOT in the page's inventory list
+    (no env) -- the stored lot is still offered and kept, number included."""
+    for mid, stored in _profiles().items():
+        for table in (SALT, MF):
+            for env in (None, LOTS):
+                after = env_save(table, stored, env_form(table, stored, env), env)
+                assert ch.diff(stored, after) == [], (mid, table.id, ch.diff(stored, after)[:3])
+                for key in ("salt_adjustment_factors", "matrix_factors"):
+                    assert (key in stored) == (key in after), (mid, key)
+
+
+def test_the_default_factor_is_a_placeholder_not_a_value():
+    stored = _profiles()["EPA_537_1"]
+    cell = cf.render(MF, stored)[0]["rows"][0]["cells"][0]
+    assert cell["value"] == "" and cell["placeholder"] == "1.0"
+
+
+def test_a_salt_factor_and_lot_are_saved_with_the_inventory_lot_number():
+    stored = _profiles()["EPA_537_1"]
+    key = SALT.rows(stored)[1][0]["key"]
+    form = env_form(SALT, stored, LOTS)
+    form[cf.cell_name(SALT, key, SALT.columns[0])] = "0.95"
+    form[cf.cell_name(SALT, key, SALT.columns[1])] = "lotA"
+    after = env_save(SALT, stored, form, LOTS)
+    assert after["salt_adjustment_factors"] == [
+        {"analyte": key[0], "factor": 0.95, "lot_uid": "lotA", "lot_number": "A-1"}]
+
+
+def test_factors_out_of_range_are_refused():
+    stored = _profiles()["FDA_32PFAS"]
+    skey = SALT.rows(stored)[1][0]["key"]
+    mkey = MF.rows(stored)[1][0]["key"]
+    for table, key, bad in ((SALT, skey, "0"), (SALT, skey, "1.5"), (MF, mkey, "0"),
+                            (MF, mkey, "0,95")):
+        form = env_form(table, stored)
+        form[cf.cell_name(table, key, table.columns[0])] = bad
+        assert cf.parse(table, form, stored)[1], (table.id, bad)
+
+
+def test_a_lot_not_in_the_inventory_or_stored_is_refused():
+    stored = _profiles()["EPA_537_1"]
+    key = SALT.rows(stored)[1][0]["key"]
+    form = env_form(SALT, stored, LOTS)
+    form[cf.cell_name(SALT, key, SALT.columns[1])] = "someone-elses-uid"
+    assert cf.parse(SALT, form, stored, LOTS)[1]
+
+
+def test_setting_a_factor_back_to_one_removes_its_row():
+    stored = _profiles()["FDA_32PFAS"]
+    form = env_form(MF, stored)
+    form[cf.cell_name(MF, ("Milk",), MF.columns[0])] = "1"
+    after = env_save(MF, stored, form)
+    assert "Milk" not in [e["matrix"] for e in after["matrix_factors"]]
+    assert len(after["matrix_factors"]) == len(stored["matrix_factors"]) - 1
 
 
 if __name__ == "__main__":

@@ -62,7 +62,8 @@ def test_every_marker_the_handler_reads_is_emitted_by_the_form():
     """A guard the form never sets turns the pane read-only, silently."""
     handler, template = _handler_source(), _template_source()
     for marker in MARKERS:
-        if marker not in handler:
+        # quoted: "matrix_present" is a substring of "eis_matrix_present"
+        if '"{0}"'.format(marker) not in handler:
             continue
         assert 'name="{0}"'.format(marker) in template, (
             "%s guards a pane in the save handler but the form never emits it "

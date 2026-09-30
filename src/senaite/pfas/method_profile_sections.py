@@ -129,7 +129,7 @@ REPORTING_LIMITS = cf.Table(
 COMMON_UNITS = [u"ng/kg", u"ug/kg", u"ng/L", u"ng/mL", u"ug/L", u"mg/kg", u"pg/g"]
 
 
-def unit_choices(profile):
+def unit_choices(profile, env=None):
     """Every common unit plus every unit already in use, so an existing choice
     is never silently dropped from the list it was chosen from."""
     used = sorted(set(u for u in (profile.get("unit_map") or {}).values()
@@ -236,4 +236,131 @@ MATRICES = cf.Collection(
     ],
     read=read_matrices, write=write_matrices, check=check_matrices)
 
-SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES])
+# ── Sample Corrections: salt factors and matrix factors ──────────────────────
+# Both are stored as LISTS holding only rows that change something; the
+# default factor 1.0 is a placeholder, never written as a value (GAPS §51).
+
+
+def _one_group(key, label):
+    return [{"key": key, "label": label, "unit": u""}]
+
+
+def salt_rows(profile):
+    titles = _analyte_titles()
+    rows = [{"key": (kw,), "group": u"salt", "label": titles.get(kw, kw), "sublabel": kw}
+            for kw in profile.get("master_analyte_set") or []]
+    return _one_group(u"salt", u"Salt adjustment"), rows
+
+
+def read_salt(profile):
+    out = {}
+    for r in profile.get("salt_adjustment_factors") or []:
+        if isinstance(r, dict) and r.get("analyte"):
+            out[(r["analyte"],)] = {"factor": r.get("factor"),
+                                    "lot_uid": r.get("lot_uid") or r.get("source") or None}
+    return out
+
+
+def lot_choices(profile, env=None):
+    """Standard / reference-material lots from the reagent inventory (the page
+    supplies them in env; their labels already say EXPIRED where it applies,
+    and an expired lot stays pickable)."""
+    return [(o["uid"], o["label"]) for o in ((env or {}).get("standard_lots") or [])]
+
+
+def _merge_rows(existing, key_field, updates, order, build):
+    """Existing rows in their stored ORDER, each updated (or dropped when
+    build() returns None); then new rows in panel order. A row the page did
+    not list is kept as it was -- e.g. an analyte no longer in the panel."""
+    out, done = [], set()
+    for row in existing:
+        key = (row.get(key_field),)
+        if key in updates:
+            new = build(key[0], updates[key], row)
+            if new is not None:
+                out.append(new)
+            done.add(key)
+        else:
+            out.append(row)
+    for key in order:
+        if key in updates and key not in done:
+            new = build(key[0], updates[key], {})
+            if new is not None:
+                out.append(new)
+    return out
+
+
+def write_salt(profile, updates, env=None):
+    lot_numbers = dict((o["uid"], o.get("lot_number", u""))
+                       for o in ((env or {}).get("standard_lots") or []))
+
+    def build(kw, vals, old):
+        factor, lot = vals.get(("factor",)), vals.get(("lot_uid",)) or u""
+        if (factor is None or factor == 1.0) and not lot:
+            return None                     # no correction and no lot: no row
+        same_lot = lot == (old.get("lot_uid") or old.get("source"))
+        return {"analyte": kw, "factor": 1.0 if factor is None else factor,
+                "lot_uid": lot,
+                # a stored lot number survives a lot that has since left the
+                # inventory; a new pick takes the inventory's number
+                "lot_number": old.get("lot_number", u"") if same_lot else lot_numbers.get(lot, u"")}
+
+    existing = [r for r in (profile.get("salt_adjustment_factors") or []) if isinstance(r, dict)]
+    ordered = [(kw,) for kw in profile.get("master_analyte_set") or [] if (kw,) in updates]
+    out = _merge_rows(existing, "analyte", updates, ordered, build)
+    if out or "salt_adjustment_factors" in profile:
+        profile["salt_adjustment_factors"] = out
+    return profile
+
+
+SALT = cf.Table(
+    id=u"salt", title=u"Salt Adjustment Factors", base=("salt_adjustment_factors",),
+    columns=[cf.Field("factor", u"Factor", greater_than=0, maximum=1, placeholder=u"1.0"),
+             cf.Field("lot_uid", u"CoA Lot", kind=cf.CHOICE, choices=lot_choices)],
+    rows=salt_rows, read=read_salt, write=write_salt)
+
+
+def matrix_factor_rows(profile):
+    uid_map = profile.get("matrix_uid_map") or {}
+    rows = []
+    for m in profile.get("supported_matrices") or []:
+        linked = bool(uid_map.get(m))
+        rows.append({"key": (m,), "group": u"mf", "label": m,
+                     "note": u"core type" if linked else u"unlinked",
+                     "warn": not linked})
+    return _one_group(u"mf", u"Matrix adjustment"), rows
+
+
+def read_matrix_factors(profile):
+    out = {}
+    for e in profile.get("matrix_factors") or []:
+        if isinstance(e, dict) and e.get("matrix"):
+            out[(e["matrix"],)] = {"factor": e.get("factor")}
+    return out
+
+
+def write_matrix_factors(profile, updates, env=None):
+    uid_map = profile.get("matrix_uid_map") or {}
+
+    def build(m, vals, old):
+        factor = vals.get(("factor",))
+        if factor is None or factor == 1.0:
+            return None                     # 1.0 is no correction: no row
+        return {"matrix": m, "factor": factor,
+                "sampletype_uid": uid_map.get(m) or old.get("sampletype_uid", u"")}
+
+    existing = [e for e in (profile.get("matrix_factors") or []) if isinstance(e, dict)]
+    ordered = [(m,) for m in profile.get("supported_matrices") or [] if (m,) in updates]
+    out = _merge_rows(existing, "matrix", updates, ordered, build)
+    if out or "matrix_factors" in profile:
+        profile["matrix_factors"] = out
+    return profile
+
+
+MATRIX_FACTORS = cf.Table(
+    id=u"mf", title=u"Matrix Adjustment Factors", base=("matrix_factors",),
+    columns=[cf.Field("factor", u"Factor", greater_than=0, placeholder=u"1.0")],
+    rows=matrix_factor_rows, read=read_matrix_factors, write=write_matrix_factors)
+
+SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
+                                    SALT, MATRIX_FACTORS])

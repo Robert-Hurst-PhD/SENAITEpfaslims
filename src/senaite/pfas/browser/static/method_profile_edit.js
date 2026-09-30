@@ -37,33 +37,6 @@
     hidden.value = JSON.stringify(rows, null, 2);
   }
 
-  var MF_FIELDS = [{key:'matrix',type:'text'},{key:'factor',type:'number'}];
-  function addMatrixFactorRow(matrix, factor) {
-    var tbody = document.getElementById('matrixFactorsBody');
-    var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td><input type="text" data-field="matrix" value="' + _esc(matrix||'') + '" placeholder="e.g. milk" /></td>' +
-      '<td><input type="number" data-field="factor" step="0.0001" min="0" value="' + (factor!=null?factor:'') + '" placeholder="1.0" /></td>' +
-      '<td><button type="button" class="del-btn" onclick="this.closest(\'tr\').remove();syncMatrixFactorsJson()">&#215;</button></td>';
-    tbody.appendChild(tr);
-    tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncMatrixFactorsJson); i.addEventListener('input',syncMatrixFactorsJson); });
-  }
-  function syncMatrixFactorsJson() { syncJson('matrixFactorsBody','matrix_factors_json',MF_FIELDS); }
-
-  var SA_FIELDS = [{key:'analyte',type:'text'},{key:'factor',type:'number'},{key:'source',type:'text'}];
-  function addSaltRow(analyte, factor, source) {
-    var tbody = document.getElementById('saltAdjBody');
-    var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td><input type="text" data-field="analyte" value="' + (analyte||'') + '" placeholder="e.g. PFOS" /></td>' +
-      '<td><input type="number" data-field="factor" step="0.0001" min="0" max="1" value="' + (factor!=null?factor:'') + '" placeholder="0.9815" /></td>' +
-      '<td><input type="text" data-field="source" value="' + (source||'') + '" placeholder="CoA lot #" /></td>' +
-      '<td><button type="button" class="del-btn" onclick="this.closest(\'tr\').remove();syncSaltJson()">&#215;</button></td>';
-    tbody.appendChild(tr);
-    tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncSaltJson); i.addEventListener('input',syncSaltJson); });
-  }
-  function syncSaltJson() { syncJson('saltAdjBody','salt_adjustment_factors_json',SA_FIELDS); }
-
   var EIS_FIELDS = [{key:'analyte',type:'text'},{key:'recovery_min',type:'number'},{key:'recovery_max',type:'number'}];
   function addEisRow(analyte, rmin, rmax) {
     var tbody = document.getElementById('eisOverrideBody');
@@ -868,10 +841,8 @@
   }
 
   document.addEventListener('DOMContentLoaded', function() {
-    /* Matrix adjustment is now server-rendered per supported matrix (named
-       fields matrix_factor.<title>, tied to core SampleTypes) — no JS. */
-    /* Salt adjustment is now server-rendered per analyte (named fields
-       salt_factor.<kw> + salt_lot.<kw>) — no JS population needed. */
+    /* Salt and matrix adjustment factors are declared tables (R2,
+       method_profile_sections), server-rendered -- no JS. */
     try {
       var iso = JSON.parse(document.getElementById('isomer_summation_json').value || '[]');
       iso.forEach(function(r) { addIsomerRow(r.linear, r.branched, r.reported, r.enabled !== false); });
@@ -900,7 +871,7 @@
      others, so their edits never reached the server (GAPS §51). */
   var profileForm = document.getElementById('profile-form');
   if (profileForm) profileForm.addEventListener('submit', function() {
-    [syncMatrixFactorsJson, syncSaltJson, syncIsomerJson, syncSpikeLevelsJson,
+    [syncIsomerJson, syncSpikeLevelsJson,
      syncStageJson, syncEisJson, syncRecoveryTiersJson, syncSurrogateMapJson,
      syncAMIJson, syncPerAnalyteJson].forEach(function (fn) {
       try { fn(); } catch (e) {

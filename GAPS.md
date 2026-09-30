@@ -5803,3 +5803,36 @@ Approved by the lab as the first recommendation of
   940 -> 925.
 - **Next:** Sample Corrections (salt + matrix factors), EIS limits, Surrogate
   Map, Recovery Tiers.
+
+## 57. R2: Sample Corrections (salt + matrix factors) saves on its own (2026-09-30)
+- **Framework:** tables may store rows another way (`read`/`write` adapters:
+  here lists holding only non-default rows, updated in their stored ORDER so
+  an unchanged save is not a reordering); callable choices get an `env` the
+  page supplies (the reagent inventory's standard lots); one tab form may save
+  several sections together (`_section="salt,mf"`, one
+  `section_stamp__<id>` each; all are checked before any is applied, so a tab
+  is never half-saved). Stamp fields on the earlier tab forms are renamed to
+  `section_stamp__<id>` to match.
+- **Sample Corrections** (`method_profile_sections.SALT`, `MATRIX_FACTORS`,
+  form `#section-corr`). The default factor 1.0 is now a placeholder rather
+  than a value in every cell; a factor must be above 0 (a zero wipes every
+  result) and a salt factor at most 1; a lot that is neither in the inventory
+  nor the stored one is refused, while a stored lot that has left the
+  inventory is still offered and keeps its recorded lot number. Rows for
+  analytes / matrices no longer listed are kept, not dropped.
+- **Dead code removed:** the marker parsers, the two row helpers, two JSON
+  helpers, and the JS row builders + serialisers for both tables (their
+  tables had not existed since the named-field rewrite; the handler's
+  fallbacks re-read hidden JSON fields no page sent).
+- **Pre-existing test flaw found:** `test_profile_form_guards` matched markers
+  as substrings, so `matrix_present` was "found" inside `eis_matrix_present`;
+  now matched quoted (mutation-tested).
+- **Verified live after restart:** no-op saves of all five migrated tabs on
+  all three profiles: 0 changes, 0 history; a matrix-factor edit recorded and
+  reverted (`tools/config_history_check.py`, all cases pass, configuration
+  afterwards equals before); FDA's PFOA lot shown selected from the
+  inventory; picking a lot for an EPA 537.1 salt row stored the inventory's
+  lot number, reverted from history; a salt factor of 1.5 is blocked by the
+  browser (max=1) and refused by the server (unit test); no JS errors.
+- **Tests:** `test_config_forms.py` 41. UI ratchet style= 925 -> 911.
+- **Next:** EIS limits, Surrogate Map, Recovery Tiers, then the JSON-grid tabs.

@@ -187,9 +187,6 @@ class PFASMethodProfileEditView(BrowserView):
         entry = qca.get(self.RECOVERY_TIER_QC_TYPE, {}) or {}
         return json.dumps(entry.get("tiers", []), indent=2)
 
-    def matrix_factors_json(self):
-        return json.dumps(self.profile().get("matrix_factors", []), indent=2)
-
     def surrogate_map_json(self):
         return json.dumps(self.profile().get("surrogate_map", []), indent=2)
 
@@ -203,35 +200,6 @@ class PFASMethodProfileEditView(BrowserView):
 
     def eis_overrides_json(self):
         return json.dumps(self.profile().get("eis_overrides", []), indent=2)
-
-    def salt_adjustment_factors_json(self):
-        return json.dumps(self.profile().get("salt_adjustment_factors", []), indent=2)
-
-    def salt_adjustment_rows(self):
-        """One row per analyte in the method's master set (default factor 1.0),
-        merged with any saved factors. Each carries the linked standard/CRM lot
-        (traceability, golden rule #6). The factor seldom changes; the CoA lot
-        updates with each new standard lot."""
-        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
-        kw_to_display = {row[0]: row[1] for row in NATIVE_ANALYTES}
-        profile = self.profile()
-        keywords = profile.get("master_analyte_set", [])
-        saved = {}
-        for r in (profile.get("salt_adjustment_factors") or []):
-            if isinstance(r, dict) and r.get("analyte"):
-                saved[r["analyte"]] = r
-        rows = []
-        for kw in keywords:
-            rec = saved.get(kw, {})
-            factor = rec.get("factor")
-            rows.append({
-                "analyte": kw,
-                "label": kw_to_display.get(kw, kw),
-                "factor": factor if factor is not None else 1.0,
-                "lot_uid": rec.get("lot_uid", "") or rec.get("source", ""),
-                "lot_number": rec.get("lot_number", ""),
-            })
-        return rows
 
     def dup_rpd(self):
         """Sample-duplicate RPD limit, from the structure the engine evaluates.
@@ -248,39 +216,6 @@ class PFASMethodProfileEditView(BrowserView):
         if tiers and tiers[0].get("rpd_max") is not None:
             return tiers[0]["rpd_max"]
         return ""
-
-    def matrix_adjustment_rows(self):
-        """One row per SUPPORTED MATRIX (from the Analyte × Matrix map, which
-        ties to core SampleTypes via matrix_uid_map), default factor 1.0.
-        Legacy free-text/substring matrix_factors are collapsed onto the
-        matching supported matrix (D55 — ties matrix factors to core types)."""
-        profile = self.profile()
-        matrices = profile.get("supported_matrices", []) or []
-        uid_map = profile.get("matrix_uid_map", {}) or {}
-        saved = profile.get("matrix_factors", []) or []
-        rows = []
-        for mtx in matrices:
-            ml = mtx.lower().strip()
-            factor = None
-            # exact title match first
-            for e in saved:
-                if isinstance(e, dict) and (e.get("matrix", "") or "").lower().strip() == ml:
-                    factor = e.get("factor")
-                    break
-            # legacy substring collapse (e.g. "meat"/"deer" -> "Meat / Muscle")
-            if factor is None:
-                for e in saved:
-                    key = (e.get("matrix", "") or "").lower().strip()
-                    if key and key in ml:
-                        factor = e.get("factor")
-                        break
-            rows.append({
-                "matrix": mtx,
-                "sampletype_uid": uid_map.get(mtx, ""),
-                "linked": bool(uid_map.get(mtx)),
-                "factor": factor if factor is not None else 1.0,
-            })
-        return rows
 
     # The 1633A EIS tables are published per MATRIX CLASS, not per matrix
     # title: Sediment and Soil are both "solid". Mirrors
@@ -679,12 +614,20 @@ class PFASMethodProfileEditView(BrowserView):
     # chain runs -- the rule-toggle and surrogate-link writers read fields this
     # form does not carry, and would switch every rule off / rewrite the links.
 
+    def section_env(self):
+        """What a declared section needs from the site that the profile does
+        not hold: the reagent inventory's standard lots (salt CoA lots)."""
+        if getattr(self, "_section_env", None) is None:
+            self._section_env = {"standard_lots": self.standard_lot_options()}
+        return self._section_env
+
     def section_groups(self, section_id):
         from senaite.pfas import config_forms
         from senaite.pfas.method_profile_sections import SECTIONS
         from senaite.pfas.method_profile_store import raw_profile
         return config_forms.render(SECTIONS[section_id],
-                                   raw_profile(_portal(self.context), self.method_id()))
+                                   raw_profile(_portal(self.context), self.method_id()),
+                                   self.section_env())
 
     def section_stamp(self, section_id):
         from senaite.pfas import config_forms
@@ -693,28 +636,43 @@ class PFASMethodProfileEditView(BrowserView):
         return config_forms.stamp(SECTIONS[section_id],
                                   raw_profile(_portal(self.context), self.method_id()))
 
-    def _save_section(self, portal, mid, section_id):
+    def _save_section(self, portal, mid, section_ids):
+        """Save the declared section(s) one tab's form carries ("_section" is a
+        comma-separated list; each carries its own section_stamp__<id>). All
+        are checked before any is applied: one stale or refused section saves
+        nothing, so a tab is never left half-saved."""
         from senaite.pfas import config_forms, config_history
         from senaite.pfas.method_profile_sections import SECTIONS
         from senaite.pfas.method_profile_store import raw_profile
-        section = SECTIONS.get(section_id)
-        if section is None:
-            return self._redirect_error(mid, "Unknown section: %s" % section_id)
-        pane = "pane-" + section.id
+        form = self.request.form
+        pane = (form.get("_pane") or "").strip()
+        ids = [i.strip() for i in section_ids.split(",") if i.strip()]
+        sections = [SECTIONS.get(i) for i in ids]
+        if not ids or None in sections:
+            return self._redirect_error(mid, "Unknown section: %s" % section_ids)
+        pane = pane or "pane-" + ids[0]
         stored = raw_profile(portal, mid)
         if not stored:
             return self._redirect_error(mid, "No profile for %s" % mid, pane)
-        sent = (self.request.form.get("section_stamp") or "").strip()
-        if sent != config_forms.stamp(section, stored):
-            last = config_history.last_change(portal, "method_profile", mid) or {}
-            return self._redirect_error(mid, (
-                u"Not saved: {0} was changed by {1} at {2} UTC after you opened "
-                u"it. Reload to see their change, then re-apply yours.").format(
-                    section.title, last.get("who", "someone"), last.get("at", "?")), pane)
-        updates, errors = config_forms.parse(section, self.request.form, stored)
+        env = self.section_env()
+        for section in sections:
+            sent = (form.get("section_stamp__" + section.id) or "").strip()
+            if sent != config_forms.stamp(section, stored):
+                last = config_history.last_change(portal, "method_profile", mid) or {}
+                return self._redirect_error(mid, (
+                    u"Not saved: {0} was changed by {1} at {2} UTC after you opened "
+                    u"it. Reload to see their change, then re-apply yours.").format(
+                        section.title, last.get("who", "someone"), last.get("at", "?")), pane)
+        parsed, errors = [], []
+        for section in sections:
+            updates, errs = config_forms.parse(section, form, stored, env)
+            parsed.append((section, updates))
+            errors.extend(errs)
         if errors:
             return self._redirect_error(mid, u"Not saved: " + u" ".join(errors), pane)
-        profile = config_forms.apply(section, get_profile(portal, mid), updates)
+        profile = get_profile(portal, mid)
+        for section, updates in parsed:
+            profile = config_forms.apply(section, profile, updates, env)
         # A user-saved profile is no longer factory-default (the installer
         # re-runs on every start and treats _seeded profiles as its own).
         profile.pop("_seeded", None)
@@ -888,30 +846,11 @@ class PFASMethodProfileEditView(BrowserView):
             tiers[0].setdefault("analyte_group", "all")
             tiers[0].setdefault("matrix_scope", "all")
 
-        # Complex JSON sections (textareas)
-        # Matrix adjustment is now per-supported-matrix named fields
-        # (matrix_factor.<title>), each tied to a core SampleType via
-        # matrix_uid_map (D55). Only non-default (!=1.0) rows persist.
-        if f.get("matrix_present"):
-            uid_map = profile.get("matrix_uid_map", {}) or {}
-            mf = []
-            for mtx in profile.get("supported_matrices", []):
-                raw = (f.get("matrix_factor.%s" % mtx, "") or "").strip()
-                try:
-                    factor = float(raw) if raw != "" else 1.0
-                except ValueError:
-                    # refused, not coerced: a typo ("0,95") silently became 1.0
-                    # and removed the correction from reported results (GAPS §51)
-                    raise ValueError("matrix factor for {0} is not a number: "
-                                     "{1!r}".format(mtx, raw))
-                if factor == 1.0:
-                    continue
-                mf.append({"matrix": mtx, "factor": factor,
-                           "sampletype_uid": uid_map.get(mtx, "")})
-            profile["matrix_factors"] = mf
-        else:
-            profile["matrix_factors"] = _json_field(
-                "matrix_factors_json", profile.get("matrix_factors", []))
+        # Salt and matrix adjustment factors are NOT parsed here: the Sample
+        # Corrections tab is its own form (config_forms tables, R2), saved by
+        # _save_section. The old fallbacks that re-read a hidden JSON copy of
+        # each on every other save are gone with them -- no field sent either.
+
         if "surrogate_map_json" in f:
             profile["surrogate_map"] = self._checked_surrogate_map(
                 profile, _json_field("surrogate_map_json", []))
@@ -969,36 +908,6 @@ class PFASMethodProfileEditView(BrowserView):
         raw_eis = f.get("eis_overrides_json", "").strip()
         if raw_eis:
             profile["eis_overrides"] = json.loads(raw_eis)
-
-        # Salt adjustment is now per-analyte named fields (salt_factor.<kw> +
-        # salt_lot.<kw>), one row per master-set analyte (default factor 1.0),
-        # with the CoA lot referencing an inventory standard lot (traceability).
-        # Falls back to the legacy JSON field if the named fields are absent.
-        if f.get("salt_present"):
-            lot_labels = {o["uid"]: o["lot_number"]
-                          for o in self.standard_lot_options()}
-            salt_rows = []
-            for kw in profile.get("master_analyte_set", []):
-                raw = (f.get("salt_factor.%s" % kw, "") or "").strip()
-                lot_uid = (f.get("salt_lot.%s" % kw, "") or "").strip()
-                try:
-                    factor = float(raw) if raw != "" else 1.0
-                except ValueError:
-                    raise ValueError("salt factor for {0} is not a number: "
-                                     "{1!r}".format(kw, raw))
-                # store only meaningful rows (non-default factor OR a linked lot)
-                if factor == 1.0 and not lot_uid:
-                    continue
-                salt_rows.append({
-                    "analyte": kw, "factor": factor,
-                    "lot_uid": lot_uid,
-                    "lot_number": lot_labels.get(lot_uid, ""),
-                })
-            profile["salt_adjustment_factors"] = salt_rows
-        else:
-            profile["salt_adjustment_factors"] = _json_field(
-                "salt_adjustment_factors_json",
-                profile.get("salt_adjustment_factors", []))
 
         profile["isomer_summation"] = _json_field(
             "isomer_summation_json",

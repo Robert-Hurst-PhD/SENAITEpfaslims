@@ -68,7 +68,7 @@
   headings, one row per key. Same caller contract: cf_groups, cf_form.
 -->
 <metal:table define-macro="table">
-  <div class="pfas-tabs" data-tabs="">
+  <div class="pfas-tabs" data-tabs="" tal:condition="python:len(cf_groups) > 1">
     <a tal:repeat="grp cf_groups"
        tal:attributes="class python:'pfas-tab active' if repeat['grp'].index == 0 else 'pfas-tab';
                        data-pane string:${cf_form}-g${grp/index};
@@ -89,7 +89,10 @@
         <tr tal:repeat="row grp/rows">
           <td><span tal:content="row/label">PFOA</span>
               <code class="rl-kw" tal:condition="python:row['sublabel'] and row['sublabel'] != row['label']"
-                    tal:content="row/sublabel">PFOA</code></td>
+                    tal:content="row/sublabel">PFOA</code>
+              <span tal:condition="row/note"
+                    tal:attributes="class python:'sur-tag sur-nocore' if row['warn'] else 'sur-tag sur-core'"
+                    tal:content="row/note">core type</span></td>
           <td tal:repeat="cell row/cells">
             <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
                    tal:attributes="name cell/name; form cf_form; value cell/value;
@@ -102,6 +105,14 @@
             <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
                    tal:attributes="name cell/name; form cf_form;
                                    checked python:'checked' if cell['checked'] else None" />
+            <select tal:condition="python:cell['kind'] == 'choice'" class="rl-in"
+                    tal:attributes="name cell/name; form cf_form;
+                                    aria-label python:'%s %s' % (row['label'], cell['label'])">
+              <option value="">&#8212; none &#8212;</option>
+              <option tal:repeat="c cell/choices"
+                      tal:attributes="value python:c[0]; selected python:'selected' if c[0] == cell['value'] else None"
+                      tal:content="python:c[1]">Std &#8212; lot 123</option>
+            </select>
           </td>
         </tr>
       </tbody>

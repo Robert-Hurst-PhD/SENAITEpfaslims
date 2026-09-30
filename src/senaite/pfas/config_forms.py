@@ -106,19 +106,19 @@ def stamp(section, stored):
     return _history.fingerprint(dict((k, v) for k, v in vals.items() if v not in (None, u"", "")))
 
 
-def render(section, stored):
+def render(section, stored, env=None):
     """What the template draws: one dict per field, grouped."""
     if isinstance(section, Table):
-        return render_table(section, stored)
+        return render_table(section, stored, env)
     if isinstance(section, Collection):
-        return render_collection(section, stored)
+        return render_collection(section, stored, env)
     vals = current(section, stored)
     groups = []
     for title, fields in section.groups:
         rows = []
         for f in fields:
             v = vals[f.name]
-            choices = _choices(f, stored)
+            choices = _choices(f, stored, env)
             if f.kind == CHOICE and v not in (None, u"", "") and v not in [c[0] for c in choices]:
                 choices.append((v, u"%s (stored value)" % v))
             rows.append({
@@ -146,8 +146,10 @@ def _text(raw):
 _SKIP = object()           # a field whose submitted value was refused
 
 
-def _choices(f, stored):
-    return list(f.choices(stored or {})) if callable(f.choices) else list(f.choices)
+def _choices(f, stored, env=None):
+    """A field's options; callable choices get the stored value and `env`,
+    what the page knows that the store does not (e.g. the inventory's lots)."""
+    return list(f.choices(stored or {}, env)) if callable(f.choices) else list(f.choices)
 
 
 def _value(f, raw, saved, label=None, choices=None):
@@ -190,7 +192,7 @@ def _value(f, raw, saved, label=None, choices=None):
     return text, None
 
 
-def parse(section, form, stored):
+def parse(section, form, stored, env=None):
     """(updates {path: value|REMOVE}, errors [text]) for the submitted section.
 
     `stored` is the value as saved on the server: a choice field accepts its
@@ -202,14 +204,14 @@ def parse(section, form, stored):
     carries all of its fields, so absence can only mean unchecked.
     """
     if isinstance(section, Table):
-        return parse_table(section, form, stored)
+        return parse_table(section, form, stored, env)
     if isinstance(section, Collection):
-        return parse_collection(section, form, stored)
+        return parse_collection(section, form, stored, env)
     updates, errors = {}, []
     saved = current(section, stored)
     for f in section.fields():
         value, error = _value(f, form.get(f.name), saved[f.name],
-                              choices=_choices(f, stored))
+                              choices=_choices(f, stored, env))
         if error:
             errors.append(error)
         elif value is not _SKIP:
@@ -217,10 +219,10 @@ def parse(section, form, stored):
     return updates, errors
 
 
-def apply(section, stored, updates):
+def apply(section, stored, updates, env=None):
     """A copy of `stored` with the section's updates written in."""
     if isinstance(section, Table):
-        return apply_table(section, stored, updates)
+        return apply_table(section, stored, updates, env)
     if isinstance(section, Collection):
         return section.write(copy.deepcopy(stored or {}), updates)
     value = copy.deepcopy(stored or {})
@@ -258,10 +260,18 @@ def apply(section, stored, updates):
 
 
 class Table(object):
+    """`read(stored) -> {row key: {column name: value}}` and
+    `write(stored, {row key: {column path: value}}, env) -> stored` replace the
+    default nested-dict storage under `base` when the store keeps its rows
+    another way -- e.g. a list of {"analyte", "factor"} dicts holding only the
+    rows that differ from the default."""
 
-    def __init__(self, id, title, base, columns, rows, check=None, intro=u""):
+    def __init__(self, id, title, base, columns, rows, check=None, intro=u"",
+                 read=None, write=None):
         self.id = id
         self.title = title
+        self.read = read
+        self.write = write
         self.base = tuple(base)
         self.columns = columns      # [Field] with paths relative to the row
         self.rows = rows            # callable(stored) -> (groups, rows)
@@ -296,6 +306,9 @@ def _row_node(table, stored, row_key):
 
 
 def _cells(table, stored, row_key):
+    if table.read is not None:
+        vals = table.read(stored or {}).get(tuple(row_key)) or {}
+        return dict((c.name, vals.get(c.path[0])) for c in table.columns)
     node = _row_node(table, stored, row_key)
     return dict((c.name, _get(node, c.path)) for c in table.columns)
 
@@ -313,7 +326,7 @@ def stamp_table(table, stored):
     return _history.fingerprint(blob)
 
 
-def render_table(table, stored):
+def render_table(table, stored, env=None):
     groups, rows = table.rows(stored or {})
     by_group = dict((g["key"], dict(g, rows=[], set=0)) for g in groups)
     order = [g["key"] for g in groups]
@@ -322,16 +335,19 @@ def render_table(table, stored):
         cells = []
         for c in table.columns:
             v = vals[c.name]
+            choices = _choices(c, stored, env)
+            if c.kind == CHOICE and v not in (None, u"", "") and v not in [x[0] for x in choices]:
+                choices.append((v, u"%s (stored value)" % v))
             cells.append({"name": cell_name(table, r["key"], c), "kind": c.kind,
                           "label": c.label, "min": c.minimum, "max": c.maximum,
-                          "placeholder": c.placeholder,
+                          "placeholder": c.placeholder, "choices": choices,
                           "value": u"" if v is None else u"%s" % v,
                           "checked": bool(v) if c.kind == BOOL else False})
         g = by_group.get(r.get("group"))
         if g is None:
             continue
         g["rows"].append({"label": r.get("label"), "sublabel": r.get("sublabel"),
-                          "cells": cells})
+                          "note": r.get("note"), "warn": r.get("warn"), "cells": cells})
         if any(vals[c.name] not in (None, u"", "") for c in table.columns):
             g["set"] += 1
     out = []
@@ -345,7 +361,7 @@ def render_table(table, stored):
     return out
 
 
-def parse_table(table, form, stored):
+def parse_table(table, form, stored, env=None):
     """(updates {row key: {column path: value}}, errors) for the listed rows."""
     _groups, rows = table.rows(stored or {})
     updates, errors = {}, []
@@ -354,7 +370,8 @@ def parse_table(table, form, stored):
         vals, ok = {}, True
         for c in table.columns:
             value, error = _value(c, form.get(cell_name(table, r["key"], c)),
-                                  saved[c.name], u"%s %s" % (r.get("label"), c.label))
+                                  saved[c.name], u"%s %s" % (r.get("label"), c.label),
+                                  choices=_choices(c, stored, env))
             if error:
                 errors.append(error)
                 ok = False
@@ -368,7 +385,9 @@ def parse_table(table, form, stored):
     return updates, errors
 
 
-def apply_table(table, stored, updates):
+def apply_table(table, stored, updates, env=None):
+    if table.write is not None:
+        return table.write(copy.deepcopy(stored or {}), updates, env)
     value = copy.deepcopy(stored or {})
     existed = _get(value, table.base) is not None
     for row_key, vals in updates.items():
@@ -458,7 +477,7 @@ def collection_name(coll, index, column):
     return u"__".join([u"c", _enc(coll.id), u"%d" % index] + [_enc(p) for p in column.path])
 
 
-def render_collection(coll, stored):
+def render_collection(coll, stored, env=None):
     rows = coll.read(stored or {})
     out = []
     for i in range(len(rows) + coll.new_rows):
@@ -466,7 +485,7 @@ def render_collection(coll, stored):
         cells = []
         for c in coll.columns:
             v = vals.get(c.path[0])
-            choices = _choices(c, stored)
+            choices = _choices(c, stored, env)
             if c.kind == CHOICE and v not in (None, u"", "") and v not in [x[0] for x in choices]:
                 choices.append((v, u"%s (stored value)" % v))
             cells.append({"name": collection_name(coll, i, c), "kind": c.kind,
@@ -480,7 +499,7 @@ def render_collection(coll, stored):
     return out
 
 
-def parse_collection(coll, form, stored):
+def parse_collection(coll, form, stored, env=None):
     """(rows [{column: value}], errors) -- the collection as submitted."""
     before = coll.read(stored or {})
     rows, errors, seen = [], [], set()
@@ -507,7 +526,7 @@ def parse_collection(coll, form, stored):
         for c in coll.columns[1:]:
             value, error = _value(c, form.get(collection_name(coll, i, c)),
                                   old.get(c.path[0]), u"%s: %s" % (label, c.label),
-                                  choices=_choices(c, stored))
+                                  choices=_choices(c, stored, env))
             if error:
                 errors.append(error)
             elif value is not _SKIP:

@@ -668,47 +668,11 @@
                 reagent inventory so the salt correction traces to a specific
                 reference-standard lot (golden rule&nbsp;#6).
               </p>
-              <input type="hidden" name="salt_present" value="1" />
-              <table class="factor-table" id="saltAdjTable">
-                <thead>
-                  <tr>
-                    <th style="width:38%">Analyte</th>
-                    <th style="width:18%">Factor</th>
-                    <th style="width:44%">CoA Lot (standard / reference material)</th>
-                  </tr>
-                </thead>
-                <tbody tal:define="lots view/standard_lot_options">
-                  <tr tal:repeat="row view/salt_adjustment_rows">
-                    <td>
-                      <span tal:content="row/label"
-                            style="font-family: var(--font-mono);font-size:var(--fs-sm);">PFOS</span>
-                    </td>
-                    <td>
-                      <input type="number" step="0.0001" min="0" max="1"
-                             style="width:100px;"
-                             tal:attributes="name string:salt_factor.${row/analyte};
-                                             value row/factor" />
-                    </td>
-                    <td>
-                      <select tal:attributes="name string:salt_lot.${row/analyte}"
-                              style="max-width:100%;">
-                        <option value="">&#8212; no linked lot &#8212;</option>
-                        <option tal:repeat="lot lots"
-                                tal:attributes="value lot/uid;
-                                                selected python:lot['uid'] == row['lot_uid'];
-                                                style python:'color:#a33' if lot['expired'] else ''"
-                                tal:content="lot/label">Std — lot 123</option>
-                      </select>
-                    </td>
-                  </tr>
-                  <tr tal:condition="not:view/salt_adjustment_rows">
-                    <td colspan="3" style="color:var(--s-secondary);font-size:var(--fs-sm);">
-                      No analytes in this method&#8217;s master set yet &#8212;
-                      configure the Analyte&nbsp;&#215;&nbsp;Matrix tab first.
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <!-- Saved ON ITS OWN (R2): both tables on this tab belong to
+                   form#section-corr, which saves them together. -->
+              <div tal:define="cf_groups python:view.section_groups('salt'); cf_form string:section-corr">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
               <p tal:condition="not:view/standard_lot_options"
                  style="font-size:var(--fs-xs);color:#856404;margin-top:8px;">
                 No <strong>Standard / Reference Material</strong> lots are in the
@@ -729,39 +693,9 @@
                 (single source of truth, golden rule&nbsp;#3). Applied to every
                 sample of that type.
               </p>
-              <input type="hidden" name="matrix_present" value="1" />
-              <table class="factor-table" id="matrixFactorsTable">
-                <thead>
-                  <tr>
-                    <th style="width:55%">Sample Type (core)</th>
-                    <th style="width:25%">Factor</th>
-                    <th style="width:20%"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr tal:repeat="row view/matrix_adjustment_rows">
-                    <td tal:content="row/matrix">Meat / Muscle</td>
-                    <td>
-                      <input type="number" step="0.0001" min="0" style="width:110px;"
-                             tal:attributes="name string:matrix_factor.${row/matrix};
-                                             value row/factor" />
-                    </td>
-                    <td>
-                      <span tal:condition="row/linked"
-                            style="font-size:var(--fs-xs);background:#e8f4f8;color:#387493;padding:2px 8px;border-radius:8px;">&#128279; core type</span>
-                      <span tal:condition="not:row/linked"
-                            style="font-size:var(--fs-xs);color:#a33;"
-                            title="No matrix_uid_map entry ties this matrix to a core SampleType">&#9888; unlinked</span>
-                    </td>
-                  </tr>
-                  <tr tal:condition="not:view/matrix_adjustment_rows">
-                    <td colspan="3" style="color:var(--s-secondary);font-size:var(--fs-sm);">
-                      No matrices in this method&#8217;s Analyte&nbsp;&#215;&nbsp;Matrix
-                      map yet &#8212; configure that tab first.
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <div tal:define="cf_groups python:view.section_groups('mf'); cf_form string:section-corr">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
             </div>
           </details>
 
@@ -1049,26 +983,35 @@
     </form>
     <!-- Per-tab section forms (R2): each saves only its own section, with its
          own stale-save stamp. -->
+    <form id="section-corr" method="POST" class="pfas-section-form"
+          data-tab-label="Sample Corrections"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="salt,mf" />
+      <input type="hidden" name="_pane" value="pane-corr" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__salt" tal:attributes="value python:view.section_stamp('salt')" />
+      <input type="hidden" name="section_stamp__mf" tal:attributes="value python:view.section_stamp('mf')" />
+    </form>
     <form id="section-mtx" method="POST" class="pfas-section-form"
           data-tab-label="Matrices &amp; Units"
           tal:attributes="action string:@@pfas-method-profile-edit">
       <input type="hidden" name="_section" value="mtx" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
-      <input type="hidden" name="section_stamp" tal:attributes="value python:view.section_stamp('mtx')" />
+      <input type="hidden" name="section_stamp__mtx" tal:attributes="value python:view.section_stamp('mtx')" />
     </form>
     <form id="section-rl" method="POST" class="pfas-section-form"
           data-tab-label="Reporting Limits"
           tal:attributes="action string:@@pfas-method-profile-edit">
       <input type="hidden" name="_section" value="rl" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
-      <input type="hidden" name="section_stamp" tal:attributes="value python:view.section_stamp('rl')" />
+      <input type="hidden" name="section_stamp__rl" tal:attributes="value python:view.section_stamp('rl')" />
     </form>
     <form id="section-cal" method="POST" class="pfas-section-form"
           data-tab-label="Calibration &amp; CCV"
           tal:attributes="action string:@@pfas-method-profile-edit">
       <input type="hidden" name="_section" value="cal" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
-      <input type="hidden" name="section_stamp" tal:attributes="value python:view.section_stamp('cal')" />
+      <input type="hidden" name="section_stamp__cal" tal:attributes="value python:view.section_stamp('cal')" />
     </form>
 
     <script>
@@ -1175,7 +1118,7 @@
     /* Endpoint for stage action GIFs — shared with the logbook step builder. */
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=3"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=4"></script>
 
   </div><!-- /content slot -->
 
