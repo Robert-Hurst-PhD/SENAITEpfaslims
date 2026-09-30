@@ -454,7 +454,7 @@ def _prune(value, base, keep_base=False):
 class Collection(object):
 
     def __init__(self, id, title, columns, read, write, check=None, new_rows=3,
-                 noun=u"row", intro=u""):
+                 noun=u"row", intro=u"", allow_empty=False):
         self.id = id
         self.title = title
         self.columns = columns
@@ -464,6 +464,7 @@ class Collection(object):
         self.new_rows = new_rows
         self.noun = noun
         self.intro = intro
+        self.allow_empty = allow_empty    # False: removing every row is refused
 
     def fields(self):
         return list(self.columns)
@@ -506,7 +507,8 @@ def parse_collection(coll, form, stored, env=None):
     for i in range(len(before) + coll.new_rows):
         old = before[i] if i < len(before) else {}
         name, error = _value(coll.key, form.get(collection_name(coll, i, coll.key)),
-                             old.get(coll.key.path[0]))
+                             old.get(coll.key.path[0]),
+                             choices=_choices(coll.key, stored, env))
         if name in (None, u"", REMOVE, _SKIP):
             if error:
                 errors.append(error)
@@ -532,7 +534,7 @@ def parse_collection(coll, form, stored, env=None):
             elif value is not _SKIP:
                 row[c.path[0]] = None if value is REMOVE else value
         rows.append(row)
-    if not errors and not rows:
+    if not errors and not rows and not coll.allow_empty:
         errors.append(u"At least one %s is needed; nothing was removed." % coll.noun)
     if not errors and coll.check is not None:
         errors.extend(coll.check(stored or {}, rows) or [])

@@ -717,20 +717,11 @@
                   (EPA 820-R-24-007, December 2024). Verify each value against your
                   purchased method copy before production use.
                 </div>
-                <table class="factor-table" id="eisOverrideTable">
-                  <thead>
-                    <tr>
-                      <th>EIS / Surrogate Analyte</th>
-                      <th>Recovery Min (%)</th>
-                      <th>Recovery Max (%)</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="eisOverrideBody"></tbody>
-                </table>
-                <button type="button" class="btn-sm btn-add-row" onclick="addEisRow()">+ Add row</button>
-                <input type="hidden" name="eis_overrides_json" id="eis_overrides_json"
-                       tal:attributes="value view/eis_overrides_json" />
+                <!-- Saved ON ITS OWN (R2): every EIS table on this tab belongs
+                     to form#section-eis. -->
+                <div tal:define="cf_rows python:view.section_groups('eis'); cf_form string:section-eis">
+                  <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+                </div>
               </div>
             </details>
 
@@ -743,58 +734,16 @@
                   1633A publishes EIS recovery limits per matrix CLASS, not per
                   matrix title &#8212; Sediment and Soil are both
                   <em>solid</em>. A limit set here overrides the per-analyte
-                  limit above for that class. Clear an analyte name to remove
-                  the row; the blank rows at the end of each class add new ones.
+                  limit above for that class. A class row names one of the
+                  designations above (a typed name that matched none was
+                  silently ignored). Set it to &#8212; none &#8212; to remove the row;
+                  the blank rows at the end of each class add new ones.
                 </p>
-                <input type="hidden" name="eis_matrix_present" value="1" />
-                <tal:group repeat="grp view/eis_matrix_rows">
-                  <h4 style="margin:14px 0 6px;font-size:var(--fs-base);"
-                      tal:content="string:${grp/label} (${grp/count})">Solid</h4>
-                  <table class="factor-table">
-                    <thead>
-                      <tr>
-                        <th style="width:50%">EIS / Surrogate Analyte</th>
-                        <th style="width:25%">Recovery Min (%)</th>
-                        <th style="width:25%">Recovery Max (%)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr tal:repeat="row grp/rows">
-                        <td>
-                          <input type="text" style="width:100%;"
-                                 tal:attributes="name string:eismtx.${grp/key}.${repeat/row/index}.analyte;
-                                                 value row/analyte" />
-                        </td>
-                        <td>
-                          <input type="number" step="0.1" style="width:100%;"
-                                 tal:attributes="name string:eismtx.${grp/key}.${repeat/row/index}.min;
-                                                 value row/recovery_min" />
-                        </td>
-                        <td>
-                          <input type="number" step="0.1" style="width:100%;"
-                                 tal:attributes="name string:eismtx.${grp/key}.${repeat/row/index}.max;
-                                                 value row/recovery_max" />
-                        </td>
-                      </tr>
-                      <tal:blank repeat="n python:range(2)">
-                        <tr tal:define="idx python:grp['blank_start'] + n">
-                          <td>
-                            <input type="text" style="width:100%;"
-                                   placeholder="new analyte"
-                                   tal:attributes="name string:eismtx.${grp/key}.${idx}.analyte" />
-                          </td>
-                          <td>
-                            <input type="number" step="0.1" style="width:100%;"
-                                   tal:attributes="name string:eismtx.${grp/key}.${idx}.min" />
-                          </td>
-                          <td>
-                            <input type="number" step="0.1" style="width:100%;"
-                                   tal:attributes="name string:eismtx.${grp/key}.${idx}.max" />
-                          </td>
-                        </tr>
-                      </tal:blank>
-                    </tbody>
-                  </table>
+                <tal:group repeat="cls view/eis_class_sections">
+                  <div class="section-group-hdr" tal:content="python:cls[1]">Solid</div>
+                  <div tal:define="cf_rows python:view.section_groups(cls[0]); cf_form string:section-eis">
+                    <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+                  </div>
                 </tal:group>
               </div>
             </details>
@@ -983,6 +932,19 @@
     </form>
     <!-- Per-tab section forms (R2): each saves only its own section, with its
          own stale-save stamp. -->
+    <form id="section-eis" method="POST" class="pfas-section-form"
+          tal:condition="view/show_eis_overrides"
+          data-tab-label="EIS Limits"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="eis,eis_solid,eis_biosolid,eis_leachate,eis_tissue" />
+      <input type="hidden" name="_pane" value="pane-eis" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__eis" tal:attributes="value python:view.section_stamp('eis')" />
+      <tal:c repeat="cls view/eis_class_sections">
+        <input type="hidden" tal:attributes="name python:'section_stamp__' + cls[0];
+                                             value python:view.section_stamp(cls[0])" />
+      </tal:c>
+    </form>
     <form id="section-corr" method="POST" class="pfas-section-form"
           data-tab-label="Sample Corrections"
           tal:attributes="action string:@@pfas-method-profile-edit">
@@ -1118,7 +1080,7 @@
     /* Endpoint for stage action GIFs — shared with the logbook step builder. */
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=4"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=5"></script>
 
   </div><!-- /content slot -->
 

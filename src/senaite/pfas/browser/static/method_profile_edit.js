@@ -37,25 +37,6 @@
     hidden.value = JSON.stringify(rows, null, 2);
   }
 
-  var EIS_FIELDS = [{key:'analyte',type:'text'},{key:'recovery_min',type:'number'},{key:'recovery_max',type:'number'}];
-  function addEisRow(analyte, rmin, rmax) {
-    var tbody = document.getElementById('eisOverrideBody');
-    if (!tbody) return;
-    var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td><input type="text" data-field="analyte" value="' + _esc(analyte||'') + '" placeholder="e.g. M2-4:2FTS" /></td>' +
-      '<td><input type="number" data-field="recovery_min" step="0.1" min="0" value="' + (rmin!=null?rmin:'') + '" placeholder="20.0" /></td>' +
-      '<td><input type="number" data-field="recovery_max" step="0.1" min="0" value="' + (rmax!=null?rmax:'') + '" placeholder="150.0" /></td>' +
-      '<td><button type="button" class="del-btn" onclick="this.closest(\'tr\').remove();syncEisJson()">&#215;</button></td>';
-    tbody.appendChild(tr);
-    tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncEisJson); i.addEventListener('input',syncEisJson); });
-  }
-  function syncEisJson() {
-    if (document.getElementById('eis_overrides_json')) {
-      syncJson('eisOverrideBody','eis_overrides_json',EIS_FIELDS);
-    }
-  }
-
   var IS_FIELDS = [{key:'linear',type:'text'},{key:'branched',type:'text'},{key:'reported',type:'text'},{key:'enabled',type:'bool'}];
   function addIsomerRow(linear, branched, reported, enabled) {
     var tbody = document.getElementById('isomerBody');
@@ -851,13 +832,6 @@
       var stages = JSON.parse(document.getElementById('extraction_stages_json').value || '[]');
       stages.forEach(function(s) { addStageCard(s); });
     } catch(e) {}
-    try {
-      var eisEl = document.getElementById('eis_overrides_json');
-      if (eisEl) {
-        var eis = JSON.parse(eisEl.value || '[]');
-        eis.forEach(function(r) { addEisRow(r.analyte, r.recovery_min, r.recovery_max); });
-      }
-    } catch(e) {}
     buildRecoveryTiersGrid();
     buildAMIGrid();
     buildSpikeMatrixSections();
@@ -872,7 +846,7 @@
   var profileForm = document.getElementById('profile-form');
   if (profileForm) profileForm.addEventListener('submit', function() {
     [syncIsomerJson, syncSpikeLevelsJson,
-     syncStageJson, syncEisJson, syncRecoveryTiersJson, syncSurrogateMapJson,
+     syncStageJson, syncRecoveryTiersJson, syncSurrogateMapJson,
      syncAMIJson, syncPerAnalyteJson].forEach(function (fn) {
       try { fn(); } catch (e) {
         if (window.console) console.error('method profile: ' + (fn.name || 'sync') + ' failed', e);

@@ -32,7 +32,7 @@ SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
 MAX_PAGES_WITH_STYLE_BLOCK = 51
-MAX_STYLE_ATTRIBUTES = 911
+MAX_STYLE_ATTRIBUTES = 901
 MAX_DISTINCT_HEX = 209
 MAX_DISTINCT_FONT_SIZES = 3   # the 36-64px display glyphs; all text uses var(--fs-*)
 
@@ -103,6 +103,23 @@ def _all_styles():
         if name.endswith(".css"):
             with open(os.path.join(STATIC, name)) as fh:
                 yield "static/" + name, fh.read()
+
+
+def test_no_python_expression_inside_a_string_expression():
+    """Chameleon refuses "string:...${python:...}" and the whole page 500s --
+    which happened twice, the second time only on the one method (1633A) whose
+    tab rendered the offending line, so every other page still looked fine."""
+    bad = []
+    for folder in (TEMPLATES, os.path.join(TEMPLATES, "reports")):
+        if not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            if name.endswith(".pt"):
+                with open(os.path.join(folder, name)) as fh:
+                    body = re.sub(r"<!--.*?-->", "", fh.read(), flags=re.S)   # prose about it is fine
+                for m in re.finditer(r"string:[^;\"]*\$\{python:", body):
+                    bad.append("%s: %s" % (name, body[m.start():m.start() + 60]))
+    assert not bad, bad
 
 
 def test_the_typeface_is_served_from_the_addon():

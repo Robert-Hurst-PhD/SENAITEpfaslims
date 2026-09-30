@@ -198,9 +198,6 @@ class PFASMethodProfileEditView(BrowserView):
             per_a = DEFAULT_PROFILES.get(self.method_id(), {}).get("per_analyte", [])
         return json.dumps(per_a, indent=2)
 
-    def eis_overrides_json(self):
-        return json.dumps(self.profile().get("eis_overrides", []), indent=2)
-
     def dup_rpd(self):
         """Sample-duplicate RPD limit, from the structure the engine evaluates.
 
@@ -216,39 +213,6 @@ class PFASMethodProfileEditView(BrowserView):
         if tiers and tiers[0].get("rpd_max") is not None:
             return tiers[0]["rpd_max"]
         return ""
-
-    # The 1633A EIS tables are published per MATRIX CLASS, not per matrix
-    # title: Sediment and Soil are both "solid". Mirrors
-    # pfas_pipeline.method_profiles._1633a_matrix_class, which is what the
-    # engine looks the overrides up by.
-    EIS_MATRIX_CLASSES = [
-        ("solid", "Solid (soil, sediment)"),
-        ("biosolid", "Biosolid"),
-        ("leachate", "Landfill leachate"),
-        ("tissue", "Tissue"),
-    ]
-
-    def eis_matrix_rows(self):
-        """Per-analyte EIS recovery limits for each 1633A matrix class.
-
-        `eis_matrix_overrides` was read by the engine and written by nobody:
-        seeded from the published tables and then frozen. §3 requires EIS
-        recovery to be configurable per analyte x matrix, and a lab that
-        verifies a limit against its purchased method copy has to be able to
-        record what it found.
-        """
-        profile = self.profile()
-        overrides = profile.get("eis_matrix_overrides", {}) or {}
-        groups = []
-        for key, label in self.EIS_MATRIX_CLASSES:
-            entries = overrides.get(key, {}) or {}
-            rows = [{"analyte": analyte,
-                     "recovery_min": (entries[analyte] or {}).get("recovery_min", ""),
-                     "recovery_max": (entries[analyte] or {}).get("recovery_max", "")}
-                    for analyte in sorted(entries)]
-            groups.append({"key": key, "label": label, "rows": rows,
-                           "count": len(rows), "blank_start": len(rows)})
-        return groups
 
     def standard_lot_options(self):
         """Standard / Reference-Material lots from the reagent inventory, for
@@ -614,6 +578,11 @@ class PFASMethodProfileEditView(BrowserView):
     # chain runs -- the rule-toggle and surrogate-link writers read fields this
     # form does not carry, and would switch every rule off / rewrite the links.
 
+    def eis_class_sections(self):
+        """[(section id, label)] for the four 1633A matrix-class EIS tables."""
+        from senaite.pfas.method_profile_sections import EIS_CLASSES
+        return [(c.id, label) for c, label in EIS_CLASSES]
+
     def section_env(self):
         """What a declared section needs from the site that the profile does
         not hold: the reagent inventory's standard lots (salt CoA lots)."""
@@ -864,35 +833,8 @@ class PFASMethodProfileEditView(BrowserView):
         # Reporting limits are NOT parsed here: the Reporting Limits tab is its
         # own form (config_forms table, R2), saved by _save_section.
 
-        # EIS limits per analyte x matrix class. Named fields rather than a
-        # JSON blob, so the value a lab verified against its method copy is
-        # edited as a number in a cell.
-        if f.get("eis_matrix_present"):
-            out = {}
-            for key, _label in self.EIS_MATRIX_CLASSES:
-                entries = {}
-                index = 0
-                while True:
-                    name_key = "eismtx.%s.%d.analyte" % (key, index)
-                    if name_key not in f:
-                        break
-                    analyte = (f.get(name_key, "") or "").strip()
-                    lo = (f.get("eismtx.%s.%d.min" % (key, index), "") or "").strip()
-                    hi = (f.get("eismtx.%s.%d.max" % (key, index), "") or "").strip()
-                    index += 1
-                    if not analyte:
-                        continue  # cleared name = row removed
-                    entry = {}
-                    for field, raw in (("recovery_min", lo), ("recovery_max", hi)):
-                        try:
-                            entry[field] = float(raw)
-                        except (TypeError, ValueError):
-                            continue
-                    if entry:
-                        entries[analyte] = entry
-                if entries:
-                    out[key] = entries
-            profile["eis_matrix_overrides"] = out
+        # EIS limits (per-analyte and per matrix class) are NOT parsed here:
+        # they are declared collections on their own tab form (R2).
 
         # Surrogate -> injection IS. Saved from named per-surrogate fields so
         # the chain is edited as a choice per row, not as JSON.
@@ -904,10 +846,6 @@ class PFASMethodProfileEditView(BrowserView):
                 if chosen:
                     chain[name] = chosen
             profile["surrogate_is_chain"] = chain
-
-        raw_eis = f.get("eis_overrides_json", "").strip()
-        if raw_eis:
-            profile["eis_overrides"] = json.loads(raw_eis)
 
         profile["isomer_summation"] = _json_field(
             "isomer_summation_json",

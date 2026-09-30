@@ -5836,3 +5836,33 @@ Approved by the lab as the first recommendation of
   browser (max=1) and refused by the server (unit test); no JS errors.
 - **Tests:** `test_config_forms.py` 41. UI ratchet style= 925 -> 911.
 - **Next:** EIS limits, Surrogate Map, Recovery Tiers, then the JSON-grid tabs.
+
+## 58. Typeface; R2: EIS limits save on their own (2026-09-30)
+- **Typeface:** Nunito, bundled (DECISIONS same date). UI audit after the
+  change: 61 pages, no frame or sidebar geometry change, no new JS errors.
+- **EIS Limits (EPA 1633A only)** — `method_profile_sections.EIS` (the
+  per-analyte list) and one collection per matrix class (`EIS_CLASSES`), all on
+  form `#section-eis`, rendered only where the tab is (§3 rule 3). A class
+  row's analyte is now a CHOICE of the designations in the per-analyte list:
+  the engine looks a class limit up under that designation, so a typed name
+  that matched none was silently ignored and the generic window applied.
+  Recovery min above max, and non-numbers, are refused (the old parser
+  dropped a bad number without a word). Collections gained `allow_empty` (an
+  EIS class may be emptied; a method's matrices may not).
+- **Framework bug found:** a collection's NAME column did not receive its
+  resolved choices (a callable crashed) -- fixed, covered by the class test.
+- **Template breakage, caught by the live audit:** `string:...${python:...}`
+  500'd the EPA 1633A editor only (the one method whose tab drew the line).
+  Guard added: `test_ui_ratchet.test_no_python_expression_inside_a_string_
+  expression` (mutation-tested). A compile-every-template tool was tried and
+  REMOVED: Zope's engine resolves `string:` at render time, so it could not
+  fail on this error -- only rendering the page catches it, which the audits
+  do.
+- **Removed:** the EIS marker parser, the JSON field + its JS builder /
+  serialiser, `eis_matrix_rows`, `eis_overrides_json`, the view's copy of the
+  class list.
+- **Verified live after restart:** no-op saves of all six migrated tabs on
+  all three profiles: 0 changes; an EIS edit recorded and reverted; history
+  check all cases pass, configuration afterwards equals before; the EIS tab
+  (and its form) is absent for EPA 537.1; no JS errors.
+- **Tests:** `test_config_forms.py` 46; UI ratchet style= 911 -> 901.

@@ -367,6 +367,17 @@ def test_the_corrections_tab_has_no_hand_written_parser_left():
         assert retired not in template, retired
 
 
+def test_the_eis_tab_has_no_hand_written_parser_left():
+    src = _read("method_profiles.py")
+    template = _read("templates", "method_profile_edit.pt")
+    js = _read("static", "method_profile_edit.js")
+    for retired in ("eis_matrix_present", "eismtx.", "eis_overrides_json", "eis_matrix_rows",
+                    "addEisRow", "syncEisJson"):
+        assert retired not in src, retired
+        assert retired not in template, retired
+        assert retired not in js, retired
+
+
 def test_every_tab_can_be_opened_by_its_link():
     """A hand-kept list of valid tab ids omitted two tabs, so the redirect
     after saving the Reporting Limits tab opened Rule Toggles -- and the Save
@@ -562,6 +573,57 @@ def test_setting_a_factor_back_to_one_removes_its_row():
     after = env_save(MF, stored, form)
     assert "Milk" not in [e["matrix"] for e in after["matrix_factors"]]
     assert len(after["matrix_factors"]) == len(stored["matrix_factors"]) - 1
+
+
+# ── EIS limits (1633A) ───────────────────────────────────────────────────────
+
+EIS = mps.EIS
+EIS_CLASSES = [c for c, _l in mps.EIS_CLASSES]
+
+
+def test_unchanged_eis_saves_change_nothing():
+    for mid, stored in _profiles().items():
+        for coll in [EIS] + EIS_CLASSES:
+            after = save(coll, stored, coll_form(coll, stored))
+            assert ch.diff(stored, after) == [], (mid, coll.id, ch.diff(stored, after)[:3])
+            for key in ("eis_overrides", "eis_matrix_overrides"):
+                assert (key in stored) == (key in after), (mid, coll.id, key)
+
+
+def test_a_class_limit_may_only_name_an_existing_designation():
+    stored = _profiles()["EPA_1633A"]
+    solid = EIS_CLASSES[0]
+    n = len(solid.read(stored))
+    form = coll_form(solid, stored)
+    form[_cell(solid, n, "analyte")] = "13C4-PFBAA"          # a typo
+    form[_cell(solid, n, "recovery_min")] = "10"
+    assert "not one of the options" in cf.parse(solid, form, stored)[1][0]
+    free = next(r["analyte"] for r in stored["eis_overrides"]
+                if r["analyte"] not in stored["eis_matrix_overrides"]["solid"])
+    form[_cell(solid, n, "analyte")] = free
+    after = save(solid, stored, form)
+    assert after["eis_matrix_overrides"]["solid"][free] == {"recovery_min": 10.0}
+
+
+def test_eis_min_above_max_and_bad_numbers_are_refused():
+    stored = _profiles()["EPA_1633A"]
+    form = coll_form(EIS, stored)
+    form[_cell(EIS, 0, "recovery_min")] = "140"
+    assert "is above max" in cf.parse(EIS, form, stored)[1][0]
+    form = coll_form(EIS, stored)
+    form[_cell(EIS, 0, "recovery_max")] = "abc"
+    assert cf.parse(EIS, form, stored)[1]
+
+
+def test_clearing_every_class_row_removes_the_class_only():
+    stored = _profiles()["EPA_1633A"]
+    solid = EIS_CLASSES[0]
+    form = coll_form(solid, stored)
+    for i in range(len(solid.read(stored))):
+        form[_cell(solid, i, "analyte")] = ""
+    after = save(solid, stored, form)
+    assert "solid" not in after["eis_matrix_overrides"]
+    assert after["eis_matrix_overrides"]["tissue"] == stored["eis_matrix_overrides"]["tissue"]
 
 
 if __name__ == "__main__":

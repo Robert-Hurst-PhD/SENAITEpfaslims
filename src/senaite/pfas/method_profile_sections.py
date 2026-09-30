@@ -362,5 +362,101 @@ MATRIX_FACTORS = cf.Table(
     columns=[cf.Field("factor", u"Factor", greater_than=0, placeholder=u"1.0")],
     rows=matrix_factor_rows, read=read_matrix_factors, write=write_matrix_factors)
 
+# ── EIS limits (EPA 1633A only) ──────────────────────────────────────────────
+# eis_overrides: [{"analyte", "recovery_min", "recovery_max"}], keyed by EPA's
+# Table 6 designation (the engine joins the lab's compound to it through the
+# native, eis_criteria_name). eis_matrix_overrides: {class: {designation:
+# {...}}} -- a class limit overrides the per-analyte one, looked up under the
+# SAME designation, so a class row may only name a designation that exists.
+
+
+def _min_not_above_max(label_key):
+    def check(profile, rows):
+        out = []
+        for r in rows:
+            lo, hi = r.get("recovery_min"), r.get("recovery_max")
+            if lo is not None and hi is not None and lo > hi:
+                out.append(u"%s: recovery min (%s) is above max (%s)." % (r[label_key], lo, hi))
+        return out
+    return check
+
+
+def read_eis(profile):
+    return [{"analyte": r.get("analyte"), "recovery_min": r.get("recovery_min"),
+             "recovery_max": r.get("recovery_max")}
+            for r in (profile.get("eis_overrides") or []) if isinstance(r, dict)]
+
+
+def write_eis(profile, rows):
+    old = dict((r.get("analyte"), r) for r in (profile.get("eis_overrides") or [])
+               if isinstance(r, dict))
+    out = []
+    for r in rows:
+        entry = dict(old.get(r["analyte"]) or {})     # keep any other keys a row had
+        entry.update({"analyte": r["analyte"], "recovery_min": r.get("recovery_min"),
+                      "recovery_max": r.get("recovery_max")})
+        out.append(entry)
+    _set(profile, "eis_overrides", out)
+    return profile
+
+
+EIS = cf.Collection(
+    id=u"eis", title=u"EIS Recovery Overrides", noun=u"EIS row", new_rows=2,
+    allow_empty=True,
+    columns=[cf.Field("analyte", u"EIS / Surrogate Analyte", kind=cf.TEXT,
+                      placeholder=u"new designation"),
+             cf.Field("recovery_min", u"Recovery Min (%)", minimum=0),
+             cf.Field("recovery_max", u"Recovery Max (%)", minimum=0)],
+    read=read_eis, write=write_eis, check=_min_not_above_max("analyte"))
+
+
+EIS_MATRIX_CLASSES = [(u"solid", u"Solid (soil, sediment)"), (u"biosolid", u"Biosolid"),
+                      (u"leachate", u"Landfill leachate"), (u"tissue", u"Tissue")]
+
+
+def eis_designations(profile, env=None):
+    names = [r.get("analyte") for r in (profile.get("eis_overrides") or [])
+             if isinstance(r, dict) and r.get("analyte")]
+    return [(n, n) for n in names]
+
+
+def _eis_class(key, label):
+    def read(profile):
+        entries = (profile.get("eis_matrix_overrides") or {}).get(key) or {}
+        return [{"analyte": a, "recovery_min": (entries[a] or {}).get("recovery_min"),
+                 "recovery_max": (entries[a] or {}).get("recovery_max")}
+                for a in sorted(entries)]
+
+    def write(profile, rows):
+        allc = dict(profile.get("eis_matrix_overrides") or {})
+        entries = {}
+        for r in rows:
+            if r.get("recovery_min") is None and r.get("recovery_max") is None:
+                continue                            # no limit: no row
+            entry = {}
+            for f in ("recovery_min", "recovery_max"):
+                if r.get(f) is not None:
+                    entry[f] = r[f]
+            entries[r["analyte"]] = entry
+        if entries:
+            allc[key] = entries
+        else:
+            allc.pop(key, None)
+        _set(profile, "eis_matrix_overrides", allc)
+        return profile
+
+    return cf.Collection(
+        id=u"eis_" + key, title=u"EIS limits: %s" % label, noun=u"row", new_rows=2,
+        allow_empty=True,
+        columns=[cf.Field("analyte", u"EIS / Surrogate Analyte", kind=cf.CHOICE,
+                          choices=eis_designations),
+                 cf.Field("recovery_min", u"Recovery Min (%)", minimum=0),
+                 cf.Field("recovery_max", u"Recovery Max (%)", minimum=0)],
+        read=read, write=write, check=_min_not_above_max("analyte"))
+
+
+EIS_CLASSES = [(_eis_class(k, l), l) for k, l in EIS_MATRIX_CLASSES]
+
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
-                                    SALT, MATRIX_FACTORS])
+                                    SALT, MATRIX_FACTORS, EIS] +
+                [c for c, _l in EIS_CLASSES])
