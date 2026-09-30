@@ -122,7 +122,7 @@
         <input type="hidden" name="action" value="save_method_config"/>
         <input type="hidden" name="method_id" tal:attributes="value mid"/>
         <input type="hidden" name="required_logbooks_json"
-               tal:attributes="id string:seq-json-${mid}" value="[]"/>
+               tal:attributes="id string:seq-json-${mid}; value python:view.required_json(mid)"/>
 
         <!-- Ordered list (rendered by JS from method_config_json) -->
         <ol class="seq-list" tal:attributes="id string:seq-list-${mid}">

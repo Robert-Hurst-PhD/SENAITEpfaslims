@@ -5437,3 +5437,43 @@ the lab.
 - **Check the FDA unit map.** Animal Feed reports in ng/kg; confirm that is
   the unit the pipeline's values are in.
 - **Decide what to do about §50.3** (the editor's untouched-field defaults).
+
+---
+
+## 51. Config saves record only what was entered: fixes, a live no-op-save audit, and what is left (2026-09-30, in progress)
+
+- **Fixed, commit 01a7999** (guarded by `tests/test_config_save_hygiene.py`):
+  - the Method Profile editor wrote a derived injection IS and "LC-HRMS" into
+    fields, so every save stored them;
+  - an unparseable matrix or salt factor silently became 1.0;
+  - an unparseable prep-logbook default expiry silently became 365;
+  - the client EDD checkbox had a `True` default and could never be unchecked.
+- **Live audit.** `tools/config_save_audit.py` with `tools/config_snapshot.py`
+  saves 21 forms unchanged and diffs every store after each one. A repozo
+  backup was taken first: `/data/backups/pre-noop-audit-20260930`, plus
+  `/data/qc/backup-pre-noop-audit`.
+- **Found by the audit:** saving Logbook Admin's sequence for a method whose
+  tab was not drawn **wiped that method's required logbooks**. The hidden
+  field was server-rendered `[]` and the handler coerced bad input to `[]`.
+  EPA 537.1 and FDA 32-PFAS were **restored**. Fixed (not yet
+  restart-verified): the field is server-rendered with the current list, and
+  the handler refuses a bad list.
+- **Representational (materialised defaults), to review:**
+  - the EDD CAS section save stores 17 seeded CAS rows marked VERIFY;
+  - print settings, reagent expiry defaults and the regulatory seeds become
+    stored values on their first save.
+- **The Reporting Limits merge** no longer stores empty matrices.
+- **Harness gaps:** the QC rules and prep-logbook edit steps did not run.
+- **Open:** 19 hidden `*_json` fields ship literal `[]` or `{}` and are
+  filled by script. Most are bench logbook entry forms (250–253, custom,
+  guided, prep standards, Import Studio), so a save before the script runs may
+  wipe rows. To audit each handler.
+- **Structural review not yet written.** Findings so far:
+  - method-profile config has no change history (only AnalysisSpec sync is
+    audited);
+  - 113 hardcoded lab values (`tools/audit_configurable.py`);
+  - the analyte library (`NATIVE_ANALYTES`) is code-only;
+  - vocabularies are code-only;
+  - pipeline defaults duplicate the add-on seeds;
+  - the Method Profile handler is one ~1,200-line POST covering all panes, the
+    root of the partial-save defects.

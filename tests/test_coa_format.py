@@ -79,7 +79,8 @@ def test_parse_form_refuses_bad_values():
 def test_merge_keeps_matrices_the_form_did_not_carry():
     existing = {"A": {"PFOA": {"rl": 1.0, "mdl": None}}, "B": {"PFOS": {"rl": 2.0, "mdl": None}}}
     merged = rl.merge(existing, {"A": {}})
-    assert merged["A"] == {} and merged["B"] == existing["B"]
+    assert "A" not in merged and merged["B"] == existing["B"]   # emptied -> dropped
+    assert rl.merge({}, {"A": {}, "B": {}}) == {}                # nothing entered -> nothing stored
 
 
 def test_limits_come_with_the_matrix_unit():

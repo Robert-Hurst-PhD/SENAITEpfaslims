@@ -59,10 +59,15 @@ def parse_form(form, matrices):
 
 
 def merge(existing, parsed):
-    """Replace only the matrices the form carried."""
+    """Replace only the matrices the form carried; a matrix left with no limits
+    is dropped rather than stored empty, so saving a page with nothing entered
+    writes nothing (the no-op-save audit, GAPS §51)."""
     merged = dict(existing or {})
     for matrix, entries in (parsed or {}).items():
-        merged[matrix] = entries
+        if entries:
+            merged[matrix] = entries
+        else:
+            merged.pop(matrix, None)
     return merged
 
 

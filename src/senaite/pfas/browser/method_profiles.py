@@ -1088,8 +1088,9 @@ class PFASMethodProfileEditView(BrowserView):
             from senaite.pfas import report_limits
             parsed = report_limits.parse_form(
                 f, profile.get("supported_matrices", []) or [])
-            profile["reporting_limits"] = report_limits.merge(
-                profile.get("reporting_limits", {}), parsed)
+            merged = report_limits.merge(profile.get("reporting_limits", {}), parsed)
+            if merged or "reporting_limits" in profile:
+                profile["reporting_limits"] = merged
 
         # EIS limits per analyte x matrix class. Named fields rather than a
         # JSON blob, so the value a lab verified against its method copy is

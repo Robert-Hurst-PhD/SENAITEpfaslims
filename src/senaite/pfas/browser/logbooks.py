@@ -686,6 +686,18 @@ class PFASLogbookAdminView(BrowserView):
             })
         return result
 
+    def required_json(self, method_id):
+        """The method's CURRENT required logbooks, rendered into the sequence
+        form's hidden field, so a submit made before the script draws the list
+        (a hidden tab, a script error) saves what is there -- not "[]", which
+        wiped the sequence (GAPS §51)."""
+        try:
+            from senaite.pfas.method_profile_store import get_profile
+            return json.dumps([str(x) for x in (get_profile(
+                self._portal(), method_id).get("required_logbooks") or [])])
+        except Exception:
+            return "[]"
+
     def method_config_json(self):
         """
         JSON blob consumed by the admin template JS.
@@ -798,13 +810,18 @@ class PFASLogbookAdminView(BrowserView):
         # ── Method sequence save ──────────────────────────────────────────────
         if action == "save_method_config":
             method_id = self.request.form.get("method_id", "").strip()
-            raw = self.request.form.get("required_logbooks_json", "[]")
+            raw = self.request.form.get("required_logbooks_json")
             try:
                 req = json.loads(raw)
-                if not isinstance(req, list):
-                    req = []
             except (ValueError, TypeError):
-                req = []
+                req = None
+            if not isinstance(req, list):
+                # Refused, not coerced to []: an absent or broken list emptied
+                # the method's required logbooks (GAPS §51).
+                self.request.response.redirect(
+                    "{0}/@@pfas-logbook-admin?error=sequence_not_saved&tab={1}".format(
+                        self.portal_url(), method_id))
+                return u""
             if method_id:
                 from senaite.pfas.method_profile_store import get_profile, save_profile
                 profile = get_profile(portal, method_id)
