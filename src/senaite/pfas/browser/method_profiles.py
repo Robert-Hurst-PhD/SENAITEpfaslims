@@ -944,8 +944,14 @@ class PFASMethodProfileEditView(BrowserView):
             # LC-HRMS; it is not the only orthogonal route, so the lab names its
             # own and the review prompt quotes it. Blank falls back to the cited
             # default rather than producing a prompt naming no technique.
-            conf["confirm_technique"] = (
-                f.get("conf_confirm_technique", "").strip() or "LC-HRMS")
+            # Stored as entered: blank stays blank. The reader (pfas_pipeline
+            # method_profiles) applies the LC-HRMS fallback; writing it here
+            # recorded a choice the lab never made on every save (GAPS §51).
+            technique = f.get("conf_confirm_technique", "").strip()
+            if technique:
+                conf["confirm_technique"] = technique
+            else:
+                conf.pop("confirm_technique", None)
 
         # Recovery tiers are written back to the structure the engine reads.
         # Guarded by the field's presence so a POST from another pane cannot
@@ -991,7 +997,10 @@ class PFASMethodProfileEditView(BrowserView):
                 try:
                     factor = float(raw) if raw != "" else 1.0
                 except ValueError:
-                    factor = 1.0
+                    # refused, not coerced: a typo ("0,95") silently became 1.0
+                    # and removed the correction from reported results (GAPS §51)
+                    raise ValueError("matrix factor for {0} is not a number: "
+                                     "{1!r}".format(mtx, raw))
                 if factor == 1.0:
                     continue
                 mf.append({"matrix": mtx, "factor": factor,
@@ -1141,7 +1150,8 @@ class PFASMethodProfileEditView(BrowserView):
                 try:
                     factor = float(raw) if raw != "" else 1.0
                 except ValueError:
-                    factor = 1.0
+                    raise ValueError("salt factor for {0} is not a number: "
+                                     "{1!r}".format(kw, raw))
                 # store only meaningful rows (non-default factor OR a linked lot)
                 if factor == 1.0 and not lot_uid:
                     continue

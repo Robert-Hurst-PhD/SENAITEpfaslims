@@ -410,7 +410,9 @@ class PFASEGADClientConfigView(BrowserView):
             "project_site": form.get("project_site", "").strip(),
             "default_sample_type": form.get("default_sample_type", "GW").strip(),
             "analysis_lab_override": form.get("analysis_lab_override", "").strip(),
-            "per_report_override_default": bool(form.get("per_report_override_default", True)),
+            # An unchecked box is not submitted, so a default of True meant the
+            # option could never be switched off (GAPS §51).
+            "per_report_override_default": bool(form.get("per_report_override_default")),
             "edd_profile": form.get("edd_profile", "maine_egad").strip() or "maine_egad",
         }
         save_client_egad(self.context, data)

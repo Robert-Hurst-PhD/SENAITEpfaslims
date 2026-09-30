@@ -1088,7 +1088,7 @@
                   <label for="conf_confirm_technique">Confirmation technique for single-transition analytes</label>
                   <input type="text" id="conf_confirm_technique" name="conf_confirm_technique"
                          placeholder="LC-HRMS"
-                         tal:attributes="value python:view.confirmation().get('confirm_technique') or 'LC-HRMS'" />
+                         tal:attributes="value python:view.confirmation().get('confirm_technique') or ''" />
                   <span class="hint">FDA &#167;10.2(4) requires a positive for a
                     single-transition analyte (PFBA, PFPeA) to be confirmed by an
                     orthogonal technique, and cites LC-HRMS as an example &#8212; it

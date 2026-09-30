@@ -611,8 +611,10 @@
 
     // Injection IS: prefill the field with the derived default if empty.
     var isField = document.getElementById('surrogate_is');
+    /* The derived default is SHOWN, never written into the field: a value
+       put here by script is saved as if the lab had chosen it (GAPS §51). */
     if (isField && !isField.value && d.injection_is_default) {
-      isField.value = d.injection_is_default;
+      isField.placeholder = 'derived: ' + d.injection_is_default;
     }
 
     tbody.innerHTML = '';

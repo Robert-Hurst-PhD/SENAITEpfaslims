@@ -563,6 +563,14 @@ class PFASPrepLogbooksView(BrowserView):
         if not title:
             return self._redirect("{0}?error=Title+is+required".format(self._self_url()))
 
+        # Refused, not coerced: a non-number here silently became 365 days and
+        # set every prepared standard's expiry from a value nobody chose.
+        raw_expiry = (f.get("default_expiry_days", "") or "").strip() or "365"
+        if not raw_expiry.isdigit() or int(raw_expiry) <= 0:
+            return self._redirect("{0}?error={1}".format(
+                self._self_url(),
+                _urlmsg("Default expiry must be a whole number of days, not {0!r}".format(raw_expiry))))
+
         # Validate + canonicalise the schema BEFORE saving. The builder does
         # the same checks client-side for fast feedback, but this view accepts
         # raw POSTs, so Python is the guarantee. Previously any string —
@@ -603,7 +611,7 @@ class PFASPrepLogbooksView(BrowserView):
             "standard_type":       f.get("standard_type", "").strip(),
             "description":         f.get("description", "").strip(),
             "procedure":           f.get("procedure", "").strip(),
-            "default_expiry_days": f.get("default_expiry_days", "365"),
+            "default_expiry_days": raw_expiry,
             "analyte_template_json": f.get("analyte_template_json", "[]").strip(),
             "notes":               f.get("notes", "").strip(),
             "method_slug":         f.get("method_slug", "").strip(),
