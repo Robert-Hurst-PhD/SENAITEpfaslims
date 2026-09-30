@@ -12,7 +12,7 @@ classified:
   DEFECT            anything else -- a value the save changed
 
 Run on the host against the running stack, AFTER a repozo backup:
-    python3 tools/config_save_audit.py OUT_DIR
+    python3 tools/config_save_audit.py OUT_DIR [--only=name,name]
 Writes OUT_DIR/audit.json and prints a table. It does not restore anything:
 restore from the "before" snapshots it leaves, or from the backup.
 """
@@ -33,7 +33,8 @@ STEPS = [
     ("method profile EPA 537.1", "@@pfas-method-profile-edit?method_id=EPA_537_1", ("button", "Save & Export")),
     ("method profile EPA 1633A", "@@pfas-method-profile-edit?method_id=EPA_1633A", ("button", "Save & Export")),
     ("method profile FDA 32-PFAS", "@@pfas-method-profile-edit?method_id=FDA_32PFAS", ("button", "Save & Export")),
-    ("QC rules", "@@pfas-qc-rules", ("css", "button[form=rulesForm][type=submit]")),
+    # @@pfas-qc-rules redirects to Method Profiles: the rule toggles are a tab
+    # of the profile editor, whose saves write qc_rules.json (covered above).
     ("QC type grid", "@@pfas-qc-type-grid", ("button", "Save Grid")),
     ("EDD config: lab", "@@pfas-egad-config", ("js", "saveSection('lab')")),
     ("EDD config: methods", "@@pfas-egad-config", ("js", "saveSection('methods')")),
@@ -48,7 +49,7 @@ STEPS = [
     ("logbook admin: sequence 2", "@@pfas-logbook-admin", ("nth_action", "save_method_config", 1)),
     ("logbook admin: sequence 3", "@@pfas-logbook-admin", ("nth_action", "save_method_config", 2)),
     ("prep logbook definition (edit)", "@@pfas-prep-logbooks",
-     ("js_then_button", "document.querySelector('[onclick*=editLogbook]').click()", "Save")),
+     ("click_then_click", "[data-edit-uid]:visible", "#lbModal button[type=submit]:visible")),
     ("reference definition method", "@@pfas-setup-references", ("button", "Save")),
     ("run template", "@@pfas-run-builder?batch_id=B-002", ("button", "Save run template")),
     ("regulatory limits", "@@pfas-regulatory-limits", ("button", "Save limits")),
@@ -117,6 +118,18 @@ def run_step(page, url, how):
         with page.expect_response(lambda r: r.request.method == "POST", timeout=60000):
             page.evaluate(how[1])
         page.wait_for_timeout(800)
+    elif kind == "click":
+        # a real click, so the page's own onclick handlers run (QC Rules
+        # serialises its table in prepareSubmit()).
+        with page.expect_navigation(timeout=90000):
+            page.locator(how[1]).first.click()
+        page.wait_for_load_state("networkidle", timeout=60000)
+    elif kind == "click_then_click":
+        page.locator(how[1]).first.click()
+        page.wait_for_timeout(600)
+        with page.expect_navigation(timeout=90000):
+            page.locator(how[2]).first.click()
+        page.wait_for_load_state("networkidle", timeout=60000)
     elif kind == "js_then_button":
         page.evaluate(how[1])
         page.wait_for_timeout(500)
@@ -130,7 +143,7 @@ def form_submit(page, button):
     page.wait_for_load_state("networkidle", timeout=60000)
 
 
-def main(out_dir):
+def main(out_dir, only=None):
     from playwright.sync_api import sync_playwright
     os.makedirs(out_dir, exist_ok=True)
     results = []
@@ -146,6 +159,8 @@ def main(out_dir):
         page.click("button[type=submit], input[type=submit]")
         page.wait_for_load_state("networkidle")
         for i, (name, url, how) in enumerate(STEPS, 1):
+            if only and not any(o.lower() in name.lower() for o in only):
+                continue
             del errors[:]
             status = "ok"
             try:
@@ -171,4 +186,5 @@ def main(out_dir):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(__doc__)
-    main(sys.argv[1])
+    only = [a[len("--only="):] for a in sys.argv[2:] if a.startswith("--only=")]
+    main(sys.argv[1], [o for x in only for o in x.split(",")] or None)

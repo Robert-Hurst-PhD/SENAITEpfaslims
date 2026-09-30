@@ -6,7 +6,9 @@
  */
 
   function tableToJson(tbodyId, fieldMap) {
-    var rows = document.getElementById(tbodyId).querySelectorAll('tr');
+    var tbody = document.getElementById(tbodyId);
+    if (!tbody) return null;            /* table not on this page: say so, don't guess */
+    var rows = tbody.querySelectorAll('tr');
     var result = [];
     rows.forEach(function(row) {
       var obj = {}, empty = true;
@@ -14,7 +16,10 @@
         var el = row.querySelector('[data-field="' + f.key + '"]');
         if (!el) return;
         var val = el.type === 'checkbox' ? el.checked : el.value.trim();
-        obj[f.key] = f.type === 'number' ? (parseFloat(val) || 0) : val;
+        /* a blank number is UNSET (null), never 0: 0 is a value -- a 0%
+           recovery limit passes or fails everything (GAPS §51) */
+        var num = parseFloat(val);
+        obj[f.key] = f.type === 'number' ? (isNaN(num) ? null : num) : val;
         if (f.type !== 'bool' && val !== '' && val !== '0') empty = false;
         if (f.type === 'bool') empty = false;
       });
@@ -24,7 +29,12 @@
   }
 
   function syncJson(tbodyId, hiddenId, fieldMap) {
-    document.getElementById(hiddenId).value = JSON.stringify(tableToJson(tbodyId, fieldMap), null, 2);
+    /* Missing table or field: leave the hidden value (the server-rendered
+       saved data) alone. Writing "[]" here would wipe the setting. */
+    var hidden = document.getElementById(hiddenId);
+    var rows = tableToJson(tbodyId, fieldMap);
+    if (!hidden || rows === null) return;
+    hidden.value = JSON.stringify(rows, null, 2);
   }
 
   var MF_FIELDS = [{key:'matrix',type:'text'},{key:'factor',type:'number'}];
@@ -495,6 +505,12 @@
     var html = '';
     tiers.forEach(function(t, i) { html += _buildTierCard(t, i, meta.analytes, meta.matrices); });
     el.innerHTML = html;
+    /* Remember each tier as stored: the cards edit only some of its fields
+       (limits, description, chips). analyte_group, matrix_scope, name and
+       verify_against_method decide which analytes and matrices the tier
+       applies to, and were dropped on every sync (GAPS §51). */
+    window._origTiers = tiers;
+    el.querySelectorAll('.tier-card').forEach(function (card, i) { card.setAttribute('data-orig', i); });
 
     el.querySelectorAll('.tier-desc').forEach(function(inp) {
       inp.addEventListener('input', syncRecoveryTiersJson);
@@ -574,20 +590,23 @@
 
   function syncRecoveryTiersJson() {
     var tiers = [];
+    var orig = window._origTiers || [];
     document.querySelectorAll('#recoveryTiersContainer .tier-card').forEach(function(card, idx) {
-      var tier = { tier: idx + 1 };
+      var oi = card.getAttribute('data-orig');
+      var base = (oi !== null && orig[+oi]) ? orig[+oi] : { tier: idx + 1 };   /* new card: fresh tier */
+      var tier = JSON.parse(JSON.stringify(base));                             /* keep every stored field */
       var desc = card.querySelector('.tier-desc');
-      if (desc) tier.description = desc.value.trim();
-      var minEl = card.querySelector('.tier-min');
-      var maxEl = card.querySelector('.tier-max');
-      var rsdEl = card.querySelector('.tier-rsd');
-      if (minEl && minEl.value !== '') tier.recovery_min = parseFloat(minEl.value);
-      if (maxEl && maxEl.value !== '') tier.recovery_max = parseFloat(maxEl.value);
-      if (rsdEl && rsdEl.value !== '') tier.rsd_max     = parseFloat(rsdEl.value);
+      if (desc && (desc.value.trim() !== '' || 'description' in base)) tier.description = desc.value.trim();
+      [['.tier-min', 'recovery_min'], ['.tier-max', 'recovery_max'], ['.tier-rsd', 'rsd_max']].forEach(function (pair) {
+        var el = card.querySelector(pair[0]);
+        if (!el) return;
+        if (el.value === '') { if (tier[pair[1]] !== null) delete tier[pair[1]]; }   /* cleared = unset, never 0 */
+        else tier[pair[1]] = parseFloat(el.value);
+      });
       ['key_analytes', 'tight_matrices', 'no_std_analytes'].forEach(function(field) {
         var chips = card.querySelectorAll('.tier-chip[data-field="' + field + '"]');
         var vals = Array.prototype.map.call(chips, function(c) { return c.getAttribute('data-val'); });
-        tier[field] = vals;
+        if (vals.length || field in base) tier[field] = vals;
       });
       tiers.push(tier);
     });
@@ -860,8 +879,17 @@
     buildPerAnalyteTable();
   });
 
-  document.querySelector('form').addEventListener('submit', function() {
-    syncMatrixFactorsJson(); syncSaltJson(); syncIsomerJson(); syncSpikeLevelsJson();
-    syncStageJson(); syncEisJson(); syncRecoveryTiersJson();
-    syncSurrogateMapJson(); syncAMIJson(); syncPerAnalyteJson();
+  /* Serialise every table into its hidden field before the profile form
+     submits. Each runs on its own: the first one threw on every page (its
+     table had been replaced by named fields) and silently stopped all the
+     others, so their edits never reached the server (GAPS §51). */
+  var profileForm = document.getElementById('profile-form');
+  if (profileForm) profileForm.addEventListener('submit', function() {
+    [syncMatrixFactorsJson, syncSaltJson, syncIsomerJson, syncSpikeLevelsJson,
+     syncStageJson, syncEisJson, syncRecoveryTiersJson, syncSurrogateMapJson,
+     syncAMIJson, syncPerAnalyteJson].forEach(function (fn) {
+      try { fn(); } catch (e) {
+        if (window.console) console.error('method profile: ' + (fn.name || 'sync') + ' failed', e);
+      }
+    });
   });

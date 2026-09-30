@@ -142,7 +142,35 @@ def _export_cal_to_file(batch, data):
 
 # ── Base class ─────────────────────────────────────────────────────────────────
 
+def _rows_from_form(form, field, existing, key):
+    """A logbook's row list from its hidden JSON field (GAPS §51).
+
+    The field is filled by the page's script; before this, a missing field
+    defaulted to "[]" and an unreadable one was coerced to [], and either way
+    the saved rows of a CONTROLLED RECORD were replaced by nothing. Now:
+    absent -> the saved rows are kept; unreadable or not a list -> ValueError
+    (the handler refuses the save); present -> the rows as submitted.
+    """
+    if field not in form:
+        return list((existing or {}).get(key) or [])
+    try:
+        rows = json.loads(form.get(field))
+    except (ValueError, TypeError):
+        raise ValueError("the {0} table could not be read; nothing was saved".format(key))
+    if not isinstance(rows, list):
+        raise ValueError("the {0} table is not a list; nothing was saved".format(key))
+    return rows
+
+
 class _LogbookBase(BrowserView):
+
+    def stored_json(self, key):
+        """The saved rows for `key`, rendered into the hidden field so the
+        form carries them even before (or without) the page's script."""
+        try:
+            return json.dumps((self.data() or {}).get(key) or [])
+        except Exception:
+            return "[]"
 
     def portal_url(self):
         return getToolByName(self.context, "portal_url")()
@@ -353,18 +381,12 @@ class PFASLogbook250View(_LogbookBase):
 
     def _handle_post(self):
         f = self.request.form
-        solutions_raw = f.get("solutions_json", "[]")
-        chemicals_raw = f.get("chemicals_json", "[]")
-        try:
-            solutions = json.loads(solutions_raw)
-        except (ValueError, TypeError):
-            solutions = []
-        try:
-            chemicals = json.loads(chemicals_raw)
-        except (ValueError, TypeError):
-            chemicals = []
-
         existing = _get_logbook(self.context, 250)
+        try:
+            solutions = _rows_from_form(f, "solutions_json", existing, "solutions")
+            chemicals = _rows_from_form(f, "chemicals_json", existing, "chemicals")
+        except ValueError as exc:
+            return self._redirect_error(str(exc).replace(" ", "+"))
         data = {
             "prepared_by":              f.get("prepared_by", ""),
             "prepared_date":            f.get("prepared_date", ""),
@@ -411,13 +433,11 @@ class PFASLogbook251View(_LogbookBase):
 
     def _handle_post(self):
         f = self.request.form
-        cal_raw = f.get("cal_points_json", "[]")
-        try:
-            cal_points = json.loads(cal_raw)
-        except (ValueError, TypeError):
-            cal_points = []
-
         existing = _get_logbook(self.context, 251)
+        try:
+            cal_points = _rows_from_form(f, "cal_points_json", existing, "cal_points")
+        except ValueError as exc:
+            return self._redirect_error(str(exc).replace(" ", "+"))
         data = {
             "method":           f.get("method", "FDA_32PFAS"),
             "prepared_by":      f.get("prepared_by", ""),
@@ -509,25 +529,22 @@ class PFASLogbook252View(_LogbookBase):
 
     def _handle_post(self):
         f = self.request.form
-        for key in ("samples_json", "reagents_json", "standards_json",
-                    "extraction_materials_json"):
-            try:
-                json.loads(f.get(key, "[]"))
-            except (ValueError, TypeError):
-                return self._redirect_error("Invalid+JSON+in+" + key)
-
         existing = _get_logbook(self.context, 252)
+        try:
+            rows = dict((k, _rows_from_form(f, k + "_json", existing, k)) for k in (
+                "samples", "reagents", "standards", "extraction_materials"))
+        except ValueError as exc:
+            return self._redirect_error(str(exc).replace(" ", "+"))
         data = {
             "method":           f.get("method", ""),
             "analyst":          f.get("analyst", ""),
             "extraction_date":  f.get("extraction_date", ""),
             "reviewed_by":      f.get("reviewed_by", ""),
             "reviewed_date":    f.get("reviewed_date", ""),
-            "samples":          json.loads(f.get("samples_json", "[]")),
-            "reagents":         json.loads(f.get("reagents_json", "[]")),
-            "standards":        json.loads(f.get("standards_json", "[]")),
-            "extraction_materials": json.loads(
-                f.get("extraction_materials_json", "[]")),
+            "samples":          rows["samples"],
+            "reagents":         rows["reagents"],
+            "standards":        rows["standards"],
+            "extraction_materials": rows["extraction_materials"],
             "needle_cleaned":   f.get("needle_cleaned") == "yes",
             "notes":            f.get("notes", ""),
         }
@@ -558,14 +575,18 @@ class PFASLogbook253View(_LogbookBase):
     def _handle_post(self):
         f = self.request.form
         existing = _get_logbook(self.context, 253)
+        try:
+            rows = dict((k, _rows_from_form(f, k + "_json", existing, k))
+                        for k in ("samples", "processing_materials"))
+        except ValueError as exc:
+            return self._redirect_error(str(exc).replace(" ", "+"))
         data = {
             "analyst":          f.get("analyst", ""),
             "processing_date":  f.get("processing_date", ""),
             "balance_sn":       f.get("balance_sn", ""),
             "grinder_cleaned":  f.get("grinder_cleaned") == "yes",
-            "samples":          json.loads(f.get("samples_json", "[]")),
-            "processing_materials": json.loads(
-                f.get("processing_materials_json", "[]")),
+            "samples":          rows["samples"],
+            "processing_materials": rows["processing_materials"],
             "notes":            f.get("notes", ""),
         }
         _apply_field_corrections(f, existing, _CORR_FIELDS_253, data)
@@ -743,7 +764,8 @@ class PFASLogbookAdminView(BrowserView):
                 if s not in req_set and d.get("active", True):
                     # Only offer logbooks with no method restriction, or matching this method
                     method_slug = d.get("method_slug", "") or ""
-                    if not method_slug or method_slug == mid:
+                    from senaite.pfas.logbook_store import method_key
+                    if not method_slug or method_key(method_slug) == method_key(mid):
                         available.append({
                             "slug":     s,
                             "form_num": d.get("form_num", s),
@@ -1722,11 +1744,10 @@ class PFASLogbookCustomView(_LogbookBase):
     def _handle_post(self):
         f = self.request.form
         slug = self._slug()
-        rows_raw = f.get("rows_json", "[]")
         try:
-            rows = json.loads(rows_raw)
-        except (ValueError, TypeError):
-            rows = []
+            rows = _rows_from_form(f, "rows_json", self.data(), "rows")
+        except ValueError as exc:
+            return self._redirect_self(str(exc).replace(" ", "+"))
         data = {
             "analyst":        f.get("analyst", ""),
             "log_date":       f.get("log_date", ""),

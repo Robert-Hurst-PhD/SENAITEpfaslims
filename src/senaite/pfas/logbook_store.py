@@ -25,6 +25,7 @@ Python 2.7 compatible.
 from __future__ import absolute_import, print_function, unicode_literals
 
 import json
+import re
 import logging
 import uuid
 
@@ -260,3 +261,11 @@ def seed_defaults(portal):
 
 def is_builtin(slug):
     return slug in _BUILTIN_SLUGS
+
+
+def method_key(value):
+    """A method reference reduced to letters and digits, lower case, so a
+    seeded slug ("fda-32-pfas") and a method ID ("FDA_32PFAS") compare equal.
+    Logbook definitions were seeded with the slug while the pool matched the
+    ID exactly, so the seeded FDA logbooks were never offered (GAPS §51)."""
+    return re.sub(r"[^a-z0-9]", "", (value or "").lower())

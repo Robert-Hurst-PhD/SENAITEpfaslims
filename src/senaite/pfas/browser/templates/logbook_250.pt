@@ -81,8 +81,8 @@
           tal:attributes="action string:${view/batch_url}/@@pfas-logbook-250">
 
       <!-- Hidden JSON fields (populated/updated by JS) -->
-      <input type="hidden" id="solutions_json"  name="solutions_json"  value="[]" />
-      <input type="hidden" id="chemicals_json"  name="chemicals_json"  value="[]" />
+      <input type="hidden" id="solutions_json"  name="solutions_json" tal:attributes="value python:view.stored_json('solutions')" />
+      <input type="hidden" id="chemicals_json"  name="chemicals_json" tal:attributes="value python:view.stored_json('chemicals')" />
 
       <!-- ── Header fields ── -->
       <div class="lb-section">

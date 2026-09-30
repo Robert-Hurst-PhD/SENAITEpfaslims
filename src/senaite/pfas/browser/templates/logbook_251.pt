@@ -82,7 +82,7 @@
 
     <form class="lb-form" method="post"
           tal:attributes="action string:${view/batch_url}/@@pfas-logbook-251">
-      <input type="hidden" id="cal_points_json" name="cal_points_json" value="[]" />
+      <input type="hidden" id="cal_points_json" name="cal_points_json" tal:attributes="value python:view.stored_json('cal_points')" />
 
       <!-- Header -->
       <div class="lb-section">

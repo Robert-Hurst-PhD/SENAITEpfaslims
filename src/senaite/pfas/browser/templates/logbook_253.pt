@@ -80,8 +80,8 @@
 
     <form class="lb-form" method="post"
           tal:attributes="action string:${view/batch_url}/@@pfas-logbook-253">
-      <input type="hidden" id="samples_json" name="samples_json" value="[]" />
-      <input type="hidden" id="processing_materials_json" name="processing_materials_json" value="[]" />
+      <input type="hidden" id="samples_json" name="samples_json" tal:attributes="value python:view.stored_json('samples')" />
+      <input type="hidden" id="processing_materials_json" name="processing_materials_json" tal:attributes="value python:view.stored_json('processing_materials')" />
 
       <!-- Header -->
       <div class="lb-section">

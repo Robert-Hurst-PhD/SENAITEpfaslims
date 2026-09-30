@@ -549,7 +549,19 @@
     document.getElementById('lbDesc').value = data.description || '';
     document.getElementById('lbProc').value = data.procedure || '';
     document.getElementById('lbNotes').value = data.notes || '';
-    document.getElementById('lbMethodSlug').value = data.method_slug || '';
+    /* A stored reference may be a slug ("fda-32-pfas") while the options are
+       method IDs: select the option it names, or the save clears the link. */
+    (function (sel, want) {
+      var norm = function (v) { return (v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
+      sel.value = want;
+      if (want) {
+        if (sel.value !== want) {
+          for (var i = 0; sel.options[i]; i++) {
+            if (norm(sel.options[i].value) === norm(want)) { sel.value = sel.options[i].value; break; }
+          }
+        }
+      }
+    })(document.getElementById('lbMethodSlug'), data.method_slug || '');
     document.getElementById('lbCode').value = data.logbook_code || '';
     document.getElementById('lbSortOrder').value = data.sort_order != null ? data.sort_order : 100;
     lbLoadBuilder(data.field_schema_json || '[]',

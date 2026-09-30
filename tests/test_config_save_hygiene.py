@@ -101,6 +101,51 @@ def test_bad_numbers_are_refused_not_coerced():
     assert not bad, "unparseable input silently replaced by a default: {0}".format(bad)
 
 
+# Edit forms of saved records whose rows travel in script-filled hidden fields.
+# A literal "[]" there meant a submit before (or without) the script replaced
+# a controlled record's rows -- or a method's required logbooks -- with nothing.
+EDIT_FORMS = ("logbook_250.pt", "logbook_251.pt", "logbook_252.pt",
+              "logbook_253.pt", "logbook_custom.pt", "logbook_admin.pt")
+
+
+def test_edit_forms_render_saved_rows_into_hidden_fields():
+    bad = []
+    for name in EDIT_FORMS:
+        with open(os.path.join(TEMPLATES, name)) as fh:
+            text = fh.read()
+        for m in re.finditer(r"<input\b[^>]*>", text, re.S):
+            tag = m.group(0)
+            if ('type="hidden"' in tag and re.search(r'name="[\w.]*_json"', tag)
+                    and re.search(r'\svalue="(\[\]|\{\})"', tag)):
+                bad.append("{0}: {1}".format(name, re.sub(r"\s+", " ", tag)[:90]))
+    assert not bad, "hidden row field starts empty on an edit form: {0}".format(bad)
+
+
+def _rows_from_form():
+    import json as _json
+    path = os.path.join(BROWSER, "logbooks.py")
+    with open(path) as fh:
+        tree = ast.parse(fh.read())
+    fn = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_rows_from_form"][0]
+    ns = {"json": _json}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), path, "exec"), ns)
+    return ns["_rows_from_form"]
+
+
+def test_logbook_rows_are_kept_when_absent_and_refused_when_broken():
+    f = _rows_from_form()
+    saved = {"samples": [{"id": "S1"}]}
+    assert f({}, "samples_json", saved, "samples") == [{"id": "S1"}], "absent field wiped the rows"
+    assert f({"samples_json": "[]"}, "samples_json", saved, "samples") == []   # explicit clear
+    assert f({"samples_json": '[{"id": "S2"}]'}, "samples_json", saved, "samples") == [{"id": "S2"}]
+    for broken in ("not json", '{"a": 1}'):
+        try:
+            f({"samples_json": broken}, "samples_json", saved, "samples")
+        except ValueError:
+            continue
+        raise AssertionError("accepted %r" % broken)
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]

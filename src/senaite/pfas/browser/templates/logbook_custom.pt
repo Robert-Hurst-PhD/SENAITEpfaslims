@@ -118,7 +118,7 @@
       </div>
 
       <tal:nocols tal:condition="not:view/table_columns">
-        <input type="hidden" name="rows_json" value="[]"/>
+        <input type="hidden" name="rows_json" tal:attributes="value python:view.stored_json('rows')" />
       </tal:nocols>
 
       <!-- Notes -->

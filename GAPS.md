@@ -5440,40 +5440,108 @@ the lab.
 
 ---
 
-## 51. Config saves record only what was entered: fixes, a live no-op-save audit, and what is left (2026-09-30, in progress)
+## 51. Config saves record only what was entered: fixes and a live no-op-save audit (2026-09-30)
 
-- **Fixed, commit 01a7999** (guarded by `tests/test_config_save_hygiene.py`):
-  - the Method Profile editor wrote a derived injection IS and "LC-HRMS" into
-    fields, so every save stored them;
-  - an unparseable matrix or salt factor silently became 1.0;
-  - an unparseable prep-logbook default expiry silently became 365;
-  - the client EDD checkbox had a `True` default and could never be unchecked.
-- **Live audit.** `tools/config_save_audit.py` with `tools/config_snapshot.py`
-  saves 21 forms unchanged and diffs every store after each one. A repozo
-  backup was taken first: `/data/backups/pre-noop-audit-20260930`, plus
-  `/data/qc/backup-pre-noop-audit`.
-- **Found by the audit:** saving Logbook Admin's sequence for a method whose
-  tab was not drawn **wiped that method's required logbooks**. The hidden
-  field was server-rendered `[]` and the handler coerced bad input to `[]`.
-  EPA 537.1 and FDA 32-PFAS were **restored**. Fixed (not yet
-  restart-verified): the field is server-rendered with the current list, and
-  the handler refuses a bad list.
-- **Representational (materialised defaults), to review:**
-  - the EDD CAS section save stores 17 seeded CAS rows marked VERIFY;
-  - print settings, reagent expiry defaults and the regulatory seeds become
-    stored values on their first save.
-- **The Reporting Limits merge** no longer stores empty matrices.
-- **Harness gaps:** the QC rules and prep-logbook edit steps did not run.
-- **Open:** 19 hidden `*_json` fields ship literal `[]` or `{}` and are
-  filled by script. Most are bench logbook entry forms (250–253, custom,
-  guided, prep standards, Import Studio), so a save before the script runs may
-  wipe rows. To audit each handler.
-- **Structural review not yet written.** Findings so far:
-  - method-profile config has no change history (only AnalysisSpec sync is
-    audited);
-  - 113 hardcoded lab values (`tools/audit_configurable.py`);
-  - the analyte library (`NATIVE_ANALYTES`) is code-only;
-  - vocabularies are code-only;
-  - pipeline defaults duplicate the add-on seeds;
-  - the Method Profile handler is one ~1,200-line POST covering all panes, the
-    root of the partial-save defects.
+A settings page saved with no changes must change nothing. It did not.
+`tools/config_snapshot.py` dumps every configuration store: PFAS annotations
+on the portal and on clients, every `pfas_*` folder object, the `pfas_*`
+fields on every AnalysisService, ReferenceDefinitions, and `/data/qc/*.json`.
+`tools/config_save_audit.py` saves each form unchanged in a real browser and
+diffs, attributing every change to one form. A repozo backup was taken first
+(`/data/backups/pre-noop-audit-20260930`, plus `/data/qc/backup-pre-noop-audit`).
+
+### 51.1 Defects fixed
+
+1. **Method Profile: defaults saved as choices.**
+   - Cause: the derived injection IS was written into the field by script,
+     and "LC-HRMS" was rendered as the value and substituted on save.
+   - Fix: defaults show as placeholders; blank stays blank (the pipeline
+     applies its own fallback on read).
+2. **Method Profile: the submit serialiser never ran.** Its first step
+   (`syncMatrixFactorsJson`) threw on every page, because that table had been
+   replaced by named fields. This silently stopped every serialiser after it.
+   - Isomer summation, spike levels, EIS overrides and the other tables
+     relying on submit-time serialisation reached the server stale, so their
+     edits were lost.
+   - Fix: each serialiser runs isolated; a missing table leaves its hidden
+     field alone (never writes `[]`); a blank number is `null`, never `0`.
+3. **Method Profile: recovery tiers lost their scope.** Once serialisers ran,
+   `syncRecoveryTiersJson` rebuilt each tier from the card and **dropped
+   `analyte_group`, `matrix_scope`, `name` and `verify_against_method`**, the
+   fields that decide which analytes and matrices a tier applies to.
+   - This was already live on any edit in the Recovery Tiers grid. The stored
+     tiers were checked: all still intact and matching the 2026-09-19 copy.
+   - All three profiles were restored from the pre-save snapshot (exports
+     byte-identical).
+   - Fix: edits merge onto the stored tier.
+   - Verified: an unchanged save changes nothing (only `null` ≡ missing); a
+     real edit (LFSM max 130 → 131) persisted with every other field intact;
+     then restored.
+4. **Matrix and salt factors.** An unparseable entry silently became 1.0.
+   Now refused.
+5. **Prep logbook default expiry.** An unparseable value silently became 365.
+   Now refused.
+6. **Client EDD "per-report override default".** Read with a `True`
+   default, so it could never be unchecked. Fixed.
+7. **Logbook Admin: saving a method's sequence could wipe its required
+   logbooks.**
+   - Cause: the hidden list was server-rendered `[]` and only filled when the
+     tab was drawn, and the handler coerced bad input to `[]`.
+   - EPA 537.1 and FDA 32-PFAS were **restored**.
+   - Fix: the current list is server-rendered; a bad list is refused.
+     Verified: 3/3 sequence saves are no-ops.
+8. **Bench logbooks 250–253 and custom: controlled records at risk.** Rows
+   travel in hidden JSON fields that started `[]` and were filled by script;
+   an absent field defaulted to `[]`, and 250/251/custom coerced invalid JSON
+   to `[]`. A save before the script ran would replace a record's rows with
+   nothing.
+   - Fix: saved rows are server-rendered into the fields;
+     `_rows_from_form` keeps the saved rows when a field is absent and
+     refuses unreadable input.
+9. **Prep logbook definitions: method link.**
+   - Seeds stored the slug `fda-32-pfas`, while the pool matched the method
+     ID exactly, so **the seeded FDA prep logbooks were never offered** in the
+     pool.
+   - The edit modal's dropdown (method IDs) could not select the stored slug,
+     so any save cleared the link. It was cleared once by the audit and
+     restored.
+   - Fix: `logbook_store.method_key` normalises both sides, seeds use the
+     method ID, and the modal selects by normalised match.
+
+### 51.2 Guards
+
+`tests/test_config_save_hygiene.py`, 6 tests, each mutation-tested:
+- no checkbox read with a `True` default;
+- no template renders a default as a value;
+- no script writes a derived default into a field;
+- no unparseable number is silently replaced;
+- edit forms server-render their saved rows;
+- `_rows_from_form` keeps rows when a field is absent and refuses broken
+  input.
+
+The live audit is repeatable: `python3 tools/config_save_audit.py OUT
+[--only=…]`.
+
+### 51.3 Representational (first save stores defaults), accepted
+
+- EDD CAS section: 17 seeded CAS rows marked VERIFY.
+- Print settings: certificate keys.
+- QC qualifier library.
+- Reagent expiry defaults.
+- Regulatory limits: the seeds.
+- Prep-logbook `guided_default: false` and `steps_json: []`.
+- Extraction stages: empty `media` fields.
+- The QC rules file's `updated_at` timestamp.
+
+**Consequence:** once stored, later changes to the code seeds no longer reach
+them (same rule as §47).
+
+### 51.4 Not audited
+
+- **`@@pfas-qc-rules`** redirects to Method Profiles; its toggles are a tab
+  of the profile editor, which is audited.
+- **Import Studio profile save** needs an uploaded file.
+- **The extraction guide wizard** creates a record; its `[]` start is
+  correct.
+- **Prep-standard and prep-logbook modals** open only through the script
+  that fills them.
