@@ -85,6 +85,9 @@ def test_sidebar_pins_the_landing_and_opens_the_role_group():
     assert 'href home/url' in pt, "no pinned link to the landing"
     assert 'data-role-group home/group' in pt, "role group not exposed to the script"
     assert "getAttribute('data-role-group')" in pt, "script ignores the role group"
+    # DECISIONS 2026-09-30: remembered per USER -- lab terminals are shared
+    assert "data-user me" in pt and "getAttribute('data-user')" in pt, (
+        "remembered group state is not keyed by user")
 
 
 def test_breadcrumb_comes_from_the_sidebar():

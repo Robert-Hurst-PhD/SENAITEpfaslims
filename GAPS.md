@@ -5162,3 +5162,50 @@ local variants (`.cl-badge`, `.tier-badge`, `.r2-badge`, …).
   - the breadcrumb comes from the nav.
 
   Two mutations, both killed.
+
+### 49.8 Measured after Phases 0–3, and what is left
+
+Full re-audit (`tools/ui_audit.py`, 59 pages, after restart):
+
+| | Before (§49.1) | After |
+|---|---|---|
+| Content frames | ~10 (x = 242…580) | 7, with 45 of 59 pages at x=250 (35 PFAS + 8 core + 2 form-width) |
+| Sidebar, core vs PFAS | top 60 vs 52, pitch 34 vs 29 | identical: top 52, pitch 30 |
+| Button styles in PFAS content | 25 distinct, at the Phase 1 re-measure (38 counted with core in the first crawl) | **9** |
+| Pages redefining a shared component | 16 | 0 (enforced) |
+| `style=` / hex / font sizes | 968 / 223 / 23 | 940 / 210 / 23 |
+
+The remaining button styles are the set's own sizes and variants, plus four
+37px transparent controls (the method profile toggles) and one legacy 36px
+pill.
+
+**Fixes after review:**
+- the 32px select rule is wrapped in `:where()`, so a dense table's own rule
+  wins. Checked on logbooks 250–253: no selects sit in their tables, and table
+  inputs went 34 → 32px, so no row grew;
+- no variant class sits on a non-button element (templates and scripts
+  grepped);
+- the remembered sidebar state is keyed by user id, so shared terminals keep
+  each person's choices apart.
+
+**JS errors the audit now surfaces, both pre-existing and not caused here:**
+- core's `senaite.core.setupview.js` throws on the five `lims-setup?section=`
+  pages because it expects the "Type to filter" box that section mode does not
+  render;
+- System Map's SVG carries `height="auto"`.
+
+**Restarts.** Each template change needed one (debug-mode is off). This session
+restarted SENAITE about ten times, and each restart makes the instance
+unavailable for about a minute.
+
+**Left, in order:**
+1. **Phase 4, scoped by §6B's wording** ("a long vertical accordion of
+   collapsible sections"): Lab Settings (4 sections), Prep Logbooks (6) and EDD
+   Configuration (2) become tabs. Single disclosures (Reagent Inventory's
+   Expiry Defaults, the one on Controlled Documents) are out of scope.
+2. **Badges:** several local variants (`.cl-badge`, `.tier-badge`, `.r2-badge`,
+   `.ws-badge`, …) onto one badge scale.
+3. **Cards/sections:** Facility Units' "Facility Defaults" is raw headings
+   outside any card.
+4. **Calibrations** is 8,500px tall; **Reagent Inventory** carries five
+   actions on every row.

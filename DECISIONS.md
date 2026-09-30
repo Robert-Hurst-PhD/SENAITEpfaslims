@@ -5240,7 +5240,9 @@ Lab answers:
 - **Width:** full width for tables and lists; one shared narrower width for
   reading and form pages.
 - **Sidebar:** landing pinned at the top; the role's group and the current
-  page's group open, the rest collapsed, remembered per user.
+  page's group open, the rest collapsed, remembered per user. (Implemented as localStorage keyed by user id: per user *on that
+  browser*. A shared lab terminal therefore keeps each person's choices apart,
+  but a user's choices do not follow them to another machine.)
 - **Bench Chemist is LabClerk only**, not Analyst. CLAUDE.md §4 corrected; the
   launcher already routes LabClerk to Bench and Analyst/Verifier to Data Review,
   so no routing change is needed. Closes the GAPS §48 question.

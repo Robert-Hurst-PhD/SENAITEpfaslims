@@ -3,12 +3,13 @@
                  path    view/current_path;
                  roles   view/user_roles;
                  home    view/landing;
+                 me      python:context.portal_membership.getAuthenticatedMember().getId() or '';
                  is_mgr  python:'LabManager' in roles or 'Manager' in roles;
                  is_ana  python:'Analyst' in roles or 'Verifier' in roles;
                  is_clk  python:'LabClerk' in roles;
                  sect    python:request.get('section','')"
      aria-label="Main navigation"
-     tal:attributes="data-role-group home/group">
+     tal:attributes="data-role-group home/group; data-user me">
 
 <style id="pfas-sidebar-css">
 /* ── PFAS unified sidebar ───────────────────────────────────────────────── */
@@ -1026,9 +1027,11 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
 (function () {
   /* Group state (CLAUDE.md §6C, GAPS §49): by default only the user's role
      group and the current page's group are open. A group the user opens or
-     closes by hand is remembered per browser (localStorage) and wins over the
-     default next time. */
-  var SB_STATE_KEY = 'pfas_sb_groups_v2';
+     closes by hand is remembered per user (localStorage, keyed by user id) and
+     wins over the default next time. */
+  /* per user, not per browser: lab terminals are shared */
+  var _sbNav = document.getElementById('sidebar');
+  var SB_STATE_KEY = 'pfas_sb_groups_v2:' + ((_sbNav && _sbNav.getAttribute('data-user')) || '');
 
   function loadChoices() {
     try { var o = JSON.parse(localStorage.getItem(SB_STATE_KEY) || '{}');

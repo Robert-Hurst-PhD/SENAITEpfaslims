@@ -380,7 +380,7 @@
        some boxes were a different font, size or taller than others. Pages may
        still set width or override with a class; this is only the baseline.
        Checkboxes, radios and file inputs are intentionally excluded. */
-    .pfas-content-area select:not([multiple]):not([size]) { height: var(--ctl-h); }
+    .pfas-content-area :where(select:not([multiple]):not([size])) { height: var(--ctl-h); }   /* :where = lowest specificity: a dense table's own rule wins */
     .pfas-content-area input[type=text],
     .pfas-content-area input[type=number],
     .pfas-content-area input[type=date],
