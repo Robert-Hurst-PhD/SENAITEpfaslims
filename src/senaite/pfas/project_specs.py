@@ -443,3 +443,23 @@ def effective_for_project(project, method_id, matrix, profile, env=None):
         return profile, [], False
     eff, stale = effective(profile, specs, matrix, env=env if env is not None else site_env())
     return eff, stale, True
+
+
+def profile_for_batch(portal, batch, method_id, matrix=None):
+    """The profile a batch runs to: the method's, with its project's specs
+    applied when the batch is linked to a project that has some. Every READER
+    of a batch's criteria (certificate, Data Review) uses this, so they agree
+    with what the pipeline applied (the batch's resolved file). Writers of
+    the METHOD keep using method_profile_store directly."""
+    from senaite.pfas.method_profile_store import get_profile
+    profile = get_profile(portal, method_id) or {} if method_id else {}
+    if batch is None or not profile:
+        return profile
+    try:
+        from senaite.pfas import project_ref
+        project = project_ref.get_project(portal, batch)
+    except Exception:
+        return profile
+    if project is None:
+        return profile
+    return effective_for_project(project, method_id, matrix, profile)[0]

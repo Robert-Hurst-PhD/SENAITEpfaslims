@@ -139,6 +139,10 @@ class PFASCoASectionsView(BrowserView):
         method_id = method.getMethodID() if method is not None else u""
         profile = get_profile(api.get_portal(), method_id) if method_id else {}
         matrix = report_limits.canonical_matrix(profile, sample.getSampleTypeTitle())
+        # what this sample's batch runs to: its project's specs (added
+        # analytes, their RLs, ...) apply on the certificate too (GAPS §76)
+        from senaite.pfas.project_specs import profile_for_batch
+        profile = profile_for_batch(api.get_portal(), sample.getBatch(), method_id, matrix) or profile
         # A summed analyte prints its reported name from the method's Isomers
         # tab (DECISIONS 2026-10-01): the global table names PFOS by its
         # LINEAR peak, "lr-PFOS", which is not what a summed result is.

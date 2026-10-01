@@ -6406,3 +6406,28 @@ Approved by the lab as the first recommendation of
   30 cleared it; profiles equal to the snapshot. The test revision (record +
   PDF) was then removed, so no method has an issued revision yet. Every
   touched page renders 200 with no script errors.
+
+## 76. Certificate and Data Review read what the batch runs to (2026-10-02)
+- §70 left the certificate and Data Review reading the bare method profile,
+  so a project's specs (added analytes, their RLs, tighter limits) reached
+  the pipeline but not the certificate or the review pages.
+- **`project_specs.profile_for_batch(portal, batch, method_id, matrix)`**:
+  the method profile, with the batch's project specs applied when it has
+  some -- the same effective profile the pipeline applied. Used by the
+  certificate (`coa_sections._sample`) and Data Review (`_method_profile`,
+  now also behind the QC summary). The one Data Review path that WRITES the
+  method (recording a spike level as the method nominal) stays on the bare
+  profile; a test forbids any function that calls save_profile from reading
+  the project version (AST; mutant killed).
+- **Live:** throwaway project (deleted after) with PFOA RL 99 for Animal Feed,
+  linked to kcp-b-001: FEED-0002's certificate went from "PFOA 12.7 ng/kg" to
+  "< 99 U, RL 99 ng/kg"; unlinked, back to 12.7. No project or resolved file
+  left behind.
+- **Finding (pre-existing, open):** the certificate finds a sample's method
+  only through its analyses' Method field. Only the nine FEED samples from
+  the real-instrument run have it; every other published sample (DW-0003/5/
+  7/9, COA-DEMO-0001, EGG/MEAT/FEED-0001) resolves NO method, so its
+  certificate prints without RLs, the per-method format, regulatory notes or
+  isomer labels.
+- **Still open:** spec sync (SENAITE Analysis Specifications) is still
+  per method x matrix, not per project.

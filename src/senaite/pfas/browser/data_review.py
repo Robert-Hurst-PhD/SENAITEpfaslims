@@ -371,12 +371,27 @@ class PFASDataReviewView(BrowserView):
     # Summary gate.
 
     def _method_profile(self):
+        """What this worksheet's batch runs to: the method profile with its
+        project's specs applied (GAPS §76) -- the criteria the pipeline used."""
         try:
-            from senaite.pfas.method_profile_store import get_profile
+            from senaite.pfas.project_specs import profile_for_batch
             mid = self.batch_method()
-            return get_profile(self._portal(), mid) or {} if mid else {}
+            return profile_for_batch(self._portal(), self._worksheet_batch(), mid,
+                                     self._batch_matrix()) or {} if mid else {}
         except Exception:
             return {}
+
+    def _worksheet_batch(self):
+        """The batch of this worksheet's samples (the project link lives there)."""
+        ws = self._get_worksheet()
+        try:
+            for analysis in (ws.getAnalyses() or []) if ws is not None else []:
+                batch = analysis.getRequest().getBatch()
+                if batch is not None:
+                    return batch
+        except Exception:                                   # noqa: BLE001
+            pass
+        return None
 
     def _injection_rows(self, qc_type=None, role=None):
         """Per-injection detail rows for this worksheet's batch."""
@@ -1803,9 +1818,7 @@ class PFASDataReviewView(BrowserView):
         method_id = self.batch_method()
         if method_id:
             try:
-                from senaite.pfas.method_profile_store import get_profile
-                profile = get_profile(self._portal(), method_id) or {}
-                qc_acceptance = profile.get("qc_acceptance", {})
+                qc_acceptance = self._method_profile().get("qc_acceptance", {})
             except Exception as exc:
                 logger.warning("_get_qc_summary.get_profile: %s", exc)
 
