@@ -139,7 +139,11 @@ class PFASCoASectionsView(BrowserView):
         method_id = method.getMethodID() if method is not None else u""
         profile = get_profile(api.get_portal(), method_id) if method_id else {}
         matrix = report_limits.canonical_matrix(profile, sample.getSampleTypeTitle())
-        titles = dict((r[0], r[1]) for r in NATIVE_ANALYTES)
+        # A summed analyte prints its reported name from the method's Isomers
+        # tab (DECISIONS 2026-10-01): the global table names PFOS by its
+        # LINEAR peak, "lr-PFOS", which is not what a summed result is.
+        from senaite.pfas.method_profile_sections import _analyte_titles
+        titles = _analyte_titles(profile or {})
         # A placeholder CAS in the analyte reference must never print as a
         # CAS number; the EDD refuses it separately (CLAUDE.md §3 REPORT).
         cas = dict((r[0], r[2] if r[2] and "PLACEHOLDER" not in r[2].upper() else u"\u2014")

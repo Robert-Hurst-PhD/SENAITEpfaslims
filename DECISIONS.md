@@ -5432,3 +5432,30 @@ Lab answers:
 - **Checks on save:** a used standard needs a role; a link must name another
   USED standard, not itself, with no loop; every surrogate the map uses must be
   a used standard with the extracted role.
+
+## 2026-10-01 — Isomers: a dedicated per-method tab whose reported names drive every page (confirmed)
+- **Lab report:** "the isomer [setting] under analyte x matrix ... is not
+  updating the rest of the tabs." Review found: the isomer pairs were free text
+  in a collapsed JSON table read only by the pipeline; every other tab labels
+  analytes from a fixed global table that hard-codes the LINEAR form for two
+  analytes ("lr-PFOS", "lr-PFHxS", also the core service titles) whether or
+  not the method sums isomers; typos were silently ignored.
+- **Decisions (lab, via questions):**
+  1. A summed analyte shows its **reported name** everywhere (editor tabs and
+     certificate), set per method on the Isomers tab, default the plain name
+     (PFOS, PFHxS). "lr-" only ever names the linear PEAK.
+  2. When summation is off for an analyte with isomers, **each isomer is
+     reported separately** (own rows everywhere) -- nothing dropped silently.
+  3. An analyte may have **several branched peaks** (linear + a list).
+  4. Rename the core service titles "lr-PFOS"/"lr-PFHxS" to **PFOS/PFHxS**,
+     after listing every reference for the lab to confirm.
+- **Phasing:**
+  - **A (built now):** `isomers` model on the profile replacing
+    `isomer_summation`, migrated faithfully; the Isomers tab (declared,
+    validated); reported names drive labels on every editor tab.
+  - **B (open, needs lab facts):** separate reporting needs a core analysis
+    service per isomer (keyword, CAS, EDD code, unit, method links -- lab and
+    regulatory facts, not invented here). Until then the tab REFUSES switching
+    summation off for an analyte with isomers, saying why.
+  - **C (open, needs confirmation):** the core title rename, after the
+    reference list (instrument matching keeps "lr-" names as aliases).

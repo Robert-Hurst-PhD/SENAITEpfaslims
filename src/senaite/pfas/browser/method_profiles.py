@@ -195,6 +195,19 @@ class PFASMethodProfileEditView(BrowserView):
             per_a = DEFAULT_PROFILES.get(self.method_id(), {}).get("per_analyte", [])
         return json.dumps(per_a, indent=2)
 
+    def per_analyte_labels_json(self):
+        """{stored row name: label to SHOW}. Rows are stored under the global
+        display name ("lr-PFOS"), which spec_sync reads, so the key stays; the
+        page shows the method's label (a summed PFOS is "PFOS")."""
+        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+        from senaite.pfas.method_profile_sections import _analyte_titles
+        labels = _analyte_titles(self.profile())
+        out = {}
+        for row in NATIVE_ANALYTES:
+            out[row[1]] = labels.get(row[0])
+            out[row[0]] = labels.get(row[0])
+        return json.dumps(out)
+
     def dup_rpd(self):
         """Sample-duplicate RPD limit, from the structure the engine evaluates.
 
@@ -235,9 +248,6 @@ class PFASMethodProfileEditView(BrowserView):
                 "name": name, "label": label, "expired": expired,
             })
         return sorted(out, key=lambda x: x["label"].lower())
-
-    def isomer_summation_json(self):
-        return json.dumps(self.profile().get("isomer_summation", []), indent=2)
 
     def spike_levels_json(self):
         return json.dumps(self.profile().get("spike_levels", {}), indent=2)
@@ -348,13 +358,14 @@ class PFASMethodProfileEditView(BrowserView):
 
     def analyte_matrix_grid_data(self):
         """JSON for the JS grid builder: ordered analytes, matrices, display labels."""
-        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
-        kw_to_display = {row[0]: row[1] for row in NATIVE_ANALYTES}
+        # labels follow the method's isomers (a summed PFOS is "PFOS")
+        from senaite.pfas.method_profile_sections import _analyte_titles
         profile = self.profile()
+        labels = _analyte_titles(profile)
         keywords = profile.get("master_analyte_set", [])
         return json.dumps({
             "analytes":       keywords,
-            "analyte_labels": {kw: kw_to_display.get(kw, kw) for kw in keywords},
+            "analyte_labels": {kw: labels.get(kw) for kw in keywords},
             "matrices":       profile.get("supported_matrices", []),
         })
 
@@ -709,9 +720,7 @@ class PFASMethodProfileEditView(BrowserView):
         # The injection IS, surrogate map and surrogate chain are NOT parsed
         # here: the Surrogate Map tab is its own form (R2, declared sections).
 
-        profile["isomer_summation"] = _json_field(
-            "isomer_summation_json",
-            profile.get("isomer_summation", []))
+        # Isomers are NOT parsed here: the Isomers tab is its own form (R2).
 
         raw_sl = f.get("spike_levels_json", "").strip()
         if raw_sl:

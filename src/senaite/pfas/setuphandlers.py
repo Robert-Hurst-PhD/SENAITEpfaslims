@@ -214,13 +214,13 @@ def setup_handler(context):
         seed_default_profiles(portal)
     except Exception as e:
         logger.warning("Method profiles not seeded: %s", e)
-    # One labelled-standards grid per method replaces surrogate_is and
-    # surrogate_is_chain (DECISIONS 2026-09-30). Idempotent.
+    # Profiles to the current models: one labelled-standards grid per method
+    # (DECISIONS 2026-09-30) and the isomers model (2026-10-01). Idempotent.
     try:
-        from senaite.pfas.method_profile_store import migrate_labelled_standards
-        migrate_labelled_standards(portal)
+        from senaite.pfas.method_profile_store import migrate_profile_models
+        migrate_profile_models(portal)
     except Exception as e:
-        logger.warning("Labelled standards not migrated: %s", e)
+        logger.warning("Profile models not migrated: %s", e)
 
     # ── EGAD EDD config ───────────────────────────────────────────────────
     try:

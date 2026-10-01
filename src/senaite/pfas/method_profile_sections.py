@@ -83,12 +83,36 @@ CALIBRATION_CCV = cf.Section(
         ]),
     ])
 
-def _analyte_titles():
+def _global_titles():
     try:
         from senaite.pfas.analyte_reference import NATIVE_ANALYTES
     except Exception:          # tests: loaded without the package
         from analyte_reference import NATIVE_ANALYTES
     return dict((row[0], row[1]) for row in NATIVE_ANALYTES)
+
+
+try:
+    from senaite.pfas import isomers as _iso
+except Exception:              # tests: loaded without the package
+    import isomers as _iso
+
+
+class _Labels(dict):
+    """{keyword: label} for ONE method: a summed analyte shows its reported
+    name (the Isomers tab), every other analyte its display name. Every tab
+    labels analytes through this, so an isomer change reaches all of them --
+    the global table alone named a summed PFOS "lr-PFOS" (DECISIONS 2026-10-01)."""
+
+    def __init__(self, profile):
+        dict.__init__(self)
+        self.profile, self.titles = profile, _global_titles()
+
+    def get(self, kw, default=None):
+        return _iso.label(self.profile, kw, self.titles)
+
+
+def _analyte_titles(profile):
+    return _Labels(profile)
 
 
 def reporting_limit_rows(profile):
@@ -97,7 +121,7 @@ def reporting_limit_rows(profile):
     FDA x Eggs, CLAUDE.md §3 rule 2). The group's unit is the matrix's unit_map
     entry: a limit is entered in, and printed with, the unit the method
     reports that matrix in."""
-    titles = _analyte_titles()
+    titles = _analyte_titles(profile)
     inclusion = profile.get("analyte_matrix_inclusion") or {}
     units = profile.get("unit_map") or {}
     groups, rows = [], []
@@ -246,7 +270,7 @@ def _one_group(key, label):
 
 
 def salt_rows(profile):
-    titles = _analyte_titles()
+    titles = _analyte_titles(profile)
     rows = [{"key": (kw,), "group": u"salt", "label": titles.get(kw, kw), "sublabel": kw}
             for kw in profile.get("master_analyte_set") or []]
     return _one_group(u"salt", u"Salt adjustment"), rows
@@ -487,7 +511,7 @@ def surrogate_choices(profile, env=None):
 
 
 def surrogate_map_rows(profile, env=None):
-    titles = _analyte_titles()
+    titles = _analyte_titles(profile)
     linked = set(r["analyte"] for r in _map_rows(profile) if r.get("surrogate_is"))
     svcs = (env or {}).get("services") or {}
     rows = []
@@ -621,11 +645,67 @@ def check_profile(profile):
     grid's links and loops, and its agreement with the surrogate map."""
     return _ls.check(profile)
 
+# ── Isomers (DECISIONS 2026-10-01) ───────────────────────────────────────────
+
+def isomer_rows(profile):
+    """Every panel analyte, those with isomers first."""
+    titles = _global_titles()
+    groups = _iso.entries(profile)
+    panel = list(profile.get("master_analyte_set") or [])
+    rows = []
+    for kw in [k for k in panel if k in groups] + [k for k in panel if k not in groups]:
+        rows.append({"key": (kw,), "group": u"iso", "label": _iso.label(profile, kw, titles),
+                     "sublabel": kw})
+    return _one_group(u"iso", u"Isomers"), rows
+
+
+def read_isomers(profile):
+    out = {}
+    for kw, e in _iso.entries(profile).items():
+        out[(kw,)] = {"linear": e.get("linear") or None,
+                      "branched": u", ".join(e.get("branched") or []) or None,
+                      "reported": e.get("reported") or None,
+                      "summed": bool(e.get("summed"))}
+    return out
+
+
+def write_isomers(profile, updates, env=None):
+    groups = dict(_iso.entries(profile))
+    for (kw,), vals in updates.items():
+        linear = (vals.get(("linear",)) or u"").strip()
+        branched = [b.strip() for b in (vals.get(("branched",)) or u"").split(u",") if b.strip()]
+        if not linear and not branched:
+            groups.pop(kw, None)            # no peaks: the analyte has no isomers here
+            continue
+        old = groups.get(kw) or {}
+        groups[kw] = dict(old, linear=linear, branched=branched,
+                          reported=(vals.get(("reported",)) or u"").strip(),
+                          summed=bool(vals.get(("summed",))))
+    profile[_iso.KEY] = groups
+    profile.pop(_iso.LEGACY, None)
+    return profile
+
+
+ISOMERS = cf.Table(
+    id=u"iso", title=u"Isomers", base=(_iso.KEY,),
+    columns=[cf.Field("linear", u"Linear peak", kind=cf.TEXT, placeholder=u"e.g. lr-PFOS"),
+             cf.Field("branched", u"Branched peak(s), comma-separated", kind=cf.TEXT,
+                      placeholder=u"e.g. br-PFOS"),
+             cf.Field("reported", u"Reported as", kind=cf.TEXT,
+                      placeholder=u"plain name (e.g. PFOS)"),
+             cf.Field("summed", u"Summed", kind=cf.BOOL)],
+    rows=isomer_rows, read=read_isomers, write=write_isomers, row_heading=u"Analyte")
+
+
+def check_isomers(profile):
+    return _iso.check(profile, _global_titles())
+
+
 # Whole-profile checks, run after a tab's sections are applied, keyed by the
 # sections whose save must pass them.
-PROFILE_CHECKS = [((u"sur", u"ls"), check_profile)]
+PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
                                     SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
-                                    LABELLED_STANDARDS] +
+                                    LABELLED_STANDARDS, ISOMERS] +
                 [c for c, _l in EIS_CLASSES])

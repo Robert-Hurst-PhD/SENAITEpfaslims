@@ -220,6 +220,8 @@
          onclick="pfasTabSwitch('pane-corr'); return false;">Sample Corrections</a>
       <a class="pfas-tab" data-pane="pane-ami" href="#pane-ami"
          onclick="pfasTabSwitch('pane-ami'); return false;">Analyte &#215; Matrix</a>
+      <a class="pfas-tab" data-pane="pane-iso" href="#pane-iso"
+         onclick="pfasTabSwitch('pane-iso'); return false;">Isomers</a>
       <a class="pfas-tab" data-pane="pane-sur" href="#pane-sur"
          onclick="pfasTabSwitch('pane-sur'); return false;">Internal Standards</a>
       <a class="pfas-tab" data-pane="pane-eis" href="#pane-eis"
@@ -399,38 +401,36 @@
               </div>
               <input type="hidden" name="per_analyte_json" id="per_analyte_json"
                      tal:attributes="value view/per_analyte_json" />
+              <input type="hidden" id="per_analyte_labels"
+                     tal:attributes="value view/per_analyte_labels_json" />
             </div>
           </details>
 
-          <details>
-            <summary>Isomer Summation (linear + branched &#8594; reported analyte)</summary>
-            <div class="section-body">
-              <p class="json-hint">
-                Define which linear/branched instrument peaks sum into a single reported analyte.
-                Summation applied BEFORE salt and matrix adjustment factors.
-              </p>
-              <table class="factor-table" id="isomerTable">
-                <thead>
-                  <tr>
-                    <th style="width:25%">Linear peak</th>
-                    <th style="width:25%">Branched peak</th>
-                    <th style="width:25%">Reported as</th>
-                    <th style="width:60px;text-align:center">Active</th>
-                    <th style="width:36px"></th>
-                  </tr>
-                </thead>
-                <tbody id="isomerBody"></tbody>
-              </table>
-              <button type="button" class="btn-sm btn-add-row" onclick="addIsomerRow()">+ Add pair</button>
-              <input type="hidden" name="isomer_summation_json" id="isomer_summation_json"
-                     tal:attributes="value view/isomer_summation_json" />
-            </div>
-          </details>
 
         </div>
       </div><!-- /pane-ami -->
 
       <!-- ── Tab: Surrogate Map ─────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-iso">
+        <div class="page-body">
+          <p class="pane-intro">
+            Which analytes in <strong>this method</strong> are measured as
+            isomers, the instrument&#8217;s peak name for each isomer, and the
+            name the summed result is reported under. The reported name is what
+            every other tab and the certificate show for that analyte (blank:
+            its plain name, e.g. PFOS); &#8220;lr-&#8221; only ever names the
+            linear peak. Peaks are summed <em>before</em> salt and matrix
+            factors. Clear an analyte&#8217;s peaks to remove its isomers.
+            Reporting isomers separately (Summed off) needs an analysis service
+            for each isomer and is not available yet.
+          </p>
+          <!-- Saved ON ITS OWN (R2): form#section-iso. -->
+          <div tal:define="cf_groups python:view.section_groups('iso'); cf_form string:section-iso">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+        </div>
+      </div><!-- /pane-iso -->
+
       <div class="tab-pane" id="pane-sur">
         <div class="page-body-narrow">
           <!-- Saved ON ITS OWN (R2): the internal-standards grid and the
@@ -874,6 +874,14 @@
     </form>
     <!-- Per-tab section forms (R2): each saves only its own section, with its
          own stale-save stamp. -->
+    <form id="section-iso" method="POST" class="pfas-section-form"
+          data-tab-label="Isomers"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="iso" />
+      <input type="hidden" name="_pane" value="pane-iso" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__iso" tal:attributes="value python:view.section_stamp('iso')" />
+    </form>
     <form id="section-sur" method="POST" class="pfas-section-form"
           data-tab-label="Internal Standards"
           tal:attributes="action string:@@pfas-method-profile-edit">
@@ -1031,7 +1039,7 @@
     /* Endpoint for stage action GIFs — shared with the logbook step builder. */
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=6"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=8"></script>
 
   </div><!-- /content slot -->
 

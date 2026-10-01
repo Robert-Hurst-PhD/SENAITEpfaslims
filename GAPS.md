@@ -5941,3 +5941,46 @@ Approved by the lab as the first recommendation of
   non-extracted internal standards; enter them in the grid (tick, role
   Injection, and link each EIS) from the lab's method copy. EPA 537.1 likewise
   has no links (`test_the_epa_is_chain_is_left_unset_on_purpose`).
+
+## 61. Isomers tab; reported names drive every page (phase A) (2026-10-01)
+- **Lab report:** isomer settings under Analyte x Matrix did not update the
+  rest of the tabs. **Review findings:** (1) the pairs were a collapsed,
+  free-text JSON table read only by the pipeline; (2) every tab -- and the
+  CERTIFICATE (`coa_sections` titles) -- labelled analytes from a fixed global
+  table that names PFOS/PFHxS by their LINEAR peak ("lr-PFOS"), although the
+  reported value is the linear+branched sum; (3) typos were silently ignored;
+  (4) switching a pair off dropped the branched peak with no trace.
+- **Built (DECISIONS 2026-10-01):** `isomers.py` (model, migration, labels,
+  checks); an **Isomers** tab per method (declared table, analytes with
+  isomers first; linear peak, branched peaks as a list, reported name, Summed);
+  `_analyte_titles(profile)` labels every tab, the Analyte x Matrix grid, the
+  per-analyte table and the certificate from it. Pipeline reads `isomers`
+  (keyword stays the import identity; label only for display) and sums the
+  linear peak with EVERY branched peak (summing, component QC, salt factors).
+- **Checks on save:** an analyte must be in the panel; branched needs linear;
+  a peak name may not belong to another analyte (double count); no two
+  analytes may show the same name; Summed off is refused until phase B.
+- **Migration:** idempotent on start (`migrate_profile_models`, with the
+  labelled-standards one); seeds converted at import. Faithfulness: pipeline
+  groups + salt-factor components identical before/after (unit test,
+  mutation-tested; and on the three live profiles before restart). After:
+  FDA 2 groups, 537.1 4, 1633A 6 -- the worker reports the same.
+- **Also fixed:** the per-analyte table's save rebuilt each row from its three
+  inputs, dropping any other stored field (e.g. `recovery_tier`, which
+  spec_sync reads) -- latent (no live row carried one); edits now merge onto
+  the stored row (guarded, mutation-tested).
+- **Verified live:** no-op saves of every tab: 0 changes; renaming PFOS to
+  "Total PFOS" showed on Reporting Limits, Sample Corrections, Internal
+  Standards and both Analyte x Matrix tables, recorded and reverted;
+  "lr-PFOS" no longer appears in the editor; history check all cases pass.
+- **Open -- phase B:** reporting isomers separately needs a core analysis
+  service per isomer (keyword, CAS, EDD code, unit, method links) -- lab facts.
+- **Open -- phase C (core rename lr-PFOS/lr-PFHxS -> PFOS/PFHxS), references
+  to confirm:** core service titles (+ titles copied onto existing analyses);
+  `analyte_reference.NATIVE_ANALYTES` display names, which build the
+  instrument name -> keyword alias map (add-on and pipeline: keep "lr-" names
+  as aliases so linear-peak matching survives); the pipeline's display-name
+  panel lists (`method_profiles.py` ~127-149); `per_analyte` rows keyed by
+  display name (spec_sync); MRM transitions (`analytes.py`); the EDD parameter
+  name map (`egad_config.py`: PFOS -> "lr-PFOS" -- which name the state EDD
+  expects is a regulatory question); setup CSV.

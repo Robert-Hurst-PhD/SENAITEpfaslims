@@ -1620,13 +1620,38 @@ def get_included_display_analytes(method_id: str, matrix: str) -> list:
 
 
 def get_isomer_summation(method_id: str = "FDA_32PFAS") -> list:
-    """Return the active isomer summation pairs for method_id.
+    """Return the active (summed) isomer groups for method_id.
 
-    Each pair is ``{"linear": ..., "branched": ..., "reported": ..., "enabled": bool}``.
-    Only enabled pairs are returned.
+    Each is ``{"linear", "branched", "branched_list", "reported", "enabled"}``:
+    `reported` is the analyte KEYWORD the sum is imported under (the label a
+    page shows may differ -- DECISIONS 2026-10-01); `branched_list` holds every
+    branched peak, `branched` the first (for any reader still expecting one).
+
+    Read from the method's `isomers` (the Isomers tab); a profile not yet
+    migrated still carries the legacy `isomer_summation` pairs.
     """
-    pairs = _profile_data_cache.get(method_id, {}).get("isomer_summation", [])
-    return [p for p in pairs if p.get("enabled", True)]
+    data = _profile_data_cache.get(method_id, {})
+    groups = data.get("isomers")
+    if isinstance(groups, dict):
+        out = []
+        for kw, e in groups.items():
+            if not isinstance(e, dict) or not e.get("summed", True):
+                continue
+            branched = [b for b in (e.get("branched") or []) if b]
+            if not (e.get("linear") or branched):
+                continue
+            out.append({"linear": e.get("linear") or "", "branched": branched[0] if branched else "",
+                        "branched_list": branched, "reported": kw, "enabled": True})
+        return out
+    pairs = data.get("isomer_summation", []) or []
+    out = []
+    for p in pairs:
+        if not p.get("enabled", True):
+            continue
+        p = dict(p)
+        p["branched_list"] = [p["branched"]] if p.get("branched") else []
+        out.append(p)
+    return out
 
 
 def get_surrogate_map(method_id: str = "FDA_32PFAS") -> dict:
@@ -1757,8 +1782,7 @@ def get_salt_factors(method_id: str = "FDA_32PFAS") -> dict:
         factor = out.get(pair.get("reported"))
         if not factor:
             continue
-        for part in ("linear", "branched"):
-            name = pair.get(part)
+        for name in [pair.get("linear")] + list(pair.get("branched_list") or []):
             if name:
                 out[name] = factor
     return out

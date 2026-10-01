@@ -37,24 +37,6 @@
     hidden.value = JSON.stringify(rows, null, 2);
   }
 
-  var IS_FIELDS = [{key:'linear',type:'text'},{key:'branched',type:'text'},{key:'reported',type:'text'},{key:'enabled',type:'bool'}];
-  function addIsomerRow(linear, branched, reported, enabled) {
-    var tbody = document.getElementById('isomerBody');
-    var tr = document.createElement('tr');
-    var checked = enabled !== false ? 'checked' : '';
-    tr.innerHTML =
-      '<td><input type="text" data-field="linear"   value="' + (linear||'')   + '" placeholder="lr-PFOS" /></td>' +
-      '<td><input type="text" data-field="branched" value="' + (branched||'') + '" placeholder="br-PFOS" /></td>' +
-      '<td><input type="text" data-field="reported" value="' + (reported||'') + '" placeholder="PFOS" /></td>' +
-      '<td style="text-align:center"><label class="toggle-switch">' +
-        '<input type="checkbox" data-field="enabled" ' + checked + ' />' +
-        '<span class="toggle-track"></span></label></td>' +
-      '<td><button type="button" class="del-btn" onclick="this.closest(\'tr\').remove();syncIsomerJson()">&#215;</button></td>';
-    tbody.appendChild(tr);
-    tr.querySelectorAll('input').forEach(function(i) { i.addEventListener('change',syncIsomerJson); i.addEventListener('input',syncIsomerJson); });
-  }
-  function syncIsomerJson() { syncJson('isomerBody','isomer_summation_json',IS_FIELDS); }
-
   /* ── Spike Levels — per matrix ──────────────────── */
 
   // QC types that carry spike concentration values.
@@ -572,18 +554,23 @@
 
   /* ── Per-Analyte Assignments table ───────────────────────────── */
 
+  var _paLabels = {}, _paOrig = {};
   function buildPerAnalyteTable() {
     var tbody = document.getElementById('perAnalyteBody');
     var jsonEl = document.getElementById('per_analyte_json');
     if (!tbody || !jsonEl) return;
     var rows = [];
     try { rows = JSON.parse(jsonEl.value || '[]'); } catch(e) { return; }
+    try { _paLabels = JSON.parse((document.getElementById('per_analyte_labels') || {value: '{}'}).value || '{}'); }
+    catch (e) { _paLabels = {}; }
+    _paOrig = {};
+    rows.forEach(function (r) { if (r.analyte) _paOrig[r.analyte] = r; });
     tbody.innerHTML = '';
     rows.forEach(function(row) {
       var tr = document.createElement('tr');
       tr.setAttribute('data-analyte', row.analyte || '');
       tr.innerHTML =
-        '<td class="pa-name">' + _esc(row.analyte || '') + '</td>' +
+        '<td class="pa-name">' + _esc(_paLabels[row.analyte] || row.analyte || '') + '</td>' +
         '<td style="text-align:center">' +
           '<input type="checkbox" class="pa-cb" data-field="no_labeled_std"' +
           (row.no_labeled_std ? ' checked' : '') + ' onchange="syncPerAnalyteJson()" /></td>' +
@@ -605,12 +592,17 @@
       var noIs      = tr.querySelector('[data-field="no_labeled_std"]');
       var confirmIon = tr.querySelector('[data-field="confirm_ion_mz"]');
       var notes     = tr.querySelector('[data-field="notes"]');
-      result.push({
-        analyte:        tr.getAttribute('data-analyte'),
-        no_labeled_std: noIs      ? noIs.checked       : false,
-        confirm_ion_mz: confirmIon ? confirmIon.value.trim() : '',
-        notes:          notes     ? notes.value.trim() : '',
-      });
+      /* Edits merge onto the STORED row: rebuilding it from the three inputs
+         dropped every other field a row carried (e.g. recovery_tier, which
+         spec_sync reads). */
+      var orig = _paOrig[tr.getAttribute('data-analyte')] || {};
+      var row = {};
+      Object.keys(orig).forEach(function (k) { row[k] = orig[k]; });
+      row.analyte        = tr.getAttribute('data-analyte');
+      row.no_labeled_std = noIs      ? noIs.checked       : false;
+      row.confirm_ion_mz = confirmIon ? confirmIon.value.trim() : '';
+      row.notes          = notes     ? notes.value.trim() : '';
+      result.push(row);
     });
     jsonEl.value = JSON.stringify(result);
   }
@@ -714,10 +706,6 @@
     /* Salt and matrix adjustment factors are declared tables (R2,
        method_profile_sections), server-rendered -- no JS. */
     try {
-      var iso = JSON.parse(document.getElementById('isomer_summation_json').value || '[]');
-      iso.forEach(function(r) { addIsomerRow(r.linear, r.branched, r.reported, r.enabled !== false); });
-    } catch(e) {}
-    try {
       var stages = JSON.parse(document.getElementById('extraction_stages_json').value || '[]');
       stages.forEach(function(s) { addStageCard(s); });
     } catch(e) {}
@@ -733,7 +721,7 @@
      others, so their edits never reached the server (GAPS §51). */
   var profileForm = document.getElementById('profile-form');
   if (profileForm) profileForm.addEventListener('submit', function() {
-    [syncIsomerJson, syncSpikeLevelsJson,
+    [syncSpikeLevelsJson,
      syncStageJson, syncRecoveryTiersJson,
      syncAMIJson, syncPerAnalyteJson].forEach(function (fn) {
       try { fn(); } catch (e) {

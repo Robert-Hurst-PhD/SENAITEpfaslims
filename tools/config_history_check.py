@@ -155,6 +155,14 @@ def case_grid(pg):
     return "labelled_standards", True, None
 
 
+def case_isomers(pg):
+    """Isomers tab (DECISIONS 2026-10-01): rename a summed analyte."""
+    open_profile(pg, "FDA_32PFAS", "pane-iso")
+    pg.fill("[name='t__iso__PFOS__reported']", "Total PFOS")
+    save_profile_form(pg)
+    return "isomers", True, None
+
+
 def case_edd_profile(pg):
     pg.goto(B + "@@pfas-egad-config#profiles"); pg.wait_for_load_state("networkidle")
     pg.evaluate("() => document.querySelectorAll('#pane-profiles details').forEach(d => d.open = true)")
@@ -187,6 +195,7 @@ CASES = [("recovery tier", case_tier), ("rule toggle", case_toggle),
          ("cal section", case_cal_section), ("RL table", case_rl_table),
          ("matrices", case_matrices), ("corrections", case_corrections),
          ("EIS", case_eis), ("IS grid", case_grid),
+         ("isomers", case_isomers),
          ("surrogate link", case_surrogate), ("EDD profile", case_edd_profile),
          ("client EDD", case_client_edd)]
 

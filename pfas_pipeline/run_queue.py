@@ -337,8 +337,7 @@ class RunQueue:
             for pair in (get_isomer_summation(_method) or []):
                 if not pair.get("enabled", True):
                     continue
-                for part in ("linear", "branched"):
-                    name = pair.get(part)
+                for name in [pair.get("linear")] + list(pair.get("branched_list") or []):
                     if name and name not in _analytes:
                         _analytes = list(_analytes) + [name]
         except Exception as exc:                       # noqa: BLE001

@@ -998,28 +998,34 @@ def _global_injection_keywords():
 
 
 def _convert_seeds():
-    from senaite.pfas import labelled_standards
+    from senaite.pfas import isomers, labelled_standards
     for _data in DEFAULT_PROFILES.values():
         labelled_standards.migrate(_data, _global_injection_keywords())
+        isomers.migrate(_data)          # isomer_summation -> isomers (2026-10-01)
 
 
 _convert_seeds()
 
 
-def migrate_labelled_standards(portal):
-    """Give every stored profile its labelled-standards grid and drop the
-    legacy keys (idempotent; run on every start from setup_handler). Saved
-    through save_profile, so the change history records it and the pipeline
-    export is rewritten."""
-    from senaite.pfas import labelled_standards
+def migrate_profile_models(portal):
+    """Bring every stored profile to the current models (idempotent; run on
+    every start from setup_handler): the labelled-standards grid replacing
+    surrogate_is / surrogate_is_chain (2026-09-30) and the isomers model
+    replacing isomer_summation (2026-10-01). Saved through save_profile, so
+    the change history records it and the pipeline export is rewritten."""
+    from senaite.pfas import isomers, labelled_standards
     changed = []
     for method_id in list_method_ids(portal):
         profile = raw_profile(portal, method_id)
-        if profile and labelled_standards.migrate(profile, _global_injection_keywords()):
+        if not profile:
+            continue
+        a = labelled_standards.migrate(profile, _global_injection_keywords())
+        b = isomers.migrate(profile)
+        if a or b:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:
-        logger.info("labelled standards: migrated %s", ", ".join(changed))
+        logger.info("profile models: migrated %s", ", ".join(changed))
     return changed
 
 

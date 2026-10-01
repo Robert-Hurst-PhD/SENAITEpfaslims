@@ -764,6 +764,112 @@ def test_a_suggestion_is_shown_but_never_selected():
     assert kw not in [r["analyte"] for r in after["surrogate_map"]]  # not saved unless picked
 
 
+# ── Isomers tab (DECISIONS 2026-10-01) ───────────────────────────────────────
+
+import isomers as isomod                    # noqa: E402
+
+ISO = mps.ISOMERS
+
+
+def _imig(mid):
+    import copy
+    p = copy.deepcopy(_profiles()[mid])
+    isomod.migrate(p)
+    return p
+
+
+def iso_form(stored):
+    form = {}
+    for g in cf.render(ISO, stored):
+        for row in g["rows"]:
+            for cell in row["cells"]:
+                if cell["kind"] == cf.BOOL:
+                    if cell["checked"]:
+                        form[cell["name"]] = "on"
+                else:
+                    form[cell["name"]] = cell["value"]
+    return form
+
+
+def _icell(kw, col):
+    return cf.cell_name(ISO, (kw,), next(c for c in ISO.columns if c.path[0] == col))
+
+
+def test_an_unchanged_isomer_save_changes_nothing():
+    for mid in _profiles():
+        stored = _imig(mid)
+        after = save(ISO, stored, iso_form(stored))
+        assert ch.diff(stored, after) == [], (mid, ch.diff(stored, after)[:3])
+        assert mps.check_isomers(after) == [], mid
+
+
+def test_analytes_with_isomers_are_listed_first():
+    stored = _imig("FDA_32PFAS")
+    keys = [r["key"][0] for r in ISO.rows(stored)[1]]
+    n = len(stored["isomers"])
+    assert set(keys[:n]) == set(stored["isomers"]) and len(keys) == len(stored["master_analyte_set"])
+
+
+def test_an_isomer_change_reaches_every_other_tab():
+    """The reported bug: editing isomers changed nothing elsewhere."""
+    stored = _imig("FDA_32PFAS")
+    form = iso_form(stored)
+    form[_icell("PFOS", "reported")] = "Total PFOS"
+    after = save(ISO, stored, form)
+    rl = [r["label"] for r in mps.REPORTING_LIMITS.rows(after)[1] if r["key"][1] == "PFOS"]
+    salt = [r["label"] for r in mps.SALT.rows(after)[1] if r["key"] == ("PFOS",)]
+    sur = [r["label"] for r in mps.SURROGATE_MAP.rows(after, None)[1] if r["key"] == ("PFOS",)]
+    assert set(rl) == {"Total PFOS"} and salt == ["Total PFOS"] and sur == ["Total PFOS"]
+    assert mps._analyte_titles(after).get("PFOS") == "Total PFOS"          # grid + certificate
+
+
+def test_a_summed_pfos_is_not_called_by_its_linear_peak():
+    stored = _imig("FDA_32PFAS")
+    assert mps._analyte_titles(stored).get("PFOS") == "PFOS"
+    assert [r["label"] for r in mps.SALT.rows(stored)[1] if r["key"] == ("PFOS",)] == ["PFOS"]
+
+
+def test_several_branched_peaks_and_the_refusals():
+    stored = _imig("EPA_537_1")
+    form = iso_form(stored)
+    form[_icell("PFOS", "branched")] = "br-PFOS, br2-PFOS"
+    after = save(ISO, stored, form)
+    assert after["isomers"]["PFOS"]["branched"] == ["br-PFOS", "br2-PFOS"]
+    form = iso_form(stored)
+    form.pop(_icell("PFOA", "summed"))                                   # summed off
+    assert any("separately" in e for e in mps.check_isomers(save(ISO, stored, form)))
+    form = iso_form(stored)
+    form[_icell("PFHxS", "branched")] = "br-PFOS"                        # PFOS's peak
+    assert any("counted twice" in e for e in mps.check_isomers(save(ISO, stored, form)))
+
+
+def test_clearing_the_peaks_removes_the_isomers():
+    stored = _imig("FDA_32PFAS")
+    form = iso_form(stored)
+    form[_icell("PFHxS", "linear")] = ""
+    form[_icell("PFHxS", "branched")] = ""
+    after = save(ISO, stored, form)
+    assert "PFHxS" not in after["isomers"]
+    assert mps._analyte_titles(after).get("PFHxS") == "lr-PFHxS"        # the linear peak alone
+
+
+def test_the_per_analyte_save_keeps_fields_it_does_not_edit():
+    """It rebuilt each row from three inputs, so any other stored field
+    (e.g. recovery_tier, read by spec_sync) was dropped on the next save."""
+    js = _read("static", "method_profile_edit.js")
+    start = js.index("function syncPerAnalyteJson")
+    body = js[start:js.index("\n  }\n", start)]
+    assert "_paOrig[" in body and "Object.keys(orig)" in body
+
+
+def test_the_isomer_section_left_analyte_x_matrix():
+    src = _read("method_profiles.py")
+    template = _read("templates", "method_profile_edit.pt")
+    js = _read("static", "method_profile_edit.js")
+    for retired in ("isomer_summation_json", "addIsomerRow", "syncIsomerJson", "isomerBody"):
+        assert retired not in src and retired not in template and retired not in js, retired
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]

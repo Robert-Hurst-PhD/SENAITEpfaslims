@@ -308,17 +308,19 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
 
     def _sum_isomer_pair(pair, compounds, sample_name):
         """Return (result, qualifier, flags) for an lr+br isomer pair."""
-        lin_row = compounds.get(pair["linear"])
-        br_row  = compounds.get(pair["branched"])
-        rep     = pair["reported"]
+        rep = pair["reported"]
+        # linear + every branched peak (an analyte may integrate several)
+        names = [pair.get("linear")] + list(pair.get("branched_list")
+                                            or ([pair["branched"]] if pair.get("branched") else []))
+        rows = [compounds.get(n) for n in names if n]
 
         # Fallback: if instrument exported the reported name instead of lr-/br- peaks
-        if lin_row is None and br_row is None:
+        if all(r is None for r in rows):
             direct = compounds.get(rep)
             if direct is not None:
-                lin_row = direct  # treat as single-peak source
+                rows = [direct]  # treat as single-peak source
 
-        if lin_row is None and br_row is None:
+        if all(r is None for r in rows):
             return None, QUALIFIER_ND, []
 
         total = 0.0
@@ -329,11 +331,11 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         # is still a detection. Summing it as absent and calling the pair N.D.
         # understates the result.
         any_bloq = any(getattr(irow, "conc_qualifier", "") == QUALIFIER_BLOQ
-                       for irow in (lin_row, br_row) if irow is not None)
+                       for irow in rows if irow is not None)
         any_aloq = any(getattr(irow, "conc_qualifier", "") == QUALIFIER_ALOQ
-                       for irow in (lin_row, br_row) if irow is not None)
+                       for irow in rows if irow is not None)
 
-        for irow in (lin_row, br_row):
+        for irow in rows:
             if irow is None:
                 continue
             conc = reported_conc(irow)
@@ -367,7 +369,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             qualifier_out = QUALIFIER_BLOQ
         else:
             qualifier_out = ""
-        for irow in (lin_row, br_row):
+        for irow in rows:
             if irow is None:
                 continue
             for issue in sorted(component_flags.get(
