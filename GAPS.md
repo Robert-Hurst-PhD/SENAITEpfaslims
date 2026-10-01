@@ -6069,3 +6069,15 @@ Approved by the lab as the first recommendation of
   errors, no frame change; every audited page 200 (3 intended redirects);
   the converted pages carry no visible text links.
 - UI ratchet: style= 884 -> 864.
+
+## 66. Surrogate QC code SUR (was SURR); review tunnel (2026-10-01)
+- Lab: "Surrogates should be SUR not SURR." Canonical QC code SUR
+  (`qc/qc_types.py`), with SURR / SURROGATE as aliases so anything still
+  sending the old code normalises to SUR; QC Types tab, control-chart settings
+  and the core Reference Definition tag ([QC:SUR]) renamed; the 72 stored
+  qc_results rows renamed (backup `pfas_qc_results.db.bak_pre_sur_20261001`).
+  Verified through the public tunnel: QC Types lists SUR; the SUR control
+  chart renders with its points; no JS errors.
+- Review access: a Cloudflare quick tunnel to nginx (port 80), started on
+  request; the URL is ephemeral (changes whenever cloudflared restarts) and
+  reaches the SENAITE login page -- access still requires a SENAITE login.

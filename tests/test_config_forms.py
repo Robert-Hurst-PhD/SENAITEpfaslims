@@ -872,7 +872,7 @@ def test_the_isomer_section_left_analyte_x_matrix():
 
 LABELS = {"CAL": "Calibration Standard", "CCB": "Solvent Blank", "CCV": "CCV", "DUP": "Sample Duplicate",
           "ICV": "ICV", "LFB": "Laboratory Fortified Blank", "LFSM": "LFSM", "LFSMD": "LFSM Duplicate",
-          "LRB": "Lab Reagent Blank", "MB": "Method Blank", "MXB": "Matrix Blank", "SURR": "Surrogate Recovery"}
+          "LRB": "Lab Reagent Blank", "MB": "Method Blank", "MXB": "Matrix Blank", "SUR": "Surrogate Recovery"}
 
 
 def test_the_qc_types_tab_lists_every_type_the_lab_defines():
@@ -885,7 +885,7 @@ def test_the_qc_types_tab_lists_every_type_the_lab_defines():
         assert keys["DUP"] == "Dup" and keys["MXB"] == "MxB"            # pipeline spellings
         toggles = set(r["code"] for r in rows if r["toggle"])
         assert toggles == {"MB", "LRB", "MXB", "LFB", "LFSM", "LFSMD", "DUP"}, toggles
-        assert all(r["configured_on"] for r in rows if r["code"] in ("CAL", "ICV", "CCV", "CCB", "SURR"))
+        assert all(r["configured_on"] for r in rows if r["code"] in ("CAL", "ICV", "CCV", "CCB", "SUR"))
 
 
 def test_switching_on_a_new_type_invents_no_limits_and_others_are_kept():
@@ -913,6 +913,17 @@ def test_an_unchanged_toggle_save_changes_nothing():
         mps.apply_qc_toggles(q, offered, set(r["key"] for r in rows if r["toggle"] and r["enabled"]))
         assert q["qc_acceptance"] == p["qc_acceptance"], mid
 
+
+
+def test_the_surrogate_qc_code_is_sur():
+    """Lab (2026-10-01): surrogates are SUR, not SURR. An old SURR (stored
+    rows, a Setup tag) still resolves to SUR."""
+    import os
+    sys.path.insert(0, os.path.join(PKG, "qc"))
+    import qc_types
+    assert "SUR" in qc_types.CANONICAL_QC_TYPES and "SURR" not in qc_types.CANONICAL_QC_TYPES
+    assert qc_types.normalize_qc_type("SURR") == "SUR" == qc_types.normalize_qc_type("surr")
+    assert mps.QC_KIND.get("SUR") == "surrogate" and "SURR" not in mps.QC_KIND
 
 
 def test_which_qc_types_a_method_runs_has_one_source():

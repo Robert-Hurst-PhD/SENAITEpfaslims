@@ -19,13 +19,15 @@ from __future__ import absolute_import
 CALIBRATION = ("CCV", "ICV", "CCB")
 BLANKS = ("MB", "LRB", "SOLVENT_BLANK")
 FORTIFIED = ("LFB", "LFSM", "LFSMD")
-OTHER = ("DUP", "SAMPLE", "IS", "SURR", "CAL", "UNKNOWN")
+OTHER = ("DUP", "SAMPLE", "IS", "SUR", "CAL", "UNKNOWN")
 
 CANONICAL_QC_TYPES = frozenset(CALIBRATION + BLANKS + FORTIFIED + OTHER)
 
 # alias (already upper-cased) -> canonical code.
 _ALIASES = {
     "LCS":          "LFB",           # lab control sample == lab fortified blank
+    "SURR":         "SUR",           # surrogate: the lab's code is SUR (2026-10-01)
+    "SURROGATE":    "SUR",
     "SOLVENTBLANK": "SOLVENT_BLANK",
     "SOLVENT BLANK": "SOLVENT_BLANK",
 }

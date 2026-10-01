@@ -709,7 +709,7 @@ QC_KIND = {"MB": "blank", "LRB": "blank", "MXB": "blank",
            "LFB": "recovery", "LFSM": "recovery",
            "LFSMD": "rpd", "DUP": "rpd",
            "CAL": "instrument", "ICV": "instrument", "CCV": "instrument", "CCB": "instrument",
-           "SURR": "surrogate"}
+           "SUR": "surrogate"}
 # qc_acceptance keys keep the spellings the pipeline matches on.
 PROFILE_KEY = {"DUP": "Dup", "MXB": "MxB"}
 CONFIGURED_ON = {"instrument": ("pane-cal", u"Calibration & CCV"),
