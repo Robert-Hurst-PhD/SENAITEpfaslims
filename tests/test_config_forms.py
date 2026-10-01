@@ -1096,6 +1096,89 @@ def test_an_unchanged_reporting_save_changes_nothing():
         assert ch.diff(p, after) == [], (mid, ch.diff(p, after)[:3])
 
 
+
+# ── Action levels on the Reporting tab (DECISIONS 2026-10-01) ───────────────
+
+import regulatory_limits as reglim  # noqa: E402
+
+REG = {"regulatory": {"programs": reglim.SEED_PROGRAMS, "limits": reglim.SEED_LIMITS}}
+AL = mps.ACTION_LEVELS
+
+
+def test_action_levels_list_only_limits_naming_this_methods_matrices():
+    for mid, p in _profiles().items():
+        _g, rows = AL.rows(p, REG)
+        mats = set(p["supported_matrices"])
+        for r in rows:
+            lim = [l for l in reglim.SEED_LIMITS if l["id"] == r["key"][0]][0]
+            assert r["key"][1] in mats and r["key"][1] in lim["matrices"], (mid, r["key"])
+        expect = set((l["id"], m) for l in reglim.SEED_LIMITS for m in l["matrices"] if m in mats)
+        assert set(r["key"] for r in rows) == expect, mid
+    keys = lambda mid: set(r["key"] for r in AL.rows(_profiles()[mid], REG)[1])   # noqa: E731
+    assert ("me-pfos-milk", "Milk") in keys("FDA_32PFAS")
+    assert ("fed-pfoa", "Drinking Water") in keys("EPA_537_1")
+    assert not [k for k in keys("FDA_32PFAS") if k[0] == "me-pfos-beef"]  # names no matrix
+    assert AL.rows(_profiles()["FDA_32PFAS"], None)[1] == []             # no env: no rows
+
+
+def test_every_limit_applies_until_switched_off_and_back():
+    import copy
+    p = copy.deepcopy(_profiles()["EPA_537_1"])
+    before = copy.deepcopy(p)
+    assert ch.diff(before, env_save(AL, p, env_form(AL, p, REG), REG)) == []   # unchanged save
+    assert rfmod.limit_applies(p, "Drinking Water", "fed-pfna")
+    form = env_form(AL, p, REG)
+    name = cf.cell_name(AL, ("fed-pfna", "Drinking Water"), AL.columns[0])
+    form[name] = "off"
+    off = env_save(AL, p, form, REG)
+    assert not rfmod.limit_applies(off, "Drinking Water", "fed-pfna")
+    assert rfmod.limit_applies(off, "Drinking Water", "fed-pfoa")             # only that one
+    assert rfmod.limit_applies(off, "Groundwater", "fed-pfna")                # only that matrix
+    assert ch.diff(off, env_save(AL, off, env_form(AL, off, REG), REG)) == []
+    form[name] = ""
+    back = env_save(AL, off, form, REG)
+    assert ch.diff(before, back) == [], ch.diff(before, back)                 # nothing left behind
+
+
+def test_the_format_and_the_limits_share_a_matrix_row_without_clobbering():
+    import copy
+    p = _rfmig("FDA_32PFAS")
+    rfmod.set_limit(p, "Milk", "me-pfos-milk", False)
+    col = dict((c.path[0], c) for c in mps.REPORT_FORMAT.columns)
+    form = env_form(mps.REPORT_FORMAT, p)
+    form[cf.cell_name(mps.REPORT_FORMAT, ("Milk",), col["coa_show_mdl"])] = "yes"
+    after = env_save(mps.REPORT_FORMAT, p, form)
+    assert not rfmod.limit_applies(after, "Milk", "me-pfos-milk")
+    form[cf.cell_name(mps.REPORT_FORMAT, ("Milk",), col["coa_show_mdl"])] = ""
+    after = env_save(mps.REPORT_FORMAT, after, form)
+    assert "Milk" in after["report_format"]                                   # still holds the exclusion
+    assert not rfmod.limit_applies(after, "Milk", "me-pfos-milk")
+    assert rfmod.resolve(after, "Milk") == rfmod.resolve(copy.deepcopy(_rfmig("FDA_32PFAS")), "Milk")
+
+
+def test_a_new_limit_for_a_listed_matrix_makes_an_open_page_stale():
+    """Without the env in the stamp, a page drawn before a limit was added
+    would post no field for it -- harmless here (blank = evaluated), but the
+    row set the page was drawn for must be the one it is read against."""
+    import copy
+    p = _profiles()["EPA_537_1"]
+    more = copy.deepcopy(REG)
+    more["regulatory"]["limits"] = list(more["regulatory"]["limits"]) + [
+        dict(reglim.SEED_LIMITS[0], id="new-gw", matrices=["Groundwater"])]
+    assert cf.stamp(AL, p, REG) != cf.stamp(AL, p, more)
+    elsewhere = copy.deepcopy(REG)
+    elsewhere["regulatory"]["limits"] = list(elsewhere["regulatory"]["limits"]) + [
+        dict(reglim.SEED_LIMITS[0], id="new-soil", matrices=["Soil"])]          # not a 537.1 matrix
+    assert cf.stamp(AL, p, REG) == cf.stamp(AL, p, elsewhere)
+
+
+def test_the_certificate_skips_a_limit_switched_off_for_its_matrix():
+    src = _read("coa_sections.py")
+    body = src[src.index("def _regulatory"):]
+    assert "report_format.limit_applies(profile, matrix, l.get(\"id\"))" in body
+    assert body.index("limit_applies") < body.index("regulatory_limits.evaluate")
+
+
 def test_the_certificate_reads_each_samples_own_format():
     tpl = _read("templates", "coa_sections.pt")
     assert "s.get('coa_show_" not in tpl and "smp['fmt'].get('coa_show_cas')" in tpl

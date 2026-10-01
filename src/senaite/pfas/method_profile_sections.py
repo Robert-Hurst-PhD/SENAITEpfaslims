@@ -975,6 +975,56 @@ REPORT_FORMAT = cf.Table(
     row_heading=u"Matrix")
 
 
+# Action levels / MCLs on the Reporting tab (DECISIONS 2026-10-01): the values
+# stay on Regulatory Limits; per method x matrix the lab picks which of the
+# limits naming that matrix the certificate evaluates. env carries the
+# regulatory store ({"limits": [...], "programs": {...}}).
+
+def _limit_matrices(profile, limit):
+    named = set((m or u"").strip().lower() for m in (limit.get("matrices") or []))
+    return [m for m in profile.get("supported_matrices") or [] if m.strip().lower() in named]
+
+
+def action_level_rows(profile, env=None):
+    store = (env or {}).get("regulatory") or {}
+    names = store.get("programs") or {}
+    rows = []
+    for m in profile.get("supported_matrices") or []:
+        for lim in store.get("limits") or []:
+            if not lim.get("id") or m not in _limit_matrices(profile, lim):
+                continue
+            prog = (names.get(lim.get("program")) or {}).get("name") or lim.get("program") or u""
+            note = u"%s %s \u00b7 %s %s" % (prog, lim.get("kind") or u"", lim.get("value"), lim.get("unit") or u"")
+            if not lim.get("verified"):
+                note += u" \u00b7 not verified: never printed"
+            rows.append({"key": (lim["id"], m), "group": u"al", "label": lim.get("label") or lim["id"],
+                         "sublabel": m, "note": note, "warn": not lim.get("verified")})
+    return _one_group(u"al", u"Action levels & MCLs"), rows
+
+
+def read_action_levels(profile):
+    out = {}
+    for m, row in ((profile.get(_rf.KEY) or {}).items()):
+        if isinstance(row, dict):
+            for lid in row.get(_rf.LIMITS_OFF) or []:
+                out[(lid, m)] = {"applies": u"off"}
+    return out
+
+
+def write_action_levels(profile, updates, env=None):
+    for (lid, m), vals in updates.items():
+        _rf.set_limit(profile, m, lid, vals.get((u"applies",)) != u"off")
+    return profile
+
+
+ACTION_LEVELS = cf.Table(
+    id=u"al", title=u"Action levels & MCLs", base=(_rf.KEY,),
+    columns=[cf.Field("applies", u"On this method\u2019s certificates", kind=cf.CHOICE,
+                      choices=[(u"off", u"Not evaluated")], placeholder=u"Evaluated")],
+    rows=action_level_rows, rows_take_env=True, read=read_action_levels,
+    write=write_action_levels, row_heading=u"Limit")
+
+
 # ── QC Types tab: every QC type the lab defines (2026-10-01) ────────────────
 # The lab's QC types are the TAGGED core Reference Definitions ([QC:CODE] in the
 # description, editable in Setup). The tab used to list only the types already
@@ -1040,6 +1090,6 @@ PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
                                     SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
-                                    REPORT_FORMAT, GROUPS] +
+                                    REPORT_FORMAT, ACTION_LEVELS, GROUPS] +
                 list(SPIKE_LEVELS.values()) +
                 [c for c, _l in EIS_CLASSES])

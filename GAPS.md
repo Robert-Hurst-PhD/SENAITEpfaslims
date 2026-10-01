@@ -6143,3 +6143,29 @@ Approved by the lab as the first recommendation of
 - **Still open (same request):** action levels on the Reporting tab (next);
   project specs editor overriding the method (after an audit of today's
   batch overlay).
+
+## 69. Action levels on the Reporting tab (2026-10-01)
+- Lab: "Under the reporting settings include the action levels." Decision
+  (DECISIONS 2026-10-01): pick which apply per method x matrix; the values
+  stay central on Regulatory Limits (one source -- CLAUDE.md §1.3).
+- **Reporting tab, "Action levels & MCLs"** (`ACTION_LEVELS`): one row per
+  regulatory limit x each of this method's matrices it names, showing the
+  program, kind, value and whether it is verified; an Open Regulatory Limits
+  button. Each row is *Evaluated* (default) or *Not evaluated*. Stored as
+  exclusions only, `report_format[matrix]["limits_off"]`, so every existing
+  certificate behaves as before until the lab switches something off.
+- **Certificate:** `_regulatory` drops a limit switched off for the sample's
+  method x matrix before evaluating. Unverified limits are still never
+  printed (all eight seeds are unverified today, so no certificate prints a
+  regulatory note yet -- the lab's verification step, unchanged).
+- **Stale-page stamp now takes the page's env** (`config_forms.stamp(...,
+  env)`): a table whose rows come from site records (here the limits) is
+  refused as stale if a limit naming one of its matrices was added after the
+  page opened. A limit for another method's matrix does not disturb it.
+- **Tests** (5, mutation-tested: stamp without env, switch not written, rows
+  not matrix-scoped, the format save clobbering the exclusions -- all
+  killed). **Live:** all three editors render (537.1: 6 limits, 1633A: 6,
+  FDA: 1 -- milk); switching PFNA off for Drinking Water stored exactly
+  `limits_off: ["fed-pfna"]`, switching back left the profiles equal to the
+  snapshot; no-op Reporting saves clean; a published certificate re-renders.
+- **Still open (same request):** project specs editor overriding the method.

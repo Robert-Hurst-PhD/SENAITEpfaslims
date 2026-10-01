@@ -463,10 +463,13 @@ class PFASMethodProfileEditView(BrowserView):
 
     def section_env(self):
         """What a declared section needs from the site that the profile does
-        not hold: the reagent inventory's standard lots (salt CoA lots)."""
+        not hold: the reagent inventory's standard lots (salt CoA lots), the
+        services, and the regulatory limits (Reporting tab)."""
         if getattr(self, "_section_env", None) is None:
+            from senaite.pfas import regulatory_limits
             self._section_env = {"standard_lots": self.standard_lot_options(),
-                                 "services": self._pfas_service_index()}
+                                 "services": self._pfas_service_index(),
+                                 "regulatory": regulatory_limits.get_store(_portal(self.context))}
         return self._section_env
 
     def section_groups(self, section_id):
@@ -482,7 +485,8 @@ class PFASMethodProfileEditView(BrowserView):
         from senaite.pfas.method_profile_sections import SECTIONS
         from senaite.pfas.method_profile_store import raw_profile
         return config_forms.stamp(SECTIONS[section_id],
-                                  raw_profile(_portal(self.context), self.method_id()))
+                                  raw_profile(_portal(self.context), self.method_id()),
+                                  self.section_env())
 
     def _save_section(self, portal, mid, section_ids):
         """Save the declared section(s) one tab's form carries ("_section" is a
@@ -505,7 +509,7 @@ class PFASMethodProfileEditView(BrowserView):
         env = self.section_env()
         for section in sections:
             sent = (form.get("section_stamp__" + section.id) or "").strip()
-            if sent != config_forms.stamp(section, stored):
+            if sent != config_forms.stamp(section, stored, env):
                 last = config_history.last_change(portal, "method_profile", mid) or {}
                 return self._redirect_error(mid, (
                     u"Not saved: {0} was changed by {1} at {2} UTC after you opened "

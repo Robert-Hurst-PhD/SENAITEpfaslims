@@ -131,10 +131,10 @@ def current(section, stored):
     return dict((f.name, _get(base, f.path)) for f in section.fields())
 
 
-def stamp(section, stored):
+def stamp(section, stored, env=None):
     """Version stamp of THIS section's values only."""
     if isinstance(section, Table):
-        return stamp_table(section, stored)
+        return stamp_table(section, stored, env)
     if isinstance(section, Collection):
         return _history.fingerprint(section.read(stored or {}))
     vals = current(section, stored)
@@ -326,9 +326,10 @@ class Table(object):
                  read=None, write=None, rows_take_env=False, row_heading=u"Analyte"):
         self.id = id
         self.row_heading = row_heading      # the first column's heading
-        # rows(stored, env) when the rows show page data (e.g. a suggestion);
-        # their KEYS must still come from `stored` alone, since the stamp is
-        # taken without env
+        # rows(stored, env) when the rows show page data (a suggestion, or
+        # site records such as the regulatory limits); the stamp is taken
+        # with the same env, so a change to which rows are listed makes an
+        # open page stale. rows(stored, None) must still work (tests).
         self.rows_take_env = rows_take_env
         self.title = title
         self.read = read
@@ -380,12 +381,12 @@ def _cells(table, stored, row_key):
     return dict((c.name, _get(node, c.path)) for c in table.columns)
 
 
-def stamp_table(table, stored):
-    table = _bound(table, stored)
+def stamp_table(table, stored, env=None):
     """The listed rows' keys AND values: a change to which rows the page shows
     (e.g. the inclusion grid) also makes an open page stale, so no field can
     be read against a row set it was not drawn for."""
-    _groups, rows = _rows(table, stored)
+    table = _bound(table, stored)
+    _groups, rows = _rows(table, stored, env)
     blob = []
     for r in rows:
         vals = dict((k, v) for k, v in _cells(table, stored, r["key"]).items()

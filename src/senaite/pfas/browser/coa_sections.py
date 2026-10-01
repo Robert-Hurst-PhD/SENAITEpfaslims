@@ -215,6 +215,9 @@ class PFASCoASectionsView(BrowserView):
         programs = self._programs(sample)
         limits = regulatory_limits.applicable(store.get("limits"), programs,
                                               sample.getSampleTypeTitle())
+        # this method x matrix may switch a limit off (Reporting tab)
+        from senaite.pfas import report_format
+        limits = [l for l in limits if report_format.limit_applies(profile, matrix, l.get("id"))]
         if not limits:
             return None
         unit = next((r["unit"] for r in rows if r["unit"]), None)

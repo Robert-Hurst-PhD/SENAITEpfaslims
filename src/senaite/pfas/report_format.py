@@ -10,7 +10,13 @@ per-matrix rows; a blank cell inherits:
 
     report_format = {"*": {setting: value}, "<matrix title>": {setting: value}}
 
-Print Settings keeps what is lab-wide (header, footer, sign-off). Pure; Py2.7.
+Print Settings keeps what is lab-wide (header, footer, sign-off).
+
+A matrix row may also hold `limits_off`: the ids of regulatory limits (action
+levels, MCLs -- values kept centrally on Regulatory Limits) that this method's
+certificates do NOT evaluate for that matrix. Only exclusions are stored, so
+every limit naming the matrix applies unless switched off here (DECISIONS
+2026-10-01). Pure; Py2.7.
 """
 from __future__ import absolute_import, unicode_literals
 
@@ -57,6 +63,37 @@ def migrate(profile, print_settings):
         return False
     profile[KEY] = from_print_settings(print_settings)
     return True
+
+
+LIMITS_OFF = "limits_off"
+
+
+def limits_off(profile, matrix):
+    return list(((((profile or {}).get(KEY) or {}).get(matrix) or {}).get(LIMITS_OFF)) or [])
+
+
+def limit_applies(profile, matrix, limit_id):
+    """Does this method's certificate evaluate the limit for this matrix?"""
+    return limit_id not in limits_off(profile, matrix)
+
+
+def set_limit(profile, matrix, limit_id, applies):
+    """Switch one limit on/off for a method x matrix (in place). An empty
+    exclusion list, and then an empty matrix row, are removed."""
+    fmt = profile.setdefault(KEY, {})
+    row = dict(fmt.get(matrix) or {})
+    off = [x for x in (row.get(LIMITS_OFF) or []) if x != limit_id]
+    if not applies:
+        off.append(limit_id)
+    if off:
+        row[LIMITS_OFF] = sorted(off)
+    else:
+        row.pop(LIMITS_OFF, None)
+    if row or matrix == ALL:
+        fmt[matrix] = row
+    else:
+        fmt.pop(matrix, None)
+    return profile
 
 
 def resolve(profile, matrix):
