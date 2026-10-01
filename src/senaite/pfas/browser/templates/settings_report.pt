@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Settings Report</title>
+  <metal:fill fill-slot="header-title">Settings Report</metal:fill>
+
+  <tal:ab metal:fill-slot="action-bar">
+    <div class="pfas-action-bar">
+      <a class="btn btn-primary" tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?format=pdf">Download PDF</a>
+      <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-config-history">Change history</a>
+    </div>
+  </tal:ab>
+
+  <div metal:fill-slot="content">
+    <div class="page-body" tal:define="report view/report">
+      <metal:b use-macro="view/body_macros/body" />
+    </div>
+  </div>
+</html>

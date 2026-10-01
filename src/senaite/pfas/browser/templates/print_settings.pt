@@ -134,6 +134,16 @@
         <a class="btn-sm btn-secondary"
            tal:attributes="href string:${view/portal_url}/@@pfas-method-profiles">Open Method Profiles</a>
       </p>
+      <div class="ps-row ps-statement"><label for="qs-int">Quality system &#8212; internal</label>
+        <textarea id="qs-int" name="coa_qs_internal" rows="3" tal:content="ps/coa_qs_internal">text</textarea></div>
+      <div class="ps-row ps-statement"><label for="qs-qapp">Quality system &#8212; under a QAPP</label>
+        <textarea id="qs-qapp" name="coa_qs_qapp" rows="4" tal:content="ps/coa_qs_qapp">text</textarea></div>
+      <p class="hint">
+        The certificate prints the QAPP statement when the sample&#8217;s batch is
+        linked to a project that names a QAPP, otherwise the internal one. The QAPP
+        statement may use {qapp_title}, {qapp_id}, {qapp_rev} (the QAPP&#8217;s active
+        controlled revision, or &#8220;revision not on file&#8221;) and {project}.
+      </p>
       <div class="ps-row"><label>Sign-off layout</label>
         <select name="coa_signature_style">
           <option value="compact" tal:attributes="selected python:ps.get('coa_signature_style','compact')=='compact'">Compact: one line per signatory</option>

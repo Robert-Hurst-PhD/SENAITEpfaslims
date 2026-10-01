@@ -1000,6 +1000,12 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
           <span class="pfas-si-label">Configuration History</span>
         </a>
+        <a class="pfas-si" title="Settings Report: every QC setting and how and where it is applied (page and PDF)"
+           tal:attributes="href string:${purl}/@@pfas-settings-report;
+                           class python:'pfas-si si-active' if '@@pfas-settings-report' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
+          <span class="pfas-si-label">Settings Report</span>
+        </a>
         <a class="pfas-si" title="System Map — clickable navigation diagram"
            tal:attributes="href string:${purl}/@@pfas-system-map;
                            class python:'pfas-si si-active' if '@@pfas-system-map' in path else 'pfas-si'">

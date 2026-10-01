@@ -372,6 +372,15 @@
 
   <!-- A project's differences from its method (DECISIONS 2026-10-01). Save is
        manager only, checked in the view (403), like the QAPP criteria. -->
+  <!-- Every QC setting and how/where it is applied, as a page and a PDF
+       (DECISIONS 2026-10-01). Manager only, checked in the view (403). -->
+  <browser:page
+      name="pfas-settings-report"
+      for="*"
+      class=".settings_report_view.PFASSettingsReportView"
+      permission="zope2.View"
+      />
+
   <browser:page
       name="pfas-project-specs"
       for="*"

@@ -20,6 +20,11 @@ logger = logging.getLogger("senaite.pfas.print_settings")
 
 PRINT_SETTINGS_KEY = "senaite.pfas.print_settings"
 
+try:
+    from senaite.pfas import qs_statement as _qs
+except Exception:          # tests: loaded without the package
+    import qs_statement as _qs
+
 DEFAULTS = {
     "lab_name":        "Pine State Laboratories",
     "lab_address":     "",
@@ -43,6 +48,10 @@ DEFAULTS = {
     # figures, regulatory notes, standard note) is set PER METHOD x MATRIX on
     # each method profile's Reporting tab (report_format.py, 2026-10-01).
     "coa_signature_style": "compact", # compact = one line per signatory | full
+    # Which quality system the results were produced under (qs_statement.py,
+    # DECISIONS 2026-10-01): internal, or the batch's project QAPP.
+    "coa_qs_internal": _qs.DEFAULT_INTERNAL,
+    "coa_qs_qapp": _qs.DEFAULT_QAPP,
 }
 
 

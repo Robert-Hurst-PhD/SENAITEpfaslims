@@ -246,6 +246,17 @@
     .cf-table th:first-child, .cf-table td:first-child { width: 1%; white-space: nowrap; padding-right: var(--sp-4); }
     .cf-table select.rl-in, .cf-coll select.rl-in { min-width: 7.5em; }
     .cf-coll td:first-child input { min-width: 9em; }
+    /* settings report (screen; the PDF has its own print styles) */
+    .sr-stamp { display: flex; flex-wrap: wrap; gap: var(--sp-4); font-size: var(--fs-sm); color: var(--s-secondary); }
+    .sr-method { margin-top: var(--sp-5, 24px); }
+    .sr-table { width: 100%; border-collapse: collapse; margin: var(--sp-2, 8px) 0 var(--sp-4); font-size: var(--fs-sm); }
+    .sr-table th, .sr-table td { border: 1px solid var(--s-border); padding: 4px 8px; text-align: left; vertical-align: top; }
+    .sr-table thead th { background: var(--s-light); }
+    .sr-how { color: var(--s-secondary); font-size: var(--fs-xs); }
+    .sr-yes { color: var(--s-success, var(--s-primary)); font-weight: 600; }
+    .sr-no { color: var(--s-danger, var(--s-body)); font-weight: 600; }
+    .sr-warn { color: var(--s-warning, var(--s-body)); }
+    .ps-statement textarea { width: 100%; font-size: var(--fs-sm); }
     .cf-scope-bar { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: end; margin: var(--sp-3) 0; }
     .cf-scope-bar label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
     .cf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }

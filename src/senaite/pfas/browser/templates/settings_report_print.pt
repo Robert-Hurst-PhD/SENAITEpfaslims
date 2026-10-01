@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <meta charset="utf-8" />
+  <title>QC Settings Report</title>
+  <!-- Print document for WeasyPrint (settings_report_view._pdf). Self-contained:
+       WeasyPrint 0.42 has no CSS custom properties and nothing is fetched over
+       HTTP, so the palette is written out here (print documents are exempt
+       from the screen ratchet, like the certificate). -->
+  <style>
+    @page { size: A4 landscape; margin: 14mm 12mm 16mm;
+            @bottom-left { content: "QC settings report"; font-size: 8pt; color: #666; }
+            @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #666; } }
+    body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 8.5pt; color: #222; }
+    h1 { font-size: 16pt; margin: 0 0 4pt; }
+    h2 { font-size: 12.5pt; margin: 14pt 0 4pt; border-bottom: 1.5pt solid #2a5d84; padding-bottom: 2pt;
+         page-break-after: avoid; }
+    h3 { font-size: 10pt; margin: 10pt 0 3pt; color: #2a5d84; page-break-after: avoid; }
+    code { font-family: "DejaVu Sans Mono", monospace; font-size: 8pt; }
+    .sr-method { page-break-before: always; }
+    .sr-method:first-of-type { page-break-before: auto; }
+    .sr-stamp span { margin-right: 14pt; }
+    .sr-intro, .sr-meta { margin: 3pt 0; }
+    .sr-table { width: 100%; border-collapse: collapse; margin: 3pt 0 6pt; }
+    .sr-table th, .sr-table td { border: 0.5pt solid #bbb; padding: 2pt 4pt; text-align: left; vertical-align: top; }
+    .sr-table thead th { background: #eef3f7; }
+    .sr-table tr { page-break-inside: avoid; }
+    .sr-how { color: #555; font-size: 7.5pt; }
+    .sr-yes { color: #1d6b2f; font-weight: bold; }
+    .sr-no { color: #a1261b; font-weight: bold; }
+    .sr-warn { color: #8a5a00; }
+  </style>
+</head>
+<body tal:define="report view/report">
+  <h1>QC Settings Report</h1>
+  <metal:b use-macro="view/body_macros/body" />
+</body>
+</html>

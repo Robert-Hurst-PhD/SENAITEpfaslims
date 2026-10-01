@@ -6272,3 +6272,48 @@ Approved by the lab as the first recommendation of
   a spike is recorded (before: pending without a spike); the pipeline does
   not evaluate LFB recoveries at all; field-duplicate RPD near the MRL
   (§9.3.7.2, "should", on sample concentration) not modelled.
+
+## 72. Certificate quality-system statement (2026-10-01)
+- Lab: "documentation associated with the certificate. Some language stating
+  it follows the quality assurance project plan instead of internal process."
+- `qs_statement.py` (pure) + Print Settings: two editable statements,
+  internal and QAPP; the QAPP one fills {qapp_title}, {qapp_id}, {qapp_rev}
+  (the ACTIVE controlled revision via ruleset._project_source, else
+  "revision not on file" -- never invented) and {project}. Each certificate
+  sample block prints the statement for its batch's project.
+- **Live:** FEED-0002 (no project) prints the internal statement. The QAPP
+  path is unit-tested only: **no QAPP controlled document exists** in the
+  system, so no project can name one yet (the project form offers only
+  "None").
+- Print Settings' first save writes the two default statements (no change in
+  what prints; flagged by the no-op audit as expected).
+- **Still open:** the certificate does not yet list the project's departures
+  from the method (a non-conformance statement); §70's open item.
+
+## 73. Settings report: every QC setting, how and where it is applied (2026-10-01)
+- Lab: "produce an overall report of how qc criteria is applied and where.
+  Similar to the system audit but it produces a report", as a PDF.
+- **@@pfas-settings-report** (Configuration sidebar; manager only) and
+  **Download PDF** (WeasyPrint, the certificates' renderer; self-contained
+  print document, A4 landscape, page x of y). Stamped with date, user and a
+  configuration fingerprint (changes when any setting changes).
+- Contents per method: how each QC type is applied (criterion, on/off,
+  **judged by the pipeline or not, and how**, every tier with its scope and
+  source/citation); instrument checks with their rule switch; the switches
+  the pipeline never reads; the applied LFSM window grid; then every declared
+  Method Profile section dumped generically (a setting added to the editor
+  appears with no report change). Then regulatory limits (verified or not),
+  projects (QAPP, spec scopes, departures, stale), lab-wide settings and the
+  global QC-rule defaults.
+- **The report's claims about the code are pinned** (test_settings_report,
+  4 mutants killed): the switches it calls read = those the pipeline reads;
+  a criterion called judged has a check kind used in the run; one called not
+  judged has none.
+- **What it surfaced (logged, not changed):**
+  1. Stored but never judged: Dup RPD, LFB, LCS, MB/LRB/MxB x RL limits.
+  2. Rule switches with no effect on all three methods: blank_contamination,
+     ccv_frequency, lcs_recovery, lfsm_recovery, lfsmd_rpd, mb_blank,
+     mdl_check, surrogate_recovery (LFSM/LFSMD are gated by the QC Types
+     tab; surrogate recovery runs whenever a profile exists). The Rule
+     Toggles tab still offers them -- a control that changes nothing.
+- 23-page PDF of the live configuration rendered and checked.

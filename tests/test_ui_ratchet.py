@@ -27,7 +27,8 @@ STATIC = os.path.join(BROWSER, "static")
 TOKENS = "pfas-tokens.css"
 
 PRINT = {"receipt.pt", "label_print.pt", "qc_review_report.pt",
-         "coa_attestation.pt", "coa_sections.pt"}
+         "coa_attestation.pt", "coa_sections.pt",
+         "settings_report_print.pt"}   # WeasyPrint document: no CSS variables there
 SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.

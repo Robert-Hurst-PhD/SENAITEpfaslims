@@ -189,7 +189,31 @@ class PFASCoASectionsView(BrowserView):
             "codes": sorted(set(c for d in data for c in d["codes"])),
             "regulatory": regulatory,
             "fmt": fmt,
+            "qs": self._quality_system(batch),
         }
+
+    # ── quality system statement (DECISIONS 2026-10-01) ──────────────────
+
+    def _quality_system(self, batch):
+        """The statement for a sample in `batch`: the project's QAPP (title,
+        controlled id, ACTIVE revision) or the lab's internal system."""
+        from senaite.pfas import qs_statement
+        qapp = None
+        try:
+            from senaite.pfas import project_ref, ruleset
+            portal = api.get_portal()
+            project = project_ref.get_project(portal, batch) if batch is not None else None
+            doc_id = getattr(project, "qapp_document_id", None) if project is not None else None
+            if doc_id:
+                from senaite.pfas.browser.projects import _list_qapp_docs
+                title = next((d["title"] for d in _list_qapp_docs(portal) if d["sop_id"] == doc_id), doc_id)
+                qapp = {"id": doc_id, "title": title, "rev": ruleset._project_source(portal, project)[1],
+                        "project": u"%s %s" % (getattr(project, "project_code", u"") or u"",
+                                               getattr(project, "title", u"") or u"")}
+                qapp["project"] = qapp["project"].strip()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("coa_sections: quality system not resolved: %s", exc)
+        return qs_statement.render(self.settings(), qapp)
 
     # ── regulatory notes (part B) ─────────────────────────────────────────
 
