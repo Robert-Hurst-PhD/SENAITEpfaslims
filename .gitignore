@@ -27,3 +27,7 @@ __pycache__/
 .pytest_cache/
 .tox/
 var/
+
+# Claude Code tooling (GSD install, local settings) and GSD planning notes: local only, never published
+.claude/
+.planning/
