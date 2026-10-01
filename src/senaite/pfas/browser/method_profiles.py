@@ -454,6 +454,11 @@ class PFASMethodProfileEditView(BrowserView):
     def has_lfsmd(self):
         return "LFSMD" in ((self.profile().get("qc_acceptance") or {}))
 
+    def recommended_spikes(self):
+        """Low / Mid / High ppt from this method's calibration levels."""
+        from senaite.pfas.calibration_levels import recommended_spikes
+        return recommended_spikes(self.profile())
+
     def has_lfb(self):
         return "LFB" in ((self.profile().get("qc_acceptance") or {}))
 

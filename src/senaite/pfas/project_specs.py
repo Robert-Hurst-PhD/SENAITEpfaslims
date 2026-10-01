@@ -363,13 +363,16 @@ def departures(profile, eff, method_id=None, matrices=None):
         out.append({"what": u"Dup RPD max %", "method": _fmt(dm), "project": _fmt(de),
                     "where": u"all analytes and matrices",
                     "published": _published(method_id, "dup_rpd_max", de)})
-    rl_m = profile.get("reporting_limits") or {}
-    rl_e = eff.get("reporting_limits") or {}
+    try:
+        from senaite.pfas.report_limits import limits_for
+    except Exception:          # tests
+        from report_limits import limits_for
     for m in matrices:
         for kw in panel:
             for field in (u"rl", u"mdl"):
-                a = ((rl_m.get(m) or {}).get(kw) or {}).get(field)
-                b = ((rl_e.get(m) or {}).get(kw) or {}).get(field)
+                # effective values: a typed RL, else the lowest calibrator
+                a = limits_for(profile, m, kw).get(field)
+                b = limits_for(eff, m, kw).get(field)
                 if a is not None and a != b and (b is None or b > a):
                     out.append({"what": u"%s %s" % (field.upper(), kw), "method": _fmt(a),
                                 "project": _fmt(b), "where": m, "published": _PUBLISHED_NONE})

@@ -410,7 +410,9 @@ def render_table(table, stored, env=None):
                 choices.append((v, u"%s (stored value)" % v))
             cells.append({"name": cell_name(table, r["key"], c), "kind": c.kind,
                           "label": c.label, "min": c.minimum, "max": c.maximum,
-                          "placeholder": c.placeholder, "choices": choices,
+                          # a row may say what blank means for it (e.g. a derived RL)
+                          "placeholder": (r.get("placeholders") or {}).get(c.path[0], c.placeholder),
+                          "choices": choices,
                           "value": u"" if v is None else u"%s" % v,
                           "checked": bool(v) if c.kind == BOOL else False})
         g = by_group.get(r.get("group"))

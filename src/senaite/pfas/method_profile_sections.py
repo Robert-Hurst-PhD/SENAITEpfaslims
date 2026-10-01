@@ -124,23 +124,69 @@ def reporting_limit_rows(profile):
     titles = _analyte_titles(profile)
     inclusion = profile.get("analyte_matrix_inclusion") or {}
     units = profile.get("unit_map") or {}
+    derived = _cal.lowest(profile)           # ppt; RL default (DECISIONS 2026-10-02)
     groups, rows = [], []
     for matrix in profile.get("supported_matrices") or []:
         groups.append({"key": matrix, "label": matrix, "unit": units.get(matrix, u"")})
         for kw in profile.get("master_analyte_set") or []:
             if (inclusion.get(kw) or {}).get(matrix, True) is False:
                 continue
-            rows.append({"key": (matrix, kw), "group": matrix,
-                         "label": titles.get(kw, kw), "sublabel": kw})
+            row = {"key": (matrix, kw), "group": matrix,
+                   "label": titles.get(kw, kw), "sublabel": kw}
+            if derived is not None and units.get(matrix):
+                rl = _cal.in_unit(derived, units.get(matrix))
+                if rl is not None:
+                    # blank = the lowest calibrator; a typed RL overrides it
+                    row["placeholders"] = {"rl": u"%g (lowest cal.)" % rl}
+                    row["derived_rl"] = rl
+            rows.append(row)
     return groups, rows
 
 
 def _mdl_not_above_rl(row, values):
     rl, mdl = values.get(u"f__rl"), values.get(u"f__mdl")
+    if rl is None:
+        rl = row.get("derived_rl")                 # the lowest calibrator
     if rl is not None and mdl is not None and mdl > rl:
         return u"%s in %s: the MDL (%s) is above the RL (%s)." % (
             row["sublabel"], row["group"], mdl, rl)
     return None
+
+
+# Calibration levels (DECISIONS 2026-10-02): sample-equivalent ppt, lowest
+# first. The lowest is every analyte's default RL; the curve suggests the
+# spike levels.
+try:
+    from senaite.pfas import calibration_levels as _cal
+except Exception:          # tests: loaded without the package
+    import calibration_levels as _cal
+
+
+def read_cal_levels(profile):
+    return [{"name": r.get("name") or u"CAL-%d" % (i + 1), "ppt": r.get("ppt")}
+            for i, r in enumerate(_cal.rows(profile))]
+
+
+def write_cal_levels(profile, rows):
+    calib = profile.setdefault("instrument_verification", {}).setdefault("calibration", {})
+    calib["levels"] = sorted(({"name": r["name"], "ppt": r.get("ppt")} for r in rows),
+                             key=lambda r: (r["ppt"] is None, r["ppt"]))
+    return profile
+
+
+def check_cal_levels(profile, rows):
+    errors = [u"%s: enter its concentration (ppt)." % r["name"] for r in rows if r.get("ppt") is None]
+    vals = [r["ppt"] for r in rows if r.get("ppt") is not None]
+    if len(vals) != len(set(vals)):
+        errors.append(u"Two calibration levels have the same concentration.")
+    return errors
+
+
+CAL_LEVELS = cf.Collection(
+    id=u"cal_levels", title=u"Calibration levels", noun=u"level", new_rows=1, allow_empty=True,
+    columns=[cf.Field("name", u"Level", kind=cf.TEXT, placeholder=u"CAL-n"),
+             cf.Field("ppt", u"Concentration (ppt)", greater_than=0, placeholder=u"ppt")],
+    read=read_cal_levels, write=write_cal_levels, check=check_cal_levels)
 
 
 REPORTING_LIMITS = cf.Table(
@@ -1227,7 +1273,7 @@ def apply_qc_toggles(profile, offered, enabled):
 # sections whose save must pass them.
 PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 
-SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
+SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, REPORTING_LIMITS, MATRICES,
                                     SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
                                     REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS] +

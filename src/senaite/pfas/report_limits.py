@@ -21,11 +21,23 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 
 def limits_for(profile, matrix, keyword):
-    """{"rl", "mdl", "unit"} for one analyte in one matrix; None where unset."""
+    """{"rl", "mdl", "unit", "rl_source"} for one analyte in one matrix.
+
+    RL = a typed value when there is one ("override"), else the method's
+    lowest calibrator in the matrix's unit ("calibration"; DECISIONS
+    2026-10-02); None where neither exists. MDLs are assessed: typed only."""
     profile = profile or {}
     entry = ((profile.get("reporting_limits") or {}).get(matrix) or {}).get(keyword) or {}
     unit = (profile.get("unit_map") or {}).get(matrix) or None
-    return {"rl": entry.get("rl"), "mdl": entry.get("mdl"), "unit": unit}
+    rl, source = entry.get("rl"), u"override"
+    if rl is None:
+        try:
+            from senaite.pfas import calibration_levels as _cl
+        except Exception:          # tests: loaded without the package
+            import calibration_levels as _cl
+        rl = _cl.derived_rl(profile, matrix)
+        source = u"calibration" if rl is not None else None
+    return {"rl": rl, "mdl": entry.get("mdl"), "unit": unit, "rl_source": source}
 
 
 def canonical_matrix(profile, title):

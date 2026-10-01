@@ -1065,7 +1065,14 @@ def migrate_profile_models(portal):
         f = _seed_key_analytes(profile)
         from senaite.pfas import low_level_tiers
         g = low_level_tiers.seed_537_1(profile)       # EPA 537.1 §9.3.3/9.3.6.3/9.3.7.4
-        if a or b or c or d or e or f or g:
+        # calibration levels on the profile (DECISIONS 2026-10-02): only the
+        # 537.1 ladder is already sample-equivalent ppt; the others are extract
+        # ng/mL and are left for the lab to state in ppt (never converted here)
+        from senaite.pfas import calibration_levels
+        from senaite.pfas.analyte_reference import CAL_LADDERS
+        h = calibration_levels.seed_from_ladder(profile, CAL_LADDERS.get(method_id),
+                                                unit_is_ppt=(method_id == "EPA_537_1"))
+        if a or b or c or d or e or f or g or h:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:

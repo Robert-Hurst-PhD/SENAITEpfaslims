@@ -802,7 +802,14 @@ class MethodProfile:
         entry = ((data.get("reporting_limits") or {}).get(matrix) or {}).get(kw) or {}
         unit = (data.get("unit_map") or {}).get(matrix) or ""
         num = lambda v: None if v is None else float(v)       # noqa: E731
-        return num(entry.get("rl")), num(entry.get("mdl")), unit
+        rl = num(entry.get("rl"))
+        if rl is None:
+            # the method's lowest calibrator (senaite.pfas.calibration_levels;
+            # same rule, pinned by tests/test_calibration_levels.py)
+            low = _lowest_calibrator_ppt(data)
+            factor = _PPT_PER_UNIT.get(unit.strip().lower())
+            rl = low / factor if low is not None and factor else None
+        return rl, num(entry.get("mdl")), unit
 
     def ccv_frequency(self):
         """The method's CCV interval (Calibration & CCV) -- the value the Run
@@ -814,14 +821,9 @@ class MethodProfile:
     def reporting_limit_ppt(self, analyte, matrix):
         """The analyte's RL for `matrix` in ppt (the spike-level unit), or
         None when no RL is set or its unit is not one this converts."""
-        from .analyte_alias import keyword_for
-        data = self._profile_data()
-        kw = keyword_for(analyte) or analyte
-        entry = ((data.get("reporting_limits") or {}).get(matrix) or {}).get(kw) or {}
-        if entry.get("rl") is None:
-            return None
-        factor = _PPT_PER_UNIT.get(((data.get("unit_map") or {}).get(matrix) or "").strip().lower())
-        return float(entry["rl"]) * factor if factor else None
+        rl, _mdl, unit = self.reporting_limits(analyte, matrix)
+        factor = _PPT_PER_UNIT.get((unit or "").strip().lower())
+        return rl * factor if rl is not None and factor else None
 
     def calibration_rule(self, analyte=""):
         raise NotImplementedError
@@ -1147,6 +1149,21 @@ LOW_LEVEL_KEY = "low_level_x_rl"
 _PPT_PER_UNIT = {"ng/l": 1.0, "ng/kg": 1.0, "pg/g": 1.0, "pg/ml": 1.0,
                  "ng/ml": 1000.0, "ng/g": 1000.0, "ug/l": 1000.0, "ug/kg": 1000.0,
                  "\u00b5g/l": 1000.0, "\u00b5g/kg": 1000.0, "mg/kg": 1e6}
+
+
+def _lowest_calibrator_ppt(profile_data):
+    """The lowest calibration level (ppt), or None (calibration_levels.lowest)."""
+    levels = (((profile_data.get("instrument_verification") or {}).get("calibration") or {})
+              .get("levels") or [])
+    vals = []
+    for r in levels:
+        try:
+            v = float((r or {}).get("ppt"))
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            vals.append(v)
+    return min(vals) if vals else None
 
 
 def _ordinary_tiers(tiers):

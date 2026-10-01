@@ -60,8 +60,10 @@ def test_unrecognised_text_prints_as_entered():
 def test_limits_come_with_the_matrix_unit():
     profile = {"unit_map": {"Drinking Water": "ng/L"},
                "reporting_limits": {"Drinking Water": {"PFOA": {"rl": 4.0, "mdl": 1.0}}}}
-    assert rl.limits_for(profile, "Drinking Water", "PFOA") == {"rl": 4.0, "mdl": 1.0, "unit": "ng/L"}
-    assert rl.limits_for(profile, "Drinking Water", "PFNA") == {"rl": None, "mdl": None, "unit": "ng/L"}
+    assert rl.limits_for(profile, "Drinking Water", "PFOA") == {"rl": 4.0, "mdl": 1.0, "unit": "ng/L",
+                                                               "rl_source": "override"}
+    assert rl.limits_for(profile, "Drinking Water", "PFNA") == {"rl": None, "mdl": None, "unit": "ng/L",
+                                                               "rl_source": None}     # no calibration levels
 
 
 def test_matrix_aliases_resolve():

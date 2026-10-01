@@ -102,6 +102,8 @@ if ar.getId() != SAMPLE_ID:
 transaction.savepoint(optimistic=True)
 
 analyses = [o for o in ar.objectValues() if o.portal_type == "Analysis"]
+for ana in analyses:                 # what a worksheet with the method does;
+    ana.setMethod(fda)               # no method -> no certificate (GAPS §77)
 print("created", SAMPLE_ID, "with", len(analyses), "analyses")
 
 # Enable self-verification so admin can verify its own submitted results when

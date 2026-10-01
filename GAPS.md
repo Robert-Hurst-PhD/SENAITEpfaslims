@@ -6490,3 +6490,48 @@ Approved by the lab as the first recommendation of
   throwaway project loosening LFSM tier 2 to 140% put "LFSM recovery max %
   140 (method 135; ... in Animal Feed)" on FEED-0002's certificate, gone when
   unlinked.
+
+## 79. Calibration levels own the RL; spike levels follow the curve; demo samples reseeded (2026-10-02)
+- Decisions: DECISIONS 2026-10-02 "Calibration levels own the RL; spike levels
+  follow the curve; project specs fall back".
+- **Calibration levels** are a list on each method profile (Calibration & CCV
+  tab, saved with that tab): name + sample-equivalent concentration in ppt
+  (ng/L, ng/kg), kept lowest first (calibration_levels.py).
+- **RL = the lowest calibrator** in the matrix's reporting unit (ppt ÷ 1000
+  for ng/g, ng/mL, ug/L ...; an unknown unit gives no RL, never a guess). A
+  typed RL still wins. One rule, two readers: report_limits.limits_for
+  (certificate, project departures, Reporting Limits tab, MDL ≤ RL check) and
+  the worker's MethodProfile.reporting_limits (low-level tiers, Dup RPD,
+  blank checks); a test pins that they agree. The Reporting Limits tab shows
+  the derived value as the empty cell's placeholder ("2 (lowest cal.)"), and
+  the settings report prints it the same way.
+- **Recommended spike levels:** Low = lowest calibrator, Mid = the one nearest
+  the midpoint, High = highest (2, 80, 160 ppt for the EPA 537.1 curve), shown
+  above the spike grids on Recovery Tiers. "Fill blank Low / Mid / High" fills
+  only empty cells of rows named Low / Mid / High; nothing is saved until Save.
+- **Seeding:** EPA 537.1 got its levels once from the legacy ladder, which was
+  already in ppt (2–160). FDA 32-PFAS and EPA 1633A ladders are extract
+  concentrations (ng/mL); converting them needs the extract volume and sample
+  amount, so their levels stay EMPTY until the lab enters them, and their RLs
+  stay whatever is typed (nothing derived).
+- **Per project:** a project without settings already uses the method profile.
+  Everything PFAS judges or prints reads the batch's effective profile.
+- **Demo samples reseeded** (tools/reseed_demo_methods.py, dry run by
+  default): 30 demo samples' analyses got a method, by worksheet method else
+  the method written for the matrix (fewest matrices; water → EPA 537.1,
+  soil/biosolid → EPA 1633A, food → FDA). 7 method-less worksheets got the
+  method of their analyses. seed_published_coa.py now sets the method too.
+  Every sample now identifies its method; DW-0003's certificate renders with
+  RL 2 ng/L from the lowest calibrator.
+- **Tests:** test_calibration_levels (10; 9 mutants killed: worker fallback,
+  unit conversion, midpoint tie, seed-once, ppt-only, override, MDL against
+  derived RL, lowest-first ordering, report placeholder). test_coa_format
+  updated for the new rl_source key.
+- **Still open:**
+  - FDA 32-PFAS and EPA 1633A calibration levels in ppt (lab).
+  - SENAITE's own AnalysisSpecs (spec_sync) are per method only: a project
+    batch's core range icons show the method's criteria, not the project's.
+    PFAS review/certificate are right; core icons are not project-aware.
+  - Some demo samples marked published (e.g. DW-0003, DW-0005) have analyses
+    still `registered` with no results (forced-state seed, before this work). They
+    print as blank results; reseeding results was not done (no invented data).

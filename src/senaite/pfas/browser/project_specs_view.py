@@ -194,14 +194,14 @@ class PFASProjectSpecsView(BrowserView):
         shown = self._states()[1]
         links = dict((r.get("analyte"), r.get("surrogate_is")) for r in shown.get("surrogate_map") or []
                      if isinstance(r, dict))
-        rls = shown.get("reporting_limits") or {}
+        from senaite.pfas.report_limits import limits_for
         out = []
         for kw in shown.get(EXTRAS_KEY) or []:
             missing = []
             if not links.get(kw):
                 missing.append(u"a quantifying IS (Standards & links)")
             no_rl = [m for m in shown.get("supported_matrices") or []
-                     if ((rls.get(m) or {}).get(kw) or {}).get("rl") is None]
+                     if limits_for(shown, m, kw).get("rl") is None]
             if no_rl:
                 missing.append(u"an RL in %s" % u", ".join(no_rl))
             if missing:

@@ -123,6 +123,10 @@ def section_dump(section, profile, env=None):
         for r in rows:
             vals = cf._cells(t, profile, r["key"])
             cells = [_text(_choice_label(c, vals[c.name], profile, env), c) for c in t.columns]
+            # a value that applies without being typed (an RL from the lowest
+            # calibrator) prints as the editor shows it, e.g. "2 (lowest cal.)"
+            derived = r.get("placeholders") or {}
+            cells = [v or derived.get(c.path[0], u"") for v, c in zip(cells, t.columns)]
             if any(cells):
                 label = r.get("label") or u" / ".join(r["key"])
                 if r.get("group") and r.get("group") not in (t.id,) and len(r["key"]) > 1:
@@ -207,7 +211,7 @@ def method_report(profile, env=None, toggles=None):
 
 def _section_order():
     """The editor's tab order; any section not named here follows."""
-    first = ["cal", "rl", "mtx", "corr", "salt", "mf", "rf", "al", "groups", "tiers", "tiers_lfb",
+    first = ["cal", "cal_levels", "rl", "mtx", "corr", "salt", "mf", "rf", "al", "groups", "tiers", "tiers_lfb",
              "dup", "lfsmd", "ls", "sur", "iso", "eis"]
     return first + sorted(k for k in mps.SECTIONS if k not in first)
 

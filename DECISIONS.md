@@ -5645,3 +5645,27 @@ Lab answers:
   are less stringent than the laboratory method are listed, for that
   sample's matrix, beneath the quality-system statement. Nothing printed when
   there are none.
+
+## 2026-10-02 — Calibration levels own the RL; spike levels follow the curve; project specs fall back (confirmed)
+- Lab: "RLs are always the lowest calibrator used within a method. The
+  calibration should be known by the calibration levels used per method.
+  MDLs are assessed and spike levels typically follow the calibration curve
+  as recommended values. So 2, 80, 160 ppt for a curve from 2 to 160."
+- **Calibration levels** live on each method profile (Calibration & CCV),
+  entered as sample-equivalent concentrations (ppt = ng/L or ng/kg).
+- **RL** = the lowest calibrator, converted to the matrix's reporting unit;
+  a typed RL overrides it (shown as an override). MDLs stay entered (assessed).
+- **Recommended spike levels:** Low = lowest calibrator, High = highest, Mid =
+  the calibrator nearest the midpoint (2, 80, 160 for 2-160). Suggestions
+  only, never written without the user.
+- **Per project:** a project with no settings uses the method profile (the
+  existing fallback: project_specs.effective returns the method unchanged).
+  Everything PFAS judges or prints reads the batch's effective profile
+  (pipeline, Data Review, certificate). SENAITE's own AnalysisSpecs
+  (spec_sync) are still built per method only, so core range icons show the
+  method's criteria even for a project batch -- open, GAPS §79.
+- **Demo samples** reseeded (tools/reseed_demo_methods.py): each analysis gets
+  its worksheet's method, else the one method profile listing the sample's
+  matrix, and where several do (water: EPA 537.1 and EPA 1633A) the one with
+  the fewest matrices -- the method written for that matrix; a tie is left
+  alone and reported. Demo data only.
