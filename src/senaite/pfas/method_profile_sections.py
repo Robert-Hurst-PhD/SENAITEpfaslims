@@ -771,8 +771,8 @@ SCOPE_CHOICES = [(u"all", u"All matrices"), (u"tight", u"Tier 1 matrices only")]
 GROUPED_TIER_METHODS = (u"FDA_32PFAS",)
 
 
-def _tiers(profile):
-    return [t for t in (((profile.get("qc_acceptance") or {}).get(RECOVERY_QC) or {})
+def _tiers(profile, qc=RECOVERY_QC):
+    return [t for t in (((profile.get("qc_acceptance") or {}).get(qc) or {})
                         .get("tiers") or []) if isinstance(t, dict)]
 
 
@@ -833,6 +833,103 @@ DUP_RPD = cf.Section(
     ])])
 
 
+# LFSMD RPD, one row per LFSMD tier (2026-10-01). Stored since the seeds and
+# read by the engine (qc_rules(..., "LFSMD").rpd_max), but no tab edited it.
+
+def _tier_name(t, i):
+    return t.get("name") or u"tier %d" % (i + 1)
+
+
+def lfsmd_rows(profile):
+    groups, scopes = dict(GROUP_CHOICES), dict(SCOPE_CHOICES)
+    rows = [{"key": (_tier_name(t, i),), "group": u"lfsmd", "label": _tier_name(t, i),
+             "note": u"%s \u00b7 %s" % (groups.get(t.get("analyte_group") or u"all", t.get("analyte_group")),
+                                     scopes.get(t.get("matrix_scope") or u"all", t.get("matrix_scope")))}
+            for i, t in enumerate(_tiers(profile, u"LFSMD"))]
+    return _one_group(u"lfsmd", u"LFSMD RPD"), rows
+
+
+def read_lfsmd(profile):
+    return dict(((_tier_name(t, i),), {"rpd_max": t.get("rpd_max")})
+                for i, t in enumerate(_tiers(profile, u"LFSMD")))
+
+
+def write_lfsmd(profile, updates, env=None):
+    for i, t in enumerate(_tiers(profile, u"LFSMD")):
+        vals = updates.get((_tier_name(t, i),))
+        if vals is None:
+            continue
+        value = vals.get(("rpd_max",))
+        if value is not None or "rpd_max" in t:       # absent stays absent
+            t["rpd_max"] = value
+    return profile
+
+
+LFSMD_RPD = cf.Table(
+    id=u"lfsmd", title=u"LFSMD RPD", base=("qc_acceptance", "LFSMD"),
+    columns=[cf.Field("rpd_max", u"Max RPD", unit=u"%", minimum=0)],
+    rows=lfsmd_rows, read=read_lfsmd, write=write_lfsmd, row_heading=u"LFSMD tier")
+
+
+# Additional analytes -- PROJECT specs only (DECISIONS 2026-10-01): a defined
+# core service (pfas_role "analyte") that is not in the method panel joins the
+# project's panel. The effective profile lists them under EXTRAS_KEY so the
+# editor can tell them from the method's own analytes (never removable here).
+EXTRAS_KEY = "project_extra_analytes"
+
+
+def extra_rows(profile, env=None):
+    svcs = (env or {}).get("services") or {}
+    extras = list(profile.get(EXTRAS_KEY) or [])
+    method_panel = set(k for k in profile.get("master_analyte_set") or [] if k not in extras)
+    peaks = set()                      # isomer peaks are reviewed, never reported alone
+    for e in _iso.entries(profile).values():
+        peaks.update([e.get("linear")] + list(e.get("branched") or []))
+    kws = set(k for k, v in svcs.items() if v.get("role") == u"analyte" and k not in method_panel
+              and not _iso.is_peak_name(k) and k not in peaks)
+    kws |= set(extras)
+    rows = []
+    for kw in sorted(kws, key=lambda k: ((svcs.get(k) or {}).get("name") or k).lower()):
+        gone = kw not in svcs
+        rows.append({"key": (kw,), "group": u"px", "label": (svcs.get(kw) or {}).get("name") or kw,
+                     "sublabel": kw, "note": u"no longer a defined service" if gone else None,
+                     "warn": gone})
+    return _one_group(u"px", u"Additional analytes"), rows
+
+
+def read_extras(profile):
+    return dict(((kw,), {"include": True}) for kw in profile.get(EXTRAS_KEY) or [])
+
+
+def write_extras(profile, updates, env=None):
+    extras = list(profile.get(EXTRAS_KEY) or [])
+    panel = list(profile.get("master_analyte_set") or [])
+    inclusion = profile.setdefault("analyte_matrix_inclusion", {})
+    for (kw,), vals in sorted(updates.items()):
+        if vals.get(("include",)):
+            if kw not in panel:
+                extras.append(kw)
+                panel.append(kw)
+                inclusion[kw] = dict((m, True) for m in profile.get("supported_matrices") or [])
+        elif kw in extras:                              # never a method analyte
+            extras.remove(kw)
+            panel.remove(kw)
+            inclusion.pop(kw, None)
+    profile["master_analyte_set"] = panel
+    if extras:
+        profile[EXTRAS_KEY] = extras
+    else:
+        profile.pop(EXTRAS_KEY, None)
+    return profile
+
+
+PANEL_EXTRAS = cf.Table(
+    id=u"px", title=u"Additional analytes", base=(),
+    columns=[cf.Field("include", u"Add to this project", kind=cf.BOOL)],
+    rows=extra_rows, rows_take_env=True, read=read_extras, write=write_extras,
+    row_heading=u"Defined service")
+
+
 def _matrix_choices(profile, env=None):
     return [(m, m) for m in profile.get("supported_matrices") or []]
 
@@ -869,9 +966,9 @@ def key_analytes(profile):
     return set(get_key_analyte_keywords())
 
 
-def resolve_tier(profile, is_key, is_no_std, matrix):
+def resolve_tier(profile, is_key, is_no_std, matrix, qc=RECOVERY_QC):
     """The tier the engine applies (None = it refuses: unconfigured)."""
-    tiers = _tiers(profile)
+    tiers = _tiers(profile, qc)
     if not tiers:
         return None
     if profile.get("method_id") not in GROUPED_TIER_METHODS:
@@ -1090,6 +1187,13 @@ PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
                                     SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
-                                    REPORT_FORMAT, ACTION_LEVELS, GROUPS] +
+                                    REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD] +
                 list(SPIKE_LEVELS.values()) +
                 [c for c, _l in EIS_CLASSES])
+
+
+# What a Project may override, in the order a project's differences are
+# applied: added analytes first (the other tables list them), then the groups
+# and tiers, then standards, links and limits (DECISIONS 2026-10-01).
+PROJECT_SECTIONS = [PANEL_EXTRAS, GROUPS, RECOVERY_TIERS, DUP_RPD, LFSMD_RPD,
+                    LABELLED_STANDARDS, SURROGATE_MAP, REPORTING_LIMITS]

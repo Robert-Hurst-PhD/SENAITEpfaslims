@@ -981,6 +981,40 @@ def test_the_recovery_grid_shows_what_the_engine_applies():
     assert checked > 300, checked
 
 
+def test_the_lfsmd_rpd_resolved_here_is_what_the_engine_applies():
+    """resolve_tier(..., "LFSMD") is what the project departures judge on and
+    the LFSMD RPD table edits: it must pick the engine's LFSMD tier."""
+    if sys.version_info[0] < 3:
+        return
+    sys.path.insert(0, os.path.dirname(HERE))
+    from pfas_pipeline import method_profiles as mp
+    import analyte_reference as ar
+    display = dict((r[0], r[1]) for r in ar.NATIVE_ANALYTES)
+    checked = 0
+    for mid, prof in _profiles().items():
+        keys = mps.key_analytes(prof)
+        engine = mp.get_profile(mid)
+        for kw in prof.get("master_analyte_set") or []:
+            for m in prof.get("supported_matrices") or []:
+                rule = engine.qc_rules(display.get(kw, kw), m, "LFSMD")
+                t = mps.resolve_tier(prof, kw in keys, bool(dict((r[0], r[7]) for r in ar.NATIVE_ANALYTES).get(kw)), m, "LFSMD")
+                assert (t or {}).get("rpd_max") == (rule.rpd_max if rule else None), (mid, kw, m)
+                checked += 1
+    assert checked > 300, checked
+
+
+def test_the_lfsmd_rpd_table_edits_exactly_one_tier():
+    import copy
+    for mid, stored in _profiles().items():
+        assert ch.diff(stored, env_save(mps.LFSMD_RPD, stored, env_form(mps.LFSMD_RPD, stored))) == [], mid
+    p = copy.deepcopy(_profiles()["FDA_32PFAS"])
+    form = env_form(mps.LFSMD_RPD, p)
+    form[cf.cell_name(mps.LFSMD_RPD, ("tier2_linked",), mps.LFSMD_RPD.columns[0])] = "22"
+    after = env_save(mps.LFSMD_RPD, p, form)
+    d = ch.diff(p, after)
+    assert len(d) == 1 and "rpd_max" in str(d[0]) and "22" in str(d[0]), d
+
+
 def test_unchanged_recovery_tab_saves_change_nothing():
     for mid, stored in _profiles().items():
         for coll in [mps.RECOVERY_TIERS] + list(mps.SPIKE_LEVELS.values()):

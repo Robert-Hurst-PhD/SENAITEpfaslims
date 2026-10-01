@@ -246,6 +246,8 @@
     .cf-table th:first-child, .cf-table td:first-child { width: 1%; white-space: nowrap; padding-right: var(--sp-4); }
     .cf-table select.rl-in, .cf-coll select.rl-in { min-width: 7.5em; }
     .cf-coll td:first-child input { min-width: 9em; }
+    .cf-scope-bar { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: end; margin: var(--sp-3) 0; }
+    .cf-scope-bar label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
     .cf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
     /* .field-row label (uppercase field captions) also matches a chip */
     .cf-chips .cf-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;

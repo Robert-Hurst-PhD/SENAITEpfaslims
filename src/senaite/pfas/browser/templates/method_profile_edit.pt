@@ -573,6 +573,18 @@
               <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
           </tal:dup>
+
+          <tal:lfsmd condition="view/has_lfsmd">
+            <div class="section-group-hdr">LFSMD RPD</div>
+            <p class="pane-intro">
+              The maximum RPD between a fortified sample and its duplicate, per
+              LFSMD tier (the tier is chosen the same way as the LFSM tier above).
+              Blank: no RPD check for that tier.
+            </p>
+            <div tal:define="cf_groups python:view.section_groups('lfsmd'); cf_form string:section-rt">
+              <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+            </div>
+          </tal:lfsmd>
         </div>
       </div><!-- /pane-rt -->
 

@@ -23,6 +23,15 @@ KEY = "isomers"
 LEGACY = "isomer_summation"
 
 
+PEAK_PREFIXES = ("lr-", "br-")
+
+
+def is_peak_name(keyword):
+    """An isomer PEAK (linear/branched), kept for review, never a reported
+    analyte on its own (one analyte out)."""
+    return (keyword or u"").lower().startswith(PEAK_PREFIXES)
+
+
 def plain_name(keyword, titles):
     title = titles.get(keyword) or keyword
     return title[3:] if title.lower().startswith("lr-") else title

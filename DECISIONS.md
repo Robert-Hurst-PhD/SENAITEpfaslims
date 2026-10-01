@@ -5549,3 +5549,22 @@ Lab answers:
   surrogates / internal standards, LFSM recovery tiers, RPD, plus the existing
   QAPP criteria). Only differences are stored; batches linked to the project
   use them; anything looser than the published method is reported.
+
+## 2026-10-01 — Project specs: shape, extra analytes, departures (confirmed)
+- **Editor shape:** the project page shows the method's own declared sections
+  (Recovery Tiers + groups, Internal Standards, surrogate links, Dup RPD,
+  reporting limits for added analytes), pre-filled from the method. Saving
+  stores only the cells that differ, per method, under an "All matrices"
+  scope plus optional per-matrix scopes (matrix -> All matrices -> method).
+  A cell left alone keeps following the method when the lab edits it.
+  Stored on the Project beside the existing QAPP criteria (same annotation
+  family, own key).
+- **Extra analytes:** a defined core service not in the method panel joins
+  the project's reportable panel (for the scope's matrices); it needs an RL
+  and a quantifying IS (a method standard or a project extra). The pipeline
+  processes it and the certificate reports it for linked batches. Samples get
+  the analysis only by ordering the service -- never auto-added.
+- **Departures:** every project value looser than the lab's method profile
+  is flagged in the editor and listed for linked batches; where a verified
+  published baseline exists it is also judged against that, otherwise it
+  reads "published limit not on file" (never invented).

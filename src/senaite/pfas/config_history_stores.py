@@ -38,6 +38,9 @@ def register_all():
         u"EDD configuration")
     reg("qc_rules", lambda p, k: get_rules(), lambda p, k, v: qc_rules_store().save(v),
         u"QC rules")
+    from senaite.pfas import project_specs
+    reg("project_specs", lambda p, k: project_specs.get_specs(project_specs.project_by_id(p, k)),
+        lambda p, k, v: project_specs.save_for_project(p, k, v), u"Project specs")
 
     # The service's pfas_quant_surrogate is only the SUGGESTED surrogate shown
     # when a native first joins a method (DECISIONS 2026-09-30). Each method's

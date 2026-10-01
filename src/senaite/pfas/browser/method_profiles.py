@@ -337,27 +337,8 @@ class PFASMethodProfileEditView(BrowserView):
         AnalysisService that carries a pfas_role. This is THE source for the
         analyte / surrogate / IS lists and the native→surrogate link (D58) —
         pulled from the services that actually report, not code tables."""
-        out = {}
-        try:
-            from bika.lims import api
-            setup_cat = api.get_tool("senaite_catalog_setup")
-            for b in setup_cat(portal_type="AnalysisService"):
-                o = b.getObject()
-                rf = o.getField("pfas_role")
-                role = (rf.get(o) if rf is not None else "") or ""
-                if not role:
-                    continue
-                qf = o.getField("pfas_quant_surrogate")
-                out[o.getKeyword()] = {
-                    "role": role,
-                    "quant_surrogate": (qf.get(o) if qf is not None else "") or "",
-                    "name": o.Title() or o.getKeyword(),
-                    "uid": o.UID(),
-                    "url": o.absolute_url(),
-                }
-        except Exception as exc:
-            logger.warning("_pfas_service_index: %s", exc)
-        return out
+        from senaite.pfas.method_profile_store import service_index
+        return service_index()
 
     # back-compat alias
     def _core_service_roles(self):
@@ -445,7 +426,11 @@ class PFASMethodProfileEditView(BrowserView):
 
     def rt_section_ids(self):
         ids = ["groups", "tiers"] + [sid for sid, _l in self.spike_sections()]
-        return ids + (["dup"] if self.has_dup() else [])
+        return (ids + (["dup"] if self.has_dup() else []) +
+                (["lfsmd"] if self.has_lfsmd() else []))
+
+    def has_lfsmd(self):
+        return "LFSMD" in ((self.profile().get("qc_acceptance") or {}))
 
     def grouped_tiers(self):
         from senaite.pfas.method_profile_sections import GROUPED_TIER_METHODS

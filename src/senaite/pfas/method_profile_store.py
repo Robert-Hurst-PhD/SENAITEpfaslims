@@ -1217,6 +1217,34 @@ def raw_profile(portal, method_id):
         return {}
 
 
+def service_index():
+    """{keyword: {role, quant_surrogate, name, uid, url}} for every core
+    AnalysisService that carries a pfas_role -- the one source for the
+    analyte / surrogate / IS lists (the method editor's and the project
+    specs' env)."""
+    out = {}
+    try:
+        from bika.lims import api
+        setup_cat = api.get_tool("senaite_catalog_setup")
+        for b in setup_cat(portal_type="AnalysisService"):
+            o = b.getObject()
+            rf = o.getField("pfas_role")
+            role = (rf.get(o) if rf is not None else "") or ""
+            if not role:
+                continue
+            qf = o.getField("pfas_quant_surrogate")
+            out[o.getKeyword()] = {
+                "role": role,
+                "quant_surrogate": (qf.get(o) if qf is not None else "") or "",
+                "name": o.Title() or o.getKeyword(),
+                "uid": o.UID(),
+                "url": o.absolute_url(),
+            }
+    except Exception as exc:
+        logger.warning("service_index: %s", exc)
+    return out
+
+
 def save_profile(portal, method_id, data):
     """
     Persist data (dict) for method_id.  Replaces the entire entry atomically.
@@ -1303,6 +1331,16 @@ def save_profile(portal, method_id, data):
     except Exception as exc:
         logger.warning(
             "Profile %s saved but file export failed: %s", method_id, exc
+        )
+
+    # Project-linked batches carry a per-batch file resolved from this profile
+    # (lab-tier criteria, project specs patch): re-export so none goes stale.
+    try:
+        from senaite.pfas.resolved_criteria_store import refresh_linked_batches
+        refresh_linked_batches(portal, method_id=method_id)
+    except Exception as exc:
+        logger.warning(
+            "Profile %s saved but linked batches not refreshed: %s", method_id, exc
         )
 
 

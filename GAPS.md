@@ -6169,3 +6169,62 @@ Approved by the lab as the first recommendation of
   `limits_off: ["fed-pfna"]`, switching back left the profiles equal to the
   snapshot; no-op Reporting saves clean; a published certificate re-renders.
 - **Still open (same request):** project specs editor overriding the method.
+
+## 70. Project specs: a project's differences from its method (2026-10-01)
+- Lab: settings "can be overridden with project specs ... additional
+  analytes, surrogates or internal standards. LFSM recoveries, rpd."
+  Decisions (DECISIONS 2026-10-01): the method's own sections, differences
+  only, "All matrices" + per-matrix scopes; added analytes extend the panel
+  (ordered as usual, never auto-added); departures judged against the lab
+  method, and the published method only where a baseline is on file.
+- **`project_specs.py`** (pure): diff / apply over ANY declared section
+  through its own write adapter, so nothing project-specific is hand-coded
+  per table. Stored on the Project (`senaite.pfas.project.specs`), history-
+  tracked and revertible (`config_history_stores`). Touched rows are written
+  complete (an adapter drops a labelled standard whose row arrives without
+  "used"); a change to a row the method no longer has is reported stale,
+  never guessed onto another row.
+- **@@pfas-project-specs** (Specs button on each project): method + scope
+  selectors, the differences, what an added analyte still needs (IS, RL per
+  matrix), the looser-than-method table, then three tabs of the method's own
+  sections (`PROJECT_SECTIONS`: added analytes, RLs, groups, LFSM tiers, Dup
+  and LFSMD RPD, labelled standards, surrogate links) with the applied-window
+  grid. Manager only (403), like the QAPP criteria.
+- **New on the method editor too: LFSMD RPD** per LFSMD tier. Stored since
+  the seeds and read by the engine, but no tab edited it. Test: the tier
+  resolved here equals the engine's for every analyte x matrix (>300).
+- **Delivery:** the per-batch resolved file now carries a `profile_patch`
+  (path ops from the method to the batch's effective profile) plus
+  departures; the worker applies it before the criteria rows
+  (`_apply_profile_patch`, all-or-nothing validation). The criteria rows are
+  now resolved against the EFFECTIVE profile -- otherwise a lab-tier row
+  (e.g. Dup RPD) written after the patch would have undone the project's
+  value. QAPP criteria still take precedence. **Every method-profile save
+  re-exports the linked batches' files** (they were frozen at link time --
+  a pre-existing staleness for the lab-tier rows too). One refresh loop
+  (`refresh_linked_batches`) now serves the project page and method saves;
+  one service index (`method_profile_store.service_index`) serves both
+  editors.
+- **Defects found and fixed while building:** departures first unioned
+  analytes and matrices, naming PFOA as loosened in Eggs where it was not
+  (now one row per exact matrix set; mutation-tested); isomer peaks
+  (br-PFOS, br-PFHxS) were offered as reportable additions (now filtered,
+  `isomers.is_peak_name`).
+- **Tests:** 13 in test_project_specs (no specs = method exactly; untouched
+  editor stores nothing; one cell stays one cell and keeps following the
+  method; matrix over "*"; added analyte reaches panel/links/RLs and passes
+  the profile check; worker patch reproduces the effective profile; looser
+  only; stale not guessed) -- every guard mutation-tested (8 mutants
+  killed). Py3 and Py2.7; also run against the live profiles.
+- **Live** (throwaway project, deleted after; batch B-002 linked then
+  unlinked): untouched save stored nothing; loosening tier2 max 135->140
+  stored one cell and was listed; tightening LFSMD RPD was not; B-002's file
+  carried the patch; the WORKER ran B-002 at 140% while unlinked runs stayed
+  135%; a method save regenerated the file; an added analyte got RL rows,
+  a link row and a "needs" notice. Afterwards: no resolved files, profiles
+  equal to the snapshot.
+- **Still open:** the certificate, spec sync and Data Review still read the
+  bare method profile -- an added analyte is processed by the worker but
+  its RL/inclusion are not yet used by the certificate (next); departures
+  are in the batch file and the editor but not yet shown on the batch page
+  or the certificate's non-conformance statement.

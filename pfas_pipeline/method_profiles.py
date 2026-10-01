@@ -557,6 +557,36 @@ def _apply_resolved_row(data, row):
     return True
 
 
+def _apply_profile_patch(data, ops):
+    """Apply a project's path patch (senaite.pfas.project_specs.profile_patch)
+    to one method's profile dict. The add-on did all the merging -- here each
+    op only sets or deletes the value at its path."""
+    applied = 0
+    for op in ops:
+        path = op.get("path") or []
+        if not path:
+            continue
+        if op.get("delete"):
+            cur = data
+            for step in path[:-1]:
+                cur = cur.get(step) if isinstance(cur, dict) else None
+                if cur is None:
+                    break
+            if isinstance(cur, dict) and path[-1] in cur:
+                cur.pop(path[-1])
+                applied += 1
+        else:
+            _set_path(data, path, op.get("value"))
+            applied += 1
+    return applied
+
+
+def _ops_are_well_formed(ops):
+    return isinstance(ops, list) and all(
+        isinstance(op, dict) and isinstance(op.get("path"), list) and op["path"]
+        and ("value" in op or op.get("delete") is True) for op in ops)
+
+
 def _row_is_well_formed(row):
     """Structural check only -- NOT a resolution check. A row is well-formed
     if it is a dict naming a criterion key; whether that key means anything
@@ -612,6 +642,11 @@ def _load_resolved_payload(batch_id, profiles_path):
             "resolved criteria file %s has no 'criteria' list -- ignoring "
             "it entirely", path)
         return None
+    if "profile_patch" in payload and not _ops_are_well_formed(payload["profile_patch"]):
+        logger.warning(
+            "resolved criteria file %s has a malformed profile_patch -- "
+            "ignoring the WHOLE file rather than applying it half-way", path)
+        return None
     if not all(_row_is_well_formed(row) for row in criteria):
         logger.warning(
             "resolved criteria file %s contains a malformed row -- "
@@ -627,6 +662,11 @@ def _apply_resolved_overlay(batch_id, profiles_path):
         return
     method_id = payload["method_id"]
     data = _profile_data_cache[method_id]
+    # the project's specs first (DECISIONS 2026-10-01), then the QAPP criteria
+    patched = _apply_profile_patch(data, payload.get("profile_patch") or [])
+    if patched:
+        logger.info("Applied %d project-spec changes for batch %s (%s)",
+                    patched, batch_id, method_id)
     applied = 0
     for row in payload["criteria"]:
         if _apply_resolved_row(data, row):

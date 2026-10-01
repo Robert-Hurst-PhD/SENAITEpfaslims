@@ -197,12 +197,7 @@ def _refresh_resolved_criteria_for_project(portal, project_obj, request=None):
     loop must swallow it per-batch or one bad batch could 500 an otherwise-
     successful criteria save."""
     from bika.lims import api as bika_api
-    from senaite.pfas import batch_ref
-    from senaite.pfas import project_ref
     from senaite.pfas import resolved_criteria_store
-    from senaite.pfas.browser.batch_project_viewlet import (
-        _batch_method_id, _batch_matrix,
-    )
 
     try:
         project_uid = bika_api.get_uid(project_obj)
@@ -212,33 +207,9 @@ def _refresh_resolved_criteria_for_project(portal, project_obj, request=None):
             "for %r -- no batch can be matched, refreshing none",
             project_obj)
         return 0, []
-
-    refreshed = 0
-    skipped = []
-    for batch in batch_ref.list_batches(portal):
-        try:
-            if project_ref.get_project_uid(batch) != project_uid:
-                continue
-        except Exception:
-            continue
-        batch_id = getattr(batch, "getId", lambda: None)() or u"?"
-        try:
-            method_id = _batch_method_id(batch, request) or u""
-            matrix = _batch_matrix(portal, batch) or u""
-            if not method_id or not matrix:
-                skipped.append((batch_id, "method/matrix not known"))
-                continue
-            path = resolved_criteria_store.export_resolved_criteria(
-                portal, batch, method_id, matrix)
-            if path:
-                refreshed += 1
-            else:
-                skipped.append((batch_id, "export declined (incomplete)"))
-        except Exception as exc:
-            logger.warning(
-                "_refresh_resolved_criteria_for_project: export failed for "
-                "batch %s: %s", batch_id, exc)
-            skipped.append((batch_id, "export failed: {0}".format(exc)))
+    # one loop for every refresh (a method save uses it too)
+    refreshed, skipped = resolved_criteria_store.refresh_linked_batches(
+        portal, project_uid=project_uid, request=request)
     return refreshed, skipped
 
 

@@ -370,6 +370,15 @@
       permission="zope2.View"
       />
 
+  <!-- A project's differences from its method (DECISIONS 2026-10-01). Save is
+       manager only, checked in the view (403), like the QAPP criteria. -->
+  <browser:page
+      name="pfas-project-specs"
+      for="*"
+      class=".project_specs_view.PFASProjectSpecsView"
+      permission="zope2.View"
+      />
+
   <!-- Guided Instrument Import & Mapping Studio -->
   <browser:page
       name="pfas-import-studio"

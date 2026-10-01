@@ -508,6 +508,11 @@ def resolve_for_batch(portal, batch, method_id, matrix, key, analyte=None):
         project_doc, project_rev = _project_source(portal, project)
 
     profile = method_profile_store.get_profile(portal, method_id)
+    if project is not None:
+        # the project's specs are part of what this batch runs to (DECISIONS
+        # 2026-10-01): its QAPP criteria above still win over them
+        from senaite.pfas import project_specs
+        profile = project_specs.effective_for_project(project, method_id, matrix, profile)[0]
 
     return resolve(method_id, matrix, key, analyte=analyte,
                     profile=profile, project_ruleset=project_ruleset,

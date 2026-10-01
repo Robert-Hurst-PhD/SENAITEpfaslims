@@ -172,7 +172,8 @@ def build_resolved_rows(method_id, matrix, profile=None, project_ruleset=None,
     return rows
 
 
-def write_resolved_file(batch_id, method_id, matrix, rows, directory=None):
+def write_resolved_file(batch_id, method_id, matrix, rows, directory=None,
+                        profile_patch=None, departures=None, stale=None):
     """Write `rows` (as built by build_resolved_rows()) to
     {directory}/{batch_id}.json. Atomic: writes to .tmp then renames --
     exactly method_profile_store.export_profiles_to_file()'s pattern.
@@ -192,6 +193,12 @@ def write_resolved_file(batch_id, method_id, matrix, rows, directory=None):
         u"generated_at": datetime.datetime.utcnow().isoformat() + u"Z",
         u"criteria": rows,
     }
+    if profile_patch:
+        # the project's specs as a path patch on the method profile; the
+        # worker applies it before the criteria rows (project_specs.py)
+        payload[u"profile_patch"] = profile_patch
+        payload[u"departures"] = departures or []
+        payload[u"stale"] = stale or []
 
     path = resolved_file_path(batch_id, directory=directory)
     tmp = path + u".tmp"
@@ -267,8 +274,58 @@ def export_resolved_criteria(portal, batch, method_id, matrix, directory=None):
         return None
 
     rows = resolve_rows_for_batch(portal, batch, method_id, matrix)
+    patch, departures, stale = _specs_for_batch(portal, batch, method_id, matrix)
     return write_resolved_file(batch_id, method_id, matrix, rows,
-                                directory=directory)
+                                directory=directory, profile_patch=patch,
+                                departures=departures, stale=stale)
+
+
+def _specs_for_batch(portal, batch, method_id, matrix):
+    """(profile_patch, departures, stale) for the batch's project specs, or
+    ([], [], []) when its project holds none for this method."""
+    from senaite.pfas import method_profile_store, project_ref, project_specs
+    project = project_ref.get_project(portal, batch) if batch is not None else None
+    if project is None:
+        return [], [], []
+    profile = method_profile_store.get_profile(portal, method_id)
+    eff, stale, has = project_specs.effective_for_project(project, method_id, matrix, profile)
+    if not has:
+        return [], [], []
+    return (project_specs.profile_patch(profile, eff),
+            project_specs.departures(profile, eff, method_id), stale)
+
+
+def refresh_linked_batches(portal, method_id=None, project_uid=None, request=None):
+    """Re-export the file of every project-linked batch (optionally only
+    those of one method or one project). Returns (refreshed, skipped
+    [(batch_id, reason)]); never raises for one bad batch."""
+    from senaite.pfas import batch_ref, project_ref
+    from senaite.pfas.browser.batch_project_viewlet import _batch_method_id, _batch_matrix
+    refreshed, skipped = 0, []
+    for batch in batch_ref.list_batches(portal):
+        try:
+            uid = project_ref.get_project_uid(batch)
+        except Exception:
+            continue
+        if not uid or (project_uid and uid != project_uid):
+            continue
+        batch_id = getattr(batch, "getId", lambda: None)() or u"?"
+        try:
+            mid = _batch_method_id(batch, request) or u""
+            matrix = _batch_matrix(portal, batch) or u""
+            if method_id and mid != method_id:
+                continue
+            if not mid or not matrix:
+                skipped.append((batch_id, "method/matrix not known"))
+                continue
+            if export_resolved_criteria(portal, batch, mid, matrix):
+                refreshed += 1
+            else:
+                skipped.append((batch_id, "export declined (incomplete)"))
+        except Exception as exc:
+            logger.warning("refresh_linked_batches: export failed for %s: %s", batch_id, exc)
+            skipped.append((batch_id, "export failed: {0}".format(exc)))
+    return refreshed, skipped
 
 
 def remove_resolved_criteria(batch_id, directory=None):
