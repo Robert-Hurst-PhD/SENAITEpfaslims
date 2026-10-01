@@ -1003,14 +1003,15 @@ def test_the_lfsmd_rpd_resolved_here_is_what_the_engine_applies():
     assert checked > 300, checked
 
 
-def test_the_lfsmd_rpd_table_edits_exactly_one_tier():
+def test_the_lfsmd_rpd_tiers_edit_exactly_one_tier():
     import copy
     for mid, stored in _profiles().items():
-        assert ch.diff(stored, env_save(mps.LFSMD_RPD, stored, env_form(mps.LFSMD_RPD, stored))) == [], mid
+        assert ch.diff(stored, save(mps.LFSMD_RPD, stored, coll_form(mps.LFSMD_RPD, stored))) == [], mid
     p = copy.deepcopy(_profiles()["FDA_32PFAS"])
-    form = env_form(mps.LFSMD_RPD, p)
-    form[cf.cell_name(mps.LFSMD_RPD, ("tier2_linked",), mps.LFSMD_RPD.columns[0])] = "22"
-    after = env_save(mps.LFSMD_RPD, p, form)
+    i = [r["name"] for r in mps.LFSMD_RPD.read(p)].index("tier2_linked")
+    form = coll_form(mps.LFSMD_RPD, p)
+    form[_cell(mps.LFSMD_RPD, i, "rpd_max")] = "22"
+    after = save(mps.LFSMD_RPD, p, form)
     d = ch.diff(p, after)
     assert len(d) == 1 and "rpd_max" in str(d[0]) and "22" in str(d[0]), d
 
@@ -1062,7 +1063,7 @@ def test_tier_rules_and_the_epa_single_tier():
     form[_cell(mps.RECOVERY_TIERS, n, "name")] = "extra"
     form[_cell(mps.RECOVERY_TIERS, n, "recovery_min")] = "50"
     form[_cell(mps.RECOVERY_TIERS, n, "recovery_max")] = "150"
-    assert any("FIRST tier" in e for e in cf.parse(mps.RECOVERY_TIERS, form, stored)[1])
+    assert any("FIRST ordinary tier" in e for e in cf.parse(mps.RECOVERY_TIERS, form, stored)[1])
     fda = _profiles()["FDA_32PFAS"]
     form = coll_form(mps.RECOVERY_TIERS, fda)
     form[_cell(mps.RECOVERY_TIERS, 0, "recovery_max")] = ""
@@ -1082,7 +1083,8 @@ def test_the_tier_table_holds_only_what_the_engine_reads():
     """The tier cards offered key-analyte / tight-matrix / no-std pickers the
     engine ignores (structural keys); the table has none of them."""
     cols = set(c.path[0] for c in mps.RECOVERY_TIERS.columns)
-    assert cols == {"name", "analyte_group", "matrix_scope", "recovery_min", "recovery_max", "rsd_max"}
+    assert cols == {"name", "analyte_group", "matrix_scope", "recovery_min", "recovery_max", "rsd_max",
+                    "low_level_x_rl"}
 
 
 # ── Reporting tab: certificate format per method x matrix (2026-10-01) ──────

@@ -18,6 +18,8 @@
             <span tal:attributes="class python:'tier-swatch ' + c['swatch']"></span><span
                   tal:content="c/text">80&#8211;120%</span>
             <div class="form-note" tal:content="c/tier">tier1_key_tight</div>
+            <div class="form-note" tal:condition="python:c.get('low')"
+                 tal:content="python:'low level ' + c['low']">low level, 2xRL: 50-150%</div>
           </tal:ok>
           <span tal:condition="c/warn" class="sur-tag sur-nocore" title="no tier applies here">not set</span>
         </td>

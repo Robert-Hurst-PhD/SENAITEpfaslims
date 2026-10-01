@@ -338,6 +338,25 @@ def departures(profile, eff, method_id=None, matrices=None):
             out.append({"what": label, "method": _fmt(a), "project": _fmt(b),
                         "where": u"%s in %s" % (u", ".join(kws), where),
                         "published": _PUBLISHED_NONE})
+    # low-level tiers (<= N x RL), matched by name: a looser window or RPD,
+    # a larger N, or the tier dropped
+    low_checks = [(u"LFSM", u"recovery_min", "lower"), (u"LFSM", u"recovery_max", "higher"),
+                  (u"LFB", u"recovery_min", "lower"), (u"LFB", u"recovery_max", "higher"),
+                  (u"LFSMD", u"rpd_max", "higher"), (u"LFSM", mps.LOW_LEVEL_KEY, "higher"),
+                  (u"LFB", mps.LOW_LEVEL_KEY, "higher"), (u"LFSMD", mps.LOW_LEVEL_KEY, "higher")]
+    low = lambda p, qc: dict((t.get("name"), t) for t in mps._tiers(p, qc)       # noqa: E731
+                             if t.get(mps.LOW_LEVEL_KEY) is not None)
+    for qc, field, looser in low_checks:
+        lm, le = low(profile, qc), low(eff, qc)
+        for name in sorted(lm):
+            a = lm[name].get(field)
+            b = (le.get(name) or {}).get(field)
+            if a is None or a == b:
+                continue
+            if b is None or (b < a if looser == "lower" else b > a):
+                out.append({"what": u"%s low-level tier %s: %s" % (qc, name, field.replace("_", " ")),
+                            "method": _fmt(a), "project": _fmt(b) if name in le else u"removed",
+                            "where": u"spikes at the low level", "published": _PUBLISHED_NONE})
     dm = (((profile.get("qc_acceptance") or {}).get("Dup") or {}).get("tiers") or [{}])[0].get("rpd_max")
     de = (((eff.get("qc_acceptance") or {}).get("Dup") or {}).get("tiers") or [{}])[0].get("rpd_max")
     if dm is not None and dm != de and (de is None or de > dm):

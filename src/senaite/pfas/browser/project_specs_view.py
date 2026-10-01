@@ -28,7 +28,7 @@ logger = logging.getLogger("senaite.pfas.project_specs")
 FORM_ID = "project-specs"
 # the page's tabs: (id, label, section ids)
 TABS = [("an", u"Analytes & limits", ("px", "rl")),
-        ("rec", u"Recovery & RPD", ("groups", "tiers", "dup", "lfsmd")),
+        ("rec", u"Recovery & RPD", ("groups", "tiers", "tiers_lfb", "dup", "lfsmd")),
         ("std", u"Standards & links", ("ls", "sur"))]
 
 
@@ -122,6 +122,8 @@ class PFASProjectSpecsView(BrowserView):
             skip.add("dup")
         if "LFSMD" not in qca:
             skip.add("lfsmd")
+        if "LFB" not in qca:
+            skip.add("tiers_lfb")
         return [s for s in PROJECT_SECTIONS if s.id not in skip]
 
     def section_ids(self):

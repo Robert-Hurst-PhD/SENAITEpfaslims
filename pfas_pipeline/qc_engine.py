@@ -602,6 +602,8 @@ def recovery_check_profiled(
     qc_type: str,
     recovery_pct: float,
     injection_name: str = "",
+    conc: Optional[float] = None,
+    rl: Optional[float] = None,
 ) -> Optional[QCFlag]:
     """
     Resolve recovery limits via the method profile and flag if outside.
@@ -610,8 +612,9 @@ def recovery_check_profiled(
       PFOA in feed         → 65–135%
       PFTrDA anywhere      → 40–140%
     """
-    rule = profile.qc_rules(analyte, matrix, qc_type)
-    if rule.recovery_min is None:
+    rule = (profile.qc_rules(analyte, matrix, qc_type, conc=conc, rl=rl)
+            if conc is not None or rl is not None else profile.qc_rules(analyte, matrix, qc_type))
+    if rule is None or rule.recovery_min is None:
         return None
     if rule.recovery_min <= recovery_pct <= rule.recovery_max:
         return None
@@ -637,9 +640,14 @@ def rpd_check_profiled(
     qc_type: str,
     rpd_pct: float,
     injection_name: str = "",
+    conc: Optional[float] = None,
+    rl: Optional[float] = None,
 ) -> Optional[QCFlag]:
     """Duplicate / LFSMD RPD against the profile limit (FDA dup: 20%)."""
-    rule = profile.qc_rules(analyte, matrix, qc_type)
+    rule = (profile.qc_rules(analyte, matrix, qc_type, conc=conc, rl=rl)
+            if conc is not None or rl is not None else profile.qc_rules(analyte, matrix, qc_type))
+    if rule is None:
+        return None
     limit = rule.rpd_max
     if limit is None or rpd_pct <= limit:
         return None

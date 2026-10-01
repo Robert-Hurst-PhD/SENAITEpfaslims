@@ -683,7 +683,7 @@ def _apply_resolved_overlay(batch_id, profiles_path):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM",
-                      method_id="FDA_32PFAS"):
+                      method_id="FDA_32PFAS", conc=None, rl=None):
     """
     Resolve recovery tier for an FDA analyte × matrix combination.
 
@@ -699,7 +699,21 @@ def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM",
     qc_entry = qa.get(qc_type)
     if qc_entry is None or not qc_entry.get("enabled", True):
         return None
-    tiers = qc_entry.get("tiers", [])
+    all_tiers = qc_entry.get("tiers", [])
+    tiers = _ordinary_tiers(all_tiers)
+    where = "{0} / {1} / {2} / {3}".format(method_id, analyte, matrix or "(no matrix)", qc_type)
+
+    def _rule(tier, notes, is_tight=False):
+        group = tier.get("analyte_group", "all")
+        tier = _low_level_tier(
+            all_tiers, tier,
+            lambda t: (t.get("analyte_group", "all") in ("all", group) and
+                       (t.get("matrix_scope", "all") != "tight" or is_tight)),
+            conc, rl, where)
+        if tier.get(LOW_LEVEL_KEY):
+            notes = tier.get("description") or "low-level window (<= {0:g} x RL)".format(
+                float(tier[LOW_LEVEL_KEY]))
+        return _tier_rule(tier, notes, method_id, analyte, matrix, qc_type)
 
     # New structure: tiers have analyte_group and matrix_scope keys
     if tiers and "analyte_group" in tiers[0]:
@@ -738,23 +752,16 @@ def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM",
             ag = tier.get("analyte_group", "all")
             ms = tier.get("matrix_scope", "all")
             if ag == "no_std" and is_no_std:
-                return _tier_rule(
-                    tier, "No matched labeled standard (Table 10-1 footnote a)",
-                    method_id, analyte, matrix, qc_type)
+                return _rule(tier, "No matched labeled standard (Table 10-1 footnote a)", is_tight)
             if ag == "key" and ms == "tight" and is_key and is_tight:
-                return _tier_rule(
-                    tier,
-                    "PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood "
-                    "(Table 10-1 tier 1)",
-                    method_id, analyte, matrix, qc_type)
+                return _rule(tier,
+                             "PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood "
+                             "(Table 10-1 tier 1)", is_tight)
         # Fall through to the "linked" / default tier
         for tier in tiers:
             ag = tier.get("analyte_group", "all")
             if ag in ("linked", "all"):
-                return _tier_rule(
-                    tier,
-                    "Table 10-1 tier 2 (other matrices / other analytes)",
-                    method_id, analyte, matrix, qc_type)
+                return _rule(tier, "Table 10-1 tier 2 (other matrices / other analytes)", is_tight)
         raise UnconfiguredCriterion(
             "No tier matches {0} / {1} / {2} / {3}: the configured tiers cover "
             "neither this analyte group nor a default. Add a tier with "
@@ -782,8 +789,20 @@ class MethodProfile:
     method_id: str = ""
     description: str = ""
 
-    def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
+    def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
         raise NotImplementedError
+
+    def reporting_limit_ppt(self, analyte, matrix):
+        """The analyte's RL for `matrix` in ppt (the spike-level unit), or
+        None when no RL is set or its unit is not one this converts."""
+        from .analyte_alias import keyword_for
+        data = self._profile_data()
+        kw = keyword_for(analyte) or analyte
+        entry = ((data.get("reporting_limits") or {}).get(matrix) or {}).get(kw) or {}
+        if entry.get("rl") is None:
+            return None
+        factor = _PPT_PER_UNIT.get(((data.get("unit_map") or {}).get(matrix) or "").strip().lower())
+        return float(entry["rl"]) * factor if factor else None
 
     def calibration_rule(self, analyte=""):
         raise NotImplementedError
@@ -889,7 +908,7 @@ class FDA32PFASProfile(MethodProfile):
     description = ("USDA/FDA 32-PFAS in Food v10 (5/5/26) + AOAC SMPR "
                    "2023.003; LC-MS/MS isotope dilution")
 
-    def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
+    def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
         if qc_type in ("SUR", "surrogate"):
             return _method_text_rule(
                 self._profile_data(), self.method_id,
@@ -898,10 +917,10 @@ class FDA32PFASProfile(MethodProfile):
         if qc_type in ("Dup", "duplicate"):
             return _resolve_fda_tier(analyte, matrix,
                                      self._profile_data(), qc_type="Dup",
-                                     method_id=self.method_id)
+                                     method_id=self.method_id, conc=conc, rl=rl)
         return _resolve_fda_tier(analyte, matrix,
                                  self._profile_data(), qc_type=qc_type,
-                                 method_id=self.method_id)
+                                 method_id=self.method_id, conc=conc, rl=rl)
 
     def calibration_rule(self, analyte=""):
         cal = _calibration(self._profile_data(), self.method_id)
@@ -990,7 +1009,7 @@ class EPA537Profile(MethodProfile):
     method_id = "EPA_537_1"
     description = "EPA 537.1 PFAS in drinking water (EPA/600/R-20/006)"
 
-    def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
+    def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
         qa = self._profile_data().get("qc_acceptance", {})
         if qc_type in ("SUR", "surrogate"):
             return _method_text_rule(
@@ -1005,7 +1024,10 @@ class EPA537Profile(MethodProfile):
                 "{0} has no tiers configured for {1}. Set them in Method "
                 "Profiles -> QC Types -> {1}, or disable that QC type.".format(
                     self.method_id, qc_type))
-        t = tiers[0]
+        # its FIRST ordinary tier, replaced by a low-level tier when one holds
+        base = (_ordinary_tiers(tiers) or tiers)[0]
+        t = _low_level_tier(tiers, base, lambda _t: True, conc, rl,
+                            "{0} / {1} / {2} / {3}".format(self.method_id, analyte, matrix, qc_type))
         rule = _tier_rule(t, t.get("description", ""), self.method_id,
                           analyte, matrix, qc_type)
         return QCRule(
@@ -1089,8 +1111,46 @@ class UnconfiguredCriterion(Exception):
 _TIER_STRUCTURAL_KEYS = frozenset([
     "name", "analyte_group", "matrix_scope", "description",
     "verify_against_method", "tier", "key_analytes", "no_std_analytes",
-    "tight_matrices",
+    "tight_matrices", "low_level_x_rl", "citation",
 ])
+
+# ── Low-level tiers (DECISIONS 2026-10-01) ───────────────────────────────────
+# A tier carrying low_level_x_rl = N applies only when the fortified
+# concentration is at or below N x the analyte's RL -- e.g. EPA 537.1 v2.0
+# §9.3.6.3: LFSM 70-130%, but 50-150% "within a factor of 2-times the MRL".
+# The ordinary tier is chosen exactly as before; a low-level tier replaces it
+# only when its condition holds. Without the concentration or the RL the
+# engine refuses: it never guesses which window a spike belongs to.
+LOW_LEVEL_KEY = "low_level_x_rl"
+
+# ppt (ng/L, ng/kg) per one unit of a reporting unit
+_PPT_PER_UNIT = {"ng/l": 1.0, "ng/kg": 1.0, "pg/g": 1.0, "pg/ml": 1.0,
+                 "ng/ml": 1000.0, "ng/g": 1000.0, "ug/l": 1000.0, "ug/kg": 1000.0,
+                 "\u00b5g/l": 1000.0, "\u00b5g/kg": 1000.0, "mg/kg": 1e6}
+
+
+def _ordinary_tiers(tiers):
+    return [t for t in tiers if not t.get(LOW_LEVEL_KEY)]
+
+
+def _low_level_tier(tiers, base, applies, conc, rl, where):
+    """The low-level tier whose condition holds (smallest N first), else
+    `base`. Refuses when one could apply but conc/RL are unknown."""
+    cond = [t for t in tiers if t.get(LOW_LEVEL_KEY) and applies(t)]
+    if not cond:
+        return base
+    missing = [n for n, v in (("the fortified concentration", conc),
+                              ("the analyte's RL for this matrix", rl)) if not v]
+    if missing:
+        raise UnconfiguredCriterion(
+            "{0}: a low-level tier (applies at <= N x RL) is configured, so the "
+            "window depends on the spike level, but {1} is not set. Enter it "
+            "(Method Profiles -> Recovery Tiers spike levels / Reporting "
+            "Limits) -- the engine does not guess.".format(where, " and ".join(missing)))
+    for t in sorted(cond, key=lambda t: float(t[LOW_LEVEL_KEY])):
+        if float(conc) <= float(t[LOW_LEVEL_KEY]) * float(rl):
+            return t
+    return base
 
 
 def _tier_rule(tier, notes, method_id, analyte, matrix, qc_type):
@@ -1277,7 +1337,7 @@ class EPA1633AProfile(MethodProfile):
     description = ("EPA 1633A — 40 PFAS in aqueous, solid, biosolid, "
                    "tissue (Jan 2024 / 2024 update)")
 
-    def qc_rules(self, analyte, matrix="", qc_type="LFSM"):
+    def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
         profile = self._profile_data()
         eis_overrides = profile.get("eis_overrides", {})
         eis_matrix = profile.get("eis_matrix_overrides", {})
@@ -1344,7 +1404,9 @@ class EPA1633AProfile(MethodProfile):
                 "{0} has no tiers configured for {1}. Set them in Method "
                 "Profiles -> QC Types -> {1}, or disable that QC type.".format(
                     self.method_id, mapped))
-        t = tiers[0]
+        base = (_ordinary_tiers(tiers) or tiers)[0]
+        t = _low_level_tier(tiers, base, lambda _t: True, conc, rl,
+                            "{0} / {1} / {2} / {3}".format(self.method_id, analyte, matrix, mapped))
         rule = _tier_rule(
             t, t.get("description",
                      "1633A per-analyte (verify against method)"),

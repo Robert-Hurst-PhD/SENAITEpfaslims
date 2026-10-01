@@ -681,10 +681,14 @@ class RunQueue:
                                        "unspiked parent {0}".format(parent_inj)),
                             )
                         else:
-                            raw_flag = recovery_check_profiled(
-                                profile, analyte, matrix, "LFSM",
-                                recovery_pct, lfsm_inj
-                            )
+                            try:
+                                raw_flag = recovery_check_profiled(
+                                    profile, analyte, matrix, "LFSM",
+                                    recovery_pct, lfsm_inj, conc=spike_ppt,
+                                    rl=profile.reporting_limit_ppt(analyte, matrix))
+                            except UnconfiguredCriterion as exc:
+                                _record_gap("LFSM", analyte, exc)
+                                continue
                         flag = None
                         if raw_flag is not None:
                             # The source string is for the reader; check_kind is
@@ -765,9 +769,14 @@ class RunQueue:
                         rpd_pct  = (abs(lfsm_res.recovery_pct - rec_dup)
                                     / mean_rec * 100.0 if mean_rec else 0.0)
 
-                        raw_flag = rpd_check_profiled(
-                            profile, analyte, matrix, "LFSMD", rpd_pct, name
-                        )
+                        try:
+                            raw_flag = rpd_check_profiled(
+                                profile, analyte, matrix, "LFSMD", rpd_pct, name,
+                                conc=lfsm_res.spike_value_ppt,
+                                rl=profile.reporting_limit_ppt(analyte, matrix))
+                        except UnconfiguredCriterion as exc:
+                            _record_gap("LFSMD", analyte, exc)
+                            continue
                         flag = None
                         if raw_flag is not None:
                             flag = QCFlag(

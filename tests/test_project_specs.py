@@ -42,9 +42,12 @@ def _profiles():
         injection = sorted(injection_is_names())
     except Exception:                      # Python 2.7: the pipeline is Python 3
         injection = []
-    for p in data.values():
+    for mid, p in data.items():
         labelled_standards.migrate(p, injection)
         isomers.migrate(p)
+        import low_level_tiers
+        p.setdefault("method_id", mid)
+        low_level_tiers.seed_537_1(p)
     return data
 
 

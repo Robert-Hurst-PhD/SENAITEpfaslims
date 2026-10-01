@@ -5568,3 +5568,29 @@ Lab answers:
   is flagged in the editor and listed for linked batches; where a verified
   published baseline exists it is also judged against that, otherwise it
   reads "published limit not on file" (never invented).
+
+## 2026-10-01 — Low-level QC windows, QAPP statement, settings report (confirmed)
+- **Low-level windows (lab: "537.1 ... spikes at the lower level get a wider
+  tolerance"):** a tier may carry a condition "applies when the fortified
+  concentration is at or below N x RL". The engine compares the injection's
+  spike concentration (spike-level grid / extraction pedigree) with that
+  analyte's RL for the matrix; N is editable. A conditioned tier wins when
+  its condition holds, otherwise the method's ordinary tier applies. Missing
+  spike concentration or RL for a tier set that has a condition -> the engine
+  refuses (never guesses). Source checked: EPA 537.1 v2.0 (EPA/600/R-20/006,
+  March 2020) §9.3.3 LFB low level (<= 2 x MRL) 50-150%, medium/high 70-130%;
+  §9.3.6.3 LFSM 70-130% except within a factor of 2 x MRL 50-150%; §9.3.7.4
+  LFSMD RPD <= 30%, <= 50% within 2 x MRL (identical wording in v1.0,
+  EPA/600/R-18/352). §9.3.7.2 FD "should" (<= 30%, <= 50% near MRL) is
+  guidance on SAMPLE concentration, not a spike -- not built here.
+- **Certificate quality-system statement:** two editable statements in Print
+  Settings -- internal (no QAPP) and QAPP (the sample's batch is linked to a
+  project naming a QAPP), the latter filled with the QAPP title, controlled-
+  document id and active revision. A QAPP without an active revision prints
+  nothing invented: the certificate says the revision is not on file.
+- **Settings report:** a report page (Configuration) of every method profile
+  section, QC types and how each criterion is applied (check, QC type,
+  matrices / analytes, source: method / project / published baseline),
+  regulatory limits, project specs and lab-wide settings; Download PDF renders
+  the same page server-side (WeasyPrint), stamped with date, user and a
+  configuration fingerprint.

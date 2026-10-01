@@ -776,54 +776,103 @@ def _tiers(profile, qc=RECOVERY_QC):
                         .get("tiers") or []) if isinstance(t, dict)]
 
 
-def read_tiers(profile):
-    return [{"name": t.get("name") or u"tier %d" % (i + 1),
-             "analyte_group": t.get("analyte_group") or u"all",
-             "matrix_scope": t.get("matrix_scope") or u"all",
-             "recovery_min": t.get("recovery_min"), "recovery_max": t.get("recovery_max"),
-             "rsd_max": t.get("rsd_max")}
-            for i, t in enumerate(_tiers(profile))]
+LOW_LEVEL_KEY = u"low_level_x_rl"     # the engine's name (pfas_pipeline)
 
 
-def write_tiers(profile, rows):
-    old = dict(((t.get("name") or u"tier %d" % (i + 1)), t) for i, t in enumerate(_tiers(profile)))
-    tiers = []
-    for r in rows:
-        t = dict(old.get(r["name"]) or {})            # keep e.g. verify_against_method
-        t.update({"name": r["name"], "analyte_group": r.get("analyte_group") or u"all",
-                  "matrix_scope": r.get("matrix_scope") or u"all"})
-        for key in ("recovery_min", "recovery_max", "rsd_max"):
-            if r.get(key) is not None or key in t:    # absent stays absent
-                t[key] = r.get(key)
-        tiers.append(t)
-    entry = profile.setdefault("qc_acceptance", {}).setdefault(RECOVERY_QC, {"enabled": True})
-    entry["tiers"] = tiers
-    return profile
+def _tier_reader(qc, fields):
+    def read(profile):
+        out = []
+        for i, t in enumerate(_tiers(profile, qc)):
+            row = {"name": t.get("name") or u"tier %d" % (i + 1),
+                   "analyte_group": t.get("analyte_group") or u"all",
+                   "matrix_scope": t.get("matrix_scope") or u"all"}
+            for key in fields:
+                row[key] = t.get(key)
+            out.append(row)
+        return out
+    return read
 
 
-def check_tiers(profile, rows):
-    errors = []
-    for r in rows:
-        lo, hi = r.get("recovery_min"), r.get("recovery_max")
-        if (lo is None) != (hi is None):
-            errors.append(u"%s: set both ends of the recovery window, or neither." % r["name"])
-        elif lo is not None and lo > hi:
-            errors.append(u"%s: min (%s) is above max (%s)." % (r["name"], lo, hi))
-    if profile.get("method_id") not in GROUPED_TIER_METHODS and len(rows) > 1:
-        errors.append(u"This method's QC engine applies its FIRST tier to every analyte "
-                      u"and matrix; a second tier would never be used. Keep one tier.")
-    return errors
+def _tier_writer(qc, fields):
+    def write(profile, rows):
+        if not rows and qc not in (profile.get("qc_acceptance") or {}):
+            return profile                            # not run here: nothing created
+        old = dict(((t.get("name") or u"tier %d" % (i + 1)), t)
+                   for i, t in enumerate(_tiers(profile, qc)))
+        tiers = []
+        for r in rows:
+            t = dict(old.get(r["name"]) or {})        # keep e.g. verify_against_method, citation
+            t.update({"name": r["name"], "analyte_group": r.get("analyte_group") or u"all",
+                      "matrix_scope": r.get("matrix_scope") or u"all"})
+            for key in fields:
+                if r.get(key) is not None or key in t:  # absent stays absent
+                    t[key] = r.get(key)
+            if t.get(LOW_LEVEL_KEY) is None:
+                t.pop(LOW_LEVEL_KEY, None)            # an ordinary tier carries no condition
+            tiers.append(t)
+        entry = profile.setdefault("qc_acceptance", {}).setdefault(qc, {"enabled": True})
+        entry["tiers"] = tiers
+        return profile
+    return write
 
 
-RECOVERY_TIERS = cf.Collection(
-    id=u"tiers", title=u"Recovery tiers", noun=u"tier", new_rows=1,
-    columns=[cf.Field("name", u"Tier", kind=cf.TEXT, placeholder=u"new tier"),
-             cf.Field("analyte_group", u"Applies to", kind=cf.CHOICE, choices=GROUP_CHOICES),
-             cf.Field("matrix_scope", u"Matrices", kind=cf.CHOICE, choices=SCOPE_CHOICES),
-             cf.Field("recovery_min", u"Min %", minimum=0),
-             cf.Field("recovery_max", u"Max %", minimum=0),
-             cf.Field("rsd_max", u"RSD ≤ %", minimum=0)],
-    read=read_tiers, write=write_tiers, check=check_tiers)
+def _tier_checker(qc, window):
+    def check(profile, rows):
+        errors = []
+        for r in rows:
+            if window:
+                lo, hi = r.get("recovery_min"), r.get("recovery_max")
+                if (lo is None) != (hi is None):
+                    errors.append(u"%s: set both ends of the recovery window, or neither." % r["name"])
+                elif lo is not None and lo > hi:
+                    errors.append(u"%s: min (%s) is above max (%s)." % (r["name"], lo, hi))
+                if r.get(LOW_LEVEL_KEY) is not None and lo is None:
+                    errors.append(u"%s: a low-level tier needs its recovery window." % r["name"])
+            elif r.get(LOW_LEVEL_KEY) is not None and r.get("rpd_max") is None:
+                errors.append(u"%s: a low-level tier needs its RPD limit." % r["name"])
+        ordinary = [r for r in rows if r.get(LOW_LEVEL_KEY) is None]
+        if profile.get("method_id") not in GROUPED_TIER_METHODS and len(ordinary) > 1:
+            errors.append(u"This method's QC engine applies its FIRST ordinary tier to every "
+                          u"analyte and matrix; a second would never be used. Keep one, plus "
+                          u"any low-level tiers (Low level \u2264 \u00d7 RL).")
+        if not ordinary and rows:
+            errors.append(u"Keep one ordinary tier (Low level blank): it applies above the "
+                          u"low level.")
+        return errors
+    return check
+
+
+_LOW_LEVEL_FIELD = cf.Field(LOW_LEVEL_KEY, u"Low level \u2264 \u00d7 RL", greater_than=0,
+                            placeholder=u"\u2014",
+                            help=u"Blank: the ordinary tier. A number N: this tier applies "
+                                 u"instead when the spike is at or below N \u00d7 the "
+                                 u"analyte's RL (EPA 537.1 \u00a79.3.6.3: N = 2).")
+_TIER_HEAD = [cf.Field("name", u"Tier", kind=cf.TEXT, placeholder=u"new tier"),
+              cf.Field("analyte_group", u"Applies to", kind=cf.CHOICE, choices=GROUP_CHOICES),
+              cf.Field("matrix_scope", u"Matrices", kind=cf.CHOICE, choices=SCOPE_CHOICES),
+              _LOW_LEVEL_FIELD]
+_RECOVERY_FIELDS = ("recovery_min", "recovery_max", "rsd_max", LOW_LEVEL_KEY)
+
+
+def _recovery_collection(qc, id_):
+    return cf.Collection(
+        id=id_, title=u"%s recovery tiers" % qc if qc != RECOVERY_QC else u"Recovery tiers",
+        noun=u"tier", new_rows=1, allow_empty=(qc != RECOVERY_QC),
+        columns=_TIER_HEAD + [cf.Field("recovery_min", u"Min %", minimum=0),
+                              cf.Field("recovery_max", u"Max %", minimum=0),
+                              cf.Field("rsd_max", u"RSD \u2264 %", minimum=0)],
+        read=_tier_reader(qc, _RECOVERY_FIELDS), write=_tier_writer(qc, _RECOVERY_FIELDS),
+        check=_tier_checker(qc, True))
+
+
+RECOVERY_TIERS = _recovery_collection(RECOVERY_QC, u"tiers")
+# LFB (537.1 \u00a79.3.3: low level <= 2 x MRL 50-150%, medium/high 70-130%) and
+# LCS carry tiers too; their tab section shows only where the method runs them.
+LFB_TIERS = _recovery_collection(u"LFB", u"tiers_lfb")
+read_tiers = RECOVERY_TIERS.read
+write_tiers = RECOVERY_TIERS.write
+check_tiers = RECOVERY_TIERS.check
+
 
 DUP_RPD = cf.Section(
     id=u"dup", title=u"Sample Duplicate RPD", base=("qc_acceptance", "Dup", "tiers", 0),
@@ -833,42 +882,16 @@ DUP_RPD = cf.Section(
     ])])
 
 
-# LFSMD RPD, one row per LFSMD tier (2026-10-01). Stored since the seeds and
-# read by the engine (qc_rules(..., "LFSMD").rpd_max), but no tab edited it.
+# LFSMD RPD tiers (2026-10-01). Stored since the seeds and read by the engine
+# (qc_rules(..., "LFSMD").rpd_max), but no tab edited them; a low-level tier
+# carries 537.1 §9.3.7.4 (<= 50% within 2 x MRL).
+_RPD_FIELDS = ("rpd_max", LOW_LEVEL_KEY)
 
-def _tier_name(t, i):
-    return t.get("name") or u"tier %d" % (i + 1)
-
-
-def lfsmd_rows(profile):
-    groups, scopes = dict(GROUP_CHOICES), dict(SCOPE_CHOICES)
-    rows = [{"key": (_tier_name(t, i),), "group": u"lfsmd", "label": _tier_name(t, i),
-             "note": u"%s \u00b7 %s" % (groups.get(t.get("analyte_group") or u"all", t.get("analyte_group")),
-                                     scopes.get(t.get("matrix_scope") or u"all", t.get("matrix_scope")))}
-            for i, t in enumerate(_tiers(profile, u"LFSMD"))]
-    return _one_group(u"lfsmd", u"LFSMD RPD"), rows
-
-
-def read_lfsmd(profile):
-    return dict(((_tier_name(t, i),), {"rpd_max": t.get("rpd_max")})
-                for i, t in enumerate(_tiers(profile, u"LFSMD")))
-
-
-def write_lfsmd(profile, updates, env=None):
-    for i, t in enumerate(_tiers(profile, u"LFSMD")):
-        vals = updates.get((_tier_name(t, i),))
-        if vals is None:
-            continue
-        value = vals.get(("rpd_max",))
-        if value is not None or "rpd_max" in t:       # absent stays absent
-            t["rpd_max"] = value
-    return profile
-
-
-LFSMD_RPD = cf.Table(
-    id=u"lfsmd", title=u"LFSMD RPD", base=("qc_acceptance", "LFSMD"),
-    columns=[cf.Field("rpd_max", u"Max RPD", unit=u"%", minimum=0)],
-    rows=lfsmd_rows, read=read_lfsmd, write=write_lfsmd, row_heading=u"LFSMD tier")
+LFSMD_RPD = cf.Collection(
+    id=u"lfsmd", title=u"LFSMD RPD", noun=u"tier", new_rows=1, allow_empty=True,
+    columns=_TIER_HEAD + [cf.Field("rpd_max", u"Max RPD %", minimum=0)],
+    read=_tier_reader(u"LFSMD", _RPD_FIELDS), write=_tier_writer(u"LFSMD", _RPD_FIELDS),
+    check=_tier_checker(u"LFSMD", False))
 
 
 # Additional analytes -- PROJECT specs only (DECISIONS 2026-10-01): a defined
@@ -967,8 +990,9 @@ def key_analytes(profile):
 
 
 def resolve_tier(profile, is_key, is_no_std, matrix, qc=RECOVERY_QC):
-    """The tier the engine applies (None = it refuses: unconfigured)."""
-    tiers = _tiers(profile, qc)
+    """The ORDINARY tier the engine applies above the low level (None = it
+    refuses: unconfigured). Mirrors pfas_pipeline's resolution."""
+    tiers = [t for t in _tiers(profile, qc) if t.get(LOW_LEVEL_KEY) is None]
     if not tiers:
         return None
     if profile.get("method_id") not in GROUPED_TIER_METHODS:
@@ -984,6 +1008,20 @@ def resolve_tier(profile, is_key, is_no_std, matrix, qc=RECOVERY_QC):
         if t.get("analyte_group", "all") in ("linked", "all"):
             return t
     return None
+
+
+def low_level_tier(profile, base, matrix, qc=RECOVERY_QC):
+    """The low-level tiers that may replace `base` at a low spike, smallest
+    N first -- the engine's _low_level_tier with the spike not yet known."""
+    if base is None:
+        return []
+    grouped = profile.get("method_id") in GROUPED_TIER_METHODS
+    tight = matrix in set(profile.get("tight_matrices") or [])
+    group = base.get("analyte_group", "all")
+    out = [t for t in _tiers(profile, qc) if t.get(LOW_LEVEL_KEY) is not None and
+           (not grouped or (t.get("analyte_group", "all") in ("all", group) and
+                            (t.get("matrix_scope", "all") != "tight" or tight)))]
+    return sorted(out, key=lambda t: float(t[LOW_LEVEL_KEY]))
 
 
 def recovery_grid(profile):
@@ -1017,8 +1055,11 @@ def recovery_grid(profile):
                 text = u"%g–%g%%" % (t["recovery_min"], t["recovery_max"])
                 if t.get("rsd_max") is not None:
                     text += u" · RSD ≤ %g" % t["rsd_max"]
+                low = u"; ".join(u"\u2264 %g\u00d7RL: %g\u2013%g%%" % (
+                    float(x[LOW_LEVEL_KEY]), x["recovery_min"], x["recovery_max"])
+                    for x in low_level_tier(profile, t, m) if x.get("recovery_min") is not None)
                 cells.append({"text": text, "warn": False, "tier": t.get("name"),
-                              "swatch": u"tier-c%d" % (tiers.index(t) % 6)})
+                              "low": low, "swatch": u"tier-c%d" % (tiers.index(t) % 6)})
         rows.append({"title": title, "members": [labels.get(kw) for kw in names],
                      "cells": cells})
     return {"matrices": matrices, "rows": rows}
@@ -1187,7 +1228,7 @@ PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
                                     SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
-                                    REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD] +
+                                    REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS] +
                 list(SPIKE_LEVELS.values()) +
                 [c for c, _l in EIS_CLASSES])
 
@@ -1195,5 +1236,5 @@ SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
 # What a Project may override, in the order a project's differences are
 # applied: added analytes first (the other tables list them), then the groups
 # and tiers, then standards, links and limits (DECISIONS 2026-10-01).
-PROJECT_SECTIONS = [PANEL_EXTRAS, GROUPS, RECOVERY_TIERS, DUP_RPD, LFSMD_RPD,
+PROJECT_SECTIONS = [PANEL_EXTRAS, GROUPS, RECOVERY_TIERS, LFB_TIERS, DUP_RPD, LFSMD_RPD,
                     LABELLED_STANDARDS, SURROGATE_MAP, REPORTING_LIMITS]

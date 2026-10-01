@@ -6228,3 +6228,47 @@ Approved by the lab as the first recommendation of
   its RL/inclusion are not yet used by the certificate (next); departures
   are in the batch file and the editor but not yet shown on the batch page
   or the certificate's non-conformance statement.
+
+## 71. Low-level QC windows -- EPA 537.1 now matches its method text (2026-10-01)
+- Lab: "The 537.1 method does not match the published method as spikes at
+  the lower level get a wider tolerance." Read from the method itself, v2.0
+  (EPA/600/R-20/006, March 2020; v1.0 EPA/600/R-18/352 identical): §9.3.3
+  LFB low level (<= 2 x MRL) 50-150%, medium/high 70-130%; §9.3.6.3 LFSM
+  70-130%, within 2 x MRL 50-150%; §9.3.7.4 LFSMD RPD <= 30%, <= 50% within
+  2 x MRL.
+- **Mechanism (any method, any recovery / RPD tier list):** a tier may carry
+  `low_level_x_rl` = N; it replaces the ordinary tier when the spike is at or
+  below N x the analyte's RL for the matrix (RL converted to the spike's ppt).
+  Shared engine helper `_low_level_tier` in all three method engines; the
+  FDA engine also honours the low tier's analyte group / Tier 1 scope.
+  Missing spike concentration or RL -> UnconfiguredCriterion, recorded as a
+  gap for that analyte (never a crash, never a guessed window).
+- **Editor:** Low level column on LFSM tiers; **LFB tiers now editable**
+  (shown where the method runs LFB); **LFSMD RPD became a tier list** (so a
+  low-level RPD tier can be added); the applied-window grid shows each low
+  window. Checks: one ordinary tier (EPA engines) plus any low-level tiers;
+  a low tier needs its window / RPD. Project specs carry the LFB section and
+  list a widened low window (or a larger N) as looser.
+- **Defect found:** EPA 537.1 already stored two LFB tiers ("low_level"
+  50-150 "At or below MRL", "mid_high" 70-130), but its engine read only the
+  FIRST tier -- every LFB, mid and high included, would have been judged at
+  50-150%. Not yet consequential: the pipeline does not evaluate LFB
+  recoveries at all (open, below).
+- **Live migration** (`low_level_tiers.seed_537_1`, once, citation on each
+  tier): EPA 537.1 only -- LFSM low_level 50-150 at <= 2 x RL; LFSMD
+  low_level RPD 50 at <= 2 x RL; the lab's LFB low_level tier given N = 2 and
+  the method's wording (it said "at or below MRL"; the method says up to
+  2 x MRL). FDA and 1633A unchanged. Worker check on the live export: LFSM
+  PFOA RL 4: spike 8 -> 50-150, 20 -> 70-130; LFB 4 -> 50-150, 40 -> 70-130;
+  LFSMD 6 -> RPD 50, 60 -> 30; no spike/RL -> refused with the reason.
+- **Proof nothing else moved:** both real instrument CSVs through the
+  offline pipeline: summary and every QC flag identical to the last verified
+  run; no-op saves of all three Recovery Tiers tabs clean.
+- **Tests:** test_low_level_tiers (9; the editor's mirror equals the engine
+  for >500 analyte x matrix x QC x spike cases incl. group-scoped low tiers;
+  6 mutants killed incl. an unguarded run_queue call).
+- **Still open:** no RLs and no spike concentrations are entered for any
+  method, so 537.1 LFSM / LFSMD now report "not evaluated: enter the RL" once
+  a spike is recorded (before: pending without a spike); the pipeline does
+  not evaluate LFB recoveries at all; field-duplicate RPD near the MRL
+  (§9.3.7.2, "should", on sample concentration) not modelled.

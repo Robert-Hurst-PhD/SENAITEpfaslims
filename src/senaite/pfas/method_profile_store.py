@@ -1063,7 +1063,9 @@ def migrate_profile_models(portal):
         from senaite.pfas.print_settings import get_print_settings
         e = report_format.migrate(profile, get_print_settings(portal))
         f = _seed_key_analytes(profile)
-        if a or b or c or d or e or f:
+        from senaite.pfas import low_level_tiers
+        g = low_level_tiers.seed_537_1(profile)       # EPA 537.1 §9.3.3/9.3.6.3/9.3.7.4
+        if a or b or c or d or e or f or g:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:

@@ -540,8 +540,10 @@
             until <strong>Save &amp; Export</strong>.
           </p>
           <p class="pane-intro" tal:condition="not:view/grouped_tiers">
-            This method&#8217;s QC engine applies its <strong>first tier</strong>
-            to every analyte in every matrix. The grid redraws as you edit below.
+            This method&#8217;s QC engine applies its <strong>first ordinary
+            tier</strong> to every analyte in every matrix, and a <em>low level</em>
+            tier instead when the spike is at or below that many times the
+            analyte&#8217;s RL. The grid redraws as you edit below.
           </p>
           <div tal:replace="structure view/rt_grid_html"></div>
 
@@ -555,8 +557,12 @@
             and optional RSD limit. The engine takes the first tier that matches an
             analyte&#8217;s group and matrix (a no-labelled-standard tier, then a key
             analyte tier in a Tier&nbsp;1 matrix), otherwise the first
-            <em>All analytes</em> / <em>Other analytes</em> tier. Clear a
-            tier&#8217;s name to remove it.
+            <em>All analytes</em> / <em>Other analytes</em> tier. A tier with a
+            <em>Low level</em> number N replaces that tier when the spike is at or
+            below N&#215; the analyte&#8217;s RL (EPA 537.1 §9.3.6.3: 50&#8211;150%
+            within 2&#215; the MRL); the engine then needs the spike level and the
+            RL, and says so rather than guessing. Clear a tier&#8217;s name to
+            remove it.
           </p>
           <div id="rt-tiers" tal:define="cf_rows python:view.section_groups('tiers'); cf_form string:section-rt">
             <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
@@ -574,15 +580,31 @@
             </div>
           </tal:dup>
 
+          <tal:lfb condition="view/has_lfb">
+            <div class="section-group-hdr">LFB recovery tiers</div>
+            <p class="pane-intro">
+              The laboratory fortified blank's windows. A tier with a
+              <em>Low level</em> number applies instead of the ordinary tier when
+              the spike is at or below that many times the analyte&#8217;s RL
+              (EPA 537.1 §9.3.3: low level, no more than 2&#215; the MRL,
+              50&#8211;150%; medium and high 70&#8211;130%).
+            </p>
+            <div tal:define="cf_rows python:view.section_groups('tiers_lfb'); cf_form string:section-rt">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+            </div>
+          </tal:lfb>
+
           <tal:lfsmd condition="view/has_lfsmd">
             <div class="section-group-hdr">LFSMD RPD</div>
             <p class="pane-intro">
               The maximum RPD between a fortified sample and its duplicate, per
-              LFSMD tier (the tier is chosen the same way as the LFSM tier above).
-              Blank: no RPD check for that tier.
+              tier (chosen the same way as the LFSM tier above). A tier with a
+              <em>Low level</em> number applies when the spike is at or below that
+              many times the RL (EPA 537.1 §9.3.7.4: ≤ 50% within
+              2&#215; the MRL, otherwise ≤ 30%).
             </p>
-            <div tal:define="cf_groups python:view.section_groups('lfsmd'); cf_form string:section-rt">
-              <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+            <div tal:define="cf_rows python:view.section_groups('lfsmd'); cf_form string:section-rt">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
             </div>
           </tal:lfsmd>
         </div>

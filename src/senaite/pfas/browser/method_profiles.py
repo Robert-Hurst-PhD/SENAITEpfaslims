@@ -426,11 +426,15 @@ class PFASMethodProfileEditView(BrowserView):
 
     def rt_section_ids(self):
         ids = ["groups", "tiers"] + [sid for sid, _l in self.spike_sections()]
-        return (ids + (["dup"] if self.has_dup() else []) +
+        return (ids + (["tiers_lfb"] if self.has_lfb() else []) +
+                (["dup"] if self.has_dup() else []) +
                 (["lfsmd"] if self.has_lfsmd() else []))
 
     def has_lfsmd(self):
         return "LFSMD" in ((self.profile().get("qc_acceptance") or {}))
+
+    def has_lfb(self):
+        return "LFB" in ((self.profile().get("qc_acceptance") or {}))
 
     def grouped_tiers(self):
         from senaite.pfas.method_profile_sections import GROUPED_TIER_METHODS
