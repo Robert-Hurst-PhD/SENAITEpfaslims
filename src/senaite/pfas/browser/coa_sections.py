@@ -120,14 +120,10 @@ class PFASCoASectionsView(BrowserView):
         return found
 
     def _method(self, analyses):
-        for an in analyses:
-            try:
-                m = an.getMethod()
-            except Exception:
-                m = None
-            if m is not None:
-                return m
-        return None
+        """The one method the reported analyses carry, or None (see
+        sample_method: the publish guard uses the same answer)."""
+        from senaite.pfas.sample_method import identify_from
+        return identify_from(analyses)[0]
 
     def _sample(self, sample):
         from senaite.pfas.analyte_reference import NATIVE_ANALYTES
@@ -135,7 +131,12 @@ class PFASCoASectionsView(BrowserView):
         from senaite.pfas.qc_qualification import parse_remark_codes
 
         analyses = self._analyses(sample)
-        method = self._method(analyses)
+        # No identified method -> no certificate for this sample: it would print
+        # without the method's RLs, format and limits (DECISIONS 2026-10-02).
+        from senaite.pfas.sample_method import identify_from
+        method, problem = identify_from(analyses)
+        if problem:
+            return {"id": api.get_id(sample), "error": problem}
         method_id = method.getMethodID() if method is not None else u""
         profile = get_profile(api.get_portal(), method_id) if method_id else {}
         matrix = report_limits.canonical_matrix(profile, sample.getSampleTypeTitle())

@@ -6431,3 +6431,31 @@ Approved by the lab as the first recommendation of
   isomer labels.
 - **Still open:** spec sync (SENAITE Analysis Specifications) is still
   per method x matrix, not per project.
+
+## 77. No certificate and no publishing without an identified method (2026-10-02)
+- §76 found that a sample's certificate silently printed WITHOUT the method's
+  RLs, format, regulatory notes and isomer labels when its analyses carried
+  no method -- true of every published sample except the nine FEED samples
+  from the real-instrument run. Routes there: results entered on the sample
+  view without a worksheet; a worksheet created without a method; services
+  that list several methods and no default (so none is picked at
+  registration); scripts and seeding (the demo samples). Decision: refuse
+  (DECISIONS 2026-10-02).
+- **`sample_method.identify(sample)`**: the one method of the sample's
+  reported analyses (hidden / retracted / rejected / cancelled / invalid
+  excluded). Not identified when none has a method, when they carry
+  different methods, or when some have none; the message names which and
+  the remedy ("put the analyses on a worksheet with the method, then verify
+  again").
+- **Certificate:** that sample's block reads "could not be rendered (Method
+  not identified: ...)" instead of results.
+- **Publishing:** `guards.SampleMethodGuard`, a SENAITE IGuardAdapter, blocks
+  publish / prepublish / republish for such a sample from every screen
+  (SENAITE consults it for those transitions); it fails CLOSED on an error.
+- **Tests:** test_sample_method (6; mutants killed: first-method-wins, guard
+  failing open). **Live:** DW-0003 and COA-DEMO-0001 refuse with the reason;
+  FEED-0002 renders; guard: FEED-0002/0004 publish+republish allowed, DW-0003
+  and EGG-0001 blocked. Sample listings unchanged (~0.9 s).
+- **Consequence to know:** the seeded demo samples (DW-0003/5/7/9,
+  COA-DEMO-0001, EGG/MEAT/FEED-0001) can no longer be re-published until
+  their analyses get a method.

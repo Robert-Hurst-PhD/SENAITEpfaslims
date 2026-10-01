@@ -472,6 +472,15 @@
       handler=".egad_publish.on_after_transition"
       />
 
+  <!-- A sample whose method cannot be identified is not published
+       (DECISIONS 2026-10-02); the certificate refuses it for the same reason. -->
+  <adapter
+      factory=".guards.SampleMethodGuard"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.sample_method"
+      />
+
   <!-- Controlled publication register (D65 B): record an immutable issuance
        entry on the sample each time a CoA is published (publish transition). -->
   <subscriber

@@ -5624,3 +5624,12 @@ Lab answers:
   not and someone may need to act (not verified, limits not set, RL missing,
   stale, suggested, blocking, unissued changes). Always-true or identity
   labels (Customised, core type, method default, role name) are removed.
+
+## 2026-10-02 — Certificate refuses a sample whose method is unknown (confirmed)
+- A sample's method comes from its analyses (set when they go on a worksheet
+  with a method). Results can reach publication without one (results entered
+  on the sample view, a worksheet without a method, services with several
+  methods and no default, scripts). The certificate then printed silently
+  without the method's RLs, format and regulatory notes.
+- Decision: refuse. The certificate shows "Method not identified" with the
+  remedy in place of that sample's results, and publishing stops for it.
