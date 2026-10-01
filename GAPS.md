@@ -6006,3 +6006,27 @@ Approved by the lab as the first recommendation of
   settings' notes) before sending an EDD.
 - **Tests:** `test_isomers.py` 8 (one analyte out; lr- only names the peak --
   guard on analyte table, aliases, setup CSV, EDD names).
+
+## 63. EDD codes checked against Maine's official EGAD lookup table (2026-10-01)
+- **Source:** Maine DEP EGAD Lookup Tables (Appendix 3,
+  maine.gov/dep/maps-data/egad/documents/EGAD_Lookup_Tables.xlsx), sheet
+  CAS_LUP, downloaded 2026-10-01. Stored codes were compared entry by entry.
+- **Before:** 30 of 47 matched. **After:** 45 of 47.
+  1. PFOS / PFHxS (summed): DEP18026 / DEP18024 (the -LINEAR entries) ->
+     1763231 PFOS_A / 355464 PFHXS_A, the plain-acid entries -- consistent
+     with PFOA_A / PFNA_A / N-EtFOSAA_A / N-MeFOSAA_A, the other summed
+     analytes. (Maine also lists "linear and branched" entries DEP18030 /
+     DEP18031 if the lab prefers those.)
+  2. 13 blank parameter names filled with the VALUE CAS_LUP gives for the CAS
+     already held (3:3/5:3/7:3 FTC_A, N-ETFOSA, N-EtFOSAA_A, N-EtFOSE, PFDH_A,
+     N-MEFOSA, N-MeFOSAA_A, N-MEFOSE, PFEES_A, PFMB_A, PFMP_A).
+  3. **PFMBA's CAS was wrong in the master table:** 863090-85-5 fails the CAS
+     check digit; CAS_LUP and the check digit both give 863090-89-5. Fixed in
+     `analyte_reference` and the setup CSV; guard test validates every
+     master CAS check digit (mutation-tested).
+- **Still VERIFY (lab):** PFTrDS (791563-89-8) and PFUnDS (749786-16-1) are not
+  in CAS_LUP under any code; ask Maine DEP before an EDD carries them.
+- **Operational finding:** `sed -i` on the host replaces the file, and Docker
+  Desktop's share kept serving the OLD copy to the container (caught when a
+  script read a stale value). Every add-on and pipeline file was then compared
+  host vs container by checksum: all in sync. Edit files in place.

@@ -113,19 +113,38 @@ _EGAD_ANALYTE_OVERLAY = {
     "DONA":        {"parameter_name": "ADONA_A",         "override_note": ""},
     "PFBS":        {"parameter_name": "PFBS_A",          "override_note": ""},
     "PFPeS":       {"parameter_name": "PFPES_A",         "override_note": ""},
-    # Reported as the SUMMED analyte (DECISIONS 2026-10-01: one analyte out,
-    # isomers kept for internal review). The DEP code below is the one held
-    # for the LINEAR isomer -- VERIFY the code for the total before export.
-    "PFHxS":       {"parameter_name": "PFHxS",  "override_note": "VERIFY: DEP code is the linear-isomer code; report is the summed total", "cas_override": "DEP18024"},
+    # PFHxS / PFOS are reported as the SUMMED analyte (DECISIONS 2026-10-01:
+    # one analyte out). Maine EGAD CAS_LUP lists the plain acid (355464
+    # PFHXS_A, 1763231 PFOS_A) besides the -LINEAR / -BRANCHED / "linear and
+    # branched" entries; the plain acid matches how the other summed analytes
+    # (PFOA_A, PFNA_A, N-EtFOSAA_A, N-MeFOSAA_A) are exported. CAS from the
+    # master table.
+    "PFHxS":       {"parameter_name": "PFHXS_A",         "override_note": ""},
     "br-PFHxS":    {"parameter_name": "PFHXS_A_BR", "override_note": "branched isomer", "cas_override": "DEP18023"},
     "PFHpS":       {"parameter_name": "PFHPS_A",         "override_note": ""},
-    "PFOS":        {"parameter_name": "PFOS",   "override_note": "VERIFY: DEP code is the linear-isomer code; report is the summed total", "cas_override": "DEP18026"},
+    "PFOS":        {"parameter_name": "PFOS_A",          "override_note": ""},
     "br-PFOS":     {"parameter_name": "PFOS_A_BR",  "override_note": "branched isomer", "cas_override": "DEP18025"},
     "PFNS":        {"parameter_name": "PFNS_A",          "override_note": ""},
     "PFDS":        {"parameter_name": "PFDS_A",          "override_note": ""},
-    "PFUnDS":      {"parameter_name": "PFUNDS_A",        "override_note": "CAS 749-786-16-1; verify against Maine EGAD CAS_LUP before EDD submission"},
+    "PFUnDS":      {"parameter_name": "PFUNDS_A",        "override_note": "VERIFY: CAS 749786-16-1 is not in Maine EGAD CAS_LUP (checked 2026-10-01); ask Maine DEP for the code before an EDD"},
     "PFDoS":       {"parameter_name": "PFDOS_A",         "override_note": ""},
-    "PFTrDS":      {"parameter_name": "PFTRDS_A",   "override_note": "CAS 791-563-89-8", "cas_override": "791563898"},
+    "PFTrDS":      {"parameter_name": "PFTRDS_A",   "override_note": "VERIFY: CAS 791563-89-8 is not in Maine EGAD CAS_LUP (checked 2026-10-01); ask Maine DEP for the code before an EDD", "cas_override": "791563898"},
+    # Names below were blank. Each is the VALUE Maine EGAD CAS_LUP gives for
+    # the CAS the master table already holds (EGAD_Lookup_Tables.xlsx,
+    # maine.gov/dep/maps-data/egad, downloaded 2026-10-01).
+    "3:3FTCA":     {"parameter_name": "3:3 FTC_A",       "override_note": ""},
+    "5:3FTCA":     {"parameter_name": "5:3 FTC_A",       "override_note": ""},
+    "7:3FTCA":     {"parameter_name": "7:3 FTC_A",       "override_note": ""},
+    "NEtFOSA":     {"parameter_name": "N-ETFOSA",        "override_note": ""},
+    "NEtFOSAA":    {"parameter_name": "N-EtFOSAA_A",     "override_note": ""},
+    "NEtFOSE":     {"parameter_name": "N-EtFOSE",        "override_note": ""},
+    "NFDHA":       {"parameter_name": "PFDH_A",          "override_note": ""},
+    "NMeFOSA":     {"parameter_name": "N-MEFOSA",        "override_note": ""},
+    "NMeFOSAA":    {"parameter_name": "N-MeFOSAA_A",     "override_note": ""},
+    "NMeFOSE":     {"parameter_name": "N-MEFOSE",        "override_note": ""},
+    "PFEESA":      {"parameter_name": "PFEES_A",         "override_note": ""},
+    "PFMBA":       {"parameter_name": "PFMB_A",          "override_note": ""},
+    "PFMPA":       {"parameter_name": "PFMP_A",          "override_note": ""},
 }
 
 

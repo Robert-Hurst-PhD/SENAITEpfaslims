@@ -68,7 +68,7 @@ NATIVE_ANALYTES = [
     ("NMeFOSE",  "NMeFOSE",  "24448-09-7",  "N-methylperfluorooctanesulfonamidoethanol",      "FOSA",  8,  "MD7NMeFOSE",  False, False),
     ("NEtFOSE",  "NEtFOSE",  "1691-99-2",   "N-ethylperfluorooctanesulfonamidoethanol",       "FOSA",  8,  "MD9NEtFOSE",  False, False),
     ("PFMPA",    "PFMPA",    "377-73-1",    "Perfluoro-3-methoxypropanoic acid",              "PFECA", 3,  "",            True,  False),
-    ("PFMBA",    "PFMBA",    "863090-85-5", "Perfluoro-4-methoxybutanoic acid",               "PFECA", 4,  "",            True,  False),
+    ("PFMBA",    "PFMBA",    "863090-89-5", "Perfluoro-4-methoxybutanoic acid",               "PFECA", 4,  "",            True,  False),
     ("NFDHA",    "NFDHA",    "151772-58-6", "Perfluoro-3,6-dioxaoctanoic acid",               "PFECA", 6,  "",            True,  False),
     ("PFEESA",   "PFEESA",   "113507-82-7", "Perfluoroethyl ether sulfonic acid",             "PFECA", 4,  "",            True,  False),
     ("3:3FTCA",  "3:3FTCA",  "356-02-5",    "3:3 fluorotelomer carboxylic acid",              "FTCA",  3,  "",            True,  False),
