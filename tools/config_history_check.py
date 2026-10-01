@@ -67,8 +67,8 @@ def open_profile(pg, mid, pane):
 
 def case_tier(pg):
     open_profile(pg, "EPA_537_1", "pane-rt")
-    f = pg.locator("#recoveryTiersContainer .tier-max").first
-    f.fill(str(float(f.input_value()) + 1)); f.dispatch_event("input")
+    f = pg.locator("[name='c__tiers__0__recovery_5fmax']")
+    f.fill(str(float(f.input_value()) + 1))
     save_profile_form(pg)
     return "recovery_max", True, None
 

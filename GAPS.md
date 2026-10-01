@@ -6081,3 +6081,32 @@ Approved by the lab as the first recommendation of
 - Review access: a Cloudflare quick tunnel to nginx (port 80), started on
   request; the URL is ephemeral (changes whenever cloudflared restarts) and
   reaches the SENAITE login page -- access still requires a SENAITE login.
+
+## 67. Recovery Tiers as grids; certificate format per method x matrix (2026-10-01)
+- **Recovery Tiers tab** (3,150 px of per-matrix cards -> ~1,200 px):
+  spike levels as `SPIKE_LEVELS` collections (levels x matrices, one per
+  spiked QC type the method runs); a read-only **applied-window grid**
+  (`recovery_grid`, analyte group x matrix); the **tier table**
+  (`RECOVERY_TIERS`); the Dup RPD (`DUP_RPD`). Framework: columns may depend
+  on the stored value (one per matrix); field paths may hold list positions.
+- **Defects found and fixed:**
+  1. The tier cards offered key-analyte / tight-matrix / no-std pickers that
+     the engine treats as STRUCTURAL and never reads (groups come from the
+     analyte table, Tier 1 matrices from Matrices & Units) -- controls that
+     changed nothing. The table carries only what the engine reads.
+  2. The EPA methods' engine applies only the FIRST tier; extra tiers were
+     silently ignored. The grid says so and a second tier is refused.
+  3. An unchanged tier save wrote `rsd_max: None` where the key was absent
+     (equivalent, caught by the live audit, fixed, fixture test mutation-
+     tested; the two EPA tiers cleaned).
+- **Proof the grid shows what the engine applies:** a test compares every
+  analyte x matrix cell with `pfas_pipeline` `qc_rules` for all three methods
+  (>300 cells; mutation-tested).
+- **Reporting tab** (`report_format.py`, `REPORT_FORMAT`): see DECISIONS. A
+  real certificate (publish preview of a verified FDA sample) rendered the
+  same columns after migration; setting MDL off + a standard note changed
+  that certificate, history revert restored it, configuration equals before.
+  The table framework now gives the label column only the width it needs.
+- **Audits:** no-op saves of every method tab clean; history check clean;
+  Print Settings' first save drops the five moved keys (intended -- they live
+  on each method now; history-recorded).

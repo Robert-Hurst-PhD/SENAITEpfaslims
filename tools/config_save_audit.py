@@ -54,6 +54,12 @@ STEPS = [
     ("method profile EPA 537.1: Isomers", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-iso", ("button", "Save & Export")),
     ("method profile EPA 1633A: Isomers", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-iso", ("button", "Save & Export")),
     ("method profile FDA 32-PFAS: Isomers", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-iso", ("button", "Save & Export")),
+    ("method profile EPA 537.1: Recovery Tiers", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-rt", ("button", "Save & Export")),
+    ("method profile EPA 1633A: Recovery Tiers", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-rt", ("button", "Save & Export")),
+    ("method profile FDA 32-PFAS: Recovery Tiers", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-rt", ("button", "Save & Export")),
+    ("method profile EPA 537.1: Reporting", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-rf", ("button", "Save & Export")),
+    ("method profile EPA 1633A: Reporting", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-rf", ("button", "Save & Export")),
+    ("method profile FDA 32-PFAS: Reporting", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-rf", ("button", "Save & Export")),
     # @@pfas-qc-rules redirects to Method Profiles: the rule toggles are a tab
     # of the profile editor, whose saves write qc_rules.json (covered above).
     ("QC type grid", "@@pfas-qc-type-grid", ("button", "Save Grid")),

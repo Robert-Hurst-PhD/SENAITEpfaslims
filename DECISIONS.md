@@ -5516,3 +5516,19 @@ Lab answers:
   beside it. Exempt: the sidebar, header menu, wizard stepper (navigation
   chrome), the System Map diagram, and the printed certificate.
 - Guard: `test_ui_ratchet.test_links_are_buttons_not_text`.
+
+## 2026-10-01 — Certificate format per method x matrix; recovery as grids (confirmed)
+- **Reporting (lab: "The reporting page should be tied to each method as it
+  changes by method and matrix"; option chosen: certificate format):** each
+  method profile has a **Reporting** tab -- a grid, matrices down the side
+  ("All matrices" = the method default), settings across: CAS / MDL /
+  dilution columns, non-detect format, significant figures, regulatory-limit
+  notes, a standard note. Blank inherits (matrix -> method -> built-in).
+  `report_format` on the profile; the certificate resolves it per sample's
+  method x matrix. Seeded from the lab's global Print Settings (no certificate
+  changed); Print Settings keeps the lab-wide header, footer and sign-off.
+- **Recovery (lab: "visually cluttered ... optimise this into a grid for all
+  matrices"; option chosen: two compact grids):** spike levels as one grid per
+  spiked QC type (levels x matrices); a read-only grid of the window the engine
+  applies per analyte group x matrix; a compact tier table holding only what
+  the engine reads.

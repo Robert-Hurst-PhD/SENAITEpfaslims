@@ -229,6 +229,8 @@
          tal:attributes="style python:'' if view.show_eis_overrides() else 'display:none'">SUR Limits</a>
       <a class="pfas-tab" data-pane="pane-rl" href="#pane-rl"
          onclick="pfasTabSwitch('pane-rl'); return false;">Reporting Limits</a>
+      <a class="pfas-tab" data-pane="pane-rf" href="#pane-rf"
+         onclick="pfasTabSwitch('pane-rf'); return false;">Reporting</a>
       <a class="pfas-tab" data-pane="pane-cal" href="#pane-cal"
          onclick="pfasTabSwitch('pane-cal'); return false;">Calibration &amp; CCV</a>
       <a class="pfas-tab" data-pane="pane-lwf" href="#pane-lwf"
@@ -411,6 +413,23 @@
       </div><!-- /pane-ami -->
 
       <!-- ── Tab: Surrogate Map ─────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-rf">
+        <div class="page-body">
+          <p class="pane-intro">
+            How <strong>this method&#8217;s</strong> certificate is laid out, matrix
+            by matrix. The <em>All matrices</em> row is the method&#8217;s default;
+            a matrix row overrides it where that matrix reports differently, and a
+            cell left at <em>(default)</em> inherits. Reporting and detection
+            limits are on the Reporting Limits tab; the unit comes from Matrices
+            &amp; Units. Lab-wide header, footer and sign-off are in Print Settings.
+          </p>
+          <!-- Saved ON ITS OWN (R2): form#section-rf. -->
+          <div tal:define="cf_groups python:view.section_groups('rf'); cf_form string:section-rf">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+        </div>
+      </div><!-- /pane-rf -->
+
       <div class="tab-pane" id="pane-iso">
         <div class="page-body">
           <p class="pane-intro">
@@ -479,76 +498,77 @@
 
       <!-- ── Tab: Recovery Tiers ────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-rt">
-        <div class="page-body-narrow">
-
-          <div class="section-group-hdr">Spike QC Criteria (LFSM / LFB)</div>
+        <div class="page-body">
+          <!-- Saved ON ITS OWN (R2): spike levels, recovery tiers and the Dup
+               RPD belong to form#section-rt. -->
+          <div class="section-group-hdr">Spike levels (ppt)</div>
           <p class="pane-intro">
-            Spike-based QC is configured here in one place: the spike amounts
-            per matrix and the recovery acceptance windows applied to them.
+            One grid per spiked QC type: levels down the side, this method&#8217;s
+            matrices across. LFSMD uses the LFSM levels. The pipeline matches an
+            injection name (e.g. <em>&#8220;LFSM High&#8221;</em>) to the level and
+            reads the ppt for the batch&#8217;s matrix. Clear a level&#8217;s name to
+            remove it; the blank row adds one.
           </p>
-
-          <details open="open">
-            <summary>Spike Levels (LFB / LFSM) by Matrix</summary>
-            <div class="section-body">
-              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
-                Set the spike concentration (ppt) for each level and matrix.
-                LFSMD uses the same levels as LFSM.
-                The pipeline matches injection names (e.g.
-                <em>"; LFSM High"</em> &#8594; label &#8220;High&#8221; &#8594; ppt here)
-                for the batch matrix.
-                <strong>Enter actual spike amounts before running QC.</strong>
-              </p>
-              <div id="spikeLevelsContainer"></div>
-              <input type="hidden" name="spike_levels_json" id="spike_levels_json"
-                     tal:attributes="value view/spike_levels_json" />
-              <input type="hidden" id="enabled_qc_types_json"
-                     tal:attributes="value view/enabled_qc_types_json" />
+          <tal:spk repeat="spk view/spike_sections">
+            <h4 class="cf-grid-title" tal:content="python:spk[1]">LFSM / LFSMD</h4>
+            <div tal:define="cf_rows python:view.section_groups(spk[0]); cf_form string:section-rt">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
             </div>
-          </details>
+          </tal:spk>
 
-          <details>
-            <summary>Recovery Acceptance (LFSM / LFB / LCS)</summary>
-            <div class="section-body">
-              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
-                The recovery windows applied to the spike QC above. Each tier
-                card sets the recovery window (min/max %) and optional RSD limit.
-                <strong>Key Analytes</strong> &#8212; analytes subject to this tier&#39;s stricter limits.
-                <strong>Tight Matrices</strong> &#8212; if set, this tier only applies in those matrices.
-                <strong>No-Std Analytes</strong> &#8212; analytes that always fall to this tier (no labeled IS).
-                Leave all three pickers empty for a catch-all default tier.
-              </p>
-              <input type="hidden" name="recovery_tiers_json" id="recovery_tiers_json"
-                     tal:attributes="value view/recovery_tiers_json" />
-              <div id="recoveryTiersContainer"></div>
-              <button type="button" class="btn-sm btn-add-row" style="margin-top:4px"
-                      onclick="addRecoveryTier()">+ Add Tier</button>
+          <div class="section-group-hdr">Recovery window applied (LFSM)</div>
+          <tal:g define="grid view/recovery_grid">
+            <p class="pane-intro" tal:condition="view/grouped_tiers">
+              The window the QC engine applies to each analyte group in each
+              matrix, from the tiers below. Key analytes and analytes with no
+              labelled standard are set in the analyte reference; Tier&nbsp;1
+              matrices are ticked on Matrices &amp; Units.
+              <a class="btn-sm btn-secondary" href="#pane-mtx"
+                 onclick="return (pfasTabSwitch('pane-mtx'), false)">Open Matrices &amp; Units</a>
+            </p>
+            <p class="pane-intro" tal:condition="not:view/grouped_tiers">
+              This method&#8217;s QC engine applies its <strong>first tier</strong>
+              to every analyte in every matrix.
+            </p>
+            <table class="pfas-table cf-grid">
+              <thead><tr><th>Analytes</th>
+                <th tal:repeat="m grid/matrices" tal:content="m">Eggs</th></tr></thead>
+              <tbody>
+                <tr tal:repeat="row grid/rows">
+                  <td tal:attributes="title python:', '.join(row['members'])">
+                    <strong tal:content="row/title">Key analytes</strong>
+                    <span class="form-note" tal:content="python:'(%d)' % len(row['members'])">(4)</span>
+                  </td>
+                  <td tal:repeat="c row/cells"
+                      tal:attributes="title python:c['tier'] and ('tier: ' + c['tier']) or 'no tier applies'">
+                    <span tal:condition="not:c/warn" tal:content="c/text">80&#8211;120%</span>
+                    <span tal:condition="c/warn" class="sur-tag sur-nocore">not set</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </tal:g>
+
+          <div class="section-group-hdr">Recovery tiers (LFSM)</div>
+          <p class="pane-intro">
+            Each tier: which analytes and matrices it covers, its recovery window
+            and optional RSD limit. Clear a tier&#8217;s name to remove it.
+          </p>
+          <div tal:define="cf_rows python:view.section_groups('tiers'); cf_form string:section-rt">
+            <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+          </div>
+
+          <tal:dup condition="view/has_dup">
+            <div class="section-group-hdr">Sample Duplicate (Dup)</div>
+            <p class="pane-intro">
+              The maximum Relative Percent Difference between a sample and its
+              duplicate: RPD = |A &#8722; B| / ((A+B)/2) &#215; 100. Enable or disable
+              Dup on the QC Types tab.
+            </p>
+            <div tal:define="cf_groups python:view.section_groups('dup'); cf_form string:section-rt">
+              <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
             </div>
-          </details>
-
-          <div class="section-group-hdr">Sample Duplicate (Dup)</div>
-          <details open="open">
-            <summary>Sample Duplicate RPD</summary>
-            <div class="section-body">
-              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
-                Precision check on a field sample run in duplicate: the maximum
-                Relative Percent Difference between the two results.
-                RPD&nbsp;=&nbsp;|A&nbsp;&#8722;&nbsp;B|&nbsp;/&nbsp;((A+B)/2)&nbsp;&#215;&nbsp;100.
-                Drives the <code>Dup</code> QC type in the pipeline
-                (qc_acceptance.Dup). Enable/disable it on the
-                <strong>QC&nbsp;Types</strong> tab.
-              </p>
-              <div class="field-grid">
-                <div class="field-row">
-                  <label for="dup_rpd_max">Max RPD %</label>
-                  <input type="number" id="dup_rpd_max" name="dup_rpd_max"
-                         step="0.1" min="0"
-                         tal:attributes="value view/dup_rpd" />
-                  <span class="hint">20 for FDA; 30 for EPA methods</span>
-                </div>
-              </div>
-            </div>
-          </details>
-
+          </tal:dup>
         </div>
       </div><!-- /pane-rt -->
 
@@ -888,6 +908,25 @@
     </form>
     <!-- Per-tab section forms (R2): each saves only its own section, with its
          own stale-save stamp. -->
+    <form id="section-rf" method="POST" class="pfas-section-form"
+          data-tab-label="Reporting"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="rf" />
+      <input type="hidden" name="_pane" value="pane-rf" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__rf" tal:attributes="value python:view.section_stamp('rf')" />
+    </form>
+    <form id="section-rt" method="POST" class="pfas-section-form"
+          data-tab-label="Recovery Tiers"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" tal:attributes="value python:','.join(view.rt_section_ids())" />
+      <input type="hidden" name="_pane" value="pane-rt" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <tal:st repeat="sid view/rt_section_ids">
+        <input type="hidden" tal:attributes="name python:'section_stamp__' + sid;
+                                             value python:view.section_stamp(sid)" />
+      </tal:st>
+    </form>
     <form id="section-iso" method="POST" class="pfas-section-form"
           data-tab-label="Isomers"
           tal:attributes="action string:@@pfas-method-profile-edit">
@@ -1053,7 +1092,7 @@
     /* Endpoint for stage action GIFs — shared with the logbook step builder. */
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=9"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=10"></script>
 
   </div><!-- /content slot -->
 

@@ -699,6 +699,240 @@ def check_isomers(profile):
     return _iso.check(profile, _global_titles())
 
 
+# ── Recovery Tiers tab: spike levels, recovery tiers, Dup RPD (2026-10-01) ──
+# Lab: "the recovery LFSM information ... is visually cluttered ... optimise
+# this into a grid for all matrices." Spike levels become one grid per spiked
+# QC type (levels x matrices); recovery tiers a compact table holding ONLY what
+# the engine reads; a read-only grid shows the window applied per analyte group
+# x matrix, computed the way the engine computes it (cross-checked in tests).
+
+SPIKE_QC_TYPES = (u"LFSM", u"LFB", u"LCS")
+SPIKE_LABELS = {u"LFSM": u"LFSM / LFSMD", u"LFB": u"LFB", u"LCS": u"LCS"}
+
+
+def _spike_levels(profile, qc):
+    """Level labels used for `qc`, in first-seen order across matrices."""
+    labels = []
+    for m in profile.get("supported_matrices") or []:
+        for r in ((profile.get("spike_levels") or {}).get(m) or {}).get(qc) or []:
+            if isinstance(r, dict) and r.get("label") and r["label"] not in labels:
+                labels.append(r["label"])
+    return labels
+
+
+def _spike_collection(qc):
+    def columns(profile):
+        return ([cf.Field("label", u"Level", kind=cf.TEXT, placeholder=u"new level")] +
+                [cf.Field((m,), m, unit=u"ppt", minimum=0, placeholder=u"ppt")
+                 for m in profile.get("supported_matrices") or []])
+
+    def read(profile):
+        sl = profile.get("spike_levels") or {}
+        rows = []
+        for label in _spike_levels(profile, qc):
+            row = {"label": label}
+            for m in profile.get("supported_matrices") or []:
+                for r in (sl.get(m) or {}).get(qc) or []:
+                    if isinstance(r, dict) and r.get("label") == label:
+                        row[m] = r.get("ppt")
+            rows.append(row)
+        return rows
+
+    def write(profile, rows):
+        sl = dict(profile.get("spike_levels") or {})
+        for m in profile.get("supported_matrices") or []:
+            per = dict(sl.get(m) or {})
+            had = qc in per
+            levels = [{"label": r["label"], "ppt": r.get(m)} for r in rows]
+            if not had and all(l["ppt"] is None for l in levels):
+                continue                     # nothing entered: nothing created
+            per[qc] = levels
+            sl[m] = per
+        _set(profile, "spike_levels", sl)
+        return profile
+
+    return cf.Collection(id=u"spk_" + qc, title=u"Spike levels: %s" % SPIKE_LABELS[qc],
+                         columns=columns, read=read, write=write, noun=u"level",
+                         new_rows=1, allow_empty=True)
+
+
+SPIKE_LEVELS = dict((qc, _spike_collection(qc)) for qc in SPIKE_QC_TYPES)
+
+RECOVERY_QC = u"LFSM"
+GROUP_CHOICES = [(u"all", u"All analytes"), (u"key", u"Key analytes"),
+                 (u"linked", u"Other analytes"), (u"no_std", u"No labelled standard")]
+SCOPE_CHOICES = [(u"all", u"All matrices"), (u"tight", u"Tier 1 matrices only")]
+# How each method's engine picks a tier (pfas_pipeline.method_profiles): FDA
+# resolves by analyte group and Tier 1 matrices; the EPA methods apply their
+# FIRST tier to every analyte and matrix.
+GROUPED_TIER_METHODS = (u"FDA_32PFAS",)
+
+
+def _tiers(profile):
+    return [t for t in (((profile.get("qc_acceptance") or {}).get(RECOVERY_QC) or {})
+                        .get("tiers") or []) if isinstance(t, dict)]
+
+
+def read_tiers(profile):
+    return [{"name": t.get("name") or u"tier %d" % (i + 1),
+             "analyte_group": t.get("analyte_group") or u"all",
+             "matrix_scope": t.get("matrix_scope") or u"all",
+             "recovery_min": t.get("recovery_min"), "recovery_max": t.get("recovery_max"),
+             "rsd_max": t.get("rsd_max")}
+            for i, t in enumerate(_tiers(profile))]
+
+
+def write_tiers(profile, rows):
+    old = dict(((t.get("name") or u"tier %d" % (i + 1)), t) for i, t in enumerate(_tiers(profile)))
+    tiers = []
+    for r in rows:
+        t = dict(old.get(r["name"]) or {})            # keep e.g. verify_against_method
+        t.update({"name": r["name"], "analyte_group": r.get("analyte_group") or u"all",
+                  "matrix_scope": r.get("matrix_scope") or u"all"})
+        for key in ("recovery_min", "recovery_max", "rsd_max"):
+            if r.get(key) is not None or key in t:    # absent stays absent
+                t[key] = r.get(key)
+        tiers.append(t)
+    entry = profile.setdefault("qc_acceptance", {}).setdefault(RECOVERY_QC, {"enabled": True})
+    entry["tiers"] = tiers
+    return profile
+
+
+def check_tiers(profile, rows):
+    errors = []
+    for r in rows:
+        lo, hi = r.get("recovery_min"), r.get("recovery_max")
+        if (lo is None) != (hi is None):
+            errors.append(u"%s: set both ends of the recovery window, or neither." % r["name"])
+        elif lo is not None and lo > hi:
+            errors.append(u"%s: min (%s) is above max (%s)." % (r["name"], lo, hi))
+    if profile.get("method_id") not in GROUPED_TIER_METHODS and len(rows) > 1:
+        errors.append(u"This method's QC engine applies its FIRST tier to every analyte "
+                      u"and matrix; a second tier would never be used. Keep one tier.")
+    return errors
+
+
+RECOVERY_TIERS = cf.Collection(
+    id=u"tiers", title=u"Recovery tiers", noun=u"tier", new_rows=1,
+    columns=[cf.Field("name", u"Tier", kind=cf.TEXT, placeholder=u"new tier"),
+             cf.Field("analyte_group", u"Applies to", kind=cf.CHOICE, choices=GROUP_CHOICES),
+             cf.Field("matrix_scope", u"Matrices", kind=cf.CHOICE, choices=SCOPE_CHOICES),
+             cf.Field("recovery_min", u"Min %", minimum=0),
+             cf.Field("recovery_max", u"Max %", minimum=0),
+             cf.Field("rsd_max", u"RSD ≤ %", minimum=0)],
+    read=read_tiers, write=write_tiers, check=check_tiers)
+
+DUP_RPD = cf.Section(
+    id=u"dup", title=u"Sample Duplicate RPD", base=("qc_acceptance", "Dup", "tiers", 0),
+    groups=[(u"Sample Duplicate RPD", [
+        cf.Field("rpd_max", u"Max RPD", unit=u"%", required=True, minimum=0,
+                 help=u"20 for FDA; 30 for EPA methods"),
+    ])])
+
+
+def resolve_tier(profile, is_key, is_no_std, matrix):
+    """The tier the engine applies (None = it refuses: unconfigured)."""
+    tiers = _tiers(profile)
+    if not tiers:
+        return None
+    if profile.get("method_id") not in GROUPED_TIER_METHODS:
+        return tiers[0]
+    tight = set((profile.get("tight_matrices") or []))
+    for t in tiers:
+        ag, ms = t.get("analyte_group", "all"), t.get("matrix_scope", "all")
+        if ag == "no_std" and is_no_std:
+            return t
+        if ag == "key" and ms == "tight" and is_key and matrix in tight:
+            return t
+    for t in tiers:
+        if t.get("analyte_group", "all") in ("linked", "all"):
+            return t
+    return None
+
+
+def recovery_grid(profile):
+    """Read-only grid: analyte group rows x matrix columns, each cell the
+    window the engine applies there."""
+    try:
+        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+    except Exception:
+        from analyte_reference import NATIVE_ANALYTES
+    flags = dict((r[0], (bool(r[8]), bool(r[7]))) for r in NATIVE_ANALYTES)   # (key, no_std)
+    labels = _analyte_titles(profile)
+    panel = profile.get("master_analyte_set") or []
+    groups = [(u"Key analytes", lambda k, n: k and not n),
+              (u"Other analytes", lambda k, n: not k and not n),
+              (u"No labelled standard", lambda k, n: n)]
+    matrices = profile.get("supported_matrices") or []
+    rows = []
+    for title, member in groups:
+        names = [kw for kw in panel if member(*flags.get(kw, (False, False)))]
+        if not names:
+            continue
+        k, n = flags.get(names[0], (False, False))
+        cells = []
+        for m in matrices:
+            t = resolve_tier(profile, k, n, m)
+            if t is None or t.get("recovery_min") is None:
+                cells.append({"text": u"not set", "warn": True, "tier": None})
+            else:
+                text = u"%g–%g%%" % (t["recovery_min"], t["recovery_max"])
+                if t.get("rsd_max") is not None:
+                    text += u" · RSD ≤ %g" % t["rsd_max"]
+                cells.append({"text": text, "warn": False, "tier": t.get("name")})
+        rows.append({"title": title, "members": [labels.get(kw) for kw in names],
+                     "cells": cells})
+    return {"matrices": matrices, "rows": rows}
+
+
+# ── Reporting tab: certificate format per method x matrix (2026-10-01) ─────
+
+try:
+    from senaite.pfas import report_format as _rf
+except Exception:          # tests: loaded without the package
+    import report_format as _rf
+
+
+def report_rows(profile):
+    rows = [{"key": (_rf.ALL,), "group": u"rf", "label": u"All matrices",
+             "note": u"method default"}]
+    rows += [{"key": (m,), "group": u"rf", "label": m}
+             for m in profile.get("supported_matrices") or []]
+    return _one_group(u"rf", u"Certificate format"), rows
+
+
+def read_report_format(profile):
+    fmt = profile.get(_rf.KEY) or {}
+    return dict(((scope,), dict((k, v) for k, v in (vals or {}).items()))
+                for scope, vals in fmt.items() if isinstance(vals, dict))
+
+
+def write_report_format(profile, updates, env=None):
+    fmt = dict(profile.get(_rf.KEY) or {})
+    for (scope,), vals in updates.items():
+        row = dict(fmt.get(scope) or {})
+        for (key,), value in vals.items():
+            if value in (None, u""):
+                row.pop(key, None)          # blank = inherit
+            else:
+                row[key] = value
+        if row or scope == _rf.ALL:
+            fmt[scope] = row
+        else:
+            fmt.pop(scope, None)
+    profile[_rf.KEY] = fmt
+    return profile
+
+
+REPORT_FORMAT = cf.Table(
+    id=u"rf", title=u"Certificate format", base=(_rf.KEY,),
+    columns=[cf.Field(key, label, kind=cf.CHOICE if choices else cf.TEXT,
+                      choices=choices, placeholder=u"(default)")
+             for key, label, choices, _d in _rf.SETTINGS],
+    rows=report_rows, read=read_report_format, write=write_report_format,
+    row_heading=u"Matrix")
+
+
 # ── QC Types tab: every QC type the lab defines (2026-10-01) ────────────────
 # The lab's QC types are the TAGGED core Reference Definitions ([QC:CODE] in the
 # description, editable in Setup). The tab used to list only the types already
@@ -763,5 +997,7 @@ PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
                                     SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
-                                    LABELLED_STANDARDS, ISOMERS] +
+                                    LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
+                                    REPORT_FORMAT] +
+                list(SPIKE_LEVELS.values()) +
                 [c for c, _l in EIS_CLASSES])

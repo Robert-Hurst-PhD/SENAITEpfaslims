@@ -952,6 +952,161 @@ def test_which_qc_types_a_method_runs_has_one_source():
     assert "_DEFAULT_TIERS" not in grid and "del qa[code]" not in grid
 
 
+# ── Recovery Tiers tab grids (2026-10-01) ────────────────────────────────────
+
+def test_the_recovery_grid_shows_what_the_engine_applies():
+    """Every analyte x matrix: the window the grid shows for the analyte's
+    group is the window the pipeline's QC engine returns (method by method:
+    FDA resolves by group and Tier 1 matrices, the EPA methods use tier 1)."""
+    if sys.version_info[0] < 3:
+        return                     # the pipeline is Python 3 (the worker); run under py3
+    sys.path.insert(0, os.path.dirname(HERE))
+    from pfas_pipeline import method_profiles as mp
+    import analyte_reference as ar
+    flags = dict((r[0], (bool(r[8]), bool(r[7]))) for r in ar.NATIVE_ANALYTES)
+    display = dict((r[0], r[1]) for r in ar.NATIVE_ANALYTES)
+    checked = 0
+    for mid, prof in _profiles().items():
+        engine = mp.get_profile(mid)
+        for kw in prof.get("master_analyte_set") or []:
+            k, n = flags.get(kw, (False, False))
+            for m in prof.get("supported_matrices") or []:
+                rule = engine.qc_rules(display.get(kw, kw), m, "LFSM")
+                t = mps.resolve_tier(prof, k, n, m)
+                got = (t.get("recovery_min"), t.get("recovery_max"), t.get("rsd_max")) if t else None
+                want = (rule.recovery_min, rule.recovery_max, rule.rsd_max) if rule else None
+                assert got == want, (mid, kw, m, got, want)
+                checked += 1
+    assert checked > 300, checked
+
+
+def test_unchanged_recovery_tab_saves_change_nothing():
+    for mid, stored in _profiles().items():
+        for coll in [mps.RECOVERY_TIERS] + list(mps.SPIKE_LEVELS.values()):
+            after = save(coll, stored, coll_form(coll, stored))
+            assert ch.diff(stored, after) == [], (mid, coll.id, ch.diff(stored, after)[:3])
+            assert after.get("spike_levels") == stored.get("spike_levels"), (mid, coll.id)
+            # exact, not just equivalent: a missing key must not become None
+            assert after["qc_acceptance"]["LFSM"] == stored["qc_acceptance"]["LFSM"], (mid, coll.id)
+        form = {}
+        for g in cf.render(mps.DUP_RPD, stored):
+            for row in g["fields"]:
+                form[row["name"]] = row["value"]
+        after = save(mps.DUP_RPD, stored, form)
+        assert ch.diff(stored, after) == [], mid
+
+
+def test_an_unchanged_tier_save_keeps_absent_keys_absent():
+    """EPA tiers carry no rsd_max key; an unchanged save wrote rsd_max: None
+    (equivalent, but a change -- caught by the live audit)."""
+    stored = {"method_id": "EPA_537_1", "supported_matrices": ["Drinking Water"],
+              "qc_acceptance": {"LFSM": {"enabled": True, "tiers": [
+                  {"name": "default", "analyte_group": "all", "matrix_scope": "all",
+                   "recovery_min": 70.0, "recovery_max": 130.0}]}}}
+    after = save(mps.RECOVERY_TIERS, stored, coll_form(mps.RECOVERY_TIERS, stored))
+    assert after["qc_acceptance"]["LFSM"] == stored["qc_acceptance"]["LFSM"], after["qc_acceptance"]
+
+
+def test_spike_levels_are_one_grid_levels_by_matrices():
+    stored = _profiles()["FDA_32PFAS"]
+    rows = cf.render(mps.SPIKE_LEVELS["LFSM"], stored)
+    assert [c["label"] for c in rows[0]["cells"]][1:] == stored["supported_matrices"]
+    form = coll_form(mps.SPIKE_LEVELS["LFSM"], stored)
+    name = cf.collection_name(mps.SPIKE_LEVELS["LFSM"], 0,
+                              cf.Field(("Eggs",), "Eggs"))
+    form[name] = "50"
+    after = save(mps.SPIKE_LEVELS["LFSM"], stored, form)
+    assert [r for r in after["spike_levels"]["Eggs"]["LFSM"] if r["label"] == "Low"][0]["ppt"] == 50.0
+    assert after["spike_levels"]["Animal Feed"] == stored["spike_levels"]["Animal Feed"]
+
+
+def test_tier_rules_and_the_epa_single_tier():
+    stored = _profiles()["EPA_537_1"]
+    n = len(mps.read_tiers(stored))
+    form = coll_form(mps.RECOVERY_TIERS, stored)
+    form[_cell(mps.RECOVERY_TIERS, n, "name")] = "extra"
+    form[_cell(mps.RECOVERY_TIERS, n, "recovery_min")] = "50"
+    form[_cell(mps.RECOVERY_TIERS, n, "recovery_max")] = "150"
+    assert any("FIRST tier" in e for e in cf.parse(mps.RECOVERY_TIERS, form, stored)[1])
+    fda = _profiles()["FDA_32PFAS"]
+    form = coll_form(mps.RECOVERY_TIERS, fda)
+    form[_cell(mps.RECOVERY_TIERS, 0, "recovery_max")] = ""
+    assert any("both ends" in e for e in cf.parse(mps.RECOVERY_TIERS, form, fda)[1])
+
+
+def test_the_recovery_tab_has_no_hand_written_parser_left():
+    src = _read("method_profiles.py")
+    template = _read("templates", "method_profile_edit.pt")
+    js = _read("static", "method_profile_edit.js")
+    for retired in ("recovery_tiers_json", "spike_levels_json", "dup_rpd_max", "buildRecoveryTiersGrid",
+                    "buildSpikeMatrixSections", "addTierChip", "spikeLevelsContainer"):
+        assert retired not in src and retired not in template and retired not in js, retired
+
+
+def test_the_tier_table_holds_only_what_the_engine_reads():
+    """The tier cards offered key-analyte / tight-matrix / no-std pickers the
+    engine ignores (structural keys); the table has none of them."""
+    cols = set(c.path[0] for c in mps.RECOVERY_TIERS.columns)
+    assert cols == {"name", "analyte_group", "matrix_scope", "recovery_min", "recovery_max", "rsd_max"}
+
+
+# ── Reporting tab: certificate format per method x matrix (2026-10-01) ──────
+
+import report_format as rfmod      # noqa: E402
+
+
+def _rfmig(mid, ps=None):
+    import copy
+    p = copy.deepcopy(_profiles()[mid])
+    rfmod.migrate(p, ps if ps is not None else {"coa_show_cas": True, "coa_show_mdl": False,
+                                                "coa_nd_format": "nd", "coa_sig_figs": "3"})
+    return p
+
+
+def test_migration_reproduces_the_global_settings_for_every_matrix():
+    p = _rfmig("FDA_32PFAS")
+    for m in p["supported_matrices"]:
+        r = rfmod.resolve(p, m)
+        assert r["coa_show_cas"] is True and r["coa_show_mdl"] is False
+        assert r["coa_nd_format"] == "nd" and r["coa_sig_figs"] == "3"
+        assert r["coa_show_regulatory"] is True and r["coa_note"] == ""   # new: built-in default
+    assert not rfmod.migrate(p, {})                                         # idempotent
+
+
+def test_a_matrix_row_overrides_and_blank_inherits():
+    p = _rfmig("FDA_32PFAS")
+    form = env_form(mps.REPORT_FORMAT, p)
+    col = dict((c.path[0], c) for c in mps.REPORT_FORMAT.columns)
+    form[cf.cell_name(mps.REPORT_FORMAT, ("Milk",), col["coa_show_mdl"])] = "yes"
+    form[cf.cell_name(mps.REPORT_FORMAT, ("*",), col["coa_note"])] = "Results on a wet-weight basis."
+    after = env_save(mps.REPORT_FORMAT, p, form)
+    assert rfmod.resolve(after, "Milk")["coa_show_mdl"] is True             # overridden
+    assert rfmod.resolve(after, "Eggs")["coa_show_mdl"] is False            # inherits the method row
+    assert rfmod.resolve(after, "Eggs")["coa_note"] == "Results on a wet-weight basis."
+    form[cf.cell_name(mps.REPORT_FORMAT, ("Milk",), col["coa_show_mdl"])] = ""
+    back = env_save(mps.REPORT_FORMAT, after, form)
+    assert "Milk" not in back["report_format"]                               # an empty override row goes
+
+
+def test_an_unchanged_reporting_save_changes_nothing():
+    for mid in _profiles():
+        p = _rfmig(mid)
+        after = env_save(mps.REPORT_FORMAT, p, env_form(mps.REPORT_FORMAT, p))
+        assert ch.diff(p, after) == [], (mid, ch.diff(p, after)[:3])
+
+
+def test_the_certificate_reads_each_samples_own_format():
+    tpl = _read("templates", "coa_sections.pt")
+    assert "s.get('coa_show_" not in tpl and "smp['fmt'].get('coa_show_cas')" in tpl
+    src = _read("coa_sections.py")
+    assert "report_format.resolve(profile, matrix)" in src
+    import io
+    with io.open(os.path.join(PKG, "print_settings.py"), encoding="utf-8") as fh:
+        ps = fh.read()
+    for moved in ("coa_show_cas", "coa_show_mdl", "coa_nd_format", "coa_sig_figs"):
+        assert '"%s":' % moved not in ps, moved                             # no second copy
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]

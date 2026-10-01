@@ -170,23 +170,6 @@ class PFASMethodProfileEditView(BrowserView):
     # is judged against the reporting limit.
     RECOVERY_TIER_QC_TYPE = "LFSM"
 
-    def recovery_tiers_json(self):
-        """The tiers the ENGINE enforces, not the retired flat key.
-
-        This read the retired flat recovery-tiers key, which
-        migrate_profile_structure superseded and which is empty in every live
-        profile -- so the Recovery Tiers
-        tab rendered EMPTY while 80-120 / 65-135 / 40-140 sat in
-        `qc_acceptance.LFSM.tiers`, and any tier a manager added there was
-        written to a key nothing reads.
-
-        Same shape as the CCV defect, in the one editor where it matters most:
-        the recovery window is the pass/fail gate on a certificate.
-        """
-        qca = self.profile().get("qc_acceptance", {}) or {}
-        entry = qca.get(self.RECOVERY_TIER_QC_TYPE, {}) or {}
-        return json.dumps(entry.get("tiers", []), indent=2)
-
     def per_analyte_json(self):
         from senaite.pfas.method_profile_store import DEFAULT_PROFILES
         per_a = self.profile().get("per_analyte") or []
@@ -207,22 +190,6 @@ class PFASMethodProfileEditView(BrowserView):
             out[row[1]] = labels.get(row[0])
             out[row[0]] = labels.get(row[0])
         return json.dumps(out)
-
-    def dup_rpd(self):
-        """Sample-duplicate RPD limit, from the structure the engine evaluates.
-
-        The fallback to the legacy flat key is gone, and so is the 20.0 default
-        behind it. migrate_profile_structure carries a legacy value into
-        qc_acceptance.Dup, and an unmigrated profile now shows an empty field
-        rather than a plausible number the engine would not enforce -- with
-        UnconfiguredCriterion making the gap loud on the next run instead of
-        silently judging duplicates against 20%.
-        """
-        qca = self.profile().get("qc_acceptance", {}) or {}
-        tiers = (qca.get("Dup", {}) or {}).get("tiers", []) or []
-        if tiers and tiers[0].get("rpd_max") is not None:
-            return tiers[0]["rpd_max"]
-        return ""
 
     def standard_lot_options(self):
         """Standard / Reference-Material lots from the reagent inventory, for
@@ -248,15 +215,6 @@ class PFASMethodProfileEditView(BrowserView):
                 "name": name, "label": label, "expired": expired,
             })
         return sorted(out, key=lambda x: x["label"].lower())
-
-    def spike_levels_json(self):
-        return json.dumps(self.profile().get("spike_levels", {}), indent=2)
-
-    def enabled_qc_types_json(self):
-        """The QC types this method runs (qc_acceptance enabled flags -- the
-        one source; `associated_qc_types` was folded into them, 2026-10-01)."""
-        from senaite.pfas.qc.qc_types import enabled_qc_types
-        return json.dumps(enabled_qc_types(self.profile()))
 
     def qc_type_toggles(self):
         """Per-method QC-type enable toggles — one row per qc_acceptance key.
@@ -446,6 +404,31 @@ class PFASMethodProfileEditView(BrowserView):
     # fields are parsed, against its own stamp, and nothing else in the POST
     # chain runs -- the rule-toggle and surrogate-link writers read fields this
     # form does not carry, and would switch every rule off / rewrite the links.
+
+    def spike_sections(self):
+        """[(section id, label)] for the spiked QC types this method runs."""
+        from senaite.pfas.method_profile_sections import SPIKE_LEVELS, SPIKE_LABELS
+        from senaite.pfas.qc.qc_types import enabled_qc_types
+        on = set(enabled_qc_types(self.profile()))
+        if "LFSMD" in on:
+            on.add("LFSM")                       # LFSMD shares the LFSM levels
+        return [(SPIKE_LEVELS[q].id, SPIKE_LABELS[q]) for q in ("LFSM", "LFB", "LCS") if q in on]
+
+    def has_dup(self):
+        return "Dup" in ((self.profile().get("qc_acceptance") or {}))
+
+    def rt_section_ids(self):
+        ids = ["tiers"] + [sid for sid, _l in self.spike_sections()]
+        return ids + (["dup"] if self.has_dup() else [])
+
+    def grouped_tiers(self):
+        from senaite.pfas.method_profile_sections import GROUPED_TIER_METHODS
+        return self.method_id() in GROUPED_TIER_METHODS
+
+    def recovery_grid(self):
+        from senaite.pfas.method_profile_sections import recovery_grid
+        from senaite.pfas.method_profile_store import raw_profile
+        return recovery_grid(raw_profile(_portal(self.context), self.method_id()))
 
     def eis_class_sections(self):
         """[(section id, label)] for the four 1633A matrix-class EIS tables."""
@@ -657,37 +640,8 @@ class PFASMethodProfileEditView(BrowserView):
         # inputs, and the old handler assigned every one unconditionally --
         # parsing them here would null them on every Save & Export.
 
-        # Recovery tiers are written back to the structure the engine reads.
-        # Guarded by the field's presence so a POST from another pane cannot
-        # blank the tiers -- which, with refuse-to-judge, would stop every run.
-        if "recovery_tiers_json" in f:
-            tiers = _json_field("recovery_tiers_json", None)
-            if isinstance(tiers, list) and tiers:
-                qca = profile.setdefault("qc_acceptance", {})
-                entry = qca.setdefault(self.RECOVERY_TIER_QC_TYPE, {})
-                entry.setdefault("enabled", True)
-                entry["tiers"] = tiers
-
-        # Sample Duplicate (Dup) RPD. D56 fixed a disconnection here by writing
-        # BOTH the flat `duplicate` key and qc_acceptance.Dup. Only the latter
-        # is read by the engine, so the mirror was two places holding one number
-        # and free to diverge — the split-key shape four defects came out of.
-        # The value is migrated into the enforced structure and the mirror
-        # dropped; dup_rpd() still READS the legacy key so an unmigrated profile
-        # keeps its value until its first save.
-        rpd = _float("dup_rpd_max")
-        if rpd is not None:
-            profile.pop("duplicate", None)
-            qca = profile.setdefault("qc_acceptance", {})
-            dup_qc = qca.setdefault("Dup", {"enabled": True})
-            tiers = dup_qc.setdefault("tiers", [{}])
-            if not tiers:
-                tiers.append({})
-            tiers[0]["rpd_max"] = rpd
-            # ensure the tier is a valid catch-all so the engine resolves it
-            tiers[0].setdefault("name", "default")
-            tiers[0].setdefault("analyte_group", "all")
-            tiers[0].setdefault("matrix_scope", "all")
+        # Recovery tiers, spike levels and the Dup RPD are NOT parsed here: the
+        # Recovery Tiers tab is its own form (declared grids, R2).
 
         # Salt and matrix adjustment factors are NOT parsed here: the Sample
         # Corrections tab is its own form (config_forms tables, R2), saved by
@@ -711,10 +665,6 @@ class PFASMethodProfileEditView(BrowserView):
         # here: the Surrogate Map tab is its own form (R2, declared sections).
 
         # Isomers are NOT parsed here: the Isomers tab is its own form (R2).
-
-        raw_sl = f.get("spike_levels_json", "").strip()
-        if raw_sl:
-            profile["spike_levels"] = json.loads(raw_sl)
 
         profile["extraction_stages"] = _json_field(
             "extraction_stages_json",

@@ -85,28 +85,29 @@
         <thead>
           <tr>
             <th i18n:translate="">Analyte</th>
-            <th tal:condition="python:s.get('coa_show_cas')" i18n:translate="">CAS No.</th>
+            <th tal:condition="python:smp['fmt'].get('coa_show_cas')" i18n:translate="">CAS No.</th>
             <th class="num" i18n:translate="">Result</th>
             <th i18n:translate="">Qual</th>
             <th class="num" i18n:translate="">RL</th>
-            <th class="num" tal:condition="python:s.get('coa_show_mdl')" i18n:translate="">MDL</th>
+            <th class="num" tal:condition="python:smp['fmt'].get('coa_show_mdl')" i18n:translate="">MDL</th>
             <th i18n:translate="">Units</th>
-            <th class="num" tal:condition="python:s.get('coa_show_dilution')" i18n:translate="">Dil.</th>
+            <th class="num" tal:condition="python:smp['fmt'].get('coa_show_dilution')" i18n:translate="">Dil.</th>
           </tr>
         </thead>
         <tbody>
           <tr tal:repeat="r smp/rows" tal:attributes="class python:'det' if r['detected'] else ''">
             <td tal:content="r/title">PFOA</td>
-            <td tal:condition="python:s.get('coa_show_cas')" tal:content="r/cas">335-67-1</td>
+            <td tal:condition="python:smp['fmt'].get('coa_show_cas')" tal:content="r/cas">335-67-1</td>
             <td class="num res" tal:content="r/result">4.2</td>
             <td tal:content="r/qualifiers"></td>
             <td class="num" tal:content="r/rl"></td>
-            <td class="num" tal:condition="python:s.get('coa_show_mdl')" tal:content="r/mdl"></td>
+            <td class="num" tal:condition="python:smp['fmt'].get('coa_show_mdl')" tal:content="r/mdl"></td>
             <td tal:content="r/unit"></td>
-            <td class="num" tal:condition="python:s.get('coa_show_dilution')" tal:content="r/dilution"></td>
+            <td class="num" tal:condition="python:smp['fmt'].get('coa_show_dilution')" tal:content="r/dilution"></td>
           </tr>
         </tbody>
       </table>
+      <div class="pfas-coa-note" tal:condition="smp/fmt/coa_note" tal:content="smp/fmt/coa_note">Standard note</div>
       <div class="pfas-coa-legend">
         <span i18n:translate="">Detected results in bold.</span>
         <span i18n:translate="">U = not detected at or above the reporting limit (RL).</span>

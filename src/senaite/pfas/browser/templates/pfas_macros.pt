@@ -239,6 +239,15 @@
     /* Small status tags beside a table row (declared sections: suggested,
        core-linked, unlinked). Defined once here; they were a page-local
        <style> on the Surrogate Map tab that other tabs silently relied on. */
+    /* Declared grids (config_forms): one row per item, one column per matrix. */
+    .cf-grid th, .cf-grid td { text-align: center; white-space: nowrap; }
+    /* Declared tables: the label column takes only the width its labels
+       need, so the value columns (often one per matrix) get the room. */
+    .cf-table th:first-child, .cf-table td:first-child { width: 1%; white-space: nowrap; padding-right: var(--sp-4); }
+    .cf-table select.rl-in { min-width: 7.5em; }
+    .cf-grid th:first-child, .cf-grid td:first-child { text-align: left; }
+    .cf-grid-title { font-family: var(--font-heading); font-size: var(--fs-base);
+                     margin: var(--sp-3) 0 var(--sp-2); }
     .sur-tag { font-size: var(--fs-xs); padding: 1px 7px; border-radius: 8px; font-weight: 700;
                display: inline-block; text-decoration: none; margin-left: 4px; }
     .sur-default  { background: var(--s-primary-lt); color: var(--s-primary-dk); }

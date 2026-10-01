@@ -161,8 +161,14 @@ class PFASCoASectionsView(BrowserView):
             when = an.getResultCaptureDate()
             if when:
                 analysed.append(when)
-        rows = coa_format.build_rows(data, profile, matrix, self.settings(), cas)
-        regulatory = self._regulatory(sample, data, profile, matrix, rows)
+        # this sample's certificate format: its method x matrix (Reporting tab)
+        from senaite.pfas import report_format
+        fmt = report_format.resolve(profile, matrix)
+        merged = dict(self.settings())
+        merged.update(fmt)
+        rows = coa_format.build_rows(data, profile, matrix, merged, cas)
+        regulatory = (self._regulatory(sample, data, profile, matrix, rows, fmt)
+                      if fmt.get("coa_show_regulatory") else None)
         units = sorted(set(r["unit"] for r in rows if r["unit"]))
         contact = sample.getContact()
         batch = sample.getBatch()
@@ -182,6 +188,7 @@ class PFASCoASectionsView(BrowserView):
             "any_rl": any(r["rl"] for r in rows),
             "codes": sorted(set(c for d in data for c in d["codes"])),
             "regulatory": regulatory,
+            "fmt": fmt,
         }
 
     # ── regulatory notes (part B) ─────────────────────────────────────────
@@ -200,7 +207,7 @@ class PFASCoASectionsView(BrowserView):
             logger.warning("coa_sections: no state program: %s", exc)
         return progs
 
-    def _regulatory(self, sample, data, profile, matrix, rows):
+    def _regulatory(self, sample, data, profile, matrix, rows, fmt=None):
         """Verified limits for this sample's programs and matrix, evaluated.
 
         Returns None when no verified limit applies (no box is printed)."""
@@ -220,7 +227,7 @@ class PFASCoASectionsView(BrowserView):
             results[d["keyword"]] = {
                 "value": float(d["result"]) if res["detected"] else None,
                 "rl": lim["rl"]}
-        n = int(self.settings().get("coa_sig_figs") or 3)
+        n = int((fmt or self.settings()).get("coa_sig_figs") or 3)
         names = store.get("programs") or {}
         findings, below, compared = [], 0, 0
         for l in limits:

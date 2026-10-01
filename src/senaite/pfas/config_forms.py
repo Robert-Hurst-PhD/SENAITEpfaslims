@@ -50,8 +50,9 @@ class Field(object):
     def __init__(self, path, label, kind=NUMBER, unit=u"", help=u"",
                  placeholder=u"", required=False, minimum=None, maximum=None,
                  choices=None, blank=u"unset", greater_than=None):
-        self.path = tuple(path.split(".")) if isinstance(path, _STR) else tuple(path)
-        self.name = u"f__" + u"__".join(self.path)
+        self.path = (tuple(int(x) if x.isdigit() else x for x in path.split("."))
+                     if isinstance(path, _STR) else tuple(path))
+        self.name = u"f__" + u"__".join(u"%s" % p for p in self.path)
         self.label = label
         self.kind = kind
         self.unit = unit
@@ -83,11 +84,39 @@ class Section(object):
 # ── reading the stored value ─────────────────────────────────────────────────
 
 def _get(value, path):
+    """Walk dict keys -- and list positions, for an int segment (e.g. the
+    first tier of a QC type: ("tiers", 0, "rpd_max"))."""
     for p in path:
-        if not isinstance(value, dict) or p not in value:
+        if isinstance(value, list) and isinstance(p, int):
+            if p >= len(value):
+                return None
+            value = value[p]
+        elif isinstance(value, dict) and p in value:
+            value = value[p]
+        else:
             return None
-        value = value[p]
     return value
+
+
+def _descend(node, p):
+    """The child at `p`, created if missing (a dict, or a list slot)."""
+    if isinstance(node, list) and isinstance(p, int):
+        while len(node) <= p:
+            node.append({})
+        if not isinstance(node[p], dict):
+            node[p] = {}
+        return node[p]
+    return node.setdefault(p, {})
+
+
+def _bound(obj, stored):
+    """A table / collection whose columns depend on the stored value (e.g.
+    one column per matrix) resolved for this value; others returned as is."""
+    if callable(getattr(obj, "columns", None)):
+        bound = copy.copy(obj)
+        bound.columns = obj.columns(stored or {})
+        return bound
+    return obj
 
 
 def current(section, stored):
@@ -230,7 +259,7 @@ def apply(section, stored, updates, env=None):
     value = copy.deepcopy(stored or {})
     base = value
     for p in section.base:
-        base = base.setdefault(p, {})
+        base = _descend(base, p)
     for path, new in updates.items():
         node = base
         for p in path[:-1]:
@@ -327,6 +356,7 @@ def _cells(table, stored, row_key):
 
 
 def stamp_table(table, stored):
+    table = _bound(table, stored)
     """The listed rows' keys AND values: a change to which rows the page shows
     (e.g. the inclusion grid) also makes an open page stale, so no field can
     be read against a row set it was not drawn for."""
@@ -340,6 +370,7 @@ def stamp_table(table, stored):
 
 
 def render_table(table, stored, env=None):
+    table = _bound(table, stored)
     groups, rows = _rows(table, stored, env)
     by_group = dict((g["key"], dict(g, rows=[], set=0)) for g in groups)
     order = [g["key"] for g in groups]
@@ -381,6 +412,7 @@ def render_table(table, stored, env=None):
 
 def parse_table(table, form, stored, env=None):
     """(updates {row key: {column path: value}}, errors) for the listed rows."""
+    table = _bound(table, stored)
     _groups, rows = _rows(table, stored, env)
     updates, errors = {}, []
     for r in rows:
@@ -404,6 +436,7 @@ def parse_table(table, form, stored, env=None):
 
 
 def apply_table(table, stored, updates, env=None):
+    table = _bound(table, stored)
     if table.write is not None:
         return table.write(copy.deepcopy(stored or {}), updates, env)
     value = copy.deepcopy(stored or {})
@@ -497,6 +530,7 @@ def collection_name(coll, index, column):
 
 
 def render_collection(coll, stored, env=None):
+    coll = _bound(coll, stored)
     rows = coll.read(stored or {})
     out = []
     for i in range(len(rows) + coll.new_rows):
@@ -520,6 +554,7 @@ def render_collection(coll, stored, env=None):
 
 def parse_collection(coll, form, stored, env=None):
     """(rows [{column: value}], errors) -- the collection as submitted."""
+    coll = _bound(coll, stored)
     before = coll.read(stored or {})
     rows, errors, seen = [], [], set()
     for i in range(len(before) + coll.new_rows):

@@ -1004,6 +1004,8 @@ def _convert_seeds():
         isomers.migrate(_data)          # isomer_summation -> isomers (2026-10-01)
         from senaite.pfas.qc.qc_types import fold_associated_qc_types
         fold_associated_qc_types(_data)   # one source for "runs QC type X"
+        from senaite.pfas import report_format
+        report_format.migrate(_data, {})  # certificate format: built-in defaults
 
 
 _convert_seeds()
@@ -1041,7 +1043,12 @@ def migrate_profile_models(portal):
         c = _rename_linear_peak_rows(profile)
         from senaite.pfas.qc.qc_types import fold_associated_qc_types
         d = fold_associated_qc_types(profile)
-        if a or b or c or d:
+        # certificate format per method x matrix, seeded from the lab's global
+        # Print Settings so no certificate changes until someone edits it
+        from senaite.pfas import report_format
+        from senaite.pfas.print_settings import get_print_settings
+        e = report_format.migrate(profile, get_print_settings(portal))
+        if a or b or c or d or e:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:
