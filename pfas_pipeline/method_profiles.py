@@ -804,11 +804,9 @@ class MethodProfile:
         num = lambda v: None if v is None else float(v)       # noqa: E731
         rl = num(entry.get("rl"))
         if rl is None:
-            # the method's lowest calibrator (senaite.pfas.calibration_levels;
-            # same rule, pinned by tests/test_calibration_levels.py)
-            low = _lowest_calibrator_ppt(data)
-            factor = _PPT_PER_UNIT.get(unit.strip().lower())
-            rl = low / factor if low is not None and factor else None
+            # the analyte's lowest calibrator in this unit -- the add-on's own
+            # rule, loaded from its file (DECISIONS 2026-10-02)
+            rl = _cal().derived_rl(data, matrix, kw)
         return rl, num(entry.get("mdl")), unit
 
     def ccv_frequency(self):
@@ -822,7 +820,7 @@ class MethodProfile:
         """The analyte's RL for `matrix` in ppt (the spike-level unit), or
         None when no RL is set or its unit is not one this converts."""
         rl, _mdl, unit = self.reporting_limits(analyte, matrix)
-        factor = _PPT_PER_UNIT.get((unit or "").strip().lower())
+        factor = _cal().PPT_PER_UNIT.get((unit or "").strip().lower())
         return rl * factor if rl is not None and factor else None
 
     def calibration_rule(self, analyte=""):
@@ -1145,25 +1143,30 @@ _TIER_STRUCTURAL_KEYS = frozenset([
 # engine refuses: it never guesses which window a spike belongs to.
 LOW_LEVEL_KEY = "low_level_x_rl"
 
-# ppt (ng/L, ng/kg) per one unit of a reporting unit
-_PPT_PER_UNIT = {"ng/l": 1.0, "ng/kg": 1.0, "pg/g": 1.0, "pg/ml": 1.0,
-                 "ng/ml": 1000.0, "ng/g": 1000.0, "ug/l": 1000.0, "ug/kg": 1000.0,
-                 "\u00b5g/l": 1000.0, "\u00b5g/kg": 1000.0, "mg/kg": 1e6}
+_CAL_MODULE = []
 
 
-def _lowest_calibrator_ppt(profile_data):
-    """The lowest calibration level (ppt), or None (calibration_levels.lowest)."""
-    levels = (((profile_data.get("instrument_verification") or {}).get("calibration") or {})
-              .get("levels") or [])
-    vals = []
-    for r in levels:
+def _cal():
+    """senaite.pfas.calibration_levels, loaded from the add-on's file (the
+    worker mounts it at /app/senaite_pfas) -- the RL rule lives once."""
+    if not _CAL_MODULE:
         try:
-            v = float((r or {}).get("ppt"))
-        except (TypeError, ValueError):
-            continue
-        if v > 0:
-            vals.append(v)
-    return min(vals) if vals else None
+            from senaite.pfas import calibration_levels as mod
+        except ImportError:
+            import importlib.util
+            here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            for path in (os.environ.get("PFAS_CALIBRATION_LEVELS"),
+                         "/app/senaite_pfas/calibration_levels.py",
+                         os.path.join(here, "src", "senaite", "pfas", "calibration_levels.py")):
+                if path and os.path.exists(path):
+                    spec = importlib.util.spec_from_file_location("senaite_pfas_calibration_levels", path)
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    break
+            else:
+                raise ImportError("calibration_levels.py not found (set PFAS_CALIBRATION_LEVELS)")
+        _CAL_MODULE.append(mod)
+    return _CAL_MODULE[0]
 
 
 def _ordinary_tiers(tiers):

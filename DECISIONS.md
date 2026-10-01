@@ -5669,3 +5669,23 @@ Lab answers:
   matrix, and where several do (water: EPA 537.1 and EPA 1633A) the one with
   the fewest matrices -- the method written for that matrix; a tie is left
   alone and reported. Demo data only.
+
+## 2026-10-02 — Calibration ladders in ng/mL; the matrix factor converts; EPA 1633A per analyte (confirmed)
+- Lab: "FDA calibration ranges from 0.039 ng/mL to 20. Every calibration point
+  should be doubled from the last up to 20 ... EPA1633A should have its
+  calibration range inside the published method and should follow the same rule."
+- **FDA 32-PFAS:** 10 points, 0.0390625 to 20 ng/mL, each double the last
+  (the lab said "20 points"; doubling over that range gives 10 -- confirmed 10).
+- **Levels may be ng/mL (extract)** -- a per-method "Calibration levels are in"
+  choice (ng/mL or ppt). This supersedes "levels are sample-equivalent ppt"
+  for FDA and 1633A; EPA 537.1 stays ppt.
+- **Conversion = the method's matrix factor** (Sample Corrections), the number
+  the pipeline already multiplies extract results by -- no second store of
+  extract volume / sample amount (the lab first chose volume + amount, then
+  chose the matrix factor once shown it already holds V / m). RL = lowest
+  level x factor, in the matrix's reporting unit; no factor, no derived RL.
+- **EPA 1633A per analyte, inside the published range:** base ladder 0.2
+  doubled while <= 62.5 (0.2-51.2, 9 points); an analyte with another range in
+  Table 4 (Dec 2024) runs base x (its CS1 / 0.2), keeping points <= its highest
+  listed standard (PFBA 0.8-204.8; FTS 0.8-25.6; FOSEs 2-512; 5:3/7:3FTCA
+  5-1280 ...). Its RL is its own lowest level. Editable per analyte.

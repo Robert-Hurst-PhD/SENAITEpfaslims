@@ -6535,3 +6535,44 @@ Approved by the lab as the first recommendation of
   - Some demo samples marked published (e.g. DW-0003, DW-0005) have analyses
     still `registered` with no results (forced-state seed, before this work). They
     print as blank results; reseeding results was not done (no invented data).
+
+## 80. Calibration ladders in ng/mL: FDA 0.039-20, EPA 1633A per analyte from Table 4 (2026-10-02)
+- Decisions: DECISIONS 2026-10-02 "Calibration ladders in ng/mL; the matrix
+  factor converts; EPA 1633A per analyte".
+- **Model:** calibration levels carry a unit per method (`level_unit`: ng/mL
+  extract or ppt sample), a base ladder, and an optional per-analyte multiple
+  + highest standard (`analyte_scale`). Calibration & CCV tab: the unit choice,
+  the ladder, and a per-analyte table whose note shows the resulting levels.
+- **RL** = the analyte's lowest level; ng/mL x the method's matrix factor
+  (exact matrix title, then the legacy substring match, as the pipeline does).
+  No factor -> no derived RL (the cell stays empty, nothing invented).
+- **One rule:** the worker now LOADS calibration_levels.py from the add-on
+  mount (/app/senaite_pfas) instead of keeping a copy; a test runs both
+  readers over ppt, ng/mL and per-analyte profiles.
+- **Seeded (once; marker `level_unit`):** FDA 32-PFAS 10 points 0.0390625-20
+  ng/mL; EPA 1633A base 0.2-51.2 (9) plus 18 analytes from Table 4 of the
+  December 2024 method; EPA 537.1 kept its ppt ladder. A ladder the lab had
+  entered would have been kept as ppt.
+- **Spike suggestions** per matrix in ppt (lowest / nearest-midpoint / highest
+  x factor): FDA Eggs/Meat/Seafood 19.53 / 5000 / 10000, Feed 78.13 / 20000 /
+  40000. Hidden where no matrix converts (EPA 1633A today). Numbers never
+  print in exponent form.
+- **Live:** FDA RLs 19.53 ng/kg (Eggs, Meat, Seafood), 78.13 ng/kg (Feed); 537.1
+  2 ng/L unchanged; 1633A per-analyte table matches Table 4.
+- **Real instrument files (offline pipeline):** results and flags identical
+  before/after on both test CSVs. The pipeline now sees FDA RLs (Animal Feed
+  PFOA: none -> 78.125 ng/kg); the RL-dependent checks (blank, Dup RPD,
+  low-level tiers, LFB/LCS) run in the run-queue path, which will now judge
+  where it reported "no RL" before.
+- **Tests:** test_calibration_levels (14; 12 mutants killed incl. the cap, the
+  factor, the conversion, exact-before-substring, seed-once, keep lab levels,
+  per-analyte RL in all three readers).
+- **For the lab (not set by code):**
+  - **EPA 1633A has no matrix factors**, so it has no derived RLs or spike
+    suggestions until Sample Corrections gets them (V / m x 1000).
+  - **FDA Milk looks inconsistent:** factor 200 with reporting unit ng/mL gives
+    an RL of 7.8 ng/mL (7812 ppt). Either the unit should be ng/L or the
+    factor differs; the pipeline applies the same pair to results.
+  - FDA Aquatic Tissue has no matrix factor.
+  - EPA 1633A §10.3: the LOQ standard must meet S/N and the ISC is run at the
+    lab's LOQ -- the lab's demonstrated LOQ may differ from CS1.

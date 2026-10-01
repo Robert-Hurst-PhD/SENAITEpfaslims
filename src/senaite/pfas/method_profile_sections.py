@@ -36,6 +36,12 @@ CALIBRATION_CCV = cf.Section(
                      help=u"Wider limit for lowest calibration level (e.g. 50 for EPA 537.1)."),
             cf.Field("calibration.force_origin", u"Force through origin", kind=cf.BOOL,
                      help=u"Required by EPA 537.1 IS calibration technique"),
+            cf.Field("calibration.level_unit", u"Calibration levels are in", kind=cf.CHOICE,
+                     choices=lambda profile, env=None: [
+                         (u"ng/mL", u"ng/mL in the extract (x matrix factor)"),
+                         (u"ppt", u"ppt in the sample (ng/L, ng/kg)")],
+                     help=u"ng/mL: the RL is the lowest level x this method's matrix factor "
+                          u"(Sample Corrections) -- no factor, no derived RL."),
         ]),
         (u"Chromatographic Confirmation & Signal Quality", [
             cf.Field("confirmation.ion_ratio_tol_pct", u"Ion Ratio Tolerance ±",
@@ -124,7 +130,6 @@ def reporting_limit_rows(profile):
     titles = _analyte_titles(profile)
     inclusion = profile.get("analyte_matrix_inclusion") or {}
     units = profile.get("unit_map") or {}
-    derived = _cal.lowest(profile)           # ppt; RL default (DECISIONS 2026-10-02)
     groups, rows = [], []
     for matrix in profile.get("supported_matrices") or []:
         groups.append({"key": matrix, "label": matrix, "unit": units.get(matrix, u"")})
@@ -133,12 +138,11 @@ def reporting_limit_rows(profile):
                 continue
             row = {"key": (matrix, kw), "group": matrix,
                    "label": titles.get(kw, kw), "sublabel": kw}
-            if derived is not None and units.get(matrix):
-                rl = _cal.in_unit(derived, units.get(matrix))
-                if rl is not None:
-                    # blank = the lowest calibrator; a typed RL overrides it
-                    row["placeholders"] = {"rl": u"%g (lowest cal.)" % rl}
-                    row["derived_rl"] = rl
+            rl = _cal.derived_rl(profile, matrix, kw)    # DECISIONS 2026-10-02
+            if rl is not None:
+                # blank = the analyte's lowest calibrator; a typed RL overrides it
+                row["placeholders"] = {"rl": u"%s (lowest cal.)" % _sig(rl)}
+                row["derived_rl"] = rl
             rows.append(row)
     return groups, rows
 
@@ -162,21 +166,25 @@ except Exception:          # tests: loaded without the package
     import calibration_levels as _cal
 
 
+def _sig(v):
+    return _cal.fmt(v)
+
+
 def read_cal_levels(profile):
-    return [{"name": r.get("name") or u"CAL-%d" % (i + 1), "ppt": r.get("ppt")}
+    return [{"name": r.get("name") or u"CAL-%d" % (i + 1), "conc": r.get("conc")}
             for i, r in enumerate(_cal.rows(profile))]
 
 
 def write_cal_levels(profile, rows):
     calib = profile.setdefault("instrument_verification", {}).setdefault("calibration", {})
-    calib["levels"] = sorted(({"name": r["name"], "ppt": r.get("ppt")} for r in rows),
-                             key=lambda r: (r["ppt"] is None, r["ppt"]))
+    calib["levels"] = sorted(({"name": r["name"], "conc": r.get("conc")} for r in rows),
+                             key=lambda r: (r["conc"] is None, r["conc"]))
     return profile
 
 
 def check_cal_levels(profile, rows):
-    errors = [u"%s: enter its concentration (ppt)." % r["name"] for r in rows if r.get("ppt") is None]
-    vals = [r["ppt"] for r in rows if r.get("ppt") is not None]
+    errors = [u"%s: enter its concentration." % r["name"] for r in rows if r.get("conc") is None]
+    vals = [r["conc"] for r in rows if r.get("conc") is not None]
     if len(vals) != len(set(vals)):
         errors.append(u"Two calibration levels have the same concentration.")
     return errors
@@ -185,8 +193,33 @@ def check_cal_levels(profile, rows):
 CAL_LEVELS = cf.Collection(
     id=u"cal_levels", title=u"Calibration levels", noun=u"level", new_rows=1, allow_empty=True,
     columns=[cf.Field("name", u"Level", kind=cf.TEXT, placeholder=u"CAL-n"),
-             cf.Field("ppt", u"Concentration (ppt)", greater_than=0, placeholder=u"ppt")],
+             cf.Field("conc", u"Concentration", greater_than=0,
+                      placeholder=u"in the level unit")],
     read=read_cal_levels, write=write_cal_levels, check=check_cal_levels)
+
+
+def _levels_text(lv):
+    if not lv:
+        return u"no levels"
+    return u"%s to %s (%d points)" % (_sig(lv[0]), _sig(lv[-1]), len(lv))
+
+
+def analyte_scale_rows(profile):
+    """One row per analyte in the method: its multiple of the base ladder and
+    its highest standard; the note shows the ladder that results."""
+    titles = _analyte_titles(profile)
+    rows = [{"key": (kw,), "group": u"cal_scale", "label": titles.get(kw, kw), "sublabel": kw,
+             "note": _levels_text(_cal.levels(profile, kw)), "warn": False}
+            for kw in profile.get("master_analyte_set") or []]
+    return _one_group(u"cal_scale", u"Per-analyte range"), rows
+
+
+ANALYTE_SCALE = cf.Table(
+    id=u"cal_scale", title=u"Per-analyte calibration range",
+    base=("instrument_verification", "calibration", "analyte_scale"),
+    columns=[cf.Field("factor", u"x base ladder", greater_than=0, placeholder=u"1"),
+             cf.Field("max", u"Highest standard", greater_than=0, placeholder=u"no cap")],
+    rows=analyte_scale_rows)
 
 
 REPORTING_LIMITS = cf.Table(
@@ -1273,7 +1306,7 @@ def apply_qc_toggles(profile, offered, enabled):
 # sections whose save must pass them.
 PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 
-SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, REPORTING_LIMITS, MATRICES,
+SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, REPORTING_LIMITS, MATRICES,
                                     SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
                                     REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS] +

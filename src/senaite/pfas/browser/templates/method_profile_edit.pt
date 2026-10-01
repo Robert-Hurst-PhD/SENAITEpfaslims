@@ -542,16 +542,25 @@
             reads the ppt for the batch&#8217;s matrix. Clear a level&#8217;s name to
             remove it; the blank row adds one.
           </p>
-          <p class="pane-intro" tal:define="rec view/recommended_spikes" tal:condition="rec">
-            Recommended from the calibration curve:
-            Low <strong tal:content="python:'%g' % rec['Low']">2</strong>,
-            Mid <strong tal:content="python:'%g' % rec['Mid']">80</strong>,
-            High <strong tal:content="python:'%g' % rec['High']">160</strong> ppt
-            (lowest, nearest the midpoint, highest calibrator).
+          <div class="pane-intro" tal:define="rec view/recommended_spikes" tal:condition="rec">
+            Recommended from the calibration curve (lowest, nearest the
+            midpoint, highest calibrator):
+            Low <strong tal:content="rec/low">2</strong>,
+            Mid <strong tal:content="rec/mid">80</strong>,
+            High <strong tal:content="rec/high">160</strong>
+            <span tal:replace="rec/unit">ppt</span>.
+            <tal:x condition="python:rec['unit'] != 'ppt' and rec['any']">In the sample:
+              <tal:m repeat="m rec/matrices"><tal:ok condition="m/ok">
+                <span tal:replace="m/matrix">Eggs</span>
+                <span tal:replace="string:${m/low} / ${m/mid} / ${m/high}">19.5 / 5000 / 10000</span> ppt<tal:s condition="not:repeat/m/end">; </tal:s></tal:ok></tal:m>.
+            </tal:x>
+            <span class="cf-hint" tal:condition="rec/missing">
+              No matrix factor for <span tal:replace="python:', '.join(rec['missing'])">Milk</span>,
+              so no suggestion there (Sample Corrections).
+            </span>
             <button type="button" class="btn-sm btn-secondary" id="spk-use-rec"
-                    tal:attributes="data-low python:'%g' % rec['Low']; data-mid python:'%g' % rec['Mid'];
-                                    data-high python:'%g' % rec['High']">Fill blank Low / Mid / High</button>
-          </p>
+                    tal:condition="rec/any" tal:attributes="data-rec rec/json">Fill blank Low / Mid / High</button>
+          </div>
           <tal:spk repeat="spk view/spike_sections">
             <h4 class="cf-grid-title" tal:content="python:spk[1]">LFSM / LFSMD</h4>
             <div tal:define="cf_rows python:view.section_groups(spk[0]); cf_form string:section-rt">
@@ -822,17 +831,33 @@
             <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
           </div>
 
-          <div class="section-group-hdr">Calibration levels (ppt)</div>
+          <div class="section-group-hdr">Calibration levels
+            (<span tal:replace="view/calibration_level_unit">ng/mL</span>)</div>
           <p class="pane-intro">
-            The calibrators this method&#8217;s curve uses, as sample-equivalent
-            concentrations (ppt: ng/L for water, ng/kg for solids). The
-            <strong>lowest level is every analyte&#8217;s reporting limit</strong>
-            in every matrix unless a different RL is typed on Reporting Limits,
-            and the curve suggests the spike levels on Recovery Tiers. Clear a
-            level&#8217;s name to remove it; the blank row adds one.
+            The method&#8217;s calibration ladder, in the unit chosen under
+            Calibration above. The <strong>lowest level is each analyte&#8217;s
+            reporting limit</strong> unless an RL is typed on Reporting Limits:
+            an ng/mL level times the matrix factor (Sample Corrections) gives
+            the RL in the matrix&#8217;s reporting unit, so a matrix without a
+            factor gets no derived RL. The curve also suggests the spike levels
+            on Recovery Tiers. Clear a level&#8217;s name to remove it; the
+            blank row adds one.
           </p>
+          <p class="cf-hint" tal:condition="view/calibration_levels_source"
+             tal:content="view/calibration_levels_source">Source</p>
           <div tal:define="cf_rows python:view.section_groups('cal_levels'); cf_form string:section-cal">
             <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+          </div>
+
+          <div class="section-group-hdr">Per-analyte calibration range</div>
+          <p class="pane-intro">
+            For an analyte calibrated over a different range: its levels are the
+            ladder above times the multiple, keeping only those at or below its
+            highest standard. Blank = the ladder as it is. The note shows the
+            levels that result (as last saved).
+          </p>
+          <div tal:define="cf_groups python:view.section_groups('cal_scale'); cf_form string:section-cal">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
           </div>
 
         </div>
@@ -1054,11 +1079,12 @@
     <form id="section-cal" method="POST" class="pfas-section-form"
           data-tab-label="Calibration &amp; CCV"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="cal,cal_levels" />
+      <input type="hidden" name="_section" value="cal,cal_levels,cal_scale" />
       <input type="hidden" name="_pane" value="pane-cal" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__cal" tal:attributes="value python:view.section_stamp('cal')" />
       <input type="hidden" name="section_stamp__cal_levels" tal:attributes="value python:view.section_stamp('cal_levels')" />
+      <input type="hidden" name="section_stamp__cal_scale" tal:attributes="value python:view.section_stamp('cal_scale')" />
     </form>
 
     <script>
@@ -1179,14 +1205,16 @@
            Mid or High in the spike grids. A suggestion; saved only on Save. */
         var rec = document.getElementById('spk-use-rec');
         if (rec) rec.addEventListener('click', function () {
-          var want = {low: rec.getAttribute('data-low'), mid: rec.getAttribute('data-mid'),
-                      high: rec.getAttribute('data-high')};
+          /* one [low, mid, high] per matrix column, in column order */
+          var per = JSON.parse(rec.getAttribute('data-rec') || '[]');
+          var at = {low: 0, mid: 1, high: 2};
           document.querySelectorAll('input[name^="c__spk_"]').forEach(function (lab) {
             if (!/__label$/.test(lab.name)) return;
-            var v = want[(lab.value || '').trim().toLowerCase()];
-            if (!v) return;
-            lab.closest('tr').querySelectorAll('input[type=text],input[type=number]').forEach(function (cell) {
-              if (cell !== lab && !cell.value) {
+            var i = at[(lab.value || '').trim().toLowerCase()];
+            if (i === undefined) return;
+            lab.closest('tr').querySelectorAll('input[type=number]').forEach(function (cell, col) {
+              var v = per[col] && per[col][i];
+              if (v && !cell.value) {
                 cell.value = v;
                 cell.dispatchEvent(new Event('input', {bubbles: true}));
               }

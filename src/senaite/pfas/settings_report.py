@@ -211,7 +211,7 @@ def method_report(profile, env=None, toggles=None):
 
 def _section_order():
     """The editor's tab order; any section not named here follows."""
-    first = ["cal", "cal_levels", "rl", "mtx", "corr", "salt", "mf", "rf", "al", "groups", "tiers", "tiers_lfb",
+    first = ["cal", "cal_levels", "cal_scale", "rl", "mtx", "corr", "salt", "mf", "rf", "al", "groups", "tiers", "tiers_lfb",
              "dup", "lfsmd", "ls", "sur", "iso", "eis"]
     return first + sorted(k for k in mps.SECTIONS if k not in first)
 

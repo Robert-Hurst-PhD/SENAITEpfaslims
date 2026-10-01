@@ -35,7 +35,7 @@ def limits_for(profile, matrix, keyword):
             from senaite.pfas import calibration_levels as _cl
         except Exception:          # tests: loaded without the package
             import calibration_levels as _cl
-        rl = _cl.derived_rl(profile, matrix)
+        rl = _cl.derived_rl(profile, matrix, keyword)
         source = u"calibration" if rl is not None else None
     return {"rl": rl, "mdl": entry.get("mdl"), "unit": unit, "rl_source": source}
 

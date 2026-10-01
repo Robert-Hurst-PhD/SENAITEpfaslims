@@ -454,10 +454,35 @@ class PFASMethodProfileEditView(BrowserView):
     def has_lfsmd(self):
         return "LFSMD" in ((self.profile().get("qc_acceptance") or {}))
 
+    def calibration_level_unit(self):
+        from senaite.pfas import calibration_levels as cl
+        return cl.unit(self.profile())
+
+    def calibration_levels_source(self):
+        from senaite.pfas import calibration_levels as cl
+        return cl._calib(self.profile()).get("levels_source") or u""
+
     def recommended_spikes(self):
-        """Low / Mid / High ppt from this method's calibration levels."""
-        from senaite.pfas.calibration_levels import recommended_spikes
-        return recommended_spikes(self.profile())
+        """Low / Mid / High from this method's calibration levels: in the
+        level unit, and as sample ppt per matrix (the spike grids' unit);
+        None without at least two levels."""
+        import json
+        from senaite.pfas import calibration_levels as cl
+        profile = self.profile()
+        base = cl.recommended_spikes(profile)
+        if not base:
+            return None
+        fmt = cl.fmt
+        per = []
+        for m in profile.get("supported_matrices") or []:
+            ppt = cl.recommended_spikes_ppt(profile, m)
+            per.append({"matrix": m, "low": fmt(ppt.get("Low")), "mid": fmt(ppt.get("Mid")),
+                        "high": fmt(ppt.get("High")), "ok": bool(ppt)})
+        return {"unit": cl.unit(profile), "low": fmt(base["Low"]), "mid": fmt(base["Mid"]),
+                "high": fmt(base["High"]), "matrices": per,
+                "missing": [p["matrix"] for p in per if not p["ok"]],
+                "any": any(p["ok"] for p in per),
+                "json": json.dumps([[p["low"], p["mid"], p["high"]] for p in per])}
 
     def has_lfb(self):
         return "LFB" in ((self.profile().get("qc_acceptance") or {}))

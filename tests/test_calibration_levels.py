@@ -2,12 +2,13 @@
 """Calibration levels own the RL and suggest the spike levels
 (DECISIONS 2026-10-02).
 
-The lowest calibrator is every analyte's RL in every matrix, in the matrix's
-reporting unit, unless an RL is typed; the add-on (report_limits.limits_for)
-and the worker (MethodProfile.reporting_limits) must give the same answer.
-Spike suggestions: lowest, nearest the midpoint, highest -- 2, 80, 160 for
-the EPA 537.1 curve. Levels are seeded once, and only from a ladder that is
-already sample-equivalent ppt. No Zope.
+An analyte's RL in a matrix = its lowest calibration level in the matrix's
+reporting unit, unless an RL is typed. Levels are in ppt (sample) or ng/mL
+(extract); an ng/mL level becomes a sample value through the method's matrix
+factor, the number the pipeline multiplies results by. An analyte may run a
+multiple of the base ladder, capped at its highest standard (EPA 1633A Table
+4). The add-on (report_limits.limits_for) and the worker
+(MethodProfile.reporting_limits) load the same rule and must agree. No Zope.
 """
 from __future__ import unicode_literals
 
@@ -27,7 +28,7 @@ import method_profile_sections as mps      # noqa: E402
 import report_limits as rlim               # noqa: E402
 
 LADDER_537 = [2.0, 4.0, 8.0, 16.0, 40.0, 80.0, 160.0]
-PROFILE = {
+PPT_PROFILE = {             # stored before the unit existed: rows keep "ppt"
     "method_id": "EPA_537_1",
     "supported_matrices": ["Drinking Water", "Soil"],
     "unit_map": {"Drinking Water": "ng/L", "Soil": "ng/g"},
@@ -37,59 +38,134 @@ PROFILE = {
 }
 
 
-def test_the_lowest_calibrator_is_the_rl_in_each_matrix_unit():
-    assert cl.lowest(PROFILE) == 2.0
-    assert cl.derived_rl(PROFILE, "Drinking Water") == 2.0
-    assert abs(cl.derived_rl(PROFILE, "Soil") - 0.002) < 1e-12        # ng/g = 1000 ppt
-    assert cl.derived_rl(PROFILE, "Unknown matrix") is None           # no unit, no guess
-    assert cl.derived_rl({"unit_map": {"Drinking Water": "ng/L"}}, "Drinking Water") is None
+def _seeded(mid, matrices, units, factors):
+    p = {"method_id": mid, "supported_matrices": matrices, "unit_map": units,
+         "matrix_factors": [{"matrix": m, "factor": f} for m, f in factors.items()]}
+    assert cl.migrate(p, mid)
+    return p
+
+
+def _fda():
+    return _seeded("FDA_32PFAS", ["Eggs", "Milk", "Animal Feed"],
+                   {"Eggs": "ng/kg", "Milk": "ng/mL", "Animal Feed": "ng/kg"},
+                   {"Eggs": 500.0, "Animal Feed": 2000.0})
+
+
+def _1633a():
+    return _seeded("EPA_1633A", ["Groundwater", "Soil"], {"Groundwater": "ng/L", "Soil": "ng/g"},
+                   {"Groundwater": 20.0})
+
+
+def test_ppt_levels_give_the_rl_in_each_matrix_unit():
+    assert cl.unit(PPT_PROFILE) == "ppt" and cl.lowest(PPT_PROFILE) == 2.0
+    assert cl.derived_rl(PPT_PROFILE, "Drinking Water") == 2.0
+    assert abs(cl.derived_rl(PPT_PROFILE, "Soil") - 0.002) < 1e-12        # ng/g = 1000 ppt
+    assert cl.derived_rl(PPT_PROFILE, "Unknown matrix") is None           # no unit, no guess
 
 
 def test_a_typed_rl_overrides_and_the_source_says_which():
-    typed = rlim.limits_for(PROFILE, "Drinking Water", "PFOA")
+    typed = rlim.limits_for(PPT_PROFILE, "Drinking Water", "PFOA")
     assert (typed["rl"], typed["mdl"], typed["rl_source"]) == (4.0, 0.5, "override")
-    derived = rlim.limits_for(PROFILE, "Drinking Water", "PFOS")
+    derived = rlim.limits_for(PPT_PROFILE, "Drinking Water", "PFOS")
     assert (derived["rl"], derived["mdl"], derived["rl_source"]) == (2.0, None, "calibration")
     bare = rlim.limits_for({"unit_map": {"Drinking Water": "ng/L"}}, "Drinking Water", "PFOS")
     assert bare["rl"] is None and bare["rl_source"] is None
 
 
+def test_fda_ladder_is_ten_doublings_to_20_and_the_matrix_factor_converts():
+    p = _fda()
+    assert cl.unit(p) == "ng/mL"
+    lv = cl.levels(p)
+    assert len(lv) == 10 and lv[-1] == 20.0 and abs(lv[0] - 0.0390625) < 1e-12
+    assert all(abs(b / a - 2.0) < 1e-12 for a, b in zip(lv, lv[1:]))
+    assert abs(cl.derived_rl(p, "Eggs") - 19.53125) < 1e-9                 # 0.0390625 x 500 ng/kg
+    assert abs(cl.derived_rl(p, "Animal Feed") - 78.125) < 1e-9
+    assert cl.derived_rl(p, "Milk") is None                                # no factor, no RL
+    assert rlim.limits_for(p, "Milk", "PFOA")["rl_source"] is None
+
+
+def test_1633a_runs_each_analyte_inside_its_published_range():
+    p = _1633a()
+    expect = {"PFOA": (0.2, 51.2, 9), "PFBA": (0.8, 204.8, 9), "PFPeA": (0.4, 102.4, 9),
+              "6:2FTS": (0.8, 25.6, 6), "NMeFOSE": (2.0, 512.0, 9), "3:3FTCA": (1.0, 256.0, 9),
+              "5:3FTCA": (5.0, 1280.0, 9), "GenX": (0.8, 204.8, 9)}
+    for kw, (lo, hi, n) in expect.items():
+        lv = cl.levels(p, kw)
+        assert (round(lv[0], 9), round(lv[-1], 9), len(lv)) == (lo, hi, n), (kw, lv)
+    assert abs(cl.derived_rl(p, "Groundwater", "PFBA") - 16.0) < 1e-9      # 0.8 ng/mL x 20 ng/L
+    assert abs(cl.derived_rl(p, "Groundwater", "PFOA") - 4.0) < 1e-9
+    assert cl.derived_rl(p, "Soil", "PFOA") is None                        # no factor yet
+    assert "Table 4" in cl._calib(p)["levels_source"]
+
+
+def test_migration_runs_once_and_never_replaces_levels():
+    p = _fda()
+    before = copy.deepcopy(p)
+    assert not cl.migrate(p, "FDA_32PFAS") and p == before                 # marker: level_unit
+    legacy = copy.deepcopy(PPT_PROFILE)
+    assert cl.migrate(legacy, "EPA_537_1")
+    calib = legacy["instrument_verification"]["calibration"]
+    assert calib["level_unit"] == "ppt" and [r["conc"] for r in calib["levels"]] == LADDER_537
+    lab = {"instrument_verification": {"calibration": {"levels": [{"name": "L1", "ppt": 50.0}]}}}
+    assert cl.migrate(lab, "FDA_32PFAS")                                    # lab entered ppt
+    assert cl.unit(lab) == "ppt" and cl.levels(lab) == [50.0]
+    other = {}
+    assert cl.migrate(other, "SOMETHING") and cl.levels(other) == [] and cl.unit(other) == "ppt"
+
+
+def test_matrix_factor_lookup_matches_the_pipeline():
+    p = {"matrix_factors": [{"matrix": "Meat", "factor": 500.0},
+                            {"matrix": "Meat / Muscle", "factor": 250.0}]}
+    assert cl.matrix_factor(p, "Meat / Muscle") == 250.0                   # exact first
+    assert cl.matrix_factor(p, "meat trim") == 500.0                       # then key-in-matrix
+    assert cl.matrix_factor(p, "Eggs") is None
+
+
 def test_recommended_spikes_follow_the_curve():
-    assert cl.recommended_spikes(PROFILE) == {"Low": 2.0, "Mid": 80.0, "High": 160.0}
-    # unordered input, and a tie at the midpoint goes to the higher level
+    assert cl.recommended_spikes(PPT_PROFILE) == {"Low": 2.0, "Mid": 80.0, "High": 160.0}
+    assert cl.recommended_spikes_ppt(PPT_PROFILE, "Drinking Water") == {"Low": 2.0, "Mid": 80.0,
+                                                                        "High": 160.0}
+    fda = _fda()
+    rec = cl.recommended_spikes(fda)
+    assert rec["Mid"] == 10.0 and rec["High"] == 20.0
+    eggs = cl.recommended_spikes_ppt(fda, "Eggs")
+    assert (round(eggs["Low"], 5), eggs["Mid"], eggs["High"]) == (19.53125, 5000.0, 10000.0)
+    assert cl.recommended_spikes_ppt(fda, "Milk") == {}
     tie = {"instrument_verification": {"calibration": {"levels": [
-        {"ppt": 10.0}, {"ppt": 1.0}, {"ppt": 4.0}, {"ppt": 7.0}]}}}
+        {"conc": 10.0}, {"conc": 1.0}, {"conc": 4.0}, {"conc": 7.0}]}}}
     assert cl.recommended_spikes(tie) == {"Low": 1.0, "Mid": 7.0, "High": 10.0}
-    one = {"instrument_verification": {"calibration": {"levels": [{"ppt": 5.0}]}}}
-    assert cl.recommended_spikes(one) == {}
+    assert cl.recommended_spikes({"instrument_verification": {"calibration": {
+        "levels": [{"conc": 5.0}]}}}) == {}
 
 
-def test_levels_are_seeded_once_and_only_from_a_ppt_ladder():
-    p = {}
-    assert cl.seed_from_ladder(p, LADDER_537[::-1], unit_is_ppt=True)
-    assert [r["ppt"] for r in cl.rows(p)] == LADDER_537
-    assert cl.rows(p)[0]["name"] == "CAL-1"
-    p["instrument_verification"]["calibration"]["levels"] = []          # the lab clears them
-    assert not cl.seed_from_ladder(p, LADDER_537, unit_is_ppt=True)
-    assert cl.rows(p) == []
-    extract = {}
-    assert cl.seed_from_ladder(extract, [20.0, 10.0], unit_is_ppt=False)
-    assert cl.rows(extract) == []                                        # never converted
+def test_numbers_print_without_exponents():
+    assert [cl.fmt(v) for v in (10000.0, 2e6, 0.0390625, 19.53125, 2.0, None)] == [
+        "10000", "2000000", "0.03906", "19.53", "2", ""]
 
 
-def test_the_collection_round_trips_lowest_first_and_checks():
-    p = copy.deepcopy(PROFILE)
-    rows = mps.read_cal_levels(p)
-    assert [r["ppt"] for r in rows] == LADDER_537
-    mps.write_cal_levels(p, [{"name": "B", "ppt": 50.0}, {"name": "A", "ppt": 1.0}])
+def test_the_collections_round_trip_and_check():
+    p = _fda()
+    assert [r["conc"] for r in mps.read_cal_levels(p)] == cl.levels(p)
+    mps.write_cal_levels(p, [{"name": "B", "conc": 50.0}, {"name": "A", "conc": 1.0}])
     assert [r["name"] for r in cl.rows(p)] == ["A", "B"]
-    assert mps.check_cal_levels(p, [{"name": "A", "ppt": 1.0}, {"name": "B", "ppt": 1.0}])
-    assert mps.check_cal_levels(p, [{"name": "A", "ppt": None}])
-    assert mps.check_cal_levels(p, [{"name": "A", "ppt": 1.0}, {"name": "B", "ppt": 2.0}]) == []
-    assert "cal_levels" in mps.SECTIONS
+    assert mps.check_cal_levels(p, [{"name": "A", "conc": 1.0}, {"name": "B", "conc": 1.0}])
+    assert mps.check_cal_levels(p, [{"name": "A", "conc": None}])
+    assert mps.check_cal_levels(p, [{"name": "A", "conc": 1.0}, {"name": "B", "conc": 2.0}]) == []
+    for sid in ("cal_levels", "cal_scale"):
+        assert sid in mps.SECTIONS
+    q = _1633a()
+    q["master_analyte_set"] = ["PFOA", "PFBA"]
+    _g, rows = mps.analyte_scale_rows(q)
+    assert [r["note"] for r in rows] == ["0.2 to 51.2 (9 points)", "0.8 to 204.8 (9 points)"]
 
 
-def test_the_mdl_check_uses_the_derived_rl():
+def test_rl_rows_and_the_mdl_check_use_the_analytes_own_rl():
+    q = _1633a()
+    q["master_analyte_set"] = ["PFOA", "PFBA"]
+    _g, rows = mps.reporting_limit_rows(q)
+    gw = dict((r["sublabel"], r) for r in rows if r["group"] == "Groundwater")
+    assert gw["PFBA"]["placeholders"]["rl"] == "16 (lowest cal.)" and gw["PFOA"]["derived_rl"] == 4.0
+    assert not any("placeholders" in r for r in rows if r["group"] == "Soil")
     row = {"sublabel": "PFOS", "group": "Drinking Water", "derived_rl": 2.0}
     assert mps._mdl_not_above_rl(row, {"f__rl": None, "f__mdl": 3.0})
     assert mps._mdl_not_above_rl(row, {"f__rl": None, "f__mdl": 1.0}) is None
@@ -100,26 +176,30 @@ def test_the_worker_gives_the_same_rl():
     if sys.version_info[0] < 3:
         return                                   # the worker is Python 3
     from pfas_pipeline import method_profiles as mp
-    old = mp._profile_data_cache.get("EPA_537_1")
-    mp._profile_data_cache["EPA_537_1"] = copy.deepcopy(PROFILE)
-    try:
-        prof = mp.get_profile("EPA_537_1")
-        for matrix in ("Drinking Water", "Soil"):
-            for kw in ("PFOA", "PFOS"):
-                ours = rlim.limits_for(PROFILE, matrix, kw)
-                rl, mdl, unit = prof.reporting_limits(kw, matrix)
-                assert (rl, mdl, unit) == (ours["rl"], ours["mdl"], ours["unit"]), (matrix, kw)
-        assert prof.reporting_limit_ppt("PFOS", "Soil") == 2.0
-    finally:
-        if old is None:
-            mp._profile_data_cache.pop("EPA_537_1", None)
-        else:
-            mp._profile_data_cache["EPA_537_1"] = old
+    cases = [("EPA_537_1", copy.deepcopy(PPT_PROFILE), ("Drinking Water", "Soil"), ("PFOA", "PFOS")),
+             ("FDA_32PFAS", _fda(), ("Eggs", "Milk"), ("PFOA",)),
+             ("EPA_1633A", _1633a(), ("Groundwater", "Soil"), ("PFOA", "PFBA", "6:2FTS"))]
+    for mid, profile, matrices, kws in cases:
+        old = mp._profile_data_cache.get(mid)
+        mp._profile_data_cache[mid] = profile
+        try:
+            prof = mp.get_profile(mid)
+            for matrix in matrices:
+                for kw in kws:
+                    ours = rlim.limits_for(profile, matrix, kw)
+                    rl, mdl, unit = prof.reporting_limits(kw, matrix)
+                    assert (rl, mdl, unit) == (ours["rl"], ours["mdl"], ours["unit"]), (mid, matrix, kw)
+        finally:
+            if old is None:
+                mp._profile_data_cache.pop(mid, None)
+            else:
+                mp._profile_data_cache[mid] = old
+    assert mp._cal() is mp._cal() and hasattr(mp._cal(), "derived_rl")
 
 
 def test_the_settings_report_prints_the_levels_and_derived_rls():
     import settings_report as sr
-    p = copy.deepcopy(PROFILE)
+    p = copy.deepcopy(PPT_PROFILE)
     p["master_analyte_set"] = ["PFOA", "PFOS"]
     p["analyte_matrix_inclusion"] = {"Drinking Water": {"PFOA": True, "PFOS": True}}
     rep = sr.method_report(p)
@@ -146,8 +226,9 @@ def test_the_demo_reseed_picks_the_method_written_for_the_matrix():
 def test_the_editor_shows_the_levels_and_the_suggestion():
     with io.open(os.path.join(PKG, "browser", "templates", "method_profile_edit.pt"), encoding="utf-8") as fh:
         tpl = fh.read()
-    assert "section_groups('cal_levels')" in tpl and 'value="cal,cal_levels"' in tpl
-    assert "section_stamp__cal_levels" in tpl and "view/recommended_spikes" in tpl
+    assert "section_groups('cal_levels')" in tpl and 'value="cal,cal_levels,cal_scale"' in tpl
+    assert "section_stamp__cal_scale" in tpl and "section_groups('cal_scale')" in tpl
+    assert "view/recommended_spikes" in tpl and "data-rec" in tpl
 
 
 if __name__ == "__main__":
