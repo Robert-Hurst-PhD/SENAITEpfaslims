@@ -874,18 +874,21 @@ write_tiers = RECOVERY_TIERS.write
 check_tiers = RECOVERY_TIERS.check
 
 
-DUP_RPD = cf.Section(
-    id=u"dup", title=u"Sample Duplicate RPD", base=("qc_acceptance", "Dup", "tiers", 0),
-    groups=[(u"Sample Duplicate RPD", [
-        cf.Field("rpd_max", u"Max RPD", unit=u"%", required=True, minimum=0,
-                 help=u"20 for FDA; 30 for EPA methods"),
-    ])])
+
 
 
 # LFSMD RPD tiers (2026-10-01). Stored since the seeds and read by the engine
 # (qc_rules(..., "LFSMD").rpd_max), but no tab edited them; a low-level tier
 # carries 537.1 §9.3.7.4 (<= 50% within 2 x MRL).
 _RPD_FIELDS = ("rpd_max", LOW_LEVEL_KEY)
+
+# Sample duplicate RPD tiers (2026-10-02: a tier list like LFSMD, so a
+# low-level tier -- EPA 537.1 §9.3.7.2, <= 50% within 2 x MRL -- is editable).
+DUP_RPD = cf.Collection(
+    id=u"dup", title=u"Sample Duplicate RPD", noun=u"tier", new_rows=1, allow_empty=True,
+    columns=_TIER_HEAD + [cf.Field("rpd_max", u"Max RPD %", minimum=0)],
+    read=_tier_reader(u"Dup", _RPD_FIELDS), write=_tier_writer(u"Dup", _RPD_FIELDS),
+    check=_tier_checker(u"Dup", False))
 
 LFSMD_RPD = cf.Collection(
     id=u"lfsmd", title=u"LFSMD RPD", noun=u"tier", new_rows=1, allow_empty=True,

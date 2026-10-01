@@ -142,8 +142,12 @@ class PFASCoASectionsView(BrowserView):
         matrix = report_limits.canonical_matrix(profile, sample.getSampleTypeTitle())
         # what this sample's batch runs to: its project's specs (added
         # analytes, their RLs, ...) apply on the certificate too (GAPS §76)
-        from senaite.pfas.project_specs import profile_for_batch
+        from senaite.pfas.project_specs import profile_for_batch, departures
+        method_profile = profile
         profile = profile_for_batch(api.get_portal(), sample.getBatch(), method_id, matrix) or profile
+        # criteria the project loosens relative to the laboratory method, for
+        # this sample's matrix (DECISIONS 2026-10-02)
+        loosened = departures(method_profile, profile, method_id, [matrix]) if profile is not method_profile else []
         # A summed analyte prints its reported name from the method's Isomers
         # tab (DECISIONS 2026-10-01): the global table names PFOS by its
         # LINEAR peak, "lr-PFOS", which is not what a summed result is.
@@ -195,9 +199,20 @@ class PFASCoASectionsView(BrowserView):
             "regulatory": regulatory,
             "fmt": fmt,
             "qs": self._quality_system(batch),
+            "departures": loosened,
+            "project_label": self._project_label(batch) if loosened else u"",
         }
 
     # ── quality system statement (DECISIONS 2026-10-01) ──────────────────
+
+    def _project_label(self, batch):
+        try:
+            from senaite.pfas import project_ref
+            pj = project_ref.get_project(api.get_portal(), batch)
+            return (u"%s %s" % (getattr(pj, "project_code", u"") or u"",
+                                getattr(pj, "title", u"") or u"")).strip()
+        except Exception:                                   # noqa: BLE001
+            return u""
 
     def _quality_system(self, batch):
         """The statement for a sample in `batch`: the project's QAPP (title,

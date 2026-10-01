@@ -6459,3 +6459,34 @@ Approved by the lab as the first recommendation of
 - **Consequence to know:** the seeded demo samples (DW-0003/5/7/9,
   COA-DEMO-0001, EGG/MEAT/FEED-0001) can no longer be re-published until
   their analyses get a method.
+
+## 78. Sample duplicate RPD judged; project departures stated on the certificate (2026-10-02)
+- Decisions: DECISIONS 2026-10-02 "Duplicate RPD judged; departures listed".
+- **Duplicate RPD (pipeline):** each Dup injection is paired with its sample
+  by the extraction record, else the name ("<sample> Dup." / "; Duplicate");
+  for each analyte where BOTH reach the RL, RPD is judged against the
+  method's Dup tier (low-level tier at <= N x RL of the pair's mean); one
+  detected and one not -> flagged "detected in one of the pair only";
+  both ND -> nothing judged; no RL / unpairable / units differ -> "not
+  evaluated" with the reason. Switched by the Dup QC type; resolves the
+  reviewer's "duplicate RPD" item. The settings report now says Dup is
+  judged (claim re-pinned).
+- **Dup tiers editable:** the Dup section became a tier list like LFSMD, so a
+  low-level tier can be seen and edited. EPA 537.1 got its field-duplicate
+  tier from the method text (§9.3.7.2: <= 50% within 2 x MRL; "should"),
+  seeded once; the seed marker now records which QC types were seeded, so a
+  QC type added later is seeded once and removed tiers stay removed.
+- **Certificate:** for a batch linked to a project, the criteria the project
+  loosens relative to the laboratory method (for that sample's matrix) are
+  listed under the quality-system statement; nothing when there are none.
+- **Found on the way:** two project-specs tests passed the Dup value under a
+  wrong field name and so tested nothing for Dup; fixed.
+- **Tests:** test_rule_switches +3 (pair outcomes incl. low-level tier;
+  pairing by extraction record vs name; name fallback), test_low_level_tiers
+  +1 (Dup seeded once on a profile seeded before it existed). **Live:** 537.1
+  gained exactly its Dup low tier; no-op saves of all Recovery Tiers tabs
+  clean; history check clean; real instrument files: results and flags
+  identical (their duplicates are LFSM duplicates, and no RLs are set); a
+  throwaway project loosening LFSM tier 2 to 140% put "LFSM recovery max %
+  140 (method 135; ... in Animal Feed)" on FEED-0002's certificate, gone when
+  unlinked.

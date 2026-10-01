@@ -40,8 +40,11 @@ QC_APPLICATION = [
      u"Every injection's labelled surrogate recovery (FDA: guidance only; EPA 537.1 "
      u"70-130%; EPA 1633A per analyte x matrix class). Rule switch: "
      u"surrogate_recovery.", "surrogate"),
-    ("Dup", u"Maximum RPD", False,
-     u"Stored; the pipeline does not compute a sample-duplicate RPD.", None),
+    ("Dup", u"Maximum RPD", True,
+     u"Each sample / duplicate pair (paired by the extraction record, else the name "
+     u"'<sample> Dup') where both results reach the RL, against the Dup tier; low-level "
+     u"tier at or below N x RL of the pair's mean. One detected only: flagged for review.",
+     "dup"),
     ("LFB", u"Recovery window per tier", True,
      u"Each LFB injection x analyte: measured / spike x 100 (spike from the LFB "
      u"spike levels or the extraction record) against the LFB tiers, low-level tier "

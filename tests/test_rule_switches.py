@@ -27,7 +27,7 @@ from pfas_pipeline import run_queue as rq                       # noqa: E402
 from pfas_pipeline.models import Batch, InstrumentRow           # noqa: E402
 from pfas_pipeline.injection_builder import REVIEW_CHECKS       # noqa: E402
 from pfas_pipeline.qc_engine import (                           # noqa: E402
-    ccv_frequency_check, KIND_BLANK, KIND_LCS, KIND_CCV_FREQ, KIND_MDL, KIND_SURROGATE)
+    ccv_frequency_check, KIND_BLANK, KIND_LCS, KIND_CCV_FREQ, KIND_MDL, KIND_SURROGATE, KIND_DUP)
 
 mp.reload_from_profiles()
 MID, MATRIX = "EPA_537_1", "Drinking Water"
@@ -191,6 +191,59 @@ def test_surrogate_switch():
     assert _flags(b, KIND_SURROGATE), "the surrogate check did not run"
     _q, b = _run(rows, p, {"surrogate_recovery": False})
     assert not _flags(b, KIND_SURROGATE)
+
+
+def test_duplicate_rpd_both_detected_one_detected_and_none():
+    p = _profile()                                       # RL 4; Dup 30%, low tier 50% at <= 2 x RL
+    pair = lambda c1, c2: [_row("PFOA", "Client sample A", 1, conc=c1),            # noqa: E731
+                           _row("PFOA", "Client sample A Dup.", 2, conc=c2)]
+    q, b = _run(pair(20.0, 30.0), p)                     # RPD 40% at a mean of 25 (> 8): fails 30%
+    assert _flags(b, KIND_DUP) and _check(q, "Client sample A Dup.", "duplicate_rpd").status.name == "AUTO_FAIL"
+    q, b = _run(pair(20.0, 22.0), p)                     # RPD 9.5%
+    assert not _flags(b, KIND_DUP) and _check(q, "Client sample A Dup.", "duplicate_rpd").status.name == "AUTO_PASS"
+    q, b = _run(pair(5.0, 7.5), p)                       # RPD 40% at a mean of 6.25 (<= 8): low tier 50%
+    assert not _flags(b, KIND_DUP)
+    q, b = _run(pair(20.0, 2.0), p)                      # one below the RL
+    fl = _flags(b, KIND_DUP)
+    assert fl and "one of the pair only" in fl[0].issue
+    q, b = _run(pair(1.0, None), p)                      # both below the RL: nothing to judge
+    assert not _flags(b, KIND_DUP) and _check(q, "Client sample A Dup.", "duplicate_rpd").status.name == "PENDING"
+
+
+def test_duplicate_pairs_by_the_extraction_record_first():
+    p = _profile()
+    rows = [_row("PFOA", "KCP Silage 7", 1, conc=20.0), _row("PFOA", "Field Dup 3", 2, conc=30.0)]
+    # the name "Field Dup 3" does not name its parent; the extraction record does
+    old = rq.classify_injection
+    rq.classify_injection = lambda n, d=None: "Dup" if n == "Field Dup 3" else old(n, d)
+    try:
+        def run_with(spikes):
+            mp._profile_data_cache[MID], keep = p, mp._profile_data_cache.get(MID)
+            tog, rq._load_rule_toggles = rq._load_rule_toggles, (lambda mid, *a, **k: {})
+            try:
+                plan = [{"injection_name": n, "qc_type": rq.classify_injection(n, {}),
+                         "checks": list(REVIEW_CHECKS.get(rq.classify_injection(n, {}), REVIEW_CHECKS["Sample"]))}
+                        for n in ("KCP Silage 7", "Field Dup 3")]
+                batch = Batch(batch_id="B-SW", analyst="RT", date=T0, matrix=MATRIX, method_id=MID,
+                              instrument_file="synthetic.csv", injections=rows)
+                batch.spikes = spikes
+                rq.RunQueue(batch, plan, method_id=MID).auto_evaluate()
+                return batch
+            finally:
+                mp._profile_data_cache[MID] = keep
+                rq._load_rule_toggles = tog
+        b = run_with({})
+        assert not _flags(b, KIND_DUP) and _gaps(b, "no sample to pair")
+        b = run_with({"Field Dup 3": {"parent": "KCP Silage 7"}})
+        assert _flags(b, KIND_DUP)                       # RPD 40% judged against the record's parent
+    finally:
+        rq.classify_injection = old
+
+
+def test_the_dup_parent_name_fallback():
+    for name, parent in (("KCP Silage A Dup.", "KCP Silage A"), ("Lot 7; Duplicate", "Lot 7"),
+                         ("Lot 7 dup", "Lot 7"), ("Lot 7", "")):
+        assert rq._dup_parent_name(name) == parent, (name, rq._dup_parent_name(name))
 
 
 # ── store and screens ────────────────────────────────────────────────────────

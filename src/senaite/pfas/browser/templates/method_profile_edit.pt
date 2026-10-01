@@ -593,8 +593,8 @@
               duplicate: RPD = |A &#8722; B| / ((A+B)/2) &#215; 100. Enable or disable
               Dup on the QC Types tab.
             </p>
-            <div tal:define="cf_groups python:view.section_groups('dup'); cf_form string:section-rt">
-              <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+            <div tal:define="cf_rows python:view.section_groups('dup'); cf_form string:section-rt">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
             </div>
           </tal:dup>
 

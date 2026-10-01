@@ -81,6 +81,21 @@ def test_the_seed_follows_the_method_text_and_is_idempotent():
     assert not llt.seed_537_1(other)
 
 
+def test_dup_is_seeded_once_on_a_profile_seeded_before_it_existed():
+    """The live 537.1 profile carries the 2026-10-01 marker (a date string);
+    the Dup tier added on 2026-10-02 must still be seeded, once, and the
+    first three must not be re-added (the lab may have removed one)."""
+    p = copy.deepcopy(PROFILES["EPA_537_1"])
+    p["method_id"] = "EPA_537_1"
+    p[llt.SEEDED_KEY] = "2026-10-01"
+    assert llt.seed_537_1(p)
+    dup_low = [t for t in p["qc_acceptance"]["Dup"]["tiers"] if t.get("low_level_x_rl")]
+    assert [(t["low_level_x_rl"], t["rpd_max"]) for t in dup_low] == [(2.0, 50.0)]
+    assert not [t for t in p["qc_acceptance"]["LFSM"]["tiers"] if t.get("low_level_x_rl")]   # not re-added
+    assert sorted(p[llt.SEEDED_KEY]) == ["Dup", "LFB", "LFSM", "LFSMD"]
+    assert not llt.seed_537_1(p)
+
+
 def test_no_low_level_tier_changes_nothing():
     if not PY3:
         return

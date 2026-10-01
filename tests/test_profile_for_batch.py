@@ -25,8 +25,8 @@ import project_specs as ps      # noqa: E402
 
 METHOD = {"method_id": "EPA_537_1", "supported_matrices": ["Drinking Water", "Groundwater"],
           "qc_acceptance": {"Dup": {"enabled": True, "tiers": [{"name": "default", "rpd_max": 30.0}]}}}
-DUP = __import__("method_profile_sections").DUP_RPD.fields()[0].name
-SPECS = {"EPA_537_1": {"*": {"dup": {DUP: 25.0}}, "Groundwater": {"dup": {DUP: 35.0}}}}
+SPECS = {"EPA_537_1": {"*": {"dup": {"changed": {"default": {"rpd_max": 25.0}}}},
+                       "Groundwater": {"dup": {"changed": {"default": {"rpd_max": 35.0}}}}}}
 
 
 def _fake_zope(project):

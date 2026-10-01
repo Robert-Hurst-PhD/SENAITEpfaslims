@@ -26,7 +26,7 @@ import project_specs as ps               # noqa: E402
 from analyte_reference import NATIVE_ANALYTES   # noqa: E402
 
 SECTIONS = mps.PROJECT_SECTIONS
-DUP = mps.DUP_RPD.fields()[0].name
+DUP = cf.collection_name(mps.DUP_RPD, 0, [c for c in mps.DUP_RPD.columns if c.path[0] == "rpd_max"][0])
 
 
 def _profiles():
@@ -156,7 +156,7 @@ def test_a_matrix_scope_layers_over_all_matrices():
     specs = save(specs, mid, "Groundwater", {"dup": {DUP: "35"}})
     rpd = lambda m: ps.effective(PROFILES[mid], specs[mid], m, env=ENV)[0]["qc_acceptance"]["Dup"]["tiers"][0]["rpd_max"]   # noqa: E731
     assert (rpd("Drinking Water"), rpd("Groundwater")) == (25.0, 35.0)
-    assert specs[mid]["Groundwater"] == {"dup": {DUP: 35.0}}, specs   # measured against "*", not the method
+    assert specs[mid]["Groundwater"] == {"dup": {"changed": {"default": {"rpd_max": 35.0}}}}, specs   # measured against "*"
     same = save(save({}, mid, ps.ALL, {"dup": {DUP: "25"}}), mid, "Groundwater", {"dup": {DUP: "25"}})
     assert "Groundwater" not in same[mid], same                       # equal to "*": nothing stored
 
@@ -211,7 +211,7 @@ def test_changing_one_cell_keeps_the_rest_of_that_row():
 def test_blank_unset_and_unticked_compare_equal():
     """Only for comparing: a stored "" and None, or an unticked and an absent
     box, are not a project difference."""
-    num, box = mps.DUP_RPD.fields()[0], mps.LABELLED_STANDARDS.columns[0]
+    num, box = [c for c in mps.DUP_RPD.columns if c.path[0] == "rpd_max"][0], mps.LABELLED_STANDARDS.columns[0]
     assert ps._same(num, u"", None) and ps._same(box, None, False)
     assert not ps._same(num, 20.0, None) and not ps._same(box, True, None)
 
@@ -237,7 +237,7 @@ def test_the_worker_patch_reproduces_the_effective_profile():
     mid = "FDA_32PFAS"
     p = PROFILES[mid]
     px = cf.cell_name(mps.PANEL_EXTRAS, ("PFXX",), mps.PANEL_EXTRAS.columns[0])
-    specs = save({}, mid, ps.ALL, {"px": {px: "on"}, "dup": {"rpd_max": "25"},
+    specs = save({}, mid, ps.ALL, {"px": {px: "on"}, "dup": {DUP: "25"},
                                    "tiers": {tier_cell(p, "tier2_linked", "recovery_max"): "140"}})
     eff, _ = ps.effective(p, specs[mid], "Milk", env=ENV)
     data = copy.deepcopy(p)
@@ -255,7 +255,7 @@ def test_departures_list_looser_values_only():
     p = PROFILES[mid]
     specs = save({}, mid, ps.ALL, {"tiers": {tier_cell(p, "tier2_linked", "recovery_max"): "140",
                                              tier_cell(p, "tier3_no_std", "recovery_min"): "45"},
-                                   "dup": {"rpd_max": "15"}})                  # tighter
+                                   "dup": {DUP: "15"}})                  # tighter
     eff, _ = ps.effective(p, specs[mid], None, env=ENV)
     deps = ps.departures(p, eff, mid)
     whats = [(d["what"], d["method"], d["project"]) for d in deps]

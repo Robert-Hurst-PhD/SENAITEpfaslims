@@ -118,6 +118,14 @@
       </div>
 
       <div class="pfas-coa-note pfas-coa-qs" tal:condition="smp/qs" tal:content="smp/qs">Quality system statement</div>
+      <div class="pfas-coa-note pfas-coa-dep" tal:condition="smp/departures|nothing">
+        <span i18n:translate="">Quality control criteria for project</span>
+        <tal:p replace="smp/project_label">ACME</tal:p>
+        <span i18n:translate="">less stringent than the laboratory method:</span>
+        <tal:d repeat="d smp/departures"><span tal:replace="d/what">LFSM recovery max %</span>
+          <span tal:replace="d/project">140</span> (<span i18n:translate="">method</span>
+          <span tal:replace="d/method">135</span>; <span tal:replace="d/where">PFOA in Eggs</span>)<tal:s condition="not:repeat/d/end">; </tal:s></tal:d>.
+      </div>
 
       <!-- Regulatory comparison (verified limits only; regulatory_limits.py). -->
       <div class="pfas-coa-reg" tal:define="reg smp/regulatory" tal:condition="reg">

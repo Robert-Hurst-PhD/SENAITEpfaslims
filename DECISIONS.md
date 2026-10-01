@@ -5633,3 +5633,15 @@ Lab answers:
   without the method's RLs, format and regulatory notes.
 - Decision: refuse. The certificate shows "Method not identified" with the
   remedy in place of that sample's results, and publishing stops for it.
+
+## 2026-10-02 — Duplicate RPD judged; departures listed on the certificate (confirmed)
+- **Sample duplicate RPD:** pair the duplicate with its sample by the
+  extraction record, else the name "<sample> Dup"; judge RPD only where both
+  results are at or above the RL, against the method's Dup tier (low-level
+  tier at <= N x RL using the pair's mean -- EPA 537.1 §9.3.7.2's 50% near
+  the MRL). One detected and one not: flagged for review; both ND: nothing to
+  judge.
+- **Departures on the certificate:** criteria from the batch's project that
+  are less stringent than the laboratory method are listed, for that
+  sample's matrix, beneath the quality-system statement. Nothing printed when
+  there are none.

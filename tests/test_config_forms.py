@@ -1024,10 +1024,7 @@ def test_unchanged_recovery_tab_saves_change_nothing():
             assert after.get("spike_levels") == stored.get("spike_levels"), (mid, coll.id)
             # exact, not just equivalent: a missing key must not become None
             assert after["qc_acceptance"]["LFSM"] == stored["qc_acceptance"]["LFSM"], (mid, coll.id)
-        form = {}
-        for g in cf.render(mps.DUP_RPD, stored):
-            for row in g["fields"]:
-                form[row["name"]] = row["value"]
+        form = coll_form(mps.DUP_RPD, stored)
         after = save(mps.DUP_RPD, stored, form)
         assert ch.diff(stored, after) == [], mid
 

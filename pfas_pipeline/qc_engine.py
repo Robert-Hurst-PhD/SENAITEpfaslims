@@ -53,6 +53,7 @@ KIND_BLANK       = "blank"
 KIND_LCS         = "lcs"
 KIND_CCV_FREQ    = "ccv_frequency"
 KIND_MDL         = "mdl"
+KIND_DUP         = "dup"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -895,3 +896,15 @@ def mdl_check(analyte: str, injection_name: str, conc: Optional[float],
     return QCFlag(source="MDL", check_kind=KIND_MDL, analyte=analyte,
                   injection_name=injection_name, value=f"{conc:g} {unit}".strip(),
                   issue=f"(MDL) detected below the MDL ({mdl:g} {unit})".strip())
+
+
+def dup_one_detected_flag(analyte: str, injection_name: str, parent: str,
+                          sample_conc, dup_conc, rl: float, unit: str) -> QCFlag:
+    """A sample / duplicate pair where only one result reached the RL: no RPD
+    can be computed, but a reviewer should see it (DECISIONS 2026-10-02)."""
+    fmt = lambda v: "ND" if v is None else f"{v:g}"          # noqa: E731
+    return QCFlag(source="Sample duplicate", check_kind=KIND_DUP, analyte=analyte,
+                  injection_name=injection_name,
+                  value=f"sample {fmt(sample_conc)} / dup {fmt(dup_conc)} {unit}".strip(),
+                  issue=f"(RPD) detected at or above the RL ({rl:g} {unit}) in one of the pair "
+                        f"only (parent {parent}) -- no RPD; review")

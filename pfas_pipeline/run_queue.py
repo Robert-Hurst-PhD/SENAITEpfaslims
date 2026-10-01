@@ -45,8 +45,8 @@ def _units_compatible(a, b):
 from .qc_engine import (
     KIND_CALIBRATION, KIND_CCV, KIND_ION_RATIO, KIND_IS_RESPONSE,
     KIND_LFSM, KIND_LFSMD, KIND_RT, KIND_SN, KIND_SURROGATE,
-    KIND_BLANK, KIND_LCS, KIND_CCV_FREQ, KIND_MDL,
-    blank_check, ccv_frequency_check, mdl_check,
+    KIND_BLANK, KIND_LCS, KIND_CCV_FREQ, KIND_MDL, KIND_DUP,
+    blank_check, ccv_frequency_check, mdl_check, dup_one_detected_flag,
     is_raw_check, rt_deviation_check, qual_quan_check,
     calibration_check, calibration_check_profiled,
     ccv_check_profiled, rrt_check_profiled, signal_to_noise_check,
@@ -98,7 +98,7 @@ CHECK_PROMPTS: dict[str, str] = {
     "recovery":            "Verify LFB / LCS recovery against the method's tiers",
     "lfsm_recovery":       "Verify LFSM recovery 50–150% (select spike conc. if not set)",
     "lfsmd_rpd":           "Verify LFSM/LFSMD RPD ≤ 30%",
-    "duplicate_rpd":       "Verify sample duplicate RPD ≤ 30%",
+    "duplicate_rpd":       "Verify the sample duplicate RPD against the method's Dup limit",
     "signal_to_noise":     "Verify S/N ≥ 3 for reported analytes",
 }
 
@@ -122,6 +122,16 @@ def _lfsmd_to_lfsm_name(lfsmd_inj):
     if lfsmd_inj.endswith(" Dup."):
         return lfsmd_inj[:-5].rstrip()
     return lfsmd_inj
+
+
+_DUP_SUFFIX = re.compile(r"(?i)[\s;,_-]*\b(?:dup\.?|duplicate)\s*$")
+
+
+def _dup_parent_name(dup_inj):
+    """'KCP Silage A Dup.' / '...; Duplicate' -> 'KCP Silage A' (the name
+    fallback when the extraction record does not name the parent)."""
+    parent = _DUP_SUFFIX.sub("", dup_inj or "").rstrip(" ;,")
+    return parent if parent and parent != dup_inj else ""
 
 
 def _get_conc(inj_name, analyte, lookup):
@@ -960,6 +970,64 @@ class RunQueue:
                     if flag is not None:
                         flags_by_injection.setdefault(inj, []).append(flag)
 
+        # 11. SAMPLE DUPLICATE RPD (switched by the method's Dup QC type;
+        # DECISIONS 2026-10-02). Pair by the extraction record, else the name
+        # "<sample> Dup"; judge only where both results reach the RL; one
+        # detected and one not is flagged for review.
+        dup_evaluated = set()
+        if profile is not None and _qc_type_enabled(profile, "Dup"):
+            pedigrees = getattr(self.batch, "spikes", None) or {}
+            for inj in order:
+                if classify_injection(inj, dilutions) != "Dup":
+                    continue
+                parent = (pedigrees.get(inj) or {}).get("parent") or _dup_parent_name(inj)
+                if not parent or parent not in by_inj:
+                    _record_gap("Dup", "", UnconfiguredCriterion(
+                        "{0}: no sample to pair this duplicate with (expected {1!r}; record "
+                        "the parent on the extraction record).".format(inj, parent)))
+                    continue
+                judged = False
+                for analyte in _analytes:
+                    r1, r2 = _row(parent, analyte), _row(inj, analyte)
+                    if r1 is None or r2 is None:
+                        continue
+                    rl, _mdl, rl_unit = profile.reporting_limits(analyte, _bmatrix)
+                    if rl is None:
+                        _record_gap("Dup", analyte, UnconfiguredCriterion(
+                            "{0} / {1}: duplicate RPD is judged at or above the RL, and no RL "
+                            "is set (Method Profiles -> Reporting Limits).".format(analyte, _bmatrix)))
+                        continue
+                    if not (_units_compatible(_unit(r1), rl_unit) and _units_compatible(_unit(r2), rl_unit)):
+                        _record_gap("Dup", analyte, UnconfiguredCriterion(
+                            "{0}: results in {1}/{2}, RL in {3} -- not compared.".format(
+                                analyte, _unit(r1), _unit(r2), rl_unit)))
+                        continue
+                    c1, c2 = reported_conc(r1), reported_conc(r2)
+                    d1 = c1 is not None and c1 >= rl
+                    d2 = c2 is not None and c2 >= rl
+                    flag = None
+                    if d1 and d2:
+                        mean = (c1 + c2) / 2.0
+                        rpd = abs(c1 - c2) / mean * 100.0 if mean else 0.0
+                        try:
+                            raw = rpd_check_profiled(profile, analyte, _bmatrix, "Dup", rpd, inj,
+                                                     conc=mean, rl=rl)
+                        except UnconfiguredCriterion as exc:
+                            _record_gap("Dup", analyte, exc)
+                            continue
+                        if raw is not None:
+                            flag = QCFlag(source="Sample duplicate", check_kind=KIND_DUP,
+                                          analyte=raw.analyte, injection_name=inj,
+                                          value=raw.value, issue=raw.issue + " (parent %s)" % parent)
+                        judged = True
+                    elif d1 != d2:
+                        flag = dup_one_detected_flag(analyte, inj, parent, c1, c2, rl, rl_unit)
+                        judged = True
+                    if flag is not None:
+                        flags_by_injection.setdefault(inj, []).append(flag)
+                if judged:
+                    dup_evaluated.add(inj)
+
         # Consolidate the QC Log (Sheet 6 equivalent)
         self.batch.qc_flags = [
             f for fl in flags_by_injection.values() for f in fl
@@ -986,6 +1054,7 @@ class RunQueue:
             "surrogate_recovery":  {KIND_SURROGATE},
             "blank_contamination": {KIND_BLANK},
             "recovery":            {KIND_LCS},
+            "duplicate_rpd":       {KIND_DUP},
         }
 
         for chk in self.checks:
@@ -1015,6 +1084,9 @@ class RunQueue:
                         chk.status = CheckStatus.AUTO_PASS
                 elif chk.check_name == "recovery":
                     if chk.injection_name in lcs_evaluated:
+                        chk.status = CheckStatus.AUTO_PASS
+                elif chk.check_name == "duplicate_rpd":
+                    if chk.injection_name in dup_evaluated:
                         chk.status = CheckStatus.AUTO_PASS
                 elif chk.check_name == "surrogate_recovery":
                     # Advisory wins over evaluated: one compound can be in
