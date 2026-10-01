@@ -123,3 +123,10 @@ body, button, input, select, textarea, .btn, .form-control, .popover, .tooltip {
   font-family: var(--font-sans);
 }
 code, pre, kbd, samp { font-family: var(--font-mono); }
+/* the same three type roles as PFAS pages */
+h1, h2, h3, h4, .documentFirstHeading, .card-title { font-family: var(--font-heading); }
+table.contentstable th, .listing th {
+  font-family: var(--font-subtitle);
+  font-weight: var(--fw-subtitle);
+  letter-spacing: var(--ls-subtitle);
+}

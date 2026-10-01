@@ -845,13 +845,13 @@ class PFASProjectsView(BrowserView):
                 }
         except (TypeError, ValueError):
             return self._criteria_redirect(
-                uid, method_id, matrix, "error=Invalid+EIS+recovery+value")
+                uid, method_id, matrix, "error=Invalid+SUR+recovery+value")
 
         _set_eis_analyte(project_obj, method_id, matrix, analyte, value)
 
         refreshed, skipped = _refresh_resolved_criteria_for_project(
             self._portal(), project_obj, request=self.request)
-        msg = "ok=EIS+override+saved+-+{0}+batch(es)+refreshed".format(refreshed)
+        msg = "ok=SUR+override+saved+-+{0}+batch(es)+refreshed".format(refreshed)
         if skipped:
             msg = "{0}+%28{1}+skipped%29".format(msg, len(skipped))
         return self._criteria_redirect(uid, method_id, matrix, msg)
@@ -882,7 +882,7 @@ class PFASProjectsView(BrowserView):
 
         refreshed, skipped = _refresh_resolved_criteria_for_project(
             self._portal(), project_obj, request=self.request)
-        msg = "ok=EIS+override+cleared+-+{0}+batch(es)+refreshed".format(refreshed)
+        msg = "ok=SUR+override+cleared+-+{0}+batch(es)+refreshed".format(refreshed)
         if skipped:
             msg = "{0}+%28{1}+skipped%29".format(msg, len(skipped))
         return self._criteria_redirect(uid, method_id, matrix, msg)

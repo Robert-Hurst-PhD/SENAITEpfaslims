@@ -426,9 +426,9 @@ def write_eis(profile, rows):
 
 
 EIS = cf.Collection(
-    id=u"eis", title=u"EIS Recovery Overrides", noun=u"EIS row", new_rows=2,
+    id=u"eis", title=u"SUR Recovery Overrides", noun=u"SUR row", new_rows=2,
     allow_empty=True,
-    columns=[cf.Field("analyte", u"EIS / Surrogate Analyte", kind=cf.TEXT,
+    columns=[cf.Field("analyte", u"Surrogate (SUR)", kind=cf.TEXT,
                       placeholder=u"new designation"),
              cf.Field("recovery_min", u"Recovery Min (%)", minimum=0),
              cf.Field("recovery_max", u"Recovery Max (%)", minimum=0)],
@@ -471,9 +471,9 @@ def _eis_class(key, label):
         return profile
 
     return cf.Collection(
-        id=u"eis_" + key, title=u"EIS limits: %s" % label, noun=u"row", new_rows=2,
+        id=u"eis_" + key, title=u"SUR limits: %s" % label, noun=u"row", new_rows=2,
         allow_empty=True,
-        columns=[cf.Field("analyte", u"EIS / Surrogate Analyte", kind=cf.CHOICE,
+        columns=[cf.Field("analyte", u"Surrogate (SUR)", kind=cf.CHOICE,
                           choices=eis_designations),
                  cf.Field("recovery_min", u"Recovery Min (%)", minimum=0),
                  cf.Field("recovery_max", u"Recovery Max (%)", minimum=0)],
@@ -697,6 +697,64 @@ ISOMERS = cf.Table(
 
 def check_isomers(profile):
     return _iso.check(profile, _global_titles())
+
+
+# ── QC Types tab: every QC type the lab defines (2026-10-01) ────────────────
+# The lab's QC types are the TAGGED core Reference Definitions ([QC:CODE] in the
+# description, editable in Setup). The tab used to list only the types already
+# in the method's qc_acceptance, so a type the lab defines but a method had
+# never had could not be switched on at all.
+
+QC_KIND = {"MB": "blank", "LRB": "blank", "MXB": "blank",
+           "LFB": "recovery", "LFSM": "recovery",
+           "LFSMD": "rpd", "DUP": "rpd",
+           "CAL": "instrument", "ICV": "instrument", "CCV": "instrument", "CCB": "instrument",
+           "SURR": "surrogate"}
+# qc_acceptance keys keep the spellings the pipeline matches on.
+PROFILE_KEY = {"DUP": "Dup", "MXB": "MxB"}
+CONFIGURED_ON = {"instrument": ("pane-cal", u"Calibration & CCV"),
+                 "surrogate": ("pane-sur", u"Internal Standards")}
+
+
+def qc_type_rows(profile, label_map):
+    """One row per QC type: every tagged type (label_map = {CODE: name}) plus
+    any the method already carries. Batch QC types toggle here; instrument and
+    surrogate types are shown with where they are configured."""
+    qca = profile.get("qc_acceptance") or {}
+    by_code = dict((k.upper(), k) for k in qca)
+    codes = sorted(set(label_map) | set(by_code), key=lambda c: (
+        ["blank", "recovery", "rpd", "instrument", "surrogate"].index(QC_KIND.get(c, "rpd")), c))
+    rows = []
+    for code in codes:
+        kind = QC_KIND.get(code, "other")
+        key = by_code.get(code) or PROFILE_KEY.get(code, code)
+        cfg = qca.get(key) or {}
+        tiers = cfg.get("tiers") or []
+        rows.append({
+            "code": code, "key": key, "label": label_map.get(code) or code, "kind": kind,
+            "toggle": kind in ("blank", "recovery", "rpd", "other"),
+            "enabled": bool(cfg.get("enabled")),
+            "present": key in qca,
+            "has_criteria": any(any(t.get(f) is not None for f in (
+                "recovery_min", "recovery_max", "rpd_max", "max_conc_x_rl")) for t in tiers),
+            "configured_on": CONFIGURED_ON.get(kind),
+        })
+    return rows
+
+
+def apply_qc_toggles(profile, offered, enabled):
+    """Write the tab's toggles. `offered` = the keys the page showed with a
+    toggle; a type switched on that the method never had is created ENABLED
+    with NO limits -- the engine then refuses to judge it until criteria are
+    set, rather than this tab inventing a recovery window."""
+    qca = profile.setdefault("qc_acceptance", {})
+    for key in offered:
+        on = key in enabled
+        if key in qca:
+            qca[key]["enabled"] = on
+        elif on:
+            qca[key] = {"enabled": True, "tiers": []}
+    return profile
 
 
 # Whole-profile checks, run after a tab's sections are applied, keyed by the

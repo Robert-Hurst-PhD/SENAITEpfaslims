@@ -867,6 +867,80 @@ def test_the_isomer_section_left_analyte_x_matrix():
         assert retired not in src and retired not in template and retired not in js, retired
 
 
+
+# ── QC Types tab (2026-10-01) ────────────────────────────────────────────────
+
+LABELS = {"CAL": "Calibration Standard", "CCB": "Solvent Blank", "CCV": "CCV", "DUP": "Sample Duplicate",
+          "ICV": "ICV", "LFB": "Laboratory Fortified Blank", "LFSM": "LFSM", "LFSMD": "LFSM Duplicate",
+          "LRB": "Lab Reagent Blank", "MB": "Method Blank", "MXB": "Matrix Blank", "SURR": "Surrogate Recovery"}
+
+
+def test_the_qc_types_tab_lists_every_type_the_lab_defines():
+    """It listed only the method's own five, so LFB could not be switched on
+    for FDA, nor MB for the EPA methods."""
+    for mid, p in _profiles().items():
+        rows = mps.qc_type_rows(p, LABELS)
+        assert set(r["code"] for r in rows) >= set(LABELS), mid
+        keys = dict((r["code"], r["key"]) for r in rows)
+        assert keys["DUP"] == "Dup" and keys["MXB"] == "MxB"            # pipeline spellings
+        toggles = set(r["code"] for r in rows if r["toggle"])
+        assert toggles == {"MB", "LRB", "MXB", "LFB", "LFSM", "LFSMD", "DUP"}, toggles
+        assert all(r["configured_on"] for r in rows if r["code"] in ("CAL", "ICV", "CCV", "CCB", "SURR"))
+
+
+def test_switching_on_a_new_type_invents_no_limits_and_others_are_kept():
+    import copy
+    p = copy.deepcopy(_profiles()["FDA_32PFAS"])
+    before = copy.deepcopy(p["qc_acceptance"])
+    offered = [r["key"] for r in mps.qc_type_rows(p, LABELS) if r["toggle"]]
+    enabled = set(k for k in offered if (before.get(k) or {}).get("enabled")) | {"LFB"}
+    mps.apply_qc_toggles(p, offered, enabled)
+    assert p["qc_acceptance"]["LFB"] == {"enabled": True, "tiers": []}
+    for k, v in before.items():
+        assert p["qc_acceptance"][k] == v, k                            # untouched
+    row = [r for r in mps.qc_type_rows(p, LABELS) if r["code"] == "LFB"][0]
+    assert row["enabled"] and not row["has_criteria"]
+    mps.apply_qc_toggles(p, offered, enabled - {"LFB"})                 # off again: kept, disabled
+    assert p["qc_acceptance"]["LFB"]["enabled"] is False
+
+
+def test_an_unchanged_toggle_save_changes_nothing():
+    import copy
+    for mid, p in _profiles().items():
+        q = copy.deepcopy(p)
+        rows = mps.qc_type_rows(q, LABELS)
+        offered = [r["key"] for r in rows if r["toggle"]]
+        mps.apply_qc_toggles(q, offered, set(r["key"] for r in rows if r["toggle"] and r["enabled"]))
+        assert q["qc_acceptance"] == p["qc_acceptance"], mid
+
+
+
+def test_which_qc_types_a_method_runs_has_one_source():
+    """associated_qc_types (grid, wizard, Data Review gate, Run Builder) and the
+    enabled flags (the engine) disagreed: FDA MxB was required by Data Review
+    but never evaluated. The list is folded into the flags and removed."""
+    import copy, os, re
+    sys.path.insert(0, os.path.join(PKG, "qc"))
+    import qc_types
+    p = {"associated_qc_types": ["MB", "MxB", "LRB"],
+         "qc_acceptance": {"MB": {"enabled": True, "tiers": [{"max_conc_x_rl": 1.0}]},
+                           "MxB": {"enabled": False, "tiers": [{"max_conc_x_rl": 1.0}]},
+                           "LFB": {"enabled": True, "tiers": []}}}
+    q = copy.deepcopy(p)
+    assert qc_types.fold_associated_qc_types(q)
+    assert "associated_qc_types" not in q
+    assert q["qc_acceptance"]["MxB"]["enabled"] is True                  # listed -> run
+    assert q["qc_acceptance"]["MxB"]["tiers"] == p["qc_acceptance"]["MxB"]["tiers"]
+    assert q["qc_acceptance"]["LRB"] == {"enabled": True, "tiers": []}   # no invented limits
+    assert q["qc_acceptance"]["LFB"]["enabled"] is True                  # enabled stays
+    assert not qc_types.fold_associated_qc_types(q)                      # idempotent
+    for name in ("data_review.py", "run_builder.py", "qc_grid.py", "method_profiles.py"):
+        src = _read(name)
+        assert not re.search(r"get\(\s*[\"']associated_qc_types", src), name
+    grid = _read("qc_grid.py")
+    assert "_DEFAULT_TIERS" not in grid and "del qa[code]" not in grid
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]

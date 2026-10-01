@@ -10,11 +10,15 @@
  * page; add a token here, never in a page.
  * ========================================================================== */
 
-/* ── Typeface: Nunito, a rounded sans-serif (decided 2026-09-30, lab request
-   "more rounded"). Served from the add-on, not a font CDN: pages keep working
-   offline and no lab page calls a third party. Variable weight 200-1000, so
-   every weight the pages use comes from these two files. Licence: SIL OFL
-   1.1, static/fonts/OFL.txt (bundling with GPL software is permitted). */
+/* ── Typefaces: one family, three matched roles (decided 2026-10-01; lab
+   asked for header / body / subtitle styles that match):
+     headers    Nunito          (rounded)              --font-heading
+     body       Nunito Sans     (its cleaner sibling)  --font-sans
+     subtitles  Nunito Sans SemiBold, letter-spaced    --font-subtitle
+   Served from the add-on, not a font CDN: pages keep working offline and no
+   lab page calls a third party. Variable weight 200-1000. Licences: SIL OFL
+   1.1, static/fonts/OFL.txt and OFL-NunitoSans.txt (bundling with GPL
+   software is permitted). */
 @font-face {
   font-family: "Nunito";
   font-style: normal;
@@ -33,6 +37,29 @@
   font-display: swap;
   src: url("fonts/nunito-latin-ext-wght-normal.woff2") format("woff2-variations"),
        url("fonts/nunito-latin-ext-wght-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+                 U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+                 U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Nunito Sans";
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url("fonts/nunito-sans-latin-wght-normal.woff2") format("woff2-variations"),
+       url("fonts/nunito-sans-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                 U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                 U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Nunito Sans";
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url("fonts/nunito-sans-latin-ext-wght-normal.woff2") format("woff2-variations"),
+       url("fonts/nunito-sans-latin-ext-wght-normal.woff2") format("woff2");
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
                  U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
                  U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
@@ -82,7 +109,12 @@
      Matched to core SENAITE, whose listings set body/table text at 14px:
      PFAS pages had drifted to 12-13px with much at 9-11px, so text changed
      size between pages. Every screen template now uses only these sizes. */
-  --font-sans: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-heading: "Nunito", "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-subtitle: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --fw-heading: 700;
+  --fw-subtitle: 600;
+  --ls-subtitle: .04em;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --fs-xs:   11px;   /* table headers, badges, captions  */
   --fs-sm:   13px;   /* secondary text                   */

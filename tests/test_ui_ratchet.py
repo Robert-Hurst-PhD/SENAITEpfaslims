@@ -32,7 +32,7 @@ SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
 MAX_PAGES_WITH_STYLE_BLOCK = 51
-MAX_STYLE_ATTRIBUTES = 893
+MAX_STYLE_ATTRIBUTES = 884
 MAX_DISTINCT_HEX = 208
 MAX_DISTINCT_FONT_SIZES = 3   # the 36-64px display glyphs; all text uses var(--fs-*)
 
@@ -122,17 +122,50 @@ def test_no_python_expression_inside_a_string_expression():
     assert not bad, bad
 
 
+def test_tal_attributes_split_cleanly():
+    """tal:attributes separates attributes with ";" -- a ";" inside an
+    expression (e.g. "return false;") splits it, and the page 500s. Found
+    live on the QC Types tab (2026-10-01). Each part must be "name expr";
+    ";;" is the escape."""
+    bad = []
+    for folder in (TEMPLATES, os.path.join(TEMPLATES, "reports")):
+        if not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            if not name.endswith(".pt"):
+                continue
+            with open(os.path.join(folder, name)) as fh:
+                body = re.sub(r"<!--.*?-->", "", fh.read(), flags=re.S)
+            for m in re.finditer(r'tal:attributes="([^"]*)"', body):
+                # the XML parser decodes entities (&amp; &quot;) BEFORE TAL
+                # splits, so decode them first, exactly as Zope does
+                try:
+                    from html import unescape
+                except ImportError:                        # Py2.7
+                    from HTMLParser import HTMLParser
+                    unescape = HTMLParser().unescape
+                value = unescape(m.group(1)).replace(";;", "\x00")
+                for part in value.split(";"):
+                    if part.strip() and not re.match(r"^\s*[\w:.-]+\s+\S", part):
+                        bad.append("%s: %r" % (name, part.strip()[:50]))
+    assert not bad, bad
+
+
 def test_the_typeface_is_served_from_the_addon():
     """Nunito (decided 2026-09-30) is bundled, with its licence, and named
     first in --font-sans; no page may load a font from a third-party CDN
     (offline labs, and no lab page should call out to one)."""
     with open(os.path.join(STATIC, "pfas-tokens.css")) as fh:
         tokens = fh.read()
-    assert re.search(r'--font-sans:\s*"Nunito"', tokens), "Nunito is not the first sans font"
+    # one family, three roles (2026-10-01): headers / body / subtitles
+    assert re.search(r'--font-heading:\s*"Nunito"', tokens), "headers are not Nunito"
+    assert re.search(r'--font-sans:\s*"Nunito Sans"', tokens), "body is not Nunito Sans"
+    assert re.search(r'--font-subtitle:\s*"Nunito Sans"', tokens), "subtitles are not Nunito Sans"
     for url in re.findall(r'url\("([^"]+)"\)', tokens):
         assert not url.startswith(("http", "//")), url
         assert os.path.isfile(os.path.join(STATIC, url)), "missing font file %s" % url
     assert os.path.isfile(os.path.join(STATIC, "fonts", "OFL.txt")), "font licence not shipped"
+    assert os.path.isfile(os.path.join(STATIC, "fonts", "OFL-NunitoSans.txt")), "Nunito Sans licence not shipped"
     for folder in (TEMPLATES, STATIC):
         for name in os.listdir(folder):
             path = os.path.join(folder, name)

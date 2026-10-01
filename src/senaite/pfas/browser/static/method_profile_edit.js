@@ -53,9 +53,9 @@
   }
 
   function _activeSpikeQcTypes() {
-    // Return the intersection of SPIKE_QC_TYPES with the method's associated_qc_types.
+    // Return the intersection of SPIKE_QC_TYPES with the QC types the method runs.
     var assoc = [];
-    try { assoc = JSON.parse((document.getElementById('associated_qc_types_json') || {value:'[]'}).value || '[]'); }
+    try { assoc = JSON.parse((document.getElementById('enabled_qc_types_json') || {value:'[]'}).value || '[]'); }
     catch(e) {}
     // LFSMD association → show LFSM spike table (they share levels)
     if (assoc.indexOf('LFSMD') !== -1 && assoc.indexOf('LFSM') === -1) {

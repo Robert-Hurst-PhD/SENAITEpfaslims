@@ -237,7 +237,8 @@ class PFASRunBuilderView(BrowserView):
         methods that use it, samples, matrix-spike QC) as a single editable
         sequence. The opening/interval/closing CCVs are inserted automatically
         at build time, so no literal bracket token is seeded."""
-        assoc = [str(c).upper() for c in (profile.get("associated_qc_types") or [])]
+        from senaite.pfas.qc.qc_types import enabled_qc_types
+        assoc = [str(c).upper() for c in enabled_qc_types(profile)]
         seq = ["MB", "CAL", "ICV", "MB"]
         if "LFB" in assoc:
             seq.append("LFB")

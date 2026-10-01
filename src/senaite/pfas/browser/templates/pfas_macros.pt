@@ -75,6 +75,21 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     /* ── App shell layout ────────────────────────────────────────────────── */
+    /* Type roles (pfas-tokens.css): headers / body / subtitles. Defined once
+       here for every PFAS page; core pages get the same in the overlay. */
+    body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, body.pfas-app h4,
+    .pfas-header-title, .pfas-ws-card-title, body.pfas-app details > summary,
+    .pfas-tabs .pfas-tab, #method-profile-tabs .pfas-tab {
+      font-family: var(--font-heading);
+    }
+    body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, .pfas-header-title,
+    .pfas-ws-card-title { font-weight: var(--fw-heading); }
+    .pfas-table th, .factor-table th, .section-group-hdr, .field-row label,
+    .pfas-crumb, .pfas-tab-count {
+      font-family: var(--font-subtitle);
+      font-weight: var(--fw-subtitle);
+      letter-spacing: var(--ls-subtitle);
+    }
     body.pfas-app button, body.pfas-app input,
     body.pfas-app select, body.pfas-app textarea { font-family: inherit; }
     body.pfas-app {

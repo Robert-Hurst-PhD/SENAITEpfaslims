@@ -252,8 +252,11 @@ class PFASMethodProfileEditView(BrowserView):
     def spike_levels_json(self):
         return json.dumps(self.profile().get("spike_levels", {}), indent=2)
 
-    def associated_qc_types_json(self):
-        return json.dumps(self.profile().get("associated_qc_types", []))
+    def enabled_qc_types_json(self):
+        """The QC types this method runs (qc_acceptance enabled flags -- the
+        one source; `associated_qc_types` was folded into them, 2026-10-01)."""
+        from senaite.pfas.qc.qc_types import enabled_qc_types
+        return json.dumps(enabled_qc_types(self.profile()))
 
     def qc_type_toggles(self):
         """Per-method QC-type enable toggles — one row per qc_acceptance key.
@@ -262,23 +265,10 @@ class PFASMethodProfileEditView(BrowserView):
 
         Display names come from the tagged core Reference Definitions (the
         single UI-editable source), not a hardcoded map."""
-        from senaite.pfas.qc_labels import get_qc_label_map, qc_label
+        from senaite.pfas.qc_labels import get_qc_label_map
+        from senaite.pfas.method_profile_sections import qc_type_rows
         from bika.lims import api
-        label_map = get_qc_label_map(api.get_portal())
-        qca = self.profile().get("qc_acceptance", {}) or {}
-        out = []
-        for key in sorted(qca.keys()):
-            cfg = qca[key] or {}
-            has_recovery = any(
-                t.get("recovery_min") is not None or t.get("recovery_max") is not None
-                for t in cfg.get("tiers", []))
-            out.append({
-                "key": key,
-                "label": qc_label(None, key, label_map=label_map),
-                "enabled": bool(cfg.get("enabled")),
-                "has_recovery": has_recovery,
-            })
-        return out
+        return qc_type_rows(self.profile(), get_qc_label_map(api.get_portal()))
 
     # ── QC engine rules (qc_rules.json) — merged into this console (D52) ─────
     # NOTE: qc_rules.json stays a SEPARATE store from method_profiles.json
@@ -739,10 +729,10 @@ class PFASMethodProfileEditView(BrowserView):
         # when the marker field is present, so POSTs from other forms that omit
         # the pane don't mass-disable QC types (unchecked boxes don't submit).
         if f.get("qc_toggles_present"):
-            qca = profile.get("qc_acceptance", {}) or {}
-            for key in qca.keys():
-                qca[key]["enabled"] = bool(f.get("qc_enabled_%s" % key))
-            profile["qc_acceptance"] = qca
+            from senaite.pfas.method_profile_sections import apply_qc_toggles
+            offered = [k for k in (f.get("qc_offered") or "").split(",") if k]
+            enabled = set(k for k in offered if f.get("qc_enabled_%s" % k))
+            apply_qc_toggles(profile, offered, enabled)
 
         # Disabled QC types carry NO spike levels: prune their entries from
         # every matrix (e.g. LFB toggled off -> LFB spike rows removed).

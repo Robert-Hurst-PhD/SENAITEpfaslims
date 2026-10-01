@@ -226,7 +226,7 @@
          onclick="pfasTabSwitch('pane-sur'); return false;">Internal Standards</a>
       <a class="pfas-tab" data-pane="pane-eis" href="#pane-eis"
          onclick="pfasTabSwitch('pane-eis'); return false;"
-         tal:attributes="style python:'' if view.show_eis_overrides() else 'display:none'">EIS Limits</a>
+         tal:attributes="style python:'' if view.show_eis_overrides() else 'display:none'">SUR Limits</a>
       <a class="pfas-tab" data-pane="pane-rl" href="#pane-rl"
          onclick="pfasTabSwitch('pane-rl'); return false;">Reporting Limits</a>
       <a class="pfas-tab" data-pane="pane-cal" href="#pane-cal"
@@ -443,9 +443,9 @@
               <p class="pane-intro">
                 Every isotopically labelled standard in the system. Tick the ones
                 <strong>this method</strong> uses, set each one&#8217;s role here
-                &#8212; <strong>Extracted</strong> (surrogate / EIS: added before
+                &#8212; <strong>Surrogate</strong> (SUR: added before
                 extraction, diluted with the sample, recovery-checked) or
-                <strong>Injection</strong> (NIS: added at reconstitution, compared
+                <strong>Internal standard</strong> (IS: added at reconstitution, compared
                 as measured) &#8212; and link it to the standard it is quantified
                 against, as in MS Quan. Any used standard may be linked to any
                 other; the role and links are this method&#8217;s own.
@@ -501,8 +501,8 @@
               <div id="spikeLevelsContainer"></div>
               <input type="hidden" name="spike_levels_json" id="spike_levels_json"
                      tal:attributes="value view/spike_levels_json" />
-              <input type="hidden" id="associated_qc_types_json"
-                     tal:attributes="value view/associated_qc_types_json" />
+              <input type="hidden" id="enabled_qc_types_json"
+                     tal:attributes="value view/enabled_qc_types_json" />
             </div>
           </details>
 
@@ -650,13 +650,13 @@
         <div class="page-body-narrow">
           <tal:eis tal:condition="view/show_eis_overrides">
             <details>
-              <summary>EIS Recovery Overrides
+              <summary>SUR Recovery Overrides
                 <span style="font-size:var(--fs-xs);color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span>
               </summary>
               <div class="section-body">
                 <div class="alert alert-warn" style="margin-bottom:10px">
                   &#9888; <strong>Lab verification required.</strong>
-                  Per-analyte EIS/OPR recovery limits from EPA 1633A Tables 6 and 8
+                  Per-analyte SUR/OPR recovery limits (EPA 1633A calls these surrogates extracted internal standards, EIS) from EPA 1633A Tables 6 and 8
                   (EPA 820-R-24-007, December 2024). Verify each value against your
                   purchased method copy before production use.
                 </div>
@@ -669,12 +669,12 @@
             </details>
 
             <details>
-              <summary>EIS Recovery Limits per Matrix Class
+              <summary>SUR Recovery Limits per Matrix Class
                 <span style="font-size:var(--fs-xs);color:var(--s-secondary);font-weight:400">(EPA 1633A only)</span>
               </summary>
               <div class="section-body">
                 <p class="json-hint">
-                  1633A publishes EIS recovery limits per matrix CLASS, not per
+                  1633A publishes SUR recovery limits per matrix CLASS, not per
                   matrix title &#8212; Sediment and Soil are both
                   <em>solid</em>. A limit set here overrides the per-analyte
                   limit above for that class. A class row names one of the
@@ -798,28 +798,41 @@
             <summary>Associated QC Types</summary>
             <div class="section-body">
               <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:640px;">
-                Toggle which QC types this method runs. Enabled types drive the
-                QC engine and auto-sync per-matrix Analysis Specifications;
-                disabled types are skipped everywhere. Types marked
-                <strong>recovery</strong> carry recovery ranges and generate specs.
+                Every QC type the lab defines (the tagged Reference Definitions in
+                Setup). Toggle which batch QC types this method runs: enabled types
+                drive the QC engine and the per-matrix Analysis Specifications;
+                disabled ones are skipped everywhere. A type switched on for the
+                first time starts with <strong>no limits</strong> &#8212; the engine
+                refuses to judge it until its criteria are set. Calibration and
+                surrogate types are configured on their own tabs.
               </p>
               <input type="hidden" name="qc_toggles_present" value="1"/>
-              <table class="pfas-table" style="max-width:560px;">
-                <thead><tr><th>Enabled</th><th>QC Type</th><th>Name</th><th>Spec sync</th></tr></thead>
+              <input type="hidden" name="qc_offered"
+                     tal:attributes="value python:','.join(q['key'] for q in view.qc_type_toggles() if q['toggle'])"/>
+              <table class="pfas-table">
+                <thead><tr><th>Enabled</th><th>QC Type</th><th>Name</th><th>Criteria</th></tr></thead>
                 <tbody>
                   <tr tal:repeat="q view/qc_type_toggles">
-                    <td style="text-align:center;">
-                      <input type="checkbox"
-                             tal:attributes="name string:qc_enabled_${q/key};
-                                             checked q/enabled"/>
-                    </td>
-                    <td><code tal:content="q/key">LCS</code></td>
-                    <td tal:content="q/label">Laboratory Control Sample</td>
                     <td>
-                      <span tal:condition="q/has_recovery"
-                            style="font-size:var(--fs-xs);background:#e8f4f8;color:#387493;padding:2px 8px;border-radius:8px;">recovery → specs</span>
-                      <span tal:condition="not:q/has_recovery"
-                            style="font-size:var(--fs-xs);color:var(--s-secondary);">limits only</span>
+                      <input tal:condition="q/toggle" type="checkbox"
+                             tal:attributes="name string:qc_enabled_${q/key};
+                                             checked python:'checked' if q['enabled'] else None"/>
+                    </td>
+                    <td><code tal:content="q/code">LFB</code></td>
+                    <td tal:content="q/label">Laboratory Fortified Blank</td>
+                    <td>
+                      <tal:t condition="q/toggle">
+                        <span tal:condition="python:q['enabled'] and q['has_criteria']"
+                              class="sur-tag sur-core">limits set</span>
+                        <span tal:condition="python:q['enabled'] and not q['has_criteria']"
+                              class="sur-tag sur-nocore"
+                              title="Enabled with no limits: the QC engine refuses to judge it until criteria are set (QC Type Grid / Recovery Tiers).">limits not set</span>
+                        <span tal:condition="not:q/enabled" class="form-note">not run</span>
+                      </tal:t>
+                      <a tal:condition="q/configured_on" href="#"
+                         tal:attributes="href python:'#' + q['configured_on'][0];
+                                         onclick python:&quot;return (pfasTabSwitch('%s'), false)&quot; % q['configured_on'][0]"
+                         tal:content="python:'configured on ' + q['configured_on'][1]">configured on Calibration &amp; CCV</a>
                     </td>
                   </tr>
                 </tbody>
@@ -894,7 +907,7 @@
     </form>
     <form id="section-eis" method="POST" class="pfas-section-form"
           tal:condition="view/show_eis_overrides"
-          data-tab-label="EIS Limits"
+          data-tab-label="SUR Limits"
           tal:attributes="action string:@@pfas-method-profile-edit">
       <input type="hidden" name="_section" value="eis,eis_solid,eis_biosolid,eis_leachate,eis_tissue" />
       <input type="hidden" name="_pane" value="pane-eis" />
@@ -1040,7 +1053,7 @@
     /* Endpoint for stage action GIFs — shared with the logbook step builder. */
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=8"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=9"></script>
 
   </div><!-- /content slot -->
 

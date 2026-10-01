@@ -106,6 +106,24 @@ def test_the_seeds_hold_a_grid_and_no_legacy_keys():
     assert "_convert_seeds()" in body, "seeds would re-add surrogate_is_chain via export back-fill"
 
 
+
+def test_the_role_labels_say_sur_and_is():
+    """The lab's terms (2026-10-01): SUR for surrogates, IS for internal
+    standards -- not EIS / NIS. Stored keys (eis_overrides, injection_is) and
+    reagent names stay; only what a person reads changed."""
+    import re
+    assert dict(ls.ROLE_LABELS) == {"surrogate": "Surrogate (SUR)",
+                                    "injection_is": "Internal standard (IS)"}
+    tpl_dir = os.path.join(ROOT, "src", "senaite", "pfas", "browser", "templates")
+    for name in ("method_profile_edit.pt", "projects.pt"):
+        with open(os.path.join(tpl_dir, name)) as fh:
+            text = re.sub(r"<!--.*?-->", "", fh.read(), flags=re.S)
+        text = re.sub(r"<[^>]+>", " ", text)                    # visible text only
+        text = text.replace("calls these surrogates extracted internal standards, EIS", "")
+        text = text.replace("the method calls these EIS", "")
+        assert not re.search(r"\b(EIS|NIS)\b", text), (name, re.findall(r".{30}\b(?:EIS|NIS)\b.{10}", text)[:3])
+
+
 if __name__ == "__main__":
     tests = [(n, f) for n, f in sorted(globals().items())
              if n.startswith("test_") and callable(f)]

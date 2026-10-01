@@ -45,3 +45,35 @@ def normalize_qc_type(value):
     if not code:
         return code
     return _ALIASES.get(code, code)
+
+
+
+# ── Which QC types a method runs: ONE source (2026-10-01) ────────────────────
+# A method's qc_acceptance[key]["enabled"] is the truth -- the QC engine reads
+# it. A second list, `associated_qc_types`, was written by the QC Type Grid and
+# the method wizard and read by Data Review's release gate and the Run Builder;
+# the two disagreed (FDA MxB: listed, but disabled), so Data Review required a
+# QC type the engine never evaluated. The list is folded into the flags and
+# removed.
+
+def enabled_qc_types(profile):
+    """qc_acceptance keys this method runs (enabled), in stored order."""
+    return [k for k, v in ((profile or {}).get("qc_acceptance") or {}).items()
+            if isinstance(v, dict) and v.get("enabled")]
+
+
+def fold_associated_qc_types(profile):
+    """Migrate `associated_qc_types` into the enabled flags (a type listed OR
+    enabled stays run; a listed type with no entry is created enabled with NO
+    limits, so the engine refuses to judge it until criteria are set) and drop
+    the list. True if changed (idempotent)."""
+    if "associated_qc_types" not in (profile or {}):
+        return False
+    qca = profile.setdefault("qc_acceptance", {})
+    for code in profile.get("associated_qc_types") or []:
+        if code in qca and isinstance(qca[code], dict):
+            qca[code]["enabled"] = True
+        else:
+            qca[code] = {"enabled": True, "tiers": []}
+    profile.pop("associated_qc_types")
+    return True

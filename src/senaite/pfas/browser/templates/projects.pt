@@ -312,7 +312,7 @@
             </form>
 
             <div class="pfas-card-head" style="margin-top:20px;">
-              EIS Recovery — per analyte (EPA 1633A's baseline-bearing key)
+              SUR Recovery — per analyte (EPA 1633A's baseline-bearing key; the method calls these EIS)
             </div>
 
             <div class="table-wrap" tal:condition="view/criteria_eis_rows">
@@ -345,7 +345,7 @@
               </table>
             </div>
             <div class="pj-muted" tal:condition="not:view/criteria_eis_rows">
-              No per-analyte EIS Recovery overrides set for this method/matrix.
+              No per-analyte SUR Recovery overrides set for this method/matrix.
             </div>
 
             <form method="get" style="margin-top:10px;"
@@ -400,7 +400,7 @@
                   (falls back to the lab tier, or the method baseline).
                 </div>
                 <div class="form-actions" style="margin-top:10px;">
-                  <button type="submit" class="btn btn-primary">Save EIS Override</button>
+                  <button type="submit" class="btn btn-primary">Save SUR Override</button>
                 </div>
               </form>
             </tal:preview>

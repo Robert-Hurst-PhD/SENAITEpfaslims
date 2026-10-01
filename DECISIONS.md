@@ -5480,3 +5480,27 @@ Lab answers:
   PFOS_A_L / PFHXS_A_L). The Maine DEP codes held (DEP18026 / DEP18024) are
   the LINEAR-isomer codes and were NOT changed -- flagged VERIFY for the lab:
   confirm the code for the summed total before an EDD is sent.
+
+## 2026-10-01 — Typefaces: Nunito headers, Nunito Sans body and subtitles (confirmed)
+- Lab: "one that has three sub fonts matching for its header, body and a
+  subtitle font". Chosen from three options: **Nunito** (rounded) for headers,
+  **Nunito Sans** for body, **Nunito Sans SemiBold, letter-spaced** for
+  subtitles (table headings, field labels, group headers, breadcrumbs).
+  Tokens `--font-heading` / `--font-sans` / `--font-subtitle` in
+  pfas-tokens.css; applied on PFAS and core pages; bundled (OFL), no CDN.
+  Supersedes the 2026-09-30 single-font entry.
+
+## 2026-10-01 — Which QC types a method runs: one source (confirmed)
+- Found while fixing "I don't see all available QC types": the method's
+  `qc_acceptance[key].enabled` (read by the QC engine) and a second list
+  `associated_qc_types` (written by the QC Type Grid and the method wizard,
+  read by Data Review's release gate and the Run Builder) disagreed -- FDA MxB
+  was listed but disabled, so Data Review required a type the engine never
+  evaluated. **Lab: FDA does run MxB.**
+- The enabled flags are the one source; the list is folded in (listed OR
+  enabled -> run) and removed. The QC Types tab and the QC Type Grid both
+  list the lab's QC types from the tagged core Reference Definitions; a type
+  switched on for the first time gets NO limits (the engine refuses to judge
+  it until criteria are set) -- the grid used to seed 70-130% / RPD 30 that
+  nobody had set, and unticking DELETED a type's configured criteria; both
+  stopped. Pipeline key spellings kept ("Dup", "MxB").

@@ -20,8 +20,8 @@ from __future__ import absolute_import, unicode_literals
 
 KEY = "labelled_standards"
 ROLES = ("surrogate", "injection_is")
-ROLE_LABELS = [("surrogate", "Extracted (surrogate / EIS)"),
-               ("injection_is", "Injection (NIS)")]
+ROLE_LABELS = [("surrogate", "Surrogate (SUR)"),
+               ("injection_is", "Internal standard (IS)")]
 
 
 def _map_surrogates(profile):

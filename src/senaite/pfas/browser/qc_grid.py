@@ -40,22 +40,6 @@ QC_COLUMNS = [
     {"code": "Dup",   "label": "Field Duplicate",       "criterion": "rpd"},
 ]
 
-# Default tier seed when a QC type is first enabled for a method.
-_DEFAULT_TIERS = {
-    "blank": [
-        {"name": "default", "analyte_group": "all", "matrix_scope": "all",
-         "max_conc_x_rl": 1.0},
-    ],
-    "recovery": [
-        {"name": "default", "analyte_group": "all", "matrix_scope": "all",
-         "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None},
-    ],
-    "rpd": [
-        {"name": "default", "analyte_group": "all", "matrix_scope": "all",
-         "rpd_max": 30.0},
-    ],
-}
-
 # Spike levels for per-level RPD criterion differentiation.
 SPIKE_LEVELS = ["Low", "Mid", "High"]
 
@@ -94,7 +78,20 @@ class PFASQCTypeGridView(BrowserView):
     # ── Template helpers ──────────────────────────────────────────────────────
 
     def qc_columns(self):
-        return QC_COLUMNS
+        """Batch QC types the lab defines -- the tagged Reference Definitions
+        (2026-10-01), so this grid and every method's QC Types tab offer the
+        same list. Was a hard-coded eight that kept LCS (an alias of LFB)
+        apart and could fall out of step with Setup."""
+        if getattr(self, "_columns", None) is None:
+            from senaite.pfas.qc_labels import get_qc_label_map
+            from senaite.pfas.method_profile_sections import QC_KIND, PROFILE_KEY
+            labels = get_qc_label_map(self._portal())
+            order = ["blank", "recovery", "rpd"]
+            codes = sorted((c for c in labels if QC_KIND.get(c) in order),
+                           key=lambda c: (order.index(QC_KIND[c]), c))
+            self._columns = [{"code": PROFILE_KEY.get(c, c), "label": labels[c],
+                              "criterion": QC_KIND[c]} for c in codes] or QC_COLUMNS
+        return self._columns
 
     def grid_methods(self):
         return GRID_METHODS
@@ -120,9 +117,11 @@ class PFASQCTypeGridView(BrowserView):
         for m in GRID_METHODS:
             mid = m["id"]
             profile = self._load_profile(mid)
-            associated = set(profile.get("associated_qc_types", []))
-            state[mid] = {col["code"]: (col["code"] in associated)
-                          for col in QC_COLUMNS}
+            # the enabled flags: the one source the engine reads too
+            from senaite.pfas.qc.qc_types import enabled_qc_types
+            running = set(enabled_qc_types(profile))
+            state[mid] = {col["code"]: (col["code"] in running)
+                          for col in self.qc_columns()}
         return state
 
     def rpd_tiers(self, method_id, qc_code):
@@ -142,7 +141,7 @@ class PFASQCTypeGridView(BrowserView):
         return json.dumps(self.rpd_tiers(method_id, qc_code))
 
     def is_rpd_type(self, qc_code):
-        for col in QC_COLUMNS:
+        for col in self.qc_columns():
             if col["code"] == qc_code:
                 return col["criterion"] == "rpd"
         return False
@@ -166,31 +165,21 @@ class PFASQCTypeGridView(BrowserView):
     def _apply_method_row(self, profile, method_id):
         """Update profile in-place for the checkboxes submitted for this method."""
         qa = profile.setdefault("qc_acceptance", {})
-        current_assoc = list(profile.get("associated_qc_types", []))
-        new_assoc = list(current_assoc)
 
-        for col in QC_COLUMNS:
+        for col in self.qc_columns():
             code = col["code"]
             field_name = "qc_enabled_{}_{}".format(method_id, code)
             checked = bool(self.request.form.get(field_name))
-
-            if checked:
-                if code not in qa:
-                    criterion = col["criterion"]
-                    qa[code] = {
-                        "enabled": True,
-                        "tiers": copy.deepcopy(_DEFAULT_TIERS[criterion]),
-                    }
-                if code not in new_assoc:
-                    new_assoc.append(code)
-            else:
-                # Remove key entirely — absence = disabled
-                if code in qa:
-                    del qa[code]
-                if code in new_assoc:
-                    new_assoc.remove(code)
-
-        profile["associated_qc_types"] = new_assoc
+            # The enabled flag is the one source (2026-10-01). Unticking no
+            # longer DELETES the type -- that threw away its configured
+            # criteria -- and ticking a new one no longer seeds 70-130% /
+            # RPD 30 limits nobody set: it starts with none, and the engine
+            # refuses to judge it until criteria are entered.
+            if code in qa and isinstance(qa[code], dict):
+                qa[code]["enabled"] = checked
+            elif checked:
+                qa[code] = {"enabled": True, "tiers": []}
+        profile.pop("associated_qc_types", None)
 
         # Handle per-spike-level RPD criteria for LFSMD
         self._apply_rpd_tiers(qa, method_id)

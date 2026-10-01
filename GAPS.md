@@ -6030,3 +6030,29 @@ Approved by the lab as the first recommendation of
   Desktop's share kept serving the OLD copy to the container (caught when a
   script read a stale value). Every add-on and pipeline file was then compared
   host vs container by checksum: all in sync. Edit files in place.
+
+## 64. SUR/IS labels; QC Types lists every QC type; one source for "runs QC type X"; three type roles (2026-10-01)
+- **Labels:** EIS -> SUR and NIS -> IS in everything a person reads (method
+  profile editor, Projects page, role labels "Surrogate (SUR)" / "Internal
+  standard (IS)"); one note keeps "EPA 1633A calls these EIS" for auditors.
+  Stored keys and reagent names unchanged. Guard test (mutation-tested).
+- **QC Types tab** listed only the 5 types a method already had; it now lists
+  all 12 the lab defines (tagged Reference Definitions): 7 batch types with
+  toggles, CAL/ICV/CCV/CCB/SURR linked to the tab that configures them; a
+  newly enabled type shows "limits not set" and invents none.
+- **One source** for which QC types a method runs (DECISIONS same date):
+  `associated_qc_types` folded into the enabled flags and removed; Data
+  Review's gate, Run Builder, QC Type Grid and wizard read/write the flags.
+  FDA MxB enabled (lab confirmed). The QC Type Grid's columns now come from
+  the same tagged types; it no longer deletes criteria on untick nor seeds
+  invented limits on tick.
+- **Fonts:** Nunito headers / Nunito Sans body / Nunito Sans SemiBold
+  subtitles, bundled with both OFL licences.
+- **Two template mistakes reached live pages and are now guarded:**
+  a ";" inside a tal:attributes expression split it (QC Types tab 500'd) --
+  `test_tal_attributes_split_cleanly` (entity-decoded as Zope does,
+  mutation-tested); and earlier `string:${python:}`.
+- **Verified live:** all three editors 200; QC Types 12 rows / 7 toggles / 5
+  links; enabling LFB for FDA -> "limits not set", recorded, reverted; grid
+  columns = the batch types; computed fonts Nunito / Nunito Sans; no-op audit
+  of every tab and the grid clean; history check clean; no JS errors.

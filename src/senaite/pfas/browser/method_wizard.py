@@ -656,7 +656,18 @@ class PFASMethodWizardView(BrowserView):
                     get_profile, save_profile)
                 portal = self._portal()
                 profile = get_profile(portal, mid) or {}
-                profile["associated_qc_types"] = selected_codes
+                # the enabled flags are the one source of which QC types a
+                # method runs (2026-10-01); a new type starts with NO limits
+                qca = profile.setdefault("qc_acceptance", {})
+                for code in selected_codes:
+                    if isinstance(qca.get(code), dict):
+                        qca[code]["enabled"] = True
+                    else:
+                        qca[code] = {"enabled": True, "tiers": []}
+                for code, cfg in qca.items():
+                    if code not in selected_codes and isinstance(cfg, dict):
+                        cfg["enabled"] = False
+                profile.pop("associated_qc_types", None)
                 save_profile(portal, mid, profile)
             except Exception as exc:
                 logger.warning(

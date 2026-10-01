@@ -446,7 +446,8 @@ class PFASDataReviewView(BrowserView):
                        if t in ("LFSM", "LFSMD", "LFB", "LCS", "SD")]
         prof = self._method_profile()
         qca = prof.get("qc_acceptance", {}) or {}
-        required = set(prof.get("associated_qc_types", []) or [])
+        from senaite.pfas.qc.qc_types import enabled_qc_types
+        required = set(enabled_qc_types(prof))
         rows = []
         for row in summary.get("rows", []):
             cells = {}
@@ -963,7 +964,9 @@ class PFASDataReviewView(BrowserView):
             # result at all, was not evaluated — silence here is how a batch
             # reaches release with its matrix spike never checked.
             profile = self._method_profile() or {}
-            required = set(profile.get("associated_qc_types") or [])
+            # the QC types the method RUNS -- the same flags the engine reads
+            from senaite.pfas.qc.qc_types import enabled_qc_types
+            required = set(enabled_qc_types(profile))
             present = set(summary.get("qc_types") or [])
             missing = sorted(r for r in required
                              if r not in present and r not in ("Dup", "MxB"))

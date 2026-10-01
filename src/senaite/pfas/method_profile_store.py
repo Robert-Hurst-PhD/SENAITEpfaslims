@@ -1002,6 +1002,8 @@ def _convert_seeds():
     for _data in DEFAULT_PROFILES.values():
         labelled_standards.migrate(_data, _global_injection_keywords())
         isomers.migrate(_data)          # isomer_summation -> isomers (2026-10-01)
+        from senaite.pfas.qc.qc_types import fold_associated_qc_types
+        fold_associated_qc_types(_data)   # one source for "runs QC type X"
 
 
 _convert_seeds()
@@ -1037,7 +1039,9 @@ def migrate_profile_models(portal):
         a = labelled_standards.migrate(profile, _global_injection_keywords())
         b = isomers.migrate(profile)
         c = _rename_linear_peak_rows(profile)
-        if a or b or c:
+        from senaite.pfas.qc.qc_types import fold_associated_qc_types
+        d = fold_associated_qc_types(profile)
+        if a or b or c or d:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:
