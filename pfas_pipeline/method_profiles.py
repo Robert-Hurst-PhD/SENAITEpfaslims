@@ -60,6 +60,7 @@ class QCRule:
     notes:            str = ""
     is_guidance_only: bool = False             # FDA surrogates: no hard req.
     verify_against_method: bool = False        # 1633A per-analyte tables
+    max_conc_x_rl:    Optional[float] = None   # blanks: at most N x RL
 
 
 @dataclass(frozen=True)
@@ -792,6 +793,24 @@ class MethodProfile:
     def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
         raise NotImplementedError
 
+    def reporting_limits(self, analyte, matrix):
+        """(rl, mdl, unit) for the analyte in `matrix`, in the matrix's
+        reporting unit as configured; None for what is not set."""
+        from .analyte_alias import keyword_for
+        data = self._profile_data()
+        kw = keyword_for(analyte) or analyte
+        entry = ((data.get("reporting_limits") or {}).get(matrix) or {}).get(kw) or {}
+        unit = (data.get("unit_map") or {}).get(matrix) or ""
+        num = lambda v: None if v is None else float(v)       # noqa: E731
+        return num(entry.get("rl")), num(entry.get("mdl")), unit
+
+    def ccv_frequency(self):
+        """The method's CCV interval (Calibration & CCV) -- the value the Run
+        Builder brackets with -- or None when not set."""
+        ccv = (self._profile_data().get("instrument_verification") or {}).get("ccv") or {}
+        n = ccv.get("frequency")
+        return int(n) if n not in (None, "", 0) else None
+
     def reporting_limit_ppt(self, analyte, matrix):
         """The analyte's RL for `matrix` in ppt (the spike-level unit), or
         None when no RL is set or its unit is not one this converts."""
@@ -1036,6 +1055,7 @@ class EPA537Profile(MethodProfile):
             rsd_max=rule.rsd_max,
             rpd_max=rule.rpd_max,
             notes=rule.notes,
+            max_conc_x_rl=rule.max_conc_x_rl,
         )
 
     def calibration_rule(self, analyte=""):
@@ -1195,12 +1215,14 @@ def _tier_rule(tier, notes, method_id, analyte, matrix, qc_type):
             "only {4} is set. Set both ends, or neither.".format(
                 method_id, analyte, matrix or "(no matrix)", qc_type,
                 "recovery_min" if low is not None else "recovery_max"))
+    blank = tier.get("max_conc_x_rl")
     return QCRule(
         None if low is None else float(low),
         None if high is None else float(high),
         rsd_max=rsd,
         rpd_max=rpd,
         notes=notes,
+        max_conc_x_rl=None if blank is None else float(blank),
     )
 
 
@@ -1418,6 +1440,7 @@ class EPA1633AProfile(MethodProfile):
             rpd_max=rule.rpd_max,
             verify_against_method=bool(t.get("verify_against_method", False)),
             notes=rule.notes,
+            max_conc_x_rl=rule.max_conc_x_rl,
         )
 
     def calibration_rule(self, analyte=""):

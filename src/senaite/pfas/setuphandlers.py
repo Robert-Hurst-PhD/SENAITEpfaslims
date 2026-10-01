@@ -221,6 +221,16 @@ def setup_handler(context):
         migrate_profile_models(portal)
     except Exception as e:
         logger.warning("Profile models not migrated: %s", e)
+    try:
+        # rule switches that changed nothing / retired parameters (GAPS §74)
+        from senaite.pfas.qc.rules import get_store, migrate_rule_store
+        store = get_store()
+        rules = store.load()
+        if migrate_rule_store(rules):
+            store.save(rules, updated_by="migration")
+            logger.info("QC rules: retired switches and parameters removed")
+    except Exception as e:
+        logger.warning("QC rule store not migrated: %s", e)
 
     # ── EGAD EDD config ───────────────────────────────────────────────────
     try:

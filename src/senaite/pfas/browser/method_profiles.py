@@ -230,6 +230,16 @@ class PFASMethodProfileEditView(BrowserView):
         from bika.lims import api
         return qc_type_rows(self.profile(), get_qc_label_map(api.get_portal()))
 
+    def rule_qc_type_rows(self):
+        """Extraction / matrix QC on the Rule Toggles tab: the SAME switch as
+        the QC Types tab (same form field, qc_enabled_<key>), for the types
+        this method can run (DECISIONS 2026-10-01)."""
+        from senaite.pfas.qc.rules import QC_TYPE_SWITCHES
+        labels = dict(QC_TYPE_SWITCHES)
+        by_code = dict((q["code"], q) for q in self.qc_type_toggles() if q.get("toggle"))
+        return [dict(by_code[code], rule_label=labels[code])
+                for code, _l in QC_TYPE_SWITCHES if code in by_code]
+
     # ── QC engine rules (qc_rules.json) — merged into this console (D52) ─────
     # NOTE: qc_rules.json stays a SEPARATE store from method_profiles.json
     # (the pipeline reads both for different jobs, D50). This console just
@@ -272,6 +282,7 @@ class PFASMethodProfileEditView(BrowserView):
                 "key": rkey, "label": rule["label"],
                 "enabled": bool(toggles.get(rkey, True)),
                 "has_params": bool(params), "params": params,
+                "note": rule.get("note") or u"",
             })
         return rows
 

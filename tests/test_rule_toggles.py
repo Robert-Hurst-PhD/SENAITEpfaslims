@@ -261,17 +261,23 @@ def test_switching_the_confirmation_off_suppresses_the_qualifier():
                           "recorded as owed", off_owed)
 
 
-def test_ui_only_rules_are_declared_as_such():
-    """`ccv_frequency` and `mdl_check` gate no engine check. That is recorded
-    in the mapping as an empty list -- which is honest, and is the difference
-    between a documented gap and a lying switch. If either ever acquires a
-    check, this test is the reminder to wire the mapping too."""
-    ui_only = sorted(k for k, v in MAPPING.items() if not v)
-    assert ui_only == ["ccv_frequency", "mdl_check"], (
-        "the set of unenforced toggles changed: %s. A toggle a QAO can switch "
-        "ON while nothing checks it must be declared, not silent." % ui_only)
-    for key in ui_only:
-        assert key in LIBRARY, "%s is unenforced AND absent from the UI" % key
+def test_every_switch_changes_what_the_pipeline_does():
+    """The lab asked (2026-10-01) that every switch be wired: a switch a QAO
+    can turn off while the check runs anyway -- or on while nothing checks --
+    is a lying control. So every RULE_LIBRARY key must be read by the engine
+    (from the AST: a mention in a comment does not count), and nothing it
+    reads may be missing from the library (the test above)."""
+    unread = sorted(LIBRARY - _keys_read_by_engine())
+    assert not unread, (
+        "switches on Rule Toggles that the pipeline never reads: %s" % unread)
+
+
+def test_switches_without_a_review_item_are_declared():
+    """An empty engine-check list now means "flags the run, no per-injection
+    review item" (CCV frequency, MDL) -- not "UI only"."""
+    no_item = sorted(k for k, v in MAPPING.items() if not v)
+    assert no_item == ["ccv_frequency", "mdl_check"], no_item
+    assert set(no_item) <= _keys_read_by_engine()
 
 
 def test_lfsmd_without_lfsm_is_reported_as_unsatisfiable():

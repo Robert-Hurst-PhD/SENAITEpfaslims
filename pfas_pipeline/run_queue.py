@@ -45,6 +45,8 @@ def _units_compatible(a, b):
 from .qc_engine import (
     KIND_CALIBRATION, KIND_CCV, KIND_ION_RATIO, KIND_IS_RESPONSE,
     KIND_LFSM, KIND_LFSMD, KIND_RT, KIND_SN, KIND_SURROGATE,
+    KIND_BLANK, KIND_LCS, KIND_CCV_FREQ, KIND_MDL,
+    blank_check, ccv_frequency_check, mdl_check,
     is_raw_check, rt_deviation_check, qual_quan_check,
     calibration_check, calibration_check_profiled,
     ccv_check_profiled, rrt_check_profiled, signal_to_noise_check,
@@ -90,10 +92,10 @@ CHECK_PROMPTS: dict[str, str] = {
     "is_response":         "Verify internal standard responses within ±50% of batch average",
     "rt_deviation":        "Verify retention times within ±0.10 min of average",
     "ion_ratio":           "Verify qual/quan ion ratios within ±30% of expected",
-    "blank_contamination": "Verify method blank shows no analyte above ½ LOQ",
+    "blank_contamination": "Verify the blank against the method's limit (QC Types: at most N x RL)",
     "lod_check":           "Apply <LOD qualifier where blank ≥ sample",
     "bloq_check":          "Apply BLoQ qualifier for results below LOQ",
-    "recovery":            "Verify LCS recovery 50–150%",
+    "recovery":            "Verify LFB / LCS recovery against the method's tiers",
     "lfsm_recovery":       "Verify LFSM recovery 50–150% (select spike conc. if not set)",
     "lfsmd_rpd":           "Verify LFSM/LFSMD RPD ≤ 30%",
     "duplicate_rpd":       "Verify sample duplicate RPD ≤ 30%",
@@ -501,7 +503,8 @@ class RunQueue:
         # above it -- was unreachable from a live run. See GAPS.md Sec30.
         eis_evaluated = set()
         eis_advisory = set()
-        if profile is not None:
+        # the Rule Toggles switch (wired 2026-10-01; it used to change nothing)
+        if profile is not None and _rule_enabled(toggles, "surrogate_recovery"):
             # the METHOD's injection standards (its labelled-standards grid)
             _injection_is = _get_injection_standards(_method)
             for compound in _get_is_list(_method):
@@ -801,6 +804,162 @@ class RunQueue:
 
                     lfsmd_evaluated.add(name)
 
+        # ── Checks wired 2026-10-01 (DECISIONS: every switch changes something)
+        blank_evaluated, lcs_evaluated = set(), set()
+        order = []                                   # injection names, run order
+        for r in sorted(all_rows, key=lambda r: (r.acquisition_datetime is None,
+                                                 r.acquisition_datetime or 0)) \
+                if all_rows and all(getattr(r, "acquisition_datetime", None) for r in all_rows) \
+                else all_rows:
+            if r.injection_name not in order:
+                order.append(r.injection_name)
+        by_inj = {}
+        for row in rows:
+            by_inj.setdefault(row.injection_name, []).append(row)
+        _bmatrix = self.batch.matrix or ""
+
+        def _row(inj, analyte):
+            return next((r for r in by_inj.get(inj, []) if r.compound_name == analyte), None)
+
+        def _unit(row):
+            u = (getattr(row, "conc_units", "") or "").strip()
+            return "" if u.lower() == "nan" else u
+
+        # 7. METHOD BLANK: each MB / LRB / MxB analyte against its QC Types
+        # tier (max x RL). Switched by the QC type's own flag (qc_rules returns
+        # None for a disabled type), like LFSM -- extraction QC is owned by the
+        # method profile, beside its limits.
+        if profile is not None:
+            for inj in order:
+                role = classify_injection(inj, dilutions)
+                if role not in ("MB", "LRB", "MxB"):
+                    continue
+                judged = False
+                for analyte in _analytes:
+                    row = _row(inj, analyte)
+                    if row is None:
+                        continue
+                    try:
+                        rule = profile.qc_rules(analyte, _bmatrix, role)
+                    except UnconfiguredCriterion as exc:
+                        _record_gap("Method blank", analyte, exc)
+                        continue
+                    if rule is None or rule.max_conc_x_rl is None:
+                        continue                     # the method sets no blank limit
+                    rl, _mdl, rl_unit = profile.reporting_limits(analyte, _bmatrix)
+                    if rl is None:
+                        _record_gap("Method blank", analyte, UnconfiguredCriterion(
+                            "{0} / {1} / {2}: the blank limit is {3:g} x RL but no RL is "
+                            "set (Method Profiles -> Reporting Limits).".format(
+                                self.method_id, analyte, _bmatrix, rule.max_conc_x_rl)))
+                        continue
+                    if not _units_compatible(_unit(row), rl_unit):
+                        _record_gap("Method blank", analyte, UnconfiguredCriterion(
+                            "{0}: blank result in {1}, RL in {2} -- not compared.".format(
+                                analyte, _unit(row), rl_unit)))
+                        continue
+                    flag = blank_check(analyte, inj, reported_conc(row), rl,
+                                       rule.max_conc_x_rl, rl_unit, role)
+                    judged = True
+                    if flag is not None:
+                        flags_by_injection.setdefault(inj, []).append(flag)
+                if judged:
+                    blank_evaluated.add(inj)
+
+        # 8. LFB / LCS RECOVERY: measured / spike x 100 against the LFB (or
+        # LCS) tiers, low-level tier included. Switched by the QC type's flag.
+        if profile is not None:
+            qca = (getattr(profile, "_profile_data", lambda: {})() or {}).get("qc_acceptance") or {}
+            for inj in order:
+                if classify_injection(inj, dilutions) != "LFB":
+                    continue
+                code = "LCS" if re.search(r"(?i)\bLCS\b", inj) else "LFB"
+                qc = code if code in qca else ("LFB" if "LFB" in qca else ("LCS" if "LCS" in qca else None))
+                if qc is None or not _qc_type_enabled(profile, qc):
+                    continue
+                pedigree = (getattr(self.batch, "spikes", None) or {}).get(inj) or {}
+                level = pedigree.get("level") or ""
+                spike = pedigree.get("spike_ppt")
+                if not level:
+                    data = profile._profile_data() if hasattr(profile, "_profile_data") else {}
+                    for lab in sorted(set(l.get("label") for m in (data.get("spike_levels") or {}).values()
+                                          if isinstance(m, dict) for l in (m.get(qc) or [])
+                                          if isinstance(l, dict) and l.get("label")), key=len, reverse=True):
+                        if re.search(r"(?i)\b%s\b" % re.escape(lab), inj):
+                            level = lab
+                            break
+                if spike in (None, 0) and level:
+                    spike = profile.resolve_spike_ppt(qc, level, matrix=_bmatrix)
+                if spike in (None, 0):
+                    _record_gap(qc, "", UnconfiguredCriterion(
+                        "{0}: {1} recovery needs the spike concentration (Recovery Tiers "
+                        "spike levels{2}).".format(inj, qc, ", level " + level if level else
+                                                   "; the level is not in the injection name")))
+                    continue
+                judged = False
+                for analyte in _analytes:
+                    row = _row(inj, analyte)
+                    conc = reported_conc(row) if row is not None else None
+                    if conc is None:
+                        continue
+                    if not _units_compatible(pedigree.get("spike_units") or "ppt", _unit(row)):
+                        _record_gap(qc, analyte, UnconfiguredCriterion(
+                            "{0}: spike in {1}, result in {2} -- not compared.".format(
+                                inj, pedigree.get("spike_units") or "ppt", _unit(row))))
+                        continue
+                    try:
+                        flag = recovery_check_profiled(
+                            profile, analyte, _bmatrix, qc, conc / spike * 100.0, inj,
+                            conc=spike, rl=profile.reporting_limit_ppt(analyte, _bmatrix))
+                    except UnconfiguredCriterion as exc:
+                        _record_gap(qc, analyte, exc)
+                        continue
+                    judged = True
+                    if flag is not None:
+                        flags_by_injection.setdefault(inj, []).append(QCFlag(
+                            source=qc, check_kind=KIND_LCS, analyte=flag.analyte,
+                            injection_name=inj, value=flag.value, issue=flag.issue))
+                if judged:
+                    lcs_evaluated.add(inj)
+
+        # 9. CCV FREQUENCY: bracketing every N counting injections, N = the
+        # method's CCV frequency (what the Run Builder uses). Switch: ccv_frequency.
+        if profile is not None and _rule_enabled(toggles, "ccv_frequency"):
+            n = profile.ccv_frequency() if hasattr(profile, "ccv_frequency") else None
+            if not n:
+                _record_gap("CCV frequency", "", UnconfiguredCriterion(
+                    "{0}: no CCV frequency set (Method Profiles -> Calibration & CCV).".format(
+                        self.method_id)))
+            else:
+                for flag in ccv_frequency_check(
+                        [(i, classify_injection(i, dilutions)) for i in order], n):
+                    flags_by_injection.setdefault(flag.injection_name, []).append(flag)
+
+        # 10. MDL: a reported detection below the analyte's MDL. Switch: mdl_check.
+        if profile is not None and _rule_enabled(toggles, "mdl_check"):
+            for inj in order:
+                if classify_injection(inj, dilutions) not in ("Sample", "MB", "LFSM", "LFSMD"):
+                    continue
+                for analyte in _analytes:
+                    row = _row(inj, analyte)
+                    conc = reported_conc(row) if row is not None else None
+                    if conc is None or conc <= 0:
+                        continue
+                    _rl, mdl, unit = profile.reporting_limits(analyte, _bmatrix)
+                    if mdl is None:
+                        _record_gap("MDL", analyte, UnconfiguredCriterion(
+                            "{0} / {1}: no MDL set (Method Profiles -> Reporting "
+                            "Limits).".format(analyte, _bmatrix)))
+                        continue
+                    if not _units_compatible(_unit(row), unit):
+                        _record_gap("MDL", analyte, UnconfiguredCriterion(
+                            "{0}: result in {1}, MDL in {2} -- not compared.".format(
+                                analyte, _unit(row), unit)))
+                        continue
+                    flag = mdl_check(analyte, inj, conc, mdl, unit)
+                    if flag is not None:
+                        flags_by_injection.setdefault(inj, []).append(flag)
+
         # Consolidate the QC Log (Sheet 6 equivalent)
         self.batch.qc_flags = [
             f for fl in flags_by_injection.values() for f in fl
@@ -825,6 +984,8 @@ class RunQueue:
             "lfsm_recovery":       {KIND_LFSM},
             "lfsmd_rpd":           {KIND_LFSMD},
             "surrogate_recovery":  {KIND_SURROGATE},
+            "blank_contamination": {KIND_BLANK},
+            "recovery":            {KIND_LCS},
         }
 
         for chk in self.checks:
@@ -846,6 +1007,14 @@ class RunQueue:
                     # else: stays PENDING — spike not configured yet
                 elif chk.check_name == "lfsmd_rpd" and lfsmd_enabled:
                     if chk.injection_name in lfsmd_evaluated:
+                        chk.status = CheckStatus.AUTO_PASS
+                elif chk.check_name == "blank_contamination":
+                    # only where the blank was judged (an RL and a tier); a
+                    # CCB or a blank with no RL stays PENDING for a reviewer
+                    if chk.injection_name in blank_evaluated:
+                        chk.status = CheckStatus.AUTO_PASS
+                elif chk.check_name == "recovery":
+                    if chk.injection_name in lcs_evaluated:
                         chk.status = CheckStatus.AUTO_PASS
                 elif chk.check_name == "surrogate_recovery":
                     # Advisory wins over evaluated: one compound can be in

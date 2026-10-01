@@ -5594,3 +5594,23 @@ Lab answers:
   regulatory limits, project specs and lab-wide settings; Download PDF renders
   the same page server-side (WeasyPrint), stamped with date, user and a
   configuration fingerprint.
+
+## 2026-10-01 — Rule switches wired (confirmed)
+- Every switch on Rule Toggles must change what the pipeline does (GAPS §73
+  found eight that changed nothing).
+- **CCV Frequency:** the method profile's CCV frequency (Calibration & CCV;
+  FDA 6, EPA 10 -- what the Run Builder uses) is the one value; the switch
+  turns on a pipeline check that flags samples run more than N injections
+  after the last CCV. The QC Rules "CCV every N" field (10 everywhere,
+  disagreeing with FDA's 6) is retired.
+- **MDL Check:** flags a detected result below the analyte's MDL for the
+  matrix; without an MDL it reports "not evaluated". The "min replicate
+  count" parameter is dropped (no MDL-study record exists to check).
+- **LFSM recovery / LFSMD RPD:** one switch in two places -- the Rule Toggles
+  rows read and write the method's QC Types flag. Stray stored keys removed.
+- **Surrogate recovery:** a real switch gating the surrogate check.
+- **Method blank:** a new check, each MB / LRB / MxB analyte against its QC
+  Types tier (max x RL); one "Method Blank" switch (the two stray blank keys
+  merged). **LFB / LCS recovery:** a new check, measured / spike against the
+  LFB (or LCS) tiers incl. low level, spike from the spike-level grid; one
+  switch. Both report "not evaluated" without an RL or a spike.

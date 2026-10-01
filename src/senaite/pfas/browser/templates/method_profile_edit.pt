@@ -304,7 +304,8 @@
                     tal:attributes="data-rule row/key;
                                     class python:'rule-params rule-off' if not row['enabled'] else 'rule-params'">
                   <span tal:condition="not:row/has_params"
-                        style="color:var(--s-secondary);font-size:var(--fs-sm);">&#8212;</span>
+                        style="color:var(--s-secondary);font-size:var(--fs-sm);"
+                        tal:content="python:row.get('note') or u'\u2014'">&#8212;</span>
                   <tal:p tal:repeat="p row/params">
                     <label style="display:inline-flex;align-items:center;gap:5px;
                                   margin:0 12px 4px 0;font-size:var(--fs-sm);">
@@ -316,6 +317,23 @@
                     </label>
                   </tal:p>
                 </td>
+              </tr>
+              <tr tal:condition="view/rule_qc_type_rows">
+                <th colspan="3">Extraction &amp; matrix QC &#8212; the same switch as the QC Types tab</th>
+              </tr>
+              <tr tal:repeat="q view/rule_qc_type_rows">
+                <td class="cf-center">
+                  <label class="toggle-switch">
+                    <input type="checkbox" class="qc-type-mirror"
+                           tal:attributes="name string:qc_enabled_${q/key};
+                                           checked python:'checked' if q['enabled'] else None" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </td>
+                <td><strong tal:content="q/rule_label">LFSM Recovery</strong></td>
+                <td class="form-note">Limits on Recovery Tiers / the QC Type Grid.
+                  <button type="button" class="btn-sm btn-secondary"
+                          onclick="return (pfasTabSwitch('pane-qct'), false)">QC Types</button></td>
               </tr>
             </tbody>
           </table>
@@ -1133,6 +1151,15 @@
         document.querySelectorAll('.rule-toggle-cb').forEach(function (cb) {
           sync(cb);
           cb.addEventListener('change', function () { sync(cb); });
+        });
+        /* A QC type's switch appears on QC Types AND Rule Toggles as the same
+           form field: keep every copy in step so the form posts one answer. */
+        document.querySelectorAll('input[type=checkbox][name^="qc_enabled_"]').forEach(function (cb) {
+          cb.addEventListener('change', function () {
+            document.querySelectorAll('input[type=checkbox][name="' + cb.name + '"]').forEach(function (o) {
+              o.checked = cb.checked;
+            });
+          });
         });
       })();
 

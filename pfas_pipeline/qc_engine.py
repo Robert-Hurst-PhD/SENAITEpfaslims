@@ -48,6 +48,11 @@ KIND_LFSMD       = "lfsmd"
 # average: a surrogate can hold its area and still fail recovery, and vice
 # versa, so one kind could not stand for both.
 KIND_SURROGATE   = "surrogate"
+# Wired 2026-10-01 (DECISIONS: every Rule Toggles switch changes something)
+KIND_BLANK       = "blank"
+KIND_LCS         = "lcs"
+KIND_CCV_FREQ    = "ccv_frequency"
+KIND_MDL         = "mdl"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -832,3 +837,61 @@ def single_transition_confirm_needed(
                 f"({conf.confirm_technique}); %diff between techniques must "
                 f"be < {conf.confirm_pct_diff_max:.0f}%")
     return None
+
+
+
+# ── Checks wired 2026-10-01 (DECISIONS: rule switches) ───────────────────────
+# Pure: the caller has already resolved the limit and confirmed the result
+# and the limit are in the same unit family (run_queue._units_compatible).
+
+def blank_check(analyte: str, injection_name: str, conc: Optional[float],
+                rl: float, max_x_rl: float, unit: str, role: str = "MB") -> Optional[QCFlag]:
+    """A blank's analyte above max_x_rl x RL (QC Types tier)."""
+    if conc is None:
+        return None                       # not detected: clean
+    limit = max_x_rl * rl
+    if conc <= limit:
+        return None
+    return QCFlag(source=f"{role} blank", check_kind=KIND_BLANK, analyte=analyte,
+                  injection_name=injection_name, value=f"{conc:g} {unit}".strip(),
+                  issue=f"(BLK) above {max_x_rl:g} x RL = {limit:g} {unit}".strip())
+
+
+def ccv_frequency_check(sequence: list, n: int) -> list:
+    """`sequence`: [(injection_name, role)] in run order. A counting
+    injection (everything in the bracketed body: field samples AND extracted
+    QC -- the Run Builder's rule) is flagged when more than `n` counting
+    injections have run since the last CCV, or when no CCV follows it (the
+    run was not closed). Injections before the first CCV are pre-bracket."""
+    NON_COUNTING = {"CAL", "CCV", "ICV", "CCB"}
+    flags, since, opened, pending = [], 0, False, []
+    for name, role in sequence:
+        if role == "CCV":
+            opened, since, pending = True, 0, []
+            continue
+        if not opened or role in NON_COUNTING:
+            continue
+        since += 1
+        pending.append(name)
+        if since > n:
+            flags.append(QCFlag(source="CCV frequency", check_kind=KIND_CCV_FREQ, analyte="",
+                                injection_name=name, value=f"{since} since last CCV",
+                                issue=f"(CCV) run {since} injections after the last CCV; "
+                                      f"the method brackets every {n}"))
+    flagged = set(f.injection_name for f in flags)
+    for name in pending:                  # after the last CCV, never closed
+        if name not in flagged:
+            flags.append(QCFlag(source="CCV frequency", check_kind=KIND_CCV_FREQ, analyte="",
+                                injection_name=name, value="no closing CCV",
+                                issue="(CCV) no CCV after this injection: the run was not closed"))
+    return flags
+
+
+def mdl_check(analyte: str, injection_name: str, conc: Optional[float],
+              mdl: float, unit: str) -> Optional[QCFlag]:
+    """A detected result below the analyte's MDL."""
+    if conc is None or conc <= 0 or conc >= mdl:
+        return None
+    return QCFlag(source="MDL", check_kind=KIND_MDL, analyte=analyte,
+                  injection_name=injection_name, value=f"{conc:g} {unit}".strip(),
+                  issue=f"(MDL) detected below the MDL ({mdl:g} {unit})".strip())

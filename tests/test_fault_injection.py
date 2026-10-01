@@ -53,6 +53,7 @@ EXPECTED_KIND = {
     "ion_ratio_out":      "ion_ratio",
     "sn_low":             "sn",
     "blank_contaminated": None,
+    "run_not_closed":     "ccv_frequency",
 }
 
 _CACHE = {}
@@ -142,7 +143,8 @@ def test_detection_is_specific():
         "lfsmd_rpd_high":     {"lfsmd"},
         "ion_ratio_out":      {"ion_ratio"},
         "sn_low":             {"sn"},
-        "blank_contaminated": set(),
+        "blank_contaminated": {"blank"},   # the blank check (2026-10-01) where an RL is set
+        "run_not_closed":     {"ccv_frequency"},
     }
     for deviation, permitted in sorted(allowed.items()):
         _m, _b, kinds, _blanks = _evaluate(_generate(deviation))

@@ -6317,3 +6317,44 @@ Approved by the lab as the first recommendation of
      tab; surrogate recovery runs whenever a profile exists). The Rule
      Toggles tab still offers them -- a control that changes nothing.
 - 23-page PDF of the live configuration rendered and checked.
+
+## 74. Every rule switch wired (2026-10-01)
+- Lab: "Wire the switches up." (§73 found eight that changed nothing.)
+  Decisions in DECISIONS 2026-10-01 "Rule switches wired".
+- **Two kinds of switch, one rule each** (kept from the existing design and
+  its tests): instrument checks are Rule Toggles library switches; extraction
+  / matrix QC (LFSM, LFSMD, MB, LRB, MxB, LFB, LCS) is switched by the
+  method's QC Types flag, beside its limits. The Rule Toggles tab now lists
+  those QC types too, as the SAME form field as the QC Types tab
+  (qc_enabled_<type>, kept in step by script) -- one fact, two places.
+- **Wired:**
+  1. Surrogate recovery: the switch now gates the check (it ran regardless).
+  2. CCV frequency: new check -- every injection in the bracketed body
+     (field samples and extracted QC; CAL/CCV/ICV/CCB do not count, the Run
+     Builder's rule) more than N after the last CCV, or with no closing CCV.
+     N = the method profile's CCV frequency; the QC Rules duplicate (10
+     everywhere, FDA's profile says 6) retired.
+  3. MDL check: new check -- a reported detection below the analyte's MDL;
+     the meaningless "min replicate count" parameter dropped.
+  4. Method blank (MB/LRB/MxB): new check against the QC Types tier
+     (max x RL); resolves the reviewer's "blank contamination" item.
+  5. LFB / LCS recovery: new check -- measured / spike (spike grid or
+     extraction record, level read from the injection name) against the
+     LFB or LCS tiers incl. low level; resolves the "recovery" item.
+  Each says "not evaluated" with the reason (no RL / MDL / spike / units
+  differ) instead of passing; the reviewer item then stays PENDING.
+- **Store migration:** the five stray switch keys and two retired parameters
+  removed from qc_rules.json (history-recorded).
+- **Proof:** test_rule_switches (9 run-level tests: on fires, off silent,
+  missing input = not evaluated; 7 mutants killed); test_rule_toggles now
+  requires EVERY library switch to be read by the pipeline (AST);
+  the settings report's claims re-pinned (no switch is "unread" any more).
+  The synthetic fault suite's generator now closes its runs with a CCV as
+  the Run Builder does, and "run_not_closed" is a new injected fault the
+  suite must detect. Real instrument files: results identical, every old
+  flag kept; "QC coherent" file raises nothing new; the plain test file gains
+  9 CCV-frequency flags (9 injections after the last CCV, FDA brackets every
+  6, run not closed) -- a true finding on that artificial file.
+- **Still open:** Dup RPD is still not judged (no switch, not requested);
+  nothing is evaluated by the blank / MDL / LFB checks until RLs, MDLs and
+  spike concentrations are entered.

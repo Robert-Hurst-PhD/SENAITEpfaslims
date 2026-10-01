@@ -70,15 +70,25 @@ RULE_LIBRARY = [
          {"name": "ccv_recovery_min", "label": "Min recovery (%)", "type": "number", "default": 70.0},
          {"name": "ccv_recovery_max", "label": "Max recovery (%)", "type": "number", "default": 130.0},
      ]},
-    {"key": "ccv_frequency", "label": "CCV Frequency",
-     "params": [{"name": "ccv_frequency_n", "label": "CCV every N injections", "type": "integer", "default": 10}]},
+    # N is the method profile's CCV frequency (Calibration & CCV) -- the value
+    # the Run Builder brackets with; the duplicate "CCV every N" parameter that
+    # stood here (10 everywhere, FDA's profile says 6) was retired 2026-10-01.
+    {"key": "ccv_frequency", "label": "CCV Frequency", "params": [],
+     "note": u"N is the method's CCV frequency (Calibration & CCV tab)."},
     {"key": "sn_min",        "label": "S/N Minimum",
      "params": [
          {"name": "sn_min",      "label": "Min S/N for detection",    "type": "number", "default": 3.0},
          {"name": "sn_quan_min", "label": "Min S/N for quantitation", "type": "number", "default": 10.0},
      ]},
-    {"key": "mdl_check",     "label": "MDL Check",
-     "params": [{"name": "mdl_n_min", "label": "Min replicate count", "type": "integer", "default": 7}]},
+    # Flags a detected result below the analyte's MDL (Reporting Limits). The
+    # "min replicate count" parameter was dropped 2026-10-01: no MDL-study
+    # record exists for it to be checked against.
+    {"key": "mdl_check",     "label": "MDL Check", "params": [],
+     "note": u"Flags detections below the MDL (Reporting Limits tab)."},
+    # Every injection's labelled-surrogate recovery (wired 2026-10-01; the
+    # check ran whatever this said before).
+    {"key": "surrogate_recovery", "label": "Surrogate Recovery", "params": [],
+     "note": u"Windows from the method text or the SUR limits."},
     # Whether the system PROMPTS for confirmation of a single-transition
     # positive. The obligation is method text (FDA §10.2(4)) and is not in
     # question; what is optional is this prompt, because a lab may confirm PFBA
@@ -103,6 +113,7 @@ DEFAULT_METHOD_RULE_TOGGLES = {
         # ON for FDA: §10.2(4) names PFBA/PFPeA and the lab can switch the
         # prompt off if it confirms them another way.
         "single_transition_confirm": True,
+        "surrogate_recovery": True,
     },
     "EPA_537_1": {
         "is_response": True, "rrt_deviation": True, "ion_ratio": True,
@@ -112,14 +123,48 @@ DEFAULT_METHOD_RULE_TOGGLES = {
         # so the check finds nothing to confirm. Left ON so that a lab which
         # DOES declare one gets the prompt without also having to find a switch.
         "single_transition_confirm": True,
+        "surrogate_recovery": True,
     },
     "EPA_1633A": {
         "is_response": True, "rrt_deviation": True, "ion_ratio": True,
         "cal_r2": True, "ccv_recovery": True, "ccv_frequency": True,
         "sn_min": True, "mdl_check": True,
         "single_transition_confirm": True,
+        "surrogate_recovery": True,
     },
 }
+
+# Extraction / matrix QC is switched by the METHOD PROFILE's QC Types flag
+# (qc_acceptance[CODE].enabled), beside its limits. The QC Rules grid shows
+# these as switches that write that same flag -- one fact, two places
+# (DECISIONS 2026-10-01). Never stored in method_rule_toggles.
+QC_TYPE_SWITCHES = [
+    ("LFSM", u"LFSM Recovery"), ("LFSMD", u"LFSMD RPD"),
+    ("MB", u"Method Blank"), ("LRB", u"Reagent Blank (LRB)"), ("MxB", u"Matrix Blank"),
+    ("LFB", u"LFB Recovery"), ("LCS", u"LCS Recovery"),
+]
+# Keys an earlier toggle grid stored that nothing reads (GAPS §73); removed by
+# migrate_rule_store, as are the two retired parameters.
+RETIRED_TOGGLES = ("blank_contamination", "mb_blank", "lcs_recovery",
+                   "lfsm_recovery", "lfsmd_rpd")
+RETIRED_PARAMS = ("ccv_frequency_n", "mdl_n_min")
+
+
+def migrate_rule_store(rules):
+    """True if `rules` lost retired toggles / parameters (in place, idempotent)."""
+    changed = False
+    for toggles in (rules.get("method_rule_toggles") or {}).values():
+        for k in RETIRED_TOGGLES:
+            if k in toggles:
+                toggles.pop(k)
+                changed = True
+    for bucket in [rules.get("global") or {}] + list((rules.get("method_overrides") or {}).values()):
+        for k in RETIRED_PARAMS:
+            if k in bucket:
+                bucket.pop(k)
+                changed = True
+    return changed
+
 
 # ── Default method-specific limit overrides ───────────────────────────────────
 # These override global/qc_type defaults on a per-method basis.
@@ -140,9 +185,10 @@ LIBRARY_KEY_TO_ENGINE_CHECKS = {
     "ion_ratio":     ["ion_ratio"],
     "cal_r2":        ["r_squared"],
     "ccv_recovery":  ["ccv_pct_dev"],
-    "ccv_frequency": [],   # UI only — CCV interval in InjectionSequenceBuilder
+    "ccv_frequency": [],   # flags injections beyond the CCV bracket (no review item)
     "sn_min":        ["signal_to_noise"],
-    "mdl_check":     [],   # UI only — MDL assessment not auto-evaluated
+    "mdl_check":     [],   # flags detections below the MDL (no review item)
+    "surrogate_recovery": ["surrogate_recovery"],
     "single_transition_confirm": ["identity_confirmation"],
 }
 

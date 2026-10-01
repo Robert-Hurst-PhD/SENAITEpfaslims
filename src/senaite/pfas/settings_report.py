@@ -38,19 +38,21 @@ QC_APPLICATION = [
      u"tier at or below N x RL).", "lfsmd"),
     ("SUR", u"Surrogate recovery", True,
      u"Every injection's labelled surrogate recovery (FDA: guidance only; EPA 537.1 "
-     u"70-130%; EPA 1633A per analyte x matrix class).", "surrogate"),
+     u"70-130%; EPA 1633A per analyte x matrix class). Rule switch: "
+     u"surrogate_recovery.", "surrogate"),
     ("Dup", u"Maximum RPD", False,
      u"Stored; the pipeline does not compute a sample-duplicate RPD.", None),
-    ("LFB", u"Recovery window per tier", False,
-     u"Stored; the pipeline does not evaluate LFB recoveries.", None),
-    ("LCS", u"Recovery window per tier", False,
-     u"Stored; the pipeline does not evaluate LCS recoveries.", None),
-    ("MB", u"Maximum concentration (x RL)", False,
-     u"The blank is used for the < LOD comparison (sample at or below its blank); the "
-     u"x RL limit is stored but not judged pass/fail.", None),
-    ("LRB", u"Maximum concentration (x RL)", False,
-     u"As MB: stored, not judged pass/fail.", None),
-    ("MxB", u"Maximum concentration (x RL)", False, u"Stored; not evaluated.", None),
+    ("LFB", u"Recovery window per tier", True,
+     u"Each LFB injection x analyte: measured / spike x 100 (spike from the LFB "
+     u"spike levels or the extraction record) against the LFB tiers, low-level tier "
+     u"at or below N x RL. Not judged without a spike level.", "lcs"),
+    ("LCS", u"Recovery window per tier", True,
+     u"As LFB, against the LCS tiers (an injection named LCS).", "lcs"),
+    ("MB", u"Maximum concentration (x RL)", True,
+     u"Each blank analyte against N x RL for the matrix (also used for the < LOD "
+     u"comparison). Not judged without an RL.", "blank"),
+    ("LRB", u"Maximum concentration (x RL)", True, u"As MB.", "blank"),
+    ("MxB", u"Maximum concentration (x RL)", True, u"As MB.", "blank"),
 ]
 
 # (check, criterion, evaluated, how, check kind, the rule switch that gates it)
@@ -66,12 +68,19 @@ INSTRUMENT_APPLICATION = [
     (u"Ion ratio", u"Qualifier / quantifier tolerance", True, u"Every detected peak.",
      "ion_ratio", "ion_ratio"),
     (u"Signal to noise", u"Minimum S/N (quantitation)", True, u"Every reported peak.", "sn", "sn_min"),
+    (u"CCV frequency", u"A CCV every N injections (Calibration & CCV)", True,
+     u"Every injection in the bracketed body (field samples and extracted QC) more "
+     u"than N after the last CCV, or with no closing CCV.", "ccv_frequency", "ccv_frequency"),
+    (u"MDL", u"Detections at or above the MDL", True,
+     u"Every reported detection below the analyte's MDL for the matrix. Not judged "
+     u"without an MDL.", "mdl", "mdl_check"),
 ]
 
 # The rule switches the pipeline actually reads (pinned against the code by
 # tests/test_settings_report.py). A switch outside this set changes nothing.
 CONSUMED_TOGGLES = frozenset(["is_response", "rrt_deviation", "ion_ratio", "cal_r2",
-                              "ccv_recovery", "sn_min", "single_transition_confirm"])
+                              "ccv_recovery", "sn_min", "single_transition_confirm",
+                              "ccv_frequency", "mdl_check", "surrogate_recovery"])
 
 
 def toggle_report(toggles):

@@ -77,6 +77,9 @@ DEVIATIONS = {
     "lfsmd_rpd_high":     ("LFSMD",   "qualify"),
     "ion_ratio_out":      ("sample",  "qualify"),
     "sn_low":             ("sample",  "qualify"),
+    # every run is closed by a CCV, as the Run Builder sequences it; this
+    # deviation leaves the closing CCV out (CCV frequency check, 2026-10-01)
+    "run_not_closed":     ("CCV",     "block"),
 }
 
 
@@ -309,7 +312,11 @@ class RunBuilder:
         self._ccv()
         self._blank()
         parents = self._samples()
-        self._spikes(parents)
+        last = self._spikes(parents)[-1]
+        if "run_not_closed" in self.deviations:
+            self._expect("run_not_closed", "ccv_frequency", "block", last, [])
+        else:
+            self._ccv(closing=True)
         return self.rows
 
     def _calibration(self):
@@ -330,19 +337,20 @@ class RunBuilder:
             self._expect("calibration_r2_low", "calibration", "block",
                          "calibration curve", self.panel)
 
-    def _ccv(self):
+    def _ccv(self, closing=False):
         lo, hi = _ccv_window(self.profile)
         target = self.ladder[len(self.ladder) // 2]
         bad = "ccv_recovery_high" in self.deviations
         recovery = (hi + 25.0) if bad else 100.0
-        name = "{0}-CCV-{1}".format(self.method_id,
-                                    self.run_date.strftime("%y%m%d"))
+        name = "{0}-CCV-{1}{2}".format(self.method_id,
+                                       self.run_date.strftime("%y%m%d"),
+                                       "-2" if closing else "")
         self._compounds_for(name, "Quality Control",
                             lambda a, t=target, r=recovery: t * r / 100.0)
         for row in self.rows[-len(self.panel) - len(set(self.surrogates.values())):]:
             if row["Compound Type"] == "Analyte":
                 row["Expected Concentration"] = target
-        if bad:
+        if bad and not closing:
             self._expect("ccv_recovery_high", "ccv", "block", name, self.panel)
 
     def _blank(self):
