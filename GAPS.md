@@ -6564,6 +6564,14 @@ Approved by the lab as the first recommendation of
   PFOA: none -> 78.125 ng/kg); the RL-dependent checks (blank, Dup RPD,
   low-level tiers, LFB/LCS) run in the run-queue path, which will now judge
   where it reported "no RL" before.
+- **No-op save audit:** all 25 method-profile tab saves change nothing (the
+  three full-form saves only restamp qc_rules.json, known since §51). History
+  check: every case reverts, except "IS grid" timed out after its save, so its
+  own test edit (EPA 1633A M2-10:2FTS as an injection standard) was left
+  behind; reverted afterwards from @@pfas-config-history. Cause of the
+  timeout: an EPA 1633A save re-syncs SENAITE AnalysisSpecs for every matrix
+  and QC type (~30 s) -- the check's 30 s click limit, and a slow save for a
+  user. Open: make spec_sync skip unchanged specs, or raise the check's limit.
 - **Tests:** test_calibration_levels (14; 12 mutants killed incl. the cap, the
   factor, the conversion, exact-before-substring, seed-once, keep lab levels,
   per-analyte RL in all three readers).
