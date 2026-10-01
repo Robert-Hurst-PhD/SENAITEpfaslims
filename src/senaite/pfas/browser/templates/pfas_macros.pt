@@ -247,6 +247,16 @@
     .cf-table select.rl-in, .cf-coll select.rl-in { min-width: 7.5em; }
     .cf-coll td:first-child input { min-width: 9em; }
     /* settings report (screen; the PDF has its own print styles) */
+    .cf-hint { color: var(--s-secondary); font-size: var(--fs-sm); }
+    .mp-actions { white-space: nowrap; }
+    .mp-issue { display: inline-block; margin-left: var(--sp-2, 8px); }
+    .mp-issue form { display: flex; gap: 6px; margin-top: 6px; }
+    .mp-issue summary { list-style: none; cursor: pointer; }
+    .mp-issue summary::-webkit-details-marker { display: none; }
+    .mp-issue summary::marker { content: ""; }
+    .mp-issue summary::before { content: none; }   /* a button, not an accordion */
+    .mp-rev { white-space: nowrap; }
+    .sr-revision { font-weight: 600; margin: 0 0 var(--sp-2, 8px); }
     .sr-stamp { display: flex; flex-wrap: wrap; gap: var(--sp-4); font-size: var(--fs-sm); color: var(--s-secondary); }
     .sr-method { margin-top: var(--sp-5, 24px); }
     .sr-table { width: 100%; border-collapse: collapse; margin: var(--sp-2, 8px) 0 var(--sp-4); font-size: var(--fs-sm); }

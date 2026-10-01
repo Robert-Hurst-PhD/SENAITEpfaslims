@@ -6358,3 +6358,51 @@ Approved by the lab as the first recommendation of
 - **Still open:** Dup RPD is still not judged (no switch, not requested);
   nothing is evaluated by the blank / MDL / LFB checks until RLs, MDLs and
   spike concentrations are entered.
+
+## 75. Method profile revisions; Print per method; badges only when they need attention (2026-10-02)
+- Lab: wrap the settings PDF into "a simple button next to each method
+  profile & QC, where a revision number is kept and next to the revision
+  number is print"; break the SENAITE "Open" button into its own column;
+  badges like "Customised" / "Core type" "not relevant or not appropriate".
+  Decisions: DECISIONS 2026-10-02.
+- **Revisions** (`method_revisions.py`): a manager issues a revision from the
+  Method Profiles list (optional reason). The method's settings report is
+  rendered and frozen as a PDF on disk (`/data/qc/method_revisions/<method>/
+  rev-NNNN.pdf`, filesystem tier) and recorded (who, when, reason, settings
+  fingerprint). A frozen PDF is never overwritten (refused, no record).
+  "Unissued changes" = the profile (save stamps excluded) or the method's
+  rule switches differ from the latest revision's fingerprint; the Issue
+  button is offered only then.
+- **Method Profiles list:** columns Method ID / name / description / SENAITE
+  method / **SENAITE record (Open)** / **Revision** (Rev N + date, or Not
+  issued; "unissued changes" tag) / **Print** (the issued PDF; "Print draft"
+  before any issue) / Actions (Edit, Issue revision). The "Customised"
+  column and the hard-coded "LabManager" badge are gone.
+- **Settings report:** `?method_id=` gives one method (its matrices' limits,
+  its projects); the PDF's first line states its status (Revision N issued
+  ... / DRAFT changed since Revision N); each method section lists its issued
+  revisions.
+- **Badge rule applied:** removed the hard-coded "LabManager" badge (six
+  pages, it showed whatever your real role), "limits set", "core type",
+  "method default"; the shared table macro now renders a row note as a tag
+  only when it is a warning, otherwise as plain text ("quantifies ...",
+  verified limit details). Plain text instead of tags: Customised / Default /
+  Derived (Lab Settings), document type and method (SOPs), QC category
+  (Reference Definitions), Enabled / Clean / Not generated (EGAD batches),
+  Approved (calibrations), Active / Hidden / method scope (logbook admin),
+  Spec exists (method wizard), affected worksheets (deviations), the batch
+  method (Data Review). Kept as tags: not verified, limits not set, NOT
+  CONFIGURED / Unknown, not set, No active rev, BLOCKING / warnings, Pending,
+  No spec yet, test / archived reagents, unlinked, unissued changes,
+  suggested, worksheet workflow state.
+- **Bug fixed on the way:** the print template's `<title>` used a path
+  expression that does not call the report method (500 on issue).
+- **Tests:** test_method_revisions (5; mutants killed: status compared with
+  the first revision, save stamps counted as a change) incl. the badge rule
+  guard; UI ratchet ceiling lowered 860 -> 855 style attributes.
+- **Live:** issued EPA 537.1 Rev 1 from the list page; Print returned the
+  frozen PDF headed "Revision 1 - issued ... by admin - <reason>"; Issue
+  hidden while unchanged; Dup RPD 30 -> 31 showed "unissued changes", back to
+  30 cleared it; profiles equal to the snapshot. The test revision (record +
+  PDF) was then removed, so no method has an issued revision yet. Every
+  touched page renders 200 with no script errors.

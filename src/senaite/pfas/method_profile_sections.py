@@ -353,7 +353,7 @@ def matrix_factor_rows(profile):
     for m in profile.get("supported_matrices") or []:
         linked = bool(uid_map.get(m))
         rows.append({"key": (m,), "group": u"mf", "label": m,
-                     "note": u"core type" if linked else u"unlinked",
+                     "note": None if linked else u"not a core sample type",
                      "warn": not linked})
     return _one_group(u"mf", u"Matrix adjustment"), rows
 
@@ -1074,8 +1074,7 @@ except Exception:          # tests: loaded without the package
 
 
 def report_rows(profile):
-    rows = [{"key": (_rf.ALL,), "group": u"rf", "label": u"All matrices",
-             "note": u"method default"}]
+    rows = [{"key": (_rf.ALL,), "group": u"rf", "label": u"All matrices (method default)"}]
     rows += [{"key": (m,), "group": u"rf", "label": m}
              for m in profile.get("supported_matrices") or []]
     return _one_group(u"rf", u"Certificate format"), rows

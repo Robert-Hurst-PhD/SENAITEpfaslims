@@ -891,8 +891,6 @@
                     <td tal:content="q/label">Laboratory Fortified Blank</td>
                     <td>
                       <tal:t condition="q/toggle">
-                        <span tal:condition="python:q['enabled'] and q['has_criteria']"
-                              class="sur-tag sur-core">limits set</span>
                         <span tal:condition="python:q['enabled'] and not q['has_criteria']"
                               class="sur-tag sur-nocore"
                               title="Enabled with no limits: the QC engine refuses to judge it until criteria are set (QC Type Grid / Recovery Tiers).">limits not set</span>

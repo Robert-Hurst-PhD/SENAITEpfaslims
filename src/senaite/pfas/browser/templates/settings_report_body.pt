@@ -8,6 +8,7 @@
 -->
 <metal:body define-macro="body">
 <div class="sr">
+  <p class="sr-revision" tal:condition="report/revision_label" tal:content="report/revision_label">Revision 3</p>
   <div class="sr-stamp">
     <span>Generated <strong tal:content="report/generated">2026-10-01 12:00</strong></span>
     <span>by <strong tal:content="report/user">admin</strong></span>
@@ -25,6 +26,12 @@
   <tal:m repeat="m report/methods">
   <section class="sr-method">
     <h2><span tal:replace="m/name">FDA 32-PFAS</span> <code tal:content="m/method_id">FDA_32PFAS</code></h2>
+    <p class="sr-meta" tal:define="rv m/revision">
+      <tal:i condition="rv/rev">Revision <strong tal:content="rv/rev">3</strong>, issued
+        <span tal:replace="rv/issued_at">2026-10-02</span> by <span tal:replace="rv/issued_by">admin</span>.</tal:i>
+      <tal:n condition="not:rv/rev">No revision issued yet.</tal:n>
+      <span class="sr-warn" tal:condition="python:rv['rev'] and rv['unissued']">Settings changed since this revision.</span>
+    </p>
     <p class="sr-meta">
       Matrices: <span tal:replace="python:', '.join(m['matrices']) or 'none'">Eggs</span>
       &#183; analytes in the panel: <span tal:replace="m/panel">32</span>
@@ -86,6 +93,16 @@
         </tr>
       </tbody>
     </table>
+
+    <tal:h condition="m/revisions">
+      <h3>Issued revisions</h3>
+      <table class="sr-table">
+        <thead><tr><th>Revision</th><th>Issued</th><th>By</th><th>Reason</th></tr></thead>
+        <tbody><tr tal:repeat="r m/revisions">
+          <td tal:content="r/rev">3</td><td tal:content="r/issued_at">date</td>
+          <td tal:content="r/issued_by">who</td><td tal:content="r/reason">why</td></tr></tbody>
+      </table>
+    </tal:h>
 
     <tal:s repeat="sec m/sections">
       <h3 tal:content="sec/title">Calibration &amp; CCV</h3>

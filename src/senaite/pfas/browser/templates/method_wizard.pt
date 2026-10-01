@@ -520,8 +520,7 @@
                         <tr>
                           <td tal:content="row/title">Sample Type</td>
                           <td>
-                            <span class="badge-ok"
-                                  tal:condition="row/has_spec">Spec exists</span>
+                            <span tal:condition="row/has_spec">Spec exists</span>
                             <span class="badge-missing"
                                   tal:condition="not:row/has_spec">No spec yet</span>
                           </td>

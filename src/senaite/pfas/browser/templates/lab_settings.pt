@@ -168,8 +168,11 @@
                 <tal:s tal:condition="not:r/has_seed">no default &mdash; must be set</tal:s>
               </td>
               <td>
-                <span class="badge"
+                <!-- a tag only for something to act on (DECISIONS 2026-10-02) -->
+                <span tal:condition="python:r['status_class'] in ('badge-expired', 'badge-quarantine')"
                       tal:attributes="class string:badge ${r/status_class}"
+                      tal:content="r/status_label">NOT CONFIGURED</span>
+                <span tal:condition="python:r['status_class'] not in ('badge-expired', 'badge-quarantine')"
                       tal:content="r/status_label">Default</span>
               </td>
               <td class="ls-seed"

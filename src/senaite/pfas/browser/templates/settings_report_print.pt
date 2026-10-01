@@ -4,7 +4,7 @@
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
   <meta charset="utf-8" />
-  <title>QC Settings Report</title>
+  <title tal:content="python:view.report()['title']">QC Settings Report</title>
   <!-- Print document for WeasyPrint (settings_report_view._pdf). Self-contained:
        WeasyPrint 0.42 has no CSS custom properties and nothing is fetched over
        HTTP, so the palette is written out here (print documents are exempt
@@ -31,10 +31,11 @@
     .sr-yes { color: #1d6b2f; font-weight: bold; }
     .sr-no { color: #a1261b; font-weight: bold; }
     .sr-warn { color: #8a5a00; }
+    .sr-revision { font-size: 11pt; font-weight: bold; margin: 2pt 0 6pt; }
   </style>
 </head>
 <body tal:define="report view/report">
-  <h1>QC Settings Report</h1>
+  <h1 tal:content="report/title">QC Settings Report</h1>
   <metal:b use-macro="view/body_macros/body" />
 </body>
 </html>

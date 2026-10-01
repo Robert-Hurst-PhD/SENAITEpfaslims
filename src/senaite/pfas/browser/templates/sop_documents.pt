@@ -198,9 +198,9 @@
               tal:attributes="onclick string:sopToggle('detail-${sop_id_js}')">
             <td><strong tal:content="sop/sop_id">SOP-001</strong></td>
             <td tal:content="sop/title">Title</td>
-            <td><span class="badge badge-method" tal:content="sop/doc_type_label">SOP</span></td>
+            <td tal:content="sop/doc_type_label">SOP</td>
             <td tal:content="sop/category">—</td>
-            <td><span class="badge badge-method" tal:content="sop/method_label">General</span></td>
+            <td tal:content="sop/method_label">General</td>
             <td>
               <tal:rev tal:condition="sop/active_rev">
                 Rev <tal:n tal:replace="python:sop['active_rev']['rev_num']">1</tal:n>
@@ -397,7 +397,7 @@
           <tr tal:repeat="a arch">
             <td><strong tal:content="a/sop_id">SOP-002</strong></td>
             <td tal:content="a/title">Title</td>
-            <td><span class="badge badge-method" tal:content="a/doc_type_label">SOP</span></td>
+            <td tal:content="a/doc_type_label">SOP</td>
             <td tal:content="a/category">—</td>
             <td tal:content="a/method_label">General</td>
             <td tal:content="python:a['archived_at'] or '—'">—</td>

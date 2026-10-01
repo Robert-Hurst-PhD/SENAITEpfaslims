@@ -159,12 +159,12 @@
             <td tal:content="b/client_title">Client A</td>
             <td tal:content="b/created">2026-06-15</td>
             <td>
-              <span tal:condition="b/egad_enabled" class="badge badge-ok">Enabled</span>
+              <span tal:condition="b/egad_enabled">Enabled</span>
               <span tal:condition="not:b/egad_enabled" class="egad-off">Off</span>
             </td>
             <td>
               <tal:nostored tal:condition="not:b/has_edd">
-                <span class="badge badge-none">Not generated</span>
+                <span class="cf-hint">Not generated</span>
               </tal:nostored>
               <tal:stored tal:condition="b/has_edd">
                 <tal:blocking tal:condition="b/edd_blocking">
@@ -176,7 +176,7 @@
                         tal:content="string:${b/edd_error_count} warnings">2 warnings</span>
                 </tal:warn>
                 <tal:ok tal:condition="python:b['has_edd'] and not b['edd_blocking'] and not b['edd_error_count']">
-                  <span class="badge badge-ok">Clean</span>
+                  <span>Clean</span>
                 </tal:ok>
                 <br/>
                 <span style="font-size:var(--fs-xs);color:var(--s-secondary);"

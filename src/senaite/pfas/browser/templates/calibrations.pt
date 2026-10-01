@@ -753,7 +753,7 @@
       : (cal.equation||'');
 
     var approvedBadge = cal.approved_by
-      ? '<span class="badge badge-approved">Approved</span>'
+      ? '<span>Approved</span>'
       : '<span class="badge badge-pending">Pending</span>';
 
     var ctrlHtml = '';

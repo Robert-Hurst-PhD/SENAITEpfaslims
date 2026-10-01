@@ -73,6 +73,13 @@ class PFASMethodProfilesView(BrowserView):
             get_association = get_core_method = None
         saved_ids = set(list_method_ids(portal))
         all_ids = sorted(set(list(DEFAULT_PROFILES.keys())) | saved_ids)
+        from senaite.pfas import method_revisions as mr
+        from senaite.pfas.method_profile_store import raw_profile
+        try:
+            from senaite.pfas.qc.rules import get_rules
+            toggles = (get_rules() or {}).get("method_rule_toggles") or {}
+        except Exception:                                       # noqa: BLE001
+            toggles = {}
         result = []
         for mid in all_ids:
             p = get_profile(portal, mid)
@@ -90,6 +97,9 @@ class PFASMethodProfilesView(BrowserView):
                 "core_method_url": "",
                 "linked_services": 0,
                 "linked_sampletypes": 0,
+                # issued revisions (DECISIONS 2026-10-02)
+                "revision": mr.status(mr.records(portal, mid),
+                                      mr.fingerprint(raw_profile(portal, mid) or {}, toggles.get(mid))),
             }
             if get_association is not None:
                 assoc = get_association(portal, mid)

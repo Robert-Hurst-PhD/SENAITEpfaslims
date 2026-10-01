@@ -311,7 +311,7 @@
       </span>
       <a class="btn-sm btn-secondary" tal:attributes="href view/batch_url">Open worksheet</a>
       <tal:method tal:condition="view/batch_method">
-        <span class="role-badge" tal:content="view/batch_method">method</span>
+        <span class="cf-hint" tal:content="view/batch_method">method</span>
       </tal:method>
     </div>
 

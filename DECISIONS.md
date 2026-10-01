@@ -5614,3 +5614,13 @@ Lab answers:
   merged). **LFB / LCS recovery:** a new check, measured / spike against the
   LFB (or LCS) tiers incl. low level, spike from the spike-level grid; one
   switch. Both report "not evaluated" without an RL or a spike.
+
+## 2026-10-02 — Method profile revisions; badges only when they need attention (confirmed)
+- **Revisions:** a manager issues a method profile revision when its settings
+  are final. The number increments, and the method's settings report PDF of
+  that revision is frozen and kept (filesystem tier). Print gives the issued
+  copy; edits since show as "unissued changes". Like controlled documents.
+- **Badges / tags:** shown only when they say something their neighbours do
+  not and someone may need to act (not verified, limits not set, RL missing,
+  stale, suggested, blocking, unissued changes). Always-true or identity
+  labels (Customised, core type, method default, role name) are removed.

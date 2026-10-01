@@ -34,9 +34,38 @@ class PFASSettingsReportView(BrowserView):
         if not require_manager(self.context, self.request):
             self.request.response.setStatus(403)
             return "Forbidden"
-        if self.request.form.get("format") == "pdf":
+        form = self.request.form
+        if self.request.method == "POST" and form.get("action") == "issue_revision":
+            try:
+                from plone.protect.interfaces import IDisableCSRFProtection
+                from zope.interface import alsoProvides
+                alsoProvides(self.request, IDisableCSRFProtection)
+            except ImportError:
+                pass
+            return self._issue()
+        if form.get("method_id") and form.get("rev"):
+            return self._issued_pdf()
+        if form.get("format") == "pdf":
             return self._pdf()
         return self.template()
+
+    # ── one method, its revisions ─────────────────────────────────────────
+
+    def method_id(self):
+        return (self.request.form.get("method_id") or "").strip()
+
+    def _toggles(self):
+        try:
+            from senaite.pfas.qc.rules import get_rules
+            return (get_rules() or {}).get("method_rule_toggles") or {}
+        except Exception:                                       # noqa: BLE001
+            return {}
+
+    def _revision_info(self, mid, profile, toggles):
+        from senaite.pfas import method_revisions as mr
+        recs = mr.records(api.get_portal(), mid)
+        st = mr.status(recs, mr.fingerprint(profile, toggles.get(mid)))
+        return st, sorted(recs, key=lambda r: -r.get("rev", 0))
 
     @property
     def body_macros(self):
@@ -62,9 +91,20 @@ class PFASSettingsReportView(BrowserView):
             logger.warning("settings report: QC rules unavailable: %s", exc)
             rules = {}
         toggles = rules.get("method_rule_toggles") or {}
-        profiles = dict((mid, raw_profile(portal, mid) or {}) for mid in sorted(list_method_ids(portal)))
-        methods = [sr.method_report(p, env, toggles.get(mid)) for mid, p in sorted(profiles.items())]
+        only = self.method_id()
+        profiles = dict((mid, raw_profile(portal, mid) or {}) for mid in sorted(list_method_ids(portal))
+                        if not only or mid == only)
+        methods = []
+        for mid, p in sorted(profiles.items()):
+            m = sr.method_report(p, env, toggles.get(mid))
+            m["revision"], m["revisions"] = self._revision_info(mid, p, toggles)
+            methods.append(m)
         projects = self._projects(portal, profiles, env)
+        if only:
+            mats = set(m for p in profiles.values() for m in p.get("supported_matrices") or [])
+            reg = dict(reg, limits=[l for l in reg.get("limits") or []
+                                    if mats & set(l.get("matrices") or [])])
+            projects = [pj for pj in projects if pj["methods"]]
         ps = get_print_settings(portal)
         lab = [(u"Certificate statement, internal quality system", ps.get("coa_qs_internal")),
                (u"Certificate statement, under a QAPP", ps.get("coa_qs_qapp")),
@@ -73,6 +113,9 @@ class PFASSettingsReportView(BrowserView):
                (u"Sign-off layout", ps.get("coa_signature_style"))]
         user = api.get_current_user()
         self._report = {
+            "title": (u"%s \u2014 QC settings" % methods[0]["name"]) if only and methods
+                     else u"QC Settings Report",
+            "revision_label": self._label(methods[0]["revision"]) if only and methods else u"",
             "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "user": (user.getProperty("fullname") or user.getId()) if user else u"",
             "fingerprint": sr.fingerprint(profiles, reg, rules, ps,
@@ -107,6 +150,74 @@ class PFASSettingsReportView(BrowserView):
                         "status": pj.get("status") or u"", "methods": per_method, "specs": specs})
         return out
 
+    def _label(self, st, issuing=None):
+        """What the PDF says about its own status."""
+        if issuing:
+            return u"Revision %(rev)s \u2014 issued %(at)s by %(by)s" % issuing
+        if st["rev"] is None:
+            return u"DRAFT \u2014 no revision has been issued"
+        if st["unissued"]:
+            return u"DRAFT \u2014 changed since Revision %s (issued %s)" % (st["rev"], st["issued_at"])
+        return u"Current settings = Revision %s (issued %s by %s)" % (
+            st["rev"], st["issued_at"], st["issued_by"])
+
+    def _render_pdf(self):
+        html = self.print_template()
+        from weasyprint import HTML
+        return HTML(string=html).write_pdf()
+
+    def _send(self, pdf, name):
+        resp = self.request.response
+        resp.setHeader("Content-Type", "application/pdf")
+        resp.setHeader("Content-Disposition", 'attachment; filename="%s"' % name)
+        return pdf
+
+    def _issued_pdf(self):
+        from senaite.pfas import method_revisions as mr
+        mid, rev = self.method_id(), self.request.form.get("rev")
+        try:
+            rev = int(rev)
+            pdf = mr.read_pdf(mid, rev)
+        except (ValueError, IOError, OSError):
+            self.request.response.setStatus(404)
+            return "No issued revision %s of %s." % (rev, mid)
+        return self._send(pdf, "%s-settings-rev%d.pdf" % (mid, rev))
+
+    def _issue(self):
+        """Freeze this method's settings report as its next revision."""
+        from senaite.pfas import method_revisions as mr
+        from senaite.pfas.method_profile_store import raw_profile
+        portal = api.get_portal()
+        mid = self.method_id()
+        back = "%s/@@pfas-method-profiles" % self.portal_url()
+        profile = raw_profile(portal, mid)
+        if not mid or not profile:
+            self.request.response.redirect(back + "?error=Unknown+method")
+            return ""
+        toggles = self._toggles()
+        recs = mr.records(portal, mid)
+        fp = mr.fingerprint(profile, toggles.get(mid))
+        if recs and mr.status(recs, fp)["unissued"] is False:
+            self.request.response.redirect(back + "?error=%s" % _q(
+                u"%s: nothing changed since Revision %s" % (mid, mr.status(recs, fp)["rev"])))
+            return ""
+        user = api.get_current_user()
+        who = (user.getProperty("fullname") or user.getId()) if user else u""
+        when = datetime.now().strftime("%Y-%m-%d %H:%M")
+        rev = mr.next_number(recs)
+        reason = (self.request.form.get("reason") or u"").strip()
+        self.report()["revision_label"] = self._label(None, {"rev": rev, "at": when, "by": who}) + (
+            u" \u2014 %s" % reason if reason else u"")
+        try:
+            pdf = self._render_pdf()
+        except ImportError:
+            self.request.response.setStatus(501)
+            return "PDF rendering (WeasyPrint) is not installed on this server."
+        mr.issue(portal, mid, pdf, fp, who, when, reason, rev=rev)
+        logger.info("method %s: revision %s issued by %s", mid, rev, who)
+        self.request.response.redirect(back + "?ok=%s" % _q(u"%s Revision %s issued." % (mid, rev)))
+        return ""
+
     def _pdf(self):
         html = self.print_template()
         try:
@@ -115,8 +226,16 @@ class PFASSettingsReportView(BrowserView):
             self.request.response.setStatus(501)
             return "PDF rendering (WeasyPrint) is not installed on this server."
         pdf = HTML(string=html).write_pdf()
-        name = "pfas-settings-report-%s.pdf" % datetime.now().strftime("%Y%m%d-%H%M")
+        name = "%s-settings-%s.pdf" % (self.method_id() or "pfas", datetime.now().strftime("%Y%m%d-%H%M"))
         resp = self.request.response
         resp.setHeader("Content-Type", "application/pdf")
         resp.setHeader("Content-Disposition", 'attachment; filename="%s"' % name)
         return pdf
+
+
+def _q(text):
+    try:
+        from urllib import quote
+    except ImportError:                       # pragma: no cover
+        from urllib.parse import quote
+    return quote((u"%s" % text).encode("utf-8"))

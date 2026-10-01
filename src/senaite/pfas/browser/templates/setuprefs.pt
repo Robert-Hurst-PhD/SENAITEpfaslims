@@ -58,7 +58,7 @@
 <body>
   <tal:t metal:fill-slot="header-title">Reference Definition Setup</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <span class="role-badge">LabManager</span>
+    
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -152,14 +152,11 @@
             <td><strong tal:content="row/code">CCV</strong></td>
             <td tal:content="row/title">PFAS CCV</td>
             <td>
-              <span class="badge badge-blank"    tal:condition="row/is_blank">Blank</span>
+              <span tal:condition="row/is_blank">Blank</span>
               <span tal:condition="not:row/is_blank">
-                <span class="badge badge-recovery"
-                      tal:condition="python:row['strategy'] in ('recovery','recovery_dup')">Recovery</span>
-                <span class="badge badge-cal"
-                      tal:condition="python:row['strategy'] in ('cal_dev','cal_dev_tight')">Cal Check</span>
-                <span class="badge badge-rpd"
-                      tal:condition="python:row['strategy'] == 'rpd'">RPD</span>
+                <span tal:condition="python:row['strategy'] in ('recovery','recovery_dup')">Recovery</span>
+                <span tal:condition="python:row['strategy'] in ('cal_dev','cal_dev_tight')">Cal Check</span>
+                <span tal:condition="python:row['strategy'] == 'rpd'">RPD</span>
               </span>
             </td>
             <td tal:content="row/spec">&#8212;</td>

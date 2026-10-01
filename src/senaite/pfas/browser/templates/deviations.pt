@@ -390,8 +390,7 @@
             </tal:none>
             <tal:ws tal:condition="python:bool(dev.get('affected_worksheets'))">
               <tal:row tal:repeat="ws dev/affected_worksheets">
-                <span class="badge badge-deviation" style="margin-right:4px"
-                      tal:content="ws"/>
+                <span class="cf-hint" tal:content="string:${ws} "/>
               </tal:row>
             </tal:ws>
           </div>
@@ -513,8 +512,7 @@
                 &nbsp;&bull;&nbsp;
                 <strong>Affected:</strong>
                 <tal:ws tal:repeat="ws python:ca.get('affected_worksheets',[])">
-                  <span class="badge badge-deviation" style="margin-right:2px"
-                        tal:content="ws"/>
+                  <span class="cf-hint" tal:content="string:${ws} "/>
                 </tal:ws>
               </div>
               <tal:notif_text tal:condition="ca/notification_text">

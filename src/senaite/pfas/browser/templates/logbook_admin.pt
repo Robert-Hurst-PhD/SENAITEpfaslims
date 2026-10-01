@@ -216,17 +216,15 @@
             <!-- Method scope badge -->
             <td>
               <tal:sc tal:define="ms python:lb.get('method_slug','')">
-                <span class="badge-scoped" tal:condition="ms"
-                      tal:content="ms">Method</span>
+                <span tal:condition="ms" tal:content="ms">Method</span>
                 <span style="color:var(--s-secondary);font-size:var(--fs-xs);"
                       tal:condition="not:ms">All methods</span>
               </tal:sc>
             </td>
 
             <td>
-              <span tal:condition="lb/active"
-                    style="font-size:var(--fs-xs);background:#d4edda;color:#155724;padding:2px 8px;border-radius:3px;">Active</span>
-              <span tal:condition="not:lb/active" class="badge-off">Hidden</span>
+              <span tal:condition="lb/active">Active</span>
+              <span tal:condition="not:lb/active" class="cf-hint">Hidden</span>
             </td>
 
             <td>

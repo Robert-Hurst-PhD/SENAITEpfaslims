@@ -101,9 +101,12 @@
           <td><span tal:content="row/label">PFOA</span>
               <code class="rl-kw" tal:condition="python:row['sublabel'] and row['sublabel'] != row['label']"
                     tal:content="row/sublabel">PFOA</code>
-              <span tal:condition="row/note"
-                    tal:attributes="class python:'sur-tag sur-nocore' if row['warn'] else 'sur-tag sur-core'"
-                    tal:content="row/note">core type</span>
+              <!-- a tag only for something to act on (DECISIONS 2026-10-02);
+                   any other note is plain text -->
+              <span tal:condition="python:row['note'] and row['warn']" class="sur-tag sur-nocore"
+                    tal:content="row/note">unlinked</span>
+              <span tal:condition="python:row['note'] and not row['warn']" class="cf-hint"
+                    tal:content="row/note">quantifies PFOA</span>
               <tal:s condition="row/suggest">
                 <span class="sur-tag sur-override" title="suggested; not saved until you use it"
                       tal:content="string:suggested: ${row/suggest/label}">suggested: 13C8-PFOA</span>

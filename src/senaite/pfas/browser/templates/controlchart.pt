@@ -104,7 +104,7 @@
 <body>
   <tal:t metal:fill-slot="header-title">QC Control Charts</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <span class="role-badge">LabManager</span>
+    
   </tal:r>
 
   <div metal:fill-slot="content">
