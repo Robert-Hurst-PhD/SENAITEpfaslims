@@ -113,10 +113,13 @@ _EGAD_ANALYTE_OVERLAY = {
     "DONA":        {"parameter_name": "ADONA_A",         "override_note": ""},
     "PFBS":        {"parameter_name": "PFBS_A",          "override_note": ""},
     "PFPeS":       {"parameter_name": "PFPES_A",         "override_note": ""},
-    "PFHxS":       {"parameter_name": "PFHXS_A_L",  "override_note": "linear isomer",   "cas_override": "DEP18024"},
+    # Reported as the SUMMED analyte (DECISIONS 2026-10-01: one analyte out,
+    # isomers kept for internal review). The DEP code below is the one held
+    # for the LINEAR isomer -- VERIFY the code for the total before export.
+    "PFHxS":       {"parameter_name": "PFHxS",  "override_note": "VERIFY: DEP code is the linear-isomer code; report is the summed total", "cas_override": "DEP18024"},
     "br-PFHxS":    {"parameter_name": "PFHXS_A_BR", "override_note": "branched isomer", "cas_override": "DEP18023"},
     "PFHpS":       {"parameter_name": "PFHPS_A",         "override_note": ""},
-    "PFOS":        {"parameter_name": "PFOS_A_L",   "override_note": "linear isomer",   "cas_override": "DEP18026"},
+    "PFOS":        {"parameter_name": "PFOS",   "override_note": "VERIFY: DEP code is the linear-isomer code; report is the summed total", "cas_override": "DEP18026"},
     "br-PFOS":     {"parameter_name": "PFOS_A_BR",  "override_note": "branched isomer", "cas_override": "DEP18025"},
     "PFNS":        {"parameter_name": "PFNS_A",          "override_note": ""},
     "PFDS":        {"parameter_name": "PFDS_A",          "override_note": ""},

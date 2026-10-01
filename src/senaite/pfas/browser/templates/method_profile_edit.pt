@@ -420,9 +420,10 @@
             every other tab and the certificate show for that analyte (blank:
             its plain name, e.g. PFOS); &#8220;lr-&#8221; only ever names the
             linear peak. Peaks are summed <em>before</em> salt and matrix
-            factors. Clear an analyte&#8217;s peaks to remove its isomers.
-            Reporting isomers separately (Summed off) needs an analysis service
-            for each isomer and is not available yet.
+            factors. Reporting is always <strong>one analyte out</strong>: the
+            isomer peaks are kept only for the lab&#8217;s own review (control
+            charts, retention time, calibration) under their peak names. Clear
+            an analyte&#8217;s peaks to remove its isomers.
           </p>
           <!-- Saved ON ITS OWN (R2): form#section-iso. -->
           <div tal:define="cf_groups python:view.section_groups('iso'); cf_form string:section-iso">

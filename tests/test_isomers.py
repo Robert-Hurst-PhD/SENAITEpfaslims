@@ -27,7 +27,7 @@ LEGACY = {
     "isomer_summation": [
         {"linear": "lr-PFOS", "branched": "br-PFOS", "reported": "PFOS", "enabled": True},
         {"linear": "lr-PFHxS", "branched": "br-PFHxS", "reported": "PFHxS", "enabled": True},
-        {"linear": "lr-PFNA", "branched": "br-PFNA", "reported": "PFNA", "enabled": False}],
+        {"linear": "lr-PFNA", "branched": "br-PFNA", "reported": "PFNA", "enabled": True}],
     "salt_adjustment_factors": [{"analyte": "PFOS", "factor": 0.956}],
 }
 
@@ -63,6 +63,16 @@ def test_the_migration_changes_nothing_on_the_live_profiles():
         assert _pipeline(copy.deepcopy(p)) == _pipeline(_migrated(p)), mid
 
 
+def test_reporting_is_always_one_analyte_out():
+    """A legacy pair switched off is summed after migration: reporting is one
+    analyte out; the peaks stay for internal review (revised 2026-10-01)."""
+    legacy = copy.deepcopy(LEGACY)
+    legacy["isomer_summation"][2]["enabled"] = False
+    groups, _salt = _pipeline(_migrated(legacy))
+    assert ("lr-PFNA", ("br-PFNA",), "PFNA") in groups
+    assert all("summed" not in e for e in _migrated(legacy)["isomers"].values())
+
+
 def test_migration_is_idempotent_and_retires_the_legacy_key():
     p = _migrated(LEGACY)
     assert isomers.LEGACY not in p
@@ -80,8 +90,9 @@ def test_several_branched_peaks_reach_the_pipeline_and_the_salt_factor():
 
 def test_a_summed_analyte_is_labelled_by_its_reported_name():
     p = _migrated(LEGACY)
-    assert TITLES["PFOS"] == "lr-PFOS"                       # the global table's linear name
-    assert isomers.label(p, "PFOS", TITLES) == "PFOS"        # ... is not what a sum is called
+    assert TITLES["PFOS"] == "PFOS"                          # no longer the linear-peak name
+    assert ar.COMPOUND_NAME_TO_KEYWORD["lr-PFOS"] == "PFOS"  # ... which still resolves
+    assert isomers.label(p, "PFOS", TITLES) == "PFOS"
     p["isomers"]["PFOS"]["reported"] = "Total PFOS"
     assert isomers.label(p, "PFOS", TITLES) == "Total PFOS"
     assert isomers.label(p, "PFOA", TITLES) == TITLES["PFOA"]
@@ -89,17 +100,31 @@ def test_a_summed_analyte_is_labelled_by_its_reported_name():
 
 def test_the_checks():
     p = _migrated(LEGACY)
-    assert any("separately" in e for e in isomers.check(p, TITLES))   # PFNA was disabled
-    p["isomers"]["PFNA"]["summed"] = True
     assert isomers.check(p, TITLES) == []
     p["isomers"]["PFHxS"]["branched"] = ["br-PFOS"]                   # PFOS's peak
     assert any("counted twice" in e for e in isomers.check(p, TITLES))
-    p = _migrated(LEGACY); p["isomers"]["PFNA"]["summed"] = True
+    p = _migrated(LEGACY)
     p["isomers"]["PFOS"]["reported"] = "PFOA"                         # another analyte's name
     assert any("both be reported as" in e for e in isomers.check(p, TITLES))
-    p = _migrated(LEGACY); p["isomers"]["PFNA"]["summed"] = True
+    p = _migrated(LEGACY)
     p["isomers"]["PFOS"]["linear"] = ""
     assert any("needs its linear peak" in e for e in isomers.check(p, TITLES))
+
+
+
+def test_lr_names_only_the_linear_peak():
+    """One analyte out (DECISIONS 2026-10-01): the reported analyte, the core
+    service title and the EDD parameter carry the plain name; "lr-" survives
+    only as the linear PEAK's name (alias for instrument matching)."""
+    assert not [r[1] for r in ar.NATIVE_ANALYTES if r[1].lower().startswith("lr-")]
+    assert set(ar.LINEAR_PEAK_ALIASES) == {"lr-PFOS", "lr-PFHxS"}
+    for name, kw in ar.LINEAR_PEAK_ALIASES.items():
+        assert ar.COMPOUND_NAME_TO_KEYWORD[name] == kw
+    with open(os.path.join(ROOT, "src", "senaite", "pfas", "setupdata", "analysis_services.csv")) as fh:
+        assert ",lr-" not in fh.read()
+    with open(os.path.join(ROOT, "src", "senaite", "pfas", "egad_store.py")) as fh:
+        body = fh.read()
+    assert "PFOS_A_L" not in body and "PFHXS_A_L" not in body
 
 
 if __name__ == "__main__":

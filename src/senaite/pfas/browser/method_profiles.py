@@ -197,8 +197,8 @@ class PFASMethodProfileEditView(BrowserView):
 
     def per_analyte_labels_json(self):
         """{stored row name: label to SHOW}. Rows are stored under the global
-        display name ("lr-PFOS"), which spec_sync reads, so the key stays; the
-        page shows the method's label (a summed PFOS is "PFOS")."""
+        display name, which spec_sync reads, so the key stays; the page shows
+        the method's label (an isomer group's reported name)."""
         from senaite.pfas.analyte_reference import NATIVE_ANALYTES
         from senaite.pfas.method_profile_sections import _analyte_titles
         labels = _analyte_titles(self.profile())

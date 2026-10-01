@@ -664,8 +664,7 @@ def read_isomers(profile):
     for kw, e in _iso.entries(profile).items():
         out[(kw,)] = {"linear": e.get("linear") or None,
                       "branched": u", ".join(e.get("branched") or []) or None,
-                      "reported": e.get("reported") or None,
-                      "summed": bool(e.get("summed"))}
+                      "reported": e.get("reported") or None}
     return out
 
 
@@ -679,8 +678,8 @@ def write_isomers(profile, updates, env=None):
             continue
         old = groups.get(kw) or {}
         groups[kw] = dict(old, linear=linear, branched=branched,
-                          reported=(vals.get(("reported",)) or u"").strip(),
-                          summed=bool(vals.get(("summed",))))
+                          reported=(vals.get(("reported",)) or u"").strip())
+        groups[kw].pop("summed", None)
     profile[_iso.KEY] = groups
     profile.pop(_iso.LEGACY, None)
     return profile
@@ -692,8 +691,7 @@ ISOMERS = cf.Table(
              cf.Field("branched", u"Branched peak(s), comma-separated", kind=cf.TEXT,
                       placeholder=u"e.g. br-PFOS"),
              cf.Field("reported", u"Reported as", kind=cf.TEXT,
-                      placeholder=u"plain name (e.g. PFOS)"),
-             cf.Field("summed", u"Summed", kind=cf.BOOL)],
+                      placeholder=u"plain name (e.g. PFOS)")],
     rows=isomer_rows, read=read_isomers, write=write_isomers, row_heading=u"Analyte")
 
 

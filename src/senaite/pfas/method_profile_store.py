@@ -1007,6 +1007,21 @@ def _convert_seeds():
 _convert_seeds()
 
 
+def _rename_linear_peak_rows(profile):
+    """per_analyte rows are keyed by the analyte's DISPLAY name, which for
+    PFOS/PFHxS was the linear-peak name "lr-PFOS"/"lr-PFHxS" until
+    2026-10-01; re-key them to the reported name (idempotent)."""
+    from senaite.pfas.analyte_reference import LINEAR_PEAK_ALIASES
+    titles = dict((row[0], row[1]) for row in _NATIVE_ANALYTES)
+    changed = False
+    for row in profile.get("per_analyte") or []:
+        kw = LINEAR_PEAK_ALIASES.get((row or {}).get("analyte"))
+        if kw:
+            row["analyte"] = titles.get(kw, kw)
+            changed = True
+    return changed
+
+
 def migrate_profile_models(portal):
     """Bring every stored profile to the current models (idempotent; run on
     every start from setup_handler): the labelled-standards grid replacing
@@ -1021,7 +1036,8 @@ def migrate_profile_models(portal):
             continue
         a = labelled_standards.migrate(profile, _global_injection_keywords())
         b = isomers.migrate(profile)
-        if a or b:
+        c = _rename_linear_peak_rows(profile)
+        if a or b or c:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:

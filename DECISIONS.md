@@ -5459,3 +5459,24 @@ Lab answers:
     summation off for an analyte with isomers, saying why.
   - **C (open, needs confirmation):** the core title rename, after the
     reference list (instrument matching keeps "lr-" names as aliases).
+
+## 2026-10-01 (revised same day) — Isomers: one analyte out; lr- only names the peak (confirmed)
+- **Lab:** "Reporting should only report one analyte out, we should store the
+  isomer information for our own review. Control charting, retention time etc
+  but it will only report the one analyte. Remove the lr from the core service
+  unless needed for control charting etc. EDD exports out as PFOS etc."
+- **Supersedes** decision 2 of the entry above ("each isomer separately") and
+  its phase B: there is no separate reporting. Every analyte with isomers is
+  summed; the Isomers tab has no Summed column; a legacy pair that was off is
+  summed after migration.
+- **Isomer peaks** stay in the QC database under their PEAK names (lr-/br-)
+  for internal review -- per-injection RT, RRT, ion ratio, area, S/N, their
+  own calibration curves and control charts -- verified unchanged.
+- **Phase C done:** core service titles PFOS / PFHxS (were lr-PFOS /
+  lr-PFHxS); `analyte_reference` display names plain, with
+  `LINEAR_PEAK_ALIASES` keeping "lr-PFOS"/"lr-PFHxS" resolving to the same
+  keywords; the pipeline's FDA display lists, setup CSV, EGAD title map and
+  per_analyte rows follow. **EDD parameter names PFOS / PFHxS** (were
+  PFOS_A_L / PFHXS_A_L). The Maine DEP codes held (DEP18026 / DEP18024) are
+  the LINEAR-isomer codes and were NOT changed -- flagged VERIFY for the lab:
+  confirm the code for the summed total before an EDD is sent.

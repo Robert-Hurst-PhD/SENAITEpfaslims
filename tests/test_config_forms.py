@@ -836,9 +836,6 @@ def test_several_branched_peaks_and_the_refusals():
     after = save(ISO, stored, form)
     assert after["isomers"]["PFOS"]["branched"] == ["br-PFOS", "br2-PFOS"]
     form = iso_form(stored)
-    form.pop(_icell("PFOA", "summed"))                                   # summed off
-    assert any("separately" in e for e in mps.check_isomers(save(ISO, stored, form)))
-    form = iso_form(stored)
     form[_icell("PFHxS", "branched")] = "br-PFOS"                        # PFOS's peak
     assert any("counted twice" in e for e in mps.check_isomers(save(ISO, stored, form)))
 
@@ -850,7 +847,7 @@ def test_clearing_the_peaks_removes_the_isomers():
     form[_icell("PFHxS", "branched")] = ""
     after = save(ISO, stored, form)
     assert "PFHxS" not in after["isomers"]
-    assert mps._analyte_titles(after).get("PFHxS") == "lr-PFHxS"        # the linear peak alone
+    assert mps._analyte_titles(after).get("PFHxS") == "PFHxS"
 
 
 def test_the_per_analyte_save_keeps_fields_it_does_not_edit():

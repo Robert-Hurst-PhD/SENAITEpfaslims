@@ -41,10 +41,10 @@ NATIVE_ANALYTES = [
     ("PFODA",  "PFODA",  "16517-11-6", "Perfluorooctadecanoic acid",                      "PFCA",    18, "",                 True,  False),
     ("PFBS",   "PFBS",   "375-73-5",   "Perfluorobutanesulfonic acid",                    "PFSA",    4,  "M3PFBS",           False, False),
     ("PFPeS",  "PFPeS",  "2706-91-4",  "Perfluoropentanesulfonic acid",                   "PFSA",    5,  "",                 True,  False),
-    ("PFHxS",  "lr-PFHxS","355-46-4",  "Perfluorohexanesulfonic acid (linear)",           "PFSA",    6,  "M3PFHxS",          False, True),
+    ("PFHxS",  "PFHxS",   "355-46-4",  "Perfluorohexanesulfonic acid (linear)",           "PFSA",    6,  "M3PFHxS",          False, True),
     ("br-PFHxS","br-PFHxS","",         "Perfluorohexanesulfonic acid (branched)",          "PFSA",    6,  "M3PFHxS",          False, True),
     ("PFHpS",  "PFHpS",  "375-92-8",   "Perfluoroheptanesulfonic acid",                   "PFSA",    7,  "",                 True,  False),
-    ("PFOS",   "lr-PFOS","1763-23-1",  "Perfluorooctanesulfonic acid (linear)",            "PFSA",    8,  "M8PFOS",           False, True),
+    ("PFOS",   "PFOS",   "1763-23-1",  "Perfluorooctanesulfonic acid (linear)",            "PFSA",    8,  "M8PFOS",           False, True),
     ("br-PFOS","br-PFOS","",           "Perfluorooctanesulfonic acid (branched)",           "PFSA",    8,  "M8PFOS",           False, True),
     ("PFNS",   "PFNS",   "68259-12-1", "Perfluorononanesulfonic acid",                    "PFSA",    9,  "",                 True,  False),
     ("PFDS",   "PFDS",   "335-77-3",   "Perfluorodecanesulfonic acid",                    "PFSA",    10, "",                 True,  False),
@@ -370,7 +370,15 @@ def _build_compound_name_to_keyword():
     return mapping
 
 
+# Linear-PEAK names that resolve to the reported analyte. PFOS and PFHxS were
+# displayed as "lr-PFOS"/"lr-PFHxS" until 2026-10-01 (DECISIONS): a summed
+# result is reported as the plain analyte, and "lr-" names only the linear
+# peak, which instruments export under that name. Kept so every name the
+# matching accepted before still resolves to the same keyword.
+LINEAR_PEAK_ALIASES = {"lr-PFHxS": "PFHxS", "lr-PFOS": "PFOS"}
+
 COMPOUND_NAME_TO_KEYWORD = _build_compound_name_to_keyword()
+COMPOUND_NAME_TO_KEYWORD.update(LINEAR_PEAK_ALIASES)
 
 
 # ── SENAITE AnalysisService pfas_role helpers ────────────────────────────────

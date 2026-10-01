@@ -5984,3 +5984,25 @@ Approved by the lab as the first recommendation of
   display name (spec_sync); MRM transitions (`analytes.py`); the EDD parameter
   name map (`egad_config.py`: PFOS -> "lr-PFOS" -- which name the state EDD
   expects is a regulatory question); setup CSV.
+
+## 62. One analyte out; lr- names only the linear peak (2026-10-01)
+- DECISIONS 2026-10-01 (revised). Isomers always summed (no Summed column,
+  no phase B); core titles, display names, EDD parameter names PFOS / PFHxS;
+  "lr-" kept as `LINEAR_PEAK_ALIASES` and as the isomer PEAK names, under
+  which per-injection RT/RRT/ion ratio/area, QC rows and calibration curves
+  stay stored for internal review and control charts.
+- **Proof the rename changed no result:** the pipeline was run offline on the
+  real instrument exports ("Test Sample.csv" and its QC-coherent version)
+  BEFORE and AFTER, against the live profile export of each moment: reported
+  rows (288 each), QC flags (602 each) and the stored injection (1254), QC
+  (25) and calibration (25) rows are identical; lr-/br- peaks are still
+  stored. Live: migration ran at start (per_analyte rows re-keyed, `summed`
+  dropped), service titles renamed (no existing analyses carried the old
+  title), EDD names changed via `save_analyte_cas` (history-recorded); no-op
+  audit of every tab clean; history check clean.
+- **For the lab:** the EDD codes DEP18026 (PFOS) / DEP18024 (PFHxS) are the
+  Maine codes held for the LINEAR isomers; the export now sends the summed
+  total under them. Confirm the code for the total (flagged VERIFY in the EDD
+  settings' notes) before sending an EDD.
+- **Tests:** `test_isomers.py` 8 (one analyte out; lr- only names the peak --
+  guard on analyte table, aliases, setup CSV, EDD names).

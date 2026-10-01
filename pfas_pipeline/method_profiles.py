@@ -124,14 +124,13 @@ class SequenceRule:
 # Moved here from constants.py so they are owned by the method layer.
 #
 # The ZODB store's analyte_matrix_inclusion uses KEYWORDS as dict keys
-# (e.g. "PFHxS", "PFOS") while these lists use DISPLAY NAMES (e.g. "lr-PFHxS",
-# "lr-PFOS") to match instrument export.  The map below bridges them.
+# while these lists use DISPLAY NAMES (e.g. "GenX (HFPO-DA)") to match
+# instrument export.  The map below bridges them. PFOS/PFHxS are reported
+# under their plain names since 2026-10-01; "lr-" names only their linear peak.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Analyte keyword → instrument display name (only entries that differ)
 _FDA_KW_TO_DISPLAY: dict = {
-    "PFHxS":       "lr-PFHxS",
-    "PFOS":        "lr-PFOS",
     "GenX":        "GenX (HFPO-DA)",
     "4:2FTS":      "4:2 FTS",
     "8:2FTS":      "8:2 FTS",
@@ -146,7 +145,7 @@ _FDA_DISPLAY_ANALYTES = [
     "10:2 FTS", "11Cl-PF3OUdS", "4:2 FTS", "6:2FTS", "8:2 FTS",
     "9Cl-PF3ONS", "DONA", "FOSA", "GenX (HFPO-DA)", "PFBA", "PFBS",
     "PFDA", "PFDoA", "PFDoS", "PFDS", "PFHpA", "PFHpS", "PFHxA",
-    "PFHxDA", "lr-PFHxS", "PFNA", "PFNS", "PFOA", "PFODA", "lr-PFOS",
+    "PFHxDA", "PFHxS", "PFNA", "PFNS", "PFOA", "PFODA", "PFOS",
     "PFPeA", "PFPeS", "PFTeDA", "PFTrDA", "PFTrDS", "PFUDA", "PFUnDS",
     "br-PFOS", "br-PFHxS",
 ]
@@ -1635,8 +1634,8 @@ def get_isomer_summation(method_id: str = "FDA_32PFAS") -> list:
     if isinstance(groups, dict):
         out = []
         for kw, e in groups.items():
-            if not isinstance(e, dict) or not e.get("summed", True):
-                continue
+            if not isinstance(e, dict):
+                continue            # always summed: one analyte is reported
             branched = [b for b in (e.get("branched") or []) if b]
             if not (e.get("linear") or branched):
                 continue

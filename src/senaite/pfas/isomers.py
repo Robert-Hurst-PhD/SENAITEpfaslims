@@ -3,8 +3,7 @@
 
     isomers = {analyte keyword: {"linear": "lr-PFOS",
                                  "branched": ["br-PFOS", ...],
-                                 "reported": "" | label,
-                                 "summed": True}}
+                                 "reported": "" | label}}
 
 The KEY is the panel analyte's keyword -- the identity SENAITE imports a
 result under, so the pipeline keeps using it. "reported" is only the LABEL
@@ -13,8 +12,9 @@ plain name (the analyte's display name without its "lr-" prefix). "lr-" names
 the linear PEAK, never the reported total.
 
 Replaces `isomer_summation` ([{"linear", "branched", "reported", "enabled"}]).
-Reporting isomers separately (summed off) needs a core analysis service per
-isomer and is not available yet (phase B), so a save refuses it.
+Reporting is ALWAYS one analyte out (the sum); the isomer peaks are kept only
+for the lab's own review -- control charts, retention time, calibration --
+under their peak names (DECISIONS 2026-10-01, revised the same day).
 Pure; Python 2.7.
 """
 from __future__ import absolute_import, unicode_literals
@@ -34,8 +34,7 @@ def from_legacy(profile):
         if not isinstance(pair, dict) or not pair.get("reported"):
             continue
         kw = pair["reported"].strip()
-        entry = out.setdefault(kw, {"linear": "", "branched": [], "reported": "",
-                                    "summed": bool(pair.get("enabled", True))})
+        entry = out.setdefault(kw, {"linear": "", "branched": [], "reported": ""})
         if pair.get("linear") and not entry["linear"]:
             entry["linear"] = pair["linear"].strip()
         br = (pair.get("branched") or "").strip()
@@ -53,6 +52,10 @@ def migrate(profile):
     if LEGACY in profile:
         profile.pop(LEGACY)
         changed = True
+    for entry in (profile.get(KEY) or {}).values():
+        if isinstance(entry, dict) and "summed" in entry:
+            entry.pop("summed")         # always summed: one analyte out
+            changed = True
     return changed
 
 
@@ -64,7 +67,7 @@ def label(profile, keyword, titles):
     """What every page shows for `keyword` in this method: the reported name
     of a summed analyte (default its plain name), else its display name."""
     entry = entries(profile).get(keyword)
-    if entry and entry.get("summed") and (entry.get("linear") or entry.get("branched")):
+    if entry and (entry.get("linear") or entry.get("branched")):
         return (entry.get("reported") or "").strip() or plain_name(keyword, titles)
     return titles.get(keyword) or keyword
 
@@ -90,10 +93,6 @@ def check(profile, titles):
             errors.append("%s has isomers but is not in this method's analyte panel." % kw)
         if e.get("branched") and not e.get("linear"):
             errors.append("%s: a branched peak needs its linear peak too." % kw)
-        if not e.get("summed"):
-            errors.append("%s: reporting its isomers separately needs an analysis "
-                          "service for each isomer, which is not set up yet -- keep "
-                          "Summed ticked (GAPS: isomers phase B)." % kw)
         for peak in peaks:
             owner = taken.get(peak.lower())
             if owner and owner != "the analyte %s" % kw:
