@@ -5532,3 +5532,20 @@ Lab answers:
   spiked QC type (levels x matrices); a read-only grid of the window the engine
   applies per analyte group x matrix; a compact tier table holding only what
   the engine reads.
+
+## 2026-10-01 — Action levels on Reporting; group lists per method; project specs (confirmed)
+- **Action levels:** each method's Reporting tab lists the action levels / MCLs
+  matching its matrices, with a per-method x matrix switch for whether its
+  certificates evaluate and print each one. Values stay on Regulatory Limits
+  (one place, citation and verified flag).
+- **Groups:** Tier 1 matrices and key analytes are per-method editable lists
+  on the Recovery Tiers tab, each with its definition. Tier 1 matrices move off
+  Matrices & Units; key analytes stop being a global flag -- the pipeline and
+  the spec sync read the method's own `key_analytes`, migrated from today's
+  flag (limited to the method's panel). The Reference Definitions setup keeps
+  the global flag (definitions are not method-scoped).
+- **Project specs:** each Project gets a specs editor laid out like the
+  method tabs it can override (extra analytes from defined services, extra
+  surrogates / internal standards, LFSM recovery tiers, RPD, plus the existing
+  QAPP criteria). Only differences are stored; batches linked to the project
+  use them; anything looser than the published method is reported.

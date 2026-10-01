@@ -116,6 +116,8 @@ class PFASMethodProfileEditView(BrowserView):
             self.request.response.setStatus(403)
             return "Forbidden: Manager, LabManager, or Owner role required"
 
+        if self.request.form.get("_preview") == "rt":
+            return self._preview_recovery_grid()
         if self.request.method == "POST":
             return self._handle_post()
         return self.template()
@@ -417,8 +419,32 @@ class PFASMethodProfileEditView(BrowserView):
     def has_dup(self):
         return "Dup" in ((self.profile().get("qc_acceptance") or {}))
 
+    rt_grid_template = ViewPageTemplateFile("templates/rt_grid.pt")
+
+    def rt_grid_html(self):
+        return self.rt_grid_template(grid=self.recovery_grid())
+
+    def _preview_recovery_grid(self):
+        """The applied-window grid for the Recovery Tiers form AS EDITED, not
+        saved: the same parse + apply a save runs, then the same resolver the
+        page draws with. Nothing is written."""
+        from senaite.pfas import config_forms
+        from senaite.pfas.method_profile_sections import SECTIONS, recovery_grid
+        from senaite.pfas.method_profile_store import raw_profile
+        stored = raw_profile(_portal(self.context), self.method_id())
+        profile = stored
+        for sid in ("groups", "tiers"):
+            updates, errors = config_forms.parse(SECTIONS[sid], self.request.form, stored)
+            if errors:
+                self.request.response.setHeader("X-Preview-Errors", "1")
+                return u'<div id="rt-grid"><p class="alert alert-error">%s</p></div>' % (
+                    u" ".join(errors).replace(u"<", u"&lt;"))
+            profile = config_forms.apply(SECTIONS[sid], profile, updates)
+        self.request.response.setHeader("Content-Type", "text/html; charset=utf-8")
+        return self.rt_grid_template(grid=recovery_grid(profile))
+
     def rt_section_ids(self):
-        ids = ["tiers"] + [sid for sid, _l in self.spike_sections()]
+        ids = ["groups", "tiers"] + [sid for sid, _l in self.spike_sections()]
         return ids + (["dup"] if self.has_dup() else [])
 
     def grouped_tiers(self):

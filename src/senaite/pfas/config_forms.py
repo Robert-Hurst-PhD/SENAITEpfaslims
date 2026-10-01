@@ -41,8 +41,14 @@ except Exception:          # tests: loaded without the package
 
 REMOVE = object()          # a parsed value meaning "delete this key"
 
-NUMBER, INT, BOOL, TEXT, TEXTAREA, CHOICE = (
-    "number", "int", "bool", "text", "textarea", "choice")
+NUMBER, INT, BOOL, TEXT, TEXTAREA, CHOICE, MULTI = (
+    "number", "int", "bool", "text", "textarea", "choice", "multi")
+
+
+def option_name(f, value):
+    """One checkbox per option (MULTI): a list-valued field would be collapsed
+    to its first value by flatten_form."""
+    return u"%s__opt__%s" % (f.name, _enc(value))
 
 
 class Field(object):
@@ -150,8 +156,16 @@ def render(section, stored, env=None):
             choices = _choices(f, stored, env)
             if f.kind == CHOICE and v not in (None, u"", "") and v not in [c[0] for c in choices]:
                 choices.append((v, u"%s (stored value)" % v))
+            options = []
+            if f.kind == MULTI:
+                chosen = set(v or [])
+                options = [{"value": c[0], "label": c[1], "name": option_name(f, c[0]),
+                            "checked": c[0] in chosen} for c in choices]
+                options += [{"value": x, "label": u"%s (stored value)" % x, "name": option_name(f, x),
+                             "checked": True} for x in (v or []) if x not in [c[0] for c in choices]]
             rows.append({
                 "name": f.name, "label": f.label, "kind": f.kind, "unit": f.unit,
+                "options": options,
                 "help": f.help, "placeholder": f.placeholder, "required": f.required,
                 "min": f.minimum, "max": f.maximum, "choices": choices,
                 "value": (u"" if v is None else (v if f.kind in (BOOL,) else u"%s" % v)),
@@ -190,6 +204,8 @@ def _value(f, raw, saved, label=None, choices=None):
     label = label or f.label
     if f.kind == BOOL:
         return raw is True or _text(raw).lower() in (u"1", u"on", u"true", u"yes"), None
+    if f.kind == MULTI:
+        return raw, None                 # parse() hands over the chosen list
     text = _text(raw)
     if text == u"":
         if f.required:
@@ -241,6 +257,15 @@ def parse(section, form, stored, env=None):
     updates, errors = {}, []
     saved = current(section, stored)
     for f in section.fields():
+        if f.kind == MULTI:
+            offered = [c[0] for c in _choices(f, stored, env)] + list(saved[f.name] or [])
+            ticked = set(v for v in offered if _text(form.get(option_name(f, v))).lower()
+                         in (u"1", u"on", u"true", u"yes"))
+            old = list(saved[f.name] or [])
+            # stored order kept; newly ticked ones follow in option order
+            updates[f.path] = ([v for v in old if v in ticked] +
+                               [v for v in offered if v in ticked and v not in old])
+            continue
         value, error = _value(f, form.get(f.name), saved[f.name],
                               choices=_choices(f, stored, env))
         if error:

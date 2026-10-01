@@ -162,11 +162,10 @@ def unit_choices(profile, env=None):
 
 
 def read_matrices(profile):
-    tight = set(profile.get("tight_matrices") or [])
     aliases = profile.get("matrix_aliases") or {}
     units = profile.get("unit_map") or {}
     holding = profile.get("holding_times") or {}
-    return [{"name": m, "tight": m in tight,
+    return [{"name": m,
              "aliases": u", ".join(aliases.get(m) or []),
              "unit": units.get(m) or None,
              "holding_days": holding.get(m)}
@@ -197,7 +196,6 @@ def write_matrices(profile, rows):
         # and the review refuses to judge rather than passing it.
         holding[r["name"]] = days
     profile["supported_matrices"] = names
-    _set(profile, "tight_matrices", [r["name"] for r in rows if r.get("tight")])
     _set(profile, "matrix_aliases", aliases)
     _set(profile, "unit_map", units)
     _set(profile, "holding_times", holding)
@@ -233,6 +231,12 @@ def matrix_references(profile, removed):
                  if m in removed and v)
     if hit:
         found.append(u"reporting limits for %s" % u", ".join(hit))
+    hit = sorted(m for m in (profile.get("tight_matrices") or []) if m in removed)
+    if hit:
+        found.append(u"the Tier 1 matrix list (Recovery Tiers) for %s" % u", ".join(hit))
+    hit = sorted(m for m in ((profile.get("report_format") or {})) if m in removed)
+    if hit:
+        found.append(u"the certificate format (Reporting) for %s" % u", ".join(hit))
     return found
 
 
@@ -251,7 +255,6 @@ MATRICES = cf.Collection(
     id=u"mtx", title=u"Matrices & Units", noun=u"matrix", new_rows=3,
     columns=[
         cf.Field("name", u"Matrix", kind=cf.TEXT, placeholder=u"new matrix"),
-        cf.Field("tight", u"Tier 1", kind=cf.BOOL),
         cf.Field("aliases", u"Aliases (comma-separated)", kind=cf.TEXT,
                  placeholder=u"deer muscle, venison, beef"),
         cf.Field("unit", u"Reporting Unit", kind=cf.CHOICE, choices=unit_choices),
@@ -830,6 +833,42 @@ DUP_RPD = cf.Section(
     ])])
 
 
+def _matrix_choices(profile, env=None):
+    return [(m, m) for m in profile.get("supported_matrices") or []]
+
+
+def _panel_choices(profile, env=None):
+    labels = _analyte_titles(profile)
+    return [(kw, labels.get(kw)) for kw in profile.get("master_analyte_set") or []]
+
+
+GROUPS = cf.Section(
+    id=u"groups", title=u"Groups", base=(),
+    groups=[(u"Who the tiers apply to", [
+        cf.Field("tight_matrices", u"Tier 1 matrices", kind=cf.MULTI, choices=_matrix_choices,
+                 help=u"Matrices where a tier set to \u201cTier 1 matrices only\u201d applies "
+                      u"\u2014 under FDA 32-PFAS, the matrices whose key analytes are held to "
+                      u"the tighter window (eggs, meat, seafood). Any other matrix uses the "
+                      u"\u201cAll matrices\u201d tiers."),
+        cf.Field("key_analytes", u"Key analytes", kind=cf.MULTI, choices=_panel_choices,
+                 help=u"Analytes a \u201cKey analytes\u201d tier applies to \u2014 the "
+                      u"regulatory priority analytes. Every other analyte with a labelled "
+                      u"standard is an \u201cOther analyte\u201d."),
+    ])])
+
+
+def key_analytes(profile):
+    """The method's key analytes (its own list), or the global flag where a
+    profile predates the list."""
+    if isinstance(profile.get("key_analytes"), list):
+        return set(profile["key_analytes"])
+    try:
+        from senaite.pfas.analyte_reference import get_key_analyte_keywords
+    except Exception:
+        from analyte_reference import get_key_analyte_keywords
+    return set(get_key_analyte_keywords())
+
+
 def resolve_tier(profile, is_key, is_no_std, matrix):
     """The tier the engine applies (None = it refuses: unconfigured)."""
     tiers = _tiers(profile)
@@ -857,7 +896,8 @@ def recovery_grid(profile):
         from senaite.pfas.analyte_reference import NATIVE_ANALYTES
     except Exception:
         from analyte_reference import NATIVE_ANALYTES
-    flags = dict((r[0], (bool(r[8]), bool(r[7]))) for r in NATIVE_ANALYTES)   # (key, no_std)
+    keys = key_analytes(profile)
+    flags = dict((r[0], (r[0] in keys, bool(r[7]))) for r in NATIVE_ANALYTES)   # (key, no_std)
     labels = _analyte_titles(profile)
     panel = profile.get("master_analyte_set") or []
     groups = [(u"Key analytes", lambda k, n: k and not n),
@@ -871,15 +911,17 @@ def recovery_grid(profile):
             continue
         k, n = flags.get(names[0], (False, False))
         cells = []
+        tiers = _tiers(profile)
         for m in matrices:
             t = resolve_tier(profile, k, n, m)
             if t is None or t.get("recovery_min") is None:
-                cells.append({"text": u"not set", "warn": True, "tier": None})
+                cells.append({"text": u"not set", "warn": True, "tier": None, "swatch": None})
             else:
                 text = u"%g–%g%%" % (t["recovery_min"], t["recovery_max"])
                 if t.get("rsd_max") is not None:
                     text += u" · RSD ≤ %g" % t["rsd_max"]
-                cells.append({"text": text, "warn": False, "tier": t.get("name")})
+                cells.append({"text": text, "warn": False, "tier": t.get("name"),
+                              "swatch": u"tier-c%d" % (tiers.index(t) % 6)})
         rows.append({"title": title, "members": [labels.get(kw) for kw in names],
                      "cells": cells})
     return {"matrices": matrices, "rows": rows}
@@ -998,6 +1040,6 @@ PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
                                     SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
-                                    REPORT_FORMAT] +
+                                    REPORT_FORMAT, GROUPS] +
                 list(SPIKE_LEVELS.values()) +
                 [c for c, _l in EIS_CLASSES])

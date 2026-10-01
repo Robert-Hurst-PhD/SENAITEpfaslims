@@ -963,10 +963,11 @@ def test_the_recovery_grid_shows_what_the_engine_applies():
     sys.path.insert(0, os.path.dirname(HERE))
     from pfas_pipeline import method_profiles as mp
     import analyte_reference as ar
-    flags = dict((r[0], (bool(r[8]), bool(r[7]))) for r in ar.NATIVE_ANALYTES)
     display = dict((r[0], r[1]) for r in ar.NATIVE_ANALYTES)
     checked = 0
     for mid, prof in _profiles().items():
+        keys = mps.key_analytes(prof)                       # the method's own list
+        flags = dict((r[0], (r[0] in keys, bool(r[7]))) for r in ar.NATIVE_ANALYTES)
         engine = mp.get_profile(mid)
         for kw in prof.get("master_analyte_set") or []:
             k, n = flags.get(kw, (False, False))
@@ -1105,6 +1106,77 @@ def test_the_certificate_reads_each_samples_own_format():
         ps = fh.read()
     for moved in ("coa_show_cas", "coa_show_mdl", "coa_nd_format", "coa_sig_figs"):
         assert '"%s":' % moved not in ps, moved                             # no second copy
+
+
+
+# ── Who the tiers apply to (2026-10-01) ─────────────────────────────────────
+
+def _groups_form(stored):
+    form = {}
+    for g in cf.render(mps.GROUPS, stored):
+        for row in g["fields"]:
+            for o in row.get("options") or []:
+                if o["checked"]:
+                    form[o["name"]] = "on"
+    return form
+
+
+def test_tier1_matrices_and_key_analytes_are_editable_lists():
+    import copy
+    stored = copy.deepcopy(_profiles()["FDA_32PFAS"])
+    stored.setdefault("key_analytes", sorted(mps.key_analytes(stored) & set(stored["master_analyte_set"])))
+    after = save(mps.GROUPS, stored, _groups_form(stored))
+    assert after["tight_matrices"] == stored["tight_matrices"]                 # unchanged = no-op
+    assert after["key_analytes"] == stored["key_analytes"]
+    form = _groups_form(stored)
+    milk = [r for r in cf.render(mps.GROUPS, stored)[0]["fields"] if r["name"].endswith("tight_matrices")][0]
+    form[[o["name"] for o in milk["options"] if o["value"] == "Milk"][0]] = "on"
+    after = save(mps.GROUPS, stored, form)
+    assert after["tight_matrices"] == stored["tight_matrices"] + ["Milk"]      # order kept, added last
+    grid = mps.recovery_grid(after)
+    milk_col = after["supported_matrices"].index("Milk")
+    assert grid["rows"][0]["cells"][milk_col]["text"].startswith("80")       # key analytes now tier 1 there
+
+
+def test_the_matrices_tab_no_longer_writes_tier1():
+    import copy
+    stored = copy.deepcopy(_profiles()["FDA_32PFAS"])
+    after = save(MTX, stored, coll_form(MTX, stored))
+    assert after["tight_matrices"] == stored["tight_matrices"]
+    assert "tight" not in [c.path[0] for c in MTX.columns]
+    form = coll_form(MTX, stored)
+    form[_cell(MTX, stored["supported_matrices"].index("Eggs"), "name")] = ""
+    assert any("Tier 1 matrix list" in e for e in cf.parse(MTX, form, stored)[1])
+
+
+def test_moving_key_analytes_onto_the_method_changes_no_engine_decision():
+    if sys.version_info[0] < 3:
+        return
+    import copy
+    sys.path.insert(0, os.path.dirname(HERE))
+    from pfas_pipeline import method_profiles as mp
+    import analyte_reference as ar
+    display = dict((r[0], r[1]) for r in ar.NATIVE_ANALYTES)
+    keys = ar.get_key_analyte_keywords()
+    for mid, prof in _profiles().items():
+        legacy = copy.deepcopy(prof); legacy.pop("key_analytes", None)
+        moved = copy.deepcopy(legacy)
+        moved["key_analytes"] = [k for k in moved["master_analyte_set"] if k in keys]
+        def windows(data):
+            mp._profile_data_cache[mid] = data
+            eng = mp.get_profile(mid)
+            return [(kw, m, (lambda r: (r.recovery_min, r.recovery_max, r.rsd_max) if r else None)(
+                        eng.qc_rules(display.get(kw, kw), m, "LFSM")))
+                    for kw in data["master_analyte_set"] for m in data["supported_matrices"]]
+        before = windows(legacy); after = windows(moved)
+        mp._profile_data_cache[mid] = prof
+        assert before == after, mid
+
+
+def test_the_preview_never_writes():
+    src = _read("method_profiles.py")
+    body = src[src.index("def _preview_recovery_grid"):src.index("def rt_section_ids")]
+    assert "save_profile" not in body and "config_forms.apply" in body
 
 
 if __name__ == "__main__":

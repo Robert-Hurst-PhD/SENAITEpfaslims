@@ -1006,9 +1006,23 @@ def _convert_seeds():
         fold_associated_qc_types(_data)   # one source for "runs QC type X"
         from senaite.pfas import report_format
         report_format.migrate(_data, {})  # certificate format: built-in defaults
+        _seed_key_analytes(_data)         # key analytes: per method (2026-10-01)
 
 
-_convert_seeds()
+# (_convert_seeds() runs at the END of this module: the converters it calls
+# are defined further down, and a call here raised NameError at import --
+# which took the whole site down, 2026-10-01.)
+
+
+def _seed_key_analytes(profile):
+    """Give a profile its own key-analyte list, from the global flag limited to
+    its panel -- exactly the set the engine used (idempotent)."""
+    if isinstance(profile.get("key_analytes"), list):
+        return False
+    from senaite.pfas.analyte_reference import get_key_analyte_keywords
+    keys = get_key_analyte_keywords()
+    profile["key_analytes"] = [kw for kw in (profile.get("master_analyte_set") or []) if kw in keys]
+    return True
 
 
 def _rename_linear_peak_rows(profile):
@@ -1048,7 +1062,8 @@ def migrate_profile_models(portal):
         from senaite.pfas import report_format
         from senaite.pfas.print_settings import get_print_settings
         e = report_format.migrate(profile, get_print_settings(portal))
-        if a or b or c or d or e:
+        f = _seed_key_analytes(profile)
+        if a or b or c or d or e or f:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:
@@ -1558,3 +1573,7 @@ def _register_history():
 
 
 _register_history()
+
+
+# Convert the seeds now that every converter above is defined.
+_convert_seeds()

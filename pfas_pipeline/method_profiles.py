@@ -684,7 +684,14 @@ def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM",
                 tight.add(alias.lower().strip())
 
         is_no_std = analyte in no_std
-        is_key = analyte in key
+        # Key analytes are the METHOD's own list (2026-10-01); a profile
+        # without one falls back to the global flag, as before.
+        own_keys = profile_data.get("key_analytes")
+        if isinstance(own_keys, list):
+            from .analyte_alias import keyword_for
+            is_key = (keyword_for(analyte) or analyte) in set(own_keys) or analyte in set(own_keys)
+        else:
+            is_key = analyte in key
         is_tight = m in tight
 
         for tier in tiers:

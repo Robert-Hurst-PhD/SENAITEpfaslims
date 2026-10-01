@@ -100,6 +100,35 @@ def test_the_checks_refuse_bad_links_loops_and_map_disagreement():
     assert any("must be extracted" in e for e in ls.check(p))
 
 
+def test_import_time_calls_come_after_what_they_use():
+    """method_profile_store runs _convert_seeds() at import. Placed above a
+    converter it calls, that raised NameError on import and SENAITE crash-
+    looped (2026-10-01). Every module-level call must follow the definition of
+    every module function it (transitively) uses."""
+    import ast
+    path = os.path.join(ROOT, "src", "senaite", "pfas", "method_profile_store.py")
+    with open(path) as fh:
+        tree = ast.parse(fh.read())
+    defs = dict((n.name, n) for n in tree.body if isinstance(n, ast.FunctionDef))
+
+    def uses(name, seen):
+        if name in seen or name not in defs:
+            return seen
+        seen.add(name)
+        for node in ast.walk(defs[name]):
+            if isinstance(node, ast.Name) and node.id in defs:
+                uses(node.id, seen)
+        return seen
+
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) \
+                and isinstance(stmt.value.func, ast.Name) and stmt.value.func.id in defs:
+            for name in uses(stmt.value.func.id, set()):
+                assert defs[name].lineno < stmt.lineno, (
+                    "%s() runs at line %d but %s is defined at line %d"
+                    % (stmt.value.func.id, stmt.lineno, name, defs[name].lineno))
+
+
 def test_the_seeds_hold_a_grid_and_no_legacy_keys():
     with open(os.path.join(ROOT, "src", "senaite", "pfas", "method_profile_store.py")) as fh:
         body = fh.read()

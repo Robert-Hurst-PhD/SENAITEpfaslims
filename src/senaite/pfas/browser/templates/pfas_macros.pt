@@ -244,7 +244,32 @@
     /* Declared tables: the label column takes only the width its labels
        need, so the value columns (often one per matrix) get the room. */
     .cf-table th:first-child, .cf-table td:first-child { width: 1%; white-space: nowrap; padding-right: var(--sp-4); }
-    .cf-table select.rl-in { min-width: 7.5em; }
+    .cf-table select.rl-in, .cf-coll select.rl-in { min-width: 7.5em; }
+    .cf-coll td:first-child input { min-width: 9em; }
+    .cf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+    /* .field-row label (uppercase field captions) also matches a chip */
+    .cf-chips .cf-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+               border: 1px solid var(--s-border); border-radius: 14px; background: var(--s-bg);
+               font-size: var(--fs-sm); cursor: pointer;
+               font-family: var(--font-sans); font-weight: 400; text-transform: none;
+               letter-spacing: normal; color: var(--s-body); }
+    .cf-chip:has(input:checked) { background: var(--s-primary-lt); border-color: var(--s-primary); }
+    .cf-label { font-family: var(--font-subtitle); font-weight: var(--fw-subtitle);
+                letter-spacing: var(--ls-subtitle); font-size: var(--fs-xs); text-transform: uppercase;
+                color: var(--s-secondary); }
+    /* tier colour key: a grid cell above and its tier row below share a swatch */
+    .tier-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+                   margin-right: 6px; vertical-align: middle; }
+    .tier-c0 { background: var(--tier-c0); } .tier-c1 { background: var(--tier-c1); }
+    .tier-c2 { background: var(--tier-c2); } .tier-c3 { background: var(--tier-c3); }
+    .tier-c4 { background: var(--tier-c4); } .tier-c5 { background: var(--tier-c5); }
+    #rt-tiers tbody tr td:first-child { border-left: 4px solid transparent; }
+    #rt-tiers tbody tr:nth-child(1) td:first-child { border-left-color: var(--tier-c0); }
+    #rt-tiers tbody tr:nth-child(2) td:first-child { border-left-color: var(--tier-c1); }
+    #rt-tiers tbody tr:nth-child(3) td:first-child { border-left-color: var(--tier-c2); }
+    #rt-tiers tbody tr:nth-child(4) td:first-child { border-left-color: var(--tier-c3); }
+    #rt-tiers tbody tr:nth-child(5) td:first-child { border-left-color: var(--tier-c4); }
+    #rt-tiers tbody tr:nth-child(6) td:first-child { border-left-color: var(--tier-c5); }
     .cf-grid th:first-child, .cf-grid td:first-child { text-align: left; }
     .cf-grid-title { font-family: var(--font-heading); font-size: var(--fs-base);
                      margin: var(--sp-3) 0 var(--sp-2); }

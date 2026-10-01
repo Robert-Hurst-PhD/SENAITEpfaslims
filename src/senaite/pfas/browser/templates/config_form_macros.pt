@@ -18,7 +18,18 @@
     <div class="section-body">
       <div class="field-grid">
         <div tal:repeat="fld g/fields"
-             tal:attributes="class python:'field-row field-row-wide' if fld['kind'] in ('text', 'textarea') else 'field-row'">
+             tal:attributes="class python:'field-row field-row-wide' if fld['kind'] in ('text', 'textarea', 'multi') else 'field-row'">
+          <tal:multi condition="python:fld['kind'] == 'multi'">
+            <div class="cf-label" tal:content="fld/label">Tier 1 matrices</div>
+            <div class="cf-chips">
+              <label class="cf-chip" tal:repeat="o fld/options">
+                <input type="checkbox" value="on"
+                       tal:attributes="name o/name; form cf_form;
+                                       checked python:'checked' if o['checked'] else None" />
+                <span tal:content="o/label">Eggs</span>
+              </label>
+            </div>
+          </tal:multi>
           <tal:bool condition="python:fld['kind'] == 'bool'">
             <div class="check-row">
               <input type="checkbox" value="on"
@@ -27,7 +38,7 @@
               <label tal:attributes="for fld/name" tal:content="fld/label">Label</label>
             </div>
           </tal:bool>
-          <tal:other condition="python:fld['kind'] != 'bool'">
+          <tal:other condition="python:fld['kind'] not in ('bool', 'multi')">
             <label tal:attributes="for fld/name">
               <span tal:replace="fld/label">Label</span><span tal:condition="fld/unit"
                     tal:replace="string: (${fld/unit})" /><span tal:condition="fld/required"
@@ -133,7 +144,7 @@
   header comes from the first row's cell labels. Caller: cf_rows, cf_form.
 -->
 <metal:collection define-macro="collection">
-  <table class="factor-table cf-table">
+  <table class="factor-table cf-coll">
     <thead>
       <tr><th tal:repeat="cell python:cf_rows[0]['cells']" tal:content="cell/label">Matrix</th></tr>
     </thead>

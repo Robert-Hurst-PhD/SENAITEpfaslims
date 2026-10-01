@@ -73,8 +73,12 @@ def _build_kw_to_tier(profile):
     # name → keyword  (e.g. "lr-PFHxS" → "PFHxS")
     name_to_kw = {row[1]: row[0] for row in NATIVE_ANALYTES}
 
-    # keyword → default tier from no_labeled/is_key flags
-    kw_flags = {row[0]: (bool(row[7]), bool(row[8])) for row in NATIVE_ANALYTES}
+    # keyword → default tier from no_labeled/is_key flags; key analytes are the
+    # METHOD's own list where it has one (2026-10-01)
+    own_keys = profile.get("key_analytes")
+    kw_flags = {row[0]: (bool(row[7]),
+                         (row[0] in own_keys) if isinstance(own_keys, list) else bool(row[8]))
+                for row in NATIVE_ANALYTES}
 
     kw_to_tier = {}
 

@@ -1,0 +1,27 @@
+<div id="rt-grid" xmlns:tal="http://xml.zope.org/namespaces/tal"
+     tal:define="grid options/grid">
+  <!-- The recovery window the QC engine applies per analyte group x matrix
+       (method_profile_sections.recovery_grid). Drawn by the page and by the
+       live preview from the same function, so what you see is what a save
+       would apply. -->
+  <table class="pfas-table cf-grid">
+    <thead><tr><th>Analytes</th>
+      <th tal:repeat="m grid/matrices" tal:content="m">Eggs</th></tr></thead>
+    <tbody>
+      <tr tal:repeat="row grid/rows">
+        <td tal:attributes="title python:', '.join(row['members'])">
+          <strong tal:content="row/title">Key analytes</strong>
+          <span class="form-note" tal:content="python:'(%d)' % len(row['members'])">(4)</span>
+        </td>
+        <td tal:repeat="c row/cells">
+          <tal:ok condition="not:c/warn">
+            <span tal:attributes="class python:'tier-swatch ' + c['swatch']"></span><span
+                  tal:content="c/text">80&#8211;120%</span>
+            <div class="form-note" tal:content="c/tier">tier1_key_tight</div>
+          </tal:ok>
+          <span tal:condition="c/warn" class="sur-tag sur-nocore" title="no tier applies here">not set</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>

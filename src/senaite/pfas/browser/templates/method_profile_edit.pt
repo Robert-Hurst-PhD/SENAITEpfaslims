@@ -517,44 +517,33 @@
           </tal:spk>
 
           <div class="section-group-hdr">Recovery window applied (LFSM)</div>
-          <tal:g define="grid view/recovery_grid">
-            <p class="pane-intro" tal:condition="view/grouped_tiers">
-              The window the QC engine applies to each analyte group in each
-              matrix, from the tiers below. Key analytes and analytes with no
-              labelled standard are set in the analyte reference; Tier&nbsp;1
-              matrices are ticked on Matrices &amp; Units.
-              <a class="btn-sm btn-secondary" href="#pane-mtx"
-                 onclick="return (pfasTabSwitch('pane-mtx'), false)">Open Matrices &amp; Units</a>
-            </p>
-            <p class="pane-intro" tal:condition="not:view/grouped_tiers">
-              This method&#8217;s QC engine applies its <strong>first tier</strong>
-              to every analyte in every matrix.
-            </p>
-            <table class="pfas-table cf-grid">
-              <thead><tr><th>Analytes</th>
-                <th tal:repeat="m grid/matrices" tal:content="m">Eggs</th></tr></thead>
-              <tbody>
-                <tr tal:repeat="row grid/rows">
-                  <td tal:attributes="title python:', '.join(row['members'])">
-                    <strong tal:content="row/title">Key analytes</strong>
-                    <span class="form-note" tal:content="python:'(%d)' % len(row['members'])">(4)</span>
-                  </td>
-                  <td tal:repeat="c row/cells"
-                      tal:attributes="title python:c['tier'] and ('tier: ' + c['tier']) or 'no tier applies'">
-                    <span tal:condition="not:c/warn" tal:content="c/text">80&#8211;120%</span>
-                    <span tal:condition="c/warn" class="sur-tag sur-nocore">not set</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </tal:g>
+          <p class="pane-intro" tal:condition="view/grouped_tiers">
+            What the QC engine applies to each analyte group in each matrix. Each
+            cell shows the tier it comes from &#8212; the swatch matches that
+            tier&#8217;s row below. Change a tier, a Tier&nbsp;1 matrix or a key
+            analyte below and this grid redraws as you type; nothing is saved
+            until <strong>Save &amp; Export</strong>.
+          </p>
+          <p class="pane-intro" tal:condition="not:view/grouped_tiers">
+            This method&#8217;s QC engine applies its <strong>first tier</strong>
+            to every analyte in every matrix. The grid redraws as you edit below.
+          </p>
+          <div tal:replace="structure view/rt_grid_html"></div>
+
+          <div tal:define="cf_groups python:view.section_groups('groups'); cf_form string:section-rt">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
 
           <div class="section-group-hdr">Recovery tiers (LFSM)</div>
           <p class="pane-intro">
             Each tier: which analytes and matrices it covers, its recovery window
-            and optional RSD limit. Clear a tier&#8217;s name to remove it.
+            and optional RSD limit. The engine takes the first tier that matches an
+            analyte&#8217;s group and matrix (a no-labelled-standard tier, then a key
+            analyte tier in a Tier&nbsp;1 matrix), otherwise the first
+            <em>All analytes</em> / <em>Other analytes</em> tier. Clear a
+            tier&#8217;s name to remove it.
           </p>
-          <div tal:define="cf_rows python:view.section_groups('tiers'); cf_form string:section-rt">
+          <div id="rt-tiers" tal:define="cf_rows python:view.section_groups('tiers'); cf_form string:section-rt">
             <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
           </div>
 
@@ -586,15 +575,8 @@
             <summary>Matrices, Recovery Tier, Aliases and Reporting Units</summary>
             <div class="section-body">
               <p class="json-hint">
-                <strong>Tier&nbsp;1</strong> marks the matrices where the key
-                analytes (PFOS, PFOA, PFHxS, PFNA) are held to the tighter
-                80&ndash;120% recovery window instead of 65&ndash;135%. Ticking
-                the wrong box changes pass/fail on a certificate.<br />
-                <strong>Aliases</strong> are the other names a sample may
-                arrive under, comma-separated. Matching used to be a substring
-                test, so &#8220;deer muscle&#8221; matched no title and silently
-                dropped from tier&nbsp;1 to tier&nbsp;2 &#8212; list it here
-                instead.<br />
+                Which matrices are <strong>Tier&nbsp;1</strong> (held to the tighter
+                recovery window) is set on the <em>Recovery Tiers</em> tab.<br />
                 <strong>Unit</strong> is the reporting unit for this method
                 &#215; matrix.<br />
                 Clear a matrix&#8217;s name to remove it. Blank rows at the
@@ -1012,6 +994,38 @@
         } catch (e) {}
       }
       window.pfasTabSwitch = pfasTabSwitch;
+
+      /* Recovery Tiers: redraw the applied-window grid as the tiers / groups
+         below are edited (server-side preview: the same parse and resolver a
+         save uses; nothing is written). */
+      (function () {
+        var timer = null;
+        function preview() {
+          var form = document.getElementById('section-rt');
+          var grid = document.getElementById('rt-grid');
+          if (!form || !grid) return;
+          var data = new FormData(form);
+          data.append('_preview', 'rt');
+          fetch(form.getAttribute('action'), {method: 'POST', body: data, credentials: 'same-origin'})
+            .then(function (r) { return r.text(); })
+            .then(function (html) {
+              var box = document.createElement('div');
+              box.innerHTML = html;
+              var fresh = box.querySelector('#rt-grid');
+              var now = document.getElementById('rt-grid');
+              if (fresh ? now : false) now.parentNode.replaceChild(fresh, now);
+            });
+        }
+        function onEdit(e) {
+          var el = e.target;
+          if (!el || !el.form || el.form.id !== 'section-rt') return;
+          if (el.name.indexOf('spk') !== -1 || el.name.indexOf('rpd_max') !== -1) return;
+          clearTimeout(timer);
+          timer = setTimeout(preview, 350);
+        }
+        document.addEventListener('input', onEdit);
+        document.addEventListener('change', onEdit);
+      })();
 
       /* Unsaved changes on a form the Save button does not submit are lost on
          the redirect after saving -- one Save used to cover every tab. Name

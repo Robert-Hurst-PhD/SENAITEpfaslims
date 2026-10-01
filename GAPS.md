@@ -6110,3 +6110,36 @@ Approved by the lab as the first recommendation of
 - **Audits:** no-op saves of every method tab clean; history check clean;
   Print Settings' first save drops the five moved keys (intended -- they live
   on each method now; history-recorded).
+
+## 68. Recovery tiers: who they apply to, and a live preview (2026-10-01)
+- Lab: "There is no definition of what a tier 1 matrix is ... make that an
+  editable list", and editing the tiers "below" must visibly change the
+  applied grid "above".
+- **Groups section** (`GROUPS`, Recovery Tiers tab): two per-method editable
+  lists as chips -- **Tier 1 matrices** (moved off Matrices & Units, where it
+  was a bare column) and **Key analytes** (was a global flag on the analyte
+  reference; now `profile["key_analytes"]`, read by the pipeline
+  `_resolve_fda_tier` and by `spec_sync`). Migration `_seed_key_analytes`
+  seeds each method from the global flag intersected with its panel, so no
+  decision changed (live: PFOA, PFNA, PFHxS, PFOS for all three methods).
+- **Live preview:** every edit in Groups or the tier table redraws the
+  applied-window grid server-side (`_preview=rt`: parse + apply without
+  saving, render `rt_grid.pt`). Each cell names its tier and carries the
+  tier's colour swatch, which matches that tier's row in the table below.
+  Verified live: ticking Milk as Tier 1 moved Key x Milk 65-135% -> 80-120%;
+  nothing was saved (configuration snapshot equal).
+- **Defects found and fixed:**
+  1. **Crash-loop:** `_convert_seeds()` ran at import above
+     `_seed_key_analytes` -> NameError, SENAITE restarted 18 times (~4 min
+     down). Call moved to the end of the module; an AST test now requires
+     every import-time call to follow every function it uses (verified
+     against a mutant copy).
+  2. The table framework's "label column only as wide as it needs" squashed
+     the tier-name inputs to three letters; collections use their own class.
+  3. Chips rendered uppercase: `.field-row label` also matches a chip.
+- **Audits:** no-op saves of Recovery Tiers, Matrices & Units, Reporting
+  clean for all methods; history check clean; 83 config-form tests (Py3 and
+  Py2.7), full host suite green.
+- **Still open (same request):** action levels on the Reporting tab (next);
+  project specs editor overriding the method (after an audit of today's
+  batch overlay).

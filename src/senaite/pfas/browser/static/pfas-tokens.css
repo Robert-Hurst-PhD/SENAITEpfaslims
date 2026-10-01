@@ -90,6 +90,13 @@
   --s-warn-text:    #856404;
   --s-success-lt:   #d4edda;
   --s-success-text: #155724;
+  /* recovery-tier colour key: a grid cell and its tier row share one */
+  --tier-c0: #2f80c1;
+  --tier-c1: #e0a020;
+  --tier-c2: #8a5cc7;
+  --tier-c3: #2e9d6b;
+  --tier-c4: #c75c5c;
+  --tier-c5: #6c7a89;
 
   /* Aliases for names pages already used without a definition. */
   --s-text:         var(--s-body);
