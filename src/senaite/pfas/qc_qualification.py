@@ -360,23 +360,18 @@ def classify_failure(source, issue=u"", qc_type=u"", analyte=u"",
 
 
 def _labelled_role(analyte, method_id):
-    """"surrogate" or "is_response" for a labelled compound, per the METHOD."""
+    """"surrogate" or "is_response" for a labelled compound, per the METHOD's
+    labelled-standards grid (DECISIONS 2026-09-30)."""
     try:
         from bika.lims import api
+        from senaite.pfas import labelled_standards
         from senaite.pfas.method_profile_store import get_profile
-        chain = (get_profile(api.get_portal(), method_id)
-                 or {}).get("surrogate_is_chain") or {}
+        roles = labelled_standards.roles(get_profile(api.get_portal(), method_id) or {})
     except Exception:
         return u""
-    if not chain:
-        return u""
-    surrogates = [k for k in chain]
-    injection_stds = [v for v in chain.values() if v]
-    if any(_same_compound(name, analyte) for name in injection_stds) \
-            and not any(_same_compound(name, analyte) for name in surrogates):
-        return "is_response"
-    if any(_same_compound(name, analyte) for name in surrogates):
-        return "surrogate"
+    for name, role in roles.items():
+        if _same_compound(name, analyte):
+            return {"injection_is": "is_response", "surrogate": "surrogate"}.get(role, u"")
     return u""
 
 

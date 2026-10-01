@@ -5901,3 +5901,43 @@ Approved by the lab as the first recommendation of
 - **Remaining Method Profile tabs:** Recovery Tiers, QC Types, Analyte x
   Matrix (+ isomer sums, per-analyte), Lab Workflow, Rule Toggles, Advanced --
   the JSON-grid tabs.
+
+## 60. Internal standards: one per-method labelled-standards grid (2026-09-30)
+- **Lab request + decisions:** DECISIONS.md, same date (grid of every labelled
+  standard with a Used tick; role per method; link to any used standard;
+  replaces the Injection IS field and the surrogate -> injection IS chain).
+- **Model:** `labelled_standards` on the method profile (`labelled_standards.py`
+  holds the rules: migration, roles, links, checks). The pipeline reads it --
+  `get_is_list`, new `get_labelled_roles` / `get_injection_standards`,
+  `get_surrogate_is_chain` (now the grid's links), `run_queue` (recovery skips
+  the METHOD's injection standards), `qc_engine` (dilution correction by the
+  method's roles), `qc_qualification._labelled_role` -- each keeping the legacy
+  fallback for an unmigrated profile.
+- **Migration:** idempotent, on every start, recorded as the installer;
+  seeds converted by the same function at import (the export back-fills from
+  seeds, so they must not carry the retired keys). Proven faithful twice: a
+  unit test that the pipeline's decisions (monitored set, injection set,
+  links) are identical before and after (mutation-tested), and the same
+  comparison on all three LIVE profiles before the migration ran: identical.
+  After it: FDA 21 used / 1 injection / 20 links; EPA 537.1 15 / 1 / 0;
+  EPA 1633A 25 / 1 / 0 -- the pipeline worker reports the same.
+- **Editor:** the Surrogate Map tab is renamed **Internal Standards**; the grid
+  (all 27 labelled standards, used first, injection standards leading, each
+  noting what it quantifies) and the surrogate map save together on one form
+  and are checked as a whole after applying (`PROFILE_CHECKS`): a used
+  standard needs a role; a link must name another used standard, not itself,
+  with no loop; every map surrogate must be used and extracted. Tables now
+  name their own first column (the matrix-factor table had said "Analyte").
+- **Verified live:** no-op saves of all tabs: 0 changes; ticking a new
+  standard as a second injection standard recorded and reverted (history
+  check, all cases pass, configuration afterwards equals before); a link loop,
+  making a map surrogate an injection standard, and unticking a map surrogate
+  are each refused by name, configuration unchanged; no JS errors.
+- **Backups:** `/data/backups/pre-labelled-standards-20260930` (repozo),
+  `/data/qc/backup-pre-labelled-standards/`.
+- **For the lab (not set by code -- §8, no fabricated values):** EPA 1633A
+  migrated with 13C4-PFOA as its only injection standard, because that is what
+  the pipeline used (the global fallback). The method specifies its own set of
+  non-extracted internal standards; enter them in the grid (tick, role
+  Injection, and link each EIS) from the lab's method copy. EPA 537.1 likewise
+  has no links (`test_the_epa_is_chain_is_left_unset_on_purpose`).

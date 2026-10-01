@@ -511,6 +511,12 @@ class PFASMethodProfileEditView(BrowserView):
         profile = get_profile(portal, mid)
         for section, updates in parsed:
             profile = config_forms.apply(section, profile, updates, env)
+        from senaite.pfas.method_profile_sections import PROFILE_CHECKS
+        for watched, check in PROFILE_CHECKS:
+            if set(watched) & set(ids):
+                problems = check(profile)
+                if problems:
+                    return self._redirect_error(mid, u"Not saved: " + u" ".join(problems), pane)
         # A user-saved profile is no longer factory-default (the installer
         # re-runs on every start and treats _seeded profiles as its own).
         profile.pop("_seeded", None)

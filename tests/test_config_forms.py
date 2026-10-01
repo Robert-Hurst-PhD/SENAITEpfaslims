@@ -389,6 +389,8 @@ def test_the_surrogate_tab_has_no_hand_written_parser_left():
         assert retired not in template, retired
         assert retired not in js, retired
     assert 'profile["surrogate_is"]' not in src
+    for retired in ("sur_is", "surchain", "surrogate_is_chain"):
+        assert retired not in template, retired
 
 
 def test_every_tab_can_be_opened_by_its_link():
@@ -639,62 +641,120 @@ def test_clearing_every_class_row_removes_the_class_only():
     assert after["eis_matrix_overrides"]["tissue"] == stored["eis_matrix_overrides"]["tissue"]
 
 
-# ── Surrogate Map ────────────────────────────────────────────────────────────
+# ── Surrogate Map + Internal Standards grid ──────────────────────────────────
 
-SUR_IS, SUR, CHAIN = mps.INJECTION_IS, mps.SURROGATE_MAP, mps.SURROGATE_CHAIN
+import labelled_standards as lsmod          # noqa: E402
+
+SUR, LSG = mps.SURROGATE_MAP, mps.LABELLED_STANDARDS
 
 
 def _services():
     svcs = {"M4PFOA": {"role": "injection_is", "name": "13C4-PFOA"},
-            "M2PFTeDA": {"role": "surrogate", "name": "13C2-PFTeDA"}}
+            "M2PFTeDA": {"role": "surrogate", "name": "13C2-PFTeDA"},
+            "M2PFOA": {"role": "surrogate", "name": "13C2-PFOA"}}
     for p in _profiles().values():
         for r in p.get("surrogate_map") or []:
             svcs.setdefault(r["surrogate_is"], {"role": "surrogate", "name": r["surrogate_is"]})
     return {"services": svcs}
 
 
-def section_form(section, stored, env):
+def _mig(mid):
+    """A live profile in the grid shape (migrated here if the live data is not yet)."""
+    import copy
+    p = copy.deepcopy(_profiles()[mid])
+    lsmod.migrate(p, ["M4PFOA"])
+    return p
+
+
+def grid_form(stored, env):
     form = {}
-    for g in cf.render(section, stored, env):
-        for row in g["fields"]:
-            form[row["name"]] = row["value"]
+    for g in cf.render(LSG, stored, env):
+        for row in g["rows"]:
+            for cell in row["cells"]:
+                if cell["kind"] == cf.BOOL:
+                    if cell["checked"]:
+                        form[cell["name"]] = "on"
+                else:
+                    form[cell["name"]] = cell["value"]
     return form
 
 
-def test_unchanged_surrogate_saves_change_nothing():
+def _gcell(kw, col):
+    return cf.cell_name(LSG, (kw,), next(c for c in LSG.columns if c.path[0] == col))
+
+
+def test_unchanged_surrogate_and_grid_saves_change_nothing():
     env = _services()
-    for mid, stored in _profiles().items():
-        for table in (SUR, CHAIN):
-            after = env_save(table, stored, env_form(table, stored, env), env)
-            assert ch.diff(stored, after) == [], (mid, table.id, ch.diff(stored, after)[:3])
-        updates, errors = cf.parse(SUR_IS, section_form(SUR_IS, stored, env), stored, env)
-        after = cf.apply(SUR_IS, stored, updates)
-        assert not errors and ch.diff(stored, after) == [], mid
-        # stricter than the history diff, which treats "" and None as equal:
-        # the audit does not, and an unchanged save must not rewrite either
-        assert after.get("surrogate_is", "absent") == stored.get("surrogate_is", "absent"), mid
+    for mid in _profiles():
+        stored = _mig(mid)
+        after = env_save(SUR, stored, env_form(SUR, stored, env), env)
+        assert ch.diff(stored, after) == [], (mid, ch.diff(stored, after)[:3])
+        after = env_save(LSG, stored, grid_form(stored, env), env)
+        assert ch.diff(stored, after) == [], (mid, ch.diff(stored, after)[:3])
+        assert mps.check_profile(after) == [], mid
 
 
-def test_a_surrogate_that_is_not_a_surrogate_service_is_refused():
-    env, stored = _services(), _profiles()["EPA_537_1"]
+def test_each_table_names_its_own_first_column():
+    headings = dict((t.id, t.row_heading) for t in (mps.REPORTING_LIMITS, mps.SALT,
+                                                    mps.MATRIX_FACTORS, SUR, LSG))
+    assert headings == {"rl": "Analyte", "salt": "Analyte", "mf": "Sample Type (core)",
+                        "sur": "Native Analyte", "ls": "Labelled Standard"}, headings
+    macro = _read("templates", "config_form_macros.pt")
+    assert '<th class="rl-name">Analyte</th>' not in macro
+
+
+def test_the_grid_lists_every_labelled_standard_used_ones_first():
+    env, stored = _services(), _mig("EPA_537_1")
+    rows = cf.render(LSG, stored, env)[0]["rows"]
+    keys = [r["sublabel"] for r in rows]
+    assert set(keys) == set(env["services"])                 # all of them, used or not
+    used = [k for k in keys if k in stored["labelled_standards"]]
+    assert keys[:len(used)] == used                          # used ones first
+    assert keys[0] == "M4PFOA"                               # injection standards lead
+
+
+def test_ticking_a_standard_as_a_second_injection_standard_and_linking_to_it():
+    env, stored = _services(), _mig("EPA_1633A")
+    form = grid_form(stored, env)
+    form[_gcell("M2PFOA", "used")] = "on"
+    form[_gcell("M2PFOA", "role")] = "injection_is"
+    first_sur = stored["surrogate_map"][0]["surrogate_is"]
+    form[_gcell(first_sur, "reference")] = "M2PFOA"
+    after = env_save(LSG, stored, form, env)
+    assert after["labelled_standards"]["M2PFOA"] == {"role": "injection_is", "reference": ""}
+    assert after["labelled_standards"][first_sur]["reference"] == "M2PFOA"
+    assert mps.check_profile(after) == []
+
+
+def test_an_unticked_row_with_a_role_is_refused():
+    env, stored = _services(), _mig("EPA_537_1")
+    unused = sorted(k for k in env["services"] if k not in stored["labelled_standards"])[0]
+    form = grid_form(stored, env)
+    form[_gcell(unused, "role")] = "surrogate"              # role but no Used tick
+    assert "tick Used" in cf.parse(LSG, form, stored, env)[1][0]
+
+
+def test_unticking_a_standard_the_map_uses_is_refused_after_apply():
+    env, stored = _services(), _mig("FDA_32PFAS")
+    kw = stored["surrogate_map"][0]["surrogate_is"]
+    form = grid_form(stored, env)
+    form.pop(_gcell(kw, "used"))
+    form[_gcell(kw, "role")] = ""
+    form[_gcell(kw, "reference")] = ""
+    after = env_save(LSG, stored, form, env)
+    assert any("not ticked Used" in e for e in mps.check_profile(after))
+
+
+def test_a_surrogate_that_is_not_a_labelled_standard_is_refused():
+    env, stored = _services(), _mig("EPA_537_1")
     key = SUR.rows(stored, env)[1][0]["key"]
     form = env_form(SUR, stored, env)
     form[cf.cell_name(SUR, key, SUR.columns[0])] = "PFNA"          # a native
     assert "not one of the options" in cf.parse(SUR, form, stored, env)[1][0]
 
 
-def test_any_surrogate_service_may_be_picked_not_only_ones_in_use():
-    env, stored = _services(), _profiles()["EPA_537_1"]
-    key = SUR.rows(stored, env)[1][0]["key"]
-    form = env_form(SUR, stored, env)
-    form[cf.cell_name(SUR, key, SUR.columns[0])] = "M2PFTeDA"
-    after = env_save(SUR, stored, form, env)
-    assert [r for r in after["surrogate_map"] if r["analyte"] == key[0]][0]["surrogate_is"] == "M2PFTeDA"
-
-
 def test_a_suggestion_is_shown_but_never_selected():
-    import copy
-    env, stored = _services(), copy.deepcopy(_profiles()["EPA_537_1"])
+    env, stored = _services(), _mig("EPA_537_1")
     kw = stored["surrogate_map"][0]["analyte"]
     stored["surrogate_map"] = stored["surrogate_map"][1:]            # kw has no link now
     env["services"][kw] = {"role": "analyte", "quant_surrogate": "M8PFOA"}
@@ -702,17 +762,6 @@ def test_a_suggestion_is_shown_but_never_selected():
     assert row["suggest"]["value"] == "M8PFOA" and row["cells"][0]["value"] == ""
     after = env_save(SUR, stored, env_form(SUR, stored, env), env)
     assert kw not in [r["analyte"] for r in after["surrogate_map"]]  # not saved unless picked
-
-
-def test_clearing_a_link_removes_its_row_and_the_chain_follows_the_map():
-    env, stored = _services(), _profiles()["FDA_32PFAS"]
-    assert [r["key"][0] for r in CHAIN.rows(stored)[1]][:3] == \
-        [r["surrogate_is"] for r in stored["surrogate_map"]][:3]
-    key = (stored["surrogate_map"][0]["analyte"],)
-    form = env_form(SUR, stored, env)
-    form[cf.cell_name(SUR, key, SUR.columns[0])] = ""
-    after = env_save(SUR, stored, form, env)
-    assert key[0] not in [r["analyte"] for r in after["surrogate_map"]]
 
 
 if __name__ == "__main__":

@@ -221,7 +221,7 @@
       <a class="pfas-tab" data-pane="pane-ami" href="#pane-ami"
          onclick="pfasTabSwitch('pane-ami'); return false;">Analyte &#215; Matrix</a>
       <a class="pfas-tab" data-pane="pane-sur" href="#pane-sur"
-         onclick="pfasTabSwitch('pane-sur'); return false;">Surrogate Map</a>
+         onclick="pfasTabSwitch('pane-sur'); return false;">Internal Standards</a>
       <a class="pfas-tab" data-pane="pane-eis" href="#pane-eis"
          onclick="pfasTabSwitch('pane-eis'); return false;"
          tal:attributes="style python:'' if view.show_eis_overrides() else 'display:none'">EIS Limits</a>
@@ -433,11 +433,27 @@
       <!-- ── Tab: Surrogate Map ─────────────────────────────────────────── -->
       <div class="tab-pane" id="pane-sur">
         <div class="page-body-narrow">
-          <!-- Saved ON ITS OWN (R2): the injection IS, the surrogate map and
-               the surrogate chain all belong to form#section-sur. -->
-          <div tal:define="cf_groups python:view.section_groups('sur_is'); cf_form string:section-sur">
-            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
-          </div>
+          <!-- Saved ON ITS OWN (R2): the internal-standards grid and the
+               surrogate map belong to form#section-sur and are checked
+               together (a map surrogate must be a used, extracted standard). -->
+          <details open="open">
+            <summary>Internal Standards (isotopically labelled)</summary>
+            <div class="section-body">
+              <p class="pane-intro">
+                Every isotopically labelled standard in the system. Tick the ones
+                <strong>this method</strong> uses, set each one&#8217;s role here
+                &#8212; <strong>Extracted</strong> (surrogate / EIS: added before
+                extraction, diluted with the sample, recovery-checked) or
+                <strong>Injection</strong> (NIS: added at reconstitution, compared
+                as measured) &#8212; and link it to the standard it is quantified
+                against, as in MS Quan. Any used standard may be linked to any
+                other; the role and links are this method&#8217;s own.
+              </p>
+              <div tal:define="cf_groups python:view.section_groups('ls'); cf_form string:section-sur">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
+            </div>
+          </details>
 
           <details open="open">
             <summary>Surrogate Map (native analyte &#8594; quantifying surrogate)</summary>
@@ -457,26 +473,6 @@
             </div>
           </details>
 
-          <details>
-            <summary>Surrogate &#8594; Injection Internal Standard</summary>
-            <div class="section-body">
-              <p class="json-hint">
-                The second half of the quantification chain: native &#8594;
-                surrogate (above) &#8594; injection internal standard. A
-                <strong>surrogate</strong> is added before extraction, so it is
-                diluted along with the sample; the <strong>injection
-                standard</strong> is added at reconstitution, after any
-                dilution, so its response must not be scaled. Getting this
-                backwards makes a dilution&#8217;s surrogates look like
-                recovery failures. Under FDA 32-PFAS every surrogate quantifies
-                against 13C4-PFOA. Rows follow the map as saved: save a map
-                change first to see a new surrogate here.
-              </p>
-              <div tal:define="cf_groups python:view.section_groups('surchain'); cf_form string:section-sur">
-                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
-              </div>
-            </div>
-          </details>
         </div>
       </div><!-- /pane-sur -->
 
@@ -879,14 +875,13 @@
     <!-- Per-tab section forms (R2): each saves only its own section, with its
          own stale-save stamp. -->
     <form id="section-sur" method="POST" class="pfas-section-form"
-          data-tab-label="Surrogate Map"
+          data-tab-label="Internal Standards"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="sur_is,sur,surchain" />
+      <input type="hidden" name="_section" value="ls,sur" />
       <input type="hidden" name="_pane" value="pane-sur" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
-      <input type="hidden" name="section_stamp__sur_is" tal:attributes="value python:view.section_stamp('sur_is')" />
+      <input type="hidden" name="section_stamp__ls" tal:attributes="value python:view.section_stamp('ls')" />
       <input type="hidden" name="section_stamp__sur" tal:attributes="value python:view.section_stamp('sur')" />
-      <input type="hidden" name="section_stamp__surchain" tal:attributes="value python:view.section_stamp('surchain')" />
     </form>
     <form id="section-eis" method="POST" class="pfas-section-form"
           tal:condition="view/show_eis_overrides"

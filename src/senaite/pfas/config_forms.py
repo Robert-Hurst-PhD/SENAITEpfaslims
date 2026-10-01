@@ -269,8 +269,9 @@ class Table(object):
     rows that differ from the default."""
 
     def __init__(self, id, title, base, columns, rows, check=None, intro=u"",
-                 read=None, write=None, rows_take_env=False):
+                 read=None, write=None, rows_take_env=False, row_heading=u"Analyte"):
         self.id = id
+        self.row_heading = row_heading      # the first column's heading
         # rows(stored, env) when the rows show page data (e.g. a suggestion);
         # their KEYS must still come from `stored` alone, since the stamp is
         # taken without env
@@ -371,6 +372,7 @@ def render_table(table, stored, env=None):
         g = by_group[key]
         g["index"] = i
         g["total"] = len(g["rows"])
+        g["row_heading"] = table.row_heading
         g["columns"] = [{"label": c.label, "unit": g.get("unit") or c.unit}
                         for c in table.columns]
         out.append(g)

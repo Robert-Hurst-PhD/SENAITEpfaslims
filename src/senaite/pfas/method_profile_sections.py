@@ -360,7 +360,8 @@ def write_matrix_factors(profile, updates, env=None):
 MATRIX_FACTORS = cf.Table(
     id=u"mf", title=u"Matrix Adjustment Factors", base=("matrix_factors",),
     columns=[cf.Field("factor", u"Factor", greater_than=0, placeholder=u"1.0")],
-    rows=matrix_factor_rows, read=read_matrix_factors, write=write_matrix_factors)
+    rows=matrix_factor_rows, read=read_matrix_factors, write=write_matrix_factors,
+    row_heading=u"Sample Type (core)")
 
 # ── EIS limits (EPA 1633A only) ──────────────────────────────────────────────
 # eis_overrides: [{"analyte", "recovery_min", "recovery_max"}], keyed by EPA's
@@ -462,42 +463,27 @@ EIS_CLASSES = [(_eis_class(k, l), l) for k, l in EIS_MATRIX_CLASSES]
 # Each method owns its map (DECISIONS 2026-09-30). The page supplies the core
 # services in env["services"] = {keyword: {"role", "name", "quant_surrogate"}}.
 
-def _services(env, role):
-    return dict((k, v) for k, v in ((env or {}).get("services") or {}).items()
-                if v.get("role") == role)
-
-
-def injection_choices(profile, env=None):
-    svcs = _services(env, u"injection_is")
-    return [(k, svcs[k].get("name") or k) for k in sorted(svcs)]
-
-
 def _map_rows(profile):
     return [r for r in (profile.get("surrogate_map") or [])
             if isinstance(r, dict) and r.get("analyte")]
 
 
 def surrogate_choices(profile, env=None):
-    """Every surrogate service, this method's own first -- a method may pick
-    any labelled surrogate, not only the ones it already uses."""
-    svcs = _services(env, u"surrogate")
+    """Every labelled standard, this method's extracted standards first -- a
+    method may pick any (the save then requires it ticked Used with the
+    extracted role in the Internal Standards grid)."""
+    svcs = dict((k, v) for k, v in ((env or {}).get("services") or {}).items()
+                if v.get("role") in ("surrogate", "injection_is"))
+    grid = (profile.get("labelled_standards") or {})
     own = []
     for r in _map_rows(profile):
         s = r.get("surrogate_is")
         if s in svcs and s not in own:
             own.append(s)
+    own += sorted(k for k, v in grid.items()
+                  if k in svcs and k not in own and (v or {}).get("role") == "surrogate")
     rest = sorted(k for k in svcs if k not in own)
     return [(k, svcs[k].get("name") or k) for k in own + rest]
-
-
-INJECTION_IS = cf.Section(
-    id=u"sur_is", title=u"Injection IS", base=(),
-    groups=[(u"Injection IS", [
-        cf.Field("surrogate_is", u"Injection IS", kind=cf.CHOICE, choices=injection_choices,
-                 help=u"The single internal standard every surrogate recovery is "
-                      u"quantified against (a core service marked "
-                      u"pfas_role=injection_is). Unset: the method's derived default."),
-    ])])
 
 
 def surrogate_map_rows(profile, env=None):
@@ -539,48 +525,107 @@ SURROGATE_MAP = cf.Table(
     columns=[cf.Field("surrogate_is", u"Quantifying Surrogate", kind=cf.CHOICE,
                       choices=surrogate_choices)],
     rows=surrogate_map_rows, rows_take_env=True,
-    read=read_surrogate_map, write=write_surrogate_map)
+    read=read_surrogate_map, write=write_surrogate_map, row_heading=u"Native Analyte")
 
 
-def chain_rows(profile):
-    """One row per surrogate the map uses (so the two halves of the chain
-    cannot disagree about which compounds are surrogates), plus any surrogate
-    the chain already names."""
-    chain = profile.get("surrogate_is_chain") or {}
-    names = []
+# ── Labelled standards grid (MS Quan style; DECISIONS 2026-09-30) ────────────
+
+try:
+    from senaite.pfas import labelled_standards as _ls
+except Exception:          # tests: loaded without the package
+    import labelled_standards as _ls
+
+
+def _labelled_services(env):
+    return dict((k, v) for k, v in ((env or {}).get("services") or {}).items()
+                if v.get("role") in _ls.ROLES)
+
+
+def role_choices(profile, env=None):
+    return list(_ls.ROLE_LABELS)
+
+
+def standard_choices(profile, env=None):
+    """Link targets: every labelled standard (the save refuses one the method
+    does not use), this method's own first."""
+    svcs = _labelled_services(env)
+    own = sorted(k for k in _ls.grid(profile) if k in svcs)
+    rest = sorted(k for k in svcs if k not in own)
+    return [(k, svcs[k].get("name") or k) for k in own + rest]
+
+
+def labelled_rows(profile, env=None):
+    """Every isotopically labelled standard in core plus any the grid already
+    names: used ones first (injection standards, then extracted), then the
+    rest -- each noting which natives it quantifies in this method."""
+    svcs = _labelled_services(env)
+    g = _ls.grid(profile)
+    quantifies = {}
     for r in _map_rows(profile):
-        s = (r.get("surrogate_is") or u"").strip()
-        if s and s not in names:
-            names.append(s)
-    names += [n for n in sorted(chain) if n not in names]
-    return (_one_group(u"chain", u"Surrogate chain"),
-            [{"key": (n,), "group": u"chain", "label": n} for n in names])
+        quantifies.setdefault(r.get("surrogate_is"), []).append(r["analyte"])
+
+    def order(kw):
+        role = (g.get(kw) or {}).get("role")
+        return (0 if role == "injection_is" else 1 if kw in g else 2,
+                (svcs.get(kw) or {}).get("name") or kw)
+
+    rows = []
+    for kw in sorted(set(svcs) | set(g), key=order):
+        natives = quantifies.get(kw) or []
+        rows.append({"key": (kw,), "group": u"ls", "label": (svcs.get(kw) or {}).get("name") or kw,
+                     "sublabel": kw,
+                     "note": (u"quantifies " + u", ".join(natives[:4]) +
+                              (u" +%d" % (len(natives) - 4) if len(natives) > 4 else u""))
+                             if natives else None})
+    return _one_group(u"ls", u"Labelled standards"), rows
 
 
-def read_chain(profile):
-    return dict(((k,), {"injection_is": v or None})
-                for k, v in (profile.get("surrogate_is_chain") or {}).items())
+def read_labelled(profile):
+    return dict(((kw,), {"used": True, "role": v.get("role") or None,
+                         "reference": v.get("reference") or None})
+                for kw, v in _ls.grid(profile).items())
 
 
-def write_chain(profile, updates, env=None):
-    chain = dict(profile.get("surrogate_is_chain") or {})
-    for (name,), vals in updates.items():
-        chosen = vals.get(("injection_is",))
-        if chosen:
-            chain[name] = chosen
+def write_labelled(profile, updates, env=None):
+    grid = dict(_ls.grid(profile))
+    for (kw,), vals in updates.items():
+        if vals.get(("used",)):
+            grid[kw] = {"role": vals.get(("role",)) or u"",
+                        "reference": vals.get(("reference",)) or u""}
         else:
-            chain.pop(name, None)
-    _set(profile, "surrogate_is_chain", chain)
+            grid.pop(kw, None)
+    profile[_ls.KEY] = grid
+    profile.pop("surrogate_is", None)           # retired: the grid replaces them
+    profile.pop("surrogate_is_chain", None)
     return profile
 
 
-SURROGATE_CHAIN = cf.Table(
-    id=u"surchain", title=u"Surrogate -> Injection IS", base=("surrogate_is_chain",),
-    columns=[cf.Field("injection_is", u"Quantified against", kind=cf.CHOICE,
-                      choices=injection_choices)],
-    rows=chain_rows, read=read_chain, write=write_chain)
+def _row_consistent(row, values):
+    used = values.get(u"f__used")
+    if not used and (values.get(u"f__role") or values.get(u"f__reference")):
+        return u"%s: tick Used, or clear its role and link." % row["sublabel"]
+    return None
+
+
+LABELLED_STANDARDS = cf.Table(
+    id=u"ls", title=u"Internal Standards", base=(_ls.KEY,),
+    columns=[cf.Field("used", u"Used", kind=cf.BOOL),
+             cf.Field("role", u"Role in this method", kind=cf.CHOICE, choices=role_choices),
+             cf.Field("reference", u"Linked to", kind=cf.CHOICE, choices=standard_choices)],
+    rows=labelled_rows, rows_take_env=True, read=read_labelled, write=write_labelled,
+    check=_row_consistent, row_heading=u"Labelled Standard")
+
+
+def check_profile(profile):
+    """Checks on the WHOLE profile after a tab's sections are applied: the
+    grid's links and loops, and its agreement with the surrogate map."""
+    return _ls.check(profile)
+
+# Whole-profile checks, run after a tab's sections are applied, keyed by the
+# sections whose save must pass them.
+PROFILE_CHECKS = [((u"sur", u"ls"), check_profile)]
 
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, REPORTING_LIMITS, MATRICES,
-                                    SALT, MATRIX_FACTORS, EIS, INJECTION_IS,
-                                    SURROGATE_MAP, SURROGATE_CHAIN] +
+                                    SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
+                                    LABELLED_STANDARDS] +
                 [c for c, _l in EIS_CLASSES])

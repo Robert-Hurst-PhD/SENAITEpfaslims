@@ -80,7 +80,7 @@
     <table class="factor-table">
       <thead>
         <tr>
-          <th class="rl-name">Analyte</th>
+          <th class="rl-name" tal:content="grp/row_heading">Analyte</th>
           <th tal:repeat="col grp/columns"><span tal:replace="col/label">RL</span><span
               class="rl-unit" tal:condition="col/unit" tal:content="string: (${col/unit})"> (ng/L)</span></th>
         </tr>

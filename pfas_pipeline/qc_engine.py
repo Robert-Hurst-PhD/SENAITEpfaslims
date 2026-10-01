@@ -117,8 +117,15 @@ def is_raw_check(
     # standard and every KEY is a surrogate. The global analyte_reference table
     # is the fallback: it is not method-scoped, and under a method that uses a
     # different injection standard it would scale the wrong compound.
+    from .method_profiles import get_labelled_roles
+    roles = get_labelled_roles(method_id) if method_id else {}
     chain = get_surrogate_is_chain(method_id) if method_id else {}
-    if chain:
+    if roles:
+        # The method's grid names each standard's role outright
+        # (DECISIONS 2026-09-30); no inference from the chain needed.
+        keyword = keyword_for(is_compound) or is_compound
+        is_injection_standard = roles.get(keyword) == "injection_is"
+    elif chain:
         keyword = keyword_for(is_compound) or is_compound
         surrogates = {keyword_for(k) or k for k in chain}
         injection_stds = {keyword_for(v) or v for v in chain.values()}

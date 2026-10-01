@@ -5402,3 +5402,33 @@ Lab answers:
 - Print templates (labels, receipt, QC review report) keep their own fonts:
   label layouts are sized to them. Monospace (keywords, codes) unchanged.
 - Guard: `test_ui_ratchet.test_the_typeface_is_served_from_the_addon`.
+
+## 2026-09-30 — Labelled standards: one per-method grid, MS Quan style (confirmed)
+- **Lab request:** "ensure the internal standard can also be customised ... all
+  the isotopically labelled standards in a grid pattern with an option to link
+  to others similar to how MSQuan does it."
+- **Decisions (lab, via questions):**
+  1. The grid lists EVERY isotopically labelled standard in core (a service
+     with pfas_role surrogate or injection_is), with a **Used** tick per method.
+  2. The **role** (extracted: surrogate/EIS, or injection: NIS) is set **per
+     method** -- the global pfas_role becomes only the default the grid starts
+     from. EPA 1633A may carry several injection standards; FDA keeps 13C4-PFOA.
+  3. A standard may be **linked** (its reference standard) to ANY other standard
+     the method uses, as in MS Quan -- not only to injection standards.
+  4. The grid **replaces** the single "Injection IS" field and the
+     surrogate -> injection IS chain; their data is migrated, and the pipeline
+     reads the grid (single source of truth).
+- **Storage:** `labelled_standards = {keyword: {"role": "surrogate" |
+  "injection_is", "reference": keyword | ""}}` on the method profile; a key
+  present = used. `surrogate_is` and `surrogate_is_chain` are removed from
+  profiles and seeds.
+- **Migration (faithful to today's behaviour):** used = the surrogate map's
+  surrogates + the chain's keys and values + the old injection-IS field; role
+  injection_is for the chain's values and the old field, or -- where a method
+  had no chain -- for the globally-marked injection standards, which is exactly
+  what the pipeline fell back to; every other used standard is surrogate; a
+  surrogate's reference is its chain entry. Idempotent, run on every start
+  (the profile re-runs), recorded in history as the installer.
+- **Checks on save:** a used standard needs a role; a link must name another
+  USED standard, not itself, with no loop; every surrogate the map uses must be
+  a used standard with the extracted role.

@@ -1496,6 +1496,17 @@ def get_is_list(method_id: str = "FDA_32PFAS") -> list:
     from .analyte_alias import injection_is_names, labelled_display_name
 
     data = _profile_data_cache.get(method_id, {})
+    grid = data.get("labelled_standards")
+    if isinstance(grid, dict) and grid:
+        # The method's own grid (DECISIONS 2026-09-30): every standard it
+        # USES. Map surrogates first (in map order), then the rest.
+        order = []
+        for row in data.get("surrogate_map") or []:
+            kw = (row.get("surrogate_is") or "").strip()
+            if kw in grid and kw not in order:
+                order.append(kw)
+        order += sorted(k for k in grid if k not in order)
+        return [labelled_display_name(k) for k in order]
     rows = data.get("surrogate_map") or []
     names, seen = [], set()
     for row in rows:
@@ -1659,16 +1670,40 @@ def get_surrogate_map(method_id: str = "FDA_32PFAS") -> dict:
     return out
 
 
-def get_surrogate_is_chain(method_id: str = "FDA_32PFAS") -> dict:
-    """Which injection IS each labeled SURROGATE is itself quantified against.
+def get_labelled_roles(method_id: str = "FDA_32PFAS") -> dict:
+    """{keyword: "surrogate" | "injection_is"} from the method's labelled-
+    standards grid (DECISIONS 2026-09-30), or {} for a profile without one --
+    callers then fall back to the global roles, as before the grid existed."""
+    grid = _profile_data_cache.get(method_id, {}).get("labelled_standards")
+    if not isinstance(grid, dict):
+        return {}
+    return dict((k, (v or {}).get("role")) for k, v in grid.items())
 
-    The second half of the chain: native -> surrogate (get_surrogate_map) ->
-    injection IS. Under FDA every surrogate quantifies against M4PFOA. This is
-    what distinguishes a surrogate, which is diluted with the sample, from the
-    injection IS, which is added after the dilution and must not be scaled.
-    """
-    return dict(_profile_data_cache.get(
-        method_id, {}).get("surrogate_is_chain", {}) or {})
+
+def get_injection_standards(method_id: str = "FDA_32PFAS") -> set:
+    """Display names of this METHOD's injection standards (added after any
+    dilution, so never dilution-corrected and not recovery-checked). The
+    global roles are the fallback for a profile without a grid."""
+    from .analyte_alias import injection_is_names, labelled_display_name
+    roles = get_labelled_roles(method_id)
+    if not roles:
+        return injection_is_names()
+    return set(labelled_display_name(k) for k, r in roles.items() if r == "injection_is")
+
+
+def get_surrogate_is_chain(method_id: str = "FDA_32PFAS") -> dict:
+    """Which standard each labelled standard is itself quantified against --
+    its LINK in the method's grid (MS Quan style: any used standard may
+    reference any other). Under FDA every surrogate links to M4PFOA.
+
+    Read from `labelled_standards`; a profile not yet migrated still carries
+    the legacy `surrogate_is_chain`."""
+    data = _profile_data_cache.get(method_id, {})
+    grid = data.get("labelled_standards")
+    if isinstance(grid, dict):
+        return dict((k, v["reference"]) for k, v in grid.items()
+                    if isinstance(v, dict) and v.get("reference"))
+    return dict(data.get("surrogate_is_chain", {}) or {})
 
 
 def get_salt_factors(method_id: str = "FDA_32PFAS") -> dict:

@@ -986,6 +986,42 @@ DEFAULT_PROFILES = {
     },
 }
 
+# Labelled standards (DECISIONS 2026-09-30): the seeds are written in the
+# legacy shape above (surrogate_is / surrogate_is_chain) and converted by the
+# SAME migration live profiles go through, so a fresh install and an upgraded
+# one hold the identical grid -- and the export's back-fill from these seeds
+# can never re-add the retired keys.
+def _global_injection_keywords():
+    from senaite.pfas.analyte_reference import INTERNAL_STANDARDS
+    return [row[0] for row in INTERNAL_STANDARDS
+            if len(row) > 3 and row[3] == "injection_is"]
+
+
+def _convert_seeds():
+    from senaite.pfas import labelled_standards
+    for _data in DEFAULT_PROFILES.values():
+        labelled_standards.migrate(_data, _global_injection_keywords())
+
+
+_convert_seeds()
+
+
+def migrate_labelled_standards(portal):
+    """Give every stored profile its labelled-standards grid and drop the
+    legacy keys (idempotent; run on every start from setup_handler). Saved
+    through save_profile, so the change history records it and the pipeline
+    export is rewritten."""
+    from senaite.pfas import labelled_standards
+    changed = []
+    for method_id in list_method_ids(portal):
+        profile = raw_profile(portal, method_id)
+        if profile and labelled_standards.migrate(profile, _global_injection_keywords()):
+            save_profile(portal, method_id, profile)
+            changed.append(method_id)
+    if changed:
+        logger.info("labelled standards: migrated %s", ", ".join(changed))
+    return changed
+
 
 # ── ZODB annotation store + Dexterity content path ────────────────────────────
 

@@ -177,8 +177,9 @@ def test_the_defaults_are_derived_not_copied():
 
 
 def test_the_epa_is_chain_is_left_unset_on_purpose():
-    """`surrogate_is_chain` needs the injection IS each surrogate quantifies
-    against. `INTERNAL_STANDARDS` has no such column -- only a prose comment
+    """The EPA methods' links (the Internal Standards grid's "Linked to",
+    formerly `surrogate_is_chain`) are migrated empty: a link needs the
+    injection IS each surrogate quantifies against. `INTERNAL_STANDARDS` has no such column -- only a prose comment
     that FDA's quantify against M4PFOA per Table 9-1 -- and `surrogate_is` is
     empty on both EPA methods. Asserting one would be fabricating a regulatory
     value (§8); EPA 537.1 quantifies by isotope dilution against the labelled

@@ -51,12 +51,12 @@ from .qc_engine import (
     recovery_check_profiled, rpd_check_profiled,
 )
 from .constants import CRITERIA
-from .analyte_alias import injection_is_names
 from .method_profiles import (
     UnconfiguredCriterion,
     get_profile as _get_method_profile,
     get_analyte_list as _get_analytes,
     get_is_list as _get_is_list,
+    get_injection_standards as _get_injection_standards,
     get_non_iso_set as _get_non_iso_set,
     get_included_display_analytes as _get_included_analytes,
 )
@@ -503,7 +503,8 @@ class RunQueue:
         eis_evaluated = set()
         eis_advisory = set()
         if profile is not None:
-            _injection_is = injection_is_names()
+            # the METHOD's injection standards (its labelled-standards grid)
+            _injection_is = _get_injection_standards(_method)
             for compound in _get_is_list(_method):
                 # The injection standard goes in at reconstitution, AFTER
                 # extraction, so it has no recovery to measure -- what its area

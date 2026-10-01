@@ -143,6 +143,18 @@ def case_eis(pg):
     return "eis_overrides", True, None
 
 
+def case_grid(pg):
+    """Internal Standards grid (DECISIONS 2026-09-30): tick an unused standard
+    as a second injection standard."""
+    open_profile(pg, "EPA_1633A", "pane-sur")
+    box = pg.locator("#pane-sur input[type=checkbox][name^='t__ls__']:not(:checked)").first
+    name = box.get_attribute("name")
+    box.check()
+    pg.select_option("[name='%s']" % name.replace("__used", "__role"), "injection_is")
+    save_profile_form(pg)
+    return "labelled_standards", True, None
+
+
 def case_edd_profile(pg):
     pg.goto(B + "@@pfas-egad-config#profiles"); pg.wait_for_load_state("networkidle")
     pg.evaluate("() => document.querySelectorAll('#pane-profiles details').forEach(d => d.open = true)")
@@ -174,7 +186,7 @@ def case_client_edd(pg):
 CASES = [("recovery tier", case_tier), ("rule toggle", case_toggle),
          ("cal section", case_cal_section), ("RL table", case_rl_table),
          ("matrices", case_matrices), ("corrections", case_corrections),
-         ("EIS", case_eis),
+         ("EIS", case_eis), ("IS grid", case_grid),
          ("surrogate link", case_surrogate), ("EDD profile", case_edd_profile),
          ("client EDD", case_client_edd)]
 

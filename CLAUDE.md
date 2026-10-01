@@ -117,6 +117,11 @@ LABORATORY
        │
        ├─ SURROGATE MAP   native -> quantifying IS (many natives -> one IS).
        │                  QUANTIFICATION link. Drag-and-drop, never JSON.
+       ├─ LABELLED STANDARDS  every isotopically labelled standard the method
+       │                  uses, its ROLE in this method (extracted surrogate/EIS
+       │                  or injection NIS) and the standard it is LINKED to
+       │                  (MS Quan style; any used standard -> any other).
+       │                  One grid, per method (DECISIONS 2026-09-30).
        ├─ RECOVERY TIERS  per analyte; for FDA the tier is MATRIX-DEPENDENT
        │                  (80-120 big-four in egg/meat/seafood; 65-135 else;
        │                  40-140 +RSDr<=30 for no-labeled-standard analytes).

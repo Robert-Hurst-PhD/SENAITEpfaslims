@@ -219,6 +219,7 @@ DATA_KEYED = {
     "spike_levels", "salt_factors", "matrix_factors", "cas_map", "unit_map",
     "matrix_aliases", "matrix_uid_map", "eis_matrix_overrides",
     "spec_overrides", "surrogate_map", "surrogate_is_chain", "isomer_sums",
+    "labelled_standards",
     "analyte_matrix_inclusion",
 }
 
