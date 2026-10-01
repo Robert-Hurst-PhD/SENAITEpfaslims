@@ -69,9 +69,7 @@
     </div>
 
     <div class="pfas-link">
-      <a tal:attributes="href string:${view/portal_url}/@@pfas-sample-status">
-        &#8592; All batches (Batch Status page)
-      </a>
+      <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-sample-status">All batches (Batch Status page)</a>
     </div>
   </div>
 

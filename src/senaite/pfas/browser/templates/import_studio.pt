@@ -284,7 +284,7 @@
           '<span><span class="pv-tag">' + esc(p.version) + '</span> ' +
           '<span class="pv-vendor">' + esc(p.vendor) + '</span> ' +
           '<span class="pv-calc ' + esc(p.calc_mode) + '">' + esc(p.calc_mode) + '</span></span>' +
-          '<a href="' + esc(editUrl) + '" style="font-size:var(--fs-xs);font-weight:600;">Edit &#8594;</a>';
+          '<a class="btn-sm btn-secondary" href="' + esc(editUrl) + '">Edit</a>';
         list.appendChild(div);
       });
     }
@@ -373,9 +373,7 @@
 <body>
   <tal:t metal:fill-slot="header-title">Import Studio &mdash; Instrument Column Mapping</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="header-meta" tal:attributes="href string:${view/portal_url}/@@lims-setup">
-      &#8592; Site Setup
-    </a>
+    <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@lims-setup">Site Setup</a>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -465,8 +463,8 @@
                       tal:content="python:'{0} profile{1}'.format(len(instr['profiles']), 's' if len(instr['profiles'])!=1 else '')"></span>
               </span>
               <span class="instr-action">
-                <a tal:attributes="href python:'{0}/@@pfas-import-studio?instrument_uid={1}'.format(view.portal_url(), instr['uid'])"
-                   style="font-size:var(--fs-sm);">Upload new &#8594;</a>
+                <a class="btn-sm btn-secondary" tal:attributes="href python:'{0}/@@pfas-import-studio?instrument_uid={1}'.format(view.portal_url(), instr['uid'])"
+                  >Upload new</a>
               </span>
             </div>
             <!-- Per-profile edit links -->
@@ -482,9 +480,9 @@
                   <span tal:attributes="class python:'pv-calc '+prof['calc_mode']"
                         tal:content="prof/calc_mode">final</span>
                 </span>
-                <a tal:condition="view/can_configure"
+                <a class="btn-sm btn-secondary" tal:condition="view/can_configure"
                    tal:attributes="href python:'{0}/@@pfas-import-studio?action=edit_profile&amp;instrument_uid={1}&amp;version={2}'.format(view.portal_url(), instr['uid'], prof['version'])"
-                   style="font-size:var(--fs-xs);font-weight:600;">Edit &#8594;</a>
+                  >Edit</a>
               </li>
               </tal:prow>
             </ul>
@@ -532,7 +530,7 @@
             COLUMN MAPPING &mdash;
             <span id="mapped-count">0</span> of <span id="total-count">0</span> columns assigned
             &nbsp;|&nbsp;
-            <a href="#" onclick="autoIgnoreAll();return false;" style="font-size:var(--fs-xs);">Ignore all</a>
+            <button type="button" class="btn-sm btn-secondary" onclick="autoIgnoreAll()">Ignore all</button>
           </p>
           <div class="table-wrap">
           <table class="mapping-grid">
@@ -633,10 +631,7 @@
 
       <!-- Back link -->
       <div style="margin-top:24px;">
-        <a href="#" onclick="showLanding();return false;"
-           style="font-size:var(--fs-base);color:var(--s-secondary);">
-          &#8592; Upload a different file
-        </a>
+        <button type="button" class="btn-sm btn-secondary" onclick="showLanding()">Upload a different file</button>
       </div>
     </div><!-- /phase-mapping -->
 

@@ -96,9 +96,7 @@
 <body>
 <div metal:fill-slot="content">
   <div class="pfas-page-header" style="margin-bottom:20px">
-    <a href="${view/portal_url}/@@lims-setup" class="pfas-back-link">
-      &#8592; Site Setup
-    </a>
+    <a href="${view/portal_url}/@@lims-setup" class="btn-sm btn-secondary btn-back">Site Setup</a>
     <h1 style="margin:8px 0 4px">EDD Configuration</h1>
     <p style="margin:0;color:var(--s-secondary);font-size:var(--fs-base)">
       Configure lab-global, method, and per-analyte settings for
@@ -550,7 +548,7 @@
       <h3><i class="fas fa-info-circle"></i> About Maine EGAD Lookup Codes</h3>
       <p style="font-size:var(--fs-sm);color:var(--s-secondary)">
         Download the current lookup tables from the
-        <a href="https://www.maine.gov/dep/spills/egad/data-entry.html"
+        <a class="btn-sm btn-secondary" href="https://www.maine.gov/dep/spills/egad/data-entry.html"
            target="_blank" rel="noopener">Maine DEP EGAD Data Entry page</a>.
         Look for the file named <em>EGAD_Lookup_Tables.xlsx</em>.
       </p>

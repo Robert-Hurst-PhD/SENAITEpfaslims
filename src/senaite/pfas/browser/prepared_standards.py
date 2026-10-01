@@ -582,7 +582,9 @@ def _render_parentage_html(nodes, depth=0):
 
         name = n.get("name") or u"(unnamed)"
         if n.get("url"):
-            name = u'<a href="{0}">{1}</a>'.format(n["url"], name)
+            # a button beside the name, not a text link (lab, 2026-10-01)
+            name = (u'{1} <a class="btn-sm btn-secondary" href="{0}">Open</a>'
+                    .format(n["url"], name))
         amount = u"{0} {1}".format(n.get("qty") or u"", n.get("unit") or u"").strip()
         out += (
             u'<tr><td style="padding-left:{pad}px">{badge} {name}</td>'

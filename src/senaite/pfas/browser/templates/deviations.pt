@@ -167,9 +167,7 @@
     <tal:found tal:condition="dev">
       <!-- Breadcrumb -->
       <div class="dev-breadcrumb">
-        <a tal:attributes="href string:${view/portal_url}/@@pfas-deviations">
-          &#8592; Deviations &amp; CARs
-        </a>
+        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-deviations">Deviations &amp; CARs</a>
       </div>
 
       <!-- Record header -->

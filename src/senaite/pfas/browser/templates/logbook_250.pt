@@ -51,10 +51,8 @@
 <body>
   <tal:t metal:fill-slot="header-title">FM-ENV-250: Solvent / Reagent Prep Log</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="header-meta"
-       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">
-      &#8592; All Logbooks
-    </a>
+    <a class="btn-sm btn-secondary btn-back"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -62,14 +60,13 @@
 
     <!-- Breadcrumb -->
     <div class="lb-breadcrumb">
-      <a tal:attributes="href view/portal_url">Lab</a>
+      <span>Lab</span>
       <span class="lb-bc-sep">›</span>
       <tal:m tal:condition="view/batch_method">
         <span tal:content="view/batch_method">Method</span>
         <span class="lb-bc-sep">›</span>
       </tal:m>
-      <a tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index"
-         tal:content="view/batch_title">Batch</a>
+      <span tal:content="view/batch_title">Batch</span>
       <span class="lb-bc-sep">›</span>
       <strong>FM-ENV-250</strong>
     </div>

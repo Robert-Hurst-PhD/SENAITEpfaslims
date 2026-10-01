@@ -38,9 +38,7 @@
 <body>
 <div metal:fill-slot="content">
   <div class="pfas-page-header" style="margin-bottom:20px">
-    <a href="${view/portal_url}/@@pfas-egad-config" class="pfas-back-link">
-      &#8592; EGAD Config
-    </a>
+    <a href="${view/portal_url}/@@pfas-egad-config" class="btn-sm btn-secondary btn-back">EGAD Config</a>
     <h1 style="margin:8px 0 4px">EDD Settings — ${context/Title}</h1>
     <p style="margin:0;color:var(--s-secondary);font-size:var(--fs-base)">
       Per-client EGAD EDD settings.  Government-agency flag enables EDD generation

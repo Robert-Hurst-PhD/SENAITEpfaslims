@@ -547,6 +547,11 @@
                                 text-decoration: none; }
     .btn:disabled, .btn-sm:disabled, .btn-save:disabled { opacity: .55; cursor: not-allowed; }
     .btn-sm { height: var(--ctl-h-sm); padding: 0 10px; font-size: var(--fs-sm); }
+    /* Links are buttons, never underlined text (lab, 2026-10-01): a page link
+       is an <a class="btn-sm btn-secondary"> beside the text it acts on. */
+    a.btn, a.btn-sm, a.btn-lg, a.btn-primary, a.btn-secondary { text-decoration: none; }
+    a.btn:hover, a.btn-sm:hover, a.btn-secondary:hover { text-decoration: none; }
+    .btn-back::before { content: "\2190"; margin-right: 6px; }
     .btn-lg { height: var(--ctl-h-lg); padding: 0 28px; font-size: var(--fs-md); }
 
     .btn-primary, .btn-save { background: var(--s-primary); border-color: var(--s-primary); color: #fff; }

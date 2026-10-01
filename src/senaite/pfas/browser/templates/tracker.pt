@@ -178,9 +178,7 @@
     <div class="page-footer">
       Laboratory
       &mdash;
-      <a tal:attributes="href string:${view/portal_url}/@@pfas-sample-status">
-        Lab staff login
-      </a>
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-sample-status">Lab staff login</a>
     </div>
 
   </div>

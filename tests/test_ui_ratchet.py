@@ -32,7 +32,7 @@ SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
 MAX_PAGES_WITH_STYLE_BLOCK = 51
-MAX_STYLE_ATTRIBUTES = 884
+MAX_STYLE_ATTRIBUTES = 864
 MAX_DISTINCT_HEX = 208
 MAX_DISTINCT_FONT_SIZES = 3   # the 36-64px display glyphs; all text uses var(--fs-*)
 
@@ -149,6 +149,33 @@ def test_tal_attributes_split_cleanly():
                     if part.strip() and not re.match(r"^\s*[\w:.-]+\s+\S", part):
                         bad.append("%s: %r" % (name, part.strip()[:50]))
     assert not bad, bad
+
+
+def test_links_are_buttons_not_text():
+    """Lab, 2026-10-01: "Avoid the use of hyperlinks on text ... use a dedicated
+    button on the text or next to the text." Every <a> on a PFAS page is a
+    button (btn-*), a tab, a card / tile / row, or a pill picker -- never an
+    underlined word in a sentence. Navigation chrome (sidebar, header menu,
+    wizard stepper) and the printed certificate are exempt."""
+    exempt = {"pfas_sidebar.pt", "pfas_macros.pt", "coa_sections.pt", "method_wizard.pt"}
+    ok_class = re.compile(r"\b(btn|btn-[\w-]+|pfas-tab|pfas-ws-card|lb-card|bq-row|pfas-tile-link|tile|"
+                          r"dr-tab|dev-tab|egad-tab|sop-tab|is-on|lbg-seg|row-pill)\b")
+    bad = []
+    for name in sorted(os.listdir(TEMPLATES)):
+        if not name.endswith(".pt") or name in exempt:
+            continue
+        with open(os.path.join(TEMPLATES, name)) as fh:
+            raw = fh.read()
+        body = re.sub(r"<!--.*?-->", lambda m: " " * len(m.group(0)), raw, flags=re.S)
+        for m in re.finditer(r"<a\b([^>]*)>", body):
+            attrs = m.group(1)
+            if ok_class.search(attrs):
+                continue
+            if "'active' if" in attrs or "is-on" in attrs:      # pill pickers / segmented
+                continue
+            line = raw.count("\n", 0, m.start()) + 1
+            bad.append("%s:%d" % (name, line))
+    assert not bad, "text links (make them buttons): %s" % bad
 
 
 def test_the_typeface_is_served_from_the_addon():

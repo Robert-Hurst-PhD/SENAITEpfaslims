@@ -58,10 +58,10 @@
           </td>
           <td>
             <tal:linked tal:condition="m/core_method_url">
-              <a tal:attributes="href m/core_method_url;
-                                 title string:Open the core SENAITE Method record"
-                 tal:content="m/core_method_title"
-                 style="color:var(--s-primary);text-decoration:none;font-weight:600;">method</a>
+              <strong tal:content="m/core_method_title">method</strong>
+              <a class="btn-sm btn-secondary"
+                 tal:attributes="href m/core_method_url"
+                 title="Open the core SENAITE Method record">Open</a>
               <div style="font-size:var(--fs-xs);color:var(--s-secondary);margin-top:2px;">
                 <span tal:content="m/linked_services">0</span> analytes ·
                 <span tal:content="m/linked_sampletypes">0</span> matrices

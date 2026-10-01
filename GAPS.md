@@ -6056,3 +6056,16 @@ Approved by the lab as the first recommendation of
   links; enabling LFB for FDA -> "limits not set", recorded, reverted; grid
   columns = the batch types; computed fonts Nunito / Nunito Sans; no-op audit
   of every tab and the grid clean; history check clean; no JS errors.
+
+## 65. Links are buttons, not text (2026-10-01)
+- DECISIONS same date. 70 text links across 30 templates converted (55 by
+  script: action links -> buttons with styles and trailing arrows removed,
+  back links -> Back buttons, JS "links" -> real <button>s; 15 by hand: IDs
+  as text + Open/Review/Open PDF/Print buttons, the Lab Settings alert, the
+  per-row editor link); two Python-built links (deviation print preview,
+  prepared-standard chain); logbook pages' duplicate breadcrumbs made plain
+  text (each has a Back button). Shared CSS: link-buttons never underline.
+- **Verified:** guard test (mutation-tested); UI audit 61 pages, no new JS
+  errors, no frame change; every audited page 200 (3 intended redirects);
+  the converted pages carry no visible text links.
+- UI ratchet: style= 884 -> 864.

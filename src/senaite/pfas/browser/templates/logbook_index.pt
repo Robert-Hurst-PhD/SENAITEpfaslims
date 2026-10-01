@@ -48,7 +48,7 @@
 
     <!-- Breadcrumb -->
     <div class="lb-breadcrumb">
-      <a tal:attributes="href view/portal_url">Lab</a>
+      <span>Lab</span>
       <span class="lb-bc-sep">›</span>
       <tal:m tal:condition="view/batch_method">
         <span tal:content="view/batch_method">Method</span>
@@ -64,11 +64,9 @@
       extraction and instrument run.
       <!-- Manager-only: the target 403s for bench staff, so showing this to
            everyone was a dead end. -->
-      <a tal:condition="view/is_manager"
+      <a class="btn-sm btn-secondary" tal:condition="view/is_manager"
          tal:attributes="href view/admin_url"
-         style="margin-left:12px;font-size:var(--fs-sm);color:var(--s-secondary);">
-        <i class="fas fa-cog"></i> Logbook setup
-      </a>
+        ><i class="fas fa-cog"></i> Logbook setup</a>
     </p>
 
     <tal:lbs tal:repeat="lb view/logbooks">

@@ -30,7 +30,6 @@
     .ls-alert { display:block; padding:10px 14px; border-radius:6px;
                 margin-bottom:16px; font-size:var(--fs-base); font-weight:600;
                 background:#f8d7da; color:#721c24; text-decoration:none; }
-    .ls-alert:hover { text-decoration:underline; }
     .ls-ok { background:#d4edda; color:#155724; font-weight:400; }
     .ls-group { border:1px solid var(--s-border); border-radius:8px;
                 margin-bottom:14px; background:var(--s-bg); }
@@ -73,12 +72,12 @@
   <!-- The count that matters. A judging criterion with no value does not fall
        back to a plausible number — it refuses, and the batch cannot be released.
        Until now nothing told a lab WHICH criterion. -->
-  <a tal:condition="unset_n" class="ls-alert"
-     tal:attributes="href string:${purl}/@@pfas-lab-settings?status=unset">
+  <div tal:condition="unset_n" class="ls-alert">
     &#9888; <tal:n tal:replace="unset_n">2</tal:n> setting(s) are NOT CONFIGURED.
-    A judging criterion with no value blocks release rather than assuming one
-    &mdash; show me which.
-  </a>
+    A judging criterion with no value blocks release rather than assuming one.
+    <a class="btn-sm btn-secondary"
+       tal:attributes="href string:${purl}/@@pfas-lab-settings?status=unset">Show me which</a>
+  </div>
   <div tal:condition="not:unset_n" class="ls-alert ls-ok">
     Every judging criterion has a value.
   </div>
@@ -176,9 +175,8 @@
               <td class="ls-seed"
                   tal:content="python:'Lab manager / QAO' if r['tier'] == 'lab' else 'System admin'">Lab</td>
               <td>
-                <a tal:condition="r/owner_href"
-                   tal:attributes="href r/owner_href"
-                   tal:content="string:${r/owner_view}">@@view</a>
+                <a class="btn-sm btn-secondary" tal:condition="r/owner_href"
+                   tal:attributes="href r/owner_href; title string:${r/owner_view}">Open editor</a>
                 <span tal:condition="not:r/owner_href" class="ls-seed">
                   this page
                 </span>

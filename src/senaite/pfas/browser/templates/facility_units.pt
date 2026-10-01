@@ -83,8 +83,7 @@
             <span tal:condition="python:not u.get('active')" class="inactive-badge">Inactive</span>
           </td>
           <td tal:condition="view/can_configure">
-            <a style="font-size:var(--fs-xs);color:var(--s-primary);cursor:pointer;text-decoration:none"
-               tal:attributes="onclick string:editUnit('${u/id}')">Edit</a>
+            <button type="button" class="btn-sm btn-secondary" tal:attributes="onclick string:editUnit('${u/id}')">Edit</button>
             &nbsp;
             <form method="POST" style="display:inline"
                   tal:attributes="action string:${purl}/@@pfas-facility-units"

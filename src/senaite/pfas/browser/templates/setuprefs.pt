@@ -181,9 +181,7 @@
       <span class="action-note">
         Safe to run repeatedly. Analyte values are refreshed from the current QC
         rules each time. To change acceptance criteria, edit them in
-        <a tal:attributes="href string:${context/absolute_url}/@@pfas-qc-rules">
-          QC Rule Configuration
-        </a>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${context/absolute_url}/@@pfas-qc-rules">QC Rule Configuration</a>
         first, then run this setup again.
       </span>
     </div>

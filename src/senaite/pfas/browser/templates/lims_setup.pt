@@ -89,10 +89,8 @@
       <!-- Back link + section heading in filtered mode -->
       <tal:filtered tal:condition="sect">
         <div style="margin-bottom:14px">
-          <a tal:attributes="href string:${purl}/@@lims-setup"
-             style="font-size:var(--fs-sm);color:#6c757d;text-decoration:none">
-            &#8592; All Configuration
-          </a>
+          <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${purl}/@@lims-setup"
+            >All Configuration</a>
         </div>
       </tal:filtered>
 

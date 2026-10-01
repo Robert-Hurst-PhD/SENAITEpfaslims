@@ -71,8 +71,8 @@
     <div style="padding:24px;text-align:center;color:var(--s-secondary);
                 border:1px dashed var(--s-border);border-radius:8px;">
       Select a balance above or
-      <a tal:attributes="href string:${purl}/@@pfas-facility-units"
-         style="color:var(--s-primary)">configure balance units</a>.
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-facility-units"
+        >Configure balance units</a>.
     </div>
   </tal:no-unit>
 
@@ -108,8 +108,8 @@
           recorded &mdash; one performed with unknown weights traces to nothing
           and would block release at data review. Register the set and its
           metrology-laboratory certificate under
-          <a tal:attributes="href string:${purl}/@@pfas-weight-sets"
-             style="color:var(--s-primary)">Weight Sets</a> first.
+          <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-weight-sets"
+            >Weight Sets</a> first.
         </p>
         <div class="fld"><label>Notes</label>
           <input type="text" name="notes"/></div>

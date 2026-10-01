@@ -232,7 +232,7 @@
     </div>
 
     <button class="btn btn-primary apply-btn" type="submit">Apply</button>
-    <a class="reset-link"
+    <a class="btn-sm btn-secondary"
        tal:attributes="href string:${context/absolute_url}/@@pfas-control-chart">Reset</a>
   </form>
 

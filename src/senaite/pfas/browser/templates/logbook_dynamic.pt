@@ -25,10 +25,8 @@
 <body>
   <tal:t metal:fill-slot="header-title" tal:content="view/logbook_title">Logbook</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="header-meta"
-       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">
-      &#8592; All Logbooks
-    </a>
+    <a class="btn-sm btn-secondary btn-back"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -36,10 +34,9 @@
 
     <!-- Breadcrumb -->
     <div class="lb-breadcrumb">
-      <a tal:attributes="href view/portal_url">Lab</a>
+      <span>Lab</span>
       <span class="lb-bc-sep">&#8250;</span>
-      <a tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index"
-         tal:content="view/batch_title">Batch</a>
+      <span tal:content="view/batch_title">Batch</span>
       <span class="lb-bc-sep">&#8250;</span>
       <strong tal:content="view/logbook_code">Logbook</strong>
     </div>
@@ -51,9 +48,7 @@
     <tal:noschema condition="not:view/field_schema">
       <div class="empty-schema">
         No field schema defined for this logbook.
-        <a tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks">
-          Configure in Prep Logbooks &#8594;
-        </a>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks">Configure in Prep Logbooks</a>
       </div>
     </tal:noschema>
 

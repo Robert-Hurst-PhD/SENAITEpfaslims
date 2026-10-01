@@ -63,12 +63,8 @@
         PF-260611-A3K9
       </div>
       <div class="pfas-tracker-links">
-        <a tal:attributes="href info/tracker_url" target="_blank">
-          Open client tracker &#8599;
-        </a>
-        <a tal:attributes="href string:${view/portal_url}/@@pfas-receipt?ar_id=${info/ar_id}">
-          Print receipt
-        </a>
+        <a class="btn-sm btn-secondary" tal:attributes="href info/tracker_url" target="_blank">Open client tracker &#8599;</a>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-receipt?ar_id=${info/ar_id}">Print receipt</a>
       </div>
     </tal:hasnum>
 

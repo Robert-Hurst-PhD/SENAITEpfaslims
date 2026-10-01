@@ -5504,3 +5504,15 @@ Lab answers:
   it until criteria are set) -- the grid used to seed 70-130% / RPD 30 that
   nobody had set, and unticking DELETED a type's configured criteria; both
   stopped. Pipeline key spellings kept ("Dup", "MxB").
+
+## 2026-10-01 — Links are buttons, never underlined text (confirmed, lab)
+- Lab: "Avoid the use of hyperlinks on text. We need the experience to be user
+  friendly and intuitive. Please use a dedicated button on the text or next to
+  the text that links to the correct page."
+- Every link on a PFAS page is a button (`btn-sm btn-secondary`; back links
+  `btn-back`, which draws its own arrow), a tab, a whole card / tile / row, or
+  a pill picker. A record named by an ID (worksheet, sample, report, reagent,
+  core method) shows the ID as text with an Open / Review / Open PDF button
+  beside it. Exempt: the sidebar, header menu, wizard stepper (navigation
+  chrome), the System Map diagram, and the printed certificate.
+- Guard: `test_ui_ratchet.test_links_are_buttons_not_text`.

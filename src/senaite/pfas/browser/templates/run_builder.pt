@@ -162,7 +162,7 @@
                 <input type="text" name="initials" maxlength="4"
                        placeholder="Initials" style="text-transform:uppercase;"/>
                 <span class="hint">Staff pool is empty — add Lab Contacts in
-                  <a tal:attributes="href string:${view/portal_url}/bika_setup/bika_labcontacts">SENAITE setup</a>
+                  <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/bika_setup/bika_labcontacts">SENAITE setup</a>
                   so analysts are selectable instead of typed.</span>
               </tal:empty>
             </div>

@@ -206,9 +206,7 @@
 <body>
   <tal:t metal:fill-slot="header-title">Reagent Inventory</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="header-meta" tal:attributes="href string:${view/portal_url}/@@lims-setup">
-      &#8592; Site Setup
-    </a>
+    <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@lims-setup">Site Setup</a>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -222,9 +220,7 @@
       <div tal:condition="not:prod" class="mode-banner mode-test">
         <strong>Test Mode</strong> &#8212;
         Audit log disabled. Deletions are permanent and autofill is inactive.
-        <a tal:attributes="href string:${view/portal_url}/bika_setup/auditlog">
-          Enable Audit Log &#8599;
-        </a>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/bika_setup/auditlog">Enable Audit Log &#8599;</a>
       </div>
       <div tal:condition="python:prod and tc > 0" class="mode-banner mode-prod">
         <strong>Production Mode</strong> &#10003;

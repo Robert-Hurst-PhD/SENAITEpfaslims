@@ -79,13 +79,11 @@
     <div class="bq-foot">
       <tal:more tal:define="hidden view/hidden_count"
                 tal:condition="python:hidden and not view.show_all()">
-        <a tal:attributes="href string:${view/portal_url}/@@pfas-logbook-batches?all=1"
-           tal:content="python:'Show all open batches ({0} with nothing outstanding are hidden)'.format(hidden)">
-          Show all</a>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-logbook-batches?all=1"
+           tal:content="python:'Show all open batches ({0} with nothing outstanding are hidden)'.format(hidden)">Show all</a>
       </tal:more>
-      <a tal:condition="view/show_all"
-         tal:attributes="href string:${view/portal_url}/@@pfas-logbook-batches">
-        Show only batches needing work</a>
+      <a class="btn-sm btn-secondary" tal:condition="view/show_all"
+         tal:attributes="href string:${view/portal_url}/@@pfas-logbook-batches">Show only batches needing work</a>
     </div>
 
   </div>

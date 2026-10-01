@@ -177,8 +177,7 @@
           <td colspan="9" style="text-align:center;padding:32px;color:var(--s-secondary)">
             No documents yet.
             <tal:mgr tal:condition="can_mgr">
-              <a href="#" onclick="openSOPModal(); return false;"
-                 style="color:var(--s-primary)">Upload the first document.</a>
+              <button type="button" class="btn-sm btn-secondary" onclick="openSOPModal()">Upload the first document.</button>
             </tal:mgr>
           </td>
         </tr>

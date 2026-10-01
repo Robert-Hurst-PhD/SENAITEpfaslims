@@ -171,7 +171,7 @@
       rule library — which engine rules are ON per method (exported to
       <code>qc_rules.json</code> for the pipeline). Method-science acceptance —
       recovery tiers, QC-type limits &amp; toggles, spike levels, matrices —
-      lives in <a href="@@pfas-method-profiles">Method Profiles</a>.
+      lives in <a class="btn-sm btn-secondary" href="@@pfas-method-profiles">Method Profiles</a>.
     </div>
         <div class="field-grid">
           <tal:gfields tal:repeat="item view/global_fields">

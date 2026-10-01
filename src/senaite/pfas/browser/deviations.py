@@ -774,8 +774,10 @@ class PFASDeviationView(BrowserView):
 <div class="no-print" style="background:#fff3cd;padding:10px 16px;
      border-radius:4px;margin-bottom:16px;font-size:12px;color:#856404">
   &#9888; This is a preview. Use your browser&rsquo;s Print function (Ctrl+P / Cmd+P)
-  to save as PDF or print. <a href="javascript:window.print()" style="color:#856404;
-  font-weight:700">Print now</a>
+  to save as PDF or print.
+  <button type="button" onclick="window.print()" style="margin-left:8px;padding:3px 12px;
+  border:1px solid #ffdf7e;border-radius:4px;background:#fff;color:#856404;
+  font-weight:700;cursor:pointer">Print now</button>
 </div>
 
 <div class="header-bar">

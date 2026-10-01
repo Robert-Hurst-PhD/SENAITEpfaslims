@@ -44,16 +44,16 @@
   ">
   <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 18px">
     ISO 17025 daily instrument and environmental verifications.
-    <a tal:attributes="href string:${purl}/@@pfas-facility-units"
-       style="color:var(--s-primary)">Manage units &rarr;</a>
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-facility-units"
+      >Manage units</a>
   </p>
 
   <tal:no-units tal:condition="python:not summary">
     <div style="padding:32px;text-align:center;color:var(--s-secondary);
                 border:1px dashed var(--s-border);border-radius:8px;">
       No active facility units configured.
-      <a tal:attributes="href string:${purl}/@@pfas-facility-units"
-         style="color:var(--s-primary)">Add units &rarr;</a>
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-facility-units"
+        >Add units</a>
     </div>
   </tal:no-units>
 
@@ -100,9 +100,7 @@
               <span tal:attributes="class python:'fqc-badge '+view.status_class(unit['status'])"
                     tal:content="python:view.status_label(unit['status'])"></span>
               <div class="fqc-action">
-                <a tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}">
-                  View chart / temperature study &rarr;
-                </a>
+                <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}">View chart / temperature study</a>
               </div>
             </div>
           </tal:each>
@@ -139,9 +137,7 @@
               <span tal:attributes="class python:'fqc-badge '+view.status_class(unit['status'])"
                     tal:content="python:view.status_label(unit['status'])"></span>
               <div class="fqc-action">
-                <a tal:attributes="href string:${purl}/@@pfas-balance-log?unit_id=${unit/id}">
-                  Enter verification &rarr;
-                </a>
+                <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-balance-log?unit_id=${unit/id}">Enter verification</a>
               </div>
             </div>
           </tal:each>
@@ -167,14 +163,10 @@
               <span tal:attributes="class python:'fqc-badge '+view.status_class(unit['status'])"
                     tal:content="python:view.status_label(unit['status'])"></span>
               <div class="fqc-action">
-                <a tal:condition="python:unit['unit_type']=='water_system'"
-                   tal:attributes="href string:${purl}/@@pfas-water-log">
-                  Enter reading &rarr;
-                </a>
-                <a tal:condition="python:unit['unit_type']=='eyewash'"
-                   tal:attributes="href string:${purl}/@@pfas-eyewash-log?unit_id=${unit/id}">
-                  Enter check &rarr;
-                </a>
+                <a class="btn-sm btn-secondary" tal:condition="python:unit['unit_type']=='water_system'"
+                   tal:attributes="href string:${purl}/@@pfas-water-log">Enter reading</a>
+                <a class="btn-sm btn-secondary" tal:condition="python:unit['unit_type']=='eyewash'"
+                   tal:attributes="href string:${purl}/@@pfas-eyewash-log?unit_id=${unit/id}">Enter check</a>
               </div>
             </div>
           </tal:each>
@@ -187,7 +179,7 @@
               </div>
             </div>
             <div class="fqc-action">
-              <a tal:attributes="href string:${purl}/@@pfas-waste-log">Enter log &rarr;</a>
+              <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-waste-log">Enter log</a>
             </div>
           </div>
         </div>

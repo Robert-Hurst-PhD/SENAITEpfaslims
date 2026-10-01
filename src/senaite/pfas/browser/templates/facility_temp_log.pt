@@ -74,8 +74,8 @@
     <div style="padding:24px;text-align:center;color:var(--s-secondary);
                 border:1px dashed var(--s-border);border-radius:8px;">
       Select a unit above, or
-      <a tal:attributes="href string:${purl}/@@pfas-facility-units"
-         style="color:var(--s-primary)">configure temperature units</a>.
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-facility-units"
+        >Configure temperature units</a>.
     </div>
   </tal:no-unit>
 
@@ -125,10 +125,8 @@
           <span tal:content="s/operator"></span>
           <span tal:attributes="class python:'study-badge study-'+s['status']"
                 tal:content="python:s['status'].upper()"></span>
-          <a tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}"
-             style="font-size:var(--fs-xs);color:var(--s-primary);margin-left:auto">
-            Enter / view data &rarr;
-          </a>
+          <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}"
+            >Enter / view data</a>
         </div>
       </tal:each>
       <tal:none tal:condition="python:not view.studies()">

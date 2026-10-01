@@ -203,7 +203,7 @@
 
   <tal:r metal:fill-slot="header-right">
     <span class="header-badge" tal:content="view/method_id">FDA_32PFAS</span>
-    <a href="@@pfas-method-profiles" class="back-link">All Methods</a>
+    <a href="@@pfas-method-profiles" class="btn-sm btn-secondary btn-back">All Methods</a>
   </tal:r>
 
   <tal:tabs metal:fill-slot="tabs">
@@ -256,7 +256,7 @@
       Last changed by <strong tal:content="lc/who">user</strong>
       on <span tal:content="string:${lc/at} UTC">date</span>
       (<span tal:content="python:len(lc['changes'])">1</span> setting(s))
-      &middot; <a tal:attributes="href string:${view/portal_url}/@@pfas-config-history?store=method_profile&amp;key=${view/method_id}">history</a>
+      &middot; <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-config-history?store=method_profile&amp;key=${view/method_id}">History</a>
     </p>
     <div class="alert alert-error" tal:condition="view/error">
       <span tal:content="view/error">Error message</span>
@@ -723,14 +723,14 @@
             instrument-verification <strong>acceptance parameters</strong>
             (exported with the profile). Whether each engine <em>rule</em> is
             switched on per method is governed globally in
-            <a tal:attributes="href string:${view/portal_url}/@@pfas-qc-rules">QC Rules</a>.
+            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-qc-rules">QC Rules</a>.
           </div>
 
           <div class="section-group-hdr">Instrument QC Criteria</div>
           <div class="alert alert-info" style="font-size:var(--fs-sm);margin-bottom:10px;">
             &#8505; QC types (MB, LFB, LFSMD, etc.) must be <strong>enabled</strong> in
-            the <a tal:attributes="href string:${view/portal_url}/@@pfas-qc-type-grid"
-                   style="color:var(--s-primary);">QC Type Grid</a>
+            the <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-qc-type-grid"
+                  >QC Type Grid</a>
             before the criteria below take effect for this method.
           </div>
 
@@ -829,10 +829,10 @@
                               title="Enabled with no limits: the QC engine refuses to judge it until criteria are set (QC Type Grid / Recovery Tiers).">limits not set</span>
                         <span tal:condition="not:q/enabled" class="form-note">not run</span>
                       </tal:t>
-                      <a tal:condition="q/configured_on" href="#"
+                      <a class="btn-sm btn-secondary" tal:condition="q/configured_on" href="#"
                          tal:attributes="href python:'#' + q['configured_on'][0];
                                          onclick python:&quot;return (pfasTabSwitch('%s'), false)&quot; % q['configured_on'][0]"
-                         tal:content="python:'configured on ' + q['configured_on'][1]">configured on Calibration &amp; CCV</a>
+                         tal:content="python:'Open ' + q['configured_on'][1]">Open Calibration &amp; CCV</a>
                     </td>
                   </tr>
                 </tbody>

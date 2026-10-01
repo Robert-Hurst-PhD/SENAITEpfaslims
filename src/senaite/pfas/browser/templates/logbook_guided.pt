@@ -75,8 +75,8 @@
 
   <tal:hr metal:fill-slot="header-right">
     <span class="lbg-modeswitch">
-      <a class="is-on" tal:attributes="href view/guided_url">Guided</a>
-      <a tal:attributes="href view/concise_url">Concise</a>
+      <a class="lbg-seg is-on" tal:attributes="href view/guided_url">Guided</a>
+      <a class="lbg-seg" tal:attributes="href view/concise_url">Concise</a>
     </span>
     <a class="btn-sm" style="margin-left:10px"
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">&#8592; All Logbooks</a>

@@ -57,9 +57,7 @@
     <tal:editor tal:condition="view/batch_id">
 
       <div class="page-header">
-        <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-egad-batches">
-          &#8592; Batch EDD Dashboard
-        </a>
+        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-egad-batches">Batch EDD Dashboard</a>
         <h2>
           Sample Types —
           <span tal:content="view/batch_id">B-001</span>
@@ -125,7 +123,7 @@
           <a tal:attributes="href string:${view/portal_url}/@@pfas-egad-export?batch_id=${view/batch_id}"
              class="btn btn-secondary">Download EDD</a>
           <a tal:attributes="href string:${view/portal_url}/@@pfas-egad-export?batch_id=${view/batch_id}&amp;preview=1"
-             class="egad-link" target="_blank">Preview / Validate</a>
+             class="btn-sm btn-secondary" target="_blank">Preview / Validate</a>
         </div>
 
       </form>
@@ -136,9 +134,7 @@
     <tal:dashboard tal:condition="not:view/batch_id">
 
       <div class="page-header">
-        <a class="back-link" tal:attributes="href string:${view/portal_url}/@@pfas-egad-config">
-          &#8592; EDD Configuration
-        </a>
+        <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-egad-config">EDD Configuration</a>
         <h2>Batch EDD Dashboard</h2>
       </div>
 

@@ -378,7 +378,7 @@
                   <td style="padding:4px 10px" tal:content="r/status">draft</td>
                   <td style="padding:4px 10px" tal:content="python:(r.get('uploaded_at') or '')[:10]">—</td>
                   <td style="padding:4px 10px">
-                    <a target="_blank"
+                    <a class="btn-sm btn-secondary" target="_blank"
                        tal:attributes="href string:${view/portal_url}/@@pfas-logbook-admin?action=download_logbook_doc&amp;slug=${lb/slug}&amp;rev_num=${r/rev_num}&amp;view=0">Download</a>
                   </td>
                 </tr>

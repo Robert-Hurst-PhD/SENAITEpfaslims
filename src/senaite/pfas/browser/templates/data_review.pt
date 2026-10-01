@@ -73,8 +73,6 @@
                  border-bottom:1px solid #f0f0f0; font-size:var(--fs-sm); }
     .tree-label { font-weight:600; color:var(--s-secondary); }
     .tree-val   { color:var(--s-text); }
-    .tree-link  { color:var(--s-primary); text-decoration:none; }
-    .tree-link:hover { text-decoration:underline; }
     .tree-sub   { padding-left:20px; }
     .tree-unresolved { color:#dc3545; font-weight:600; }
     .tree-warn-box { background:#f8d7da; color:#721c24; padding:10px 14px; border-radius:6px;
@@ -186,8 +184,8 @@
         <tbody>
           <tal:row tal:repeat="ws view/recent_worksheets">
             <tr>
-              <td><a tal:attributes="href ws/url"
-                     tal:content="ws/id">WS</a>
+              <td><span tal:content="ws/id">WS</span>
+                <a class="btn-sm btn-secondary" tal:attributes="href ws/url">Review</a>
                 <div class="dr-ws-title"
                      tal:condition="python:ws['title'] and ws['title'] != ws['id']"
                      tal:content="ws/title">Title</div></td>
@@ -309,10 +307,9 @@
     <!-- batch header row -->
     <div class="dr-header">
       <span class="dr-batch-title">
-        <a style="color:inherit;text-decoration:none"
-           tal:attributes="href view/batch_url"
-           tal:content="view/batch_id">WS-ID</a>
+        <span tal:content="view/batch_id">WS-ID</span>
       </span>
+      <a class="btn-sm btn-secondary" tal:attributes="href view/batch_url">Open worksheet</a>
       <tal:method tal:condition="view/batch_method">
         <span class="role-badge" tal:content="view/batch_method">method</span>
       </tal:method>
@@ -767,9 +764,8 @@
                         tal:content="python:ps.get('label', ps.get('field',''))">label</span>
                   <span class="tree-val">
                     <tal:found tal:condition="ps/found">
-                      <a class="tree-link"
-                         tal:attributes="href ps/url"
-                         tal:content="ps/title">title</a>
+                      <span tal:content="ps/title">title</span>
+                      <a class="btn-sm btn-secondary" tal:attributes="href ps/url">Open</a>
                       — Lot <strong tal:content="ps/lot">lot</strong>
                       <tal:exp tal:condition="ps/expiry_date|nothing">
                         · exp <tal:t tal:replace="ps/expiry_date">date</tal:t>
@@ -795,9 +791,8 @@
                         </span>
                         <span class="tree-val">
                           <tal:res tal:condition="par/resolved|nothing">
-                            <a class="tree-link"
-                               tal:attributes="href par/resolved/url"
-                               tal:content="par/resolved/supplier|string:">Supplier</a> —
+                            <span tal:content="par/resolved/supplier|string:">Supplier</span>
+                            <a class="btn-sm btn-secondary" tal:attributes="href par/resolved/url">Open</a> —
                             <tal:t tal:replace="par/name">name</tal:t>
                             · Lot <strong tal:content="par/lot">lot</strong>
                           </tal:res>
@@ -833,9 +828,8 @@
                     · <tal:t tal:replace="r/supplier">supplier</tal:t>
                   </tal:sup>
                   <tal:res tal:condition="r/resolved|nothing">
-                    · <a class="tree-link"
-                         tal:attributes="href r/resolved/url"
-                         tal:content="r/resolved/supplier|string:Inventory">Inventory</a>
+                    · <span tal:content="r/resolved/supplier|string:Inventory">Inventory</span>
+                    <a class="btn-sm btn-secondary" tal:attributes="href r/resolved/url">Open</a>
                   </tal:res>
                   <tal:nores tal:condition="python:not r.get('resolved') and r.get('lot')">
                     · <span class="tree-unresolved">not in inventory</span>
@@ -859,9 +853,8 @@
                 <span class="tree-val">
                   Lot <strong tal:content="s/lot">lot</strong>
                   <tal:res tal:condition="s/resolved|nothing">
-                    · <a class="tree-link"
-                         tal:attributes="href s/resolved/url"
-                         tal:content="s/resolved/title|string:Inventory">Inventory</a>
+                    · <span tal:content="s/resolved/title|string:Inventory">Inventory</span>
+                    <a class="btn-sm btn-secondary" tal:attributes="href s/resolved/url">Open</a>
                   </tal:res>
                   <tal:nores tal:condition="python:not s.get('resolved') and s.get('lot')">
                     · <span class="tree-unresolved">not in inventory</span>
@@ -1171,9 +1164,8 @@
             <div style="font-size:var(--fs-sm);font-weight:700;color:var(--s-secondary);
                         text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">
               Qualifier legend
-              <a tal:attributes="href string:${view/portal_url}/@@pfas-egad-config"
-                 style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:8px;
-                        font-size:var(--fs-xs);color:var(--s-primary);">edit map →</a>
+              <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-egad-config"
+                >Edit map</a>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:var(--fs-xs);color:var(--s-secondary);">
               <span tal:repeat="q legend">
