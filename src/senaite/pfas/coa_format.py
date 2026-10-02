@@ -91,9 +91,9 @@ def build_rows(analyses, profile, matrix, settings, cas_by_keyword=None):
     result is never dropped for being unexpected.
     """
     try:                                  # in Plone
-        from senaite.pfas.report_limits import limits_for
+        from senaite.pfas.report_limits import limits_for, scaled_rl
     except Exception:                     # tests: module loaded without the package
-        from report_limits import limits_for
+        from report_limits import limits_for, scaled_rl
     cas_by_keyword = cas_by_keyword or {}
     order = dict((kw, i) for i, kw in enumerate((profile or {}).get("master_analyte_set") or []))
     nd_format = (settings or {}).get("coa_nd_format") or "lt_rl"
@@ -105,7 +105,9 @@ def build_rows(analyses, profile, matrix, settings, cas_by_keyword=None):
     for a in analyses:
         kw = a.get("keyword") or ""
         lim = limits_for(profile, matrix, kw)
-        res = format_result(a.get("result"), lim["rl"], nd_format, n)
+        # a diluted analyte's RL scales with the dilution (a.dilution = fold)
+        rl = scaled_rl(lim["rl"], a.get("dilution"))
+        res = format_result(a.get("result"), rl, nd_format, n)
         quals = list(res["qualifiers"]) + [c for c in (a.get("codes") or []) if c]
         rows.append({
             "keyword": kw,
@@ -114,10 +116,10 @@ def build_rows(analyses, profile, matrix, settings, cas_by_keyword=None):
             "result": res["text"],
             "detected": res["detected"],
             "qualifiers": ", ".join(quals),
-            "rl": format_limit(lim["rl"]),
+            "rl": format_limit(rl),
             "mdl": format_limit(lim["mdl"]),
             "unit": lim["unit"] or "",
-            "dilution": a.get("dilution") or "",
+            "dilution": format_limit(a.get("dilution")) if a.get("dilution") else "",
             "_sort": (0, order[kw]) if kw in order else (1, (a.get("title") or kw).lower()),
         })
     rows.sort(key=lambda r: r["_sort"])

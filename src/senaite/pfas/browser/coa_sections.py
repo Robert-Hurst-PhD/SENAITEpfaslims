@@ -172,8 +172,10 @@ class PFASCoASectionsView(BrowserView):
                 codes = parse_remark_codes(an.getRemarks() or u"")
             except Exception:
                 codes = []
+            from senaite.pfas.browser.dilution_retests import dilution_fold
             data.append({"keyword": kw, "title": titles.get(kw) or an.Title(),
-                         "result": an.getResult(), "codes": codes})
+                         "result": an.getResult(), "codes": codes,
+                         "dilution": dilution_fold(an)})
             when = an.getResultCaptureDate()
             if when:
                 analysed.append(when)
@@ -275,6 +277,7 @@ class PFASCoASectionsView(BrowserView):
         results = {}
         for d in data:
             lim = report_limits.limits_for(profile, matrix, d["keyword"])
+            lim["rl"] = report_limits.scaled_rl(lim["rl"], d.get("dilution"))
             res = coa_format.format_result(d["result"], lim["rl"])
             if res["detected"] is None:
                 continue                                    # unrecognised text: not compared

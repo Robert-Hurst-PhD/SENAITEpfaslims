@@ -528,6 +528,10 @@ class EGADBuilder(object):
                 elif k in ("qualifier", "lab_qualifier"):
                     our_qual = str(v or "")
 
+            # a diluted analyte's RL scales with the dilution (DECISIONS 2026-10-02)
+            if rl is not None and dilution_factor and dilution_factor > 1:
+                rl = rl * dilution_factor
+
             # Translate qualifier
             egad_qual = self._translate_qualifier(our_qual)
 

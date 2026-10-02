@@ -40,6 +40,20 @@ def limits_for(profile, matrix, keyword):
     return {"rl": rl, "mdl": entry.get("mdl"), "unit": unit, "rl_source": source}
 
 
+def scaled_rl(rl, fold):
+    """A diluted analyte's reporting limit: RL x the dilution's total fold
+    (DECISIONS 2026-10-02: 2 ppt diluted 2-fold reports an RL of 4).
+    Independent of how results are put on the sample basis. No fold, or a
+    fold of 1 or less, leaves the RL as it is."""
+    try:
+        f = float(fold)
+    except (TypeError, ValueError):
+        return rl
+    if rl is None or f <= 1:
+        return rl
+    return rl * f
+
+
 def canonical_matrix(profile, title):
     """The profile's matrix title for a sample type title: exact match first,
     then the profile's matrix_aliases {canonical: [alias, ...]} ignoring case.

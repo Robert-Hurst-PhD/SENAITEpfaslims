@@ -38,6 +38,22 @@ def _save(analysis, rec):
     IAnnotations(analysis)[KEY] = json.dumps(rec)
 
 
+def dilution_fold(analysis):
+    """The total fold an analysis's result was diluted by: the fold kept on
+    the neat analysis this one is the retest of; None for any other."""
+    try:
+        if not analysis.isRetest():
+            return None
+        rec = _load(analysis.getRetestOf()) or {}
+    except Exception:                                       # noqa: BLE001
+        return None
+    try:
+        f = float(rec.get("factor"))
+    except (TypeError, ValueError):
+        return None
+    return f if f > 1 else None
+
+
 def pending_dilution(analysis):
     """The dilution kept on an analysis and not yet appended, or None."""
     rec = _load(analysis)

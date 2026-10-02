@@ -7067,3 +7067,29 @@ reporting limits are still the nominal RL (lowest calibrator x matrix
 factor), not per sample, under back-calculation; Data Review's final data
 summary lists the neat and the retest side by side without marking which is
 reported.
+
+
+## 90. Dilutions logged as a fold; diluted values and reporting limits scale (2026-10-02)
+
+Decision: DECISIONS 2026-10-02 "Dilution fold and reporting limits".
+
+- **Fold only:** dilution_ref.parse_factor accepts a number > 1; ratios are
+  refused ("1:1" is 2-fold to the lab, "1:10" was read as 10-fold by the
+  code). The guide's dilution form takes a fold; the retest remark says
+  "10-fold".
+- **Diluted value:** multiplied by the fold unless the method's per-sample
+  correction is done in the MS software (which then applied the dilution
+  too); with no usable fold the dilution is not substituted (the neat stays
+  ALoQ, logged). Real instrument files: results and flags identical.
+- **Reporting limit:** a diluted analyte's RL is RL x fold on the
+  certificate row (and its "< RL" text), the certificate's regulatory
+  comparison and the EDD (report_limits.scaled_rl; the fold read from the
+  neat analysis the retest replaces). RLs stay independent of the
+  back-calculation. The certificate's optional Dilution column shows the
+  fold. Live: dry run on a real sample (aborted) — retest 48.2, Dilution 10,
+  with a 2.0 RL the row reports RL 20.
+- **Tests:** test_dilution_rl (3; 3 mutants killed), fold cases in
+  test_sample_table and test_dilution_retest.
+
+**Still open:** no RLs are configured for most method x matrix pairs yet, so
+the scaled RL shows only where an RL exists; MDL is not scaled (not decided).
