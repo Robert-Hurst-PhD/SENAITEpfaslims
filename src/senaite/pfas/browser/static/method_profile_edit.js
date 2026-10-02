@@ -59,7 +59,6 @@
     var card = document.createElement('div');
     card.className = 'stage-card';
     card.id = id;
-    card.setAttribute('draggable', 'true');
     card.innerHTML =
       '<div class="stage-card-hdr">' +
         '<span class="drag-handle" title="Drag to reorder">&#9776;</span>' +
@@ -165,29 +164,6 @@
         syncStageJson();
       });
     }
-
-    card.addEventListener('dragstart', function(e) {
-      e.dataTransfer.setData('text/plain', id);
-      card.classList.add('dragging');
-    });
-    card.addEventListener('dragend', function() {
-      card.classList.remove('dragging');
-      renumberStages();
-      syncStageJson();
-    });
-    card.addEventListener('dragover', function(e) {
-      e.preventDefault();
-      var list = document.getElementById('stage-list');
-      var dragging = list.querySelector('.dragging');
-      if (!dragging || dragging === card) return;
-      var rect = card.getBoundingClientRect();
-      var mid  = rect.top + rect.height / 2;
-      if (e.clientY < mid) {
-        list.insertBefore(dragging, card);
-      } else {
-        list.insertBefore(dragging, card.nextSibling);
-      }
-    });
 
     document.getElementById('stage-list').appendChild(card);
     syncStageJson();
@@ -403,6 +379,16 @@
       var stages = JSON.parse(document.getElementById('extraction_stages_json').value || '[]');
       stages.forEach(function(s) { addStageCard(s); });
     } catch(e) {}
+    /* Stage cards reorder by their handle with SortableJS (mouse and touch;
+       REUSE_REVIEW U3), then renumber and re-serialise as before. */
+    var stageList = document.getElementById('stage-list');
+    if (stageList && window.Sortable) {
+      Sortable.create(stageList, {
+        handle: '.drag-handle', draggable: '.stage-card', animation: 150,
+        ghostClass: 'dragging',
+        onEnd: function () { renumberStages(); syncStageJson(); }
+      });
+    }
     buildAMIGrid();
     buildPerAnalyteTable();
   });

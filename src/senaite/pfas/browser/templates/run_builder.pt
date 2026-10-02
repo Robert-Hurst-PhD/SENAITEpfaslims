@@ -238,8 +238,7 @@
             <div class="rb-seqlist" id="seq-chips">
               <div tal:repeat="c tpl/sequence_labelled"
                    tal:attributes="data-code c/code; data-kind c/kind;
-                                   class python:'rb-seqrow ' + c['kind'];
-                                   draggable python:'true' if editable else 'false'">
+                                   class python:'rb-seqrow ' + c['kind']">
                 <span class="grip" title="Drag to reorder">&#8942;</span>
                 <span class="lbl" tal:content="c/label">Method Blank</span>
                 <span class="code"
@@ -282,10 +281,12 @@
         </form>
       </div>
 
+      <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/Sortable-1.15.6.min.js"></script>
       <script>
       /* Pure DOM (no innerHTML / no literal markup); and NO bare "less-than",
          "ampersand" or "and-and" operators, so the Chameleon template parser
-         never mistakes JS for markup. HTML5 drag-and-drop reorders the rows. */
+         never mistakes JS for markup. SortableJS reorders the rows (touch
+         screens included; REUSE_REVIEW U3). */
       (function () {
         var form = document.getElementById("rb-tpl-form");
         if (!form) return;
@@ -296,7 +297,6 @@
           row.className = "rb-seqrow " + kind;
           row.setAttribute("data-code", code);
           row.setAttribute("data-kind", kind);
-          row.setAttribute("draggable", "true");
           var g = document.createElement("span");
           g.className = "grip"; g.title = "Drag to reorder";
           g.textContent = "⋮"; row.appendChild(g);
@@ -337,35 +337,12 @@
           if (row.getAttribute("data-kind") === "samples") return;
           row.remove();
         });
-        // drag reorder (HTML5 DnD)
-        var dragging = null;
-        list.addEventListener("dragstart", function (e) {
-          var row = e.target.closest ? e.target.closest(".rb-seqrow") : null;
-          if (!row) return;
-          dragging = row; row.classList.add("dragging");
-        });
-        list.addEventListener("dragend", function () {
-          if (dragging) { dragging.classList.remove("dragging"); }
-          dragging = null; serialize();
-        });
-        function afterElement(y) {
-          var rows = list.querySelectorAll(".rb-seqrow:not(.dragging)");
-          var closest = null, closestOffset = -Infinity;
-          rows.forEach(function (r) {
-            var box = r.getBoundingClientRect();
-            var offset = y - box.top - box.height / 2;
-            if (offset > closestOffset) {
-              if (0 > offset) { closestOffset = offset; closest = r; }
-            }
-          });
-          return closest;
-        }
-        list.addEventListener("dragover", function (e) {
-          e.preventDefault();
-          if (!dragging) return;
-          var after = afterElement(e.clientY);
-          if (after == null) { list.appendChild(dragging); }
-          else { list.insertBefore(dragging, after); }
+        // drag reorder: SortableJS (mouse and touch); read-only templates stay put
+        Sortable.create(list, {
+          draggable: ".rb-seqrow", filter: "button.del", preventOnFilter: false,
+          animation: 150, ghostClass: "dragging",
+          disabled: !!list.closest(".rb-ro"),
+          onEnd: serialize
         });
         form.addEventListener("submit", serialize);
       })();

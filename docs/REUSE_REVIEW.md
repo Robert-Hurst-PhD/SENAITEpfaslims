@@ -115,7 +115,8 @@ with the reason.
   by @zxing/browser. Upgrade when the reagent scanner is next touched.
 
 ## Status
-- 2026-10-02: U1, U2, U7 done (GAPS §82); U5, U6 done (GAPS §83). D-U2 decided: fit, weighting and
+- 2026-10-02: U1, U2, U7 done (GAPS §82); U5, U6 done (GAPS §83); U3, U4
+  done (GAPS §84). U8 waits for the MDL study. D-U2 decided: fit, weighting and
   origin are selectable per curve and R² follows the chosen weighting. D-U7
   decided: Levey-Jennings by default, Westgard as a view, warnings dismissible
   and points removable (DECISIONS 2026-10-02).

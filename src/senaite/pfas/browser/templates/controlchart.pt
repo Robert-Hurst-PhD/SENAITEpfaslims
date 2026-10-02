@@ -6,7 +6,7 @@
 <head>
   <title metal:fill-slot="title">QC Control Charts</title>
   <tal:extras metal:fill-slot="head-extra">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     /* ── Control chart layout: filters as a top bar ────────────────────── */
     .main { padding: 18px; min-width: 0; }

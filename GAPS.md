@@ -6731,3 +6731,23 @@ Approved by the lab as the first recommendation of
 - **Tests:** test_egad_format (5), test_qc_schema (6; 5 mutants killed,
   including a migration re-running).
 - **Still to do (approved):** U3 (SortableJS), U4 (Chart.js / annotation plugin).
+
+## 84. Reuse review U3 / U4: SortableJS drag-and-drop; one Chart.js, annotation bands (2026-10-02)
+- **U3:** the Run Builder sequence and the method editor's extraction stages
+  reorder with SortableJS 1.15.6 (MIT, vendored in static/vendor with its
+  licence) instead of hand-written HTML5 drag events, which do not fire on
+  touch screens. Our callbacks stay: the Run Builder writes the order into
+  its hidden field; the stage list renumbers and re-serialises. A read-only
+  run template cannot be dragged. Live: a mouse drag moved CCB above ICV and
+  the hidden field followed; dragging stage 2 above stage 1 renumbered both
+  and the stages JSON followed (nothing saved).
+- **U4:** one Chart.js version (4.4.3; the control chart was on 4.4.0); the
+  pass / warn / fail bands on the Calibrations page's deviation plots are
+  chartjs-plugin-annotation 3.1.0 boxes (MIT, vendored) instead of a
+  hand-written plugin; an unused limit-line helper removed. No limit, no
+  bands. Live: plugin registered, five bands for limit 20 / warn 10, none for
+  an unset limit; control chart renders.
+- **Tests:** test_sortable (2), test_chart_libraries (2). WIRING.md
+  regenerated.
+- **Reuse review status:** U1-U7 done; U8 (MDL t-values) waits for the MDL
+  study feature.

@@ -259,6 +259,7 @@
   </tal:rjson>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/ml-matrix-6.12.1.umd.js"></script>
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=1"></script>
   <script>
@@ -366,37 +367,28 @@
   }
 
   // ── Zone-background inline plugin (draws pass/warn/fail bands on bar charts) ─
-  var zoneBgPlugin = {
-    id: 'zoneBg',
-    beforeDraw: function(chart) {
-      var opts = (chart.options.plugins||{}).zoneBg;
-      if (!opts||!opts.limit) return;
-      var ys = chart.scales.y, xs = chart.scales.x;
-      if (!ys||!xs) return;
-      var ctx = chart.ctx;
-      var L = xs.left, R = xs.right;
-      var top = chart.chartArea.top, bot = chart.chartArea.bottom;
-      var limPx  = ys.getPixelForValue(opts.limit);
-      var limNPx = ys.getPixelForValue(-opts.limit);
-      var warnPx = opts.warn ? ys.getPixelForValue(opts.warn)  : limPx;
-      var warnNPx= opts.warn ? ys.getPixelForValue(-opts.warn) : limNPx;
-      ctx.save();
-      // fail zone (beyond ±limit)
-      ctx.fillStyle = _rgba('--s-danger',  0.07);
-      if (limPx > top) ctx.fillRect(L, top, R-L, Math.min(limPx, bot)-top);
-      if (limNPx < bot) ctx.fillRect(L, Math.max(limNPx, top), R-L, bot-Math.max(limNPx, top));
-      // warn zone (between ±warn and ±limit)
-      if (opts.warn && opts.warn < opts.limit) {
-        ctx.fillStyle = _rgba('--s-warning', 0.08);
-        ctx.fillRect(L, Math.max(limPx, top), R-L, warnPx-Math.max(limPx, top));
-        ctx.fillRect(L, Math.max(warnNPx, top), R-L, Math.min(limNPx, bot)-Math.max(warnNPx, top));
-      }
-      // pass zone (between ±warn)
-      ctx.fillStyle = _rgba('--s-success', 0.06);
-      ctx.fillRect(L, warnPx, R-L, warnNPx-warnPx);
-      ctx.restore();
+  /* Pass / warn / fail bands behind a %-deviation plot, drawn by
+     chartjs-plugin-annotation (REUSE_REVIEW U4; it replaced a hand-written
+     Chart.js plugin). A null limit draws nothing: the method sets none. */
+  function zoneAnnotations(limit, warn) {
+    if (!limit) return {};
+    var w = (warn && warn < limit) ? warn : limit;
+    function band(yMin, yMax, token, alpha) {
+      var b = {type: 'box', drawTime: 'beforeDatasetsDraw', borderWidth: 0,
+               backgroundColor: _rgba(token, alpha)};
+      if (yMin != null) b.yMin = yMin;
+      if (yMax != null) b.yMax = yMax;
+      return b;
     }
-  };
+    var out = {failHi: band(limit, null, '--s-danger', 0.07),
+               failLo: band(null, -limit, '--s-danger', 0.07),
+               pass:   band(-w, w, '--s-success', 0.06)};
+    if (w < limit) {
+      out.warnHi = band(w, limit, '--s-warning', 0.08);
+      out.warnLo = band(-limit, -w, '--s-warning', 0.08);
+    }
+    return out;
+  }
 
   // ── Plot 1: response ratio (or calculated) vs expected concentration ───────
   function drawPlot1(uid, cal, fitType, wtype, origin) {
@@ -500,29 +492,6 @@
   }
 
   // ── Shared helper: draw a limit-line dataset pair (±) on a bar chart ────────
-  function limitLineDatasets(n, limitVal, warnVal, labelPrefix) {
-    var pos  = [], neg  = [], wpos = [], wneg = [];
-    for (var i=0; i<n; i++) {
-      pos.push(limitVal); neg.push(-limitVal);
-      if (warnVal && warnVal < limitVal) { wpos.push(warnVal); wneg.push(-warnVal); }
-    }
-    var ds = [
-      {label: '+'+(limitVal)+'% limit', data:pos,  type:'line', borderColor:_rgba('--s-danger',0.75),
-       borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false},
-      {label: '-'+(limitVal)+'% limit', data:neg,  type:'line', borderColor:_rgba('--s-danger',0.75),
-       borderWidth:1.5, borderDash:[5,4], pointRadius:0, fill:false},
-    ];
-    if (warnVal && warnVal < limitVal) {
-      ds.push({label: '+'+(warnVal)+'% warn', data:wpos, type:'line',
-               borderColor:_rgba('--s-warning',0.65), borderWidth:1, borderDash:[3,3],
-               pointRadius:0, fill:false});
-      ds.push({label: '-'+(warnVal)+'% warn', data:wneg, type:'line',
-               borderColor:_rgba('--s-warning',0.65), borderWidth:1, borderDash:[3,3],
-               pointRadius:0, fill:false});
-    }
-    return ds;
-  }
-
   // ── Plot 2: % deviation per calibration level ─────────────────────────────
   function drawPlot2(uid, cal) {
     var canvas = document.getElementById(uid+'_p2');
@@ -552,7 +521,6 @@
       data:{labels:labels, datasets:[
         {label:'Cal Level', data:devs, backgroundColor:colors, borderWidth:0, borderRadius:2}
       ]},
-      plugins:[zoneBgPlugin],
       options:{
         responsive:true, maintainAspectRatio:false,
         onClick: function(evt, elems) {
@@ -561,7 +529,7 @@
           }
         },
         plugins:{
-          zoneBg:{ limit:calLim, warn:(calWarn&&calWarn<calLim?calWarn:null) },
+          annotation:{ annotations: zoneAnnotations(calLim, calWarn) },
           legend:{display:false},
           tooltip:{callbacks:{label:function(ctx){
             if (ctx.datasetIndex===0){
@@ -653,7 +621,6 @@
         {label:'Check Standard', data:devs,
          backgroundColor:barColors, borderWidth:0, borderRadius:2}
       ]},
-      plugins:[zoneBgPlugin],
       options:{
         responsive:true, maintainAspectRatio:false,
         onClick: function(evt, elems) {
@@ -662,7 +629,7 @@
           }
         },
         plugins:{
-          zoneBg:{ limit:limMax, warn:(ccvWarn&&ccvWarn<limMax?ccvWarn:null) },
+          annotation:{ annotations: zoneAnnotations(limMax, ccvWarn) },
           legend:{display:false},
           tooltip:{callbacks:{label:function(ctx){
             if (ctx.datasetIndex===0){
