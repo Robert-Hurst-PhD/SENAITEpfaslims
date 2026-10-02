@@ -16,6 +16,8 @@ is, and which inventory items need attention. Pure; Python 2.7 and 3.
     is_standard_row(row)                      -> FM-ENV-252 standards[] or reagents[]
     is_consumable_row(row)                    -> FM-ENV-252 extraction_materials[]
     equipment_family(label)                   -> "balance" | "pipette" | ""
+    lot_on_file(items, lot)                   -> the inventory lot with that
+                                                 number (any status), or None
     units_for(label, units)                   -> registered units of that family
     stage_warnings(rows, balances, today)     -> what a deviation note must
                                                  explain before the stage is
@@ -300,3 +302,16 @@ def units_for(label, units):
         return []
     return [u for u in units or []
             if (u.get("unit_type") or u"").startswith(fam) and u.get("active", 1)]
+
+
+def lot_on_file(items, lot):
+    """The inventory lot with this lot number, whatever its status. A lot the
+    picker did not offer may still be on file -- expired or quarantined --
+    and receiving it again would make a second record of the same lot."""
+    want = (lot or u"").strip().lower()
+    if not want:
+        return None
+    for it in items or []:
+        if (it.get("lot_number") or u"").strip().lower() == want:
+            return it
+    return None

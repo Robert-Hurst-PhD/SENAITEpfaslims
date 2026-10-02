@@ -6939,8 +6939,20 @@ consumables by lot) and DB4 (warn + deviation note).
   real state (no balance registered) shows the hint; injected units in the
   page exercised pick, flag and fallback without touching lab data.
 
+- **GS1 + inline receive (2e, R9, DB2):** gs1-barcode-parser-mod 1.2.1 (MIT,
+  licence checked on the npm registry, vendored with its LICENSE) reads GTIN,
+  lot and expiry from GS1-128 / DataMatrix (FNC1) / bracketed labels; a label
+  selects the lot by its GS1 lot number, else the stored barcode, else a lot
+  number the code contains. A lot not in the inventory is received inside the
+  stage (name, lot, expiry, supplier, catalogue #, category; prefilled from
+  the label; the raw code stored as its barcode so the next scan finds it),
+  through the same record the Reagent Inventory makes, then picked. A lot
+  number already on file is never received twice; the answer says why the
+  picker did not offer it ("... cannot be used (expired)"). Live: all three
+  cases on B-002; the probe reagent and session removed afterwards.
+
 **Still open:** no balance is registered in Facility QC, so every weighing
-stage asks for a note today (a lab action); scan resolves GS1 (R9) and the R11 library upgrades; inline
-receive for an unknown lot (DB2); usage ledger and count-down (phase 3, DB3);
+stage asks for a note today (a lab action); the R11 library upgrades
+(tesseract.js v5, @zxing/browser); usage ledger and count-down (phase 3, DB3);
 sample table in the weighing stage (phase 4); inventory categories editable by
 the lab.

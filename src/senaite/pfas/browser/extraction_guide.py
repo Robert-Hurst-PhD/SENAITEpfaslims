@@ -147,6 +147,8 @@ class PFASExtractionGuideView(BrowserView):
                 return self._handle_reagent_status()
             if action == "finalize":
                 return self._handle_finalize()
+            if action == "receive_lot":
+                return self._handle_receive_lot()
         return self.template()
 
     # ── Context helpers ──────────────────────────────────────────────────────
@@ -545,6 +547,62 @@ class PFASExtractionGuideView(BrowserView):
                              "name": u.get("name") or u"", "ok": ok, "note": note})
             out.append({"label": label, "family": fam, "units": opts})
         return json.dumps(out)
+
+    def categories_json(self):
+        from senaite.pfas.content.reagent import REAGENT_CATEGORIES
+        return json.dumps(list(REAGENT_CATEGORIES))
+
+    def _handle_receive_lot(self):
+        """Receive a lot that is not in the inventory without leaving the
+        stage (DB2, DECISIONS 2026-10-02): the same record the Reagent
+        Inventory makes, then handed back to the picker. JSON in, JSON out.
+        A lot number already on file is never received twice -- the answer
+        says why the picker did not offer it."""
+        from datetime import date
+        from senaite.pfas.bench_queue import is_usable, lot_on_file
+        from senaite.pfas.browser.bench_inventory import inventory_items
+        from senaite.pfas.browser.reagents import STATUS_ACTIVE
+        f = self.request.form
+        self.request.response.setHeader("Content-Type", "application/json")
+        name = (f.get("name") or u"").strip()
+        lot = (f.get("lot_number") or u"").strip()
+        if not name or not lot:
+            return json.dumps({"ok": False, "error": u"Name and lot number are required."})
+        portal = self._portal()
+        existing = lot_on_file(inventory_items(portal), lot)
+        if existing is not None:
+            usable = is_usable(existing, date.today())
+            return json.dumps({"ok": False, "exists": True, "usable": usable, "error": (
+                u"Lot {0} is already in the inventory as {1}{2}.".format(
+                    lot, existing.get("name"),
+                    u"" if usable else u" and cannot be used ({0})".format(
+                        existing.get("status") or u"expired")))})
+        b = self._get_batch()
+        data = {
+            "uid": None, "name": name, "lot_number": lot,
+            "category": (f.get("category") or u"").strip(),
+            "supplier": (f.get("supplier") or u"").strip(),
+            "cat_number": (f.get("cat_number") or u"").strip(),
+            "manufacturer_expiry": (f.get("expiry") or u"").strip(),
+            "expiry_date": u"", "opened_date": u"",
+            "received_date": date.today().strftime("%Y-%m-%d"),
+            "storage_location": u"", "quantity": u"", "unit": u"",
+            "barcode": (f.get("barcode") or u"").strip(),
+            "notes": u"Received at the bench during the extraction of {0}.".format(
+                b.getId() if b is not None else u"a batch"),
+            "status": STATUS_ACTIVE,
+        }
+        uid = _save_reagent(portal, data)
+        item = [i for i in inventory_items(portal)
+                if i["kind"] == u"reagent" and i["uid"] == uid]
+        if not item:
+            return json.dumps({"ok": False, "error": u"Saved, but the lot could not be read back."})
+        i = item[0]
+        return json.dumps({"ok": True, "lot": {
+            "key": u"reagent:{0}".format(i["uid"]), "kind": i["kind"],
+            "kind_label": i["kind_label"], "uid": i["uid"], "name": i["name"],
+            "lot": i["lot_number"], "expiry": i["expiry"], "status": i["status"],
+            "barcode": i["barcode"], "cat_number": i["cat_number"]}})
 
     def stage_draft(self):
         """The current stage's kept entries after a completion was refused

@@ -191,6 +191,13 @@ def test_equipment_family_and_units():
     assert bq.units_for("Vortex Mixer", units) == []
 
 
+def test_a_lot_on_file_is_never_received_twice():
+    items = [lot("a", "Methanol", "M-1", status="expired"), lot("b", "Water", "W-1")]
+    assert bq.lot_on_file(items, " m-1 ")["uid"] == "a"            # any status, any case
+    assert bq.lot_on_file(items, "W-1")["uid"] == "b"
+    assert bq.lot_on_file(items, "X-9") is None and bq.lot_on_file(items, "") is None
+
+
 def _src(*parts):
     with io.open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
         return fh.read()
@@ -216,6 +223,15 @@ def test_the_guide_reads_and_resolves_through_the_inventory():
     assert '"warnings":            warnings' in stage
     assert "DRAFT.reagents" in t and "stageWarnings()" in t
     assert "view/stage_equipment_json" in t and "function pickUnit(" in t
+    # DB2 + R9: GS1 labels parsed by the vendored MIT parser; an unknown lot
+    # is received in the stage through the server action, never twice
+    assert "gs1-barcode-parser-mod-1.2.1.js" in t and "parseBarcode(" in t
+    assert "openReceive(i, label)" in t and "'receive_lot'" in t
+    rec = g[g.index("def _handle_receive_lot"):]
+    rec = rec[:rec.index("\n    def ", 1)]
+    assert rec.index("lot_on_file(") < rec.index("_save_reagent("), "check the file before creating"
+    vend = os.path.join(ROOT, "src", "senaite", "pfas", "browser", "static", "vendor")
+    assert os.path.exists(os.path.join(vend, "gs1-barcode-parser-mod-LICENSE.txt"))
     h = _src("src", "senaite", "pfas", "browser", "workspace_home.py")
     assert '.startswith("balance")' in h and '== "balance"' not in h, \
         "unit types are balance_analytical / balance_prep"
