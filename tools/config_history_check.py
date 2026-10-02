@@ -77,7 +77,7 @@ def case_toggle(pg):
     open_profile(pg, "EPA_537_1", "pane-toggles")
     pg.locator(".rule-toggle-cb").first.evaluate("e => e.click()")   # a styled switch hides the box
     save_profile_form(pg)
-    return "method_rule_toggles", True, None
+    return "rule_toggles", True, None
 
 
 def case_surrogate(pg):
@@ -217,7 +217,7 @@ def stale_toggle(browser, password):
     err = b.locator(".alert-error")
     verdict = err.first.inner_text().strip()[:120] if err.count() else "NOT REFUSED"
     print("stale save after a toggle-only change:", verdict)
-    print("  undo:", revert(a, "method_rule_toggles"))
+    print("  undo:", revert(a, "rule_toggles"))
 
 
 def stale_section(browser, password):

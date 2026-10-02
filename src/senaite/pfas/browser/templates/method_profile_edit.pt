@@ -235,8 +235,6 @@
          onclick="pfasTabSwitch('pane-cal'); return false;">Calibration &amp; CCV</a>
       <a class="pfas-tab" data-pane="pane-lwf" href="#pane-lwf"
          onclick="pfasTabSwitch('pane-lwf'); return false;">Lab Workflow</a>
-      <a class="pfas-tab" data-pane="pane-adv" href="#pane-adv"
-         onclick="pfasTabSwitch('pane-adv'); return false;">Advanced</a>
     </div>
   </tal:tabs>
 
@@ -268,25 +266,25 @@
           tal:attributes="action string:@@pfas-method-profile-edit">
       <input type="hidden" name="config_stamp" tal:attributes="value view/config_stamp" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
-      <!-- marker so a save also writes the qc_rules store (D52); the
+      <!-- marker: the Rule Toggles tab was submitted, so its switches are
+           written into the profile (QC consolidation P2); the
            qc_toggles_present marker lives in the QC Types pane below -->
       <input type="hidden" name="qc_rules_present" value="1" />
 
-      <!-- ── Tab: Rule Toggles & QC Run (qc_rules.json, per method) ──────── -->
+      <!-- ── Tab: Rule Toggles & QC Run (saved on the method profile) ─────── -->
       <div class="tab-pane" id="pane-toggles">
         <div class="page-body-narrow">
           <p class="pane-intro">
             Which QC-engine rules fire for <strong tal:content="view/display_name">this
             method</strong> when the pipeline evaluates a run. Turn a rule off to
-            exclude it from automated evaluation; adjust a rule&#8217;s parameters
-            inline (blank = inherit the global default). Saved to the QC-engine
-            store (<code tal:content="view/qc_rules_path">/data/qc/qc_rules.json</code>),
-            read by the pipeline worker.
+            exclude it from automated evaluation. A rule&#8217;s limits are this
+            method&#8217;s own settings on the Calibration &amp; CCV tab (R&#178;,
+            CCV window, S/N, ion ratio, RT, IS response); there is no second copy.
           </p>
           <div class="table-wrap">
           <table class="factor-table" style="max-width:820px;">
             <thead>
-              <tr><th style="width:52px;">On</th><th>Rule</th><th>Parameters</th></tr>
+              <tr><th style="width:52px;">On</th><th>Rule</th><th>Notes</th></tr>
             </thead>
             <tbody>
               <tr tal:repeat="row view/rule_toggle_rows">
@@ -306,16 +304,6 @@
                   <span tal:condition="not:row/has_params"
                         style="color:var(--s-secondary);font-size:var(--fs-sm);"
                         tal:content="python:row.get('note') or u'\u2014'">&#8212;</span>
-                  <tal:p tal:repeat="p row/params">
-                    <label style="display:inline-flex;align-items:center;gap:5px;
-                                  margin:0 12px 4px 0;font-size:var(--fs-sm);">
-                      <span tal:content="p/label" style="color:var(--s-secondary);">min</span>
-                      <input type="number" step="any" style="width:90px;"
-                             tal:attributes="name string:rulelimit.${p/name};
-                                             value p/value;
-                                             placeholder python:'inherit' if p['inherited'] else ''" />
-                    </label>
-                  </tal:p>
                 </td>
               </tr>
               <tr tal:condition="view/rule_qc_type_rows">
@@ -957,48 +945,6 @@
         </div>
       </div><!-- /pane-qct -->
 
-      <!-- ── Tab: Advanced (qc_rules global defaults + raw JSON) ─────────── -->
-      <div class="tab-pane" id="pane-adv">
-        <div class="page-body-narrow">
-          <details open="open">
-            <summary>Global Engine Defaults (all methods)</summary>
-            <div class="section-body">
-              <p class="json-hint" style="max-width:760px;">
-                Cross-method fallback values for the QC engine. A per-method
-                override on the <strong>Rule Toggles &amp; QC Run</strong> tab
-                always wins over these; edit here only to change the baseline
-                every method inherits.
-              </p>
-              <table class="factor-table" style="max-width:560px;">
-                <tbody>
-                  <tr tal:repeat="g view/global_criteria_fields">
-                    <td><label tal:content="g/label"
-                               style="font-size:var(--fs-sm);color:var(--s-secondary);">label</label></td>
-                    <td style="width:150px;">
-                      <input type="number" step="any" style="width:120px;"
-                             tal:attributes="name string:qcglobal.${g/key}; value g/value" />
-                      <span tal:condition="g/unit" tal:content="g/unit"
-                            style="font-size:var(--fs-xs);color:var(--s-secondary);">%</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </details>
-          <details>
-            <summary>Full QC-rules document (read-only reference)</summary>
-            <div class="section-body">
-              <p class="json-hint">
-                The complete <code tal:content="view/qc_rules_path">qc_rules.json</code>
-                as the pipeline sees it. Edit via the tabs above; this is a
-                reference view (the store is shared across methods).
-              </p>
-              <textarea class="json-area" readonly="readonly" rows="20"
-                        tal:content="view/qc_rules_json"></textarea>
-            </div>
-          </details>
-        </div>
-      </div><!-- /pane-adv -->
 
     </form>
     <!-- Per-tab section forms (R2): each saves only its own section, with its

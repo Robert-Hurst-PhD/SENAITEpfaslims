@@ -558,15 +558,15 @@ class PFASRunBuilderView(BrowserView):
         """(name, type, description) per calibrator level. Injection name = the
         recorded cal lot + level (else method code); description carries analyst,
         level, lot and the real prep date."""
-        from senaite.pfas.analyte_reference import get_cal_ladder
+        from senaite.pfas import calibration_levels as cl
         from senaite.pfas.method_bridge import get_method_cal_code
         cal_lot = (std.get("cal_a_lot") or u"").strip() if std else u""
         prep = (std.get("prepared_date") or u"").strip() if std else u""
         code = get_method_cal_code(self._portal(), method_id)
         ymd = run_date.strftime("%y%m%d")
         out = []
-        for i, _c in enumerate(get_cal_ladder(method_id) or []):
-            lvl = i + 1
+        # one calibrator per level of the METHOD PROFILE's curve (P1)
+        for lvl, _c in cl.calibrators(self._profile(method_id)):
             name = (u"{0}-L{1}".format(cal_lot, lvl) if cal_lot
                     else u"{0}-CAL-{1}-{2}".format(code, lvl, ymd))
             desc = u"{0} · Calibrator L{1}".format(initials, lvl)

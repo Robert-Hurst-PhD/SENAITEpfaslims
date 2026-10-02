@@ -287,8 +287,18 @@ def apply(section, stored, updates, env=None):
         base = _descend(base, p)
     for path, new in updates.items():
         node = base
-        for p in path[:-1]:
-            node = node.setdefault(p, {})
+        if new is None or new is REMOVE:
+            # an unset value never CREATES a missing block: an untouched save
+            # of a field the profile has no parent for stores nothing
+            for p in path[:-1]:
+                node = node.get(p) if isinstance(node, dict) else None
+                if node is None:
+                    break
+            if not isinstance(node, dict):
+                continue
+        else:
+            for p in path[:-1]:
+                node = node.setdefault(p, {})
         if new is REMOVE:
             node.pop(path[-1], None)
         else:

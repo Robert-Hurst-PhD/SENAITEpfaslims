@@ -49,37 +49,27 @@ METHODS = [{"id": mid, "label": _METHOD_SHORT_LABELS.get(mid, mid)}
 # Only instrument-level rules live here.  Extraction/matrix QC acceptance
 # (LCS, LFB, LFSM, LFSMD, MB, LRB, Dup, MxB recovery/RPD/blank windows) are
 # defined per-method in the Method Profile (method_profile_store.py qc_acceptance).
+# A rule is an on/off switch. Its LIMITS are the method profile's own fields
+# (Calibration & CCV: R2, CCV window, S/N, ion ratio, RT, IS response) --
+# QC consolidation P2 removed the second copy that lived here as "params".
 RULE_LIBRARY = [
-    {"key": "is_response",   "label": "IS Response",
-     "params": [{"name": "is_response_pct", "label": "Max deviation (%)", "type": "number", "default": 50.0}]},
-    {"key": "rrt_deviation", "label": "RRT / RT Deviation",
-     "params": [
-         {"name": "rt_tolerance_pct", "label": "RT tolerance (% relative)", "type": "number", "default": 5.0},
-         {"name": "rt_tolerance_min", "label": "RT tolerance (min absolute)", "type": "number", "default": 0.10},
-     ]},
-    {"key": "ion_ratio",     "label": "Ion Ratio",
-     "params": [
-         {"name": "qq_ratio_matching_pct", "label": "Isotopically matched (%)", "type": "number", "default": 20.0},
-         {"name": "qq_ratio_key_pct",      "label": "Key analytes (%)",          "type": "number", "default": 25.0},
-         {"name": "qq_ratio_non_iso_pct",  "label": "Non-iso-linked (%)",        "type": "number", "default": 30.0},
-     ]},
-    {"key": "cal_r2",        "label": u"Calibration r²",
-     "params": [{"name": "cal_r2_min", "label": u"Minimum r²", "type": "number", "default": 0.995}]},
-    {"key": "ccv_recovery",  "label": "CCV Recovery",
-     "params": [
-         {"name": "ccv_recovery_min", "label": "Min recovery (%)", "type": "number", "default": 70.0},
-         {"name": "ccv_recovery_max", "label": "Max recovery (%)", "type": "number", "default": 130.0},
-     ]},
+    {"key": "is_response",   "label": "IS Response", "params": [],
+     "note": u"Window: IS / Surrogate Response (Calibration & CCV tab)."},
+    {"key": "rrt_deviation", "label": "RRT / RT Deviation", "params": [],
+     "note": u"Tolerance: relative / absolute RT (Calibration & CCV tab)."},
+    {"key": "ion_ratio",     "label": "Ion Ratio", "params": [],
+     "note": u"Ion Ratio Tolerance (Calibration & CCV tab); blank = not judged."},
+    {"key": "cal_r2",        "label": u"Calibration r²", "params": [],
+     "note": u"R² Minimum (Calibration & CCV tab)."},
+    {"key": "ccv_recovery",  "label": "CCV Recovery", "params": [],
+     "note": u"Recovery Min / Max (Calibration & CCV tab)."},
     # N is the method profile's CCV frequency (Calibration & CCV) -- the value
     # the Run Builder brackets with; the duplicate "CCV every N" parameter that
     # stood here (10 everywhere, FDA's profile says 6) was retired 2026-10-01.
     {"key": "ccv_frequency", "label": "CCV Frequency", "params": [],
      "note": u"N is the method's CCV frequency (Calibration & CCV tab)."},
-    {"key": "sn_min",        "label": "S/N Minimum",
-     "params": [
-         {"name": "sn_min",      "label": "Min S/N for detection",    "type": "number", "default": 3.0},
-         {"name": "sn_quan_min", "label": "Min S/N for quantitation", "type": "number", "default": 10.0},
-     ]},
+    {"key": "sn_min",        "label": "S/N Minimum", "params": [],
+     "note": u"S/N minima, quantitation and confirmation (Calibration & CCV tab)."},
     # Flags a detected result below the analyte's MDL (Reporting Limits). The
     # "min replicate count" parameter was dropped 2026-10-01: no MDL-study
     # record exists for it to be checked against.
@@ -99,8 +89,8 @@ RULE_LIBRARY = [
     # method profile's `confirmation` block, beside the other confirmation
     # settings. This is the on/off switch only: one fact, one home.
     {"key": "single_transition_confirm",
-     "label": "Single-Transition Confirmation",
-     "params": []},
+     "label": "Single-Transition Confirmation", "params": [],
+     "note": u"Technique named under Chromatographic Confirmation (Calibration & CCV tab)."},
 ]
 
 # ── Default toggle state per method ──────────────────────────────────────────
@@ -166,14 +156,39 @@ def migrate_rule_store(rules):
     return changed
 
 
-# ── Default method-specific limit overrides ───────────────────────────────────
-# These override global/qc_type defaults on a per-method basis.
-# Empty by default; lab fills them in via the UI.
-DEFAULT_METHOD_OVERRIDES = {
-    "FDA_32PFAS": {},
-    "EPA_537_1":  {},
-    "EPA_1633A":  {},
-}
+def method_toggles(profile, method_id):
+    """{rule key: on} for one method: the profile's own `rule_toggles` over the
+    library default for any rule it has not set (a new rule starts at its
+    default). The one reader of rule switches (QC consolidation P2)."""
+    out = dict(DEFAULT_METHOD_RULE_TOGGLES.get(method_id, {}))
+    for r in RULE_LIBRARY:
+        out.setdefault(r["key"], True)
+    out.update((profile or {}).get("rule_toggles") or {})
+    return out
+
+
+# qc_rules.json values that are QC CRITERIA, not chart presentation; they
+# live on the method profile now and are stripped from the file.
+CRITERIA_KEYS = ("pct_deviation_max", "pct_deviation_warn", "recovery_min",
+                 "recovery_max", "recovery_warn_low", "recovery_warn_high",
+                 "recovery_min_key_matrix", "recovery_max_key_matrix", "rpd_max")
+
+
+def strip_moved_sections(saved):
+    """Remove what moved to the method profiles from a qc_rules.json dict (in
+    place): rule toggles, method overrides, global defaults, and the criteria
+    half of qc_types. True if anything was removed."""
+    changed = False
+    for k in ("method_rule_toggles", "method_overrides", "global"):
+        if k in saved:
+            saved.pop(k)
+            changed = True
+    for qt in (saved.get("qc_types") or {}).values():
+        for k in CRITERIA_KEYS:
+            if isinstance(qt, dict) and k in qt:
+                qt.pop(k)
+                changed = True
+    return changed
 
 # ── Mapping: RULE_LIBRARY key → engine review-check name(s) ──────────────────
 # Used by the pipeline worker to gate auto_evaluate() blocks.
@@ -200,34 +215,13 @@ DEFAULT_RULES = {
     "updated_by": "",
     "updated_at": "",
 
-    # Per-method rule toggle state.  True = rule is evaluated; False = skipped.
-    # These are proposed starting defaults (UI-editable); see DECISIONS.md.
-    "method_rule_toggles": DEFAULT_METHOD_RULE_TOGGLES,
-
-    # Per-method parameter overrides.  Sparse: only keys that differ from global
-    # are stored.  Missing keys fall through to global/qc_type defaults.
-    "method_overrides": DEFAULT_METHOD_OVERRIDES,
-
     # Instrument verification QC types only.
     # LCS, LFB, LFSM, LFSMD, MB, MxB, LRB, Dup acceptance criteria live in
     # method_profile_store.py qc_acceptance (per-method, tiered, no fallbacks).
     "qc_types": {
-        "CAL": {
-            "label":             "Calibration Standard",
-            "chart_type":        CHART_LJ,
-            "pct_deviation_max": 25.0,
-        },
-        "ICV": {
-            "label":             "Initial Calibration Verification",
-            "chart_type":        CHART_LJ,
-            "pct_deviation_max": 20.0,
-        },
-        "CCV": {
-            "label":             "Continuing Calibration Verification",
-            "chart_type":        CHART_LJ,
-            "pct_deviation_max": 20.0,
-            "pct_deviation_warn": 10.0,
-        },
+        "CAL": {"label": "Calibration Standard", "chart_type": CHART_LJ},
+        "ICV": {"label": "Initial Calibration Verification", "chart_type": CHART_LJ},
+        "CCV": {"label": "Continuing Calibration Verification", "chart_type": CHART_LJ},
     },
 }
 
@@ -261,27 +255,15 @@ class QCRulesStore(object):
             rules["updated_by"] = saved.get("updated_by", "")
             rules["updated_at"] = saved.get("updated_at", "")
             # Per-QC-type overrides (instrument types only: CAL, ICV, CCV)
+            # Control-chart presentation per QC type. Criteria, rule toggles,
+            # method overrides and global defaults are NOT loaded: they live on
+            # the method profile (QC consolidation P2).
             if "qc_types" in saved:
                 for qtype, overrides in saved["qc_types"].items():
                     if qtype not in rules["qc_types"]:
                         rules["qc_types"][qtype] = {}
-                    rules["qc_types"][qtype].update(overrides)
-            # Per-method rule toggle overrides (deep-merge per method)
-            if "method_rule_toggles" in saved:
-                for method_id, method_toggles in saved["method_rule_toggles"].items():
-                    if method_id not in rules["method_rule_toggles"]:
-                        rules["method_rule_toggles"][method_id] = {}
-                    rules["method_rule_toggles"][method_id].update(method_toggles)
-            # Per-method parameter overrides (deep-merge per method)
-            if "method_overrides" in saved:
-                for method_id, method_params in saved["method_overrides"].items():
-                    if method_id not in rules["method_overrides"]:
-                        rules["method_overrides"][method_id] = {}
-                    rules["method_overrides"][method_id].update(method_params)
-            # Global engine defaults (D52: previously dropped on load — this is
-            # why the Global Criteria tab always rendered empty).
-            if isinstance(saved.get("global"), dict):
-                rules.setdefault("global", {}).update(saved["global"])
+                    rules["qc_types"][qtype].update(
+                        (k, v) for k, v in overrides.items() if k not in CRITERIA_KEYS)
             # NOTE (D53): salt_factors is intentionally NOT loaded here. Salt
             # adjustment is a CORE per-method sample correction (lives in the
             # method profile, applied to ALL samples), not a QC-engine concept.
@@ -295,11 +277,14 @@ class QCRulesStore(object):
         try:   # change history (R1)
             from senaite.pfas import config_history
             config_history.track(None, "qc_rules", "rules", self.load,
-                                 label=u"QC rule toggles and parameters")
+                                 label=u"QC chart settings")
         except Exception:
             pass
         import datetime
         self._ensure_dir()
+        # the file holds chart presentation only; what moved to the method
+        # profiles can never be written back (e.g. by reverting an old entry)
+        strip_moved_sections(rules)
         rules["updated_by"] = updated_by
         rules["updated_at"] = datetime.datetime.utcnow().strftime(
             "%Y-%m-%dT%H:%M:%S"

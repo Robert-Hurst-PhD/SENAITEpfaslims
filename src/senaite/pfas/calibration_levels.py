@@ -97,6 +97,13 @@ def levels(profile, keyword=None):
     return [v * factor for v in base if top is None or v * factor <= top * (1 + 1e-9)]
 
 
+def calibrators(profile):
+    """[(level number, concentration in the level unit)], lowest first -- the
+    calibrators a run injects and the logbook prepares (Run Builder,
+    FM-ENV-251). One list for every consumer (QC consolidation P1)."""
+    return [(i + 1, v) for i, v in enumerate(levels(profile))]
+
+
 def lowest(profile, keyword=None):
     lv = levels(profile, keyword)
     return lv[0] if lv else None

@@ -5689,3 +5689,15 @@ Lab answers:
   Table 4 (Dec 2024) runs base x (its CS1 / 0.2), keeping points <= its highest
   listed standard (PFBA 0.8-204.8; FTS 0.8-25.6; FOSEs 2-512; 5:3/7:3FTCA
   5-1280 ...). Its RL is its own lowest level. Editable per analyte.
+
+## 2026-10-02 — QC profile consolidation: P1 + P2 approved (confirmed)
+- Review: docs/QC_PROFILE_CONSOLIDATION.md. Approved phases P1 (make the
+  copies agree) and P2 (one set of limits). P3 (one project system) and P4
+  (derive "no labelled standard"; one EIS grid) are NOT approved yet.
+- **D1:** for the 12 disagreements between qc_rules.json and the method
+  profile, the method profile wins (what results are already judged with).
+- **D2:** rule on/off switches move INTO each method profile;
+  qc_rules.json keeps only control-chart presentation.
+- **D4:** SENAITE AnalysisSpecs become a read-only copy of the profile: an
+  edit made there is put back from the profile, never written into it
+  (spec_overrides retired).

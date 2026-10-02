@@ -174,19 +174,22 @@ def matrix_slug(title):
     return "".join(out).strip("-")
 
 
-def overrides_for(profile, qc_type, matrix_title):
-    """Per-analyte overrides for one qc_type × matrix.
-
-    New shape: spec_overrides = {qc: {matrix_title: {kw: {min,max}}}}.
-    Back-compat: a legacy flat {kw: {min,max}} under qc applies to all matrices.
-    """
-    qc_ov = (profile.get("spec_overrides", {}) or {}).get(qc_type, {}) or {}
-    if not qc_ov:
-        return {}
-    first = next(iter(qc_ov.values()))
-    if isinstance(first, dict) and ("min" in first or "max" in first):
-        return qc_ov          # legacy flat: applies to every matrix
-    return qc_ov.get(matrix_title, {}) or {}
+def same_ranges(old_rows, new_rows):
+    """True when two ResultsRange lists set the same limits per analyte
+    (numbers compared as numbers; row order and comments ignored)."""
+    def norm(rows):
+        out = {}
+        for r in rows or []:
+            vals = []
+            for k in ("min", "max"):
+                v = r.get(k)
+                try:
+                    vals.append(round(float(v), 6))
+                except (TypeError, ValueError):
+                    vals.append(None)
+            out[r.get("keyword", "")] = tuple(vals)
+        return out
+    return norm(old_rows) == norm(new_rows)
 
 
 def _build_results_range(kw_to_tier, tier_lims, overrides=None, is_tight=True):
@@ -381,9 +384,10 @@ def _sync_analysis_specs(portal, method_id, profile, triggered_by=None):
                     continue
 
                 is_tight = matrix_title in tight
-                overrides = overrides_for(profile, qc_type, matrix_title)
-                ranges = _build_results_range(
-                    kw_to_tier, tier_lims, overrides, is_tight=is_tight)
+                # SENAITE specs are a READ-ONLY copy of the profile (D4): no
+                # per-analyte overrides from the spec screen
+                ranges = _build_results_range(kw_to_tier, tier_lims, None,
+                                              is_tight=is_tight)
                 if not ranges:
                     continue
 
@@ -393,16 +397,26 @@ def _sync_analysis_specs(portal, method_id, profile, triggered_by=None):
                 if spec is None:
                     continue
 
-                # Re-assert the real SampleType (idempotent; heals pre-existing
-                # specs that pointed elsewhere).
+                old_rows = spec.getResultsRange() or []
                 try:
-                    spec.setSampleType(sample_type)
-                except Exception as exc:
-                    logger.warning("spec_sync: cannot set SampleType on %s: %s",
-                                   spec.getId(), exc)
+                    current_st = spec.getSampleType()
+                except Exception:
+                    current_st = None
+                st_ok = current_st is not None and (
+                    getattr(current_st, "UID", lambda: None)() == sample_type.UID())
+                if st_ok and same_ranges(old_rows, ranges):
+                    continue      # unchanged: no write, no snapshot (P1)
 
-                old_map = {r.get("keyword", ""): r
-                           for r in (spec.getResultsRange() or [])}
+                # Re-assert the real SampleType (heals pre-existing specs that
+                # pointed elsewhere).
+                if not st_ok:
+                    try:
+                        spec.setSampleType(sample_type)
+                    except Exception as exc:
+                        logger.warning("spec_sync: cannot set SampleType on %s: %s",
+                                       spec.getId(), exc)
+
+                old_map = {r.get("keyword", ""): r for r in old_rows}
 
                 spec.setResultsRange(ranges)
                 spec.setDescription(

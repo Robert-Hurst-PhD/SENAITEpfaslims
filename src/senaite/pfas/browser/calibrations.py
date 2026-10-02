@@ -118,69 +118,51 @@ class PFASCalibrationsView(BrowserView):
             logger.error("calibrations.instruments: %s", e)
             return []
 
-    # ── QC acceptance criteria from rules store ───────────────────────────
+    # ── QC acceptance criteria: the METHOD PROFILE of each run's method ────
+    # (QC consolidation P2, DECISIONS 2026-10-02 D1). These used to come from
+    # qc_rules.json, which disagreed with the profiles the pipeline judges by.
 
-    def r2_minimum(self):
-        """Return configured minimum R² — method override > global > default."""
-        try:
-            from senaite.pfas.qc.rules import get_rules
-            rules = get_rules()
-            method = self.selected_method()
-            if method:
-                v = rules.get("method_overrides", {}).get(method, {}).get("cal_r2_min")
-                if v is not None:
-                    return float(v)
-            v = rules.get("global", {}).get("cal_r2_min")
-            if v is not None:
-                return float(v)
-            return 0.995
-        except Exception:
-            return 0.995
+    def method_limits(self, method=None):
+        """{"r2", "cal_pct", "CAL", "ICV", "CCV"} from `method`'s profile (the
+        selected method when None); None for whatever the profile does not set
+        -- not judged, never a default."""
+        method = method or self.selected_method() or u""
+        cache = self.__dict__.setdefault("_limits_cache", {})
+        if method in cache:
+            return cache[method]
+        out = {"r2": None, "cal_pct": None, "CAL": {}, "ICV": {}, "CCV": {}}
+        if method:
+            try:
+                from senaite.pfas.method_profile_store import get_profile
+                from Products.CMFCore.utils import getToolByName
+                portal = getToolByName(self.context, "portal_url").getPortalObject()
+                iv = (get_profile(portal, method) or {}).get("instrument_verification") or {}
+            except Exception:                                   # noqa: BLE001
+                iv = {}
+            cal, ccv, icv = (iv.get("calibration") or {}), (iv.get("ccv") or {}), (iv.get("icv") or {})
+            num = lambda v: None if v in (None, u"") else float(v)       # noqa: E731
+            out["r2"] = num(cal.get("r2_min"))
+            out["cal_pct"] = num(cal.get("point_pct_dev_max"))
+            out["CAL"] = {"max": out["cal_pct"], "warn": None}
+            out["ICV"] = {"max": num(icv.get("pct_dev_max")), "warn": None}
+            lo, hi = num(ccv.get("recovery_min")), num(ccv.get("recovery_max"))
+            ccv_max = max(100.0 - lo, hi - 100.0) if lo is not None and hi is not None else None
+            out["CCV"] = {"max": ccv_max, "warn": num(ccv.get("pct_dev_warn"))}
+        cache[method] = out
+        return out
 
-    def cal_pct_max(self):
-        """Return max % deviation for calibration standards (from CAL QC type)."""
-        try:
-            from senaite.pfas.qc.rules import get_rules
-            return float(
-                get_rules().get("qc_types", {}).get("CAL", {}).get(
-                    "pct_deviation_max", 20.0
-                )
-            )
-        except Exception:
-            return 20.0
+    def r2_minimum(self, method=None):
+        """The method's minimum R² (Calibration & CCV), or None."""
+        return self.method_limits(method)["r2"]
 
-    def qc_type_limits(self):
-        """Return per-QC-type % deviation limits read from the rules store."""
-        defaults = {
-            "CAL": {"max": 25.0, "warn": 25.0},
-            "ICV": {"max": 20.0, "warn": 20.0},
-            "CCV": {"max": 20.0, "warn": 10.0},
-            "CCB": {"max": 20.0, "warn": 20.0},
-        }
-        try:
-            from senaite.pfas.qc.rules import get_rules
-            qt = get_rules().get("qc_types", {})
-            result = {}
-            for code, fallback in defaults.items():
-                d = qt.get(code, {})
-                result[code] = {
-                    "max":  float(d.get("pct_deviation_max",  fallback["max"])),
-                    "warn": float(d.get("pct_deviation_warn",
-                                        d.get("pct_deviation_max", fallback["warn"]))),
-                }
-            return result
-        except Exception:
-            return defaults
+    def cal_pct_max(self, method=None):
+        """The method's calibration point % deviation max, or None."""
+        return self.method_limits(method)["cal_pct"]
 
-    def qc_limits_json(self):
-        """Return HTML-safe JSON of per-QC-type limits for embedding in templates."""
-        try:
-            raw = json.dumps(self.qc_type_limits())
-            raw = raw.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
-            return raw
-        except Exception:
-            return ('{"CAL":{"max":25,"warn":25},"ICV":{"max":20,"warn":20},'
-                    '"CCV":{"max":20,"warn":10},"CCB":{"max":20,"warn":20}}')
+    def qc_type_limits(self, method=None):
+        """Per-QC-type % deviation limits for the method (None = not set)."""
+        lim = self.method_limits(method)
+        return {"CAL": lim["CAL"], "ICV": lim["ICV"], "CCV": lim["CCV"]}
 
     # ── Calibration data ──────────────────────────────────────────────────
 
@@ -205,8 +187,6 @@ class PFASCalibrationsView(BrowserView):
             logger.error("get_calibrations: %s", e)
             return []
 
-        r2_min = self.r2_minimum()
-
         result = []
         for row in rows:
             if status_filter and row.get("status") != status_filter:
@@ -219,7 +199,10 @@ class PFASCalibrationsView(BrowserView):
                 continue
 
             r2 = row.get("r2")
-            r2_ok = r2 is not None and float(r2) >= r2_min
+            r2_min = self.r2_minimum(row.get("method"))
+            # None = the run's method sets no R² minimum: not judged
+            r2_ok = (None if r2_min is None or r2 is None
+                     else float(r2) >= r2_min)
 
             result.append({
                 "id":                  row.get("id"),
@@ -287,7 +270,7 @@ class PFASCalibrationsView(BrowserView):
                     "analytes":      [],
                 }
             # Pre-fetch levels for each analyte
-            cal["levels"] = self.calibration_levels(cal["id"])
+            cal["levels"] = self.calibration_levels(cal["id"], cal.get("method"))
             groups[rd]["analytes"].append(cal)
 
         result = []
@@ -298,8 +281,9 @@ class PFASCalibrationsView(BrowserView):
             result.append(grp)
         return result
 
-    def calibration_levels(self, calibration_id):
-        """Return per-level data for a single calibration."""
+    def calibration_levels(self, calibration_id, method=None):
+        """Return per-level data for a single calibration, judged against
+        `method`'s point % deviation limit."""
         if not self.db_available:
             return []
         try:
@@ -308,12 +292,12 @@ class PFASCalibrationsView(BrowserView):
             logger.error("get_calibration_levels %s: %s", calibration_id, e)
             return []
 
-        pct_max = self.cal_pct_max()
+        pct_max = self.cal_pct_max(method)
         result = []
         for row in rows:
             dev = row.get("pct_deviation")
             passed = bool(row.get("passed", 1))
-            if dev is not None:
+            if dev is not None and pct_max is not None:
                 passed = abs(float(dev)) <= pct_max
             rr = row.get("response_ratio")
             result.append({
@@ -402,7 +386,6 @@ class PFASCalibrationsView(BrowserView):
     def calibration_runs_json(self):
         """Return JSON string of all run groups for the current filter."""
         runs = self.calibration_runs()
-        pct_max = self.cal_pct_max()
         # Augment each run with QC data and override values
         for run in runs:
             qc_by_analyte = self._qc_for_run(run["run_date"])
@@ -412,7 +395,10 @@ class PFASCalibrationsView(BrowserView):
                 cal["weight_override"] = cal.get("weight_override", "")
                 cal["origin_override"] = cal.get("origin_override", "")
                 cal["approved_by"] = cal.get("approved_by", "")
-                cal["pct_max"] = pct_max
+                # each analyte's limits from ITS run's method profile
+                cal["limits"] = self.qc_type_limits(cal.get("method"))
+                cal["pct_max"] = cal["limits"]["CAL"].get("max")
+                cal["r2_min"] = self.r2_minimum(cal.get("method"))
         try:
             raw = json.dumps(runs)
             # HTML-safe for Chameleon tal:replace: encode &, <, > so

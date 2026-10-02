@@ -213,15 +213,15 @@ def test_every_section_input_names_its_own_form():
 
 
 def test_a_section_save_runs_nothing_else_in_the_post_chain():
-    """_apply_qc_rules and the surrogate-link sync read fields the section
+    """_apply_rule_toggles and the surrogate-link sync read fields the section
     form does not carry: reached from a section save they would switch every
     rule off and rewrite the links."""
     post = _method_source(_read("method_profiles.py"), "_handle_post")
     branch = post.index("return self._save_section(")
-    for later in ("_apply_form", "_apply_qc_rules"):
+    for later in ("_apply_form", "_apply_rule_toggles"):
         assert branch < post.index(later), later
     save = _method_source(_read("method_profiles.py"), "_save_section")
-    for writer in ("_apply_form", "_apply_qc_rules", "surrogate"):
+    for writer in ("_apply_form", "_apply_rule_toggles", "surrogate"):
         assert writer not in save, writer
     assert "config_forms.stamp(" in save and "save_profile(" in save
 

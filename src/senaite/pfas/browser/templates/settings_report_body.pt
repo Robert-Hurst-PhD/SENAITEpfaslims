@@ -165,10 +165,6 @@
     <table class="sr-table">
       <tbody><tr tal:repeat="kv report/lab"><th tal:content="python:kv[0]">Setting</th><td tal:content="python:kv[1]">value</td></tr></tbody>
     </table>
-    <h3 tal:condition="report/global_rules">QC rule defaults (used where a method sets none)</h3>
-    <table class="sr-table" tal:condition="report/global_rules">
-      <tbody><tr tal:repeat="kv report/global_rules"><th tal:content="python:kv[0]">key</th><td tal:content="python:kv[1]">value</td></tr></tbody>
-    </table>
   </section>
 </div>
 </metal:body>

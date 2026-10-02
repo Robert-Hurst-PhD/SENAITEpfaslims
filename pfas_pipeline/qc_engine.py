@@ -357,6 +357,8 @@ def qual_quan_check(
     # non_iso_set is accepted for signature compatibility but no longer used:
     # "no labelled standard" is a reporting qualifier applied in build_summary,
     # not an ion-ratio verdict.
+    if CRITERIA.get("ion_ratio_tol_pct") is None:
+        return []          # the method sets no ion-ratio criterion: not judged
     tol = CRITERIA["ion_ratio_tol_pct"] / 100.0
 
     results: list[QualQuanResult] = []

@@ -249,8 +249,8 @@ def _build_reference_results(qc_code, rules, analyte_uids, profile=None):
             }
 
         elif strategy == "rpd":
-            rpd = qt.get("rpd_max")
-            if rpd is None and profile:
+            rpd = None                     # the method profile only (P2)
+            if profile:
                 tiers = ((profile.get("qc_acceptance") or {})
                          .get(qc_code, {}) or {}).get("tiers") or []
                 rpd = tiers[0].get("rpd_max") if tiers else None
@@ -344,32 +344,40 @@ class PFASSetupRefsView(BrowserView):
             "%s/@@pfas-setup-references?saved=1" % api.get_portal().absolute_url())
 
     def qc_type_specs(self):
-        """Return list of dicts for the preview table."""
-        rules = self._rules()
+        """Preview rows: what each definition WILL get -- from the reference
+        method's profile, the same source _build_reference_results uses
+        (QC consolidation P2: no qc_rules.json numbers, no built-in ones)."""
+        from senaite.pfas.setuphandlers import _primary_method_profile
+        from Products.CMFCore.utils import getToolByName
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        profile = _primary_method_profile(portal)
+        cal = ((profile.get("instrument_verification") or {}).get("calibration") or {}) if profile else {}
         rows = []
         for code, spec in sorted(QC_REF_SPEC.items()):
             title, is_blank, strategy, category, acceptance_schema = spec
-            qt = rules.get("qc_types", {}).get(code, {})
             if strategy == "blank":
                 spec_desc = "Blank — flag any detection above zero"
+            elif not profile:
+                spec_desc = "Not set — choose the reference method above"
             elif strategy in ("cal_dev", "cal_dev_tight"):
-                default_pct = 20.0 if strategy == "cal_dev_tight" else 25.0
-                pct = qt.get("pct_deviation_max") or default_pct
-                spec_desc = "{} +/- {}% deviation from nominal".format(100, pct)
+                pct = cal.get("point_pct_dev_max")
+                spec_desc = ("100 +/- {:g}% deviation from nominal".format(pct)
+                             if pct is not None else "Not set on the method profile")
             elif strategy in ("recovery", "recovery_dup"):
-                lo = qt.get("recovery_min", 40.0)
-                hi = qt.get("recovery_max", 140.0)
-                spec_desc = "Recovery {}%–{}%  (key analytes: {}%–{}%)".format(
-                    lo, hi,
-                    qt.get("recovery_min_key_matrix", lo),
-                    qt.get("recovery_max_key_matrix", hi),
-                )
+                limits, _kw = _profile_limits(profile, code)
+                if limits:
+                    spec_desc = "; ".join(
+                        "tier {}: {:g}%–{:g}%".format(t, l["min"], l["max"])
+                        for t, l in sorted(limits.items()))
+                else:
+                    spec_desc = "Not set on the method profile"
             elif strategy == "rpd":
-                rpd = qt.get("rpd_max") or 30.0
-                spec_desc = "RPD <= {}%".format(rpd)
+                tiers = ((profile.get("qc_acceptance") or {}).get(code, {}) or {}).get("tiers") or []
+                rpd = tiers[0].get("rpd_max") if tiers else None
+                spec_desc = ("RPD <= {:g}%".format(rpd) if rpd is not None
+                             else "Not set on the method profile")
             else:
                 spec_desc = "—"
-
             rows.append({
                 "code":              code,
                 "title":             title,

@@ -21,6 +21,7 @@ End-to-end flow:
 
 from __future__ import annotations
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +45,7 @@ from .constants import (
 )
 from .method_profiles import (
     reload_from_profiles,
+    profile_configured,
     get_matrix_factor as _get_matrix_factor,
     get_salt_factors as _get_salt_factors,
     get_reporting_unit as _get_unit,
@@ -638,6 +640,19 @@ def run_pipeline(
     # drives this exact two-call sequence to catch a future reordering.
     reload_criteria()
     reload_from_profiles(batch_id=senaite_batch_id or None)
+    if method_id and profile_configured(method_id):
+        # the engine's flat CRITERIA = THIS run's method, project changes
+        # included (QC consolidation P2; it was FDA's for every method)
+        from .constants import set_criteria_from_profile
+        from .method_profiles import _profile_data_cache
+        set_criteria_from_profile(_profile_data_cache.get(method_id), method_id)
+    if method_id and not profile_configured(method_id):
+        # QC consolidation P1: never judge with criteria the lab did not set
+        raise RuntimeError(
+            "No exported method profile for %s (%s). Save the method profile in "
+            "SENAITE so it is exported, then run the batch again."
+            % (method_id, os.environ.get("PFAS_PROFILES_PATH",
+                                         "/data/qc/method_profiles.json")))
 
     csv_path = Path(csv_path)
     output_dir = Path(output_dir)

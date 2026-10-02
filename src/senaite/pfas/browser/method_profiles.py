@@ -75,11 +75,7 @@ class PFASMethodProfilesView(BrowserView):
         all_ids = sorted(set(list(DEFAULT_PROFILES.keys())) | saved_ids)
         from senaite.pfas import method_revisions as mr
         from senaite.pfas.method_profile_store import raw_profile
-        try:
-            from senaite.pfas.qc.rules import get_rules
-            toggles = (get_rules() or {}).get("method_rule_toggles") or {}
-        except Exception:                                       # noqa: BLE001
-            toggles = {}
+        from senaite.pfas.qc.rules import method_toggles
         result = []
         for mid in all_ids:
             p = get_profile(portal, mid)
@@ -98,8 +94,9 @@ class PFASMethodProfilesView(BrowserView):
                 "linked_services": 0,
                 "linked_sampletypes": 0,
                 # issued revisions (DECISIONS 2026-10-02)
-                "revision": mr.status(mr.records(portal, mid),
-                                      mr.fingerprint(raw_profile(portal, mid) or {}, toggles.get(mid))),
+                "revision": mr.status(mr.records(portal, mid), mr.fingerprint(
+                    raw_profile(portal, mid) or {},
+                    method_toggles(raw_profile(portal, mid) or {}, mid))),
             }
             if get_association is not None:
                 assoc = get_association(portal, mid)
@@ -250,18 +247,7 @@ class PFASMethodProfileEditView(BrowserView):
         return [dict(by_code[code], rule_label=labels[code])
                 for code, _l in QC_TYPE_SWITCHES if code in by_code]
 
-    # ── QC engine rules (qc_rules.json) — merged into this console (D52) ─────
-    # NOTE: qc_rules.json stays a SEPARATE store from method_profiles.json
-    # (the pipeline reads both for different jobs, D50). This console just
-    # renders + saves the slice of qc_rules that belongs to the selected method.
-
-    def _qc_rules(self):
-        try:
-            from senaite.pfas.qc.rules import get_rules
-            return get_rules()
-        except Exception as exc:
-            logger.warning("qc rules load failed: %s", exc)
-            return {}
+    # ── Rule switches: on the profile itself (QC consolidation P2) ─────────
 
     def rule_toggle_rows(self):
         """Per selected-method rule rows: each = enable toggle + its param
@@ -271,55 +257,15 @@ class PFASMethodProfileEditView(BrowserView):
             from senaite.pfas.qc.rules import RULE_LIBRARY
         except Exception:
             return []
-        mid = self.method_id()
-        rules = self._qc_rules()
-        toggles = (rules.get("method_rule_toggles", {}) or {}).get(mid, {})
-        overrides = (rules.get("method_overrides", {}) or {}).get(mid, {})
-        glob = rules.get("global", {}) or {}
-        rows = []
-        for rule in RULE_LIBRARY:
-            rkey = rule["key"]
-            params = []
-            for p in rule.get("params", []):
-                pname = p["name"]
-                val = overrides.get(pname, glob.get(pname, p.get("default")))
-                params.append({
-                    "name": pname, "label": p.get("label", pname),
-                    "type": p.get("type", "number"), "value": val,
-                    "inherited": pname not in overrides,
-                })
-            rows.append({
-                "key": rkey, "label": rule["label"],
-                "enabled": bool(toggles.get(rkey, True)),
-                "has_params": bool(params), "params": params,
-                "note": rule.get("note") or u"",
-            })
-        return rows
-
-    def global_criteria_fields(self):
-        """Cross-method engine defaults (the old 'Global Criteria' tab),
-        surfaced in Advanced. Editable; a method param override wins over these."""
-        try:
-            from senaite.pfas.browser.qcrules import GLOBAL_PARAM_META
-        except Exception:
-            GLOBAL_PARAM_META = {}
-        glob = self._qc_rules().get("global", {}) or {}
-        out = []
-        for k in sorted(glob.keys()):
-            meta = GLOBAL_PARAM_META.get(k, {})
-            out.append({"key": k, "value": glob[k],
-                        "label": meta.get("label", k), "unit": meta.get("unit", "")})
-        return out
-
-    def qc_rules_json(self):
-        return json.dumps(self._qc_rules(), indent=2, sort_keys=True)
-
-    def qc_rules_path(self):
-        try:
-            from senaite.pfas.qc.rules import get_store
-            return get_store().path
-        except Exception:
-            return "/data/qc/qc_rules.json"
+        from senaite.pfas.qc.rules import method_toggles
+        toggles = method_toggles(self.profile(), self.method_id())
+        # a rule is a switch; its limits are this profile's Calibration & CCV
+        # fields (QC consolidation P2)
+        return [{"key": rule["key"], "label": rule["label"],
+                 "enabled": bool(toggles.get(rule["key"], True)),
+                 "has_params": False, "params": [],
+                 "note": rule.get("note") or u""}
+                for rule in RULE_LIBRARY]
 
     def extraction_stages_json(self):
         stages = self.profile().get("extraction_stages", [])
@@ -377,21 +323,14 @@ class PFASMethodProfileEditView(BrowserView):
 
     @staticmethod
     def _stamp_value(portal, mid):
-        """What this editor saves for one method: the stored profile AND the
-        method's slice of qc_rules.json (the Rule Toggles tab saves there from
-        the same form), so a colleague's toggle change also makes a save stale."""
+        """What this editor saves for one method: the stored profile (its rule
+        switches included since QC consolidation P2), so any colleague's save
+        makes an open page stale."""
         from senaite.pfas.method_profile_store import raw_profile
-        try:
-            from senaite.pfas.qc.rules import get_rules
-            rules = get_rules() or {}
-        except Exception:
-            rules = {}
         from senaite.pfas.config_history import IGNORED_KEYS
         profile = dict((k, v) for k, v in raw_profile(portal, mid).items()
                        if k not in IGNORED_KEYS and k not in ("updated_at", "updated_by", "_seeded"))
-        return {"profile": profile,
-                "qc_rules": {"toggles": (rules.get("method_rule_toggles") or {}).get(mid),
-                             "overrides": (rules.get("method_overrides") or {}).get(mid)}}
+        return {"profile": profile}
 
     def config_stamp(self):
         """Version stamp of what this editor saves, carried by the form."""
@@ -593,8 +532,7 @@ class PFASMethodProfileEditView(BrowserView):
         if sent:
             from senaite.pfas import config_history
             if sent != config_history.stamp(self._stamp_value(portal, mid)):
-                candidates = [e for e in (config_history.last_change(portal, "method_profile", mid),
-                                          config_history.last_change(portal, "qc_rules", "rules")) if e]
+                candidates = [e for e in (config_history.last_change(portal, "method_profile", mid),) if e]
                 last = max(candidates, key=lambda e: e.get("at", "")) if candidates else {}
                 return self._redirect_error(mid, (
                     "Not saved: this profile was changed by {0} at {1} UTC after "
@@ -610,13 +548,8 @@ class PFASMethodProfileEditView(BrowserView):
             logger.exception("Error saving method profile %s", mid)
             return self._redirect_error(mid, "Save failed: " + str(exc))
 
+        self._apply_rule_toggles(profile)
         save_profile(portal, mid, profile)
-
-        # Also persist the QC-engine slice for this method (separate store).
-        try:
-            self._apply_qc_rules(mid)
-        except Exception:
-            logger.exception("QC rules save failed for %s", mid)
 
         # The surrogate map is saved above, as submitted, on THIS method only
         # (DECISIONS 2026-09-30, superseding D58's write-back): it is no longer
@@ -625,53 +558,15 @@ class PFASMethodProfileEditView(BrowserView):
 
         return self._redirect_saved(mid)
 
-    def _apply_qc_rules(self, mid):
-        """Write this method's rule toggles + param overrides (and any global
-        edits) back to qc_rules.json — only if the merged console submitted
-        them (guarded by hidden markers so other saves don't wipe rules)."""
+    def _apply_rule_toggles(self, profile):
+        """Write the Rule Toggles tab's switches INTO the profile (QC
+        consolidation P2) -- only when the tab was submitted (marker)."""
         f = self.request.form
         if not f.get("qc_rules_present"):
             return
-        try:
-            from senaite.pfas.qc.rules import get_store, get_rules, RULE_LIBRARY
-        except Exception:
-            return
-        rules = get_rules()
-
-        # toggles: checkbox present = on (marker guarantees a full submit)
-        toggles = rules.setdefault("method_rule_toggles", {}).setdefault(mid, {})
-        overrides = rules.setdefault("method_overrides", {}).setdefault(mid, {})
-        for rule in RULE_LIBRARY:
-            rkey = rule["key"]
-            toggles[rkey] = bool(f.get("ruletoggle." + rkey))
-            for p in rule.get("params", []):
-                pname = p["name"]
-                raw = (f.get("rulelimit." + pname, "") or "").strip()
-                if raw == "":
-                    overrides.pop(pname, None)      # revert to inherited
-                    continue
-                try:
-                    overrides[pname] = (int(raw) if p.get("type") == "integer"
-                                        else float(raw))
-                except ValueError:
-                    overrides[pname] = raw
-
-        # global defaults (Advanced tab) — optional
-        glob = rules.setdefault("global", {})
-        for key in list(glob.keys()):
-            raw = (f.get("qcglobal." + key, "") or "").strip()
-            if raw != "":
-                try:
-                    glob[key] = float(raw)
-                except ValueError:
-                    glob[key] = raw
-
-        try:
-            user_id = self.request.get("AUTHENTICATED_USER", "")
-            user_id = getattr(user_id, "getId", lambda: str(user_id))()
-        except Exception:
-            user_id = "unknown"
-        get_store().save(rules, updated_by=user_id or "unknown")
+        from senaite.pfas.qc.rules import RULE_LIBRARY
+        profile["rule_toggles"] = dict(
+            (rule["key"], bool(f.get("ruletoggle." + rule["key"]))) for rule in RULE_LIBRARY)
 
     def _apply_form(self, profile):
         f = self.request.form

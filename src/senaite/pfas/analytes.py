@@ -84,24 +84,6 @@ IS_MRM = {
     "13C8-PFOS":            ("506.97>79.98",  ["506.97>98.94"]),
 }
 
-# ── Calibration levels from batch ─────────────────────────────────────────────
-# Concentrations (ng/mL) as they appear in INSTRUMENT sample descriptions,
-# which number the ladder ASCENDING (FDA-CAL-1 = lowest = 0.039), i.e. the
-# REVERSE of the printed FM-ENV-251 logbook (CAL-1 = highest = 20). Both now
-# derive from the single-source ladder (analyte_reference.CAL_LADDERS) so the
-# VALUES can never diverge again; only the direction differs and is explicit.
-# VERIFY with the lab before wiring any consumer that matches injection names.
-from senaite.pfas.analyte_reference import get_cal_ladder as _get_cal_ladder
-
-CAL_LEVELS = dict(
-    # Name prefix = the FDA method's core code (MethodID == "FDA_32PFAS");
-    # the live worklist derives the same code via method_bridge.
-    [("FDA_32PFAS-CAL-%d" % (i + 1), conc)
-     for i, conc in enumerate(reversed(_get_cal_ladder("FDA_32PFAS")))] +
-    [("FDA-ICV", 1.25),   # Initial Calibration Verification
-     ("FDA-CCV", 1.25)]   # Continuing Calibration Verification
-)
-
 # ── Injection name patterns (from VBA ValidateInjectionNames) ─────────────────
 import re
 

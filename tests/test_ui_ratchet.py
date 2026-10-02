@@ -32,8 +32,8 @@ PRINT = {"receipt.pt", "label_print.pt", "qc_review_report.pt",
 SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
-MAX_PAGES_WITH_STYLE_BLOCK = 51
-MAX_STYLE_ATTRIBUTES = 855
+MAX_PAGES_WITH_STYLE_BLOCK = 50
+MAX_STYLE_ATTRIBUTES = 841
 MAX_DISTINCT_HEX = 208
 MAX_DISTINCT_FONT_SIZES = 3   # the 36-64px display glyphs; all text uses var(--fs-*)
 

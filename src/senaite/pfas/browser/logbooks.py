@@ -73,19 +73,28 @@ def _apply_field_corrections(form, existing, fields, data):
     data[u"_corrections"] = corrections
 BATCHES_EXPORT_ROOT = os.environ.get("PFAS_BATCHES_PATH", "/data/qc/batches")
 
-# Default cal points for FDA 32-PFAS (ng/mL) — DERIVED from the single-source
-# ladder (analyte_reference.CAL_LADDERS, descending: CAL-1 = highest). Values
-# identical to the previous hardcoded list; removes the 3rd duplicated (and
-# once contradictory) copy of the FDA ladder.
-from senaite.pfas.analyte_reference import get_cal_ladder as _get_cal_ladder
-
-# Injection name prefix = the FDA method's core code (MethodID == "FDA_32PFAS"),
-# matching the run worklist (run_builder derives the same code from core services)
-# so a logged cal standard traces to its worklist injection.
-FDA_CAL_DEFAULTS = [
-    ("CAL-%d" % (i + 1), "FDA_32PFAS-CAL-%d" % (i + 1), conc)
-    for i, conc in enumerate(_get_cal_ladder("FDA_32PFAS"))
-]
+def cal_defaults(portal, method_id):
+    """FM-ENV-251 default calibration points for the batch's method:
+    [(level, injection name, ng/mL)], CAL-1 = HIGHEST (the printed logbook's
+    order). From the method profile's calibration levels -- only when they are
+    extract ng/mL; a ppt ladder is not a prep concentration (QC consolidation
+    P1). Injection names use the method's core code, matching the worklist."""
+    from senaite.pfas import calibration_levels as cl
+    from senaite.pfas.method_profile_store import get_profile
+    try:
+        profile = get_profile(portal, method_id) if method_id else {}
+    except Exception:                                    # noqa: BLE001
+        profile = {}
+    if cl.unit(profile) != cl.EXTRACT:
+        return []
+    try:
+        from senaite.pfas.method_bridge import get_method_cal_code
+        code = get_method_cal_code(portal, method_id) or method_id
+    except Exception:                                    # noqa: BLE001
+        code = method_id
+    ladder = list(reversed(cl.levels(profile)))
+    return [("CAL-%d" % (i + 1), "%s-CAL-%d" % (code, i + 1), conc)
+            for i, conc in enumerate(ladder)]
 
 # ── Annotation helpers ─────────────────────────────────────────────────────────
 
@@ -425,13 +434,17 @@ class PFASLogbook251View(_LogbookBase):
     def data(self):
         return _get_logbook(self.context, 251)
 
+    def _cal_defaults(self):
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        return cal_defaults(portal, self.batch_method() or u"FDA_32PFAS")
+
     def data_json(self):
         return json.dumps(self.data(), indent=2)
 
     def default_cal_points_json(self):
-        """JSON of default FDA cal points for pre-populating the form."""
+        """JSON of the method's default cal points for pre-populating the form."""
         rows = [{"level": lv, "name": nm, "conc_ng_ml": c}
-                for lv, nm, c in FDA_CAL_DEFAULTS]
+                for lv, nm, c in self._cal_defaults()]
         return json.dumps(rows)
 
     def _handle_post(self):
@@ -469,7 +482,7 @@ class PFASLogbook251View(_LogbookBase):
         cal_points = data.get("cal_points", [])
         if not cal_points:
             cal_points = [{"level": lv, "name": nm, "conc_ng_ml": c}
-                          for lv, nm, c in FDA_CAL_DEFAULTS]
+                          for lv, nm, c in self._cal_defaults()]
 
         import csv
         import StringIO

@@ -195,8 +195,6 @@ def test_switching_the_confirmation_off_suppresses_the_qualifier():
     """Behavioural, not structural: with the rule OFF, a PFBA positive gets no
     confirmation qualifier and nothing is recorded as owed."""
     import sys
-    import json
-    import tempfile
     from datetime import datetime
     sys.path.insert(0, ROOT)
     os.environ.setdefault("PFAS_ALLOW_LEGACY_VENDOR_MAP", "1")
@@ -224,15 +222,14 @@ def test_switching_the_confirmation_off_suppresses_the_qualifier():
             acquisition_datetime=datetime(2026, 9, 25, 10, 0, 0),
             concat_id="260925-01|20260925100000")
 
-    def _summary_flags(rules_payload):
-        with tempfile.NamedTemporaryFile("w", suffix=".json",
-                                         delete=False) as fh:
-            json.dump(rules_payload, fh)
-            rules_path = fh.name
-        from pfas_pipeline import run_queue as rq
-        original = rq._load_rule_toggles
-        rq._load_rule_toggles = lambda mid, rules_path=rules_path: (
-            original(mid, rules_path))
+    def _summary_flags(toggles):
+        # the switch lives on the METHOD PROFILE (QC consolidation P2)
+        import copy
+        from pfas_pipeline import method_profiles as mp
+        saved = copy.deepcopy(mp._profile_data_cache.get("FDA_32PFAS"))
+        prof = copy.deepcopy(saved or {})
+        prof["rule_toggles"] = dict(toggles)
+        mp._profile_data_cache["FDA_32PFAS"] = prof
         try:
             batch = Batch(batch_id="B-T", analyst="RT",
                           date=datetime(2026, 9, 25), matrix="Eggs",
@@ -242,18 +239,13 @@ def test_switching_the_confirmation_off_suppresses_the_qualifier():
             hit = [s for s in batch.summary if s.analyte == "PFBA"][0]
             return hit.flags, batch.confirmations_required
         finally:
-            rq._load_rule_toggles = original
-            os.unlink(rules_path)
+            mp._profile_data_cache["FDA_32PFAS"] = saved
 
-    on_flags, on_owed = _summary_flags(
-        {"method_rule_toggles": {"FDA_32PFAS":
-                                 {"single_transition_confirm": True}}})
+    on_flags, on_owed = _summary_flags({"single_transition_confirm": True})
     assert QUALIFIER_CONF in on_flags, ("rule ON must qualify", on_flags)
     assert on_owed, "rule ON must record the confirmation as owed"
 
-    off_flags, off_owed = _summary_flags(
-        {"method_rule_toggles": {"FDA_32PFAS":
-                                 {"single_transition_confirm": False}}})
+    off_flags, off_owed = _summary_flags({"single_transition_confirm": False})
     assert QUALIFIER_CONF not in off_flags, (
         "the switch did nothing — the qualifier was applied with the rule OFF",
         off_flags)

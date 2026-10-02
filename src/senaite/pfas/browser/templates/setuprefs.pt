@@ -176,16 +176,16 @@
         </button>
       </form>
       <span class="action-note">
-        Safe to run repeatedly. Analyte values are refreshed from the current QC
-        rules each time. To change acceptance criteria, edit them in
-        <a class="btn-sm btn-secondary" tal:attributes="href string:${context/absolute_url}/@@pfas-qc-rules">QC Rule Configuration</a>
+        Safe to run repeatedly. Analyte values come from the reference
+        method&#8217;s profile each time. To change acceptance criteria, edit that
+        method&#8217;s profile
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${context/absolute_url}/@@pfas-method-profiles">Method Profiles</a>
         first, then run this setup again.
       </span>
     </div>
 
   <div class="pane-footer">
-    <span>Creates/updates SENAITE ReferenceDefinitions from QC rules</span>
-    <span class="pf-path" tal:content="view/rules_path">/data/qc/qc_rules.json</span>
+    <span>Creates/updates SENAITE ReferenceDefinitions from the reference method&#8217;s profile</span>
   </div>
   </div>
   </div><!-- /content slot -->

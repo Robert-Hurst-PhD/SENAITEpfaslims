@@ -161,188 +161,24 @@ _FDA_IS_DISPLAY_NAMES = [
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Profile data cache — populated from /data/qc/method_profiles.json at batch
-# start via reload_from_profiles().  Initialized with inline defaults below so
-# that the engine works before any manager has saved a profile.
+# Profile data cache — populated ONLY from the exported method profiles
+# (/data/qc/method_profiles.json, written by SENAITE on every profile save) at
+# batch start via reload_from_profiles(). There are NO built-in criteria: a
+# method missing from the export is not configured, and run_pipeline refuses
+# it rather than judging with numbers the lab never set (QC consolidation P1;
+# the inline defaults that used to sit here carried an FDA LCS tier, 1633A
+# FTS EIS limits and a retired QC-type list that no live profile had).
 # ─────────────────────────────────────────────────────────────────────────────
 
-_DEFAULT_PROFILE_CACHE = {
-    "FDA_32PFAS": {
-        "instrument_verification": {
-            "calibration": {
-                "r2_min": 0.990,
-                "force_origin": False,
-                "point_pct_dev_max": None,
-                "low_point_pct_dev_max": None,
-            },
-            "ccv": {
-                "frequency": 6,
-                "recovery_min": 70.0,
-                "recovery_max": 130.0,
-                "low_level_min": None,
-                "low_level_max": None,
-            },
-            "is_response": {
-                "vs_ical_avg_min": 50.0,
-                "vs_ical_avg_max": 150.0,
-                "vs_last_ccv_min": None,
-                "vs_last_ccv_max": None,
-            },
-            "confirmation": {
-                "ion_ratio_tol_pct": 30.0,
-                "rrt_tol_pct": 1.0,
-                "rt_tol_abs_min": None,
-                "sn_quan_min": 3.0,
-                "sn_confirm_min": 3.0,
-            },
-            "sequence": {
-                "cal_at_start": True,
-                "ccv_frequency": 6,
-                "blank_at_start": True,
-                "blank_at_end": True,
-            },
-        },
-        "qc_acceptance": {
-            "MB":    {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
-            "LRB":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
-            "LCS":   {"tiers": [
-                {"name": "tier1_key_tight",  "analyte_group": "key",    "matrix_scope": "tight", "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0},
-                {"name": "tier2_linked",     "analyte_group": "linked", "matrix_scope": "all",   "recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0},
-                {"name": "tier3_no_std",     "analyte_group": "no_std", "matrix_scope": "all",   "recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0},
-            ]},
-            "LFSM":  {"tiers": [
-                {"name": "tier1_key_tight",  "analyte_group": "key",    "matrix_scope": "tight", "recovery_min": 80.0, "recovery_max": 120.0, "rsd_max": 20.0},
-                {"name": "tier2_linked",     "analyte_group": "linked", "matrix_scope": "all",   "recovery_min": 65.0, "recovery_max": 135.0, "rsd_max": 25.0},
-                {"name": "tier3_no_std",     "analyte_group": "no_std", "matrix_scope": "all",   "recovery_min": 40.0, "recovery_max": 140.0, "rsd_max": 30.0},
-            ]},
-            "LFSMD": {"tiers": [
-                {"name": "tier1_key_tight",  "analyte_group": "key",    "matrix_scope": "tight", "recovery_min": 80.0, "recovery_max": 120.0, "rpd_max": 20.0},
-                {"name": "tier2_linked",     "analyte_group": "linked", "matrix_scope": "all",   "recovery_min": 65.0, "recovery_max": 135.0, "rpd_max": 25.0},
-                {"name": "tier3_no_std",     "analyte_group": "no_std", "matrix_scope": "all",   "recovery_min": 40.0, "recovery_max": 140.0, "rpd_max": 30.0},
-            ]},
-            "Dup":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "rpd_max": 20.0}]},
-        },
-        "associated_qc_types": ["MB", "LRB", "LCS", "LFSM", "LFSMD", "Dup"],
-        "matrix_factors": [
-            {"matrix": "muscle",      "factor": 0.5},
-            {"matrix": "meat",        "factor": 0.5},
-            {"matrix": "deer",        "factor": 0.5},
-            {"matrix": "beef",        "factor": 0.5},
-            {"matrix": "pork",        "factor": 0.5},
-            {"matrix": "poultry",     "factor": 0.5},
-            {"matrix": "fish",        "factor": 0.5},
-            {"matrix": "seafood",     "factor": 0.5},
-            {"matrix": "egg",         "factor": 0.5},
-            {"matrix": "eggs",        "factor": 0.5},
-            {"matrix": "milk",        "factor": 0.2},
-            {"matrix": "feed",        "factor": 2.0},
-            {"matrix": "animal feed", "factor": 2.0},
-        ],
-    },
-    "EPA_537_1": {
-        "instrument_verification": {
-            "calibration": {
-                "r2_min": 0.990,
-                "force_origin": True,
-                "point_pct_dev_max": 30.0,
-                "low_point_pct_dev_max": 50.0,
-            },
-            "ccv": {
-                "frequency": 10,
-                "recovery_min": 70.0,
-                "recovery_max": 130.0,
-                "low_level_min": 50.0,
-                "low_level_max": 150.0,
-            },
-            "is_response": {
-                "vs_ical_avg_min": 50.0,
-                "vs_ical_avg_max": 150.0,
-                "vs_last_ccv_min": 70.0,
-                "vs_last_ccv_max": 140.0,
-            },
-            "confirmation": {
-                "ion_ratio_tol_pct": None,
-                "rrt_tol_pct": None,
-                "rt_tol_abs_min": 0.05,
-                "sn_quan_min": 3.0,
-                "sn_confirm_min": None,
-            },
-            "sequence": {
-                "cal_at_start": True,
-                "ccv_frequency": 10,
-                "blank_at_start": True,
-                "blank_at_end": True,
-            },
-        },
-        "qc_acceptance": {
-            "MB":    {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
-            "LRB":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
-            "LFB":   {"tiers": [
-                {"name": "low_level", "analyte_group": "all", "matrix_scope": "all", "recovery_min": 50.0, "recovery_max": 150.0, "rsd_max": None},
-                {"name": "mid_high",  "analyte_group": "all", "matrix_scope": "all", "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None},
-            ]},
-            "LFSM":  {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "recovery_min": 70.0, "recovery_max": 130.0, "rsd_max": None}]},
-            "LFSMD": {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "recovery_min": 70.0, "recovery_max": 130.0, "rpd_max": 30.0}]},
-            "Dup":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "rpd_max": 30.0}]},
-        },
-        "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
-        "matrix_factors": [],
-    },
-    "EPA_1633A": {
-        "instrument_verification": {
-            "calibration": {
-                "r2_min": 0.990,
-                "force_origin": False,
-                "point_pct_dev_max": 30.0,
-                "low_point_pct_dev_max": 50.0,
-            },
-            "ccv": {
-                "frequency": 10,
-                "recovery_min": 70.0,
-                "recovery_max": 130.0,
-                "low_level_min": None,
-                "low_level_max": None,
-            },
-            "is_response": {
-                "vs_ical_avg_min": 50.0,
-                "vs_ical_avg_max": 150.0,
-                "vs_last_ccv_min": None,
-                "vs_last_ccv_max": None,
-            },
-            "confirmation": {
-                "ion_ratio_tol_pct": 50.0,
-                "rrt_tol_pct": None,
-                "rt_tol_abs_min": None,
-                "sn_quan_min": 3.0,
-                "sn_confirm_min": 1.0,
-            },
-            "sequence": {
-                "cal_at_start": True,
-                "ccv_frequency": 10,
-                "blank_at_start": True,
-                "blank_at_end": True,
-            },
-        },
-        "qc_acceptance": {
-            "MB":    {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
-            "LRB":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "max_conc_x_rl": 1.0}]},
-            "LFB":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "verify_against_method": True, "recovery_min": 40.0, "recovery_max": 130.0}]},
-            "LFSM":  {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "verify_against_method": True, "recovery_min": 40.0, "recovery_max": 130.0}]},
-            "LFSMD": {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "recovery_min": 40.0, "recovery_max": 130.0, "rpd_max": 30.0}]},
-            "Dup":   {"tiers": [{"name": "default", "analyte_group": "all", "matrix_scope": "all", "rpd_max": 30.0}]},
-        },
-        "associated_qc_types": ["MB", "LRB", "LFB", "LFSM", "LFSMD", "Dup"],
-        "eis_overrides": {
-            "M2-4:2FTS":    {"recovery_min": 20.0, "recovery_max": 150.0},
-            "M2-6:2FTS":    {"recovery_min": 20.0, "recovery_max": 150.0},
-            "M2-8:2FTS":    {"recovery_min": 20.0, "recovery_max": 150.0},
-            "d3-NMeFOSAA":  {"recovery_min": 20.0, "recovery_max": 150.0},
-            "d5-NEtFOSAA":  {"recovery_min": 20.0, "recovery_max": 150.0},
-            "M8FOSA":       {"recovery_min": 20.0, "recovery_max": 150.0},
-        },
-        "matrix_factors": [],
-    },
-}
+_METHOD_IDS = ("FDA_32PFAS", "EPA_537_1", "EPA_1633A")
+_DEFAULT_PROFILE_CACHE = dict((m, {}) for m in _METHOD_IDS)
+_LOADED = set()          # methods whose data came from the export
+
+
+def profile_configured(method_id):
+    """True when `method_id`'s criteria were loaded from the exported file."""
+    return method_id in _LOADED
+
 
 _profile_data_cache = copy.deepcopy(_DEFAULT_PROFILE_CACHE)
 
@@ -352,7 +188,8 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
     Reload _profile_data_cache from the exported method profile JSON.
     Called at the start of each batch run so changes made in the SENAITE
     Method Profile control panel take effect without a worker restart.
-    Falls back to _DEFAULT_PROFILE_CACHE values for any key not in the file.
+    A method missing from the file (or no file at all) is left EMPTY and
+    unconfigured -- see profile_configured(); nothing falls back to defaults.
 
     `batch_id`, when given, additionally overlays that batch's RESOLVED
     criteria (senaite.pfas.resolved_criteria_store, project -> lab ->
@@ -375,14 +212,19 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
         profiles_path = PROFILES_PATH
 
     if not os.path.exists(profiles_path):
+        logger.error("reload_from_profiles: %s does not exist -- no method is "
+                     "configured until SENAITE exports its method profiles",
+                     profiles_path)
+        _LOADED.clear()
         return
 
     try:
         with open(profiles_path) as fh:
             all_profiles = json.load(fh)
     except (IOError, OSError, ValueError) as exc:
-        logger.warning("reload_from_profiles: could not load %s: %s",
-                       profiles_path, exc)
+        logger.error("reload_from_profiles: could not load %s: %s",
+                     profiles_path, exc)
+        _LOADED.clear()
         return
 
     for method_id in list(_profile_data_cache.keys()):
@@ -402,12 +244,15 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
                     for e in eis if "analyte" in e
                 }
             _profile_data_cache[method_id] = data
+            _LOADED.add(method_id)
             logger.info("Loaded profile data for %s from %s",
                         method_id, profiles_path)
         else:
-            logger.warning(
-                "reload_from_profiles: %r not in %s; using defaults",
-                method_id, profiles_path,
+            _profile_data_cache[method_id] = {}
+            _LOADED.discard(method_id)
+            logger.error(
+                "reload_from_profiles: %r not in %s; that method is not "
+                "configured", method_id, profiles_path,
             )
 
     if batch_id:
@@ -994,13 +839,11 @@ class FDA32PFASProfile(MethodProfile):
         )
 
     def sequence_rule(self):
-        seq = self._iv().get("sequence", {})
         ccv = self._iv().get("ccv", {})
         return SequenceRule(
             opens_with_solvent_blank=True,
             blank_after_curve=True,
-            ccv_frequency=int(seq.get("ccv_frequency",
-                                      ccv.get("frequency", 6))),
+            ccv_frequency=int(ccv.get("frequency") or 6),   # the edited value (P1)
             closing_ccv=True,
         )
 
@@ -1097,11 +940,9 @@ class EPA537Profile(MethodProfile):
         )
 
     def sequence_rule(self):
-        seq = self._iv().get("sequence", {})
         ccv = self._iv().get("ccv", {})
         return SequenceRule(
-            ccv_frequency=int(seq.get("ccv_frequency",
-                                      ccv.get("frequency", 10))),
+            ccv_frequency=int(ccv.get("frequency") or 10),   # the edited value (P1)
             closing_ccv=True,
         )
 
@@ -1499,11 +1340,9 @@ class EPA1633AProfile(MethodProfile):
         )
 
     def sequence_rule(self):
-        seq = self._iv().get("sequence", {})
         ccv = self._iv().get("ccv", {})
         return SequenceRule(
-            ccv_frequency=int(seq.get("ccv_frequency",
-                                      ccv.get("frequency", 10))),
+            ccv_frequency=int(ccv.get("frequency") or 10),   # the edited value (P1)
             closing_ccv=True,
         )
 

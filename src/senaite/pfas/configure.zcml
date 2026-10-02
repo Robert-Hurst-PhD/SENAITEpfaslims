@@ -46,9 +46,9 @@
   <!-- Archetypes schema extenders (ReferenceDefinition PFAS QC fields) -->
   <include package=".extenders" />
 
-  <!-- Reverse sync: editing a spec_sync-managed AnalysisSpec writes per-analyte
-       overrides back into the owning Method Profile (write-through; profile
-       stays the single source of truth). Loop-guarded in spec_reverse. -->
+  <!-- AnalysisSpecs are a read-only copy of the method profile (D4): an edit
+       on SENAITE's spec screen to a synced spec is put back from the profile.
+       Loop-guarded in spec_reverse. -->
   <subscriber
       for="bika.lims.interfaces.IAnalysisSpec
            zope.lifecycleevent.interfaces.IObjectModifiedEvent"

@@ -180,22 +180,8 @@ PRESERVATIONS = [
     ("None", "No preservative", "ALL"),
 ]
 
-# ── Calibration ladders per method (working ranges) ──────────────────────────
-# SINGLE SOURCE for calibration ladders. Convention: index 0 = CAL-1 = HIGHEST
-# standard (descending), matching the printed FM-ENV-251 logbook. VERIFY with
-# the lab that instrument sequence naming uses the same direction.
-# FDA values are the exact halving series (display rounding happens at render).
-CAL_LADDERS = {
-    "FDA_32PFAS": [20.0, 10.0, 5.0, 2.5, 1.25, 0.625, 0.3125, 0.15625,
-                   0.078125, 0.0390625],                                # ng/mL
-    "EPA_537_1":  [2.0, 4.0, 8.0, 16.0, 40.0, 80.0, 160.0],             # ng/L (ppt)
-    "EPA_1633A":  [0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0],        # ng/mL (verify)
-}
-
-
-def get_cal_ladder(method_id):
-    """Descending calibration ladder for a method (CAL-1 = highest)."""
-    return list(CAL_LADDERS.get(method_id, []))
+# Calibration ladders live on each method profile (Calibration & CCV;
+# senaite.pfas.calibration_levels) -- not here (QC consolidation P1).
 
 
 def native_count():

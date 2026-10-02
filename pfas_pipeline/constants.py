@@ -114,8 +114,11 @@ def _build_criteria_from_profile(profile):
         crit["is_response_drift_pct"] = (avg_max - 100.0) / 100.0
 
     conf = iv.get("confirmation") or profile.get("confirmation", {})
-    if conf.get("ion_ratio_tol_pct") is not None:
-        crit["ion_ratio_tol_pct"] = float(conf["ion_ratio_tol_pct"])
+    if conf:
+        # the METHOD's tolerance; None = the method has no ion-ratio
+        # criterion (EPA 537.1) and nothing is judged -- not the FDA 30 %
+        tol = conf.get("ion_ratio_tol_pct")
+        crit["ion_ratio_tol_pct"] = float(tol) if tol is not None else None
     if conf.get("rt_tol_abs_min") is not None:
         crit["rt_dev_abs_min"] = float(conf["rt_tol_abs_min"])
     elif conf.get("rrt_tol_pct") is not None:
@@ -179,6 +182,22 @@ def reload_criteria(profiles_path=None, method_id="FDA_32PFAS"):
     except (IOError, OSError, ValueError) as exc:
         logger.warning("reload_criteria: could not load %s: %s", profiles_path, exc)
 
+
+def set_criteria_from_profile(profile, method_id=None):
+    """Rebuild CRITERIA in place from ONE method's profile data -- the run's
+    method, with any project changes already applied (pipeline.run_pipeline
+    passes the worker's cached profile). QC consolidation P2: CRITERIA used to
+    be built from FDA 32-PFAS for every run."""
+    new_crit = _build_criteria_from_profile(profile or {})
+    new_crit["mdl_min_replicates"] = _DEFAULT_CRITERIA["mdl_min_replicates"]
+    new_crit["t_values"] = _DEFAULT_CRITERIA["t_values"]
+    CRITERIA.clear()
+    CRITERIA.update(new_crit)
+    CRITERIA_METHOD[:] = [method_id]
+
+
+# The method CRITERIA currently describes (set_criteria_from_profile).
+CRITERIA_METHOD = [None]
 
 # Mutable dict — updated in-place by reload_criteria() so that the engine
 # functions that already imported CRITERIA see the refreshed values.

@@ -6584,3 +6584,77 @@ Approved by the lab as the first recommendation of
   - FDA Aquatic Tissue has no matrix factor.
   - EPA 1633A §10.3: the LOQ standard must meet S/N and the ISC is run at the
     lab's LOQ -- the lab's demonstrated LOQ may differ from CS1.
+
+## 81. QC profile consolidation P1 + P2: one home per QC fact (2026-10-02)
+- Review and decisions: docs/QC_PROFILE_CONSOLIDATION.md; DECISIONS 2026-10-02
+  "QC profile consolidation: P1 + P2 approved" (D1 profile wins, D2 switches
+  into the profile, D4 SENAITE specs read-only).
+- **P1 — the copies agree:**
+  - Calibration ladder: the Run Builder's calibrators and the FM-ENV-251
+    defaults come from the profile's levels (`calibration_levels.calibrators`,
+    logbooks `cal_defaults`); `analyte_reference.CAL_LADDERS` and the unused
+    `analytes.CAL_LEVELS` deleted. EPA 1633A runs now get 9 calibrators (its
+    curve), not the constant's 8.
+  - One CCV interval: `ccv.frequency`. `instrument_verification.sequence`
+    removed from profiles and both default tables; `sequence_rule()` reads
+    `ccv.frequency`.
+  - The worker has NO built-in criteria: `_DEFAULT_PROFILE_CACHE` is empty,
+    `profile_configured()` says which methods came from the export, and
+    `run_pipeline` refuses a method that did not (it used to judge with an FDA
+    LCS tier, 1633A FTS EIS limits and a retired QC-type list no profile had).
+  - Dead keys removed by migration (`qc_consolidation.drop_dead_keys`):
+    `sequence`, empty `extraction_corrections`, empty `spec_overrides`
+    (non-empty ones are kept and logged, never dropped silently).
+  - Spec sync rewrites only specs whose ranges or SampleType changed
+    (`spec_sync.same_ranges`); an unchanged save writes nothing.
+- **D4 — SENAITE AnalysisSpecs are a read-only copy:** an edit on SENAITE's
+  spec screen to a synced spec is put back from the profile with a warning
+  naming the Recovery Tiers tab (`spec_reverse.on_spec_modified`);
+  `spec_overrides` is no longer written or read.
+- **P2 — one set of limits:**
+  - Calibrations page judges each run with ITS method's profile (R², point %
+    deviation, CCV window, ICV limit, CCV warning line); "not set" shows as
+    not judged, never a default. It used qc_rules.json values that disagreed
+    with the profiles in 12 places (R² 0.995 vs 0.99 ...).
+  - ICV % deviation max and the CCV warning line are new Calibration & CCV
+    fields, seeded once from the values that page used (20 % / 10 %).
+  - Rule switches live on the profile (`rule_toggles`), complete per method;
+    moved once from qc_rules.json (`qc_consolidation.move_from_rules`),
+    identical for all three methods. Readers: editor, method list, settings
+    report, revisions, the worker's `_load_rule_toggles`.
+  - Rules are switches only: the parameter inputs on Rule Toggles and the
+    Advanced tab's global defaults are gone (they were a second copy only the
+    Calibrations page read). Each rule's note names where its limit lives.
+  - qc_rules.json keeps only control-chart presentation; its store strips
+    criteria/switches on every save, so a history revert cannot bring them
+    back. `@@pfas-qc-rules` is a redirect; its POST writer is gone.
+  - Reference Definitions preview and build read the reference method's
+    profile only (no qc_types or built-in fallbacks).
+  - **The engine's flat CRITERIA now describe the RUN's method**, project
+    changes included (built from the worker's cached profile after the
+    overlay). They were FDA's for every method: EPA 1633A ion ratio was judged
+    at ±30 % instead of 50 %, EPA 537.1 (no ion-ratio criterion) at 30 %. With
+    no tolerance set, the ion-ratio check judges nothing. **This changes
+    verdicts for 537.1 / 1633A runs** (to what their profiles say); FDA is
+    unchanged.
+- **Found and fixed on the way:**
+  - setuphandlers called `_get_or_create_ref_def(folder, title, ...)` after
+    its signature became `(folder, code, title, ...)` (July, e7196d5): every
+    QC code failed at startup. Fixed; guarded by a test.
+  - An unchanged section save created `instrument_verification.icv =
+    {pct_dev_max: None}` when the profile had no `icv` block: a blank value
+    now never creates a missing parent (config_forms.apply).
+- **Tests:** test_qc_consolidation (14; 19 mutants killed); test_config_forms,
+  test_rule_toggles, test_resolved_overlay updated to the new homes; UI
+  ratchet ceilings lowered (50 pages with a style block, 841 style attributes).
+- **Live:** migration ran on all three profiles; qc_rules.json reduced to
+  chart presentation; switches identical to the old file; editor shows 10
+  switches, no parameter inputs, no Advanced tab; Calibrations page shows FDA
+  R² 0.99 / 20 % for an FDA filter and "each run's method profile" otherwise;
+  @@pfas-qc-rules redirects; worker loads all three methods; real instrument
+  files: results and flags identical.
+- **Still open:** P3 (one project system: Projects-page criteria box vs
+  Project Specs) and P4 (derive "no labelled standard" per method; one EIS
+  grid) await approval. No reference-definition method is configured, so new
+  Reference Definitions get no ranges until one is chosen (existing ones are
+  untouched).

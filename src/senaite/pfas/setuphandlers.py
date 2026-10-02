@@ -287,16 +287,16 @@ def _primary_method_profile(portal):
     selected EPA_1633A purely because it sorts first, which would have drawn
     every control chart against a method the lab may not even run.
 
-    Unset, this returns {} and the QC rules store is used exactly as before —
-    no silent change to an existing installation.
+    Unset, this returns {} and no ranges are written: the QC rules store no
+    longer holds criteria (QC consolidation P2), and nothing is invented.
     """
     method_id = get_reference_method(portal)
     if not method_id:
         logger.info(
             "No reference-definition method configured; QC reference ranges "
-            "come from the QC rules store. Set one under Configuration -> "
-            "Setup Reference Definitions so control charts match the limits "
-            "the QC engine enforces.")
+            "are not written. Set one under Configuration -> Setup Reference "
+            "Definitions so control charts match the limits the QC engine "
+            "enforces.")
         return {}
     try:
         from senaite.pfas.method_profile_store import get_profile
@@ -306,8 +306,8 @@ def _primary_method_profile(portal):
                        method_id, exc)
         return {}
     if not profile:
-        logger.warning("reference-definition method %s has no profile; "
-                       "falling back to the QC rules store", method_id)
+        logger.warning("reference-definition method %s has no profile; no "
+                       "ranges are written", method_id)
     return profile
 
 
@@ -366,7 +366,7 @@ def create_reference_definitions(portal):
     for code, spec in sorted(QC_REF_SPEC.items()):
         title, is_blank = spec[0], spec[1]
         try:
-            obj, is_new = _get_or_create_ref_def(folder, title, is_blank=is_blank)
+            obj, is_new = _get_or_create_ref_def(folder, code, title, is_blank=is_blank)
             if not is_new:
                 # Runs on every restart: an existing definition is the lab's,
                 # maintained through @@pfas-setup-references.

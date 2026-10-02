@@ -76,6 +76,10 @@ CALIBRATION_CCV = cf.Section(
             cf.Field("ccv.low_level_min", u"Low-Level Min (optional)", unit=PCT, minimum=0,
                      help=u"Wider window for the lowest CCC/CCV level."),
             cf.Field("ccv.low_level_max", u"Low-Level Max (optional)", unit=PCT, minimum=0),
+            cf.Field("ccv.pct_dev_warn", u"CCV warning line (± %)", unit=PCT, minimum=0,
+                     help=u"Drawn on the Calibrations page's ICV/CCV plot; not a pass/fail limit."),
+            cf.Field("icv.pct_dev_max", u"ICV % Deviation Max", unit=PCT, minimum=0,
+                     help=u"Initial calibration verification, judged on the Calibrations page."),
         ]),
         (u"IS / Surrogate Response", [
             cf.Field("is_response.vs_ical_avg_min", u"vs. ICAL Average Min", unit=PCT, minimum=0),

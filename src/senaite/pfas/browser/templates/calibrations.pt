@@ -64,6 +64,7 @@
   .r2-badge { padding:2px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:700; }
   .r2-ok   { background:var(--s-primary-lt); color:var(--s-primary); }
   .r2-fail { background:#f8d7da; color:#721c24; }
+  .r2-na   { background:var(--s-bg-alt); color:var(--s-secondary); }
   /* .badge base is global; page-specific badge colours: */
   .badge-pending  { background:#fff3cd; color:#856404; }
   .badge-approved { background:#d4edda; color:#155724; }
@@ -140,9 +141,12 @@
 <body>
   <tal:t metal:fill-slot="header-title">Calibration Review</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <span class="header-meta">
-      R&sup2; min <strong tal:content="view/r2_minimum">0.995</strong>
-      &bull; Max dev <strong tal:content="view/cal_pct_max">20</strong>%
+    <span class="header-meta" tal:define="r2 view/r2_minimum; pct view/cal_pct_max">
+      <tal:m condition="view/selected_method">
+        R&sup2; min <strong tal:content="python:r2 if r2 is not None else 'not set'">0.99</strong>
+        &bull; Max dev <strong tal:content="python:('%g%%' % pct) if pct is not None else 'not set'">20%</strong>
+      </tal:m>
+      <tal:all condition="not:view/selected_method">Limits: each run&#8217;s method profile</tal:all>
     </span>
   </tal:r>
 
@@ -238,13 +242,18 @@
   </div>
 
   <!-- Embed run data as JSON -->
-  <tal:rjson tal:define="runs_json view/calibration_runs_json; limits_json view/qc_limits_json">
+  <tal:rjson tal:define="runs_json view/calibration_runs_json">
   <script>
   var CAL_RUNS  = <tal:x tal:replace="runs_json">[]</tal:x>;
   var CAL_URL   = '<tal:u tal:replace="context/absolute_url">.</tal:u>/@@pfas-calibrations';
-  var R2_MIN    = <tal:x tal:replace="view/r2_minimum">0.995</tal:x>;
-  var PCT_MAX   = <tal:x tal:replace="view/cal_pct_max">20</tal:x>;
-  var QC_LIMITS = <tal:x tal:replace="limits_json">{"CAL":{"max":25,"warn":25},"ICV":{"max":20,"warn":20},"CCV":{"max":20,"warn":10},"CCB":{"max":20,"warn":20}}</tal:x>;
+  /* Limits come from each analyte's own run method profile (cal.limits,
+     cal.r2_min); null = the method sets none -> not judged, no limit line. */
+  var CAL_BY_UID = {};
+  function limFor(uid) {
+    var c = CAL_BY_UID[uid] || {};
+    var L = c.limits || {};
+    return {CAL: L.CAL || {}, ICV: L.ICV || {}, CCV: L.CCV || {}, r2: c.r2_min};
+  }
   var IS_MGR    = <tal:x tal:replace="python:'true' if view.is_manager() else 'false'">false</tal:x>;
   </script>
   </tal:rjson>
@@ -468,7 +477,8 @@
     var r2el = document.getElementById(uid+'_r2');
     if (r2el && r2c !== null) {
       r2el.textContent = 'R\u00B2 ' + r2c.toFixed(4);
-      r2el.className = 'r2-badge ' + (r2c >= R2_MIN ? 'r2-ok' : 'r2-fail');
+      var r2min = limFor(uid).r2;
+      r2el.className = 'r2-badge ' + (r2min == null ? 'r2-na' : (r2c >= r2min ? 'r2-ok' : 'r2-fail'));
     }
     // Update equation line
     var eqEl = document.getElementById(uid+'_eq');
@@ -577,13 +587,13 @@
     var labels = lvs.map(function(l){ return 'L'+l.level; });
     var devs   = lvs.map(function(l){ return l.pct_deviation; });
     var colors = lvs.map(function(l){ return l.passed ? cOK : cFail; });
-    var calLim  = (QC_LIMITS.CAL || {}).max  || PCT_MAX;
-    var calWarn = (QC_LIMITS.CAL || {}).warn;
+    var calLim  = limFor(uid).CAL.max;
+    var calWarn = limFor(uid).CAL.warn;
 
     // Y scale: data range with some padding, always showing full ±limit
     var absDevs = devs.filter(function(v){return v!=null;}).map(Math.abs);
     var dMax = absDevs.length > 0 ? Math.max.apply(null, absDevs) : 0;
-    var yMax = Math.max(dMax * 1.3, calLim * 1.1);
+    var yMax = Math.max(dMax * 1.3, (calLim || 0) * 1.1, 1);
 
     var _lvs2 = lvs;
     var _cal2 = cal;
@@ -678,13 +688,13 @@
       barColors.push(r.passed ? cOK : cFail);
     });
 
-    var icvLim  = (QC_LIMITS.ICV||{}).max  || 20;
-    var ccvLim  = (QC_LIMITS.CCV||{}).max  || 20;
-    var ccvWarn = (QC_LIMITS.CCV||{}).warn;
-    var limMax  = Math.max(icvLim, ccvLim);
+    var icvLim  = limFor(uid).ICV.max;
+    var ccvLim  = limFor(uid).CCV.max;
+    var ccvWarn = limFor(uid).CCV.warn;
+    var limMax  = (icvLim == null && ccvLim == null) ? null : Math.max(icvLim || 0, ccvLim || 0);
     var absDevs = devs.filter(function(v){return v!=null;}).map(Math.abs);
     var dMax = absDevs.length > 0 ? Math.max.apply(null, absDevs) : 0;
-    var yMax = Math.max(dMax * 1.3, limMax * 1.1);
+    var yMax = Math.max(dMax * 1.3, (limMax || 0) * 1.1, 1);
 
     var _cal3 = cal;
     var key = uid+'c3';
@@ -745,7 +755,8 @@
     var uid = 'c'+cal.id;
     cal._uid = uid;
     var r2disp = cal.r2 != null ? 'R\u00B2 '+cal.r2.toFixed(4) : 'R\u00B2 —';
-    var r2cls  = cal.r2_ok ? 'r2-ok' : 'r2-fail';
+    CAL_BY_UID[uid] = cal;
+    var r2cls  = cal.r2_ok == null ? 'r2-na' : (cal.r2_ok ? 'r2-ok' : 'r2-fail');
     var sttcls = 'badge badge-'+(cal.status||'pending');
     var eqText = cal.fit_type_override
       ? (cal.fit_type_override+(cal.weight_override?' / '+cal.weight_override:'')
@@ -908,7 +919,8 @@
         return {level:l.level, expected:l.expected, calculated:l.calculated,
                 response_ratio:l.response_ratio,
                 pct_deviation:pctDev,
-                passed: pctDev != null ? Math.abs(pctDev) <= PCT_MAX : l.passed};
+                passed: (pctDev != null && limFor(uid).CAL.max != null)
+                        ? Math.abs(pctDev) <= limFor(uid).CAL.max : l.passed};
       });
       drawPlot2(uid, {levels: updLvs});
     } else {
@@ -922,7 +934,9 @@
     if (icvccvWithRR.length > 0 && useResp) {
       var fn3 = computeFn(pts2.slice(), ft, wtp, ori);
       var xMax3 = pts2.length > 0 ? Math.max.apply(null, pts2.map(function(p){return p.x;})) : 10;
-      var limMax3 = Math.max((QC_LIMITS.ICV||{}).max||20, (QC_LIMITS.CCV||{}).max||20);
+      var l3 = limFor(uid);
+      var limMax3 = (l3.ICV.max == null && l3.CCV.max == null) ? null
+                    : Math.max(l3.ICV.max || 0, l3.CCV.max || 0);
       var updQC = (cal.qc||[]).map(function(r) {
         if ((r.qc_type!=='ICV'&&r.qc_type!=='CCV') || r.response_ratio==null || !r.expected_value) return r;
         var xBack = backCalcBisect(fn3, r.response_ratio, xMax3);
@@ -932,7 +946,7 @@
         return {qc_type:r.qc_type, qc_level:r.qc_level, value:r.value,
                 expected_value:r.expected_value, pct_dev:pctDev,
                 response_ratio:r.response_ratio, flag:r.flag,
-                passed: pctDev != null ? Math.abs(pctDev) <= limMax3 : r.passed};
+                passed: (pctDev != null && limMax3 != null) ? Math.abs(pctDev) <= limMax3 : r.passed};
       });
       drawPlot3(uid, {qc: updQC});
     } else {

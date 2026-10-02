@@ -265,12 +265,6 @@ DEFAULT_PROFILES = {
                 "sn_confirm_min": 3.0,
                 "require_confirm_ion_check": True,
             },
-            "sequence": {
-                "cal_at_start": True,
-                "ccv_frequency": 6,
-                "blank_at_start": True,
-                "blank_at_end": True,
-            },
         },
         "qc_acceptance": {
             "MB": {
@@ -370,8 +364,6 @@ DEFAULT_PROFILES = {
             "M2-10:2FTS":"M4PFOA",
         },
         "per_analyte": _fda_per_analyte(),
-        "extraction_corrections": {
-        },
         "isomer_summation": [
             {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
             {"linear": "lr-PFNA",  "branched": "br-PFNA",  "reported": "PFNA",  "enabled": True},
@@ -521,12 +513,6 @@ DEFAULT_PROFILES = {
                 "sn_confirm_min": None,
                 "require_confirm_ion_check": False,
             },
-            "sequence": {
-                "cal_at_start": True,
-                "ccv_frequency": 10,
-                "blank_at_start": True,
-                "blank_at_end": True,
-            },
         },
         "qc_acceptance": {
             "MB": {
@@ -577,8 +563,6 @@ DEFAULT_PROFILES = {
         "surrogate_map": _derive_surrogate_map(_EPA537_ANALYTE_KEYWORDS),
         "surrogate_is": "",
         "per_analyte": [],
-        "extraction_corrections": {
-        },
         "isomer_summation": [
             {"linear": "lr-PFOA",  "branched": "br-PFOA",  "reported": "PFOA",  "enabled": True},
             {"linear": "lr-PFNA",  "branched": "br-PFNA",  "reported": "PFNA",  "enabled": True},
@@ -721,12 +705,6 @@ DEFAULT_PROFILES = {
                 "sn_quan_min": 3.0,
                 "sn_confirm_min": 1.0,
                 "require_confirm_ion_check": True,
-            },
-            "sequence": {
-                "cal_at_start": True,
-                "ccv_frequency": 10,
-                "blank_at_start": True,
-                "blank_at_end": True,
             },
         },
         "qc_acceptance": {
@@ -885,8 +863,6 @@ DEFAULT_PROFILES = {
         "surrogate_map": _derive_surrogate_map(_EPA1633A_ANALYTE_KEYWORDS),
         "surrogate_is": "",
         "per_analyte": [],
-        "extraction_corrections": {
-        },
         "isomer_summation": [
             {"linear": "lr-PFOA",      "branched": "br-PFOA",      "reported": "PFOA",      "enabled": True},
             {"linear": "lr-PFNA",      "branched": "br-PFNA",      "reported": "PFNA",      "enabled": True},
@@ -1047,6 +1023,8 @@ def migrate_profile_models(portal):
     replacing isomer_summation (2026-10-01). Saved through save_profile, so
     the change history records it and the pipeline export is rewritten."""
     from senaite.pfas import isomers, labelled_standards
+    from senaite.pfas import qc_consolidation
+    saved_rules = _raw_qc_rules()
     changed = []
     for method_id in list_method_ids(portal):
         profile = raw_profile(portal, method_id)
@@ -1069,12 +1047,39 @@ def migrate_profile_models(portal):
         # levels kept as ppt, an empty FDA / EPA 1633A ladder seeded in ng/mL
         from senaite.pfas import calibration_levels
         h = calibration_levels.migrate(profile, method_id)
-        if a or b or c or d or e or f or g or h:
+        # QC consolidation P1: keys nothing reads any more; P2: this method's
+        # rule switches / ICV / CCV-warning values move in from qc_rules.json
+        i = qc_consolidation.drop_dead_keys(profile, method_id)
+        from senaite.pfas.qc.rules import method_toggles
+        j = qc_consolidation.move_from_rules(profile, method_id, saved_rules,
+                                             method_toggles({}, method_id))
+        if a or b or c or d or e or f or g or h or i or j:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:
         logger.info("profile models: migrated %s", ", ".join(changed))
+    # Once EVERY profile holds its rule switches, strip what moved out of
+    # qc_rules.json (it keeps only control-chart presentation).
+    if saved_rules and all("rule_toggles" in raw_profile(portal, m)
+                           for m in list_method_ids(portal)):
+        from senaite.pfas.qc.rules import get_store, strip_moved_sections
+        if strip_moved_sections(saved_rules):
+            get_store().save(saved_rules, updated_by=u"qc consolidation")
+            logger.info("qc_rules.json: criteria and rule switches moved to the method profiles")
     return changed
+
+
+def _raw_qc_rules():
+    """qc_rules.json as stored (not merged with defaults), or {}."""
+    try:
+        from senaite.pfas.qc.rules import get_store
+        path = get_store().path
+        if os.path.exists(path):
+            with open(path) as fh:
+                return json.load(fh)
+    except Exception as exc:                              # noqa: BLE001
+        logger.warning("could not read qc_rules.json: %s", exc)
+    return {}
 
 
 # ── ZODB annotation store + Dexterity content path ────────────────────────────

@@ -105,6 +105,23 @@ different limits.
 - `method_baselines` holds the published Table 6 / 8 copy for departure
   comparison.
 
+### C10. The engine's flat CRITERIA were FDA's for every method (high; found during P2)
+- `constants.reload_criteria()` was called with no method, so it always built
+  from FDA 32-PFAS. The run queue's ion-ratio, S/N and IS-response checks read
+  it, so EPA 1633A was judged at ±30 % ion ratio instead of its 50 %, and
+  EPA 537.1 (no ion-ratio criterion) at 30 %.
+
+### C11. The Rule Toggles tab edited a second copy of the limits (high; found during P2)
+- Rule "parameters" (R² 0.995, CCV 70–130, S/N 10, three ion-ratio tolerances,
+  RT 5 % / 0.1 min, IS 50 %) and an Advanced "global defaults" table wrote
+  `qc_rules.json`. Only the Calibrations page read them; the pipeline used
+  the Calibration & CCV fields. Same fact, two tabs, two values.
+
+## Status (2026-10-02)
+- **P1 and P2 done** (GAPS §81). P3 (one project system) and P4 (derive
+  "no labelled standard"; one EIS grid) await approval; D4 (SENAITE specs
+  read-only) was decided and is done.
+
 ## Proposed plan
 
 **P1 — make the copies agree, no new decisions** (small)

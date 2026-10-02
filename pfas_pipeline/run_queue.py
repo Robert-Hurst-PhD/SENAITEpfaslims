@@ -141,19 +141,19 @@ def _get_conc(inj_name, analyte, lookup):
     return None
 
 
-def _load_rule_toggles(method_id: str, rules_path: str = "/data/qc/qc_rules.json") -> dict:
-    """Return {rule_library_key: bool} for method_id.  Default all True on error."""
+def _load_rule_toggles(method_id: str, rules_path: str = None) -> dict:
+    """{rule_library_key: bool} for method_id -- the METHOD PROFILE's own
+    `rule_toggles` (QC consolidation P2; they used to sit in qc_rules.json).
+    `rules_path` is accepted for old callers and ignored. An absent key is
+    treated as on by _rule_enabled."""
     if not method_id:
         return {}
+    from .method_profiles import _profile_data_cache, get_profile
     try:
-        import os
-        if not os.path.exists(rules_path):
-            return {}
-        with open(rules_path) as f:
-            rules = json.load(f)
-        return rules.get("method_rule_toggles", {}).get(method_id, {})
-    except Exception:
-        return {}
+        mid = get_profile(method_id).method_id         # aliases ("FDA", "537") resolved
+    except Exception:                                    # noqa: BLE001
+        mid = method_id
+    return dict((_profile_data_cache.get(mid) or {}).get("rule_toggles") or {})
 
 
 def _takes_surrogate_recovery(injection_name: str,

@@ -39,7 +39,14 @@ _GLOBAL_PROFILES = {
         },
         "eis_overrides": [],
     },
-    "EPA_537_1": copy.deepcopy(mp._DEFAULT_PROFILE_CACHE["EPA_537_1"]),
+    "EPA_537_1": {
+        "instrument_verification": {
+            "calibration": {"r2_min": 0.990},
+            "confirmation": {"sn_quan_min": 3.0},
+            "ccv": {"recovery_min": 70.0, "recovery_max": 130.0},
+        },
+        "qc_acceptance": {"Dup": {"tiers": [{"rpd_max": 30.0}]}},
+    },
     "EPA_1633A": {
         "instrument_verification": {
             "calibration": {"r2_min": 0.990},

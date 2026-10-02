@@ -54,17 +54,11 @@ class PFASSettingsReportView(BrowserView):
     def method_id(self):
         return (self.request.form.get("method_id") or "").strip()
 
-    def _toggles(self):
-        try:
-            from senaite.pfas.qc.rules import get_rules
-            return (get_rules() or {}).get("method_rule_toggles") or {}
-        except Exception:                                       # noqa: BLE001
-            return {}
-
-    def _revision_info(self, mid, profile, toggles):
+    def _revision_info(self, mid, profile):
         from senaite.pfas import method_revisions as mr
+        from senaite.pfas.qc.rules import method_toggles
         recs = mr.records(api.get_portal(), mid)
-        st = mr.status(recs, mr.fingerprint(profile, toggles.get(mid)))
+        st = mr.status(recs, mr.fingerprint(profile, method_toggles(profile, mid)))
         return st, sorted(recs, key=lambda r: -r.get("rev", 0))
 
     @property
@@ -84,20 +78,14 @@ class PFASSettingsReportView(BrowserView):
         env = project_specs.site_env()
         reg = regulatory_limits.get_store(portal)
         env["regulatory"] = reg
-        try:
-            from senaite.pfas.qc.rules import get_rules
-            rules = get_rules() or {}
-        except Exception as exc:                               # noqa: BLE001
-            logger.warning("settings report: QC rules unavailable: %s", exc)
-            rules = {}
-        toggles = rules.get("method_rule_toggles") or {}
+        from senaite.pfas.qc.rules import method_toggles
         only = self.method_id()
         profiles = dict((mid, raw_profile(portal, mid) or {}) for mid in sorted(list_method_ids(portal))
                         if not only or mid == only)
         methods = []
         for mid, p in sorted(profiles.items()):
-            m = sr.method_report(p, env, toggles.get(mid))
-            m["revision"], m["revisions"] = self._revision_info(mid, p, toggles)
+            m = sr.method_report(p, env, method_toggles(p, mid))
+            m["revision"], m["revisions"] = self._revision_info(mid, p)
             methods.append(m)
         projects = self._projects(portal, profiles, env)
         if only:
@@ -118,14 +106,13 @@ class PFASSettingsReportView(BrowserView):
             "revision_label": self._label(methods[0]["revision"]) if only and methods else u"",
             "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "user": (user.getProperty("fullname") or user.getId()) if user else u"",
-            "fingerprint": sr.fingerprint(profiles, reg, rules, ps,
+            "fingerprint": sr.fingerprint(profiles, reg, ps,
                                           [p["specs"] for p in projects]),
             "methods": methods,
             "limits": reg.get("limits") or [],
             "programs": reg.get("programs") or {},
             "projects": projects,
             "lab": [(k, v) for k, v in lab if v],
-            "global_rules": sorted((rules.get("global") or {}).items()),
         }
         return self._report
 
@@ -194,9 +181,9 @@ class PFASSettingsReportView(BrowserView):
         if not mid or not profile:
             self.request.response.redirect(back + "?error=Unknown+method")
             return ""
-        toggles = self._toggles()
+        from senaite.pfas.qc.rules import method_toggles
         recs = mr.records(portal, mid)
-        fp = mr.fingerprint(profile, toggles.get(mid))
+        fp = mr.fingerprint(profile, method_toggles(profile, mid))
         if recs and mr.status(recs, fp)["unissued"] is False:
             self.request.response.redirect(back + "?error=%s" % _q(
                 u"%s: nothing changed since Revision %s" % (mid, mr.status(recs, fp)["rev"])))
