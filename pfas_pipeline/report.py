@@ -6,7 +6,7 @@ files on S:\\PFAS — it is GENERATED FROM the extraction log + barcode scans
 + QC results captured during analysis.  Sections:
 
   1. Cover / batch summary
-  2. Summary results table (Sheet 5 equivalent, with qualifiers)
+  2. Summary results table (with qualifiers)
   3. QC Log (Sheet 6 equivalent)
   4. Calibration & CCV table
   5. IS / Surrogate response table
@@ -14,7 +14,7 @@ files on S:\\PFAS — it is GENERATED FROM the extraction log + barcode scans
   7. Digital extraction log (steps + reagent lots from barcode scans)
   8. Signature block (Analyst / Reviewer / Supervisor)
 
-Bookmarks per section; signature rows match the VBA printWs layout.
+Bookmarks per section; analyst / reviewer / supervisor signature rows.
 Pure-Python: reportlab + pypdf — runs in the SENAITE Docker container.
 """
 
@@ -187,7 +187,7 @@ def generate_batch_report(
         story.append(Paragraph("No extraction log attached.", _BODY))
     story.append(Spacer(1, 30))
 
-    # ── 8. Signature block (matches VBA printWs layout) ──────────────────────
+    # ── 8. Signature block ───────────────────────────────────────────────────
     sig_rows = [
         ["Analyst Initials:", "____________", "Date:", "____________"],
         ["", "", "", ""],

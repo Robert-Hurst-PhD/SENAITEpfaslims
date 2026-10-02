@@ -9,8 +9,8 @@ retroactively condemn correct work — the opposite of its purpose.
 
 Two things this file exists to pin, both found by writing it:
 
-  * **there is no single use date.** On the real released WS-0005 the FM-ENV-253
-    processing date is 2025-10-17 and the FM-ENV-252 extraction date is 2026-08-03 —
+  * **there is no single use date.** On the real released WS-0005 the FM-ENV-004
+    processing date is 2025-10-17 and the FM-ENV-003 extraction date is 2026-08-03 —
     ten months apart. Each logbook carries the date ITS OWN rows were used.
   * **the first version of the reagent check could never fire.** It was handed
     `_reagent_dict`, the DISPLAY projection (title, url, supplier, cat_number,
@@ -69,9 +69,9 @@ def test_each_logbook_supplies_its_own_use_date():
     src = _source()
     tree_fn = _seg(src, "_build_traceability_tree")
     assert 'self._use_date(lb252, "extraction_date")' in tree_fn, \
-        "FM-ENV-252 rows must be judged against the extraction date"
+        "FM-ENV-003 rows must be judged against the extraction date"
     assert 'self._use_date(lb251, "prepared_date")' in tree_fn, \
-        "FM-ENV-251 rows must be judged against that logbook's prepared date"
+        "FM-ENV-002 rows must be judged against that logbook's prepared date"
 
 
 def test_an_unknown_use_date_warns_and_does_not_block():

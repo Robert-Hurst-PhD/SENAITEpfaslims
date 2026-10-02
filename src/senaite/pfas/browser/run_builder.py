@@ -521,7 +521,7 @@ class PFASRunBuilderView(BrowserView):
         return out
 
     # ── sequence construction ─────────────────────────────────────────────
-    # QC code → which FM-ENV-251 (cal-prep log) lot field supplies the vial lot.
+    # QC code → which FM-ENV-002 (cal-prep log) lot field supplies the vial lot.
     # Standards ride the cal lot; matrix/blank spikes ride the analyte spike lot.
     _QC_LOT_FIELD = {
         "CAL": "cal_a_lot", "ICV": "cal_a_lot", "CCV": "cal_a_lot",
@@ -529,10 +529,10 @@ class PFASRunBuilderView(BrowserView):
         "LFSMD": "analyte_spike_lot",
     }
 
-    CAL_PREP_SLUG = "251"   # FM-ENV-251 Calibration Curve Prep Log
+    CAL_PREP_SLUG = "251"   # FM-ENV-002 Calibration Curve Prep Log
 
     def _std_context(self, batch_id):
-        """The batch's cal-prep logbook (FM-ENV-251) dict: prepared-standard lot
+        """The batch's cal-prep logbook (FM-ENV-002) dict: prepared-standard lot
         refs + prepared date that LINK each standard injection to its lot.
         Returns {} when the log is not filled."""
         b = self._batch(batch_id)
@@ -614,7 +614,7 @@ class PFASRunBuilderView(BrowserView):
         """Assemble the injection worklist by walking the method's run sequence.
 
         Each row carries a lot-code injection NAME (the linked prepared-standard
-        lot where one exists — cal lot / spike lot from FM-ENV-251 — else the
+        lot where one exists — cal lot / spike lot from FM-ENV-002 — else the
         method code) and a human DESCRIPTION (analyst · QC type · lot · prep
         date). CAL opens the CCV-bracketed body; instrument-cal injections
         (CAL/ICV/CCV/CCB) don't advance the interval; extraction QC + samples do;
@@ -835,7 +835,7 @@ class PFASRunBuilderView(BrowserView):
             "dominant_matrix": dom,
             "ccv_interval": ccv,
             "spike_ppt": spike,
-            # linked prepared-standard lots (from FM-ENV-251) recorded on the run
+            # linked prepared-standard lots (from FM-ENV-002) recorded on the run
             "cal_lot": (std.get("cal_a_lot") or u""),
             "spike_lot": (std.get("analyte_spike_lot") or u""),
             "prep_date": (std.get("prepared_date") or u""),

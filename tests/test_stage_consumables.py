@@ -2,7 +2,7 @@
 """Consumables are recorded by lot, from the inventory (DECISIONS 2026-10-02
 "Bench phase 2"): the stage equipment entries that are consumables move to a
 by-lot list once, the guide records them like reagents, finalize files them
-in FM-ENV-252 extraction_materials[], and the stage editor keeps the key."""
+in FM-ENV-003 extraction_materials[], and the stage editor keeps the key."""
 from __future__ import unicode_literals
 
 import copy

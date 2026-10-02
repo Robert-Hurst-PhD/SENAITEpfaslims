@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-PFAS Analyte Registry
-Extracted from FDA_Sample_Calculator_V13.xlsm shared strings and DATA table.
-Contains every analyte, its MRM transitions, linked IS, and per-matrix QC criteria.
+PFAS Analyte Registry: analyte names, IS MRM transitions and key-analyte
+flags used to seed default method profiles, the key-analyte list and EDD
+internal-standard detection. First typed in from the lab's working
+spreadsheet: for the EPA methods confirm against the published tables
+(docs/REFERENCES.md); FDA entries are the lab's (C-010.04).
 """
 
 # ── Target analytes ──────────────────────────────────────────────────────────
@@ -77,7 +79,7 @@ IS_MRM = {
     "13C8-PFOS":            ("506.97>79.98",  ["506.97>98.94"]),
 }
 
-# ── Injection name patterns (from VBA ValidateInjectionNames) ─────────────────
+# ── Legacy injection-name patterns ─────────────────────────────────────────────
 import re
 
 INJECTION_PATTERNS = [

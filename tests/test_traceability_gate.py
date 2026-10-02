@@ -144,7 +144,7 @@ def test_every_resolution_branch_can_fail_the_gate():
                         sources.add(v.value)
     for expected in ("252.reagents", "252.standards",
                      "252.extraction_materials", "prepstd.parents",
-                     # FM-ENV-253 was the one logbook the walk never read, so its
+                     # FM-ENV-004 was the one logbook the walk never read, so its
                      # lots and its balance were neither resolved nor reported
                      # (GAPS §44) — the same structural gap as
                      # 252.extraction_materials before §33.12.
@@ -593,12 +593,12 @@ def test_a_balance_verification_records_the_weight_set_used():
         "collecting verifications would break or lose them")
 
 
-# ── FM-ENV-253: the logbook the walk did not read (GAPS §44) ─────────────────
+# ── FM-ENV-004: the logbook the walk did not read (GAPS §44) ─────────────────
 
 def test_the_253_logbook_is_loaded_at_all():
     src = _source()
     assert 'lb253 = _load(u"senaite.pfas.logbook.253")' in src, (
-        "FM-ENV-253 is never loaded, so its processing_materials lots and the "
+        "FM-ENV-004 is never loaded, so its processing_materials lots and the "
         "balance its samples were weighed on are traced nowhere")
 
 
@@ -608,8 +608,8 @@ def test_253_lots_are_judged_against_the_processing_date():
     fn = _seg(src, "_build_traceability_tree")
     assert 'use_253 = self._use_date(lb253, "processing_date")' in fn
     # And the 253 resolution must actually pass use_253, not use_252.
-    block = _section(src, "FM-ENV-253: processing_materials",
-                     "FM-ENV-253: the balance")
+    block = _section(src, "FM-ENV-004: processing_materials",
+                     "FM-ENV-004: the balance")
     assert "use_253" in block, "253 rows judged against another logbook's date"
     assert "use_252" not in block
 
@@ -630,7 +630,7 @@ def test_the_253_balance_reuses_the_established_warning_policy():
     mixer owes nothing); a registered unit with no verification for the day is a
     PROBLEM. §38 settled this; a third policy here would be a second answer."""
     src = _source()
-    block = _section(src, "FM-ENV-253: the balance",
+    block = _section(src, "FM-ENV-004: the balance",
                      "Equipment: serial -> unit -> calibration")
     assert "unit_by_serial" in block
     assert "equipment_provenance" in block, \
@@ -650,7 +650,7 @@ def test_the_253_balance_reuses_the_established_warning_policy():
 # ── A lot cell that says "no lot" ───────────────────────────────────────────
 
 def test_a_sentinel_lot_is_treated_as_no_lot_and_reported():
-    """FM-ENV-253 on the released WS-0005 records `{"name": "Dry ice",
+    """FM-ENV-004 on the released WS-0005 records `{"name": "Dry ice",
     "lot": "N/A"}`. Dry ice genuinely has no lot, so resolving the text would have
     invented a traceability failure the first time the 253 walk ran. It is not
     silent either: the supported way to say not-applicable is to strike the row."""
@@ -661,8 +661,8 @@ def test_a_sentinel_lot_is_treated_as_no_lot_and_reported():
     assert "return u\"\", lot" in fn, "the sentinel must yield an EMPTY lot"
     # The 253 block must CALL it. Asserting only that `if sentinel:` appears let a
     # mutation that read row["lot"] directly and hard-coded `sentinel = u""` pass.
-    block = _section(src, "FM-ENV-253: processing_materials",
-                     "FM-ENV-253: the balance")
+    block = _section(src, "FM-ENV-004: processing_materials",
+                     "FM-ENV-004: the balance")
     assert "lot_or_none(row.get(\"lot\"))" in block, (
         "the 253 walk reads the lot cell directly, so a lot of 'N/A' resolves as a "
         "real lot number and invents a failure for dry ice")

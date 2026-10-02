@@ -5,7 +5,7 @@ Generate WIRING.md — a derived map of what is wired to what in senaite.pfas.
 WHY THIS EXISTS. `get_is_list()` read a profile key nothing writes and
 returned [] for both EPA methods for four months (GAPS.md §19,
 tools/audit_configurable.py's NO PRODUCER check). The hand-maintained docs
-(RESOURCE_MAP.md, SYSTEM_AUDIT.md, README.md) cannot prevent the next one of
+(docs/history/RESOURCE_MAP.md, docs/history/SYSTEM_AUDIT.md, README.md) cannot prevent the next one of
 these because they drift the moment someone edits code without editing prose.
 This tool re-derives the wiring from the code itself, every time, so it is
 never more stale than the last commit.
@@ -1559,8 +1559,8 @@ types — this file is trustworthy only as long as it is regenerated, never
 hand-patched (see CONFIG_AUDIT.md's own header for the same rule, and
 GAPS.md's verification block for the standing command).
 
-Read this FIRST for "what is wired to what." `RESOURCE_MAP.md` and
-`SYSTEM_AUDIT.md` are rationale and history — how a decision was reached and
+Read this FIRST for "what is wired to what." `docs/history/RESOURCE_MAP.md` and
+`docs/history/SYSTEM_AUDIT.md` are rationale and history — how a decision was reached and
 why a defect happened — not a current reference; they are not regenerated and
 they drift. Method-profile JSON keys (DEAD / UNREACHABLE / SPLIT / NO
 PRODUCER) are owned by `tools/audit_configurable.py`, not this file — see §2's

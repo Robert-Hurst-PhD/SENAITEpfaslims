@@ -1,5 +1,7 @@
 # Configuration architecture review
 
+> **Status:** R1 and R2 implemented (GAPS §52–§70); see GAPS for what remains.
+
 *2026-09-30. Question asked: can a laboratory configure every QC parameter this
 analysis needs without editing Python, and is the structure sound enough to
 trust with that? Evidence is from the code at commit `4dc2fc2`, the live

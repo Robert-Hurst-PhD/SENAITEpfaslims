@@ -2,7 +2,7 @@
 """
 PFAS per-batch logbooks.
 
-Built-in logbooks (FM-ENV-250 through 253) each have a dedicated view with
+Built-in logbooks (FM-ENV-001 through 253) each have a dedicated view with
 specialist fields.  Custom logbooks added through the admin panel use the
 generic PFASLogbookCustomView which renders fields based on their definition.
 
@@ -79,7 +79,7 @@ def _apply_field_corrections(form, existing, fields, data):
 BATCHES_EXPORT_ROOT = os.environ.get("PFAS_BATCHES_PATH", "/data/qc/batches")
 
 def cal_defaults(portal, method_id):
-    """FM-ENV-251 default calibration points for the batch's method:
+    """FM-ENV-002 default calibration points for the batch's method:
     [(level, injection name, ng/mL)], CAL-1 = HIGHEST (the printed logbook's
     order). From the method profile's calibration levels -- only when they are
     extract ng/mL; a ppt ladder is not a prep concentration (QC consolidation
@@ -138,7 +138,7 @@ def _batch_uid(batch):
 
 
 def _export_cal_to_file(batch, data):
-    """Write FM-ENV-251 cal data to /data/qc/batches/{uid}/cal_251.json."""
+    """Write FM-ENV-002 cal data to /data/qc/batches/{uid}/cal_251.json."""
     uid = _batch_uid(batch)
     out_dir = os.path.join(BATCHES_EXPORT_ROOT, uid)
     try:
@@ -149,9 +149,9 @@ def _export_cal_to_file(batch, data):
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2)
         os.rename(tmp, path)
-        logger.info("Exported FM-ENV-251 cal data to %s", path)
+        logger.info("Exported FM-ENV-002 cal data to %s", path)
     except (IOError, OSError) as exc:
-        logger.warning("Failed to export FM-ENV-251: %s", exc)
+        logger.warning("Failed to export FM-ENV-002: %s", exc)
 
 
 # ── Base class ─────────────────────────────────────────────────────────────────
@@ -383,7 +383,7 @@ class PFASLogbookIndexView(_LogbookBase):
         return self.portal_url() + "/@@pfas-logbook-batches"
 
 
-# ── FM-ENV-250: Solvent / Reagent Prep Log ────────────────────────────────────
+# ── FM-ENV-001: Solvent / Reagent Prep Log ────────────────────────────────────
 
 class PFASLogbook250View(_LogbookBase):
 
@@ -426,7 +426,7 @@ class PFASLogbook250View(_LogbookBase):
         return self._redirect_self("Solvent+Reagent+Prep+Log+saved")
 
 
-# ── FM-ENV-251: Calibration Curve Prep Log ────────────────────────────────────
+# ── FM-ENV-002: Calibration Curve Prep Log ────────────────────────────────────
 
 class PFASLogbook251View(_LogbookBase):
 
@@ -516,7 +516,7 @@ class PFASLogbook251View(_LogbookBase):
         return content
 
 
-# ── FM-ENV-252: Extraction Log ────────────────────────────────────────────────
+# ── FM-ENV-003: Extraction Log ────────────────────────────────────────────────
 
 class PFASLogbook252View(_LogbookBase):
 
@@ -580,7 +580,7 @@ class PFASLogbook252View(_LogbookBase):
         return self._redirect_self("Extraction+Log+saved")
 
 
-# ── FM-ENV-253: Sample Processing Log ────────────────────────────────────────
+# ── FM-ENV-004: Sample Processing Log ────────────────────────────────────────
 
 class PFASLogbook253View(_LogbookBase):
 
@@ -1509,7 +1509,7 @@ class PFASDynamicLogbookView(_LogbookBase):
 
         _save_logbook(self.context, slug, data)
 
-        # FM-ENV-251 special: export cal data for pipeline injection builder
+        # FM-ENV-002 special: export cal data for pipeline injection builder
         if slug == "251":
             _export_cal_to_file(self.context, data)
 
@@ -1618,7 +1618,7 @@ class PFASBatchDilutionsView(BrowserView):
     """
     @@pfas-batch-dilutions?batch_id=kcp-b-001
 
-    The dilution map recorded on FM-ENV-252, as JSON, for the pipeline worker:
+    The dilution map recorded on FM-ENV-003, as JSON, for the pipeline worker:
 
         {"KCP Silage \"Egg-3\"; Dil. 1:10": {"parent": "KCP Silage \"Egg-3\" Sample",
                                              "factor": 10.0}}

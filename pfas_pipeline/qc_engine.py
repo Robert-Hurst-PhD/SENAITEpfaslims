@@ -1,17 +1,14 @@
 """
-QC Engine — Python port of all 6 calculation sheets in FDA_Sample_Calculator_V13.xlsm.
+QC Engine — the instrument-level checks, each against the method profile's
+configured criteria (sources: docs/REFERENCES.md):
 
-Sheet 1: IS Raw          → is_raw_check()
-Sheet 2: RT Deviation    → rt_deviation_check()
-Sheet 3: Qual-Quan Ratio → qual_quan_check()
-Sheet 4: Calibration %   → calibration_check()
-Sheet 5: LFSM & LFSMD   → evaluated inline in run_queue.auto_evaluate()
-                          (the lfsm_check/lfsmd_check twins here were dead
-                           and were removed 2026-08-07)
-Sheet 6: QC Log          → consolidated from above
-
-All formulas are translated from the Excel FILTER/CHOOSECOLS patterns observed
-in the actual sheet XML.
+  IS response      → is_raw_check()
+  RT deviation     → rt_deviation_check()
+  Ion ratio        → qual_quan_check()
+  Calibration %dev → calibration_check()
+  LFSM / LFSMD     → evaluated in run_queue.auto_evaluate()
+                     (the lfsm_check/lfsmd_check twins here were dead and
+                      were removed 2026-08-07)
 """
 
 from __future__ import annotations
@@ -77,10 +74,9 @@ def _format_val(v: Optional[float]) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sheet 1 — IS Raw
-# Excel formula (col D, odd-lettered compound):
-#   = IF(C4=0, "N.D.", IFERROR((C4/C$3), "N.D."))   where C4 = response_ratio
-#   C$3 = AVERAGE(FILTER(DATA[ResponseRatio], Sample Type="Standard" & Compound=x))
+# IS response
+#   ratio = response_ratio / mean(response_ratio of the calibration standards
+#           for that compound); "N.D." when there is no response
 # ─────────────────────────────────────────────────────────────────────────────
 
 def is_raw_check(
@@ -235,10 +231,8 @@ def is_raw_check(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sheet 2 — RT Deviation
-# Excel formula (col D, even-lettered):
-#   = IF(C4=0, "N.D.", IFERROR((C4/C$3)-1, "N.D."))
-#   C$3 = AVERAGE(FILTER(DATA[ObservedRT], SampleType="Standard" & Compound=x))
+# RT deviation
+#   dev = observed_rt / mean(observed_rt of the calibration standards) - 1
 # ─────────────────────────────────────────────────────────────────────────────
 
 def rt_deviation_check(
@@ -296,11 +290,9 @@ def rt_deviation_check(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sheet 3 — Qual-Quan Ratio
-# Excel formula (col D):
-#   = IF(C4=0, "N.D.", IFERROR((C4/C$3), "N.D."))
-#   C$3 = average response_ratio from calibration curve (Standards)
-#   Flags if outside ±30% of expected (ion_ratio_tol_pct)
+# Ion ratio (qualifier / quantifier)
+#   ratio relative to the calibrators' mean; flagged outside the method's
+#   tolerance (a method-profile setting)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _ratio_pairs(observed, expected):
@@ -429,11 +421,9 @@ def qual_quan_check(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sheet 4 — Calibration %
-# Excel formula (col D, Calibration sheet):
-#   = CHOOSECOLS(FILTER(DATA[], Concat ID = B4 & Compound = header), col26)
-#   col 26 = % Deviation (calculated_conc vs expected_conc)
-#   R² pulled from DATA[R2]
+# Calibration
+#   per-point % deviation (calculated vs expected concentration) and the
+#   curve's r² against the method profile's calibration criteria
 #   Flags: CAL = % deviation > 20%, R² < 0.995
 # ─────────────────────────────────────────────────────────────────────────────
 

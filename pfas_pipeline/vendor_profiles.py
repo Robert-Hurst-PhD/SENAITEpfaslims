@@ -115,12 +115,12 @@ SCIEX_OS = {
              "engine when comparing to r² criteria",
 }
 
-# ── Native format already matching internal names (the original Excel DATA) ──
-NATIVE_FDA_CALCULATOR = {
-    "vendor": "FDA Sample Calculator (native)",
+# ── Native format: headers already match the internal column names ──────────
+NATIVE_INTERNAL_COLUMNS = {
+    "vendor": "Native (internal column names)",
     "delimiter": ",",
     "map": {},   # headers already canonical via importer._COL_MAP
-    "notes": "Pass-through; columns already match the Excel DATA table",
+    "notes": "Pass-through; columns already use the internal names",
 }
 
 
@@ -132,8 +132,8 @@ VENDOR_PROFILES: dict[str, dict] = {
     "masshunter": AGILENT_MASSHUNTER,
     "sciex":      SCIEX_OS,
     "sciex_os":   SCIEX_OS,
-    "native":     NATIVE_FDA_CALCULATOR,
-    "fda":        NATIVE_FDA_CALCULATOR,
+    "native":     NATIVE_INTERNAL_COLUMNS,
+    "fda":        NATIVE_INTERNAL_COLUMNS,
 }
 
 

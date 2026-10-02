@@ -1,5 +1,8 @@
 # Reuse review: existing tools instead of our own code (2026-10-02)
 
+> **Status (2026-10-02): done.** U1–U7 implemented (GAPS §82–§84); U8 waits
+> for an MDL study. R9–R11 done in GAPS §87.
+
 Scope: the whole codebase (~64 k lines of Python, plus templates and
 JavaScript). For each piece of generic plumbing: is there a well-tested
 tool, in SENAITE/Plone or outside, that does the job? Lab logic (QC rules,

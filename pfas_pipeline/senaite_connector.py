@@ -110,7 +110,7 @@ class SenaiteConnector:
         return data if isinstance(data, dict) and "error" not in data else {}
 
     def get_batch_dilutions(self, batch_id: str) -> dict:
-        """Dilution map recorded on the batch's FM-ENV-252 extraction log.
+        """Dilution map recorded on the batch's FM-ENV-003 extraction log.
 
         {dilution_injection: {"parent": ..., "factor": float}} — empty when the
         batch records none. The logbook is the only source of this

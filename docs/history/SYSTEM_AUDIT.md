@@ -1,5 +1,12 @@
 # senaite.pfas — Relational Wiring Audit
 
+> **Historical record — not a reference.** This document describes the system
+> as it was when written and is kept for its reasoning. It may name files,
+> services, spreadsheets or test exports that no longer exist or were never
+> sources. For the current system read README.md and CLAUDE.md; for where
+> regulatory values come from, docs/REFERENCES.md.
+
+
 **Date:** 2026-07-01
 **Scope:** Verify that variables/modules are properly connected along the §3
 relational spine (Method → … → Sample Report), with no dead-ends or duplicated

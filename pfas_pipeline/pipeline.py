@@ -12,7 +12,7 @@ End-to-end flow:
       2. validate all injection names             ← ValidateInjectionNames
       3. build Batch object
       4. RunQueue.auto_evaluate()                 ← all 6 QC sheets at once
-      5. build Summary results with qualifiers    ← Summary Sheet
+      5. build Summary results with qualifiers
       6. attach extraction log (if found)
       7. generate report PDF                      ← RunFullPDFPipeline
       8. push everything to SENAITE               ← REST API
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Summary builder  (BuildSummary VBA macro → Sheet 5)
+# Summary builder
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Injection kinds with no sample basis. The instrument's own sample_type is the
@@ -211,7 +211,7 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
 
 def build_summary(batch: Batch) -> list[SummaryResult]:
     """
-    Build the Summary Sheet:
+    Build the summary (one row per analyte x sample):
       - one row per analyte × environmental sample
       - qualifiers: N.D. / < LOD / BLoQ / N.C. / SUR  matching real output
         like '8.39 (BLoQ)', '0.0537 (BLoQ; N.C.)', '10.6 (BLoQ; SUR)'
@@ -772,7 +772,7 @@ def run_pipeline(
 
     # Dilution map — needed before the name check below.
     #
-    # The dilution map comes from the batch's FM-ENV-252 extraction log, which
+    # The dilution map comes from the batch's FM-ENV-003 extraction log, which
     # is the only place the parent/factor relationship is recorded. Empty for
     # any batch that logged none, so those behave exactly as before.
     dilution_map = {}
@@ -785,7 +785,7 @@ def run_pipeline(
         # and folds no dilution into its parent. That cost a full E2E
         # misdiagnosis; say so instead.
         logger.warning(
-            "senaite_batch_id was not supplied, so FM-ENV-252 is not read: "
+            "senaite_batch_id was not supplied, so FM-ENV-003 is not read: "
             "matrix spikes and dilutions will be absent, LFSM/LFSMD cannot be "
             "evaluated, and dilution injections will be reported as samples in "
             "their own right. Pass the SENAITE Batch id to use the pedigree.")
@@ -801,7 +801,7 @@ def run_pipeline(
                                                         v.get("spike_ppt"))
                                   for k, v in sorted(spike_map.items())))
         if dilution_map:
-            logger.info("FM-ENV-252 records %d dilution(s): %s",
+            logger.info("FM-ENV-003 records %d dilution(s): %s",
                         len(dilution_map),
                         ", ".join("%s <- %s" % (v.get("parent"), k)
                                   for k, v in sorted(dilution_map.items())))

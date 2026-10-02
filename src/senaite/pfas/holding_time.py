@@ -23,7 +23,7 @@ unconfigured until a lab enters theirs from its method copy.
 WHICH TWO DATES
 ---------------
 `sample_collection_date` from the Chain of Custody logbook and `extraction_date`
-from FM-ENV-252. Both were already being recorded; nothing read them together.
+from FM-ENV-003. Both were already being recorded; nothing read them together.
 The methods define the holding time as collection → EXTRACTION, not collection →
 receipt, so `lab_received_date` is deliberately not used.
 

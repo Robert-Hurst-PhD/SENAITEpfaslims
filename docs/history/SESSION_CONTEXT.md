@@ -1,4 +1,11 @@
 # SESSION CONTEXT — senaite.pfas
+
+> **Historical record — not a reference.** This document describes the system
+> as it was when written and is kept for its reasoning. It may name files,
+> services, spreadsheets or test exports that no longer exist or were never
+> sources. For the current system read README.md and CLAUDE.md; for where
+> regulatory values come from, docs/REFERENCES.md.
+
 # Keep this file updated at the end of every working session.
 # Paste it into the conversation after any reboot/session loss.
 

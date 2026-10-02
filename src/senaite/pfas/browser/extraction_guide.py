@@ -898,7 +898,7 @@ class PFASExtractionGuideView(BrowserView):
             # MERGE onto what is already stored. _save_logbook replaces the
             # annotation wholesale, so writing this summary flat would erase
             # the samples table (and its dilution rows) that the analyst filled
-            # in on the FM-ENV-252 form.
+            # in on the FM-ENV-003 form.
             data = dict(_get_logbook(b, "252") or {})
             data.update({
                 "analyst":         sess.get("analyst", ""),
@@ -934,7 +934,7 @@ class PFASExtractionGuideView(BrowserView):
             # per-stage scans, so replaying the stages must refresh them.
             # Preserving them instead left stale lots behind after a correction.
             # What must survive untouched is `samples`, which the analyst fills
-            # in on the FM-ENV-252 form.
+            # in on the FM-ENV-003 form.
             if reagents:
                 data["reagents"] = reagents
             if materials:

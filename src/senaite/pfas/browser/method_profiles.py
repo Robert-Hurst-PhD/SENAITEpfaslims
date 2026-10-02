@@ -292,6 +292,8 @@ class PFASMethodProfileEditView(BrowserView):
         return json.dumps(inclusion)
 
     def analyte_matrix_needs_verification(self):
+        # the EPA methods: confirmed against the published method. Not FDA:
+        # its values are the lab's own, as a co-author of C-010.04.
         return self.method_id() in ("EPA_537_1", "EPA_1633A")
 
     def show_eis_overrides(self):

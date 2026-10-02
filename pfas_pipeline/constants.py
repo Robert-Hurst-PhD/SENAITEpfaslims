@@ -29,7 +29,7 @@ QC_TYPES = {
     "Sample":  "Environmental Sample",
 }
 
-# ── Result qualifier flags (matching Summary Sheet output) ────────────────────
+# ── Result qualifier flags ────────────────────────────────────────────────────
 QUALIFIER_ND   = "N.D."     # non-detect (below MDL)
 QUALIFIER_LOD  = "< LOD"    # below limit of detection
 QUALIFIER_BLOQ = "BLoQ"     # below limit of quantitation (detected)
@@ -206,7 +206,7 @@ CRITERIA = dict(_DEFAULT_CRITERIA)
 # Load from file immediately if the export already exists
 reload_criteria()
 
-# ── Injection name validation patterns (VBA ValidateInjectionNames) ───────────
+# ── Legacy injection-name patterns (debug-level check only) ───────────────────
 # Pattern 1: FDA-CAL-10-260226
 # Pattern 2: FDA-ICV-260226, FDA-CCV-260226-01
 # Pattern 3: KCP Water MB 2026-03-13-01  /  KCP Deer Sample "x"; LFSM High
@@ -253,7 +253,7 @@ DATA_COLS = {
     "response":             21,
     "manual_changes":       22,
     "is_response":          23,
-    "response_ratio":       24,   # = col 18 in VBA CHOOSECOLS calls
+    "response_ratio":       24,
     "expected_conc":        25,
     "calculated_conc":      26,   # = col 26 in Calibration % sheet
     "conc_units":           27,

@@ -1,6 +1,6 @@
 """
 Typed data models for every entity in the PFAS QC pipeline.
-These are the Python equivalents of Excel rows / table entries.
+Typed records the worker passes between import, QC, summary and push.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class InstrumentRow:
     rt_relative_to_is:   Optional[float]
     response:            Optional[float]
     is_response:         Optional[float]
-    response_ratio:      Optional[float]   # col 18 in VBA → used for IS Raw & Qual-Quan
+    response_ratio:      Optional[float]   # used by the IS-response and ion-ratio checks
     expected_conc:       Optional[float]
     calculated_conc:     Optional[float]   # col 26 → Calibration %
     pct_deviation:       Optional[float]   # col 27 → % from CAL (IS Raw sheet)
@@ -221,7 +221,7 @@ class MDLResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Summary result  (one row of Summary Sheet = one analyte × one sample)
+# Summary result  (one analyte × one sample, with qualifiers and provenance)
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class SummaryResult:
@@ -255,7 +255,7 @@ class SummaryResult:
     is_mismatch:      str               = ""
 
     def display(self) -> str:
-        """Replicate the Summary Sheet display format from row 5 of Sheet 5.
+        """The displayed value with its qualifiers, e.g. `8.39 (BLoQ)`.
 
         ONE parenthesis, semicolon-separated, which is the format
         `build_summary`'s own docstring records from real output:
@@ -304,7 +304,7 @@ class Batch:
     # Linked extraction log + reagents (from barcode scan)
     reagents:           list[dict]           = field(default_factory=list)
     extraction_log:     Optional[dict]       = None
-    # Dilution map from FM-ENV-252: {dilution_injection: {parent, factor}}.
+    # Dilution map from FM-ENV-003: {dilution_injection: {parent, factor}}.
     # Empty for a batch that recorded none, which is every historical batch.
     dilutions:          dict                 = field(default_factory=dict)
     # Matrix-spike pedigree from the extraction log:

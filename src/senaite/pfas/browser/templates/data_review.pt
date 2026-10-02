@@ -750,7 +750,7 @@
           </div>
         </tal:warn>
 
-        <!-- Prepared Standards from FM-ENV-251 -->
+        <!-- Prepared Standards from FM-ENV-002 -->
         <tal:pstd tal:condition="t/prepared_standards|nothing">
           <div class="tree-section">
             <div class="tree-heading">
@@ -812,7 +812,7 @@
           </div>
         </tal:pstd>
 
-        <!-- Direct Reagents from FM-ENV-252 -->
+        <!-- Direct Reagents from FM-ENV-003 -->
         <tal:dreag tal:condition="t/direct_reagents|nothing">
           <div class="tree-section">
             <div class="tree-heading">
@@ -840,7 +840,7 @@
           </div>
         </tal:dreag>
 
-        <!-- Direct Standards from FM-ENV-252 -->
+        <!-- Direct Standards from FM-ENV-003 -->
         <tal:dstd tal:condition="t/direct_standards|nothing">
           <div class="tree-section">
             <div class="tree-heading">
@@ -1110,8 +1110,8 @@
 
       <p style="color:var(--s-secondary);font-size:var(--fs-sm);margin-bottom:14px;">
         <i class="fas fa-info-circle"></i>
-        Full column layout is pending FDA Calculator PDF confirmation.
-        Basic results shown below.
+        Results as recorded on this worksheet&#8217;s samples. A neat reading
+        replaced by its dilution appears with its retest.
       </p>
 
       <tal:fd tal:define="rows view/get_final_data">

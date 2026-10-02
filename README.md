@@ -1,64 +1,85 @@
 # senaite.pfas — PFAS LIMS Extension for SENAITE
 
 A SENAITE add-on that turns a stock SENAITE LIMS into a PFAS-aware laboratory
-system. It ships the full analyte library, method-specific QC rulebooks,
-barcode reagent tracking, an extraction-driven report pipeline, a run-queue
-review workflow, and multi-vendor instrument import.
+system: method profiles with per-method QC, a guided extraction that records
+every lot used from the inventory, a run builder, an instrument import and QC
+pipeline (an out-of-process worker), a data-review release gate, certificates
+and state EDD export.
+
+Where regulatory values come from is documented in
+[docs/REFERENCES.md](docs/REFERENCES.md): the published methods
+(EPA 537.1 v2.0, EPA 1633A; FDA C-010.04 through the lab as co-author),
+ISO/IEC 17025:2017 and the state
+EDD documents. Lab spreadsheets, instrument exports supplied for testing and
+demo data are test material, never a source.
+
+---
+
+## Methods
+
+| Method profile | Published method | Analytes configured | Notes |
+|---|---|---|---|
+| FDA 32-PFAS (food and feed) | FDA C-010.04 (in preparation; the lab is a co-author and the source for its values) | 32 | |
+| EPA 537.1 (drinking water) | EPA 537.1 Version 2.0, EPA/600/R-20/006, March 2020 — 18 PFAS | 18 | |
+| EPA 1633A (aqueous, solid, biosolids, tissue) | EPA Method 1633 Revision A, EPA 820-R-24-007, December 2024 — 40 PFAS | 40 | |
+
+Each method owns its analyte set, Method × Matrix reportable panel, labelled
+standards and links, QC criteria and rule switches, calibration levels,
+correction factors and logbook sequence (see `CLAUDE.md` §3). A criterion that
+is not configured is never replaced by a plausible default: the worker stops
+with `UnconfiguredCriterion` naming what to set and where.
 
 ---
 
 ## What gets installed
 
-Installing the `senaite.pfas` GenericSetup profile populates your SENAITE
-setup automatically from the CSV files in `src/senaite/pfas/setupdata/`:
+Installing the `senaite.pfas` GenericSetup profile populates SENAITE setup from
+the CSV files in `src/senaite/pfas/setupdata/`:
 
 | Setup area | Count | Source file |
 |---|---|---|
 | Native target analytes (AnalysisServices) | 47 | `analysis_services.csv` |
-| Isotopically-labeled IS / surrogates | 27 | `internal_standards.csv` |
-| Methods (FDA 32-PFAS, EPA 537.1, EPA 1633A) | 3 | `methods.csv` |
+| Isotopically labelled standards | 27 | `internal_standards.csv` |
+| Methods | 3 | `methods.csv` |
 | Sample types (matrices) | 14 | `sample_types.csv` |
-| Sample containers (PFAS-safe) | 7 | `containers.csv` |
-| Storage locations (with target temps) | 7 | `storage_locations.csv` |
+| Sample containers | 7 | `containers.csv` |
+| Storage locations | 7 | `storage_locations.csv` |
 | Preservations | 5 | `preservations.csv` |
-| Sample points (placeholder) | 5 | `sample_points.csv` |
+| Sample points (placeholders) | 5 | `sample_points.csv` |
 
-The 47 analytes are the UNION across all three methods; each method reports a
+The 47 analytes are the union across the three methods; each method reports a
 subset, and the reportable panel is the Method × Matrix intersection, never the
-flat list (see `CLAUDE.md` §3):
-
-| Method | Panel | Matrices |
-|---|---|---|
-| FDA 32-PFAS | 32 | 6 |
-| EPA 537.1 | 18 | 3 |
-| EPA 1633A | 40 | 9 |
-
-The 27 labeled compounds are **26 surrogates + 1 injection internal standard**
-(13C4-PFOA under FDA). Which compound plays which role is owned by the method
-(`surrogate_is_chain`); the roles are treated differently under dilution — see
-`docs/ISO17025_DESIGN.md` §5.
-
-Each native analyte is pre-linked to its surrogate per the FDA Table 9-1
-mapping (e.g. PFOA→M8PFOA, PFTrDA→MPFDoA), and the 19 analytes with no
-commercially matched labeled standard are flagged `NC` so the QC engine applies
-the N.C. qualifier and the 40–140% recovery tier automatically.
-
-> **Placeholders are now enforced, not merely advised.** Values marked
-> `PLACEHOLDER` (e.g. PFTrDS CAS) must still be confirmed against your standard
-> COAs. But an acceptance criterion that is **not configured no longer falls
-> back to a plausible default** — the run raises `UnconfiguredCriterion` and
-> stops, naming the method, analyte, matrix, QC type and where to set it. This
-> applies to recovery tiers, CCV windows and the EPA 1633A EIS limits.
->
-> A limit the METHOD TEXT states (FDA §2024.10.1(5) surrogates 50–150%,
-> EPA 537.1 §9.3.5 surrogates 70–130%) is *not* a placeholder: it is a cited
-> regulatory value, it stands as the default, and it can be overridden from
-> `qc_acceptance.SUR`. See `docs/ISO17025_DESIGN.md` §3b for why those two
-> cases are treated differently.
+flat list. Which labelled standard plays which role (extracted surrogate / EIS,
+or injection internal standard) and what it is linked to is owned by each
+method profile. Whether an analyte "has its own labelled standard" is derived
+from those links per method, not stored. Values marked `PLACEHOLDER` or VERIFY
+(some CAS / EDD codes, EPA 1633A placeholders) must be confirmed against the
+sources in docs/REFERENCES.md.
 
 ---
 
-## Dependencies (the add-ons required)
+## The bench chemist's day
+
+- **Bench landing** — the extractions queue (not started / stage N of M /
+  finished) and what needs attention: expired, quarantined, expiring and
+  low-stock lots, and today's balance verification.
+- **Guided extraction** — stage by stage: every reagent, prepared standard and
+  consumable is picked from the inventory (usable lots only, the lab's last
+  pick remembered, GS1 labels scanned, an unknown lot received in place);
+  balances and pipettes are picked from the Facility QC units; per-sample
+  amounts and final volumes and every dilution are recorded into the
+  Extraction Log (FM-ENV-003). Anything that is missing or not usable needs a
+  deviation note before the stage completes.
+- **Inventory** — every use is recorded per lot, batch and stage; what is left
+  is derived (received less uses); a recall search finds every batch that used
+  a lot.
+- **Logbooks** — form codes FM-ENV-001 Solvent/Reagent Prep, 002 Calibration
+  Curve Prep, 003 Extraction Log, 004 Sample Processing, plus Chain of Custody,
+  numbered from the logbook pool.
+
+---
+
+## Dependencies
 
 Declared in `setup.py` and `profiles/default/metadata.xml`:
 
@@ -66,34 +87,39 @@ Declared in `setup.py` and `profiles/default/metadata.xml`:
 - **senaite.core** ≥ 2.6.0 — content + workflow core (required)
 - **senaite.app.listing** — listing views (required by core)
 - **senaite.storage** — storage locations & sample storage hierarchy
-- **senaite.queue** — async processing so 18-sample / 600-page batches don't block the UI
-- **senaite.patient** — *optional*, only if you add clinical matrices
+- **senaite.queue** — async processing for large batches
+- **senaite.patient** — *optional*, only for clinical matrices
 
-Runtime libraries shared with the worker container: `pandas`, `reportlab`,
-`pypdf`, `requests`, `pyyaml`.
+The add-on's PDFs (extraction logbook, settings report) use WeasyPrint. The
+worker container (`requirements.txt`): pandas, numpy, requests, reportlab (the
+batch report), pypdf. Browser libraries are vendored under
+`src/senaite/pfas/browser/static/vendor/` with their licences (MIT); the
+camera scanner and OCR libraries (@zxing, tesseract.js) are Apache-2.0 and are
+loaded from a CDN, never vendored, because Apache-2.0 is not compatible with
+this project's GPLv2.
 
 ---
 
 ## Installation
 
-### A. Development mount (recommended, matches docker-compose.yml)
+### A. Development mount (matches docker-compose.yml)
 
-The `senaite` service mounts `./src` and sets `DEVELOP=/src/senaite.pfas`,
-so the add-on is available without rebuilding the image:
+The `senaite` service mounts the repository at `/addon`, so the add-on is
+available without rebuilding the image:
 
 ```bash
 docker compose up -d
-# → http://localhost:8080  (admin/admin)
+# → http://localhost:8080
 ```
 
 Then in the SENAITE UI:
 
-1. **Site Setup → Add-ons** → install **senaite.pfas**
-   (this runs the GenericSetup profile and loads all setup data above).
-2. Confirm **Site Setup → Analyses Setup → Analysis Services** now lists the
-   34 analytes + 21 internal standards under the `PFAS - *` categories.
-3. Confirm **Methods**, **Sample Types**, **Containers**, **Storage Locations**
-   are populated.
+1. **Site Setup → Add-ons** → install **senaite.pfas** (runs the GenericSetup
+   profile and loads the setup data above; the profile re-runs on every start
+   and migrates configured data without loss).
+2. Confirm **Analysis Services** lists the 47 analytes and 27 labelled
+   standards under the `PFAS - *` categories, and that Methods, Sample Types,
+   Containers and Storage Locations are populated.
 
 ### B. Pip install into an existing SENAITE buildout
 
@@ -104,37 +130,39 @@ pip install -e src/   # or add senaite.pfas to your buildout eggs
 
 ---
 
-## How the pieces connect to the pipeline
+## How the pieces connect
 
-The add-on (in-Plone) and the `pfas_pipeline` worker (out-of-process) share
-the same analyte definitions and method profiles:
+The add-on (in Plone, Python 2.7) and the `pfas_pipeline` worker (Python 3)
+are one system: the worker talks to SENAITE only through JSON, and pure
+add-on modules (calibration levels, QC schema, correction maths) are loaded by
+the worker from the add-on so each rule lives once.
 
 ```
-senaite.pfas (in SENAITE)              pfas_pipeline (worker container)
-─────────────────────────             ────────────────────────────────
-analyte_reference.py  ───────────────▶ constants.py / method_profiles.py
-setupdata/*.csv  → SENAITE objects     (same keywords used in results push)
-guided extraction  ───── sidecar ───▶ extraction_log.py (report pedigree)
-setuphandlers.py (install)             pipeline.py (per-batch processing)
+senaite.pfas (in SENAITE)                pfas_pipeline (worker container)
+───────────────────────────             ─────────────────────────────────
+method profiles (/data/qc)  ──────────▶ method_profiles.py (criteria per run)
+guided extraction + Run Builder ─ sidecar ─▶ pipeline.py (run parameters,
+  (FM-ENV-003 samples, dilutions)          extraction pedigree, dilutions)
+Import Studio profiles  ──────────────▶ importer.py (refuses unknown formats)
+Data Review release  ◀──── results ──── senaite_connector.py (neat result +
+  (dilution appended as a retest)          dilution handed over)
 ```
 
-When the worker pushes results it uses the **same analyte keywords** created
-here, so results land on the correct AnalysisService without manual mapping.
+`WIRING.md` (generated by `tools/wiring_map.py`) is the current map of what is
+wired to what; `docs/history/` keeps dated audits and reviews.
 
 ---
 
-## Custom content types added
+## Content and storage
 
-- **Reagent** — a barcode-scanned reagent/standard lot (catalog #, lot #,
-  expiry, class, scan count). Created on first scan by the extraction-log API.
-Facility/environmental monitoring (Maine CMR Ch.263 continuous monitoring, ISO
-17025 §6.4) is **not** a content type. It lives in
-`/data/qc/facility_monitoring.db` — `facility_qc.temperature_readings` plus
-`temperature_studies` for the NIST verification metadata. An
-`EnvironmentalReading` Dexterity type used to shadow that store and was removed
-(`migrations/remove_envreading_type.py`); its only intended producer had no
-caller, posted to a folder that did not exist, and used field names the schema
-did not declare.
+- **Reagent** and **PreparedStandard** content types hold the inventory (a
+  prepared standard keeps its parent reagent lots). Lots are created in the
+  Reagent Inventory or received in place during an extraction.
+- **Facility monitoring** (ISO/IEC 17025 §6.4) lives in
+  `/data/qc/facility_monitoring.db`, not in content types.
+- **QC results** and the **inventory usage ledger** are SQLite databases under
+  `/data/qc/`; logbooks, the extraction session and release checklists are
+  ZODB annotations (see `CLAUDE.md` §7).
 
 ---
 
@@ -142,18 +170,17 @@ did not declare.
 
 ```
 senaite_pfas/
-├── setup.py                         add-on package definition + dependencies
-├── docker-compose.yml               4-service stack (zeo, senaite, worker, tablet UI)
-├── src/senaite/pfas/
-│   ├── configure.zcml               registers the GenericSetup profile
-│   ├── content.zcml                 declares custom content types
-│   ├── setuphandlers.py             loads setupdata CSVs into SENAITE on install
-│   ├── analyte_reference.py         master analyte table (CAS, classes, IS links)
-│   ├── setupdata/                   ← the populated placeholders (8 CSVs)
-│   ├── content/
-│   │   └── reagent.py               Reagent content type
-│   └── profiles/default/            GenericSetup XML (metadata, types, registry)
-└── pfas_pipeline/                   the out-of-process worker (QC engine, etc.)
+├── setup.py                  add-on package definition + dependencies
+├── docker-compose.yml        zeo, senaite, pfas-worker, nginx
+├── CLAUDE.md                 how this project is built (read first)
+├── docs/REFERENCES.md        public sources for regulatory values; open checks
+├── GAPS.md / DECISIONS.md / QUESTIONS.md   work log, decisions, open questions
+├── WIRING.md                 generated wiring map
+├── src/senaite/pfas/         the add-on (views, method profiles, inventory, ...)
+│   └── setupdata/            setup CSVs loaded on install
+├── pfas_pipeline/            the worker (import, QC engine, report, push)
+├── tests/                    test suite (Python 3 and 2.7)
+└── tools/                    audits and generators
 ```
 
 ---

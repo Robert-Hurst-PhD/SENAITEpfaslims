@@ -13,8 +13,8 @@ is, and which inventory items need attention. Pure; Python 2.7 and 3.
                                                  first (remembered item or a
                                                  shared word with the role)
     resolve_rows(index, rows)                 -> rows as the inventory has them
-    is_standard_row(row)                      -> FM-ENV-252 standards[] or reagents[]
-    is_consumable_row(row)                    -> FM-ENV-252 extraction_materials[]
+    is_standard_row(row)                      -> FM-ENV-003 standards[] or reagents[]
+    is_consumable_row(row)                    -> FM-ENV-003 extraction_materials[]
     equipment_family(label)                   -> "balance" | "pipette" | ""
     lot_on_file(items, lot)                   -> the inventory lot with that
                                                  number (any status), or None
@@ -223,7 +223,7 @@ def is_consumable_row(row):
 
 
 def is_standard_row(row):
-    """FM-ENV-252 standards[] (resolves a prepared standard OR a reagent) or
+    """FM-ENV-003 standards[] (resolves a prepared standard OR a reagent) or
     reagents[] (resolves a reagent only), decided by the stored kind: a
     prepared standard filed in reagents[] could never resolve. Rows saved
     before phase 2 carry no kind and keep the old name test."""

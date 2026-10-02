@@ -49,7 +49,8 @@ Read in order: data model (§3) → roles (§4) → workspaces (§5) → layout 
    → batch/worksheet → samples/QC → surrogate/IS → tier → factors/qualifiers.
 
    INPUT (result → reagents): A result must also trace its inputs: extraction
-   result → which prepared standard lots were used (FM-ENV-251 lot_ref fields)
+   result → which prepared standard lots were used (Calibration Curve Prep Log,
+   FM-ENV-002, lot_ref fields; Extraction Log, FM-ENV-003)
    → which reagent lots those standards were made from (PreparedStandard parent
    annotation at `senaite.pfas.prepstd.parent_reagents`) → the CRM/reference
    standard CoA (reagent inventory). Three levels: Reagent lot → Prepared
@@ -69,7 +70,10 @@ Read in order: data model (§3) → roles (§4) → workspaces (§5) → layout 
 A PFAS laboratory LIMS built as a Plone add-on (`senaite.pfas`) on SENAITE
 2.6.0 (Plone/Zope/Python-2.7, ZODB via ZEO, Docker), plus a loosely-coupled
 out-of-process pipeline worker. Three methods, each with different per-analyte
-and per-matrix QC: FDA 32-PFAS in Food, EPA 537.1, EPA 1633A.
+and per-matrix QC: FDA C-010.04 (PFAS in food and feed, "FDA 32-PFAS"; the
+lab is a co-author and the source for its values — do not edit the FDA
+method's configuration on the basis of the public C-010.03), EPA 537.1 v2.0
+(drinking water), EPA 1633A (aqueous, solid, biosolids, tissue).
 
 Stack (each layer depends on the one below):
 ```
@@ -80,13 +84,20 @@ Zope (application server — runs the code)
 ZODB/ZEO (object database — Data.fs in the senaite-data volume = BACK IT UP)
 Python 2.7  /  Docker / Linux
 ```
-Read `README.md` and `RESOURCE_MAP.md` before doing anything.
+Read `README.md` and `docs/REFERENCES.md` before doing anything.
+`docs/REFERENCES.md` is where every regulatory value must trace to: the
+published methods (EPA 537.1 v2.0 EPA/600/R-20/006, EPA 1633A
+EPA 820-R-24-007), FDA C-010.04 through the lab (co-author), ISO/IEC
+17025:2017 and the state EDD documents. The lab's
+spreadsheets, the instrument exports supplied for testing and the demo/seeded
+data are test material, never a source (§8).
 
 For "what is wired to what," read `WIRING.md` first — generated
 (`python3 tools/wiring_map.py > WIRING.md`), never hand-patched, covering
 ZODB annotation keys, the add-on/worker file boundary, browser views, workflow
-subscribers, and content types. `RESOURCE_MAP.md`/`SYSTEM_AUDIT.md` are
-rationale and history, not current reference.
+subscribers, and content types. `docs/history/` holds dated audits, reviews
+and test reports (RESOURCE_MAP, SYSTEM_AUDIT, E2E reports): rationale and
+history, not current reference.
 
 ---
 
@@ -111,9 +122,10 @@ LABORATORY
        ├─ METHOD × MATRIX ANALYTE INCLUSION MATRIX   <-- THE KEY RELATION
        │     analytes (rows) x the method's matrices (cols), checkbox each
        │     intersection. An analyte in the method is NOT auto-reportable in
-       │     every matrix. Canonical example: under FDA, PFODA is NOT reportable
-       │     in eggs but IS in meat. The reportable panel = checked
-       │     intersections for that Method x Matrix.
+       │     every matrix (the lab decides per intersection, e.g. an analyte
+       │     the method does not validate in one food matrix stays unchecked
+       │     there). The reportable panel = checked intersections for that
+       │     Method x Matrix.
        │
        ├─ SURROGATE MAP   native -> quantifying IS (many natives -> one IS).
        │                  QUANTIFICATION link. Drag-and-drop, never JSON.
@@ -123,8 +135,9 @@ LABORATORY
        │                  (MS Quan style; any used standard -> any other).
        │                  One grid, per method (DECISIONS 2026-09-30).
        ├─ RECOVERY TIERS  per analyte; for FDA the tier is MATRIX-DEPENDENT
-       │                  (80-120 big-four in egg/meat/seafood; 65-135 else;
-       │                  40-140 +RSDr<=30 for no-labeled-standard analytes).
+       │                  (key analytes in key matrices, others, and analytes
+       │                  with no labelled standard of their own); FDA numbers
+       │                  are the lab's, per C-010.04.
        ├─ EIS RECOVERY    EPA 1633A ONLY (hidden for FDA/537.1). RECOVERY-QC
        │                  limits per analyte/matrix. DISTINCT from surrogate map.
        ├─ SALT FACTOR     per analyte x method (decimal < 1, from CoA).
@@ -133,7 +146,11 @@ LABORATORY
        ├─ QC RULESET      rules on/off + limits, per method.
        ├─ UNIT MAP        method x matrix -> reporting unit (DW->ng/L; food->ng/kg).
        ├─ CAS MAP         analyte -> CAS / Maine DEP code (for EGAD EDD).
-       └─ LOGBOOK TEMPLATES (FM-ENV-250/251/252/253) owned by the method.
+       └─ LOGBOOK TEMPLATES owned by the method. Form code = FM (form) - ENV
+          (environmental) - the logbook's sequence number, read from the
+          logbook pool: FM-ENV-001 Solvent/Reagent Prep, 002 Calibration
+          Curve Prep, 003 Extraction Log, 004 Sample Processing (+ COC). The
+          slugs 250-253 are storage keys only, never shown as form numbers.
 
   BATCH
     ├─ belongs to ONE METHOD and ONE MATRIX
@@ -145,7 +162,7 @@ LABORATORY
         which references its method/matrix parentage)
 
   WORKSHEET -> the ANALYTICAL PROCESSING UNIT inside a batch.
-           Logbooks (FM-ENV-250/251/252/253/CoC), QC results, prepared-
+           Logbooks (FM-ENV-001…004, CoC), QC results, prepared-
            standard lot records, and the 5-item data-review release checklist
            all attach to the WORKSHEET via ZODB annotations (IAnnotations) —
            NOT to the Batch. Batch is the client-facing container; Worksheet
@@ -176,8 +193,8 @@ LABORATORY
 
 2. **Method × Matrix scoping is mandatory.** Any tool that lists analytes —
    surrogate map, recovery tiers, QC, report, EDD — must list the analytes
-   valid for THAT method × matrix intersection, never a flat global list.
-   PFODA must not appear for FDA × eggs.
+   valid for THAT method × matrix intersection, never a flat global list:
+   an analyte unchecked for a matrix must not appear for it anywhere.
 
 3. **Show method-conditional fields only for the method that uses them.**
    EIS recovery limits appear only for EPA 1633A. FDA's matrix-dependent
@@ -373,7 +390,11 @@ Profile pages:
   instrument/version -> the importer REFUSES and directs the user to Import
   Studio (never auto-guess into processing).
 - Barcode scanning is wired into SENAITE (Batch/Worksheet + Reagent inventory +
-  extraction logbooks), not standalone.
+  the guided extraction), not standalone. The guided extraction is the ONE
+  extraction record (the separate tablet service is retired): it picks every
+  lot from the inventory, records per-sample amounts and dilutions into the
+  Extraction Log (FM-ENV-003) rows, and the Run Builder hands it to the worker
+  as the run's sidecar.
 - **Storage architecture — three tiers, each for a reason:**
   - **ZODB annotations** (`IAnnotations(obj)[key]`): per-object transactional
     data — logbook entries, release checklists, prepared-standard parent chains.
@@ -427,6 +448,12 @@ Profile pages:
 - Respect placeholders (EPA 1633A per-analyte limits, some CAS, Waters import
   schema, MRM transitions): make them configurable + flagged "verify"; never
   fabricate a regulatory value.
+- **Every shipped regulatory value cites a public source** in
+  `docs/REFERENCES.md` (method, document number, section/table), or is the
+  lab's own setting entered in the UI, or is flagged VERIFY there. The lab's
+  spreadsheets ("FDA calculator", injection-list workbook), the instrument
+  exports supplied for testing and the demo/seeded data are TEST MATERIAL:
+  never cite them as the origin of a value, in code, comments or docs.
 - Migration: when the model changes, MIGRATE existing configured data into the
   new structure without loss — not just define the new schema.
 
@@ -467,8 +494,9 @@ preservation method, container condition, holding-time compliance, and every
 custody transfer. No CoC → no analysis. CoC is gate #1 of the Data Review
 checklist.
 
-**Holding times are a hard acceptance criterion.** EPA 537.1: 14 days for
-drinking water PFAS. FDA methods specify per-matrix holding times. Samples
+**Holding times are a hard acceptance criterion.** EPA 537.1 v2.0 §8.5:
+samples extracted within 14 days of collection, extracts analysed within 28
+days of extraction. FDA holding times are as the lab enters them (C-010.04). Samples
 received past holding time have compromised integrity; this must be documented
 in CoC condition notes. "Holding Times OK" is a required CoC field; if
 unchecked, the CoC gate does not pass.
@@ -480,8 +508,9 @@ result to trace back to the reference standards and reagents used:
 (2) Prepared Standard lot (`pfas_prepared_standards/`) — parent reagent lots
     stored via ZODB annotation (`senaite.pfas.prepstd.parent_reagents`) — is
     the middle link.
-(3) Analysis result connects back via FM-ENV-251 (which PS lots in calibration/
-    QC) and FM-ENV-252 (which reagent lots in extraction).
+(3) Analysis result connects back via the Calibration Curve Prep Log
+    (FM-ENV-002: which PS lots in calibration/QC) and the Extraction Log
+    (FM-ENV-003: which reagent, standard and consumable lots in extraction).
 Each link is explicit, not inferred. An expired CRM lot invalidates prepared
 standards made from it; those results are not defensible.
 

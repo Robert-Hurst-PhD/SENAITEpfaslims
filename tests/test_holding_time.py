@@ -8,7 +8,7 @@ a box.
 
 The two dates were BOTH already being recorded and never read together:
 `sample_collection_date` on the Chain of Custody and `extraction_date` on
-FM-ENV-252. That is this project's recurring defect shape — a fact recorded
+FM-ENV-003. That is this project's recurring defect shape — a fact recorded
 correctly in one place and never carried to where it is used.
 
 What these tests pin, in order of what would hurt most if it broke:

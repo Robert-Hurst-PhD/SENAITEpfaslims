@@ -1,4 +1,11 @@
 # Design Review — senaite.pfas UI/UX Audit
+
+> **Historical record — not a reference.** This document describes the system
+> as it was when written and is kept for its reasoning. It may name files,
+> services, spreadsheets or test exports that no longer exist or were never
+> sources. For the current system read README.md and CLAUDE.md; for where
+> regulatory values come from, docs/REFERENCES.md.
+
 ## 2026-06-18  Opus architecture review (all 9 valid PFAS pages)
 
 Pages reviewed (screenshots at `/tmp/pfas_screenshots/`):

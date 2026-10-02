@@ -92,7 +92,7 @@ def test_positive_identification_is_distinguishable_from_the_default():
 
 
 def test_dilution_beats_every_name_rule():
-    """A dilution's role comes from FM-ENV-252, never from the name."""
+    """A dilution's role comes from FM-ENV-003, never from the name."""
     name = 'KCP Silage "Egg-3"; Dil. 1:10'
     assert classify_injection(name, {}) == "Sample"
     assert classify_injection(name, {name: {"parent": "x", "factor": 10}}) == "Dilution"

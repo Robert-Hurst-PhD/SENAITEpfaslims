@@ -1,5 +1,7 @@
 # Method QC profile consolidation review (2026-10-02)
 
+> **Status (2026-10-02): done.** P1–P4 implemented (GAPS §81, §85).
+
 Scope: every place a method's QC criteria, calibration or QC composition is
 stored or read, across the three live profiles (FDA 32-PFAS, EPA 537.1,
 EPA 1633A). Read-only audit against the running instance; nothing changed.

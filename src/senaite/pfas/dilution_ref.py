@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Dilution tracking — the contract between FM-ENV-252 and the pipeline.
+Dilution tracking — the contract between FM-ENV-003 and the pipeline.
 
 A dilution is not a separate sample. It is the SAME sample re-injected at a
 known factor because the neat extract read above the calibration range, and it
 exists so that the over-range analytes have a quantifiable number. The lab
-records it on the Extraction Log (FM-ENV-252), because a 1:10 dilution is made
+records it on the Extraction Log (FM-ENV-003), because a 1:10 dilution is made
 from the final extract at reconstitution — an extraction step.
 
 That record is the ONLY source of truth for the relationship. Deriving it from
@@ -16,7 +16,7 @@ own output.
 
 ## The contract
 
-FM-ENV-252's ``samples`` table carries two columns per row:
+FM-ENV-003's ``samples`` table carries two columns per row:
 
     dilution_of      the Sample ID (or injection name) this row was diluted from
     dilution_factor  the total fold, a number > 1 ("2", "10"); ratios are refused
@@ -93,7 +93,7 @@ def get_dilutions(batch):
     try:
         data = json.loads(raw)
     except (ValueError, TypeError):
-        logger.warning("FM-ENV-252 on %r is not valid JSON",
+        logger.warning("FM-ENV-003 on %r is not valid JSON",
                        getattr(batch, "getId", lambda: "?")())
         return out
 

@@ -6,7 +6,7 @@ Per-batch checklist for Analyst data release:
   - Chain of Custody (manual)
   - Reagent/Standard Traceability (auto)
   - QC Summary (auto)
-  - Final Data Summary (manual, stub pending FDA Calculator PDF)
+  - Final Data Summary (manual)
   - Instrument Report (manual + file attachment)
 
 Signs off via native SENAITE Worksheet DCWorkflow:
@@ -161,7 +161,7 @@ def _is_analyst(context):
 
 
 # A lot cell an analyst has filled in to mean "this material has no lot number".
-# Dry ice, compressed gas and a machined part genuinely have none, and FM-ENV-253
+# Dry ice, compressed gas and a machined part genuinely have none, and FM-ENV-004
 # on the released WS-0005 records exactly that: `{"name": "Dry ice", "lot": "N/A"}`.
 #
 # Treated as NO LOT, which is what the analyst meant, not as a lot that failed to
@@ -519,7 +519,7 @@ class PFASDataReviewView(BrowserView):
 
         # Spiked injections the RUN contains but the extraction pedigree does
         # not. Driving the prompt from the pedigree alone meant that when
-        # FM-ENV-252 was never filled in, `spikes` was empty, the loop yielded
+        # FM-ENV-003 was never filled in, `spikes` was empty, the loop yielded
         # nothing, and the reviewer was offered no way to supply a level — while
         # the QC gate blocked on "required QC not evaluated: LFSM, LFSMD". A
         # gate with no exit is worse than no gate: it cannot be satisfied and it
@@ -553,7 +553,7 @@ class PFASDataReviewView(BrowserView):
                         "level": label,
                         "matrix": matrix,
                         # True when the pedigree does not know this injection at
-                        # all, so the prompt can say "not in FM-ENV-252" rather
+                        # all, so the prompt can say "not in FM-ENV-003" rather
                         # than "level missing".
                         "unrecorded": bool(entry.get("from_run"))})
         return out
@@ -643,8 +643,8 @@ class PFASDataReviewView(BrowserView):
         """The date a logbook says its lots were used, or "" if it does not say.
 
         There is no single "use date" for a worksheet, and choosing one would be
-        wrong: on the real released WS-0005 the FM-ENV-253 processing date is
-        2025-10-17 and the FM-ENV-252 extraction date is 2026-08-03 -- ten months
+        wrong: on the real released WS-0005 the FM-ENV-004 processing date is
+        2025-10-17 and the FM-ENV-003 extraction date is 2026-08-03 -- ten months
         apart. Each logbook carries the date ITS OWN rows were used, so each set
         of lots is judged against its own date. A worksheet-wide date would
         condemn one set or excuse the other.
@@ -1134,7 +1134,7 @@ class PFASDataReviewView(BrowserView):
 
         Two dates that were both already being recorded and never read
         together: `sample_collection_date` on the Chain of Custody, and
-        `extraction_date` on FM-ENV-252. Read through `_logbook_json`, which
+        `extraction_date` on FM-ENV-003. Read through `_logbook_json`, which
         looks on the worksheet then the linked batch — on the one worksheet
         with real data the CoC is on both and 252 is on the BATCH only, so a
         worksheet-only read would have found nothing and reported `no_dates`
@@ -1300,7 +1300,7 @@ class PFASDataReviewView(BrowserView):
 
         lb252 = _load(u"senaite.pfas.logbook.252")
         lb251 = _load(u"senaite.pfas.logbook.251")
-        # FM-ENV-253 (sample processing / homogenisation). Its rows were traced
+        # FM-ENV-004 (sample processing / homogenisation). Its rows were traced
         # NOWHERE: the walk read 252 and 251 only, so a grinder-blade or sorbent
         # lot named here was neither resolved nor reported unresolved, and the
         # balance the samples were WEIGHED on had no calibration chain. Same
@@ -1336,7 +1336,7 @@ class PFASDataReviewView(BrowserView):
                     u"%s records no date, so the lots it names cannot be checked "
                     u"for expiry at the time of use" % lb_name)
 
-        # --- FM-ENV-252: reagents[] table ---
+        # --- FM-ENV-003: reagents[] table ---
         # active_rows(): a row struck as not-applicable is recorded but inert.
         # Without this a struck row holding a half-typed lot would be reported
         # as unresolved and would block worksheet release.
@@ -1379,7 +1379,7 @@ class PFASDataReviewView(BrowserView):
                 })
             tree["direct_reagents"].append(entry)
 
-        # --- FM-ENV-252: standards[] table ---
+        # --- FM-ENV-003: standards[] table ---
         for row in active_rows(lb252.get("standards")):
             lot  = (row.get("lot") or u"").strip()
             name = row.get("name") or u""
@@ -1421,7 +1421,7 @@ class PFASDataReviewView(BrowserView):
                     })
             tree["direct_standards"].append(entry)
 
-        # --- FM-ENV-252: extraction_materials[] table ---
+        # --- FM-ENV-003: extraction_materials[] table ---
         # Traced nowhere before (GAPS §33.12): the gate read only reagents[] and
         # standards[], so a cartridge or sorbent lot was neither resolved nor
         # reported unresolved. These consumables touch the extract and belong in
@@ -1454,7 +1454,7 @@ class PFASDataReviewView(BrowserView):
                 })
             tree["direct_reagents"].append(entry)
 
-        # --- FM-ENV-253: processing_materials[] table ---
+        # --- FM-ENV-004: processing_materials[] table ---
         # Traced nowhere, exactly as extraction_materials was before §33.12: the
         # rows carry lots, `processing_date` records when they were used, and
         # nothing read either. Grinder blades, dry ice and sorbents touch the
@@ -1500,7 +1500,7 @@ class PFASDataReviewView(BrowserView):
                 })
             tree["direct_reagents"].append(entry)
 
-        # --- FM-ENV-253: the balance the samples were WEIGHED on ---
+        # --- FM-ENV-004: the balance the samples were WEIGHED on ---
         # 253 records `balance_sn` as free text and nothing resolved it, so the
         # mass every result is calculated from rested on a balance with no
         # calibration chain. Same defect §38 fixed for the extraction stages'
@@ -1611,7 +1611,7 @@ class PFASDataReviewView(BrowserView):
         except Exception as exc:                            # noqa: BLE001
             logger.error("equipment provenance walk: %s", exc)
 
-        # --- FM-ENV-251: lot_ref fields ---
+        # --- FM-ENV-002: lot_ref fields ---
         LOT_REF_FIELDS = [
             ("pds_a_lot",         u"PDS-A"),
             ("pds_b_lot",         u"PDS-B"),
@@ -1644,7 +1644,7 @@ class PFASDataReviewView(BrowserView):
                 ps_node["expiry_date"]  = str(getattr(ps_obj, "expiry_date", "") or "")[:10]
                 ps_node["url"]          = ps_obj.absolute_url()
 
-                # Judged against the date FM-ENV-251 says these standards were
+                # Judged against the date FM-ENV-002 says these standards were
                 # used, not today. The parent-tightened expiry is the one that
                 # counts -- a prep whose source CRM expired first expired with it.
                 reason = self._expired_at_use(

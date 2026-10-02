@@ -100,7 +100,7 @@ def levels(profile, keyword=None):
 def calibrators(profile):
     """[(level number, concentration in the level unit)], lowest first -- the
     calibrators a run injects and the logbook prepares (Run Builder,
-    FM-ENV-251). One list for every consumer (QC consolidation P1)."""
+    FM-ENV-002). One list for every consumer (QC consolidation P1)."""
     return [(i + 1, v) for i, v in enumerate(levels(profile))]
 
 

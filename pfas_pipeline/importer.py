@@ -1,9 +1,8 @@
 """
 Instrument data importer.
-Reads the raw MassLynx / Analyst / Skyline CSV export into typed InstrumentRow
-objects.  This is the Python equivalent of the DATA table in the xlsm.
-
-Column mapping handles the exact headers used in the xlsm DATA table (table19).
+Reads an instrument CSV export into typed InstrumentRow objects, using the
+column mapping saved in Import Studio for that instrument and software version
+(an export with no saved mapping is refused).
 """
 
 from __future__ import annotations
@@ -185,7 +184,7 @@ def _parse_datetime(date_str: str, time_str: str = "") -> datetime | None:
 
 def _build_concat_id(row: dict) -> str:
     """
-    Replicates the Excel formula:
+    Builds the unique key:
       = [@Injection Name] & "|" & TEXT([@Acquisition Date] + [@Acquisition Time],
                                         "yyyymmddhhmmss")
     """
@@ -336,7 +335,8 @@ def load_instrument_csv(
 # ── Injection name validator ──────────────────────────────────────────────────
 def validate_injection_name(name: str) -> dict:
     """
-    Validate injection name against patterns from VBA ValidateInjectionNames.
+    Validate an injection name against the legacy naming patterns
+    (constants.INJECTION_PATTERNS; debug-level only, see pipeline step 2).
     Returns {"valid": bool, "pattern": int, "qc_type": str, "starlims_id": str|None,
              "error": str|None}
     """
@@ -370,7 +370,7 @@ def classify_injection(name: str, dilutions: "dict | None" = None) -> str:
     Return the QC type code for an injection name.
     Used to classify each row in the DATA table without re-running full validation.
 
-    *dilutions* is the map recorded on FM-ENV-252 (see
+    *dilutions* is the map recorded on FM-ENV-003 (see
     senaite.pfas.dilution_ref). An injection listed there is a DILUTION of
     another sample, not a sample in its own right — so it stops being counted
     and reported twice, and QC rules can skip it.

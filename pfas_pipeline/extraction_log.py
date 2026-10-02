@@ -42,7 +42,7 @@ class ExtractionLog:
         })
 
     def sign(self, role: str, initials: str):
-        """Analyst / Reviewer / Supervisor sign-off (Summary Sheet signature rows)."""
+        """Analyst / Reviewer / Supervisor sign-off (the report's signature rows)."""
         self.signoffs.append({
             "role": role,
             "initials": initials,

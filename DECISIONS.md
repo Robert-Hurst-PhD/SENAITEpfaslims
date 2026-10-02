@@ -5827,3 +5827,26 @@ number order, and ~44 screens and messages showed the internal slugs
   setting:** "In the MS software" means the instrument also applied the
   dilution, so its number is used as reported; otherwise the LIMS multiplies
   the diluted result by the fold before it is appended over the ALoQ value.
+
+
+## 2026-10-02 — Documentation: public sources only; history separated (done at the lab's request)
+
+- docs/REFERENCES.md is the register of sources: FDA C-010.03, EPA 537.1 v2.0
+  (EPA/600/R-20/006), EPA 1633A (EPA 820-R-24-007), ISO/IEC 17025:2017, state
+  EDD documents — identifiers and the sections used were checked against the
+  published documents; values not yet confirmed are listed as open checks.
+- The lab's spreadsheets, instrument exports supplied for testing and demo /
+  seeded data are test material and are not cited as the origin of any value
+  (CLAUDE.md §8). Code comments and docstrings that described modules as ports
+  of the spreadsheet were rewritten to say what the code does now.
+- Form numbers everywhere outside dated logs read FM-ENV-001..004.
+- Dated audits, reviews, test reports and the June session note moved to
+  docs/history/ with a "historical record — not a reference" banner;
+  GAPS / DECISIONS / QUESTIONS stay as dated logs and are not rewritten.
+
+**Correction (same day, the lab):** the FDA method in this system follows
+**C-010.04**, of which the lab is a co-author; the lab is the source for its
+values, and the FDA method configuration is not to be edited against the
+public C-010.03. The comparisons first written against C-010.03 (analyte
+count, surrogate citation, recovery tiers, posting date) were withdrawn from
+REFERENCES, QUESTIONS, CLAUDE.md, README and ISO17025_DESIGN.

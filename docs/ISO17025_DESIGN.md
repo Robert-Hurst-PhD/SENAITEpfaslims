@@ -188,8 +188,8 @@ is not obvious:
 |---|---|---|
 | Tier carries no criterion | **Refuse** | Nobody decided. A gate against an unchosen limit is not a gate. |
 | Rename orphans matrix-keyed data | **Refuse** | Nobody decided that the data is disposable. |
-| FDA §2024.10.1(5) surrogate 50–150% | **Keep, cite, allow override** | The *method* decided. §8 forbids fabricating a regulatory value — and a cited value is not a fabrication. |
-| EPA 537.1 §9.3.5 surrogate 70–130% | **Keep, cite, allow override** | Same. |
+| EPA 537.1 v2.0 §9.3.5.1 surrogate 70–130% | **Keep, cite, allow override** | The *method* decided. §8 forbids fabricating a regulatory value — and a cited value is not a fabrication. |
+| FDA surrogate 50–150% (§2024.10.1(5), C-010.04) | **Keep, cite, allow override** | Same; the FDA values are the lab's, as a co-author of C-010.04 (the public C-010.03 numbers differently). |
 
 > **Refuse when nobody decided. Keep-and-cite when the method decided and the
 > lab has not overridden it.**
@@ -415,5 +415,5 @@ entirely in the unconfigured state, so that is the state that must be measured.
 - `CLAUDE.md` §10 — the obligations, stated as law
 - `DECISIONS.md` — the chronological record, including superseded decisions
 - `CONFIG_AUDIT.md` — current audit output
-- `E2E_TEST_2026-08-02.md`, `E2E_FIXES_2026-08-03.md` — the run that surfaced
+- `docs/history/E2E_TEST_2026-08-02.md`, `docs/history/E2E_FIXES_2026-08-03.md` — the run that surfaced
   most of this

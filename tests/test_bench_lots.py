@@ -2,7 +2,7 @@
 """Bench phase 2 (DECISIONS 2026-10-02 "Bench phase 2"): a stage role offers
 every usable lot, suggestions first, the lab's last pick preselected; the
 inventory -- not the browser -- supplies name, lot and expiry; the stored kind
-decides which FM-ENV-252 table a lot is filed in."""
+decides which FM-ENV-003 table a lot is filed in."""
 from __future__ import unicode_literals
 
 import io

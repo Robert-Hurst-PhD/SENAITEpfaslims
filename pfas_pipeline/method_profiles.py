@@ -810,7 +810,7 @@ class FDA32PFASProfile(MethodProfile):
             vs_ical_avg_max=req("vs_ical_avg_max"),
             vs_last_ccv_min=is_.get("vs_last_ccv_min"),
             vs_last_ccv_max=is_.get("vs_last_ccv_max"),
-            notes="Lab SOP screen (Excel legacy); FDA method sets no numeric IS-area limit",
+            notes="Lab SOP screen; the FDA method sets no numeric IS-area limit",
         )
 
     def confirmation_rule(self):

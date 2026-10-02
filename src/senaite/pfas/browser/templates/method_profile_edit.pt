@@ -361,10 +361,10 @@
                    tal:condition="view/analyte_matrix_needs_verification"
                    style="margin-bottom:12px">
                 &#9888; <strong>Lab verification required.</strong>
-                The analyte set for this method is seeded from the FDA 32-analyte list
-                as a placeholder. Review each row against your purchased method copy
-                and uncheck any analytes not reportable under this method before
-                production use.
+                Check this method&#8217;s analyte set against the published method&#8217;s
+                target list, and decide which analytes are reportable in each matrix,
+                before production use. Sources and open checks:
+                <code>docs/REFERENCES.md</code>.
               </div>
               <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">
                 Each checked cell means the analyte is <strong>reportable</strong> in

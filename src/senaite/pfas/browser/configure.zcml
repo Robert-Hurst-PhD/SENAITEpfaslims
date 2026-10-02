@@ -565,7 +565,7 @@
       permission="zope2.View"
       />
 
-  <!-- Per-batch logbooks (FM-ENV-250 through 253) — registered on Batch context -->
+  <!-- Per-batch logbooks (FM-ENV-001 through 253) — registered on Batch context -->
   <browser:page
       name="pfas-logbook-index"
       for="*"

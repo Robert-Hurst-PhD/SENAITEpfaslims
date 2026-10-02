@@ -298,7 +298,7 @@ class RunQueue:
     def auto_evaluate(self):
         """
         Run the full QC engine and mark checks AUTO_PASS / AUTO_FAIL.
-        Equivalent to pressing every macro button in the xlsm at once.
+        Runs every automatic check once, in one pass.
 
         Rule toggles are loaded from /data/qc/qc_rules.json for self.method_id.
         LIBRARY_KEY → engine block mapping (rules.py LIBRARY_KEY_TO_ENGINE_CHECKS):

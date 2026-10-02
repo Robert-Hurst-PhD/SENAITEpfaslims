@@ -92,7 +92,7 @@ SINGLE_VALUED_FIELDS = frozenset(
 
 
 # ── Native header → canonical field ──────────────────────────────────────────
-# The FDA Sample Calculator / SCIEX OS "native" export already uses these exact
+# A SCIEX OS "native" export already uses these exact
 # header strings, so a native file needs no vendor mapping at all: the importer
 # applies this table directly. Import Studio uses it to suggest a clean
 # pass-through mapping instead of guessing with regexes.

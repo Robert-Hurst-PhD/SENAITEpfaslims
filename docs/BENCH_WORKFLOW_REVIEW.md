@@ -1,5 +1,10 @@
 # Bench chemist day-to-day: extraction and inventory review (2026-10-02)
 
+> **Status (2026-10-02): done.** Phases 1–4 and R9–R11 are implemented —
+> GAPS §86–§89. The extraction-ui tablet service described in B1 is retired.
+> Form numbers below are the lab's FM-ENV-00x codes (the slugs 250–253 are
+> storage keys).
+
 Goal (lab, 2026-10-02): a user-friendly bench interface that encourages the
 chemist to document what they did, logs every item used through an
 extraction, and makes it seamless, with the inventory integrated into that
@@ -58,8 +63,8 @@ below need sign-off (CLAUDE.md §8).
   that day is not shown or checked.
 
 ### B7. One extraction is documented on four or five screens (medium)
-- Stages (guided extraction), per-sample aliquot masses (FM-ENV-253), solvent
-  preparation (FM-ENV-250), standards (FM-ENV-251), extraction (FM-ENV-252,
+- Stages (guided extraction), per-sample aliquot masses (FM-ENV-004), solvent
+  preparation (FM-ENV-001), standards (FM-ENV-002), extraction (FM-ENV-003,
   which redirects to the guide). The "Sample Weighing" stage records no
   sample weights.
 
