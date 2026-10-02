@@ -116,6 +116,13 @@ class PFASCoASectionsView(BrowserView):
                 pass
             if api.get_review_status(an) in _EXCLUDED_STATES:
                 continue
+            try:
+                # a retested analysis (a neat reading replaced by its dilution)
+                # is reported by its retest (DECISIONS 2026-10-02)
+                if an.isRetested():
+                    continue
+            except Exception:                               # noqa: BLE001
+                pass
             found.append(an)
         return found
 

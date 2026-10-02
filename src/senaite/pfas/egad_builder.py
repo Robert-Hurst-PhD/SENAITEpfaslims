@@ -481,6 +481,18 @@ class EGADBuilder(object):
                     review_state = getattr(analysis, "review_state", "") or ""
             except AttributeError:
                 continue
+            # A neat reading replaced by its dilution is reported by the
+            # retest (DECISIONS 2026-10-02), with the dilution's factor.
+            dilution_factor = 1
+            try:
+                if analysis.isRetested():
+                    continue
+                if analysis.isRetest():
+                    from senaite.pfas.browser.dilution_retests import _load
+                    rec = _load(analysis.getRetestOf()) or {}
+                    dilution_factor = rec.get("factor") or 1
+            except Exception:                               # noqa: BLE001
+                pass
 
             # Get result value
             conc = None
@@ -571,7 +583,7 @@ class EGADBuilder(object):
                 "sampled_by": sampled_by,
                 "idl": None,
                 "mdl": mdl_val,
-                "dilution_factor": 1,
+                "dilution_factor": dilution_factor,
                 "batch_id": batch_id,
                 "sdg": sdg,
                 "analysis_date": analysis_date,

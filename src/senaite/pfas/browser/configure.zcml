@@ -300,6 +300,15 @@
       permission="senaite.core.permissions.ManageBika"
       />
 
+  <!-- The worker hands over a dilution's result (appended as a retest at
+       Data Review submission; DECISIONS 2026-10-02) -->
+  <browser:page
+      name="pfas-dilution-result"
+      for="*"
+      class=".dilution_retests.PFASDilutionResultView"
+      permission="zope2.View"
+      />
+
   <!-- Lot usage + recall search (bench phase 3, inventory_ledger) -->
   <browser:page
       name="pfas-lot-usage"

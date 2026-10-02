@@ -440,6 +440,10 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             neat_result = None
             neat_qualifier = ""
             dil_factor = None
+            # every row of one injection shares its acquisition time (and in
+            # the isomer branch `row` is not this analyte's row at all)
+            analysed_at = _acq(next(iter(compounds.values()), None))
+            neat_analysed_at = ""
             meta = dil_meta.get(sample_name)
             if meta and QUALIFIER_ALOQ in (qualifier or ""):
                 drow = (dil_rows.get(sample_name) or {}).get(reported_name)
@@ -451,6 +455,8 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                         result, qualifier, flags = dres, dqual, dflags
                         source_injection = meta["injection"]
                         dil_factor = meta.get("factor")
+                        neat_analysed_at = analysed_at
+                        analysed_at = _acq(next(iter((dil_rows.get(sample_name) or {}).values()), None))
                 elif drow is not None and reported_conc(drow) is not None:
                     neat_result, neat_qualifier = result, qualifier
                     result = reported_conc(drow)
@@ -458,6 +464,8 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                                  if drow.conc_qualifier != QUALIFIER_ALOQ else "")
                     source_injection = meta["injection"]
                     dil_factor = meta.get("factor")
+                    neat_analysed_at = analysed_at
+                    analysed_at = _acq(drow)
 
             # FDA §10.2(4): PFBA and PFPeA have one usable MS/MS transition, so
             # their identity cannot be confirmed by ion ratio the way every other
@@ -507,6 +515,8 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
                 neat_result=neat_result,
                 neat_qualifier=neat_qualifier,
                 dilution_factor=dil_factor,
+                analysed_at=analysed_at,
+                neat_analysed_at=neat_analysed_at,
                 flags=flags,
             ))
 
@@ -544,6 +554,12 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Main pipeline
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _acq(row):
+    """An injection row's acquisition time as ISO text, or ""."""
+    when = getattr(row, "acquisition_datetime", None) if row is not None else None
+    return when.isoformat() if when else ""
+
 
 def _iso(value):
     """A sidecar timestamp ("2026-10-02T14:00:00Z") as a datetime, or None."""

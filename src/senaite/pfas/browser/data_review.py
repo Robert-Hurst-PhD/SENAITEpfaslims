@@ -2758,6 +2758,11 @@ class PFASDataReviewView(BrowserView):
                     continue
                 wf_tool.doActionFor(analysis, "submit")
                 submitted += 1
+                # a dilution the worker recorded for this result is appended
+                # now, as a retest with its own result and analysis time
+                from senaite.pfas.browser.dilution_retests import append_dilution_retest
+                if append_dilution_retest(analysis, wf_tool) is not None:
+                    submitted += 1
             except Exception as exc:                        # noqa: BLE001
                 logger.warning("submit_for_review: %s could not submit: %s",
                                getattr(analysis, "getKeyword", lambda: "?")(),

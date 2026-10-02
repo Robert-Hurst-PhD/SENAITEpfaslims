@@ -241,6 +241,12 @@ class SummaryResult:
     neat_result:      Optional[float]   = None
     neat_qualifier:   str               = ""
     dilution_factor:  Optional[float]   = None
+    # When each injection was ANALYSED (the instrument's acquisition time).
+    # A dilution is appended to the neat result with its own time
+    # (DECISIONS 2026-10-02 "dilutions"): analysed_at is the injection the
+    # reported value came from, neat_analysed_at the over-range neat one.
+    analysed_at:      str               = ""
+    neat_analysed_at: str               = ""
     # A reviewer finding, deliberately NOT in `flags`: flags are folded into
     # the displayed value by display() below and pushed to Analysis Remarks,
     # both of which reach the client certificate. "the method profile named a

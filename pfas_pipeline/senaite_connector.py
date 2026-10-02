@@ -28,7 +28,6 @@ from typing import Optional
 import requests
 
 from .models import Batch, QCFlag, SummaryResult
-from .extraction_log import ExtractionLog
 
 logger = logging.getLogger(__name__)
 
@@ -209,18 +208,61 @@ class SenaiteConnector:
             return False
 
         uid = analyses[0]["uid"]
-        payload = {
-            "Result": (result.result_ppt
-                       if result.result_ppt is not None
-                       else result.qualifier),
-            "Remarks": " ".join(result.flags) if result.flags else "",
-        }
+        diluted = bool(result.source_injection
+                       and result.source_injection != result.sample_injection)
+        if diluted:
+            # DECISIONS 2026-10-02: the analysis keeps the NEAT, above-LOQ
+            # reading; the dilution is appended to it as a retest (created at
+            # Data Review submission) with its own result and analysis time.
+            payload = {
+                "Result": (result.neat_result if result.neat_result is not None
+                           else (result.neat_qualifier or "ALoQ")),
+                "Remarks": "{0}; reported from dilution {1}".format(
+                    result.neat_qualifier or "ALoQ", result.source_injection),
+            }
+        else:
+            payload = {
+                "Result": (result.result_ppt
+                           if result.result_ppt is not None
+                           else result.qualifier),
+                "Remarks": " ".join(result.flags) if result.flags else "",
+            }
         if interims:
             payload["InterimFields"] = [
                 {"keyword": k, "value": v} for k, v in interims.items()
             ]
         self._post(f"update/{uid}", payload)
+        if diluted:
+            self.push_dilution(uid, result)
         return True
+
+    def push_dilution(self, analysis_uid: str, result: SummaryResult) -> bool:
+        """Hand the dilution's result to the add-on, which keeps it on the
+        analysis until Data Review submission appends it as a retest."""
+        body = {
+            "analysis_uid": analysis_uid,
+            "result": result.result_ppt,
+            "qualifier": result.qualifier or "",
+            "flags": list(result.flags or []),
+            "factor": result.dilution_factor,
+            "injection": result.source_injection,
+            "analysed_at": result.analysed_at or "",
+            "neat_result": result.neat_result,
+            "neat_qualifier": result.neat_qualifier or "",
+            "neat_injection": result.sample_injection,
+            "neat_analysed_at": result.neat_analysed_at or "",
+        }
+        try:
+            r = self.session.post(f"{self.base}/@@pfas-dilution-result", json=body,
+                                  timeout=self.timeout)
+            r.raise_for_status()
+            ok = bool((r.json() or {}).get("ok"))
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("dilution for %s not recorded: %s", analysis_uid, exc)
+            return False
+        if not ok:
+            logger.error("dilution for %s refused: %s", analysis_uid, r.text[:200])
+        return ok
 
     # ── QC flags → Remarks ───────────────────────────────────────────────────
     def push_qc_flags(self, batch_uid: str, flags: list[QCFlag]):
