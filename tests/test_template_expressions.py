@@ -250,6 +250,21 @@ def test_every_single_python_expression_compiles():
     assert not bad, "python: expressions that do not compile:\n  " + "\n  ".join(bad)
 
 
+def test_a_unicode_escape_in_a_python_expression_is_a_unicode_literal():
+    """Under Python 2 a TAL expression's '\\u00b7' is six characters unless the
+    literal is u'...': the extraction review printed "\\u00b7" on the page."""
+    # a '...' literal (no u prefix) holding a backslash-u escape
+    lit = re.compile(r"(?<![uU\w])'[^'\n]*\\u[0-9a-fA-F]{4}[^'\n]*'")
+    bad = []
+    for path in _templates():
+        with open(path, "rb") as fh:
+            text = fh.read().decode("utf-8")
+        for m in re.finditer(r'(?:tal:)?(?:content|replace|condition|define|attributes)="python:([^"]*)"', text):
+            if lit.search(m.group(1)):
+                bad.append("%s:%d" % (os.path.basename(path), text.count("\n", 0, m.start()) + 1))
+    assert not bad, "write u'\\u...' in TAL python expressions: %s" % bad
+
+
 if __name__ == "__main__":
     ok = fail = 0
     for name, fn in sorted(globals().items()):

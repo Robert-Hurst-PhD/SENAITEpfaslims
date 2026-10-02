@@ -151,6 +151,8 @@ class PFASExtractionGuideView(BrowserView):
                 return self._handle_receive_lot()
             if action == "log_dilution":
                 return self._handle_log_dilution()
+            if action == "reopen_stage":
+                return self._handle_reopen_stage()
         return self.template()
 
     # ── Context helpers ──────────────────────────────────────────────────────
@@ -243,7 +245,41 @@ class PFASExtractionGuideView(BrowserView):
         return sorted(stages, key=lambda s: s.get("order", 0))
 
     def current_stage_order(self):
-        return int(self.session().get("current_stage", 1))
+        sess = self.session()
+        if sess.get("reopened") is not None:          # a stage being corrected
+            return int(sess["reopened"])
+        return int(sess.get("current_stage", 1))
+
+    # ── What the page shows: edit / view a completed stage / review ─────────
+
+    def _orders(self):
+        return [s.get("order", 0) for s in self.extraction_stages()]
+
+    def view_order(self):
+        try:
+            return int(self.request.form.get("stage") or "")
+        except (TypeError, ValueError):
+            return None
+
+    def mode(self):
+        from senaite.pfas.extraction_review import mode
+        return mode(self.session(), self._orders(), self.view_order())
+
+    def viewed_stage(self):
+        """The completed stage shown read-only (?stage=N), as summarised."""
+        from senaite.pfas.extraction_review import stage_summary
+        n = self.view_order()
+        st = ([s for s in self.extraction_stages() if s.get("order") == n] or [{}])[0]
+        return stage_summary(n, st.get("name"),
+                             (self.session().get("stages") or {}).get(u"%s" % n))
+
+    def review_data(self):
+        from senaite.pfas.extraction_review import review
+        return review(self.session(), self.extraction_stages())
+
+    def stage_url(self, order=None):
+        base = u"{0}?batch_uid={1}".format(self._self_url(), self.batch_uid())
+        return base + (u"&stage={0}".format(order) if order is not None else u"")
 
     def current_stage(self):
         order = self.current_stage_order()
@@ -267,6 +303,8 @@ class PFASExtractionGuideView(BrowserView):
         order = stage.get("order", 0)
         current = self.current_stage_order()
         sess = self.session()
+        if sess.get("reopened") is not None and order == current:
+            return "active"                   # being corrected
         if str(order) in (sess.get("stages") or {}):
             return "done"
         if order == current:
@@ -287,7 +325,9 @@ class PFASExtractionGuideView(BrowserView):
         if not total:
             return 0
         done = len(self.completed_stages())
-        return int(done / total * 100)
+        # float: under Python 2 `done / total` is integer division, so the
+        # bar read 0 % until the last stage
+        return int(round(100.0 * done / total))
 
     # ── Reagent inventory lookup for stage reagents ───────────────────────────
 
@@ -467,15 +507,20 @@ class PFASExtractionGuideView(BrowserView):
             "solutions_prepared":  _json_or(f.get("solutions_prepared_json"), []),
         }
         stages = sess.setdefault("stages", {})
+        # a corrected stage keeps every earlier version and its reason
+        previous = stages.get(str(stage_order)) or {}
+        if previous.get("corrections"):
+            stage_data["corrections"] = previous["corrections"]
         stages[str(stage_order)] = stage_data
+        sess.pop("reopened", None)
         if sample_col and sample_edits:
             self._save_samples(b, sample_edits, sample_col)
 
-        # Advance to next stage
-        all_orders = sorted(s.get("order", 0) for s in profile_stages)
-        current = int(stage_order)
-        remaining = [o for o in all_orders if o > current]
-        sess["current_stage"] = remaining[0] if remaining else current
+        # Advance to the first stage not yet completed (after a correction
+        # that may be an earlier one, or none: then the review screen shows)
+        from senaite.pfas.extraction_review import next_stage
+        upcoming = next_stage([s.get("order", 0) for s in profile_stages], sess)
+        sess["current_stage"] = upcoming if upcoming is not None else int(stage_order)
 
         _save_session(b, sess)
         # Phase 3: the inventory learns where each lot went and how much
@@ -493,6 +538,26 @@ class PFASExtractionGuideView(BrowserView):
                          b.getId(), stage_order, exc)
         url = "{0}?batch_uid={1}&ok=Stage+completed".format(self._self_url(), b.UID())
         return self._redirect(url)
+
+    def _handle_reopen_stage(self):
+        """Reopen a completed stage for correction (DECISIONS 2026-10-02): the
+        previous version is kept with the reason; after finalizing, never."""
+        from senaite.pfas.extraction_review import reopen
+        b = self._get_batch()
+        if not b:
+            return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
+        try:
+            order = int(self.request.form.get("stage_order") or "")
+        except (TypeError, ValueError):
+            order = None
+        sess, why = reopen(_load_session(b), order, self.request.form.get("reason"),
+                           self.current_user_name(), _utcnow())
+        if why:
+            return self._redirect("{0}?batch_uid={1}&stage={2}&error={3}".format(
+                self._self_url(), b.UID(), order or u"", quote_plus(why.encode("utf-8"))))
+        _save_session(b, sess)
+        return self._redirect("{0}?batch_uid={1}&ok={2}".format(
+            self._self_url(), b.UID(), quote_plus(u"Stage reopened for correction".encode("utf-8"))))
 
     def _handle_save_pedigree(self):
         b = self._get_batch()

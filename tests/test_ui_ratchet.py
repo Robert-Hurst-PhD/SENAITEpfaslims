@@ -33,7 +33,7 @@ SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
 MAX_PAGES_WITH_STYLE_BLOCK = 50
-MAX_STYLE_ATTRIBUTES = 824
+MAX_STYLE_ATTRIBUTES = 804
 MAX_DISTINCT_HEX = 206
 MAX_DISTINCT_FONT_SIZES = 3   # the 36-64px display glyphs; all text uses var(--fs-*)
 
@@ -160,7 +160,10 @@ def test_links_are_buttons_not_text():
     wizard stepper) and the printed certificate are exempt."""
     exempt = {"pfas_sidebar.pt", "pfas_macros.pt", "coa_sections.pt", "method_wizard.pt"}
     ok_class = re.compile(r"\b(btn|btn-[\w-]+|pfas-tab|pfas-ws-card|lb-card|bq-row|pfas-tile-link|tile|"
-                          r"dr-tab|dev-tab|egad-tab|sop-tab|is-on|lbg-seg|row-pill)\b")
+                          r"dr-tab|dev-tab|egad-tab|sop-tab|is-on|lbg-seg|row-pill|"
+                          # the guided extraction's stage stepper is navigation
+                          # chrome, like the method wizard's stepper
+                          r"stage-item)\b")
     bad = []
     for name in sorted(os.listdir(TEMPLATES)):
         if not name.endswith(".pt") or name in exempt:
