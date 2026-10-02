@@ -38,7 +38,7 @@ def test_the_retest_carries_the_dilution_and_its_own_time():
     rec = drt.record(BODY, "now")[0]
     plan = drt.retest_plan(rec)
     assert plan["result"] == "48.2" and plan["captured"] == "2026-03-14T09:30:00"
-    assert plan["remarks"] == ("Dilution 1:10 (Egg-9 1:10) analysed 2026-03-14T09:30:00; "
+    assert plan["remarks"] == ("Dilution 10-fold (Egg-9 1:10) analysed 2026-03-14T09:30:00; "
                                "replaces neat 512 (ALoQ) (Egg-9) analysed 2026-03-13T17:05:00; SUR")
     q = drt.retest_plan(drt.record(dict(BODY, result=None, qualifier="BLoQ"), "now")[0])
     assert q["result"] == "BLoQ"
@@ -79,6 +79,21 @@ def test_the_summary_carries_both_analysis_times():
     s = [x for x in build_summary(b) if x.analyte == "PFOA" and x.sample_injection == "Egg-9"][0]
     assert s.source_injection == "Egg-9 1:10" and s.neat_qualifier == "ALoQ"
     assert s.analysed_at == dil_t.isoformat() and s.neat_analysed_at == neat_t.isoformat()
+    import pfas_pipeline.pipeline as pl
+    saved = pl._get_sample_correction
+    try:
+        pl._get_sample_correction = lambda m: "instrument"     # the MS software applied it
+        s3 = [x for x in build_summary(b) if x.analyte == "PFOA" and x.sample_injection == "Egg-9"][0]
+        assert s3.result_ppt == 48.2, s3.result_ppt
+        pl._get_sample_correction = lambda m: ""
+        assert abs([x for x in build_summary(b) if x.analyte == "PFOA"
+                    and x.sample_injection == "Egg-9"][0].result_ppt - 482.0) < 1e-9
+        b.dilutions = {"Egg-9 1:10": {"parent": "Egg-9", "factor": None}}   # no usable fold
+        s4 = [x for x in build_summary(b) if x.analyte == "PFOA" and x.sample_injection == "Egg-9"][0]
+        assert s4.qualifier == "ALoQ" and s4.source_injection == "Egg-9", "not substituted"
+        b.dilutions = {"Egg-9 1:10": {"parent": "Egg-9", "factor": 10.0}}
+    finally:
+        pl._get_sample_correction = saved
     # in range: the neat stands, with its own time and no neat time
     rows2 = [_row(InstrumentRow, "Egg-9", 5.0, "", neat_t), rows[1]]
     b.injections = rows2

@@ -5811,3 +5811,19 @@ number order, and ~44 screens and messages showed the internal slugs
   own result, factor and analysis time, and the retest is what the
   certificate reports. Created at Data Review submission (a retest needs a
   submitted original).
+
+
+## 2026-10-02 — Dilution fold and reporting limits (confirmed)
+
+- **Reporting limits are independent of back-calculation** (the per-sample
+  correction never changes an RL) **but scale with the dilution performed**:
+  a diluted analyte's RL on the certificate is RL x fold (2 ppt diluted
+  2-fold reports an RL of 4).
+- **A dilution is logged as its total fold, a number (2, 5, 10).** Ratios are
+  not accepted -- "1:1" means a 2-fold dilution to this lab, "1:10" means
+  10-fold to the code that existed, and a notation that can be read two ways
+  is refused rather than interpreted. A fold of 1 or less is not a dilution.
+- **The diluted concentration follows the method's per-sample correction
+  setting:** "In the MS software" means the instrument also applied the
+  dilution, so its number is used as reported; otherwise the LIMS multiplies
+  the diluted result by the fold before it is appended over the ALoQ value.

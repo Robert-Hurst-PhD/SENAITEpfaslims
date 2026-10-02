@@ -18,7 +18,7 @@ import sample_table as st      # noqa: E402
 import dilution_ref as dr      # noqa: E402
 
 ROWS = [{"sample_id": "EGG-1", "matrix_type": "Egg", "sample_type": "Sample", "spike_amount_ng": "2"},
-        {"sample_id": "EGG-1 1:10", "dilution_of": "EGG-1", "dilution_factor": "1:10"}]
+        {"sample_id": "EGG-1 1:10", "dilution_of": "EGG-1", "dilution_factor": "10"}]
 BATCH = [{"sample_id": "EGG-1", "matrix": "Egg"}, {"sample_id": "DW-1", "matrix": "Drinking Water"}]
 
 
@@ -69,21 +69,28 @@ def test_missing():
 
 
 def test_dilutions_are_appended_checked_and_read_by_the_pipeline_contract():
-    rows, err = st.append_dilution(ROWS, "EGG-1", "EGG-1 1:50", "1:50", "KCP", "2026-10-02T15:00:00Z")
+    rows, err = st.append_dilution(ROWS, "EGG-1", "EGG-1 1:50", "50", "KCP", "2026-10-02T15:00:00Z")
     assert err == "" and len(rows) == 3
     new = rows[-1]
     assert (new["dilution_of"], new["sample_id"], new["dilution_factor"], new["logged_by"]) == \
-        ("EGG-1", "EGG-1 1:50", "1:50", "KCP")
+        ("EGG-1", "EGG-1 1:50", "50", "KCP")
     for args, why in (((ROWS, "", "X", "10"), "sample"), ((ROWS, "EGG-1", "", "10"), "injection"),
                       ((ROWS, "EGG-1", "X", "ten"), "factor"), ((ROWS, "EGG-1", "X", "0"), "factor"),
-                      ((ROWS, "EGG-1", "X", "0:10"), "factor"), ((ROWS, "EGG-1", "X", "1:0"), "factor"),
+                      ((ROWS, "EGG-1", "X", "1:10"), "fold"), ((ROWS, "EGG-1", "X", "1:1"), "fold"),
+                      ((ROWS, "EGG-1", "X", "1"), "fold"), ((ROWS, "EGG-1", "X", "0.1"), "fold"),
                       ((ROWS, "EGG-1", "EGG-1 1:10", "10"), "already")):
         r, e = st.append_dilution(*(args + ("KCP", "t")))
         assert e and r == ROWS, (args, e)
-        assert why.split()[0] in e.lower() or why == "sample", e
+        assert why.split()[0] in e.lower() or why in ("sample", "factor"), e
     # what dilution_ref (the pipeline's contract) reads from the appended row
     assert dr.parse_factor(new["dilution_factor"]) == 50.0
     assert [d["sample_id"] for d in st.dilutions(rows)] == ["EGG-1 1:10", "EGG-1 1:50"]
+
+
+def test_a_dilution_is_a_fold_never_a_ratio():
+    assert dr.parse_factor("2") == 2.0 and dr.parse_factor(10) == 10.0 and dr.parse_factor(" 2.5 ") == 2.5
+    for bad in ("1:1", "1:10", "1", "0.1", "0", "-2", "ten", "", None, True):
+        assert dr.parse_factor(bad) is None, bad
 
 
 def _src(*parts):

@@ -32,7 +32,7 @@ def _factor_text(f):
     v = _num(f)
     if v is None or v <= 0:
         return u""
-    return u"1:%g" % v
+    return u"%g-fold" % v
 
 
 def record(body, recorded_at):

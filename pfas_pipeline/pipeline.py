@@ -270,6 +270,7 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
     _matrix = getattr(batch, "matrix", "") or ""
     _analytes = _get_included_analytes(_method, _matrix) if _matrix else _get_analytes(_method)
     _non_iso = _get_non_iso_set(_method)
+    _dil_in_software = _get_sample_correction(_method) == "instrument"
     # FDA §10.2(4) needs the method's confirmation rule. Resolved once here
     # rather than per result, and None-safe: a batch with no loaded profile
     # simply raises no confirmation prompt, exactly as before.
@@ -494,21 +495,30 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
             analysed_at = _acq(next(iter(compounds.values()), None))
             neat_analysed_at = ""
             meta = dil_meta.get(sample_name)
-            if meta and QUALIFIER_ALOQ in (qualifier or ""):
+            # The diluted reading times the fold -- unless the method puts
+            # results on the sample basis in the MS software, which then
+            # applied the dilution too (DECISIONS 2026-10-02). With no usable
+            # fold the dilution is NOT substituted: the neat stays ALoQ.
+            dil_scale = (1.0 if _dil_in_software
+                         else (meta.get("factor") if meta else None))
+            if meta and QUALIFIER_ALOQ in (qualifier or "") and not dil_scale:
+                logger.warning("Dilution %s of %s has no usable fold; the neat "
+                               "ALoQ reading is kept", meta.get("injection"), sample_name)
+            if meta and dil_scale and QUALIFIER_ALOQ in (qualifier or ""):
                 drow = (dil_rows.get(sample_name) or {}).get(reported_name)
                 if drow is None and iso_pair:
                     dres, dqual, dflags = _sum_isomer_pair(
                         iso_pair, dil_rows.get(sample_name) or {}, sample_name)
                     if dres is not None:
                         neat_result, neat_qualifier = result, qualifier
-                        result, qualifier, flags = dres, dqual, dflags
+                        result, qualifier, flags = dres * dil_scale, dqual, dflags
                         source_injection = meta["injection"]
                         dil_factor = meta.get("factor")
                         neat_analysed_at = analysed_at
                         analysed_at = _acq(next(iter((dil_rows.get(sample_name) or {}).values()), None))
                 elif drow is not None and reported_conc(drow) is not None:
                     neat_result, neat_qualifier = result, qualifier
-                    result = reported_conc(drow)
+                    result = reported_conc(drow) * dil_scale
                     qualifier = (drow.conc_qualifier
                                  if drow.conc_qualifier != QUALIFIER_ALOQ else "")
                     source_injection = meta["injection"]

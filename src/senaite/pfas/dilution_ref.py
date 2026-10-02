@@ -19,7 +19,7 @@ own output.
 FM-ENV-252's ``samples`` table carries two columns per row:
 
     dilution_of      the Sample ID (or injection name) this row was diluted from
-    dilution_factor  the factor, written either as "1:10" or as "10" or "0.1"
+    dilution_factor  the total fold, a number > 1 ("2", "10"); ratios are refused
 
 A row with an empty ``dilution_of`` is a neat sample — which every existing
 logbook entry is, so batches recorded before these columns existed resolve to
@@ -57,31 +57,21 @@ _RATIO_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$')
 
 
 def parse_factor(raw):
-    """Normalise a written dilution factor to a float multiplier, or None.
+    """A dilution's total fold as a float, or None (DECISIONS 2026-10-02
+    "Dilution fold"): a number greater than 1 -- "2", "10", 2.5.
 
-    "1:10" -> 10.0 (the extract was diluted ten-fold)
-    "10"   -> 10.0
-    "0.1"  -> 10.0   — some instruments record the reciprocal; a factor below 1
-                       can only mean that, so invert rather than reject it.
-    """
-    if raw is None:
+    Ratios are refused, not interpreted: to this lab "1:1" is a 2-fold
+    dilution (sample : diluent), while the code that existed read "1:10" as
+    10-fold. A notation that can be read two ways is not evidence. A value of
+    1 or below is not a dilution (the old reciprocal guess, "0.1" -> 10, went
+    with the ratios)."""
+    if raw is None or isinstance(raw, bool):
         return None
-    text = u"{0}".format(raw).strip()
-    if not text:
-        return None
-    match = _RATIO_RE.match(text)
-    if match:
-        num, den = float(match.group(1)), float(match.group(2))
-        if num == 0:
-            return None
-        return den / num
     try:
-        value = float(text)
+        value = float(u"{0}".format(raw).strip())
     except (TypeError, ValueError):
         return None
-    if value == 0:
-        return None
-    return 1.0 / value if value < 1 else value
+    return value if value > 1 else None
 
 
 def get_dilutions(batch):

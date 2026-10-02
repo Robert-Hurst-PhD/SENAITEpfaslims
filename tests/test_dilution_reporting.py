@@ -85,7 +85,9 @@ check("neat still appears", (NEAT, "PFOA") in summary, True)
 print("\nrule 2 — neat ALoQ reports from the dilution, neat retained")
 rows = [row(NEAT, "PFOA", 250.0, qualifier="ALoQ"), row(DIL, "PFOA", 31.4)]
 res = summarise(rows, DILUTIONS)[(NEAT, "PFOA")]
-check("reported value comes from the dilution", res.result_ppt, 31.4)
+# the diluted reading x the fold (10): the LIMS applies the dilution unless the
+# method's correction is done in the MS software (DECISIONS 2026-10-02)
+check("reported value comes from the dilution, times the fold", round(res.result_ppt, 6), 314.0)
 check("provenance names the dilution injection", res.source_injection, DIL)
 check("over-range neat reading retained", res.neat_result, 250.0)
 check("neat qualifier retained", res.neat_qualifier, "ALoQ")
@@ -121,7 +123,7 @@ else:
             row(NEAT, "br-PFOS", 50.0),
             row(DIL, "lr-PFOS", 22.0), row(DIL, "br-PFOS", 5.5)]
     res = summarise(rows, DILUTIONS)[(NEAT, "PFOS")]
-    check("pair summed from the dilution", round(res.result_ppt, 6), 27.5)
+    check("pair summed from the dilution, times the fold", round(res.result_ppt, 6), 275.0)
     check("pair provenance names the dilution", res.source_injection, DIL)
     check("over-range neat sum retained", round(res.neat_result, 6), 250.0)
 

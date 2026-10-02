@@ -24,12 +24,10 @@ Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-import re
 
 AMOUNT, FINAL_VOLUME = u"amount", u"final_volume_ml"
 STAGE_KEY = "captures_samples"
 _STAGE_VALUES = {u"amount": AMOUNT, u"final_volume": FINAL_VOLUME}
-_RATIO = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*$")
 
 
 def capture_column(stage):
@@ -108,14 +106,12 @@ def missing(rows, edits, column):
 
 
 def _factor_ok(text):
-    t = (u"%s" % (text or u"")).strip()
-    m = _RATIO.match(t)
-    if m:
-        return float(m.group(1)) > 0 and float(m.group(2)) > 0
+    """The one rule for a fold (dilution_ref.parse_factor)."""
     try:
-        return float(t) > 0
-    except ValueError:
-        return False
+        from senaite.pfas.dilution_ref import parse_factor
+    except ImportError:                                     # tests: plain import path
+        from dilution_ref import parse_factor
+    return parse_factor(text) is not None
 
 
 def append_dilution(rows, parent, injection, factor, by, at):
@@ -129,7 +125,7 @@ def append_dilution(rows, parent, injection, factor, by, at):
     if not injection:
         return rows, u"Give the dilution's injection name, as it appears in the run."
     if not _factor_ok(factor):
-        return rows, u"Give the dilution factor, e.g. 1:10 or 10."
+        return rows, u"Give the dilution as its total fold, a number above 1 (e.g. 2 or 10); ratios are not accepted."
     if any((r.get("sample_id") or u"").strip() == injection for r in rows):
         return rows, u"{0} is already in the record.".format(injection)
     rows.append({"sample_id": injection, "dilution_of": parent,
