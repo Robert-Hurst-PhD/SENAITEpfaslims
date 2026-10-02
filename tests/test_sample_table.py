@@ -110,7 +110,9 @@ def test_wiring():
     t = _src("browser", "templates", "extraction_guide.pt")
     assert 'value="log_dilution"' in t and "view/sample_card_json" in t
     dil = t[t.index("<tal:dil "):t.index("</tal:dil>")]
-    assert 'tal:condition="view/session"' in dil, "dilutions can be logged after finalizing too"
+    # after the last stage and after finalizing (a dilution follows the run;
+    # DECISIONS 2026-10-02 extraction UI)
+    assert "view.mode() in ('review', 'done')" in dil, "dilutions can be logged after finalizing too"
     js = _src("browser", "static", "method_profile_edit.js")
     assert 'data-field="captures_samples"' in js and "captures_samples: get('captures_samples')" in js
     assert "seed_sample_capture(profile)" in _src("method_profile_store.py")
