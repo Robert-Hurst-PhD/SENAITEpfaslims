@@ -33,15 +33,15 @@
       <h2 class="bench-h">Needs attention</h2>
       <ul class="bench-alerts">
         <li tal:repeat="it python:al['expired'][:5]" class="bench-bad">
-          <strong>Expired</strong> <span tal:content="it/kind">Reagent</span>
+          <strong>Expired</strong> <span tal:content="it/kind_label">Reagent</span>
           <span tal:content="it/name">Methanol</span>, lot <span tal:content="it/lot_number">L1</span>
           (<span tal:content="it/expiry">2026-01-01</span>)</li>
         <li tal:repeat="it python:al['quarantined'][:5]" class="bench-bad">
-          <strong>Quarantined</strong> <span tal:content="it/kind">Reagent</span>
+          <strong>Quarantined</strong> <span tal:content="it/kind_label">Reagent</span>
           <span tal:content="it/name">x</span>, lot <span tal:content="it/lot_number">L1</span></li>
         <li tal:repeat="it python:al['expiring'][:5]" class="bench-warn">
           <strong>Expires <span tal:replace="it/expiry">2026-11-01</span></strong>
-          <span tal:content="it/kind">Reagent</span> <span tal:content="it/name">x</span>,
+          <span tal:content="it/kind_label">Reagent</span> <span tal:content="it/name">x</span>,
           lot <span tal:content="it/lot_number">L1</span></li>
         <li tal:repeat="it python:al['low'][:5]" class="bench-warn">
           <strong>Low stock</strong> <span tal:content="it/name">x</span>, lot

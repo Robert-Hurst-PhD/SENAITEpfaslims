@@ -152,21 +152,8 @@ class PFASBenchHomeView(BrowserView):
         30 days, quarantined or low on stock."""
         from datetime import date
         from senaite.pfas.bench_queue import inventory_alerts
-        portal = _portal(self.context)
-        items = []
-        try:
-            from senaite.pfas.browser.reagents import _list_reagents, _effective_expiry
-            for r in _list_reagents(portal):
-                items.append(dict(r, kind=u"Reagent", expiry=_effective_expiry(r)))
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("bench alerts (reagents): %s", exc)
-        try:
-            from senaite.pfas.browser.prepared_standards import _list
-            for s in _list(portal):
-                items.append(dict(s, kind=u"Prepared standard", name=s.get("title"),
-                                  expiry=s.get("effective_expiry")))
-        except Exception as exc:                            # noqa: BLE001
-            logger.warning("bench alerts (prepared standards): %s", exc)
+        from senaite.pfas.browser.bench_inventory import inventory_items
+        items = inventory_items(_portal(self.context))
         return inventory_alerts(items, date.today())
 
     def balances_today(self):

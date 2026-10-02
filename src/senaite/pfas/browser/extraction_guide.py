@@ -33,8 +33,9 @@ from senaite.pfas.method_profile_store import get_profile
 # Imported, never redeclared: senaite.pfas.dilution_ref owns this key and reads
 # the same session to resolve per-sample dilution factors.
 from senaite.pfas.dilution_ref import EXTRACTION_SESSION_KEY
-from senaite.pfas.browser.reagents import _list_reagents, _save_reagent, STATUS_OPENED
+from senaite.pfas.browser.reagents import _save_reagent, STATUS_OPENED
 from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.bench_queue import is_standard_row
 
 logger = logging.getLogger("senaite.pfas.browser.extraction_guide")
 
@@ -65,6 +66,13 @@ def batch_method_id(batch, request):
         return PFASLogbookIndexView(batch, request).batch_method() or u""
     except Exception:                                       # noqa: BLE001
         return u""
+
+
+def resolve_rows(portal, rows):
+    """Each reagent row as the inventory has it now (bench_queue.resolve_rows)."""
+    from senaite.pfas.bench_queue import resolve_rows as _resolve
+    from senaite.pfas.browser.bench_inventory import item_index
+    return _resolve(item_index(portal), rows)
 
 
 def extraction_queue(portal, request):
@@ -266,25 +274,32 @@ class PFASExtractionGuideView(BrowserView):
 
     # ── Reagent inventory lookup for stage reagents ───────────────────────────
 
-    def stage_reagents_json(self):
-        """For the current stage: return inventory matches for each reagent role."""
-        stage = self.current_stage()
-        roles = stage.get("reagent_roles", [])
+    def stage_lots_json(self):
+        """The current stage's lot picker: every usable lot (reagents and
+        prepared standards) and, per reagent role, the suggested lots and the
+        one to preselect (DECISIONS 2026-10-02 "Bench phase 2")."""
+        from datetime import date
+        from senaite.pfas.bench_queue import default_pick, suggested
+        from senaite.pfas.browser.bench_inventory import usable_lots, role_picks
         portal = self._portal()
-        result = {}
-        for role in roles:
-            matches = _list_reagents(portal, q=role.split("(")[0].strip())[:5]
-            result[role] = [
-                {
-                    "uid":         r.get("uid", ""),
-                    "name":        r.get("name", ""),
-                    "lot_number":  r.get("lot_number", ""),
-                    "expiry_date": r.get("expiry_date") or r.get("manufacturer_expiry", ""),
-                    "status":      r.get("status", ""),
-                }
-                for r in matches
-            ]
-        return json.dumps(result)
+        lots = usable_lots(portal, date.today())
+        picks = role_picks(portal, self.session().get("method_id", ""))
+
+        def key(it):
+            return u"{0}:{1}".format(it["kind"], it["uid"])
+        roles = {}
+        for role in self.current_stage().get("reagent_roles", []):
+            rem = picks.get(role)
+            pick = default_pick(lots, role, rem)
+            roles[role] = {"suggested": [key(i) for i in suggested(lots, role, rem)],
+                           "default": key(pick) if pick else u""}
+        slim = [{"key": key(i), "kind": i["kind"], "kind_label": i["kind_label"],
+                 "uid": i["uid"], "name": i["name"], "lot": i["lot_number"],
+                 "expiry": i["expiry"], "status": i["status"], "barcode": i["barcode"],
+                 "cat_number": i["cat_number"]}
+                for i in sorted(lots, key=lambda i: (i["name"].lower(), i["lot_number"]))]
+        return json.dumps({"lots": slim, "roles": roles,
+                           "role_order": list(self.current_stage().get("reagent_roles", []))})
 
     # ── Pedigree ──────────────────────────────────────────────────────────────
 
@@ -359,11 +374,21 @@ class PFASExtractionGuideView(BrowserView):
         except (ValueError, TypeError):
             reagents = []
 
+        # The inventory is the record: a row naming a lot takes its name, lot
+        # number, expiry and status from the inventory as they are NOW, never
+        # from what the browser sent (a typed or stale expiry is not evidence).
+        reagents = resolve_rows(self._portal(), reagents)
+        try:
+            from senaite.pfas.browser.bench_inventory import remember_picks
+            remember_picks(self._portal(), sess.get("method_id", ""), reagents)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("remember_picks: %s", exc)
+
         # Update reagent inventory status for any flagged lots
         for rg in reagents:
             uid = rg.get("inventory_uid", "")
             new_status = rg.get("new_status", "")
-            if uid and new_status:
+            if uid and new_status and rg.get("kind", "reagent") == "reagent":
                 rec = None
                 from senaite.pfas.browser.reagents import _get_reagent
                 rec = _get_reagent(self._portal(), uid)
@@ -610,10 +635,7 @@ class PFASExtractionGuideView(BrowserView):
                     }
                     if not entry["lot"]:
                         continue
-                    bucket = standards if (rg.get("supplier") == "In-house"
-                                           or "standard" in entry["name"].lower()
-                                           or "spike" in entry["name"].lower()) \
-                        else reagents
+                    bucket = standards if is_standard_row(rg) else reagents
                     if entry not in bucket:
                         bucket.append(entry)
             # The guide OWNS these two tables — they are derived from its own

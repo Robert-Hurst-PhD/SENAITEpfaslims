@@ -5739,3 +5739,24 @@ Lab answers:
 - **DB4:** an expired or quarantined lot, or a balance not verified that day,
   WARNS at stage completion and requires a deviation note to continue (not a
   hard block).
+
+
+## 2026-10-02 — Bench phase 2: how a stage role finds its lots; consumables by lot (confirmed)
+
+Context: of 43 extraction-stage reagent roles across the three methods, the
+guide's name search found a usable lot for 15 (naming drift such as MgSO4 vs
+"Magnesium Sulfate", "Reagent Water" vs "Water LC-MS Grade"; prepared
+standards were never searched).
+
+- **Role -> lots: picker + remembered.** No new configuration. Each role offers
+  a searchable list of ALL usable lots (reagents and prepared standards),
+  role-name matches first. The lab's last pick for that method role is
+  preselected next time; when that lot is no longer usable, the newest usable
+  lot of the same item. Unusable lots (expired, quarantined, exhausted,
+  archived) never appear. Rejected: a configured link per role (43 roles to
+  confirm), a catalogue-number link (breaks on a supplier change).
+- **Consumables by lot, from inventory.** A "Consumable" inventory category;
+  each stage gets a consumables list recorded by lot like reagents. The stage
+  "equipment" entries that are consumables (tubes, vials, syringes, filters)
+  migrate into it (method profiles snapshotted first); equipment keeps only
+  instruments with serial numbers.
