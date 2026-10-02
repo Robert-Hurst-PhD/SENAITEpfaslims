@@ -149,6 +149,8 @@ class PFASExtractionGuideView(BrowserView):
                 return self._handle_finalize()
             if action == "receive_lot":
                 return self._handle_receive_lot()
+            if action == "log_dilution":
+                return self._handle_log_dilution()
         return self.template()
 
     # ── Context helpers ──────────────────────────────────────────────────────
@@ -411,6 +413,13 @@ class PFASExtractionGuideView(BrowserView):
                       if u"%s" % s.get("order") == stage_order] or [{}])[0]
         warnings = stage_warnings(reagents, self._balance_checks(stage_def, equipment_sns),
                                   date.today())
+        # per-sample amount / final volume (FM-ENV-003 samples rows)
+        from senaite.pfas import sample_table
+        sample_col = sample_table.capture_column(stage_def)
+        sample_edits = _json_or(f.get("samples_json"), []) if sample_col else []
+        what = u"sample amount" if sample_col == sample_table.AMOUNT else u"final extract volume"
+        warnings += [u"{0}: no {1} recorded".format(sid, what)
+                     for sid in sample_table.missing(None, sample_edits, sample_col)]
         deviations = f.get("deviations", "").strip()
         analyst = f.get("stage_analyst", sess.get("analyst", "")).strip()
         if warnings and not deviations:
@@ -418,6 +427,7 @@ class PFASExtractionGuideView(BrowserView):
                 "saved_at": _utcnow(), "analyst": analyst, "reagents": reagents,
                 "equipment_sns": equipment_sns,
                 "solutions_prepared": _json_or(f.get("solutions_prepared_json"), []),
+                "samples": sample_edits,
                 "warnings": warnings}
             _save_session(b, sess)
             return self._redirect("{0}?batch_uid={1}&error={2}".format(
@@ -458,6 +468,8 @@ class PFASExtractionGuideView(BrowserView):
         }
         stages = sess.setdefault("stages", {})
         stages[str(stage_order)] = stage_data
+        if sample_col and sample_edits:
+            self._save_samples(b, sample_edits, sample_col)
 
         # Advance to next stage
         all_orders = sorted(s.get("order", 0) for s in profile_stages)
@@ -561,6 +573,90 @@ class PFASExtractionGuideView(BrowserView):
                              "name": u.get("name") or u"", "ok": ok, "note": note})
             out.append({"label": label, "family": fam, "units": opts})
         return json.dumps(out)
+
+    # ── Per-sample table and dilution log (FM-ENV-003 samples rows) ─────────
+
+    def _batch_samples(self, b):
+        """[{sample_id, matrix}] for the batch's samples: the Client Sample ID
+        (the name the instrument run uses), else the sample id."""
+        out = []
+        try:
+            from bika.lims import api
+            cat = getToolByName(self._portal(), "senaite_catalog_sample")
+            for br in cat.unrestrictedSearchResults(portal_type="AnalysisRequest",
+                                                    getBatchUID=api.get_uid(b)):
+                ar = br.getObject()
+                st = ar.getSampleType()
+                out.append({"sample_id": ar.getClientSampleID() or ar.getId(),
+                            "matrix": st.Title() if st else u""})
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("batch samples: %s", exc)
+        return sorted(out, key=lambda s: s["sample_id"])
+
+    def _samples_log(self, b):
+        from senaite.pfas.browser.logbooks import _get_logbook
+        return dict(_get_logbook(b, "252") or {})
+
+    def _save_samples(self, b, edits, column):
+        from senaite.pfas import sample_table
+        from senaite.pfas.browser.logbooks import _save_logbook
+        data = self._samples_log(b)
+        data["samples"] = sample_table.merge_samples(data.get("samples"), edits, column)
+        _save_logbook(b, "252", data)
+
+    def sample_card_json(self):
+        """The current stage's per-sample table: which column it records and
+        the rows (recorded ones, then the batch's samples not yet listed)."""
+        from senaite.pfas import sample_table
+        b = self._get_batch()
+        col = sample_table.capture_column(self.current_stage())
+        if b is None or not col:
+            return json.dumps({"column": u"", "rows": []})
+        rows = sample_table.rows_for_card(self._samples_log(b).get("samples"),
+                                          self._batch_samples(b))
+        draft = dict((d.get("sample_id"), d) for d in self.stage_draft().get("samples") or [])
+        for r in rows:
+            if r.get("sample_id") in draft:
+                d = draft[r["sample_id"]]
+                r[col] = d.get("value") or u""
+                if col == sample_table.AMOUNT and d.get("unit"):
+                    r["amount_unit"] = d["unit"]
+        return json.dumps({"column": col, "rows": rows})
+
+    def dilution_rows(self):
+        from senaite.pfas import sample_table
+        b = self._get_batch()
+        return sample_table.dilutions(self._samples_log(b).get("samples")) if b is not None else []
+
+    def dilution_parents(self):
+        from senaite.pfas import sample_table
+        b = self._get_batch()
+        if b is None:
+            return []
+        return [r["sample_id"] for r in sample_table.rows_for_card(
+            self._samples_log(b).get("samples"), self._batch_samples(b))]
+
+    def _handle_log_dilution(self):
+        """Append one dilution to FM-ENV-003 (DECISIONS 2026-10-02): which
+        sample, the dilution's injection name, the factor, who and when.
+        Never edited afterwards."""
+        from senaite.pfas import sample_table
+        from senaite.pfas.browser.logbooks import _save_logbook
+        b = self._get_batch()
+        if b is None:
+            return self._redirect("{0}?error=Batch+not+found".format(self._self_url()))
+        f = self.request.form
+        data = self._samples_log(b)
+        rows, error = sample_table.append_dilution(
+            data.get("samples"), f.get("dilution_of"), f.get("dilution_injection"),
+            f.get("dilution_factor"), self.current_user_name(), _utcnow())
+        if error:
+            return self._redirect("{0}?batch_uid={1}&error={2}".format(
+                self._self_url(), b.UID(), quote_plus(error.encode("utf-8"))))
+        data["samples"] = rows
+        _save_logbook(b, "252", data)
+        return self._redirect("{0}?batch_uid={1}&ok={2}".format(
+            self._self_url(), b.UID(), quote_plus(u"Dilution logged".encode("utf-8"))))
 
     def categories_json(self):
         from senaite.pfas.content.reagent import REAGENT_CATEGORIES

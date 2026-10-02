@@ -85,6 +85,12 @@
     .receive-grid { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
     .receive-grid input, .receive-grid select { flex:1 1 160px; padding:6px 8px;
                    border:1px solid var(--s-input-border); border-radius:6px; font-size:var(--fs-sm); }
+    .sample-table input, .sample-table select { padding:5px 8px; border:1px solid var(--s-input-border);
+                   border-radius:6px; max-width:140px; }
+    .dilution-form { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .dilution-form input, .dilution-form select { padding:6px 8px; border:1px solid var(--s-input-border);
+                   border-radius:6px; flex:1 1 180px; }
+    .dilution-card { margin-top:16px; }
     .needs-note { border-left:4px solid var(--s-warning, #ffc107); background:var(--s-warning-bg, #fff8e1);
                   padding:8px 12px; margin-bottom:10px; font-size:var(--fs-sm); border-radius:4px; }
     .needs-note ul { margin:4px 0 0 18px; padding:0; }
@@ -184,6 +190,7 @@
     var DRAFT       = <tal:d tal:replace="structure view/stage_draft_json" />;
     var EQUIPMENT   = <tal:d tal:replace="structure view/stage_equipment_json" />;
     var CATEGORIES  = <tal:d tal:replace="structure view/categories_json" />;
+    var SAMPLE_CARD = <tal:d tal:replace="structure view/sample_card_json" />;
     var PEDIGREE    = <tal:d tal:replace="structure view/pedigree_json" />;
     var PORTAL_URL  = "<tal:p tal:replace="view/portal_url" />";
     var BATCH_UID   = "<tal:b tal:replace="view/batch_uid" />";
@@ -335,6 +342,26 @@
                    placeholder="Analyst name" />
           </div>
 
+          <!-- ── Per-sample table: written to FM-ENV-003's samples rows ── -->
+          <tal:smp tal:define="card python:__import__('json').loads(view.sample_card_json())"
+                   tal:condition="card/column">
+          <div class="eg-card" id="sample-card">
+            <h3 tal:content="python:'Sample amounts' if card['column'] == 'amount' else 'Final extract volumes'">Sample amounts</h3>
+            <p class="reagent-hint" tal:condition="python:card['column'] == 'amount'">The test portion
+              taken for each sample: grams for a solid, millilitres for a water.</p>
+            <p class="reagent-hint" tal:condition="python:card['column'] != 'amount'">The volume each
+              extract was brought to, in millilitres.</p>
+            <table class="pfas-table sample-table">
+              <thead><tr><th>Sample</th><th>Matrix</th>
+                <th tal:content="python:'Amount' if card['column'] == 'amount' else 'Final volume (mL)'">Amount</th>
+                <th tal:condition="python:card['column'] == 'amount'">Unit</th></tr></thead>
+              <tbody id="sample-rows"></tbody>
+            </table>
+            <button type="button" class="btn-sm btn-add-sol reagent-add" onclick="addSampleRow()">+ Add a sample</button>
+            <input type="hidden" name="samples_json" id="samples_json_field" value="[]" />
+          </div>
+          </tal:smp>
+
           <!-- ── Reagent confirmation ── -->
           <tal:rgs tal:condition="python:stage.get('reagent_roles')">
           <div class="eg-card" id="reagent-card">
@@ -444,6 +471,39 @@
       </div><!-- /eg-main -->
     </div><!-- /eg-layout -->
     </tal:active>
+
+    <!-- ════════════════════════════════════════════════════════════
+         DILUTIONS: logged whenever they are made, also after the
+         extraction is finalized (a dilution follows the run). Appended to
+         FM-ENV-003, never edited (DECISIONS 2026-10-02).
+         ════════════════════════════════════════════════════════════ -->
+    <tal:dil tal:condition="view/session">
+    <div class="eg-card dilution-card" id="dilution-card">
+      <h3>Dilutions</h3>
+      <p class="reagent-hint">A sample that read above the quantitation limit and was re-injected
+        diluted. The diluted result is appended to the sample's result with its own analysis time.</p>
+      <table class="pfas-table" tal:define="rows view/dilution_rows" tal:condition="rows">
+        <thead><tr><th>Diluted from</th><th>Injection name</th><th>Factor</th><th>Logged by</th><th>Logged</th></tr></thead>
+        <tbody><tr tal:repeat="r rows">
+          <td tal:content="r/dilution_of">S-1</td><td tal:content="r/sample_id">S-1 1:10</td>
+          <td tal:content="r/dilution_factor">1:10</td><td tal:content="python:r.get('logged_by') or '—'">KCP</td>
+          <td tal:content="python:(r.get('logged_at') or '—')[:16].replace('T', ' ')">2026-10-02 14:00</td>
+        </tr></tbody>
+      </table>
+      <form method="post" class="dilution-form"
+            tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
+        <input type="hidden" name="action" value="log_dilution" />
+        <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
+        <select name="dilution_of">
+          <option value="">Diluted from&#8230;</option>
+          <option tal:repeat="sid view/dilution_parents" tal:attributes="value sid" tal:content="sid">S-1</option>
+        </select>
+        <input type="text" name="dilution_injection" placeholder="Injection name in the run" />
+        <input type="text" name="dilution_factor" placeholder="Factor, e.g. 1:10" />
+        <button class="btn-sm btn-primary" type="submit">Log dilution</button>
+      </form>
+    </div>
+    </tal:dil>
 
 
   <script>
@@ -1036,6 +1096,41 @@
   /* ═══════════════════════════════════════════════════════════════════
      INIT
      ═══════════════════════════════════════════════════════════════════ */
+  /* Per-sample table (FM-ENV-003 samples rows): this stage records one
+     column; the server merges it by sample id. */
+  var sampleRows = ((SAMPLE_CARD && SAMPLE_CARD.rows) || []).map(function(r) {
+    return {sample_id: r.sample_id, matrix_type: r.matrix_type || '',
+            value: (r[SAMPLE_CARD.column] || ''), unit: r.amount_unit || 'g'};
+  });
+
+  function renderSamples() {
+    var tb = document.getElementById('sample-rows');
+    if (!tb) return;
+    var amount = SAMPLE_CARD.column === 'amount';
+    tb.innerHTML = sampleRows.map(function(r, i) {
+      return '\u003ctr>\u003ctd>' + (r.isNew ?
+          '\u003cinput type="text" value="' + esc(r.sample_id) + '" oninput="sampleRows[' + i + '].sample_id=this.value;syncSamples()"/>' :
+          esc(r.sample_id)) + '\u003c/td>\u003ctd>' + esc(r.matrix_type) + '\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="any" min="0" value="' + esc(r.value) + '"' +
+        ' oninput="sampleRows[' + i + '].value=this.value;syncSamples()"/>\u003c/td>' +
+        (amount ? '\u003ctd>\u003cselect onchange="sampleRows[' + i + '].unit=this.value;syncSamples()">' +
+          ['g', 'mL'].map(function(u) { return '\u003coption' + (u === r.unit ? ' selected' : '') + '>' + u + '\u003c/option>'; }).join('') +
+          '\u003c/select>\u003c/td>' : '') + '\u003c/tr>';
+    }).join('');
+    syncSamples();
+  }
+
+  function addSampleRow() {
+    sampleRows.push({sample_id: '', matrix_type: '', value: '', unit: 'g', isNew: true});
+    renderSamples();
+  }
+
+  function syncSamples() {
+    var el = document.getElementById('samples_json_field');
+    if (el) el.value = JSON.stringify(sampleRows.filter(function(r) { return r.sample_id; })
+      .map(function(r) { return {sample_id: r.sample_id, value: r.value, unit: r.unit, matrix_type: r.matrix_type}; }));
+  }
+
   /* DB4 in the browser: what the chemist can see is missing is asked for
      before the form goes; the server checks again (and also checks today's
      balance verification), keeping the entries as a draft if it refuses. */
@@ -1045,6 +1140,10 @@
       var what = r.role || r.name || 'Item';
       if (!r.lot) out.push(what + ': no lot recorded');
       else if (expClass(r.expiry) === 'exp-expired') out.push(what + ': lot ' + r.lot + ' is expired');
+    });
+    if (SAMPLE_CARD && SAMPLE_CARD.column) sampleRows.forEach(function(r) {
+      if (r.sample_id && !String(r.value).trim())
+        out.push(r.sample_id + ': no ' + (SAMPLE_CARD.column === 'amount' ? 'sample amount' : 'final extract volume') + ' recorded');
     });
     return out;
   }
@@ -1064,6 +1163,7 @@
     });
     renderReagents();
     renderEquipment();
+    renderSamples();
     renderSolutions();
     renderPedigree();
     /* Replay the stage action GIF — animated GIFs do not restart on their

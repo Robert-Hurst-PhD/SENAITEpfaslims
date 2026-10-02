@@ -1053,7 +1053,10 @@ def migrate_profile_models(portal):
         # bench phase 2: consumables leave "equipment" for a by-lot list
         from senaite.pfas.stage_consumables import split_consumables
         l = split_consumables(profile)
-        if a or b or c or d or e or f or g or h or i or j or k or l:
+        # per-sample amount / final volume recorded at the stage that takes it
+        from senaite.pfas.sample_table import seed_sample_capture
+        m = seed_sample_capture(profile)
+        if a or b or c or d or e or f or g or h or i or j or k or l or m:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:

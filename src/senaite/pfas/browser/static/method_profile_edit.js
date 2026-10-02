@@ -52,6 +52,7 @@
     var roles  = (s.reagent_roles || []).join(', ');
     var equip  = (s.equipment || []).join(', ');
     var cons   = (s.consumables || []).join(', ');
+    var capS   = s.captures_samples || '';
     var crSol  = s.creates_solution ? 'checked' : '';
     var crPed  = s.capture_pedigree ? 'checked' : '';
     var media    = s.media || '';
@@ -83,6 +84,13 @@
         '</div>' +
         '<div class="stage-row">' +
           '<label class="grow">Consumables, recorded by lot (comma-separated)<input type="text" data-field="consumables" value="' + _esc(cons) + '" placeholder="50 mL centrifuge tubes, LC vials, ..." /></label>' +
+        '</div>' +
+        '<div class="stage-row">' +
+          '<label>Records per sample<select data-field="captures_samples">' +
+            '<option value=""' + (capS === '' ? ' selected' : '') + '>Nothing</option>' +
+            '<option value="amount"' + (capS === 'amount' ? ' selected' : '') + '>Sample amount (g or mL)</option>' +
+            '<option value="final_volume"' + (capS === 'final_volume' ? ' selected' : '') + '>Final extract volume (mL)</option>' +
+          '</select></label>' +
         '</div>' +
         '<div class="stage-row" style="gap:20px">' +
           '<label class="cb-label"><input type="checkbox" data-field="creates_solution" ' + crSol + ' /> Creates Solution</label>' +
@@ -212,6 +220,7 @@
         reagent_roles:    splitCsv(get('reagent_roles')),
         equipment:        splitCsv(get('equipment')),
         consumables:      splitCsv(get('consumables')),
+        captures_samples: get('captures_samples'),
         creates_solution: getBool('creates_solution'),
         capture_pedigree: getBool('capture_pedigree'),
         media:            get('media'),
