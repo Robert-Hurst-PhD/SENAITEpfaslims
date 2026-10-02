@@ -103,7 +103,10 @@ def test_the_scan_still_reports_the_known_hardcoded_tables():
     # `("pipette", "Pipette")` row in GAPS §38 that pushed its lab signal out of
     # range. A real finding left the register silently, and no test noticed.
     # Recorded rather than papered over; the window heuristic is its own fix.
-    for name in ("DEFAULT_SHELF_LIFE_DAYS", "REAGENT_CATEGORIES",
+    # DEFAULT_SHELF_LIFE_DAYS left with the tablet catalogue (barcode.py,
+    # retired 2026-10-02 DB1): resolved, not lost -- the SENAITE inventory's
+    # EXPIRY_DEFAULTS is the one shelf-life table and is still reported.
+    for name in ("REAGENT_CATEGORIES",
                  "BALANCE_DEFAULTS", "WATER_QC_DEFAULTS", "EXPIRY_DEFAULTS"):
         assert name in found, "%s is no longer reported as a hardcoded table" % name
     assert len(rows) > 50, (

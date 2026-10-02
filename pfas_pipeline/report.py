@@ -31,7 +31,7 @@ from reportlab.platypus import (
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from .models import Batch
-from .barcode import ExtractionLog
+from .extraction_log import ExtractionLog
 
 
 _styles = getSampleStyleSheet()
@@ -175,12 +175,12 @@ def generate_batch_report(
             ))
         if el["reagent_scans"]:
             story.append(Spacer(1, 10))
-            story.append(Paragraph("Reagents & standards used (barcode-scanned)", _H2))
+            story.append(Paragraph("Reagents & standards used", _H2))
             story.append(_tbl(
-                ["Time", "Step", "Cat #", "Lot #", "Expiry", "New lot?"],
-                [[s["at"][11:19], s.get("step", ""), s["catalog_number"],
-                  s["lot_number"], s["expiry_date"][:10],
-                  "NEW" if s["is_new_lot"] else ""]
+                ["Time", "Step", "Item", "Lot #", "Expiry"],
+                [[(s.get("at") or "")[11:19], s.get("step", ""),
+                  s.get("name") or s.get("catalog_number") or "",
+                  s.get("lot_number") or "", (s.get("expiry_date") or "")[:10]]
                  for s in el["reagent_scans"]],
             ))
     else:

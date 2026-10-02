@@ -6812,3 +6812,66 @@ Approved by the lab as the first recommendation of
   every class column; QC composition fields and button present; a throwaway
   project's specs show Calibration & QC run (and SUR limits for 1633A only);
   removed afterwards. No JS errors.
+
+
+## 86. Bench phase 1: a way in, one extraction record, the tablet retired (2026-10-02)
+
+Plan: docs/BENCH_WORKFLOW_REVIEW.md (B1, B2, R10); decisions DB1-DB4
+(DECISIONS 2026-10-02 "Bench workflow plan approved").
+
+- **Bench landing is a queue (B2):** "Extractions" lists every open batch with
+  its method and where its extraction is (Not started / Stage N of M /
+  Finished), one Start / Continue / View button each, in progress first.
+  "Needs attention" lists expired, quarantined, expiring (30 days) and
+  low-stock reagents and prepared standards (five per kind, then a count and
+  buttons to the inventory lists) and today's balance verification. No balance
+  is registered in Facility QC, so it says so. Pure logic in bench_queue.py;
+  styles in the shared pfas_macros.pt sheet (no page style block).
+- **Guided extraction opens without an address-bar id:** a batch picker (same
+  queue). Start takes the method from the batch (refuses when the batch has
+  none) and the analyst from the login; the method list reads the LIVE
+  profiles, not the shipped defaults.
+- **One extraction record (B1, DB1):** the Run Builder upload now writes
+  `{stem}_extraction.json` beside the CSV, BEFORE the CSV, from the batch and
+  its guided extraction (extraction_sidecar.py): worksheet (when exactly one
+  holds the batch), SENAITE batch, method, matrix, client, analyst, each stage
+  with its deviations, every lot used with its inventory link, sign-off. The
+  watcher prefers that file over the configured directory. Before this the
+  upload wrote no sidecar, so a run uploaded from SENAITE had no method, matrix
+  or batch link unless one was dropped by hand.
+- **Report pedigree dates:** the report printed the time the worker READ the
+  record as the extraction start and "in progress" for every finalized
+  extraction; it now prints the session's own start and finalize times, and
+  lists each lot by item name.
+- **Batch Status reads the guided extraction:** the Extraction / On Instrument
+  stages read tablet log files in /data/extraction_logs, a volume never mounted
+  in the SENAITE container, so they could never show. They now read the
+  session of the worksheet's batch (WS-0005 shows its extraction times for the
+  first time).
+- **Retired:** the extraction-ui service (compose, port 9000, container
+  removed), extraction_api.py, barcode.py's JSON reagent catalogue and
+  parse_barcode (GS1 parsing moves to the browser scanner, R9, phase 2), the
+  pipeline's dead register_reagent and Reagent model, and fastapi / uvicorn /
+  python-multipart from the worker image. The tablet volume was empty: nothing
+  to archive or import. ExtractionLog lives on in pfas_pipeline/extraction_log.py.
+- **R10:** injection_builder.InjectionSequenceBuilder (tests only) deleted;
+  its live REVIEW_CHECKS table moved to pfas_pipeline/review_checks.py.
+- **Tests:** test_bench_queue (5; 4 mutants killed, one survivor led to the
+  at-the-level case), test_extraction_sidecar (7; 7 mutants killed: lot
+  filter, numeric stage order, sign-off only when finalized, per-stage analyst,
+  watcher precedence, record before CSV, tablet gone). test_pipeline now builds
+  its record the way the Run Builder does; test_profiles lost the builder test;
+  the hardcoded-table canary dropped DEFAULT_SHELF_LIFE_DAYS (the table left
+  with the catalogue; EXPIRY_DEFAULTS remains the one shelf-life table).
+  Real instrument files: results and flags identical.
+- **Live:** Bench queue and alerts; guide picker; an upload probe to kcp-b-001
+  wrote the record (WS-0005, 8 stages, 10 lots, sign-off), probe files removed;
+  Batch Status shows WS-0005 extraction times. No JS errors.
+
+**Still open (phases 2-4):** lots picked from the inventory per role (usable
+only, prepared standards included); scan resolves to the inventory with GS1
+parsed (R9) and the R11 library upgrades; inline receive for an unknown lot
+(DB2); consumables by lot; stage-completion warnings with a required deviation
+note (DB4); equipment from facility units with today's verification; usage
+ledger and numeric count-down with low-stock level (DB3); the weighing stage
+carries the sample table (B7).

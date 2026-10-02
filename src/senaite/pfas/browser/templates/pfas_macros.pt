@@ -552,6 +552,19 @@
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
     /* ── Workspace landing grid ──────────────────────────────────────────── */
+    /* Bench landing: extraction queue + needs attention (BENCH_WORKFLOW_REVIEW phase 1) */
+  .bench-block { margin: 0 0 22px; }
+  .bench-h { font-size: var(--fs-lg); margin: 0 0 8px; }
+  .bench-sub { color: var(--s-secondary); font-size: var(--fs-sm); }
+  .bench-state { font-weight: 600; }
+  .bench-in_progress { color: var(--s-primary); }
+  .bench-finished { color: var(--s-success); }
+  .bench-alerts { list-style: none; margin: 0; padding: 0; }
+  .bench-alerts li { padding: 6px 10px; border-left: 4px solid var(--s-border); margin: 0 0 4px;
+  background: var(--s-bg-alt); font-size: var(--fs-sm); }
+  .bench-alerts li.bench-bad { border-left-color: var(--s-danger); }
+  .bench-alerts li.bench-warn { border-left-color: var(--s-warning); }
+  .bench-alerts li.bench-ok { border-left-color: var(--s-success); }
     .pfas-ws-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

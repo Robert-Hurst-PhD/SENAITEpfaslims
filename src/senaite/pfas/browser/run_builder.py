@@ -26,6 +26,11 @@ import os
 import re
 from datetime import date, datetime
 
+try:
+    from urllib import quote_plus
+except ImportError:                                         # Python 3
+    from urllib.parse import quote_plus
+
 from zope.annotation.interfaces import IAnnotations
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
@@ -901,6 +906,13 @@ class PFASRunBuilderView(BrowserView):
                 os.makedirs(UPLOAD_DIR)
             except OSError:
                 return self._redirect_err(bid, "Watch directory unavailable")
+        # The run record goes in FIRST: the worker starts on the CSV the
+        # moment it appears and reads the record beside it then.
+        try:
+            note = self._write_sidecar(bid, os.path.splitext(fname)[0])
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("run_builder: extraction record not written: %s", exc)
+            note = u"no extraction record (see log)"
         try:
             data = f.read()
             with open(os.path.join(UPLOAD_DIR, fname), "wb") as out:
@@ -908,12 +920,71 @@ class PFASRunBuilderView(BrowserView):
         except Exception as exc:
             logger.error("upload failed: %s", exc)
             return self._redirect_err(bid, "Upload failed — see log")
-        logger.info("run_builder: uploaded %s to watch dir", fname)
+        logger.info("run_builder: uploaded %s to watch dir (%s)", fname, note)
         self.request.response.redirect(
-            "{0}/@@pfas-run-builder?batch_id={1}&ok=Uploaded+{2}+—+the+"
-            "pipeline+worker+will+import+it".format(
-                self.portal_url(), bid, fname))
+            "{0}/@@pfas-run-builder?batch_id={1}&ok={2}".format(
+                self.portal_url(), bid, quote_plus(
+                    u"Uploaded {0}, {1}. The pipeline worker will import "
+                    u"it.".format(fname, note).encode("utf-8"))))
         return u""
+
+    def _batch_worksheet_id(self, batch):
+        """The id of the one worksheet holding this batch's analyses, or ""
+        when there is none or more than one (the run cannot be told apart)."""
+        from bika.lims import api
+        buid = api.get_uid(batch)
+        found = []
+        cat = getToolByName(self._portal(), "senaite_catalog_worksheet")
+        for br in cat(portal_type="Worksheet"):
+            ws = br.getObject()
+            for an in ws.getAnalyses() or []:
+                try:
+                    ab = an.getRequest().getBatch()
+                except Exception:                           # noqa: BLE001
+                    ab = None
+                if ab is not None and api.get_uid(ab) == buid:
+                    found.append(ws.getId())
+                    break
+        return found[0] if len(found) == 1 else u""
+
+    def _write_sidecar(self, batch_id, stem):
+        """Write `{stem}_extraction.json` beside the upload from the batch and
+        its guided extraction (senaite.pfas.extraction_sidecar). Returns what
+        the run record holds, for the confirmation message."""
+        from senaite.pfas.extraction_sidecar import build_sidecar
+        from senaite.pfas.browser.extraction_guide import _load_session
+        from senaite.pfas.browser.batch_project_viewlet import _batch_matrix
+        from senaite.pfas.method_profile_store import get_profile
+        from bika.lims import api
+        b = self._batch(batch_id)
+        if b is None:
+            return u"no batch chosen, so no method, matrix or extraction record"
+        sess = dict(_load_session(b))
+        sess["method_id"] = sess.get("method_id") or self.batch_method(b) or u""
+        names = {}
+        if sess["method_id"]:
+            for st in get_profile(self._portal(), sess["method_id"]).get(
+                    "extraction_stages") or []:
+                names[u"%s" % st.get("order")] = st.get("name") or u""
+        client = b.getClient() if hasattr(b, "getClient") else None
+        ws_id = self._batch_worksheet_id(b)
+        record = build_sidecar(sess, names, worksheet_id=ws_id,
+                               senaite_batch_id=b.getId(),
+                               matrix=_batch_matrix(self._portal(), b),
+                               client_uid=api.get_uid(client) if client else u"")
+        path = os.path.join(UPLOAD_DIR, "{0}_extraction.json".format(stem))
+        tmp = path + ".part"
+        data = json.dumps(record, indent=2, sort_keys=True)
+        with open(tmp, "wb") as out:
+            out.write(data if isinstance(data, bytes) else data.encode("utf-8"))
+        os.rename(tmp, path)
+        parts = [u"batch {0}".format(b.getId())]
+        parts.append(u"worksheet {0}".format(ws_id) if ws_id
+                     else u"no single worksheet")
+        parts.append(u"extraction finalized" if record["completed"]
+                     else u"extraction in progress" if record["started"]
+                     else u"no extraction recorded")
+        return u", ".join(parts)
 
     # ── run-template save (Manager only — this is method configuration) ──
     def _is_manager(self):

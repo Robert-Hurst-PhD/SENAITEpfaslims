@@ -57,6 +57,48 @@ def _save_session(batch, data):
     ann[EXTRACTION_SESSION_KEY] = json.dumps(data)
 
 
+def batch_method_id(batch, request):
+    """The batch's method: its extraction session, then its logbooks, then the
+    core Method (the same resolution the logbooks and Run Builder use)."""
+    try:
+        from senaite.pfas.browser.logbooks import PFASLogbookIndexView
+        return PFASLogbookIndexView(batch, request).batch_method() or u""
+    except Exception:                                       # noqa: BLE001
+        return u""
+
+
+def extraction_queue(portal, request):
+    """[{id, uid, title, method_id, method_label, state...}] for every open
+    batch, oldest first -- the Bench landing's queue and the guide's picker
+    (docs/BENCH_WORKFLOW_REVIEW.md phase 1)."""
+    from bika.lims import api
+    from senaite.pfas.bench_queue import extraction_state
+    from senaite.pfas.method_profile_store import get_profile
+    rows, seen = [], set()
+    for brain in api.get_tool("senaite_catalog").searchResults(portal_type="Batch"):
+        try:
+            batch = brain.getObject()
+        except Exception:                                   # noqa: BLE001
+            continue
+        uid = api.get_uid(batch)
+        if uid in seen or api.get_review_status(batch) not in ("open", "active"):
+            continue
+        seen.add(uid)
+        session = _load_session(batch)
+        method_id = session.get("method_id") or batch_method_id(batch, request)
+        profile = get_profile(portal, method_id) if method_id else {}
+        orders = [s.get("order") for s in profile.get("extraction_stages") or []]
+        state = extraction_state(session, orders)
+        rows.append(dict(state, id=batch.getId(), uid=uid, title=batch.Title(),
+                         method_id=method_id,
+                         method_label=profile.get("display_name") or method_id or u"",
+                         analyst=session.get("analyst") or u"",
+                         created=str(getattr(batch, "created", lambda: "")())[:10]))
+    order = {u"in_progress": 0, u"not_started": 1, u"finished": 2}
+    rows.sort(key=lambda r: (order.get(r["state"], 3), r["created"], r["id"]))
+    return rows
+
+
 def _utcnow():
     return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -124,6 +166,23 @@ class PFASExtractionGuideView(BrowserView):
 
     def batch_uid(self):
         return self.request.form.get("batch_uid", "")
+
+    def batch_method_id(self):
+        """Preselected on the start screen: the batch already has a method."""
+        b = self._get_batch()
+        return batch_method_id(b, self.request) if b else u""
+
+    def current_user_name(self):
+        """The logged-in chemist -- the start screen's default analyst."""
+        try:
+            user = self.context.portal_membership.getAuthenticatedMember()
+            return user.getProperty("fullname") or user.getId()
+        except Exception:                                   # noqa: BLE001
+            return u""
+
+    def batch_choices(self):
+        """No batch chosen: the open batches to pick from."""
+        return extraction_queue(self._portal(), self.request)
 
     def batch_title(self):
         b = self._get_batch()
@@ -238,12 +297,16 @@ class PFASExtractionGuideView(BrowserView):
     # ── Available methods for start form ─────────────────────────────────────
 
     def available_methods(self):
-        from senaite.pfas.method_profile_store import DEFAULT_PROFILES
-        return [
-            (mid, p.get("display_name", mid))
-            for mid, p in sorted(DEFAULT_PROFILES.items())
-            if p.get("extraction_stages")
-        ]
+        """The lab's LIVE method profiles with extraction stages (the built-in
+        defaults missed a method made in the wizard)."""
+        from senaite.pfas.method_profile_store import get_profile, list_method_ids
+        portal = self._portal()
+        out = []
+        for mid in sorted(list_method_ids(portal)):
+            p = get_profile(portal, mid)
+            if p.get("extraction_stages"):
+                out.append((mid, p.get("display_name", mid)))
+        return out
 
     # ── PDF and label URLs ────────────────────────────────────────────────────
 
@@ -261,8 +324,12 @@ class PFASExtractionGuideView(BrowserView):
         if not b:
             url = "{0}?error=Batch+not+found".format(self._self_url())
             return self._redirect(url)
-        method_id = self.request.form.get("method_id", "FDA_32PFAS")
-        analyst = self.request.form.get("analyst", "").strip()
+        method_id = (self.request.form.get("method_id", "").strip()
+                     or batch_method_id(b, self.request))
+        if not method_id:
+            return self._redirect("{0}?batch_uid={1}&error=Choose+the+method".format(
+                self._self_url(), b.UID()))
+        analyst = self.request.form.get("analyst", "").strip() or self.current_user_name()
         data = {
             "method_id":     method_id,
             "started_at":    _utcnow(),

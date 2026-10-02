@@ -4,11 +4,12 @@ import csv, sys, os
 os.environ.setdefault("PFAS_ALLOW_LEGACY_VENDOR_MAP", "1")  # tests exercise the legacy vendor map
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import date
+import json
 from pfas_pipeline.pipeline import run_pipeline
-from pfas_pipeline.injection_builder import InjectionSequenceBuilder
-from pfas_pipeline.barcode import ReagentCatalog, ExtractionLog
 from pfas_pipeline.importer import validate_injection_name
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "src", "senaite", "pfas"))
+import extraction_sidecar  # noqa: E402  (pure add-on module, the Run Builder's writer)
 
 def make_test_csv(path):
     """Synthetic instrument export: CALs + MB + 3 samples + LFSM pair."""
@@ -74,35 +75,23 @@ def main():
     assert v["valid"], v
     print("✓ injection name validation")
 
-    # 2. Injection sequence builder
-    b = InjectionSequenceBuilder(date(2026,2,26), "KCP", "Deer", ccv_interval=10)
-    seq = b.build_standard_pfas_run(
-        samples=[{"description": f"Sample {i}"} for i in range(1, 19)],
-        lfsm_parent="Sample 9", spike_ppt=80.0)
-    qc_types = [i.qc_type for i in seq]
-    assert qc_types.count("CAL") == 10
-    assert "LFSM" in qc_types and "LFSMD" in qc_types
-    assert qc_types[-1] == "CCV"          # closing bracket
-    assert qc_types.count("CCV") >= 3      # opening + rotating + closing
-    b.to_csv("/tmp/pfas_test/sequence.csv")
-    rq = b.review_queue()
-    assert all("checks" in e for e in rq)
-    print(f"✓ sequence builder ({len(seq)} injections, "
-          f"{qc_types.count('CCV')} CCVs)")
-
-    # 3. Barcode + extraction log
-    cat = ReagentCatalog("/tmp/pfas_test/catalog.json")
-    log = ExtractionLog("batch_260226", "KCP", "Deer")
-    r = log.scan_reagent(cat, "MEOH-LC-1L|LOT24A77", step="Extraction",
-                         description="Methanol LC-MS grade",
-                         reagent_class="solvent")
-    assert r["is_new_lot"] and r["label_job"].startswith("^XA")
-    r2 = log.scan_reagent(cat, "MEOH-LC-1L|LOT24A77")
-    assert not r2["is_new_lot"]
-    log.log_step("Weigh sample", "Deer Hamburger", "5.02 g")
-    log.sign("Analyst", "KCP")
-    log.save("/tmp/pfas_test/batch_260226_extraction.json")
-    print("✓ barcode catalog + extraction log + ZPL label")
+    # 2-3. The extraction record, as the Run Builder writes it from the
+    # SENAITE guided extraction (the tablet catalogue is retired, DB1)
+    session = {"method_id": "FDA_32PFAS", "analyst": "KCP",
+               "started_at": "2026-02-26T13:00:00Z", "finalized": True,
+               "finalized_at": "2026-02-26T16:30:00Z", "finalized_by": "KCP",
+               "stages": {"1": {"completed_at": "2026-02-26T13:40:00Z", "analyst": "KCP",
+                                "deviations": "",
+                                "reagents": [{"role": "Methanol", "name": "Methanol LC-MS",
+                                              "lot": "LOT24A77", "expiry": "2027-01-31",
+                                              "inventory_uid": "abc"},
+                                             {"role": "Water", "name": "Water", "lot": ""}]}}}
+    record = extraction_sidecar.build_sidecar(
+        session, {"1": "Sample Weighing"}, worksheet_id="batch_260226", matrix="Deer")
+    assert [s["lot_number"] for s in record["reagent_scans"]] == ["LOT24A77"]
+    with open("/tmp/pfas_test/batch_260226_extraction.json", "w") as fh:
+        json.dump(record, fh)
+    print("✓ extraction record from the guided extraction")
 
     # 4. Full pipeline
     batch, queue, pdf = run_pipeline(
@@ -110,6 +99,7 @@ def main():
         extraction_log_path="/tmp/pfas_test/batch_260226_extraction.json",
         output_dir="/tmp/pfas_test/out")
     assert pdf.exists() and pdf.stat().st_size > 1000
+    assert batch.extraction_log["reagent_scans"][0]["lot_number"] == "LOT24A77"
     print(f"✓ pipeline: {len(batch.qc_flags)} QC flags, "
           f"{len(queue.pending())} pending checks, report={pdf.stat().st_size}B")
 

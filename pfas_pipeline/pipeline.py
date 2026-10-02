@@ -33,9 +33,9 @@ from .importer import (
 )
 from .models import Batch, QCFlag, SummaryResult, reported_conc
 from .run_queue import RunQueue
-from .injection_builder import REVIEW_CHECKS
+from .review_checks import REVIEW_CHECKS
 from .analyte_alias import keyword_for
-from .barcode import ExtractionLog
+from .extraction_log import ExtractionLog
 from .qc_engine import single_transition_confirm_needed
 from .report import generate_batch_report
 from .constants import (
@@ -545,6 +545,16 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
 # Main pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _iso(value):
+    """A sidecar timestamp ("2026-10-02T14:00:00Z") as a datetime, or None."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def run_pipeline(
     csv_path: str | Path,
     batch_id: str | None = None,
@@ -851,6 +861,9 @@ def run_pipeline(
         ext_log.steps = data.get("steps", [])
         ext_log.reagent_scans = data.get("reagent_scans", [])
         ext_log.signoffs = data.get("signoffs", [])
+        # When the extraction happened, not when the worker read the file.
+        ext_log.started = _iso(data.get("started")) or ext_log.started
+        ext_log.completed = _iso(data.get("completed"))
         batch.extraction_log = data
         batch.reagents = data.get("reagent_scans", [])
 
@@ -977,14 +990,15 @@ def start_watcher(
             seen.add(p.name)
             logger.info("New instrument file: %s", p.name)
 
-            # The sidecar carries the run parameters, so look for it beside
-            # the CSV as well as in a configured directory — a generator or an
-            # instrument PC can then drop both files together.
+            # The sidecar carries the run parameters. The one BESIDE the CSV
+            # wins: the Run Builder writes it from the SENAITE guided
+            # extraction at upload (DECISIONS 2026-10-02 DB1). The configured
+            # directory is only a fallback for files dropped by hand.
             ext_log = None
             candidates = [p.with_name(f"{p.stem}_extraction.json")]
             if extraction_log_dir:
-                candidates.insert(
-                    0, Path(extraction_log_dir) / f"{p.stem}_extraction.json")
+                candidates.append(
+                    Path(extraction_log_dir) / f"{p.stem}_extraction.json")
             for candidate in candidates:
                 if candidate.exists():
                     ext_log = candidate

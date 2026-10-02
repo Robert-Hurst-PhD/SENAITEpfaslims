@@ -2,11 +2,15 @@
 """Role-aware workspace launcher."""
 from __future__ import absolute_import, print_function, unicode_literals
 
+import logging
+
 from AccessControl import getSecurityManager
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+
+logger = logging.getLogger("senaite.pfas.browser.workspace_home")
 
 
 def _portal(context):
@@ -122,7 +126,8 @@ class PFASQCManagementView(BrowserView):
 
 
 class PFASBenchHomeView(BrowserView):
-    """Bench workspace landing page — tile grid for the Bench Chemist role."""
+    """Bench landing: the extraction queue, what needs attention, then the
+    Bench tiles (docs/BENCH_WORKFLOW_REVIEW.md phase 1)."""
 
     template = ViewPageTemplateFile("templates/pfas_bench.pt")
 
@@ -132,6 +137,54 @@ class PFASBenchHomeView(BrowserView):
 
     def portal_url(self):
         return getToolByName(self.context, "portal_url")()
+
+    def extractions(self):
+        """Open batches with where their extraction stands, in progress first."""
+        from senaite.pfas.browser.extraction_guide import extraction_queue
+        try:
+            return extraction_queue(_portal(self.context), self.request)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("bench extraction queue: %s", exc)
+            return []
+
+    def alerts(self):
+        """Reagents and prepared standards that are expired, expiring within
+        30 days, quarantined or low on stock."""
+        from datetime import date
+        from senaite.pfas.bench_queue import inventory_alerts
+        portal = _portal(self.context)
+        items = []
+        try:
+            from senaite.pfas.browser.reagents import _list_reagents, _effective_expiry
+            for r in _list_reagents(portal):
+                items.append(dict(r, kind=u"Reagent", expiry=_effective_expiry(r)))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("bench alerts (reagents): %s", exc)
+        try:
+            from senaite.pfas.browser.prepared_standards import _list
+            for s in _list(portal):
+                items.append(dict(s, kind=u"Prepared standard", name=s.get("title"),
+                                  expiry=s.get("effective_expiry")))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("bench alerts (prepared standards): %s", exc)
+        return inventory_alerts(items, date.today())
+
+    def balances_today(self):
+        """[{name, serial, verified}] for each registered balance: was it
+        verified today? None when no balance is registered."""
+        from datetime import date
+        try:
+            from senaite.pfas import facility_qc as fq
+            units = [u for u in fq.list_units() if (u.get("unit_type") or "") == "balance"]
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("bench balances: %s", exc)
+            return None
+        if not units:
+            return None
+        today = date.today().strftime("%Y-%m-%d")
+        return [{"name": u.get("name"), "serial": u.get("serial_number"),
+                 "verified": bool(fq.get_balance_verification_for_date(u["id"], today))}
+                for u in units]
 
     def sections(self):
         base = _portal(self.context).absolute_url()

@@ -317,22 +317,6 @@ class Batch:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Reagent (barcode-scanned item from extraction)
-# ─────────────────────────────────────────────────────────────────────────────
-@dataclass
-class Reagent:
-    barcode:        str
-    catalog_number: str
-    lot_number:     str
-    description:    str
-    manufacturer:   str
-    expiry_date:    Optional[datetime]
-    first_seen:     datetime
-    quantity_unit:  str = ""
-    location:       str = ""
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Run queue entry  (what QC the analyst must look for before approving)
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass

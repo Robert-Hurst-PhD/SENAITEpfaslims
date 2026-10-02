@@ -25,7 +25,7 @@ os.environ.setdefault("PFAS_ALLOW_LEGACY_VENDOR_MAP", "1")
 from pfas_pipeline import method_profiles as mp                 # noqa: E402
 from pfas_pipeline import run_queue as rq                       # noqa: E402
 from pfas_pipeline.models import Batch, InstrumentRow           # noqa: E402
-from pfas_pipeline.injection_builder import REVIEW_CHECKS       # noqa: E402
+from pfas_pipeline.review_checks import REVIEW_CHECKS       # noqa: E402
 from pfas_pipeline.qc_engine import (                           # noqa: E402
     ccv_frequency_check, KIND_BLANK, KIND_LCS, KIND_CCV_FREQ, KIND_MDL, KIND_SURROGATE, KIND_DUP)
 

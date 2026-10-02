@@ -13,9 +13,8 @@ Mapping (your features → SENAITE objects):
   Analyte result       → Analysis (Result + InterimFields for RT, IS, S/N)
   QC injections        → ReferenceSample / Duplicate / Blank worksheets
   QCFlag               → Remarks on the Analysis + custom log
-  Reagent (barcode)    → custom content type 'Reagent' (or StockItem if
-                         senaite.storage installed)
-  ExtractionLog        → Attachment on the Batch (JSON + rendered PDF)
+  Extraction record    → Attachment on the Worksheet (the sidecar JSON; the
+                         reagent lots themselves live in the SENAITE inventory)
   Final report         → ARReport attachment (senaite.impress compatible)
 """
 
@@ -29,7 +28,7 @@ from typing import Optional
 import requests
 
 from .models import Batch, QCFlag, SummaryResult
-from .barcode import ExtractionLog
+from .extraction_log import ExtractionLog
 
 logger = logging.getLogger(__name__)
 
@@ -265,28 +264,6 @@ class SenaiteConnector:
         )
         r.raise_for_status()
         return r.json()
-
-    # ── Reagents (barcode registry) ──────────────────────────────────────────
-    def register_reagent(self, reagent: dict) -> Optional[str]:
-        """
-        Register a reagent lot.  If senaite.storage is installed this can be a
-        StorageSample; otherwise we use a SupplyOrder-style placeholder or a
-        custom content type 'Reagent' if your add-on registers one.
-        """
-        try:
-            res = self._post("create", {
-                "portal_type": "Reagent",          # custom type in senaite.pfas
-                "parent_path": "/senaite/reagents",
-                "title": f"{reagent['catalog_number']} lot {reagent['lot_number']}",
-                "description": reagent.get("description", ""),
-                "CatalogNumber": reagent["catalog_number"],
-                "LotNumber": reagent["lot_number"],
-                "ExpiryDate": reagent["expiry_date"],
-            })
-            return _created_uid(res)
-        except requests.HTTPError:
-            logger.info("Custom Reagent type not installed — storing as remark")
-            return None
 
     # ── Extraction log + report attachments ─────────────────────────────────
     def delete_attachments(self, parent_uid: str, label: str) -> int:

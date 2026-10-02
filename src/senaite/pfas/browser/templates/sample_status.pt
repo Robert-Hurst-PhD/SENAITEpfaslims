@@ -103,7 +103,7 @@
 
     <p class="lead">
       Real-time batch progress &#8212; stage is computed from SENAITE worksheet
-      workflow state and extraction logs. Batches are sorted newest first.
+      workflow state and the batch&#8217;s guided extraction. Batches are sorted newest first.
     </p>
 
     <div class="empty-state" tal:condition="not:view/batches">

@@ -5726,3 +5726,16 @@ Lab answers:
   overridable in Project Specs; the Run Builder reads them as before.
 - P4: "no labelled standard" derived per method from its surrogate links
   (proven against today's FDA list first); one EIS limits grid.
+
+## 2026-10-02 — Bench workflow plan approved (confirmed)
+- Review: docs/BENCH_WORKFLOW_REVIEW.md; phases 1-4 approved.
+- **DB1:** the extraction-ui tablet service (port 9000, own JSON reagent
+  catalogue) is retired; SENAITE's guided extraction is the one bench
+  interface and the only extraction record the pipeline reads.
+- **DB2:** a lot not in the inventory is received inline (a short receive form
+  in the stage, scan/OCR prefilled), so every item used is an inventory record.
+- **DB3:** quantities are numeric per lot and counted down by each use; a
+  low-stock level per item raises an alert on the Bench queue.
+- **DB4:** an expired or quarantined lot, or a balance not verified that day,
+  WARNS at stage completion and requires a deviation note to continue (not a
+  hard block).

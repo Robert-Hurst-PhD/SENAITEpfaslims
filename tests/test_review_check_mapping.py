@@ -65,7 +65,7 @@ def test_calibration_failures_reach_their_review_checks():
 
     from collections import Counter
     from pfas_pipeline.importer import load_instrument_csv, classify_injection
-    from pfas_pipeline.injection_builder import REVIEW_CHECKS
+    from pfas_pipeline.review_checks import REVIEW_CHECKS
     from pfas_pipeline.models import Batch
     from pfas_pipeline.run_queue import RunQueue
     from pfas_pipeline import pipeline as P

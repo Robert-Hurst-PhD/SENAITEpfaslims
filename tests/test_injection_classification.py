@@ -101,7 +101,7 @@ def test_dilution_beats_every_name_rule():
 def test_every_classified_role_has_review_checks():
     """A role with no entry silently inherits REVIEW_CHECKS['Sample'] — which is
     how a blank would be given a client sample's checks."""
-    from pfas_pipeline.injection_builder import REVIEW_CHECKS
+    from pfas_pipeline.review_checks import REVIEW_CHECKS
     roles = {want for _n, want in CONTROL_CASES} | {"Sample"}
     missing = sorted(r for r in roles if r not in REVIEW_CHECKS)
     assert not missing, "roles with no review checks: %s" % missing

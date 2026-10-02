@@ -114,7 +114,7 @@ senaite.pfas (in SENAITE)              pfas_pipeline (worker container)
 ─────────────────────────             ────────────────────────────────
 analyte_reference.py  ───────────────▶ constants.py / method_profiles.py
 setupdata/*.csv  → SENAITE objects     (same keywords used in results push)
-content/Reagent     ◀───── register ── barcode.py (ReagentCatalog.scan)
+guided extraction  ───── sidecar ───▶ extraction_log.py (report pedigree)
 setuphandlers.py (install)             pipeline.py (per-batch processing)
 ```
 

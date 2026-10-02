@@ -36,7 +36,7 @@ os.environ.setdefault("PFAS_PROFILES_PATH",
 
 from pfas_pipeline.models import Batch, InstrumentRow          # noqa: E402
 from pfas_pipeline.run_queue import RunQueue, CheckStatus      # noqa: E402
-from pfas_pipeline.injection_builder import REVIEW_CHECKS      # noqa: E402
+from pfas_pipeline.review_checks import REVIEW_CHECKS      # noqa: E402
 from pfas_pipeline import method_profiles as mp                # noqa: E402
 from pfas_pipeline.analyte_alias import injection_is_names     # noqa: E402
 

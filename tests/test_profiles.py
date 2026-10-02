@@ -5,7 +5,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date
 from pfas_pipeline.method_profiles import get_profile, available_profiles
 from pfas_pipeline.qc_engine import recovery_check_profiled, rpd_check_profiled
-from pfas_pipeline.injection_builder import InjectionSequenceBuilder
 from pfas_pipeline.vendor_profiles import detect_vendor, get_vendor_profile
 from pfas_pipeline.importer import load_instrument_csv
 
@@ -55,29 +54,6 @@ def test_537_vs_1633():
     assert r.verify_against_method is True
     print("✓ 537.1 dual-IS + forced origin; 1633A EIS verify-flag")
 
-def test_sequence_templates():
-    # FDA: opens with MeOH blank, blank after curve, CCV/6
-    fda_b = InjectionSequenceBuilder(date(2026,2,26), "KCP", "Deer", method="FDA")
-    assert fda_b.ccv_interval == 6
-    seq = fda_b.build_standard_pfas_run(
-        [{"description": f"S{i}"} for i in range(1, 13)],
-        lfsm_parent="S6", spike_ppt=80.0)
-    qc = [i.qc_type for i in seq]
-    assert qc[0] == "SolventBlank", qc[:3]
-    assert "SolventBlank" in qc[1:]          # blank after curve too
-    assert qc.count("SolventBlank") >= 2
-    assert qc[-1] == "CCV"
-    # 537.1: no opening solvent blank, CCV/10
-    e_b = InjectionSequenceBuilder(date(2026,2,26), "KCP", "Water", method="537")
-    assert e_b.ccv_interval == 10
-    seq2 = e_b.build_standard_pfas_run(
-        [{"description": f"S{i}"} for i in range(1, 13)],
-        lfsm_parent="S6", spike_ppt=40.0)
-    qc2 = [i.qc_type for i in seq2]
-    assert qc2[0] == "CAL", qc2[:3]          # starts with curve, no MeOH blank
-    print(f"✓ FDA seq opens MeOH blank+CCV/6 ({qc.count('SolventBlank')} blanks); "
-          f"537.1 seq CCV/10")
-
 def test_vendor_detection():
     assert detect_vendor(["Component Name","Area Ratio","Sample Type"]) == "sciex"
     assert detect_vendor(["Data File","ISTD Resp","Final Conc."]) == "agilent"
@@ -109,7 +85,6 @@ if __name__ == "__main__":
     test_fda_three_tier()
     test_recovery_flagging()
     test_537_vs_1633()
-    test_sequence_templates()
     test_vendor_detection()
     test_vendor_import()
     print("\nALL PROFILE REGRESSION TESTS PASSED")

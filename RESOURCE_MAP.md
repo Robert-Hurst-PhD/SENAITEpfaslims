@@ -1,5 +1,11 @@
 # SENAITE PFAS System — Complete Resource Map
 
+> **2026-10-02:** the extraction-ui tablet service (port 9000), its JSON reagent
+> catalogue (`barcode.py` ReagentCatalog) and `extraction_api.py` are retired
+> (DECISIONS, DB1; GAPS §86). The SENAITE guided extraction is the one
+> extraction record; the Run Builder writes the run's sidecar from it. Mentions
+> of them below are history.
+
 This document maps every component in the modified SENAITE system, what it replaces from your two Excel workbooks, and how each module interacts with the others.
 
 ---

@@ -175,7 +175,27 @@
     <!-- ════════════════════════════════════════════════════════════
          START SCREEN — no session yet
          ════════════════════════════════════════════════════════════ -->
-    <tal:start tal:condition="not:view/session">
+    <tal:pick tal:condition="not:view/batch_uid">
+    <div class="eg-start">
+      <h2>Choose a batch</h2>
+      <p>Open batches, the ones in progress first.</p>
+      <table class="pfas-table">
+        <thead><tr><th>Batch</th><th>Method</th><th>Extraction</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r view/batch_choices">
+            <td><strong tal:content="r/id">B-1</strong> <span tal:content="r/title">title</span></td>
+            <td tal:content="r/method_label">FDA</td>
+            <td tal:content="r/label">Not started</td>
+            <td><a class="btn-sm btn-primary"
+                   tal:attributes="href string:${view/portal_url}/@@pfas-extraction-guide?batch_uid=${r/uid}"
+                   tal:content="python:{'not_started': 'Start', 'in_progress': 'Continue'}.get(r['state'], 'Open')">Start</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    </tal:pick>
+
+    <tal:start tal:condition="python:view.batch_uid() and not view.session()">
     <div class="eg-start">
       <h2>Start Extraction</h2>
       <p tal:content="string:Batch: ${view/batch_title}"></p>
@@ -185,14 +205,16 @@
         <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
 
         <label>Method</label>
-        <select name="method_id">
+        <select name="method_id" tal:define="bm view/batch_method_id">
           <tal:opts tal:repeat="pair view/available_methods">
-            <option tal:attributes="value python:pair[0]" tal:content="python:pair[1]"></option>
+            <option tal:attributes="value python:pair[0]; selected python:pair[0] == bm"
+                    tal:content="python:pair[1]"></option>
           </tal:opts>
         </select>
 
         <label>Lead Analyst</label>
-        <input type="text" name="analyst" placeholder="Your name" required="required" />
+        <input type="text" name="analyst" placeholder="Your name" required="required"
+               tal:attributes="value view/current_user_name" />
 
         <button class="btn-lg btn-primary btn-start" type="submit">Begin Extraction &#8594;</button>
       </form>

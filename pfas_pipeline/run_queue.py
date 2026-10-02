@@ -182,7 +182,7 @@ def _takes_surrogate_recovery(injection_name: str,
     a client sample mistaken for solvent would go unchecked.
     """
     from .importer import classify_injection
-    from .injection_builder import REVIEW_CHECKS
+    from .review_checks import REVIEW_CHECKS
     role = classify_injection(injection_name or "", dilutions)
     if role == "Dilution":
         return False
@@ -226,7 +226,7 @@ class RunQueue:
     Stateful review queue for one batch.
 
     Workflow:
-        q = RunQueue(batch, review_plan)   # plan comes from InjectionSequenceBuilder
+        q = RunQueue(batch, review_plan)   # plan: REVIEW_CHECKS per injection role
         q.auto_evaluate()                  # run QC engine on everything
         q.pending()                        # what the human still needs to look at
         q.accept(injection, check, "KP", "looks fine, matrix effect")

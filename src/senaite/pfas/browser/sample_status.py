@@ -5,33 +5,29 @@ PFAS Analyst Batch Status view (@@pfas-sample-status).
 Shows per-batch (per-Worksheet) progress through the five PFAS lab stages:
   Received → Extraction → On Instrument → QC Review → Report Published
 
-Stage is computed from SENAITE worksheet workflow state + extraction logs in
-/data/extraction_logs/{worksheet_id}_extraction.json.  Never stored as a
-separate field — computed on every request so it can never drift from the
-real workflow.
+Stage is computed from SENAITE worksheet workflow state + the guided
+extraction of the worksheet's batch (DECISIONS 2026-10-02 DB1: the tablet
+service's log files, never even mounted in this container, are retired).
+Never stored as a separate field — computed on every request so it can never
+drift from the real workflow.
 
 Stage detection rules (confirmed 2026-06-11):
-  Stage 1 Received:       ws open + no extraction log
-  Stage 2 Extraction:     ws open + log exists, completed=null
-  Stage 3 On Instrument:  ws open + log exists, completed set
+  Stage 1 Received:       ws open + no extraction started
+  Stage 2 Extraction:     ws open + extraction started, not finalized
+  Stage 3 On Instrument:  ws open + extraction finalized
   Stage 4 QC Review:      ws to_be_verified OR (ws verified + no AR published)
   Stage 5 Report Pub.:    ws verified + at least one AR published
 
 Mixed analysis states — least-advanced wins.  The worksheet FSM enforces this
 naturally: ws cannot advance to to_be_verified until ALL analyses reach
 to_be_verified.  Within the open/extraction/on-instrument range the extraction
-log is the tie-breaker.
-
-Extraction log matching: the batch_id passed to POST /log/start must equal the
-SENAITE Worksheet ID (e.g. WS-001).
+is the tie-breaker.
 
 Python 2.7 compatible.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
-import json
 import logging
-import os
 
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
@@ -39,8 +35,6 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger("senaite.pfas.browser.sample_status")
-
-EXTRACTION_LOG_DIR = os.environ.get("EXTRACTION_LOG_DIR", "/data/extraction_logs")
 
 STAGE_RECEIVED      = 1
 STAGE_EXTRACTION    = 2
@@ -89,18 +83,20 @@ def _fullname(context, userid):
     return userid
 
 
-def _load_extraction_log(batch_id):
-    """Load extraction log JSON for a worksheet ID.  Returns dict or None."""
-    path = os.path.join(EXTRACTION_LOG_DIR,
-                        "{0}_extraction.json".format(batch_id))
-    if not os.path.exists(path):
-        return None
+def _load_extraction_log(ws):
+    """{started, completed, analyst} of the guided extraction of this
+    worksheet's batch, or None when none was started."""
+    from senaite.pfas.browser.extraction_guide import _load_session
+    from senaite.pfas.extraction_sidecar import extraction_progress
     try:
-        with open(path) as fh:
-            return json.load(fh)
-    except (IOError, ValueError) as exc:
-        logger.warning("Could not read extraction log %s: %s", path, exc)
-        return None
+        for analysis in ws.getAnalyses() or []:
+            ar = _get_ar(analysis)
+            batch = ar.getBatch() if ar is not None else None
+            if batch is not None:
+                return extraction_progress(_load_session(batch))
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("extraction for %s: %s", ws.getId(), exc)
+    return None
 
 
 def _get_worksheet_actor(ws, action):
@@ -211,8 +207,7 @@ def _compute_stage(ws):
         return STAGE_QC_REVIEW, _fullname(ws, submitter_id)
 
     # ws is "open" — differentiate Received / Extraction / On Instrument via log
-    batch_id = ws.getId()
-    log = _load_extraction_log(batch_id)
+    log = _load_extraction_log(ws)
 
     if log is None:
         return STAGE_RECEIVED, _fullname(ws, analyst_id)
@@ -290,7 +285,7 @@ class PFASSampleStatusView(BrowserView):
                     continue
                 ws = brain.getObject()
                 stage, responsible = _compute_stage(ws)
-                log = _load_extraction_log(ws.getId())
+                log = _load_extraction_log(ws)
                 sample_ids = _get_sample_ids(ws)
                 result.append({
                     "batch_id":    ws.getId(),

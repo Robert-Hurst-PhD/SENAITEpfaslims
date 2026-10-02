@@ -3,5 +3,5 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY pfas_pipeline/ ./pfas_pipeline/
-COPY run_worker.py extraction_api.py ./
+COPY run_worker.py ./
 CMD ["python", "run_worker.py"]
