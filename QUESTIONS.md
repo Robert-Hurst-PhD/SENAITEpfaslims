@@ -239,3 +239,15 @@
   change: audit + migration plan for sign-off before any code (CLAUDE.md §8).
 - **Status:** closed 2026-09-30 — option (a): per-method maps own the link; the
   service field is a suggestion only. DECISIONS.md, GAPS §54.
+
+
+## 2026-10-02 — Per-sample aliquot mass: recorded, never used
+
+FM-ENV-253 records each sample's aliquot mass (and a sample factor); nothing
+reads it. Results are converted with the method's single matrix factor. For
+bench phase 4 (the weighing stage carries the sample table) the lab needs to
+say: (a) should a sample's own mass (and final volume) enter the result
+calculation, replacing or adjusting the method matrix factor; and (b) if so,
+whether that mass belongs in FM-ENV-252's samples rows (beside dilution and
+spike, which the pipeline already reads) or stays in FM-ENV-253 and is read
+from there. Until then the guide does not write masses.

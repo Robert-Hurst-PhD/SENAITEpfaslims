@@ -5760,3 +5760,25 @@ standards were never searched).
   "equipment" entries that are consumables (tubes, vials, syringes, filters)
   migrate into it (method profiles snapshotted first); equipment keeps only
   instruments with serial numbers.
+
+
+## 2026-10-02 — Bench phase 4: the weighing stage writes FM-ENV-252 samples (confirmed)
+
+The guided extraction's weighing stage carries the per-sample table (sample
+ID, matrix, aliquot mass, dilution where used), prefilled from the batch's
+samples, and edits FM-ENV-252's `samples` table directly -- the one the
+pipeline's dilution map, the Run Builder, Data Review and the EDD already
+read. The FM-ENV-252 form shows and edits the same rows: nothing is entered
+twice and no mass is stored twice. FM-ENV-253's own samples table stays for
+processing notes. Rejected: writing FM-ENV-253 and mirroring into 252.
+
+**Addendum (same day), implementation paused:** the premise was half true.
+FM-ENV-252's `samples` rows (sample_id, matrix_type, sample_type,
+spike_amount_ng, dilution_factor) are what the pipeline, Run Builder and Data
+Review read, but they hold NO mass. The aliquot mass is recorded only in
+FM-ENV-253 (`aliquot_mass_g`, with `sample_factor`), and nothing reads it: the
+pipeline corrects every sample with the method's one matrix factor
+(get_matrix_factor), never a per-sample mass. Before the guide writes masses
+anywhere, the lab decides whether per-sample mass should enter the
+calculation (a model change, CLAUDE.md §3) and therefore which table owns it.
+Open in QUESTIONS.md.
