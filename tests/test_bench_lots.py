@@ -137,6 +137,44 @@ def test_kind_decides_the_252_table():
     assert not bq.is_standard_row({"name": "Methanol"})
 
 
+def test_stage_warnings_db4():
+    rows = [{"role": "Methanol", "lot": "M-1", "from_inventory": True, "status_at_use": "active",
+             "expiry": "2027-01-01"},
+            {"role": "Water", "lot": "", "from_inventory": False},
+            {"role": "Acid", "lot": "T-9", "from_inventory": False},
+            {"role": "Gone", "lot": "G-1", "from_inventory": False, "inventory_missing": True},
+            {"role": "Old", "lot": "O-1", "from_inventory": True, "status_at_use": "active",
+             "expiry": "2026-10-01"},
+            {"role": "Today", "lot": "T-1", "from_inventory": True, "status_at_use": "opened",
+             "expiry": "2026-10-02"},
+            {"role": "Q", "lot": "Q-1", "from_inventory": True, "status_at_use": "quarantine"},
+            {"role": "Used", "lot": "U-1", "from_inventory": True, "status_at_use": "exhausted"}]
+    balances = [{"label": "Analytical Balance", "serial": "", "unit_name": None},
+                {"label": "Balance 2", "serial": "X9", "unit_name": None},
+                {"label": "Balance 3", "serial": "B3", "unit_name": "XPR205", "verified": False},
+                {"label": "Balance 4", "serial": "B4", "unit_name": "XS64", "verified": True}]
+    w = bq.stage_warnings(rows, balances, TODAY)
+    assert w == [
+        "Water: no lot recorded",
+        "Acid: lot T-9 was typed, not picked from the inventory",
+        "Gone: lot G-1 is no longer in the inventory",
+        "Old: lot O-1 is expired (2026-10-01)",
+        "Q: lot Q-1 is quarantined",
+        "Used: lot U-1 is used up",
+        "Analytical Balance: no serial number recorded",
+        "Balance 2: no registered balance has serial X9 (register it in Facility QC)",
+        "Balance 3 (XPR205): not verified today"], w
+    assert bq.stage_warnings(rows[:1] + rows[5:6], balances[3:], TODAY) == []
+
+
+def test_the_record_says_what_needed_a_note():
+    import extraction_sidecar as es
+    r = es.build_sidecar({"stages": {"1": {"deviations": "No water lot on the bench",
+                                           "warnings": ["Water: no lot recorded"]}}}, {"1": "Prep"})
+    assert r["steps"][0]["detail"] == \
+        "No water lot on the bench [needed a note: Water: no lot recorded]"
+
+
 def _src(*parts):
     with io.open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
         return fh.read()
@@ -153,6 +191,14 @@ def test_the_guide_reads_and_resolves_through_the_inventory():
     t = _src("src", "senaite", "pfas", "browser", "templates", "extraction_guide.pt")
     assert "view/stage_lots_json" in t and "reagent-lot-sel" in t
     assert "reagent-exp-field" not in t, "expiry must not be typed"
+    # DB4: checked BEFORE anything changes (picks remembered, lots flagged),
+    # and a refusal keeps the entries as a draft instead of discarding them
+    assert stage.index("stage_warnings(") < stage.index("remember_picks(")
+    assert stage.index("stage_warnings(") < stage.index("_save_reagent(")
+    refuse = stage[stage.index("if warnings and not deviations:"):stage.index("remember_picks(")]
+    assert '"drafts"' in refuse and "_save_session(" in refuse and "reagents" in refuse
+    assert '"warnings":            warnings' in stage
+    assert "DRAFT.reagents" in t and "stageWarnings()" in t
     h = _src("src", "senaite", "pfas", "browser", "workspace_home.py")
     assert "inventory_items(" in h, "the Bench alerts and the picker read one inventory"
 

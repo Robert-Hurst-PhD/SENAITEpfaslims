@@ -14,6 +14,9 @@ is, and which inventory items need attention. Pure; Python 2.7 and 3.
                                                  shared word with the role)
     resolve_rows(index, rows)                 -> rows as the inventory has them
     is_standard_row(row)                      -> FM-ENV-252 standards[] or reagents[]
+    stage_warnings(rows, balances, today)     -> what a deviation note must
+                                                 explain before the stage is
+                                                 complete (DB4)
 
 The last three are phase 2 (DECISIONS 2026-10-02 "Bench phase 2"): a stage
 role offers every usable lot, role-name matches first, and the lab's last
@@ -220,3 +223,50 @@ def is_standard_row(row):
         return (row.get("category") or u"") in STANDARD_CATEGORIES
     name = (row.get("name") or u"").lower()
     return row.get("supplier") == u"In-house" or u"standard" in name or u"spike" in name
+
+
+def _why_unusable(row, today):
+    status = (row.get("status_at_use") or u"").lower()
+    if status == u"quarantine":
+        return u"quarantined"
+    if status in _UNUSABLE:
+        return u"used up" if status == u"exhausted" else status
+    if _expired({"status": status, "expiry": row.get("expiry")}, today):
+        return u"expired (%s)" % (row.get("expiry") or status)
+    return u""
+
+
+def stage_warnings(rows, balances, today):
+    """Everything about a stage that DB4 (DECISIONS 2026-10-02) lets the
+    chemist go ahead with only after writing a deviation note: a role with no
+    lot, a lot typed rather than picked from the inventory or no longer in it,
+    a lot expired / quarantined / used up at the time of use, and a balance
+    that is not identified or not verified today.
+
+    `rows` = resolved reagent rows (resolve_rows); `balances` = one per stage
+    equipment entry that is a balance: {"label", "serial", "unit_name"
+    (None when no registered unit has that serial), "verified"}."""
+    out = []
+    for r in rows or []:
+        what = r.get("role") or r.get("name") or u"Item"
+        lot = (r.get("lot") or u"").strip()
+        if r.get("inventory_missing"):
+            out.append(u"%s: lot %s is no longer in the inventory" % (what, lot or u"?"))
+        elif not lot:
+            out.append(u"%s: no lot recorded" % what)
+        elif not r.get("from_inventory"):
+            out.append(u"%s: lot %s was typed, not picked from the inventory" % (what, lot))
+        else:
+            why = _why_unusable(r, today)
+            if why:
+                out.append(u"%s: lot %s is %s" % (what, lot, why))
+    for b in balances or []:
+        label = b.get("label") or u"Balance"
+        if not b.get("unit_name"):
+            serial = (b.get("serial") or u"").strip()
+            out.append(u"%s: %s" % (label, (
+                u"no registered balance has serial %s (register it in Facility QC)" % serial)
+                if serial else u"no serial number recorded"))
+        elif not b.get("verified"):
+            out.append(u"%s (%s): not verified today" % (label, b["unit_name"]))
+    return out

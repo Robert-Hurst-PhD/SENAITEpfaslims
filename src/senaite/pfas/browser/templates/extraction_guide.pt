@@ -78,6 +78,11 @@
     .reagent-miss { flex-basis:100%; font-size:var(--fs-sm); color:var(--s-danger, #dc3545); }
     .reagent-hint { font-size:var(--fs-sm); color:var(--s-muted, #6c757d); margin:-6px 0 8px; }
     .reagent-add { margin-top:6px; }
+    .stage-analyst-field { font-size:var(--fs-base); padding:9px 12px; border:1px solid var(--s-input-border);
+                           border-radius:6px; width:300px; max-width:100%; }
+    .needs-note { border-left:4px solid var(--s-warning, #ffc107); background:var(--s-warning-bg, #fff8e1);
+                  padding:8px 12px; margin-bottom:10px; font-size:var(--fs-sm); border-radius:4px; }
+    .needs-note ul { margin:4px 0 0 18px; padding:0; }
     .reagent-qty-field { font-size:var(--fs-base); padding:7px 10px; border:1px solid var(--s-input-border);
                          border-radius:6px; width:90px; }
     .reagent-status-sel { font-size:var(--fs-sm); padding:6px 8px; border:1px solid var(--s-input-border);
@@ -170,6 +175,7 @@
     <script>
     var SESSION     = <tal:d tal:replace="structure view/session_json" />;
     var STAGE_LOTS  = <tal:d tal:replace="structure view/stage_lots_json" />;
+    var DRAFT       = <tal:d tal:replace="structure view/stage_draft_json" />;
     var PEDIGREE    = <tal:d tal:replace="structure view/pedigree_json" />;
     var PORTAL_URL  = "<tal:p tal:replace="view/portal_url" />";
     var BATCH_UID   = "<tal:b tal:replace="view/batch_uid" />";
@@ -316,9 +322,8 @@
           <!-- ── Analyst for this stage ── -->
           <div class="eg-card">
             <h3>Analyst</h3>
-            <input type="text" name="stage_analyst"
-                   style="font-size:var(--fs-base);padding:9px 12px;border:1px solid var(--s-input-border);border-radius:6px;width:300px;"
-                   tal:attributes="value python:view.session().get('analyst','')"
+            <input type="text" name="stage_analyst" class="stage-analyst-field"
+                   tal:attributes="value python:view.stage_draft().get('analyst') or view.session().get('analyst','')"
                    placeholder="Analyst name" />
           </div>
 
@@ -369,9 +374,17 @@
           </tal:ped>
 
           <!-- ── Deviations / observations ── -->
-          <div class="eg-card">
+          <div class="eg-card" id="deviation-card">
             <h3>Deviations / Observations</h3>
-            <textarea class="deviation-field" name="deviations"
+            <div class="needs-note" id="needs-note"
+                 tal:define="warns python:view.stage_draft().get('warnings') or []"
+                 tal:attributes="hidden python:not warns or None">
+              <strong>Needs a note</strong> &#8212; say what happened and what you did about it:
+              <ul id="needs-note-list">
+                <li tal:repeat="w warns" tal:content="w">Methanol: no lot recorded</li>
+              </ul>
+            </div>
+            <textarea class="deviation-field" name="deviations" id="deviations-field"
                       placeholder="Document any deviations from SOP, unusual observations, or corrective actions taken..."></textarea>
           </div>
 
@@ -451,10 +464,22 @@
   }
 
   var ROLE_INFO = (STAGE_LOTS && STAGE_LOTS.roles) || {};
-  /* In the stage's own order (a JSON object's key order is not kept). */
-  ((STAGE_LOTS && STAGE_LOTS.role_order) || []).forEach(function(role) {
-    reagentData.push(lotRow(role, (ROLE_INFO[role] || {}).default));
-  });
+  if (DRAFT && DRAFT.reagents) {
+    /* A completion refused for want of a deviation note: reopen on exactly
+       what was entered (DB4). */
+    DRAFT.reagents.forEach(function(d) {
+      var row = lotRow(d.role, d.from_inventory ? (d.kind + ':' + d.inventory_uid) : '');
+      if (!d.from_inventory) { row.name = d.name || row.name; row.lot = d.lot || ''; }
+      row.qty_used = d.qty_used || '';
+      row.new_status = d.new_status || '';
+      reagentData.push(row);
+    });
+  } else {
+    /* In the stage's own order (a JSON object's key order is not kept). */
+    ((STAGE_LOTS && STAGE_LOTS.role_order) || []).forEach(function(role) {
+      reagentData.push(lotRow(role, (ROLE_INFO[role] || {}).default));
+    });
+  }
 
   function addReagentRow() {
     reagentData.push(lotRow('', ''));
@@ -566,7 +591,7 @@
   /* ═══════════════════════════════════════════════════════════════════
      EQUIPMENT S/N GRID
      ═══════════════════════════════════════════════════════════════════ */
-  var equipmentSNs = {};
+  var equipmentSNs = (DRAFT && DRAFT.equipment_sns) || {};
 
   function renderEquipment() {
     var el = document.getElementById('eq-grid');
@@ -583,6 +608,7 @@
                ' oninput="equipmentSNs[\''+eq.replace(/'/g,"\\'")+'\']=this.value;syncEquipment()"/>';
       el.appendChild(div);
     });
+    syncEquipment();
   }
 
   function syncEquipment() {
@@ -892,7 +918,32 @@
   /* ═══════════════════════════════════════════════════════════════════
      INIT
      ═══════════════════════════════════════════════════════════════════ */
+  /* DB4 in the browser: what the chemist can see is missing is asked for
+     before the form goes; the server checks again (and also checks today's
+     balance verification), keeping the entries as a draft if it refuses. */
+  function stageWarnings() {
+    var out = [];
+    reagentData.forEach(function(r) {
+      var what = r.role || r.name || 'Item';
+      if (!r.lot) out.push(what + ': no lot recorded');
+      else if (expClass(r.expiry) === 'exp-expired') out.push(what + ': lot ' + r.lot + ' is expired');
+    });
+    return out;
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
+    var form = document.getElementById('stage-form');
+    if (form) form.addEventListener('submit', function(ev) {
+      var dev = document.getElementById('deviations-field');
+      var warns = stageWarnings();
+      if (!warns.length || (dev && dev.value.trim())) return;
+      ev.preventDefault();
+      var box = document.getElementById('needs-note'), list = document.getElementById('needs-note-list');
+      list.innerHTML = warns.map(function(w) { return '\u003cli>' + esc(w) + '\u003c/li>'; }).join('');
+      box.hidden = false;
+      document.getElementById('deviation-card').scrollIntoView({behavior: 'smooth', block: 'center'});
+      if (dev) dev.focus();
+    });
     renderReagents();
     renderEquipment();
     renderSolutions();

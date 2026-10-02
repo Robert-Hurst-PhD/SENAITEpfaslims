@@ -20,6 +20,11 @@ Python 2.7 compatible.
 from __future__ import absolute_import, print_function, unicode_literals
 
 import json
+
+try:
+    from urllib import quote_plus
+except ImportError:                                         # Python 3
+    from urllib.parse import quote_plus
 import logging
 from datetime import datetime
 
@@ -66,6 +71,14 @@ def batch_method_id(batch, request):
         return PFASLogbookIndexView(batch, request).batch_method() or u""
     except Exception:                                       # noqa: BLE001
         return u""
+
+
+def _json_or(raw, default):
+    try:
+        value = json.loads(raw) if raw else default
+    except (ValueError, TypeError):
+        return default
+    return value if isinstance(value, type(default)) else default
 
 
 def resolve_rows(portal, rows):
@@ -378,6 +391,36 @@ class PFASExtractionGuideView(BrowserView):
         # number, expiry and status from the inventory as they are NOW, never
         # from what the browser sent (a typed or stale expiry is not evidence).
         reagents = resolve_rows(self._portal(), reagents)
+
+        # DB4 (DECISIONS 2026-10-02): an empty role, a lot not from the
+        # inventory or not usable, or a balance not verified today may go
+        # ahead only with a deviation note. Without one nothing is changed --
+        # but nothing the chemist entered is thrown away either: the stage is
+        # kept as a draft and the page reopens on it.
+        from datetime import date
+        from senaite.pfas.bench_queue import stage_warnings
+        equipment_sns = _json_or(f.get("equipment_sns_json"), {})
+        profile_stages = get_profile(self._portal(), sess.get("method_id", "")).get(
+            "extraction_stages", [])
+        stage_def = ([s for s in profile_stages
+                      if u"%s" % s.get("order") == stage_order] or [{}])[0]
+        warnings = stage_warnings(reagents, self._balance_checks(stage_def, equipment_sns),
+                                  date.today())
+        deviations = f.get("deviations", "").strip()
+        analyst = f.get("stage_analyst", sess.get("analyst", "")).strip()
+        if warnings and not deviations:
+            sess.setdefault("drafts", {})[str(stage_order)] = {
+                "saved_at": _utcnow(), "analyst": analyst, "reagents": reagents,
+                "equipment_sns": equipment_sns,
+                "solutions_prepared": _json_or(f.get("solutions_prepared_json"), []),
+                "warnings": warnings}
+            _save_session(b, sess)
+            return self._redirect("{0}?batch_uid={1}&error={2}".format(
+                self._self_url(), b.UID(), quote_plus(
+                    u"Not completed yet: write a deviation note explaining what is "
+                    u"listed under Needs a note. Your entries are kept.".encode("utf-8"))))
+        (sess.get("drafts") or {}).pop(str(stage_order), None)
+
         try:
             from senaite.pfas.browser.bench_inventory import remember_picks
             remember_picks(self._portal(), sess.get("method_id", ""), reagents)
@@ -401,18 +444,18 @@ class PFASExtractionGuideView(BrowserView):
 
         stage_data = {
             "completed_at":        _utcnow(),
-            "analyst":             f.get("stage_analyst", sess.get("analyst", "")).strip(),
+            "analyst":             analyst,
             "reagents":            reagents,
-            "equipment_sns":       json.loads(f.get("equipment_sns_json", "{}")),
-            "deviations":          f.get("deviations", "").strip(),
-            "solutions_prepared":  json.loads(f.get("solutions_prepared_json", "[]")),
+            "equipment_sns":       equipment_sns,
+            "deviations":          deviations,
+            "warnings":            warnings,        # what the note had to explain
+            "solutions_prepared":  _json_or(f.get("solutions_prepared_json"), []),
         }
         stages = sess.setdefault("stages", {})
         stages[str(stage_order)] = stage_data
 
         # Advance to next stage
-        all_orders = sorted(s.get("order", 0) for s in
-                            get_profile(self._portal(), sess.get("method_id", "")).get("extraction_stages", []))
+        all_orders = sorted(s.get("order", 0) for s in profile_stages)
         current = int(stage_order)
         remaining = [o for o in all_orders if o > current]
         sess["current_stage"] = remaining[0] if remaining else current
@@ -435,6 +478,46 @@ class PFASExtractionGuideView(BrowserView):
         _save_session(b, sess)
         url = "{0}?batch_uid={1}&ok=Pedigree+saved".format(self._self_url(), b.UID())
         return self._redirect(url)
+
+    def _balance_checks(self, stage, equipment_sns):
+        """One entry per balance the stage lists: the serial typed, the
+        registered unit it names (None when none has it) and whether that
+        unit was verified today (Facility QC, ISO 17025 \u00a76.4)."""
+        labels = [e for e in (stage or {}).get("equipment") or []
+                  if u"balance" in (e or u"").lower()]
+        if not labels:
+            return []
+        try:
+            from senaite.pfas import facility_qc as fq
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("balance check unavailable: %s", exc)
+            fq = None
+        from datetime import date
+        today = date.today().strftime("%Y-%m-%d")
+        out = []
+        for label in labels:
+            serial = (equipment_sns.get(label) or u"").strip()
+            unit, verified = None, False
+            if serial and fq is not None:
+                try:
+                    unit = fq.unit_by_serial(serial)
+                    verified = bool(unit and fq.get_balance_verification_for_date(
+                        unit["id"], today))
+                except Exception as exc:                    # noqa: BLE001
+                    logger.warning("balance check %r: %s", serial, exc)
+            out.append({"label": label, "serial": serial,
+                        "unit_name": (unit.get("name") or serial) if unit else None,
+                        "verified": verified})
+        return out
+
+    def stage_draft(self):
+        """The current stage's kept entries after a completion was refused
+        for want of a deviation note, or {}."""
+        return (self.session().get("drafts") or {}).get(
+            str(self.current_stage_order())) or {}
+
+    def stage_draft_json(self):
+        return json.dumps(self.stage_draft())
 
     def _resolve_equipment(self, sns_json):
         """[{unit_id, role}] for each stage equipment serial that is registered.

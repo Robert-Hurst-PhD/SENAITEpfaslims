@@ -47,8 +47,10 @@ def build_sidecar(session, stage_names, worksheet_id=u"", senaite_batch_id=u"",
         name = (stage_names or {}).get(u"%s" % order) or u"Stage %s" % order
         at = st.get(u"completed_at") or u""
         by = st.get(u"analyst") or analyst
-        steps.append({u"at": at, u"step": name,
-                      u"detail": st.get(u"deviations") or u"",
+        detail = st.get(u"deviations") or u""
+        if st.get(u"warnings"):                 # what the note had to explain (DB4)
+            detail = u"%s [needed a note: %s]" % (detail, u"; ".join(st[u"warnings"]))
+        steps.append({u"at": at, u"step": name, u"detail": detail.strip(),
                       u"value": u"", u"by": by})
         for rg in st.get(u"reagents") or []:
             lot = (rg.get(u"lot") or u"").strip()
