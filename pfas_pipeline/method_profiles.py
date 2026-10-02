@@ -1383,6 +1383,15 @@ def get_analyte_list(method_id: str = "FDA_32PFAS") -> list:
     return []
 
 
+def get_sample_correction(method_id: str) -> str:
+    """Where results are put on the sample basis (DECISIONS 2026-10-02):
+    "" nominal matrix factor, "instrument" already done in the MS software,
+    "lims" back-calculated per sample from the logged amount and volume."""
+    data = _profile_data_cache.get(method_id, {}) or {}
+    mode = (data.get("sample_correction") or "").strip()
+    return mode if mode in ("instrument", "lims") else ""
+
+
 def get_reporting_unit(method_id: str, matrix: str) -> str:
     """The unit results are reported in for this method x matrix, from the
     profile's unit_map (Animal Feed -> ng/kg, Milk -> ng/mL)."""

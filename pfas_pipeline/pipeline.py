@@ -49,12 +49,15 @@ from .method_profiles import (
     get_matrix_factor as _get_matrix_factor,
     get_salt_factors as _get_salt_factors,
     get_reporting_unit as _get_unit,
+    get_sample_correction as _get_sample_correction,
     get_analyte_list as _get_analytes,
     get_non_iso_set as _get_non_iso_set,
     get_included_display_analytes as _get_included_analytes,
     get_isomer_summation as _get_isomer_summation,
     get_surrogate_map as _get_surrogate_map,
 )
+
+from .addon import load as _addon
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +75,8 @@ def _has_sample_basis(row):
     return (row.sample_type or "").strip() not in _NO_SAMPLE_BASIS
 
 
-def apply_extract_corrections(rows, method_id, matrix):
+def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
+                              dilutions=None, fallbacks=None):
     """Put every concentration on the reported sample basis, in one place.
 
     Two multiplicative corrections, both configured per method: the per-analyte
@@ -129,6 +133,51 @@ def apply_extract_corrections(rows, method_id, matrix):
     matrix_factor = None
     if method_id and matrix:
         matrix_factor = _get_matrix_factor(method_id, matrix)
+    mode = _get_sample_correction(method_id) if method_id else ""
+    reported_unit = _get_unit(method_id, matrix) if method_id and matrix else ""
+    if mode == "instrument":
+        # The MS software applied each sample's correction factor: the
+        # imported number IS the sample-basis result. Applying any factor
+        # here would correct it twice.
+        for row in rows:
+            if (row.compound_type or "").strip() == "Analyte" and _has_sample_basis(row) \
+                    and reported_unit:
+                row.conc_units = reported_unit
+        logger.info("%s: results arrive per sample from the MS software; no "
+                    "matrix factor applied", method_id)
+        return rows
+    if mode == "lims":
+        per_sample = _addon("sample_correction").factor_for
+        parents = dict((k, (v or {}).get("parent") or "") for k, v in (dilutions or {}).items())
+        per_sample_rows, nominal = 0, set()
+        for row in rows:
+            if (row.compound_type or "").strip() != "Analyte" or not _has_sample_basis(row):
+                continue
+            sample = parents.get(row.injection_name) or row.injection_name
+            factor = per_sample((sample_amounts or {}).get(sample), reported_unit)
+            if factor is None:
+                factor = matrix_factor
+                nominal.add(row.injection_name)
+            else:
+                per_sample_rows += 1
+            if not factor:
+                continue
+            for field in ("calculated_conc", "measured_conc", "reporting_limit"):
+                value = getattr(row, field, None)
+                if value is not None:
+                    setattr(row, field, value * factor)
+            if reported_unit:
+                row.conc_units = reported_unit
+        if fallbacks is not None:
+            fallbacks.extend(sorted(nominal))
+        if nominal:
+            logger.warning(
+                "%s: no logged sample amount and final volume for %s -- the "
+                "nominal %s matrix factor was used for them, flagged for review",
+                method_id, ", ".join(sorted(nominal)), matrix)
+        logger.info("%s: back-calculated %d native rows from logged amounts",
+                    method_id, per_sample_rows)
+        return rows
     if matrix_factor and matrix_factor != 1.0:
         converted = 0
         for row in rows:
@@ -711,14 +760,6 @@ def run_pipeline(
     logger.info("Loaded %d rows / %d injections from %s",
                 len(rows), len(group_by_injection(rows)), csv_path.name)
 
-    # Convert extract concentrations to the reported sample basis, using the
-    # method's configured per-matrix multiplier. Applied to NATIVE ANALYTES
-    # ONLY: internal standards and surrogates are judged on their own response
-    # and instrument-computed Total rows are sums of natives, so multiplying
-    # either would double-count. Everything else the instrument reports is
-    # already on its final basis.
-    rows = apply_extract_corrections(rows, method_id, matrix)
-
     # Dilution map — needed before the name check below.
     #
     # The dilution map comes from the batch's FM-ENV-252 extraction log, which
@@ -726,6 +767,7 @@ def run_pipeline(
     # any batch that logged none, so those behave exactly as before.
     dilution_map = {}
     spike_map = {}
+    logged_amounts = {}
     if senaite is not None and not senaite_batch_id:
         # A connector without a batch id silently skips the extraction
         # pedigree, so matrix spikes and dilutions both vanish and the run
@@ -740,6 +782,7 @@ def run_pipeline(
     if senaite is not None and senaite_batch_id:
         prep = senaite.get_batch_dilutions(senaite_batch_id) or {}
         spike_map = prep.pop("_spikes", {}) or {}
+        logged_amounts = prep.pop("_samples", {}) or {}
         dilution_map = prep
         if spike_map:
             logger.info("Extraction pedigree records %d matrix spike(s): %s",
@@ -752,6 +795,20 @@ def run_pipeline(
                         len(dilution_map),
                         ", ".join("%s <- %s" % (v.get("parent"), k)
                                   for k, v in sorted(dilution_map.items())))
+
+    # Convert extract concentrations to the reported sample basis (natives
+    # only; IS/surrogates are judged on their own response and instrument
+    # Total rows are sums of natives). HOW is the method's choice
+    # (sample_correction.py): nominal factor, already done in the MS
+    # software, or back-calculated here from each sample's logged amount and
+    # final volume -- which is why this runs after the dilution map is known
+    # (a dilution takes its parent sample's amounts).
+    sample_amounts = logged_amounts
+    correction_fallbacks: list = []
+    rows = apply_extract_corrections(rows, method_id, matrix,
+                                     sample_amounts=sample_amounts,
+                                     dilutions=dilution_map,
+                                     fallbacks=correction_fallbacks)
 
 
     # 2. Injection-name check.
@@ -828,6 +885,14 @@ def run_pipeline(
 
     queue = RunQueue(batch, review_plan, method_id=method_id)
     queue.auto_evaluate()
+    # After the engine, so the flag informs the reviewer and changes no
+    # automatic verdict: these were corrected with the NOMINAL factor.
+    batch.correction_fallbacks = list(correction_fallbacks)
+    for inj in correction_fallbacks:
+        batch.qc_flags.append(QCFlag(
+            source="Sample correction", analyte="(natives)", injection_name=inj,
+            value="nominal matrix factor", issue="(NOM)",
+            check_kind="sample_correction"))
     logger.info("QC engine raised %d flags; %d checks pending review",
                 len(batch.qc_flags), len(queue.pending()))
 

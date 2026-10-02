@@ -484,6 +484,19 @@ def write_matrix_factors(profile, updates, env=None):
     return profile
 
 
+SAMPLE_CORRECTION = cf.Section(
+    id=u"scorr", title=u"Sample correction", base=(),
+    groups=[(u"Where results are put on the sample basis", [
+        cf.Field("sample_correction", u"Per-sample correction", kind=cf.CHOICE, blank=u"remove",
+                 placeholder=u"Nominal matrix factor per sample type (below)",
+                 choices=[(u"instrument", u"In the MS software: results arrive per sample, no factor applied"),
+                          (u"lims", u"Back-calculated in the LIMS: final volume / sample amount, per sample")],
+                 help=u"Back-calculation uses the sample amount and final extract volume logged "
+                      u"in the guided extraction; a sample without both falls back to the nominal "
+                      u"factor and is flagged for review."),
+    ])])
+
+
 MATRIX_FACTORS = cf.Table(
     id=u"mf", title=u"Matrix Adjustment Factors", base=("matrix_factors",),
     columns=[cf.Field("factor", u"Factor", greater_than=0, placeholder=u"1.0")],
@@ -1334,7 +1347,7 @@ def apply_qc_toggles(profile, offered, enabled):
 PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, QC_COMPOSITION, REPORTING_LIMITS, MATRICES,
-                                    SALT, MATRIX_FACTORS, EIS_GRID, SURROGATE_MAP,
+                                    SALT, SAMPLE_CORRECTION, MATRIX_FACTORS, EIS_GRID, SURROGATE_MAP,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
                                     REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS] +
                 list(SPIKE_LEVELS.values()))

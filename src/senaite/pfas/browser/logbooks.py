@@ -1645,7 +1645,7 @@ class PFASBatchDilutionsView(BrowserView):
 
         portal = getToolByName(self.context, "portal_url").getPortalObject()
         from senaite.pfas.batch_ref import get_batch
-        from senaite.pfas.dilution_ref import get_dilutions, get_spikes
+        from senaite.pfas.dilution_ref import get_dilutions, get_sample_amounts, get_spikes
         batch = get_batch(portal, batch_id)
         if batch is None:
             self.request.response.setStatus(404)
@@ -1657,6 +1657,11 @@ class PFASBatchDilutionsView(BrowserView):
         if spikes:
             payload = dict(payload)
             payload["_spikes"] = spikes
+        # per-sample amount / final volume, also under a reserved key
+        amounts = get_sample_amounts(batch)
+        if amounts:
+            payload = dict(payload)
+            payload["_samples"] = amounts
         return json.dumps(payload)
 
 

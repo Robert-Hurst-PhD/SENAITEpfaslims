@@ -7004,3 +7004,66 @@ use, with a low-stock alert on the Bench.
 **Still open:** low-stock level for prepared standards (no field yet); the
 inventory list itself does not show what is left yet (the picker, Bench and
 where-used page do); phase 4 (the weighing stage carries the sample table).
+
+
+## 89. Form numbers; per-sample amounts and dilutions in the guide; dilutions as retests; per-method correction (2026-10-02)
+
+Decisions: DECISIONS 2026-10-02 "Form numbers, per-sample correction,
+dilutions" (answers QUESTIONS 2026-10-02 on aliquot mass).
+
+- **Form numbers (FM-ENV-<sequence>):** every label reads the logbook pool
+  (logbook_store.form_code); ~44 screens and messages had shown the storage
+  slugs 250-253 as form numbers. Startup normalisation gave the custom
+  "Extraction" logbook (which shared FM-ENV-001) FM-ENV-005 and lists the pool
+  in number order; a duplicate number is refused on save (live: "Form number
+  FM-ENV-001 is already used by another logbook."); a new logbook takes the
+  next number; the move buttons went (order = number). **Found:** sort
+  position 0 read back as 100 (`int(v or 100)`, four places), which is why the
+  Solvent / Reagent Prep Log (FM-ENV-001) always listed last. The batch
+  logbook index keeps each method's configured sequence (001, 003, 002, 004).
+- **A text-substitution slip** (`form_code(\'250\')`) broke four logbook pages
+  and no test noticed: test_template_expressions now compiles every single
+  python: expression in content/replace/condition (mutant caught).
+- **The FM-ENV-003 samples table had no editor:** its form redirects to the
+  guided extraction for all three methods, so dilution rows, spike and role
+  could be entered nowhere. The guide now carries it (sample_table.py): a
+  stage setting "Records per sample" (sample amount g/mL, or final extract
+  volume), seeded on FDA/1633A stage 2 + 7 and EPA 537.1 stage 5 + 8 (live
+  migration touched nothing else; save audit 31/31, profiles unchanged); the
+  card is prefilled from the batch's samples; a missing value needs a
+  deviation note (DB4) and a refusal keeps the entries; rows merge by sample
+  id into FM-ENV-003, other columns kept. **Dilutions card**, also after
+  finalizing: diluted from, injection name, factor; appended with who and
+  when, never edited, refused without a usable factor or when the name exists.
+- **Dilutions as SENAITE retests, with their own analysis time:** the worker
+  carries each injection's acquisition time; when a dilution replaces an
+  above-LOQ value the analysis receives the NEAT reading ("ALoQ; reported from
+  dilution ...") and the dilution goes to @@pfas-dilution-result (kept on the
+  analysis; needs the right to edit its result). At Data Review submission
+  the submitted neat analysis gets a retest (core create_retest -- the
+  `retest` transition would make the Analyst verify their own result) with
+  the dilution's result, its analysis time as capture date, and a remark
+  naming both readings and times; the Manager verifies both. The certificate
+  and the EDD report the retest (EDD with the real dilution factor and the
+  dilution's analysis date). Live: proved on a real sample in an aborted
+  transaction (BIO-0003 PFOS: retest PFOS-1 = 48.2, captured 2026-03-14
+  09:30, original retested, a second call adds nothing, the certificate lists
+  only the retest; BIO-0003 unchanged afterwards); endpoint tested over HTTP
+  (404/400/405/200) and its probe record removed.
+- **Per-sample correction, per method** (Sample Corrections tab): nominal
+  matrix factor (default, unchanged); "in the MS software" (no factor, unit
+  labelled -- never corrected twice); "back-calculated in the LIMS" (C_extract
+  x final volume / amount, scaled to the reporting unit; a dilution takes its
+  parent's amounts; a sample without both values uses the nominal factor and
+  gets a review flag "(NOM)", raised after the QC engine so it changes no
+  automatic verdict). Amounts reach the worker with the dilution map
+  (`_samples`). Real instrument files: results and flags identical.
+- **Tests:** test_form_codes (5), test_template_expressions (+1),
+  test_sample_table (6), test_dilution_retest (5), test_sample_correction (6);
+  every new guard mutation-tested, survivors turned into cases.
+
+**Still open:** no method has chosen a correction mode yet (all nominal);
+reporting limits are still the nominal RL (lowest calibrator x matrix
+factor), not per sample, under back-calculation; Data Review's final data
+summary lists the neat and the retest side by side without marking which is
+reported.

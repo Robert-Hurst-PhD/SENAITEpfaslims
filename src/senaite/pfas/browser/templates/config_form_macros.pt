@@ -60,7 +60,8 @@
                       tal:content="fld/value"></textarea>
             <select tal:condition="python:fld['kind'] == 'choice'"
                     tal:attributes="id fld/name; name fld/name; form cf_form">
-              <option value="" tal:condition="not:fld/required">(unset)</option>
+              <option value="" tal:condition="not:fld/required"
+                      tal:content="python:fld.get('placeholder') or u'(unset)'">(unset)</option>
               <option tal:repeat="c fld/choices"
                       tal:attributes="value python:c[0]; selected python:'selected' if c[0] == fld['value'] else None"
                       tal:content="python:c[1]">option</option>

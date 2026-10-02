@@ -243,6 +243,8 @@
 
 ## 2026-10-02 — Per-sample aliquot mass: recorded, never used
 
+**Answered 2026-10-02** (DECISIONS "Form numbers, per-sample correction, dilutions"): a per-method choice -- applied in the MS software, or back-calculated in the LIMS from the amount and final volume now logged in the guided extraction into FM-ENV-003. GAPS §89.
+
 FM-ENV-253 records each sample's aliquot mass (and a sample factor); nothing
 reads it. Results are converted with the method's single matrix factor. For
 bench phase 4 (the weighing stage carries the sample table) the lab needs to

@@ -318,6 +318,10 @@ class Batch:
     # RunQueue.resolve_confirmations() to settle the identity_confirmation check.
     # Each entry: {sample_injection, analyte, qc_type, prompt}.
     confirmations_required: list[dict]       = field(default_factory=list)
+    # Injections a "back-calculated in the LIMS" method had to put on the
+    # sample basis with the nominal matrix factor: no logged amount and final
+    # volume (DECISIONS 2026-10-02). Flagged for review, never silent.
+    correction_fallbacks:   list[str]        = field(default_factory=list)
     # SENAITE IDs once uploaded
     senaite_batch_uid:  Optional[str]        = None
 

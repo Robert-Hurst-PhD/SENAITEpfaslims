@@ -127,6 +127,37 @@ def get_dilutions(batch):
     return out
 
 
+def sample_amounts_from_rows(rows):
+    """{sample_id: {"amount", "amount_unit", "final_volume_ml"}} for the
+    sample rows (not dilutions) that record a test-portion amount or a final
+    volume -- what a "back-calculated in the LIMS" method corrects with
+    (sample_correction.py; DECISIONS 2026-10-02)."""
+    out = {}
+    for row in rows or []:
+        if not isinstance(row, dict) or (row.get(PARENT_COLUMN) or u"").strip():
+            continue
+        sid = (row.get(SAMPLE_ID_COLUMN) or u"").strip()
+        if sid and (row.get("amount") or row.get("final_volume_ml")):
+            out[sid] = {"amount": row.get("amount") or u"",
+                        "amount_unit": row.get("amount_unit") or u"g",
+                        "final_volume_ml": row.get("final_volume_ml") or u""}
+    return out
+
+
+def get_sample_amounts(batch):
+    try:
+        from zope.annotation.interfaces import IAnnotations
+        data = json.loads(IAnnotations(batch).get(LOGBOOK_KEY) or u"{}")
+    except Exception:                                       # noqa: BLE001
+        return {}
+    try:
+        from senaite.pfas.logbook_schema import active_rows
+    except Exception:                                       # noqa: BLE001
+        def active_rows(rows):
+            return [r for r in (rows or []) if isinstance(r, dict)]
+    return sample_amounts_from_rows(active_rows(data.get(SAMPLES_FIELD)))
+
+
 # ── Matrix-spike pedigree ────────────────────────────────────────────────────
 # The guided extraction records, per spiked injection, which sample it was
 # fortified from and at what level. That is the same shape of fact as a
