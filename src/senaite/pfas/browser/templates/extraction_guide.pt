@@ -989,27 +989,29 @@
     _scanMiniResult = null;
     document.getElementById('scan-mini-result').textContent = 'Point camera at barcode...';
     document.getElementById('scan-mini-use').disabled = true;
-    if (typeof ZXing !== 'undefined') {
-      _scanReader = new ZXing.BrowserMultiFormatReader();
-      _scanReader.decodeFromVideoDevice(null, 'scan-mini-video', function(res, err) {
+    if (typeof ZXingBrowser !== 'undefined') {
+      /* @zxing/browser (R11): the returned controls stop the camera. */
+      _scanReader = new ZXingBrowser.BrowserMultiFormatReader();
+      _scanReader.decodeFromVideoDevice(undefined, 'scan-mini-video', function(res, err) {
         if (res) {
           _scanMiniResult = res.getText();
           document.getElementById('scan-mini-result').innerHTML = '\u003cstrong style="color:#00ff88;">' + esc(_scanMiniResult) + '\u003c/strong>';
           document.getElementById('scan-mini-use').disabled = false;
         }
-      });
+      }).then(function(c) { _scanMiniControls = c; });
     } else {
       document.getElementById('scan-mini-result').textContent = 'ZXing not loaded. Enter lot manually.';
     }
   }
 
-  var _scanMiniResult = null;
+  var _scanMiniResult = null, _scanMiniControls = null;
   function useScanMini() {
     closeScanMini();
     if (_scanCallback && _scanMiniResult) _scanCallback(_scanMiniResult);
   }
   function closeScanMini() {
-    if (_scanReader) { try { _scanReader.reset(); } catch(e){} _scanReader = null; }
+    if (_scanMiniControls) { try { _scanMiniControls.stop(); } catch(e){} _scanMiniControls = null; }
+    _scanReader = null;
     var overlay = document.getElementById('scan-mini-overlay');
     if (overlay) overlay.style.display = 'none';
   }
@@ -1076,7 +1078,9 @@
   </script>
 
   <!-- ZXing for inline barcode scanning -->
-  <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+  <!-- @zxing/library is Apache-2.0: CDN only, never vendored (R11) -->
+  <script src="https://unpkg.com/@zxing/library@0.23.0/umd/index.min.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
   <!-- GS1 label parsing (GTIN, lot, expiry): MIT, vendored (LICENSE beside it) -->
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/gs1-barcode-parser-mod-1.2.1.js"></script>
   </div><!-- /content slot -->

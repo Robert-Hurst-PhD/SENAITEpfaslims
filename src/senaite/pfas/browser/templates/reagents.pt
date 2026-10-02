@@ -1032,13 +1032,15 @@
     document.getElementById('scan-use-btn').disabled = true;
     _scanResult = null;
 
-    if (typeof ZXing === 'undefined') {
+    if (typeof ZXingBrowser === 'undefined') {
       result.innerHTML = '\u003cspan style="color:#f88;">ZXing not loaded. Check network connection.\u003c/span>';
       return;
     }
 
-    _codeReader = new ZXing.BrowserMultiFormatReader();
-    _codeReader.listVideoInputDevices().then(function(devices) {
+    /* @zxing/browser (R11): the reader decodes; the returned controls stop
+       the camera (the old reader.reset() is gone). */
+    _codeReader = new ZXingBrowser.BrowserMultiFormatReader();
+    ZXingBrowser.BrowserCodeReader.listVideoInputDevices().then(function(devices) {
       var sel = document.getElementById('scan-device-sel');
       sel.innerHTML = '';
       if (!devices || !devices.length) {
@@ -1057,20 +1059,30 @@
     });
   }
 
+  var _scanControls = null;
+  function stopScanControls() {
+    if (_scanControls) { try { _scanControls.stop(); } catch(e){} _scanControls = null; }
+  }
+
   function startScanner(deviceId) {
     if (!_codeReader) return;
+    stopScanControls();                       /* switching camera */
     _codeReader.decodeFromVideoDevice(deviceId, 'cam-video', function(res, err) {
       if (res) {
         _scanResult = res.getText();
         var el = document.getElementById('scan-result');
-        el.innerHTML = '\u003cstrong>' + _scanResult + '\u003c/strong>';
+        el.innerHTML = '';
+        var strong = document.createElement('strong');
+        strong.textContent = _scanResult;      /* a label is untrusted text */
+        el.appendChild(strong);
         document.getElementById('scan-use-btn').disabled = false;
       }
-    });
+    }).then(function(c) { _scanControls = c; });
   }
 
   function closeScanner() {
-    if (_codeReader) { try { _codeReader.reset(); } catch(e){} _codeReader = null; }
+    stopScanControls();
+    _codeReader = null;
     backToCamera();
     closeModal('scan-modal');
   }
@@ -1556,11 +1568,13 @@
   }
   </script>
 
-  <!-- Load ZXing and Tesseract.js from CDN.
-       If the SENAITE Docker environment is air-gapped, copy these files into
-       src/senaite/pfas/browser/static/ and update the src attributes. -->
-  <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2/dist/tesseract.min.js"></script>
+  <!-- Barcode (@zxing/browser 0.2.1 on @zxing/library 0.23.0) and OCR
+       (tesseract.js 7.0.0), pinned, from CDN (R11, GAPS §87). @zxing/library
+       and tesseract.js are Apache-2.0, which is not GPLv2-compatible: load
+       them in the browser, never vendor them into this repository. -->
+  <script src="https://unpkg.com/@zxing/library@0.23.0/umd/index.min.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   </div><!-- /content slot -->
 </body>
 </html>

@@ -6951,8 +6951,17 @@ consumables by lot) and DB4 (warn + deviation note).
   picker did not offer it ("... cannot be used (expired)"). Live: all three
   cases on B-002; the probe reagent and session removed afterwards.
 
+- **R11 scanner libraries:** @zxing/browser 0.2.1 on @zxing/library 0.23.0
+  (the reader's reset() is gone; the controls decodeFromVideoDevice returns
+  stop the camera, also when switching camera) and tesseract.js 7.0.0 (the
+  review said v5; 7.0.0 is current and its recognize() is unchanged), pinned.
+  Proved headless on stills before switching (a GS1-128 label decoded; OCR
+  read "LOT 24A77 EXP 2027-12" exactly) and in the live reagents page.
+  @zxing/library and tesseract.js are Apache-2.0, not GPLv2-compatible: CDN
+  only, never vendored (test_scanner_libs pins both rules). The reagent
+  scanner now writes the scanned text as text, not HTML.
+
 **Still open:** no balance is registered in Facility QC, so every weighing
-stage asks for a note today (a lab action); the R11 library upgrades
-(tesseract.js v5, @zxing/browser); usage ledger and count-down (phase 3, DB3);
+stage asks for a note today (a lab action); usage ledger and count-down (phase 3, DB3);
 sample table in the weighing stage (phase 4); inventory categories editable by
 the lab.
