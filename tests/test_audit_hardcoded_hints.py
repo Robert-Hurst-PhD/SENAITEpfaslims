@@ -106,8 +106,13 @@ def test_the_scan_still_reports_the_known_hardcoded_tables():
     # DEFAULT_SHELF_LIFE_DAYS left with the tablet catalogue (barcode.py,
     # retired 2026-10-02 DB1): resolved, not lost -- the SENAITE inventory's
     # EXPIRY_DEFAULTS is the one shelf-life table and is still reported.
-    for name in ("REAGENT_CATEGORIES",
-                 "BALANCE_DEFAULTS", "WATER_QC_DEFAULTS", "EXPIRY_DEFAULTS"):
+    # REAGENT_CATEGORIES was only ever reported BY ACCIDENT: none of its values
+    # carries a lab signal, and the 15-line window reached the next class's
+    # docstring, where "barcode" matched `code`. Adding "Consumable" (bench
+    # phase 2) pushed that line out. It is still a hardcoded vocabulary --
+    # GAPS §87 records it as open -- but this test can only pin what the
+    # heuristic genuinely detects.
+    for name in ("BALANCE_DEFAULTS", "WATER_QC_DEFAULTS", "EXPIRY_DEFAULTS"):
         assert name in found, "%s is no longer reported as a hardcoded table" % name
     assert len(rows) > 50, (
         "the hardcoded scan found only %d rows; it found 107 when this test was "

@@ -40,6 +40,7 @@ REAGENT_CATEGORIES = [
     u"Acid / Base",
     u"Salt",
     CATEGORY_INHOUSE_WATER,
+    u"Consumable",              # tubes, vials, syringes, filters: by lot (DECISIONS 2026-10-02)
     u"Other Reagent",
 ]
 

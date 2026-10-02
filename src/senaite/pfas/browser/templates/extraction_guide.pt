@@ -335,9 +335,20 @@
               are in date and not quarantined are listed.</p>
             <div id="reagent-rows"></div>
             <button type="button" class="btn-sm btn-add-sol reagent-add"
-                    onclick="addReagentRow()">+ Add another item</button>
+                    onclick="addReagentRow('reagent')">+ Add another item</button>
           </div>
           </tal:rgs>
+
+          <!-- ── Consumables, by lot (DECISIONS 2026-10-02) ── -->
+          <tal:cons tal:condition="python:stage.get('consumables')">
+          <div class="eg-card" id="consumable-card">
+            <h3>Consumables used</h3>
+            <p class="reagent-hint">Tubes, vials, syringes and filters are recorded by lot, like reagents.</p>
+            <div id="consumable-rows"></div>
+            <button type="button" class="btn-sm btn-add-sol reagent-add"
+                    onclick="addReagentRow('consumable')">+ Add another consumable</button>
+          </div>
+          </tal:cons>
 
           <!-- ── Equipment S/Ns ── -->
           <tal:eqs tal:condition="python:stage.get('equipment')">
@@ -455,9 +466,10 @@
   LOTS.forEach(function(l) { LOT_BY_KEY[l.key] = l; });
   var reagentData = [];
 
-  function lotRow(role, key) {
+  function lotRow(role, key, group) {
     var l = LOT_BY_KEY[key] || null;
-    return { role: role || '', key: l ? l.key : '', kind: l ? l.kind : '',
+    return { group: group || 'reagent',
+             role: role || '', key: l ? l.key : '', kind: l ? l.kind : '',
              inventory_uid: l ? l.uid : '', name: l ? l.name : (role || ''),
              lot: l ? l.lot : '', expiry: l ? l.expiry : '',
              qty_used: '', status: 'ok', new_status: '' };
@@ -468,7 +480,7 @@
     /* A completion refused for want of a deviation note: reopen on exactly
        what was entered (DB4). */
     DRAFT.reagents.forEach(function(d) {
-      var row = lotRow(d.role, d.from_inventory ? (d.kind + ':' + d.inventory_uid) : '');
+      var row = lotRow(d.role, d.from_inventory ? (d.kind + ':' + d.inventory_uid) : '', d.group);
       if (!d.from_inventory) { row.name = d.name || row.name; row.lot = d.lot || ''; }
       row.qty_used = d.qty_used || '';
       row.new_status = d.new_status || '';
@@ -479,16 +491,19 @@
     ((STAGE_LOTS && STAGE_LOTS.role_order) || []).forEach(function(role) {
       reagentData.push(lotRow(role, (ROLE_INFO[role] || {}).default));
     });
+    ((STAGE_LOTS && STAGE_LOTS.consumable_order) || []).forEach(function(role) {
+      reagentData.push(lotRow(role, (ROLE_INFO[role] || {}).default, 'consumable'));
+    });
   }
 
-  function addReagentRow() {
-    reagentData.push(lotRow('', ''));
+  function addReagentRow(group) {
+    reagentData.push(lotRow('', '', group));
     renderReagents();
   }
 
   function pickLot(i, key) {
     var keep = reagentData[i];
-    var row = lotRow(keep.role, key);
+    var row = lotRow(keep.role, key, keep.group);
     row.qty_used = keep.qty_used;
     reagentData[i] = row;
     renderReagents();
@@ -517,10 +532,12 @@
   }
 
   function renderReagents() {
-    var el = document.getElementById('reagent-rows');
-    if (!el) return;
-    el.innerHTML = '';
+    var boxes = {reagent: document.getElementById('reagent-rows'),
+                 consumable: document.getElementById('consumable-rows')};
+    Object.keys(boxes).forEach(function(g) { if (boxes[g]) boxes[g].innerHTML = ''; });
     reagentData.forEach(function(r, i) {
+      var el = boxes[r.group] || boxes.reagent;
+      if (!el) return;
       var ec = expClass(r.expiry);
       var div = document.createElement('div');
       div.className = 'reagent-row';
@@ -582,7 +599,7 @@
   function syncReagents() {
     var el = document.getElementById('reagents_json_field');
     if (el) el.value = JSON.stringify(reagentData.map(function(r) {
-      return {role: r.role, kind: r.kind, inventory_uid: r.inventory_uid, name: r.name,
+      return {group: r.group, role: r.role, kind: r.kind, inventory_uid: r.inventory_uid, name: r.name,
               lot: r.lot, expiry: r.expiry, qty_used: r.qty_used, status: r.status,
               new_status: r.new_status};
     }));

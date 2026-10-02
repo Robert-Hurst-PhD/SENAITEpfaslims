@@ -6875,3 +6875,62 @@ parsed (R9) and the R11 library upgrades; inline receive for an unknown lot
 note (DB4); equipment from facility units with today's verification; usage
 ledger and numeric count-down with low-stock level (DB3); the weighing stage
 carries the sample table (B7).
+
+
+## 87. Bench phase 2: every item from the inventory; a note for what is wrong (2026-10-02)
+
+Decisions: DECISIONS 2026-10-02 "Bench phase 2" (picker + remembered;
+consumables by lot) and DB4 (warn + deviation note).
+
+- **Evidence first:** of 43 stage reagent roles across the three methods, the
+  guide's name search found a usable lot for 15 (MgSO4 vs "Magnesium Sulfate",
+  "Reagent Water" vs "Water LC-MS Grade"; prepared standards were never
+  searched, so no spike or IS solution was ever offered).
+- **One inventory reader** (browser/bench_inventory.py): reagents and prepared
+  standards in one shape with their own effective expiry (the Bench alerts had
+  been computing reagent expiry without the lab's configured defaults).
+  **One definition of usable** (bench_queue.is_usable), shared by the alerts
+  and the picker; a lot expiring today is usable and listed as expiring.
+- **Lot picker (2a):** each role lists every usable lot, suggestions first;
+  the lab's last pick for that method role is preselected, else the newest lot
+  of the same item, else a clear name match (more than half the role's words;
+  one shared word is not enough), else nothing -- never a guess. Names fold
+  subscripts and noise words. Scanning a label selects the lot whose barcode
+  or lot number it contains. Expiry is no longer typed.
+- **The inventory is the record:** at stage completion each row is re-read
+  from the inventory (name, lot, expiry, status at use, category, supplier,
+  catalogue number); a forged expiry posted from the browser was discarded
+  live. The stored kind files a lot in FM-ENV-252 standards[] or reagents[];
+  the old name guess sent prepared mobile phases to reagents[], where a
+  prepared standard can never resolve.
+- **DB4 (2b):** an empty role, a lot typed or no longer in the inventory, a lot
+  expired / quarantined / used up at use, or a balance with no serial, not
+  registered or not verified today needs a deviation note. The browser asks
+  first; the server checks again before anything changes and, refused, keeps
+  the stage as a draft and reopens on exactly what was entered (live: quantity
+  kept). The stored stage, the run record and the logbook PDF keep what the
+  note had to explain.
+- **Consumables by lot (2c):** "Consumable" inventory category; each stage has
+  a consumables list (stage editor field, round-trips: save audit 31/31 clean,
+  profiles byte-identical); tubes, vials, syringes and filters migrated out of
+  "equipment" on all three methods (six entries; profiles snapshotted first;
+  no other key changed); the guide records them by lot like reagents; finalize
+  files them in FM-ENV-252 extraction_materials[], which the traceability gate
+  already traces; the logbook PDF lists them separately.
+- **Found:** the hardcoded-table canary's REAGENT_CATEGORIES entry was only
+  ever detected by accident ("barcode" in the next class's docstring matched
+  the window heuristic). The category list is still a hardcoded vocabulary --
+  open (CLAUDE.md §1.1).
+- **Tests:** test_bench_lots (11; 23 mutants killed, 3 survivors became
+  cases), test_stage_consumables (6; 6 killed, 1 survivor became a case).
+  UI ratchet 824 style attributes, 206 hex. Live: picker on B-002 (roles in
+  stage order; Ammonium Acetate preselected by clear match), DB4 browser block,
+  server refusal with draft, completion with note, consumables card at FDA
+  stage 2; test sessions and remembered picks removed afterwards.
+
+**Still open:** equipment chosen from facility units with today's verification
+shown (no balance is registered in Facility QC, so every weighing stage asks
+for a note today); scan resolves GS1 (R9) and the R11 library upgrades; inline
+receive for an unknown lot (DB2); usage ledger and count-down (phase 3, DB3);
+sample table in the weighing stage (phase 4); inventory categories editable by
+the lab.

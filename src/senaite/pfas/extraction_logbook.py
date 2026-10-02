@@ -30,14 +30,20 @@ def logbook_data(batch_id, batch_title, session, profile, generated):
                         "deviations": _text(sd.get("deviations"))})
         if not sd:
             continue
+        rows = [r for r in sd.get("reagents") or [] if isinstance(r, dict)]
+
+        def cells(r):
+            return [_text(r.get("name") or r.get("role")), _text(r.get("lot")),
+                    _text(r.get("supplier")), _text(r.get("volume") or r.get("qty_used")),
+                    _text(r.get("expiry"))]
         details.append({
             "title": u"Stage %s: %s" % (order, sc.get("name", u"")),
             "equipment": [(_text(eq), _text(sn)) for eq, sn in
                           sorted((sd.get("equipment_sns") or {}).items())],
-            "reagents": [[_text(r.get("name") or r.get("role")), _text(r.get("lot")),
-                          _text(r.get("supplier")), _text(r.get("volume") or r.get("qty_used")),
-                          _text(r.get("expiry"))]
-                         for r in sd.get("reagents") or [] if isinstance(r, dict)],
+            "reagents": [cells(r) for r in rows if r.get("group") != u"consumable"],
+            "consumables": [cells(r) for r in rows if r.get("group") == u"consumable"],
+            # what the deviation note had to explain (DB4, DECISIONS 2026-10-02)
+            "warnings": [_text(w) for w in sd.get("warnings") or []],
             "solutions": [[_text(s.get("name")), _text(s.get("lot")), _text(s.get("conc")),
                            _text(s.get("volume_ml")), _text(s.get("expiry"))]
                           for s in sd.get("solutions_prepared") or []],

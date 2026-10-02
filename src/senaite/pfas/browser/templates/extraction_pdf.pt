@@ -65,6 +65,13 @@
         <tbody><tr tal:repeat="r st/reagents"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
       </table>
     </tal:r>
+    <tal:c condition="st/consumables">
+      <p class="label">Consumables Used</p>
+      <table>
+        <thead><tr><th>Consumable</th><th>Lot #</th><th>Supplier</th><th>Amount</th><th>Expiry</th></tr></thead>
+        <tbody><tr tal:repeat="r st/consumables"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
+      </table>
+    </tal:c>
     <tal:s condition="st/solutions">
       <p class="label">Solutions Prepared</p>
       <table>
@@ -72,8 +79,12 @@
         <tbody><tr tal:repeat="r st/solutions"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
       </table>
     </tal:s>
-    <tal:v condition="st/deviations">
+    <tal:v condition="python:st['deviations'] or st['warnings']">
       <p class="label">Deviations / Observations</p>
+      <tal:w condition="st/warnings">
+        <p class="dev">Needed a note:</p>
+        <ul><li tal:repeat="w st/warnings" tal:content="w">Water: no lot recorded</li></ul>
+      </tal:w>
       <p class="dev" tal:content="st/deviations">text</p>
     </tal:v>
     <hr />

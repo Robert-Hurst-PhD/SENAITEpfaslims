@@ -40,7 +40,7 @@ from senaite.pfas.method_profile_store import get_profile
 from senaite.pfas.dilution_ref import EXTRACTION_SESSION_KEY
 from senaite.pfas.browser.reagents import _save_reagent, STATUS_OPENED
 from senaite.pfas.browser.formutil import flatten_form
-from senaite.pfas.bench_queue import is_standard_row
+from senaite.pfas.bench_queue import is_consumable_row, is_standard_row
 
 logger = logging.getLogger("senaite.pfas.browser.extraction_guide")
 
@@ -301,7 +301,8 @@ class PFASExtractionGuideView(BrowserView):
         def key(it):
             return u"{0}:{1}".format(it["kind"], it["uid"])
         roles = {}
-        for role in self.current_stage().get("reagent_roles", []):
+        stage = self.current_stage()
+        for role in list(stage.get("reagent_roles", [])) + list(stage.get("consumables") or []):
             rem = picks.get(role)
             pick = default_pick(lots, role, rem)
             roles[role] = {"suggested": [key(i) for i in suggested(lots, role, rem)],
@@ -312,7 +313,8 @@ class PFASExtractionGuideView(BrowserView):
                  "cat_number": i["cat_number"]}
                 for i in sorted(lots, key=lambda i: (i["name"].lower(), i["lot_number"]))]
         return json.dumps({"lots": slim, "roles": roles,
-                           "role_order": list(self.current_stage().get("reagent_roles", []))})
+                           "role_order": list(stage.get("reagent_roles", [])),
+                           "consumable_order": list(stage.get("consumables") or [])})
 
     # ── Pedigree ──────────────────────────────────────────────────────────────
 
@@ -707,7 +709,7 @@ class PFASExtractionGuideView(BrowserView):
             # Carry the per-stage reagent and standard lots the guide collected
             # into the shape Data Review's traceability gate reads. They were
             # captured in the session and then dropped on the floor.
-            reagents, standards = [], []
+            reagents, standards, materials = [], [], []
             for _order in sorted((sess.get("stages") or {}), key=lambda k: int(k)):
                 for rg in (sess["stages"][_order].get("reagents") or []):
                     entry = {
@@ -717,6 +719,11 @@ class PFASExtractionGuideView(BrowserView):
                         "volume": rg.get("volume") or "",
                     }
                     if not entry["lot"]:
+                        continue
+                    if is_consumable_row(rg):
+                        m = {"name": entry["name"], "lot": entry["lot"], "notes": u""}
+                        if m not in materials:
+                            materials.append(m)
                         continue
                     bucket = standards if is_standard_row(rg) else reagents
                     if entry not in bucket:
@@ -728,6 +735,8 @@ class PFASExtractionGuideView(BrowserView):
             # in on the FM-ENV-252 form.
             if reagents:
                 data["reagents"] = reagents
+            if materials:
+                data["extraction_materials"] = materials
             if standards:
                 data["standards"] = [
                     {"name": e["name"], "lot": e["lot"],

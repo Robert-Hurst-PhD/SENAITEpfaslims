@@ -82,6 +82,7 @@
                                 color: var(--s-danger); font-size: var(--fs-lg); line-height: 1; padding: 0 4px; }
     .stage-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
     .stage-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .stage-row label.grow { flex: 1; }
     .stage-row label { display: flex; flex-direction: column; gap: 3px;
                        font-size: var(--fs-xs); font-weight: 600; color: var(--s-secondary); }
     .stage-row label input[type=text],

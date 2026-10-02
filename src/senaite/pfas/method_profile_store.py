@@ -1050,7 +1050,10 @@ def migrate_profile_models(portal):
         j = qc_consolidation.move_from_rules(profile, method_id, saved_rules,
                                              method_toggles({}, method_id))
         k = qc_consolidation.drop_derived_per_analyte(profile)
-        if a or b or c or d or e or f or g or h or i or j or k:
+        # bench phase 2: consumables leave "equipment" for a by-lot list
+        from senaite.pfas.stage_consumables import split_consumables
+        l = split_consumables(profile)
+        if a or b or c or d or e or f or g or h or i or j or k or l:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:

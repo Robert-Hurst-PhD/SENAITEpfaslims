@@ -51,6 +51,7 @@
     var desc   = s.description || '';
     var roles  = (s.reagent_roles || []).join(', ');
     var equip  = (s.equipment || []).join(', ');
+    var cons   = (s.consumables || []).join(', ');
     var crSol  = s.creates_solution ? 'checked' : '';
     var crPed  = s.capture_pedigree ? 'checked' : '';
     var media    = s.media || '';
@@ -72,13 +73,16 @@
           '<label>Name<input type="text" data-field="name" value="' + _esc(name) + '" placeholder="Stage name" style="flex:1" /></label>' +
         '</div>' +
         '<div class="stage-row">' +
-          '<label style="flex:1">Description<input type="text" data-field="description" value="' + _esc(desc) + '" placeholder="What happens at this stage" /></label>' +
+          '<label class="grow">Description<input type="text" data-field="description" value="' + _esc(desc) + '" placeholder="What happens at this stage" /></label>' +
         '</div>' +
         '<div class="stage-row">' +
-          '<label style="flex:1">Reagent Roles (comma-separated)<input type="text" data-field="reagent_roles" value="' + _esc(roles) + '" placeholder="Methanol (HPLC grade), Acetonitrile, ..." /></label>' +
+          '<label class="grow">Reagent Roles (comma-separated)<input type="text" data-field="reagent_roles" value="' + _esc(roles) + '" placeholder="Methanol (HPLC grade), Acetonitrile, ..." /></label>' +
         '</div>' +
         '<div class="stage-row">' +
-          '<label style="flex:1">Equipment (comma-separated)<input type="text" data-field="equipment" value="' + _esc(equip) + '" placeholder="Analytical balance, SPE manifold, ..." /></label>' +
+          '<label class="grow">Equipment with a serial number (comma-separated)<input type="text" data-field="equipment" value="' + _esc(equip) + '" placeholder="Analytical balance, SPE manifold, ..." /></label>' +
+        '</div>' +
+        '<div class="stage-row">' +
+          '<label class="grow">Consumables, recorded by lot (comma-separated)<input type="text" data-field="consumables" value="' + _esc(cons) + '" placeholder="50 mL centrifuge tubes, LC vials, ..." /></label>' +
         '</div>' +
         '<div class="stage-row" style="gap:20px">' +
           '<label class="cb-label"><input type="checkbox" data-field="creates_solution" ' + crSol + ' /> Creates Solution</label>' +
@@ -207,6 +211,7 @@
         description:      get('description'),
         reagent_roles:    splitCsv(get('reagent_roles')),
         equipment:        splitCsv(get('equipment')),
+        consumables:      splitCsv(get('consumables')),
         creates_solution: getBool('creates_solution'),
         capture_pedigree: getBool('capture_pedigree'),
         media:            get('media'),

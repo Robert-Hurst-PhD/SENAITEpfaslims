@@ -14,6 +14,7 @@ is, and which inventory items need attention. Pure; Python 2.7 and 3.
                                                  shared word with the role)
     resolve_rows(index, rows)                 -> rows as the inventory has them
     is_standard_row(row)                      -> FM-ENV-252 standards[] or reagents[]
+    is_consumable_row(row)                    -> FM-ENV-252 extraction_materials[]
     stage_warnings(rows, balances, today)     -> what a deviation note must
                                                  explain before the stage is
                                                  complete (DB4)
@@ -209,6 +210,12 @@ def resolve_rows(index, rows):
 
 
 STANDARD_CATEGORIES = (u"Standard / Reference Material", u"Internal Standard")
+
+
+def is_consumable_row(row):
+    """A stage consumable, or an inventory lot filed as a Consumable."""
+    return row.get("group") == u"consumable" or (
+        row.get("from_inventory") and (row.get("category") or u"") == u"Consumable")
 
 
 def is_standard_row(row):
