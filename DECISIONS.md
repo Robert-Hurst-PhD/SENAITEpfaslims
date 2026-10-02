@@ -5863,3 +5863,21 @@ Use neutral placeholders (DEMO, AN1..) in anything committed from now on.
 Not changed: the private development database (its demo objects keep their
 old ids) and the git history, which still holds the old text — removing it
 from history needs a rewrite and force-push, a separate decision.
+
+
+## 2026-10-02 — Extraction UI, Data Review, reporting template (confirmed)
+
+Plan: docs/EXTRACTION_REVIEW_REPORTING_PLAN.md.
+
+- **Reporting: both.** A controlled certificate template (drafted, previewed
+  with real data, issued by a Manager, superseded by the next revision; every
+  certificate records the template revision it used) and a single "Issue
+  certificate" step at the end of Data Review that uses the issued template for
+  the method x matrix, previews, publishes and emails.
+- **Extraction in Data Review: shown, not a gate.** An Extraction tab shows the
+  record; the Overview flags anything unfinished or unnoted; the 5-item
+  checklist (CLAUDE.md §5) is unchanged.
+- **Correcting a completed stage before finalizing: reopen with a reason.** A
+  completed stage opens read-only; "Correct this stage" reopens it, keeps the
+  previous version and records why (logbook PDF, Data Review). After
+  finalizing, corrections go through a deviation.
