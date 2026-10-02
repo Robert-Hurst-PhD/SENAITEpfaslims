@@ -209,7 +209,7 @@ reload_criteria()
 # ── Legacy injection-name patterns (debug-level check only) ───────────────────
 # Pattern 1: FDA-CAL-10-260226
 # Pattern 2: FDA-ICV-260226, FDA-CCV-260226-01
-# Pattern 3: KCP Water MB 2026-03-13-01  /  KCP Deer Sample "x"; LFSM High
+# Pattern 3: DEMO Water MB 2026-03-13-01  /  DEMO Deer Sample "x"; LFSM High
 # Pattern 4/5: Initials Matrix QCtype #######  (7-digit StarLIMS)
 INJECTION_PATTERNS = [
     re.compile(r'^FDA-CAL-\d+-\d{6}$'),
@@ -224,8 +224,8 @@ INJECTION_PATTERNS = [
         r'(?:MB|LCS|CCV|LFSM|LFSMD|Dup|CAL) \d{7}$'
     ),
     re.compile(r'^.+; LFSM.*(?:Dup\.?)?$'),   # parent; LFSM High Dup.
-    re.compile(r'^[A-Z][A-Z0-9]+ .+ Sample ".+"$'),  # KCP Deer Sample "Deer Hamburger"
-    re.compile(r'^[A-Z][A-Z0-9]+ .+ Sample \d{7}$'), # KCP Deer Sample 1234567
+    re.compile(r'^[A-Z][A-Z0-9]+ .+ Sample ".+"$'),  # DEMO Deer Sample "Deer Hamburger"
+    re.compile(r'^[A-Z][A-Z0-9]+ .+ Sample \d{7}$'), # DEMO Deer Sample 1234567
 ]
 
 # StarLIMS 7-digit sample ID (Section 4 of injection name)

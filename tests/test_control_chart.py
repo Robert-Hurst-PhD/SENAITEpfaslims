@@ -108,27 +108,27 @@ def test_the_store_records_with_a_reason_and_undoes():
                              "created_at) VALUES (?, 'B-1', '2026-10-01', ?, 'LCS', 'now')",
                              (rid, analyte))
         try:
-            st.annotate(99, "dismissed", "no such result", "kcp", rule="2SD")
+            st.annotate(99, "dismissed", "no such result", "demo", rule="2SD")
             assert False, "annotated a result that does not exist"
         except Exception as exc:                      # sqlite3.IntegrityError
             assert "FOREIGN KEY" in str(exc)
         try:
-            st.annotate(5, "dismissed", "  ", "kcp", rule="2SD")
+            st.annotate(5, "dismissed", "  ", "demo", rule="2SD")
             assert False, "dismissed without a reason"
         except ValueError:
             pass
-        st.annotate(5, "dismissed", "known spike", "kcp", rule="2SD")
-        st.annotate(5, "excluded", "bad injection", "kcp", rule="ignored")
+        st.annotate(5, "dismissed", "known spike", "demo", rule="2SD")
+        st.annotate(5, "excluded", "bad injection", "demo", rule="ignored")
         notes = sorted((n["action"], n["rule"], n["reason"], n["by_user"])
                        for n in st.get_annotations([5, 6]))
-        assert notes == [("dismissed", "2SD", "known spike", "kcp"),
-                         ("excluded", "", "bad injection", "kcp")]
+        assert notes == [("dismissed", "2SD", "known spike", "demo"),
+                         ("excluded", "", "bad injection", "demo")]
         st.unannotate(5, "dismissed", rule="2SD")
         assert [n["action"] for n in st.get_annotations([5])] == ["excluded"]
         st.unannotate(5, "excluded", rule="stray")              # a removal has no rule
         assert st.get_annotations([5]) == []
         try:
-            st.annotate(5, "deleted", "x", "kcp")
+            st.annotate(5, "deleted", "x", "demo")
             assert False, "unknown action accepted"
         except ValueError:
             pass

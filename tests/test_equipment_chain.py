@@ -77,7 +77,7 @@ def test_a_verification_with_a_weight_set_traces_to_the_metrology_lab():
     fq = _fresh_module()
     unit = _balance(fq)
     ws = _good_set(fq)
-    fq.save_balance_verification(unit_id=unit, operator="RH",
+    fq.save_balance_verification(unit_id=unit, operator="AN3",
                                  verified_date="2026-09-28",
                                  points=_points(fq), weight_set_id=ws)
 
@@ -95,7 +95,7 @@ def test_a_verification_with_no_weight_set_blocks_and_says_why():
     """The defect this file exists for: what the UI used to produce every time."""
     fq = _fresh_module()
     unit = _balance(fq)
-    fq.save_balance_verification(unit_id=unit, operator="RH",
+    fq.save_balance_verification(unit_id=unit, operator="AN3",
                                  verified_date="2026-09-28",
                                  points=_points(fq))  # no weight_set_id
 
@@ -111,7 +111,7 @@ def test_an_empty_string_is_not_a_weight_set():
     handler uses `(... or None)`."""
     fq = _fresh_module()
     unit = _balance(fq)
-    fq.save_balance_verification(unit_id=unit, operator="RH",
+    fq.save_balance_verification(unit_id=unit, operator="AN3",
                                  verified_date="2026-09-28",
                                  points=_points(fq), weight_set_id="")
     prov = fq.equipment_provenance(unit, "2026-09-28")
@@ -122,7 +122,7 @@ def test_an_expired_set_fails_as_of_the_day_it_was_used():
     fq = _fresh_module()
     unit = _balance(fq)
     ws = _good_set(fq, cal_due_date="2026-06-30")
-    fq.save_balance_verification(unit_id=unit, operator="RH",
+    fq.save_balance_verification(unit_id=unit, operator="AN3",
                                  verified_date="2026-09-28",
                                  points=_points(fq), weight_set_id=ws)
     prov = fq.equipment_provenance(unit, "2026-09-28")
@@ -133,7 +133,7 @@ def test_a_set_with_no_external_certificate_establishes_nothing():
     fq = _fresh_module()
     unit = _balance(fq)
     ws = _good_set(fq, cal_lab="", cal_cert_number="")
-    fq.save_balance_verification(unit_id=unit, operator="RH",
+    fq.save_balance_verification(unit_id=unit, operator="AN3",
                                  verified_date="2026-09-28",
                                  points=_points(fq), weight_set_id=ws)
     prov = fq.equipment_provenance(unit, "2026-09-28")
@@ -145,7 +145,7 @@ def test_a_set_that_is_not_nist_traceable_is_reported():
     fq = _fresh_module()
     unit = _balance(fq)
     ws = _good_set(fq, nist_traceable=0)
-    fq.save_balance_verification(unit_id=unit, operator="RH",
+    fq.save_balance_verification(unit_id=unit, operator="AN3",
                                  verified_date="2026-09-28",
                                  points=_points(fq), weight_set_id=ws)
     prov = fq.equipment_provenance(unit, "2026-09-28")
@@ -156,7 +156,7 @@ def test_a_pointer_to_a_set_that_does_not_exist_is_not_silence():
     """A dangling id must read as a break, not as an absence."""
     fq = _fresh_module()
     unit = _balance(fq)
-    fq.save_balance_verification(unit_id=unit, operator="RH",
+    fq.save_balance_verification(unit_id=unit, operator="AN3",
                                  verified_date="2026-09-28",
                                  points=_points(fq),
                                  weight_set_id="no-such-set")

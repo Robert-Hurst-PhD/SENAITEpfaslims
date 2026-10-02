@@ -212,7 +212,7 @@ def test_duplicate_rpd_both_detected_one_detected_and_none():
 
 def test_duplicate_pairs_by_the_extraction_record_first():
     p = _profile()
-    rows = [_row("PFOA", "KCP Silage 7", 1, conc=20.0), _row("PFOA", "Field Dup 3", 2, conc=30.0)]
+    rows = [_row("PFOA", "DEMO Silage 7", 1, conc=20.0), _row("PFOA", "Field Dup 3", 2, conc=30.0)]
     # the name "Field Dup 3" does not name its parent; the extraction record does
     old = rq.classify_injection
     rq.classify_injection = lambda n, d=None: "Dup" if n == "Field Dup 3" else old(n, d)
@@ -223,7 +223,7 @@ def test_duplicate_pairs_by_the_extraction_record_first():
             try:
                 plan = [{"injection_name": n, "qc_type": rq.classify_injection(n, {}),
                          "checks": list(REVIEW_CHECKS.get(rq.classify_injection(n, {}), REVIEW_CHECKS["Sample"]))}
-                        for n in ("KCP Silage 7", "Field Dup 3")]
+                        for n in ("DEMO Silage 7", "Field Dup 3")]
                 batch = Batch(batch_id="B-SW", analyst="RT", date=T0, matrix=MATRIX, method_id=MID,
                               instrument_file="synthetic.csv", injections=rows)
                 batch.spikes = spikes
@@ -234,14 +234,14 @@ def test_duplicate_pairs_by_the_extraction_record_first():
                 rq._load_rule_toggles = tog
         b = run_with({})
         assert not _flags(b, KIND_DUP) and _gaps(b, "no sample to pair")
-        b = run_with({"Field Dup 3": {"parent": "KCP Silage 7"}})
+        b = run_with({"Field Dup 3": {"parent": "DEMO Silage 7"}})
         assert _flags(b, KIND_DUP)                       # RPD 40% judged against the record's parent
     finally:
         rq.classify_injection = old
 
 
 def test_the_dup_parent_name_fallback():
-    for name, parent in (("KCP Silage A Dup.", "KCP Silage A"), ("Lot 7; Duplicate", "Lot 7"),
+    for name, parent in (("DEMO Silage A Dup.", "DEMO Silage A"), ("Lot 7; Duplicate", "Lot 7"),
                          ("Lot 7 dup", "Lot 7"), ("Lot 7", "")):
         assert rq._dup_parent_name(name) == parent, (name, rq._dup_parent_name(name))
 

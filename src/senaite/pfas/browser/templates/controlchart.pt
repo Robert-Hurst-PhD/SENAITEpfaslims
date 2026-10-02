@@ -196,7 +196,7 @@
         <tal:analysts tal:repeat="a view/analysts">
           <option tal:attributes="value a;
                                   selected python:a == (view.selected_analyst() or '')"
-                  tal:content="a">KCP</option>
+                  tal:content="a">DEMO</option>
         </tal:analysts>
       </select>
     </div>

@@ -31,8 +31,8 @@ from pfas_pipeline.models import Batch, InstrumentRow           # noqa: E402
 from pfas_pipeline.pipeline import build_summary                 # noqa: E402
 from pfas_pipeline.importer import classify_injection            # noqa: E402
 
-NEAT = 'KCP Silage "Egg-9" Sample'
-DIL = 'KCP Silage "Egg-9"; Dil. 1:10'
+NEAT = 'DEMO Silage "Egg-9" Sample'
+DIL = 'DEMO Silage "Egg-9"; Dil. 1:10'
 DILUTIONS = {DIL: {"parent": NEAT, "factor": 10.0}}
 
 _failures = []

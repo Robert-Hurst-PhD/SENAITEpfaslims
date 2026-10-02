@@ -36,7 +36,7 @@ os.environ.setdefault(
 
 
 def _sidecar(path, **overrides):
-    data = {"batch_id": "PARITY-01", "analyst": "KCP",
+    data = {"batch_id": "PARITY-01", "analyst": "DEMO",
             "matrix": "Animal Feed", "method_id": "FDA_32PFAS",
             "steps": [], "reagent_scans": [], "signoffs": []}
     data.update(overrides)
@@ -71,7 +71,7 @@ def test_sidecar_and_explicit_arguments_agree():
     tmp = tempfile.mkdtemp(prefix="pfas_parity_")
     side = _sidecar(os.path.join(tmp, "run_extraction.json"))
 
-    explicit = _run(csv_path, tmp, batch_id="PARITY-01", analyst="KCP",
+    explicit = _run(csv_path, tmp, batch_id="PARITY-01", analyst="DEMO",
                     matrix="Animal Feed", method_id="FDA_32PFAS")
     from_sidecar = _run(csv_path, tmp, extraction_log_path=side)
 

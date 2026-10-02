@@ -17,12 +17,12 @@ sys.path.insert(0, PKG)
 import extraction_sidecar as es  # noqa: E402
 
 SESSION = {
-    "method_id": "FDA_32PFAS", "analyst": "KCP", "started_at": "2026-10-02T13:00:00Z",
-    "finalized": True, "finalized_at": "2026-10-02T16:00:00Z", "finalized_by": "KP",
+    "method_id": "FDA_32PFAS", "analyst": "DEMO", "started_at": "2026-10-02T13:00:00Z",
+    "finalized": True, "finalized_at": "2026-10-02T16:00:00Z", "finalized_by": "AN2",
     "stages": {
         "10": {"completed_at": "2026-10-02T15:00:00Z", "reagents": [
             {"role": "NH4OH", "name": "Ammonium hydroxide", "lot": "L10", "expiry": "2027-01-01"}]},
-        "2": {"completed_at": "2026-10-02T14:00:00Z", "analyst": "RH", "deviations": "Late spike",
+        "2": {"completed_at": "2026-10-02T14:00:00Z", "analyst": "AN3", "deviations": "Late spike",
               "reagents": [{"role": "Methanol", "name": "Methanol", "lot": " L2 ",
                             "inventory_uid": "u2", "cat_number": "M-1"},
                            {"role": "Water", "name": "Water", "lot": ""}]},
@@ -34,7 +34,7 @@ def test_steps_follow_stage_order_numerically_with_names():
     r = es.build_sidecar(SESSION, {"2": "Spike", "10": "Elute"}, worksheet_id="WS-9",
                          senaite_batch_id="B-1", matrix="Egg", client_uid="c1")
     assert [s["step"] for s in r["steps"]] == ["Spike", "Elute"]      # 2 before 10
-    assert r["steps"][0]["by"] == "RH" and r["steps"][1]["by"] == "KCP"
+    assert r["steps"][0]["by"] == "AN3" and r["steps"][1]["by"] == "DEMO"
     assert r["steps"][0]["detail"] == "Late spike"
     assert (r["batch_id"], r["senaite_batch_id"], r["matrix"], r["method_id"], r["client_uid"]) \
         == ("WS-9", "B-1", "Egg", "FDA_32PFAS", "c1")
@@ -51,7 +51,7 @@ def test_only_filled_lots_are_recorded_with_inventory_link():
 def test_signoff_and_completion_only_when_finalized():
     r = es.build_sidecar(SESSION, {})
     assert r["completed"] == "2026-10-02T16:00:00Z"
-    assert r["signoffs"] == [{"role": "Analyst", "initials": "KP", "at": "2026-10-02T16:00:00Z"}]
+    assert r["signoffs"] == [{"role": "Analyst", "initials": "AN2", "at": "2026-10-02T16:00:00Z"}]
     open_sess = dict(SESSION, finalized=False)
     r2 = es.build_sidecar(open_sess, {})
     assert r2["completed"] is None and r2["signoffs"] == []
@@ -61,7 +61,7 @@ def test_progress():
     assert es.extraction_progress({}) is None
     assert es.extraction_progress({"stages": {}}) is None
     p = es.extraction_progress(dict(SESSION, finalized=False))
-    assert p["started"] and p["completed"] is None and p["analyst"] == "KCP"
+    assert p["started"] and p["completed"] is None and p["analyst"] == "DEMO"
     assert es.extraction_progress(SESSION)["completed"] == "2026-10-02T16:00:00Z"
 
 

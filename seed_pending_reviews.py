@@ -6,7 +6,7 @@ review) have something to show:
 
   1. open,           extraction in progress   (analyst J. Smith,   9d open)
   2. open,           on instrument            (analyst M. Johnson, 15d open)
-  3. to_be_verified, awaiting peer review      (analyst A. Rivera,  22d open,
+  3. to_be_verified, awaiting peer review      (analyst A. Analyst,  22d open,
                                                 submitted 4d ago -> in review)
 
 Backdates extraction 'started' timestamps and the 'submit' workflow event so
@@ -200,15 +200,15 @@ def run(app):
     ar3 = make_ar(st_ground, m_1633)
     set_wf_state(ar3, AR_WF, 'sample_received', 'receive')
     ws3 = make_worksheet(ar3, analyst_id='admin')
-    write_log(ws3.getId(), 'A. Rivera', started_days_ago=22, completed=True)
+    write_log(ws3.getId(), 'A. Analyst', started_days_ago=22, completed=True)
     submitted_when = DateTime(
         (datetime.datetime.utcnow()
          - datetime.timedelta(days=4)).strftime('%Y-%m-%d %H:%M:%S'))
     set_wf_state(ws3, WS_WF, 'to_be_verified', 'submit',
-                 when=submitted_when, actor='A. Rivera')
+                 when=submitted_when, actor='A. Analyst')
     made.append((ws3.getId(),
                  'to_be_verified / in peer review (submitted 4d ago)',
-                 'A. Rivera'))
+                 'A. Analyst'))
 
     transaction.commit()
 

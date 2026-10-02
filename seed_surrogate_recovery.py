@@ -44,7 +44,7 @@ RUN_DATES = [
     "2026-06-19", "2026-06-26", "2026-07-03",
     "2026-07-10", "2026-07-17", "2026-07-23",
 ]
-ANALYSTS = ["A. Rivera", "J. Smith"]
+ANALYSTS = ["A. Analyst", "J. Smith"]
 
 
 def run(app=None):

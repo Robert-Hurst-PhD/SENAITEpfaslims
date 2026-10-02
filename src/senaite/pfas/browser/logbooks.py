@@ -1574,7 +1574,7 @@ class PFASRetireAttachmentView(BrowserView):
 
 class PFASRunManifestView(BrowserView):
     """
-    @@pfas-run-manifest?batch_id=kcp-b-001
+    @@pfas-run-manifest?batch_id=demo-b-001
 
     The injection list the Run Builder planned, so the importer can reconcile
     what was actually run against it. This replaces validating names against
@@ -1616,11 +1616,11 @@ class PFASRunManifestView(BrowserView):
 
 class PFASBatchDilutionsView(BrowserView):
     """
-    @@pfas-batch-dilutions?batch_id=kcp-b-001
+    @@pfas-batch-dilutions?batch_id=demo-b-001
 
     The dilution map recorded on FM-ENV-003, as JSON, for the pipeline worker:
 
-        {"KCP Silage \"Egg-3\"; Dil. 1:10": {"parent": "KCP Silage \"Egg-3\" Sample",
+        {"DEMO Silage \"Egg-3\"; Dil. 1:10": {"parent": "DEMO Silage \"Egg-3\" Sample",
                                              "factor": 10.0}}
 
     Empty object when the batch records no dilutions — which is every batch

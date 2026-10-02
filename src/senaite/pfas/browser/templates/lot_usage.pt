@@ -39,7 +39,7 @@
             <td tal:content="python:r.get('item_name') or r.get('role')">Methanol</td>
             <td tal:content="r/lot">M-1</td>
             <td tal:content="python:('%g %s' % (r['amount_value'], r.get('amount_unit') or '')) if r.get('amount_value') is not None else (r.get('amount_text') or '—')">5 mL</td>
-            <td tal:content="r/used_by">KCP</td>
+            <td tal:content="r/used_by">DEMO</td>
             <td><a class="btn-sm btn-secondary" tal:attributes="href python:view.guide_url(r)">Extraction</a></td>
           </tr>
         </tbody>

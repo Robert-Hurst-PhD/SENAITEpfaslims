@@ -42,12 +42,12 @@ import sys
 from collections import defaultdict
 
 # Relationships to build, by injection name.
-PARENT_OF_LFSM = 'KCP Silage "Egg-2" Sample'
-LFSM = 'KCP Silage "Egg-2" LFSM Mid'
-LFSMD = 'KCP Silage "Egg-2" LFSM Mid Duplicate'
+PARENT_OF_LFSM = 'DEMO Silage "Egg-2" Sample'
+LFSM = 'DEMO Silage "Egg-2" LFSM Mid'
+LFSMD = 'DEMO Silage "Egg-2" LFSM Mid Duplicate'
 DILUTIONS = {
-    'KCP Silage "Egg-3"; Dil. 1:10': 'KCP Silage "Egg-3" Sample',
-    'KCP Silage "Egg-4"; Dil. 1:10': 'KCP Silage "Egg-4" Sample',
+    'DEMO Silage "Egg-3"; Dil. 1:10': 'DEMO Silage "Egg-3" Sample',
+    'DEMO Silage "Egg-4"; Dil. 1:10': 'DEMO Silage "Egg-4" Sample',
 }
 INJECTION_IS = "13C4-PFOA"
 

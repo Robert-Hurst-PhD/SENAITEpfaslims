@@ -16,16 +16,16 @@ import extraction_logbook as el      # noqa: E402
 
 PROFILE = {"display_name": "EPA 1633A", "extraction_stages": [
     {"order": 2, "name": "SPE"}, {"order": 1, "name": "Spike"}, {"order": 3, "name": "Concentrate"}]}
-SESSION = {"method_id": "EPA_1633A", "analyst": "KCP", "started_at": "2026-10-01 09:00",
+SESSION = {"method_id": "EPA_1633A", "analyst": "DEMO", "started_at": "2026-10-01 09:00",
            "finalized_at": "", "finalized_by": None,
-           "stages": {"1": {"completed_at": "2026-10-01 09:30", "analyst": "KCP",
+           "stages": {"1": {"completed_at": "2026-10-01 09:30", "analyst": "DEMO",
                             "equipment_sns": {"Balance": "B-114", "Pipette": ""},
                             "reagents": [{"name": "Methanol, LC-MS", "lot": "M1",
                                           "supplier": "Fisher Scientific", "volume": "50 mL"}],
                             "solutions_prepared": [{"name": "Spike mix", "lot": "SP-1", "conc": "10 ng/mL",
                                                     "volume_ml": 5, "expiry": "2026-11-01"}],
                             "deviations": "Late start"},
-                      "2": {"completed_at": "2026-10-01 11:00", "analyst": "KCP"}},
+                      "2": {"completed_at": "2026-10-01 11:00", "analyst": "DEMO"}},
            # the stored shape: one spike record per spiked QC sample
            "pedigree": {"Egg-2 LFSM Mid": {"spike_volume_ul": "50", "spike_lot": "PS-SPK-1",
                                            "spike_source": "reviewer-entered", "spike_ppt": 100.0,

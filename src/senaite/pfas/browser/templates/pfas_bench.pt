@@ -19,7 +19,7 @@
             <td tal:content="r/method_label">FDA 32-PFAS</td>
             <td><span tal:attributes="class python:'bench-state bench-' + r['state']"
                       tal:content="r/label">Not started</span></td>
-            <td tal:content="r/analyst">KCP</td>
+            <td tal:content="r/analyst">DEMO</td>
             <td><a class="btn-sm btn-primary"
                    tal:attributes="href string:${view/portal_url}/@@pfas-extraction-guide?batch_uid=${r/uid}"
                    tal:content="python:{'not_started': 'Start extraction', 'in_progress': 'Continue'}.get(r['state'], 'View')">Start extraction</a></td>

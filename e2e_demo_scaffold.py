@@ -5,9 +5,9 @@ E2E acceptance test — Stage 1 scaffold.
 Creates the client, contact, samples, batch and worksheet that the real
 instrument run `Test Sample.csv` (FDA 32-PFAS, Animal Feed) belongs to.
 
-Everything created is prefixed KCP / kcp- so it can be found and removed.
+Everything created is prefixed DEMO / demo- so it can be found and removed.
 
-Run:  bin/instance -O senaite run /addon/e2e_kcp_scaffold.py
+Run:  bin/instance -O senaite run /addon/e2e_demo_scaffold.py
 """
 from __future__ import absolute_import, print_function
 
@@ -20,25 +20,25 @@ from zope.annotation.interfaces import IAnnotations
 
 _BACKREFS_KEY = 'bika.lims.browser.fields.uidreferencefield.backreferences'
 
-CLIENT_ID = 'kcp-feed-forage'
-CLIENT_NAME = 'KCP Feed & Forage'
-BATCH_ID = 'kcp-b-001'
-BATCH_TITLE = 'KCP Silage Run 2025-10-20'
+CLIENT_ID = 'demo-feed-forage'
+CLIENT_NAME = 'Demo Feed & Forage'
+BATCH_ID = 'demo-b-001'
+BATCH_TITLE = 'DEMO Silage Run 2025-10-20'
 MATRIX = 'Animal Feed'
 METHOD_TITLE = 'USDA/FDA 32-PFAS in Food v10'
 
 # ClientSampleID is set to the exact instrument Injection Name so that the
 # result-push linkage can be measured rather than guessed at (finding F5).
 SAMPLES = [
-    ('KCP Silage "Egg-1" Sample',             'Sample'),
-    ('KCP Silage "Egg-2" Sample',             'Sample'),
-    ('KCP Silage "Egg-3" Sample',             'Sample'),
-    ('KCP Silage "Egg-4" Sample',             'Sample'),
-    ('KCP Silage "Egg-3"; Dil. 1:10',         'Dilution'),
-    ('KCP Silage "Egg-4"; Dil. 1:10',         'Dilution'),
-    ('KCP Water MB 2025-10-20-01',            'MB'),
-    ('KCP Silage "Egg-2" LFSM Mid',           'LFSM'),
-    ('KCP Silage "Egg-2" LFSM Mid Duplicate', 'LFSMD'),
+    ('DEMO Silage "Egg-1" Sample',             'Sample'),
+    ('DEMO Silage "Egg-2" Sample',             'Sample'),
+    ('DEMO Silage "Egg-3" Sample',             'Sample'),
+    ('DEMO Silage "Egg-4" Sample',             'Sample'),
+    ('DEMO Silage "Egg-3"; Dil. 1:10',         'Dilution'),
+    ('DEMO Silage "Egg-4"; Dil. 1:10',         'Dilution'),
+    ('DEMO Water MB 2025-10-20-01',            'MB'),
+    ('DEMO Silage "Egg-2" LFSM Mid',           'LFSM'),
+    ('DEMO Silage "Egg-2" LFSM Mid Duplicate', 'LFSMD'),
 ]
 
 
@@ -99,7 +99,7 @@ def run(app):
         portal.clients.invokeFactory('Client', id=CLIENT_ID)
         client = portal.clients[CLIENT_ID]
         client.schema['Name'].set(client, CLIENT_NAME)
-        client.schema['ClientID'].set(client, 'KCP001')
+        client.schema['ClientID'].set(client, 'DEMO001')
         client.reindexObject()
         transaction.savepoint(optimistic=True)
         print('Created client %s' % CLIENT_NAME)

@@ -227,7 +227,7 @@ entry points production actually uses and working at the one being tested.
 Still never exercised:
 
 - **EGAD EDD export.** The publish subscriber is registered and fires, but exits
-  at `is_egad_enabled(client_obj)` — KCP is a food client, not a Maine state
+  at `is_egad_enabled(client_obj)` — DEMO is a food client, not a Maine state
   agency, so no EDD is correct here. Neither the generate nor the refuse branch
   has run from a real publish.
 - `tests/` covers the pipeline well and the add-on barely: no test exercises
@@ -620,7 +620,7 @@ maps (§9), the facility QC eye wash (§10), signal-to-noise (§11).
 
 **5 — Never exercised.**
 - **The EGAD EDD** has never run from a real publish. The subscriber fires but
-  exits at `is_egad_enabled()`; KCP is a food client, not a state agency.
+  exits at `is_egad_enabled()`; DEMO is a food client, not a state agency.
   Neither the generate nor the refuse branch has been seen end to end.
 - **Facility QC holds no data at all** (§10.3) — nine tables, zero rows,
   including `facility_units`. None of the §6.4 monitoring is happening.
@@ -1431,13 +1431,13 @@ believed (`GAPS.md`/memory predates this correction) —
 `pfas-demo-client/B-001` ("Test Demo", 0 linked samples, no extraction-guide
 session, no FM-ENV-251/252 method annotation, no `getMethod` field on core
 Batch — method_id and matrix both resolve to `""`) and
-`kcp-feed-forage/kcp-b-001` (9 real samples, matrix "Animal Feed", method
+`demo-feed-forage/demo-b-001` (9 real samples, matrix "Animal Feed", method
 `FDA_32PFAS`). Both facts checked directly against `senaite_catalog_sample.
 unrestrictedSearchResults()`, not inferred.
 
 1. Both batches loaded at HTTP 200 before any change, viewlet rendering "No
    project assigned" on each — the untouched-batch case (task step 7),
-   captured for kcp-b-001 before it was touched at all.
+   captured for demo-b-001 before it was touched at all.
 2. Created a throwaway Project (`TEST-PROJ-CHAIN-01`) via `@@pfas-projects`.
 3. Assigned it to **B-001** via the viewlet's POST target. Response: `ok=
    Project assigned - resolved criteria NOT exported (method/matrix not yet
@@ -1448,11 +1448,11 @@ unrestrictedSearchResults()`, not inferred.
    `/data/qc/resolved/` did not even exist yet. This is the documented safety
    property (§20/`resolved_criteria_store.py`) behaving exactly as specified
    — not a defect in the viewlet.
-4. Assigned the same Project to **kcp-b-001**. Response: `ok=Project
-   assigned - resolved criteria exported`. `/data/qc/resolved/kcp-b-001.json`
+4. Assigned the same Project to **demo-b-001**. Response: `ok=Project
+   assigned - resolved criteria exported`. `/data/qc/resolved/demo-b-001.json`
    now exists:
    ```
-   batch_id:     kcp-b-001
+   batch_id:     demo-b-001
    method_id:    FDA_32PFAS
    matrix:       Animal Feed
    generated_at: 2026-09-23T00:54:44.621689Z
@@ -3508,7 +3508,7 @@ verification or authorisation".
 
 Neither is a code defect; both show on the document now, which is the point.
 
-- **No analyte concentrations** on `PS-KCP-CAL-251006` — a calibration standard
+- **No analyte concentrations** on `PS-DEMO-CAL-251006` — a calibration standard
   certificate with no concentrations is not fit for purpose.
 - **No component amounts**: every parentage row prints "(not recorded)", so the
   preparation is not reproducible from the record. GMP expects the amounts.
@@ -4114,16 +4114,16 @@ needs a recorded before-value:
 **WS-0005 is the released, verified worksheet — the only sample ever published (§5).**
 It now fails traceability on:
 
-    prepared standard lot PS-KCP-IS-251006  expired 2026-04-06, used 2026-08-03
-    prepared standard lot PS-KCP-MPA-251020 expired 2025-10-27, used 2026-08-03
-    prepared standard lot PS-KCP-CAL-251006 expired 2026-04-06 (via 251 fields)
-    prepared standard lot PS-KCP-SPK-251020 expired 2026-04-20 (via 251 fields)
+    prepared standard lot PS-DEMO-IS-251006  expired 2026-04-06, used 2026-08-03
+    prepared standard lot PS-DEMO-MPA-251020 expired 2025-10-27, used 2026-08-03
+    prepared standard lot PS-DEMO-CAL-251006 expired 2026-04-06 (via 251 fields)
+    prepared standard lot PS-DEMO-SPK-251020 expired 2026-04-20 (via 251 fields)
 
 ### 43.3 This is the DATA, and it was checked rather than assumed
 
 The check was interrogated at the boundary before the failure was believed:
 
-    lot PS-KCP-IS-251006, effective expiry 2026-04-06
+    lot PS-DEMO-IS-251006, effective expiry 2026-04-06
       used 2025-10-21 -> in date, passes
       used 2026-04-05 -> in date, passes
       used 2026-04-06 -> in date, passes
@@ -4133,7 +4133,7 @@ The check was interrogated at the boundary before the failure was believed:
 So the logic is right at the day boundary, and WS-0005's failure is a property of the
 recorded data: the FM-ENV-252 extraction date is **2026-08-03** — the E2E run on real
 instrument data (§ E2E_TEST_2026-08-02) — while its standards are from the October 2025
-KCP scaffold and expired months earlier. The 252 logbook was re-dated for that E2E run
+DEMO scaffold and expired months earlier. The 252 logbook was re-dated for that E2E run
 and the standards were not re-prepared.
 
 **This is not a recall.** The gate governs RELEASE, and WS-0005 was released and
@@ -6420,7 +6420,7 @@ Approved by the lab as the first recommendation of
   profile; a test forbids any function that calls save_profile from reading
   the project version (AST; mutant killed).
 - **Live:** throwaway project (deleted after) with PFOA RL 99 for Animal Feed,
-  linked to kcp-b-001: FEED-0002's certificate went from "PFOA 12.7 ng/kg" to
+  linked to demo-b-001: FEED-0002's certificate went from "PFOA 12.7 ng/kg" to
   "< 99 U, RL 99 ng/kg"; unlinked, back to 12.7. No project or resolved file
   left behind.
 - **Finding (pre-existing, open):** the certificate finds a sample's method
@@ -6675,7 +6675,7 @@ Approved by the lab as the first recommendation of
   Found on the way: the old code also assumed data shapes the session does
   not have (reagent role/expiry; "pedigree" as standard levels, where the
   session holds one spike record per spiked QC sample) and would have failed
-  on real data even with ReportLab. Live: kcp-b-001 renders 5 pages (stages,
+  on real data even with ReportLab. Live: demo-b-001 renders 5 pages (stages,
   equipment serials, reagents with supplier/amount, the deviation note, spike
   records, sign-off).
 - **U2 — calibration maths** (`static/calibration_fit.js`): least squares by
@@ -6864,7 +6864,7 @@ Plan: docs/BENCH_WORKFLOW_REVIEW.md (B1, B2, R10); decisions DB1-DB4
   the hardcoded-table canary dropped DEFAULT_SHELF_LIFE_DAYS (the table left
   with the catalogue; EXPIRY_DEFAULTS remains the one shelf-life table).
   Real instrument files: results and flags identical.
-- **Live:** Bench queue and alerts; guide picker; an upload probe to kcp-b-001
+- **Live:** Bench queue and alerts; guide picker; an upload probe to demo-b-001
   wrote the record (WS-0005, 8 stages, 10 lots, sign-off), probe files removed;
   Batch Status shows WS-0005 extraction times. No JS errors.
 

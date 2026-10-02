@@ -106,19 +106,19 @@ CHECK_PROMPTS: dict[str, str] = {
 # ── LFSM/LFSMD injection name helpers ────────────────────────────────────────
 
 def _lfsm_parent_name(lfsm_inj):
-    """'KCP ... ; LFSM High' → 'KCP ...'  (strip the LFSM suffix)."""
+    """'DEMO ... ; LFSM High' → 'DEMO ...'  (strip the LFSM suffix)."""
     idx = lfsm_inj.find("; LFSM ")
     return lfsm_inj[:idx] if idx >= 0 else lfsm_inj
 
 
 def _lfsm_level_label(lfsm_inj):
-    """'KCP ... ; LFSM High' → 'High'."""
+    """'DEMO ... ; LFSM High' → 'High'."""
     idx = lfsm_inj.find("; LFSM ")
     return lfsm_inj[idx + 7:].strip() if idx >= 0 else ""
 
 
 def _lfsmd_to_lfsm_name(lfsmd_inj):
-    """'KCP ... ; LFSM High Dup.' → 'KCP ... ; LFSM High'."""
+    """'DEMO ... ; LFSM High Dup.' → 'DEMO ... ; LFSM High'."""
     if lfsmd_inj.endswith(" Dup."):
         return lfsmd_inj[:-5].rstrip()
     return lfsmd_inj
@@ -128,7 +128,7 @@ _DUP_SUFFIX = re.compile(r"(?i)[\s;,_-]*\b(?:dup\.?|duplicate)\s*$")
 
 
 def _dup_parent_name(dup_inj):
-    """'KCP Silage A Dup.' / '...; Duplicate' -> 'KCP Silage A' (the name
+    """'DEMO Silage A Dup.' / '...; Duplicate' -> 'DEMO Silage A' (the name
     fallback when the extraction record does not name the parent)."""
     parent = _DUP_SUFFIX.sub("", dup_inj or "").rstrip(" ;,")
     return parent if parent and parent != dup_inj else ""
@@ -229,7 +229,7 @@ class RunQueue:
         q = RunQueue(batch, review_plan)   # plan: REVIEW_CHECKS per injection role
         q.auto_evaluate()                  # run QC engine on everything
         q.pending()                        # what the human still needs to look at
-        q.accept(injection, check, "KP", "looks fine, matrix effect")
+        q.accept(injection, check, "AN2", "looks fine, matrix effect")
         q.save("batch_260226_queue.json")  # resume later / from home
     """
 
@@ -601,7 +601,7 @@ class RunQueue:
             # and what they were fortified from. Falling back to the name only
             # when there is no pedigree: matching the literal substring
             # "; LFSM " meant that a lab whose names read
-            # 'KCP Silage "Egg-2" LFSM Mid' had no LFSM evaluated at all.
+            # 'DEMO Silage "Egg-2" LFSM Mid' had no LFSM evaluated at all.
             spikes = getattr(self.batch, "spikes", None) or {}
             seen_lfsm = set()
             lfsm_inj_names = []

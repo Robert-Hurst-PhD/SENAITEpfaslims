@@ -56,18 +56,18 @@ def test_the_ledger_replaces_a_stage_and_finds_lots():
                  "lot": "PS-A", "name": "Mobile Phase A", "qty_used": "2 mL"},
                 {"from_inventory": False, "lot": "TYPED", "qty_used": "1 mL"},     # not recorded
                 {"from_inventory": True, "inventory_uid": "x", "lot": ""}]          # no lot
-        L.record_stage(db, "B-UID", "B-1", 3, "Extraction", rows, "KCP", "2026-10-02T14:00:00Z",
+        L.record_stage(db, "B-UID", "B-1", 3, "Extraction", rows, "DEMO", "2026-10-02T14:00:00Z",
                        stock_units={("reagent", "m1"): "mL"})
         uses = L.uses_of(db, "reagent", "m1")
         assert [(u["batch_id"], u["stage_name"], u["amount_value"], u["amount_unit"]) for u in uses] \
             == [("B-1", "Extraction", 5.0, "mL")]
         assert len(L.uses_for_items(db)) == 2
         # the same stage completed again REPLACES its rows
-        L.record_stage(db, "B-UID", "B-1", 3, "Extraction", rows[:1], "KCP", "2026-10-02T15:00:00Z",
+        L.record_stage(db, "B-UID", "B-1", 3, "Extraction", rows[:1], "DEMO", "2026-10-02T15:00:00Z",
                        stock_units={("reagent", "m1"): "mL"})
         assert len(L.uses_of(db, "reagent", "m1")) == 1 and L.uses_of(db, "prepared_standard", "ps") == []
         # another stage adds
-        L.record_stage(db, "B-UID", "B-1", 5, "Cleanup", rows[:1], "KCP", "2026-10-02T16:00:00Z")
+        L.record_stage(db, "B-UID", "B-1", 5, "Cleanup", rows[:1], "DEMO", "2026-10-02T16:00:00Z")
         assert len(L.uses_of(db, "reagent", "m1")) == 2
         assert [u["stage_order"] for u in L.uses_by_lot(db, "meoh")] == ["5", "3"]   # recall, newest first
         assert L.uses_by_lot(db, "nothing") == []

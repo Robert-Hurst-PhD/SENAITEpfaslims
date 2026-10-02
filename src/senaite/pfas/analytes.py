@@ -88,7 +88,7 @@ INJECTION_PATTERNS = [
     # Pattern 2: FDA-XXX-YYMMDD
     re.compile(r'^FDA-[A-Z0-9]+-\d{6}$'),
     # Pattern 3: Initials Type,Matrix YYYY-MM-DD-#######
-    # e.g. "KCP Water MB 2026-03-13-01"
+    # e.g. "DEMO Water MB 2026-03-13-01"
     re.compile(r'^[A-Z]{2,4} [A-Za-z\s\"]+ (MB|LCS|CCV|ICV|LFSM|LFSMD|Dup|CAL|Sample)\b.*$'),
     # Pattern 4: Initials Type,Matrix #######  (7-digit StarLIMS)
     re.compile(r'^[A-Z]{2,4} [A-Za-z\s]+ (MB|LCS|CCV|ICV|LFSM|LFSMD|Dup|CAL) \d{7}$'),
@@ -149,11 +149,11 @@ def parse_sample_description(desc):
       Analyst; Date[-BatchNum]; [Matrix; ][SampleID; ][Spike; ]QC_type [Level]
 
     Examples:
-      "KCP; 2026-02-26; 0.039 ppt; CAL"
-      "RH; 2026-02-26-01; CCV"
-      "RH; Ext. 2026-04-09-01; Milk; MB"
-      "RH; Ext. 2026-04-09-01; Milk; 'FAPAS QC 06162 CRM'; MxB"
-      "RH; Ext. 2026-04-09-01; Mik; '87BT1-1310-GS1-11/12/25'; 10 ppt; LFSM Low"
+      "DEMO; 2026-02-26; 0.039 ppt; CAL"
+      "AN3; 2026-02-26-01; CCV"
+      "AN3; Ext. 2026-04-09-01; Milk; MB"
+      "AN3; Ext. 2026-04-09-01; Milk; 'FAPAS QC 06162 CRM'; MxB"
+      "AN3; Ext. 2026-04-09-01; Mik; '87BT1-1310-GS1-11/12/25'; 10 ppt; LFSM Low"
 
     Returns dict with keys: analyst, run_date, matrix, sample_id,
                              spike_level, qc_type (shortcode), qc_label.

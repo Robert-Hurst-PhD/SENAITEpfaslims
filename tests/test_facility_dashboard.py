@@ -65,7 +65,7 @@ def test_an_eyewash_station_is_judged_on_its_own_log():
     _unit(fq, "eyewash", "EW")
     assert _status(fq, "EW") == "no_data", "never checked -> no_data"
 
-    fq.save_eyewash_log(fq.list_units()[0]["id"], "KP", working=True,
+    fq.save_eyewash_log(fq.list_units()[0]["id"], "AN2", working=True,
                         temperature=20.0)
     assert _status(fq, "EW") == "ok", "runs, water tepid, checked today"
 
@@ -75,10 +75,10 @@ def test_a_failing_station_is_reported_failing():
     _unit(fq, "eyewash", "EW")
     uid = fq.list_units()[0]["id"]
 
-    fq.save_eyewash_log(uid, "KP", working=True, temperature=40.0)
+    fq.save_eyewash_log(uid, "AN2", working=True, temperature=40.0)
     assert _status(fq, "EW") == "out_of_range", "water far too hot"
 
-    fq.save_eyewash_log(uid, "KP", working=False, temperature=20.0)
+    fq.save_eyewash_log(uid, "AN2", working=False, temperature=20.0)
     assert _status(fq, "EW") == "out_of_range", "station does not run"
 
 
@@ -100,12 +100,12 @@ def test_the_latest_entry_wins_even_within_the_same_minute():
     stamp = {"log_date": datetime.utcnow().strftime("%Y-%m-%d"),
              "log_time": "09:15"}
 
-    fq.save_eyewash_log(uid, "KP", working=True, temperature=20.0, **stamp)
-    fq.save_eyewash_log(uid, "KP", working=False, temperature=20.0, **stamp)
+    fq.save_eyewash_log(uid, "AN2", working=True, temperature=20.0, **stamp)
+    fq.save_eyewash_log(uid, "AN2", working=False, temperature=20.0, **stamp)
     assert _status(fq, "EW") == "out_of_range", (
         "a failure logged in the same minute as an earlier pass must win")
 
-    fq.save_eyewash_log(uid, "KP", working=True, temperature=20.0, **stamp)
+    fq.save_eyewash_log(uid, "AN2", working=True, temperature=20.0, **stamp)
     assert _status(fq, "EW") == "ok", "and the repair after it must win too"
 
 
@@ -114,7 +114,7 @@ def test_an_old_but_passing_check_is_pending_not_ok_and_not_overdue():
     review rather than measured against the 25-hour sensor window."""
     fq = _fresh_module()
     _unit(fq, "eyewash", "EW")
-    fq.save_eyewash_log(fq.list_units()[0]["id"], "KP", working=True,
+    fq.save_eyewash_log(fq.list_units()[0]["id"], "AN2", working=True,
                         temperature=20.0, log_date="2026-01-02")
     assert _status(fq, "EW") == "pending"
 

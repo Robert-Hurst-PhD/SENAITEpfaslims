@@ -102,7 +102,7 @@ print("== struck rows (N/A) ==")
 chk("is_row_struck true for _na",  ls.is_row_struck({"_na": True}))
 chk("is_row_struck false plain",   not ls.is_row_struck({"name": "x"}))
 chk("is_row_struck false non-dict", not ls.is_row_struck("nope"))
-_rows = [{"name": "A"}, {"name": "B", "_na": True, "_na_by": "KCP", "_na_at": "2026-07-31"},
+_rows = [{"name": "A"}, {"name": "B", "_na": True, "_na_by": "DEMO", "_na_at": "2026-07-31"},
          {"name": "C"}]
 chk("active_rows drops struck",
     [r["name"] for r in ls.active_rows(_rows)] == ["A", "C"])

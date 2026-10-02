@@ -3499,8 +3499,8 @@ Data Review pages label the same analyte `10:2 FTS` and `10:2FTS`.
 - The **Run Builder emits a worklist the LIMS's own validator rejects** (27/27), and
   the **EDD exports 288 rows with empty concentrations without blocking**.
 
-**Test data.** Client `kcp-feed-forage`, batch `kcp-b-001`, worksheet `WS-0005`,
-prefix `KCP` / `PS-KCP-`. Pre-test volume snapshots in `/home/robin/pfas_e2e_backup/`.
+**Test data.** Client `demo-feed-forage`, batch `demo-b-001`, worksheet `WS-0005`,
+prefix `DEMO` / `PS-DEMO-`. Pre-test volume snapshots in `/home/robin/pfas_e2e_backup/`.
 
 ---
 
@@ -3605,7 +3605,7 @@ names samples the way the bench writes them and the lookup only matched lab ids.
 **① Internal-standard check: ratio for dilutions, peak area for everything else.**
 The profile field says "% of ICAL average", which conventionally means the IS PEAK
 AREA; the check was using `Response Ratio`, which for an IS row is that IS divided
-by another IS. Both find real problems in the KCP run, but they disagree on scope:
+by another IS. Both find real problems in the DEMO run, but they disagree on scope:
 ratio flags 20 of 440, area flags 64 of 462 — and the extra 44 are almost entirely
 the dilutions, at 4.6–7.2% of the ICAL average. That is arithmetic, not a QC
 failure: a 1:10 dilution dilutes the internal standard too. Area is the right
@@ -4569,7 +4569,7 @@ consequences are quieter and, for QC, worse:
 
 **The plan said to change the default to a non-reportable `"Unknown"`. That would
 have been wrong, and testing found it.** A client sample has no positive marker:
-`KCP Silage "Egg-1" Sample`, `FDA_32PFAS-FEED-0002` and `2518592` all reach the
+`DEMO Silage "Egg-1" Sample`, `FDA_32PFAS-FEED-0002` and `2518592` all reach the
 fallback. A strict fallback would have stopped reporting every genuine sample.
 The safety therefore comes from recognising control material exhaustively, not
 from tightening the default — and `classification_rule()` now lets a caller tell
@@ -5850,3 +5850,16 @@ values, and the FDA method configuration is not to be edited against the
 public C-010.03. The comparisons first written against C-010.03 (analyte
 count, surrogate citation, recovery tiers, posting date) were withdrawn from
 REFERENCES, QUESTIONS, CLAUDE.md, README and ISO17025_DESIGN.
+
+
+## 2026-10-02 — Initials and demo identifiers removed from the public repository (the lab's request)
+
+"Just in case": the analyst initials and demo client / batch / lot identifiers
+used in tests, scripts, examples and the logs are replaced in every tracked
+text file: KCP -> DEMO (kcp-feed-forage -> demo-feed-forage, kcp-b-001 ->
+demo-b-001, PS-KCP- -> PS-DEMO-, KCP001 -> DEMO001, e2e_kcp_*.py ->
+e2e_demo_*.py), other initials -> AN2 / AN3, a demo analyst name -> "A. Analyst".
+Use neutral placeholders (DEMO, AN1..) in anything committed from now on.
+Not changed: the private development database (its demo objects keep their
+old ids) and the git history, which still holds the old text — removing it
+from history needs a rewrite and force-push, a separate decision.

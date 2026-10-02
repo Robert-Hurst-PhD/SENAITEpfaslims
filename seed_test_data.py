@@ -39,7 +39,7 @@ METHODS = {
                    "lfb_mean": 85.0,  "lfb_sd": 9.0},
 }
 
-ANALYSTS    = ["KCP", "JAR", "MEL"]
+ANALYSTS    = ["DEMO", "JAR", "MEL"]
 INSTRUMENTS = ["QTOF-1", "QTOF-2"]
 N_WEEKS     = 32   # ~8 months of weekly runs
 

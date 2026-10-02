@@ -1,5 +1,5 @@
 """End-to-end smoke test with a synthetic batch matching the real
-FDA-CAL-x-260226 / KCP Deer Sample structure from the actual xlsm data."""
+FDA-CAL-x-260226 / DEMO Deer Sample structure from the actual xlsm data."""
 import csv, sys, os
 os.environ.setdefault("PFAS_ALLOW_LEGACY_VENDOR_MAP", "1")  # tests exercise the legacy vendor map
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,10 +20,10 @@ def make_test_csv(path):
         ("FDA-CAL-10-260226",  "Standard", 0.039),
         ("FDA-ICV-260226",     "QC", 1.25),
         ("FDA-CCV-260226-01",  "QC", 1.25),
-        ('KCP Water MB 2026-03-13-01', "QC", None),
-        ('KCP Deer Sample "Deer Hamburger"', "Unknown", None),
-        ('KCP Deer Sample "Deer Hamburger"; LFSM High', "QC", None),
-        ('KCP Deer Sample "Deer Hamburger"; LFSM High Dup.', "QC", None),
+        ('DEMO Water MB 2026-03-13-01', "QC", None),
+        ('DEMO Deer Sample "Deer Hamburger"', "Unknown", None),
+        ('DEMO Deer Sample "Deer Hamburger"; LFSM High', "QC", None),
+        ('DEMO Deer Sample "Deer Hamburger"; LFSM High Dup.', "QC", None),
         ("FDA-CCV-260226-02",  "QC", 1.25),
     ]
     headers = ["Compound Name","Compound Type","Sample Description",
@@ -69,7 +69,7 @@ def main():
     make_test_csv(csv_path)
 
     # 1. Injection name validation
-    v = validate_injection_name('KCP Water MB 2026-03-13-01')
+    v = validate_injection_name('DEMO Water MB 2026-03-13-01')
     assert v["valid"], v
     v = validate_injection_name("FDA-CAL-10-260226")
     assert v["valid"], v
@@ -77,10 +77,10 @@ def main():
 
     # 2-3. The extraction record, as the Run Builder writes it from the
     # SENAITE guided extraction (the tablet catalogue is retired, DB1)
-    session = {"method_id": "FDA_32PFAS", "analyst": "KCP",
+    session = {"method_id": "FDA_32PFAS", "analyst": "DEMO",
                "started_at": "2026-02-26T13:00:00Z", "finalized": True,
-               "finalized_at": "2026-02-26T16:30:00Z", "finalized_by": "KCP",
-               "stages": {"1": {"completed_at": "2026-02-26T13:40:00Z", "analyst": "KCP",
+               "finalized_at": "2026-02-26T16:30:00Z", "finalized_by": "DEMO",
+               "stages": {"1": {"completed_at": "2026-02-26T13:40:00Z", "analyst": "DEMO",
                                 "deviations": "",
                                 "reagents": [{"role": "Methanol", "name": "Methanol LC-MS",
                                               "lot": "LOT24A77", "expiry": "2027-01-31",
@@ -95,7 +95,7 @@ def main():
 
     # 4. Full pipeline
     batch, queue, pdf = run_pipeline(
-        csv_path, analyst="KCP", matrix="Deer",
+        csv_path, analyst="DEMO", matrix="Deer",
         extraction_log_path="/tmp/pfas_test/batch_260226_extraction.json",
         output_dir="/tmp/pfas_test/out")
     assert pdf.exists() and pdf.stat().st_size > 1000
@@ -109,7 +109,7 @@ def main():
     assert len(q2.checks) == len(queue.checks)
     p = queue.pending()
     if p:
-        queue.accept(p[0]["injection"], p[0]["check"], "KCP", "reviewed ok")
+        queue.accept(p[0]["injection"], p[0]["check"], "DEMO", "reviewed ok")
     print("✓ run queue persistence + accept")
 
     print("\nALL TESTS PASSED")

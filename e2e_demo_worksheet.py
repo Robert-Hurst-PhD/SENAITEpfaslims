@@ -12,7 +12,7 @@ workflow in the first pass:
     `analysis.getWorksheet()` truthy, so `Worksheet.addAnalysis` bailed out on
     its "already assigned" guard without saying so.
 
-Run:  bin/instance -O senaite run /addon/e2e_kcp_worksheet.py
+Run:  bin/instance -O senaite run /addon/e2e_demo_worksheet.py
 """
 from __future__ import absolute_import, print_function
 
@@ -24,9 +24,9 @@ from zope.annotation.interfaces import IAnnotations
 _BACKREFS_KEY = 'bika.lims.browser.fields.uidreferencefield.backreferences'
 
 WS_ID = 'WS-0005'
-CLIENT_ID = 'kcp-feed-forage'
+CLIENT_ID = 'demo-feed-forage'
 METHOD_TITLE = 'USDA/FDA 32-PFAS in Food v10'
-ANALYST = 'KCP'
+ANALYST = 'DEMO'
 
 
 def run(app):

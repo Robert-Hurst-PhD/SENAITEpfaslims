@@ -132,7 +132,7 @@ DAY 2 — AUTO-PROCESSING (pfas-worker, no human)
 DAY 2 — REVIEW (from home)
   open SENAITE in browser, or load {batch}_queue.json
   queue.pending() → "Verify LFSM recovery 50–150%", "Verify blank…", …
-  queue.accept(injection, check, "KP", comment)
+  queue.accept(injection, check, "AN2", comment)
   queue.is_complete → release batch in SENAITE
 ```
 

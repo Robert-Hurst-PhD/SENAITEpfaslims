@@ -17,7 +17,7 @@ quieter way:
     would be excused as a matrix effect instead of holding the batch
 
 **The default cannot be made strict.** A client sample has no positive marker —
-`KCP Silage "Egg-1" Sample`, `FDA_32PFAS-FEED-0002` and `2518592` all reach the
+`DEMO Silage "Egg-1" Sample`, `FDA_32PFAS-FEED-0002` and `2518592` all reach the
 fallback. Making the fallback non-reportable would stop reporting every genuine
 sample. The safety comes from recognising control material exhaustively, and
 from `classification_rule()` letting a caller tell a positive identification
@@ -42,20 +42,20 @@ CONTROL_CASES = [
     ("CCB-01", "CCB"),
     ("FDA_32PFAS-CCB-260803-01", "CCB"),
     ("MB-01", "MB"),
-    ("KCP Water MB 2025-10-20-01", "MB"),
+    ("DEMO Water MB 2025-10-20-01", "MB"),
     ("Method Blank 3", "MB"),
     ("FDA-CCV-251020", "CCV"),
     ("FDA-ICV-251020", "ICV"),
     ("FDA-CAL-1-251006", "CAL"),
     ("Dup-01", "Dup"),
-    ("KCP Silage Dup 2025-10-20-1", "Dup"),
-    ('KCP Silage "Egg-2" LFSM Mid', "LFSM"),
-    ('KCP Silage "Egg-2" LFSM Mid Duplicate', "LFSMD"),
+    ("DEMO Silage Dup 2025-10-20-1", "Dup"),
+    ('DEMO Silage "Egg-2" LFSM Mid', "LFSM"),
+    ('DEMO Silage "Egg-2" LFSM Mid Duplicate', "LFSMD"),
     ("LFSMD-01", "LFSMD"),
 ]
 
 SAMPLE_CASES = [
-    'KCP Silage "Egg-1" Sample',
+    'DEMO Silage "Egg-1" Sample',
     "FDA_32PFAS-FEED-0002",
     "2518592",
     "Egg-1",
@@ -93,7 +93,7 @@ def test_positive_identification_is_distinguishable_from_the_default():
 
 def test_dilution_beats_every_name_rule():
     """A dilution's role comes from FM-ENV-003, never from the name."""
-    name = 'KCP Silage "Egg-3"; Dil. 1:10'
+    name = 'DEMO Silage "Egg-3"; Dil. 1:10'
     assert classify_injection(name, {}) == "Sample"
     assert classify_injection(name, {name: {"parent": "x", "factor": 10}}) == "Dilution"
 

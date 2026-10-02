@@ -14,7 +14,7 @@ CCV and the LFSM spike), which is the join the Run Builder relies on.
 Uses the production save paths (reagents._save_reagent,
 prepared_standards._save) rather than writing objects by hand.
 
-Run:  bin/instance -O senaite run /addon/e2e_kcp_standards.py
+Run:  bin/instance -O senaite run /addon/e2e_demo_standards.py
 """
 from __future__ import absolute_import, print_function
 
@@ -87,11 +87,11 @@ REAGENTS = [
 STANDARDS = [
     {
         "title": u"FDA 32-PFAS Calibration Ladder A (CAL-1..10)",
-        "lot_number": u"PS-KCP-CAL-251006",
+        "lot_number": u"PS-DEMO-CAL-251006",
         "standard_type": u"Calibration Standard",
         "logbook_slug": u"251",
         "logbook_title": u"Calibration Curve Prep Log",
-        "prepared_by": u"KCP",
+        "prepared_by": u"DEMO",
         "prepared_date": u"2025-10-06",
         "expiry_date": u"2026-04-06",
         "storage_location": u"Std Freezer 1 / Rack 3",
@@ -102,11 +102,11 @@ STANDARDS = [
     },
     {
         "title": u"FDA 32-PFAS CCV Check Standard (level 5)",
-        "lot_number": u"PS-KCP-CCV-251020",
+        "lot_number": u"PS-DEMO-CCV-251020",
         "standard_type": u"QC Check Standard",
         "logbook_slug": u"251",
         "logbook_title": u"Calibration Curve Prep Log",
-        "prepared_by": u"KCP",
+        "prepared_by": u"DEMO",
         "prepared_date": u"2025-10-20",
         "expiry_date": u"2026-01-20",
         "storage_location": u"Std Freezer 1 / Rack 3",
@@ -116,11 +116,11 @@ STANDARDS = [
     },
     {
         "title": u"FDA 32-PFAS Matrix Spike, 100 ppt",
-        "lot_number": u"PS-KCP-SPK-251020",
+        "lot_number": u"PS-DEMO-SPK-251020",
         "standard_type": u"Matrix Spike",
         "logbook_slug": u"251",
         "logbook_title": u"Calibration Curve Prep Log",
-        "prepared_by": u"KCP",
+        "prepared_by": u"DEMO",
         "prepared_date": u"2025-10-20",
         "expiry_date": u"2026-04-20",
         "storage_location": u"Std Freezer 1 / Rack 3",
@@ -130,11 +130,11 @@ STANDARDS = [
     },
     {
         "title": u"FDA 32-PFAS Internal Standard Working Solution",
-        "lot_number": u"PS-KCP-IS-251006",
+        "lot_number": u"PS-DEMO-IS-251006",
         "standard_type": u"Internal Standard Mix",
         "logbook_slug": u"251",
         "logbook_title": u"Calibration Curve Prep Log",
-        "prepared_by": u"KCP",
+        "prepared_by": u"DEMO",
         "prepared_date": u"2025-10-06",
         "expiry_date": u"2026-04-06",
         "storage_location": u"Std Freezer 1 / Rack 3",
@@ -144,11 +144,11 @@ STANDARDS = [
     },
     {
         "title": u"Mobile Phase B — 4 mM Ammonium Acetate in MeOH",
-        "lot_number": u"PS-KCP-MPB-251020",
+        "lot_number": u"PS-DEMO-MPB-251020",
         "standard_type": u"Solvent / Reagent",
         "logbook_slug": u"250",
         "logbook_title": u"Solvent / Reagent Prep Log",
-        "prepared_by": u"KCP",
+        "prepared_by": u"DEMO",
         "prepared_date": u"2025-10-20",
         "expiry_date": u"2025-10-27",
         "storage_location": u"LC-MS Bench",

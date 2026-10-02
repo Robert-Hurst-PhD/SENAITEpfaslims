@@ -197,7 +197,7 @@ def test_mb_is_recognised_in_a_hyphenated_id():
     field sample, which under duplicate_all_samples would have duplicated it
     and counted it toward the LFSM interval."""
     for sid in ("FDA_32PFAS-MB-260923-01", "MB-01", "EPA_1633A-MB-01",
-                "KCP MB 01"):
+                "DEMO MB 01"):
         assert rc.classify_sample_role({"sample_id": sid}) == "MB", sid
 
 
