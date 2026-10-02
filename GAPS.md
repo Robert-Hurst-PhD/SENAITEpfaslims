@@ -7140,3 +7140,45 @@ DECISIONS 2026-10-02 "Extraction UI, Data Review, reporting template".
 **Still open:** the checklist itself still costs ~8 s once per page; the
 finished screen of the guide links to the logbook PDF but not yet to Data
 Review; the reporting template (step 3).
+
+
+## 92. The reporting template as a controlled document; the issue step (2026-10-02)
+
+Decision: DECISIONS 2026-10-02 "Extraction UI, Data Review, reporting
+template" (both: controlled template and an issue step).
+
+- **Revisions** (report_templates.py; portal annotation): a revision freezes
+  the Print Settings, every method's Reporting-tab format and a hash of the
+  certificate layout files (CertificateOfAnalysis.pt, coa_sections.pt,
+  coa_attestation.pt). "Unissued changes" lists what the live draft changes
+  (a print setting, a method's format, the layout). Save stamps are not changes.
+- **Certificates are drawn from the issued revision**, never the live draft:
+  the certificate view's settings and each sample's method x matrix format
+  come from the snapshot; the header prints "Template revision N"; the
+  controlled-publication record stores template_rev.
+- **No certificate before a revision is issued:** ReportTemplateGuard refuses
+  publish / prepublish / republish until one exists (like SampleMethodGuard).
+  As of this change NO revision is issued, so publishing waits for a Manager
+  to issue revision 1 on Reporting > Reporting Template.
+- **@@pfas-report-template:** issued revision and its date, unissued changes,
+  a preview of the certificate for any verified / published sample from the
+  draft or the issued revision, Issue (Manager only, a note required; refused
+  when the draft equals the issued revision), history.
+- **Data Review issue step:** once the five gates pass, "Issue certificate"
+  names the template revision the certificate will record, says when the
+  Manager's approval is still needed, and without an issued template shows
+  "No reporting template issued" with a button to the template page; the
+  publisher (preview, publish, email) and the amended-reissue path are as
+  before.
+- **Tests:** test_report_templates (4; 4 mutants killed); test_config_forms
+  updated (the format still resolves per sample, from the snapshot). Live:
+  page and draft preview on a real sample (COA-DEMO-0001); aborted dry run on
+  FEED-0002 -- publish refused before issue, allowed after revision 1, header
+  "Template revision 1", Data Review reports revision 1; nothing kept.
+- **Found on the way:** a derived RL prints at full float precision on the
+  certificate (19.53125 = 0.0390625 x 500); a wait-for-SENAITE loop reading
+  only the last two log lines never ends while someone is browsing -- probe
+  the login page instead.
+
+**Still open:** issue revision 1 (the lab's action); derived-RL display
+precision; emailing stays in SENAITE's publisher.

@@ -2606,6 +2606,16 @@ class PFASDataReviewView(BrowserView):
         return u"{0}/samples/publish?uids={1}".format(
             portal.absolute_url(), uids)
 
+    def template_status(self):
+        """The issued reporting-template revision the certificate will be drawn
+        from, or None when none is issued (publishing is then refused)."""
+        try:
+            from senaite.pfas.report_templates import issued_snapshot
+            return issued_snapshot(self._portal())[1]
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("template_status: %s", exc)
+            return None
+
     def reissue_ars(self):
         """ARs in this worksheet's batch that are already published — issuing a
         CoA for them is an AMENDED reissue (D65). We capture an amendment reason

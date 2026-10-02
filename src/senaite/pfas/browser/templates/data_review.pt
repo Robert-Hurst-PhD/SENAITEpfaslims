@@ -469,17 +469,27 @@
       <!-- client-facing report (COA) — core senaite.impress, PFAS-wired -->
       <tal:coa tal:define="purl view/publish_url"
                tal:condition="python:purl and view.all_items_pass()">
-        <div class="tree-section">
-          <div class="tree-heading">Client Report (COA)</div>
-          <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 8px;">
-            All five review gates passed — generate the client Certificate of
-            Analysis for this worksheet's samples (opens SENAITE's report
-            publisher with the samples pre-selected).
+        <div class="tree-section" tal:define="trev view/template_status; verified python: view.ws_state() == 'verified'">
+          <div class="tree-heading">Issue certificate</div>
+          <p class="dr-line">
+            All five review gates passed.
+            <tal:v tal:condition="not:verified">The Manager&#8217;s approval is still needed before the
+              certificate can be published.</tal:v>
+            <tal:r tal:condition="trev">The certificate is drawn from reporting-template revision
+              <strong tal:content="trev">3</strong>, which it records.</tal:r>
           </p>
+          <p class="dr-line" tal:condition="not:trev">
+            <span class="cl-badge cl-fail">No reporting template issued</span>
+            Certificates cannot be published until a Manager issues one.
+            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-report-template">Reporting template</a>
+          </p>
+          <tal:go tal:condition="trev">
+          <p class="dr-line">SENAITE&#8217;s publisher opens with this worksheet&#8217;s samples: preview, publish and
+            email the certificate there.</p>
           <!-- First issue: straight to the publisher. -->
           <a class="btn btn-success btn-approve"
              tal:condition="not:view/is_reissue"
-             tal:attributes="href purl">Generate COA →</a>
+             tal:attributes="href purl">Issue certificate →</a>
 
           <!-- Amended reissue (samples already published): capture the reason
                up front so the controlled register records why (D65). -->
@@ -503,11 +513,12 @@
                           placeholder="Reason for reissuing this certificate"
                           style="flex:1;min-width:240px;font-size:var(--fs-sm);padding:4px 6px;"></textarea>
                 <button type="submit" class="btn btn-success btn-approve">
-                  Record reason &amp; generate COA →
+                  Record reason &amp; issue certificate →
                 </button>
               </form>
             </div>
           </tal:reissue>
+          </tal:go>
         </div>
       </tal:coa>
 

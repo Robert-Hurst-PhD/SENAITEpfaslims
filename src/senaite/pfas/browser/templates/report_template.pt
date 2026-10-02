@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Reporting Template</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Reporting template</tal:t>
+
+  <metal:fill fill-slot="content" tal:define="st view/state; msg view/message">
+    <div class="alert-ok" tal:condition="python: msg[0]" tal:content="python: msg[0]">ok</div>
+    <div class="alert-error" tal:condition="python: msg[1]" tal:content="python: msg[1]">error</div>
+
+    <section class="bench-block">
+      <h2 class="bench-h">Issued revision</h2>
+      <p tal:condition="st/none_issued" class="bench-bad rt-line">
+        <strong>No revision issued.</strong> Certificates cannot be published until a Manager
+        issues the first revision of the reporting template.</p>
+      <p tal:condition="not:st/none_issued" class="rt-line">
+        Revision <strong tal:content="st/rev">3</strong>, issued
+        <span tal:replace="python: st['issued_at'][:16].replace('T', ' ')">x</span>.
+        Every certificate is drawn from it and records it.</p>
+      <p class="rt-line" tal:condition="python: not st['none_issued'] and not st['unissued']">
+        The live settings are the issued revision: nothing to issue.</p>
+    </section>
+
+    <section class="bench-block" tal:condition="python: st['unissued'] and not st['none_issued']">
+      <h2 class="bench-h">Unissued changes</h2>
+      <ul class="bench-alerts">
+        <li class="bench-warn" tal:repeat="c st/changes" tal:content="c">Print setting lab_name</li>
+      </ul>
+    </section>
+
+    <section class="bench-block" tal:define="samples view/preview_samples">
+      <h2 class="bench-h">Preview with a real sample</h2>
+      <form method="get" class="rt-form" tal:attributes="action string:${view/portal_url}/@@pfas-report-template-preview"
+            target="rt-preview">
+        <select name="uid">
+          <option tal:repeat="s samples" tal:attributes="value s/uid" tal:content="s/label">S-1</option>
+        </select>
+        <select name="which">
+          <option value="draft">Draft (live settings)</option>
+          <option value="issued" tal:condition="not:st/none_issued">Issued revision</option>
+        </select>
+        <button class="btn-sm btn-secondary" type="submit">Preview</button>
+      </form>
+      <p class="bench-sub" tal:condition="not:samples">No verified or published sample to preview against.</p>
+      <iframe name="rt-preview" class="rt-preview" title="Certificate preview"></iframe>
+    </section>
+
+    <section class="bench-block" tal:condition="view/can_issue">
+      <h2 class="bench-h">Issue a revision</h2>
+      <form method="post" class="rt-form" tal:attributes="action string:${view/portal_url}/@@pfas-report-template">
+        <input type="hidden" name="action" value="issue" />
+        <input type="text" name="note" class="rt-note" required="required"
+               placeholder="What this revision changes (recorded with it)" />
+        <button class="btn-sm btn-primary" type="submit"
+                tal:attributes="disabled python: None if st['unissued'] else 'disabled'">Issue revision</button>
+      </form>
+      <p class="bench-sub">Issuing freezes the current Print Settings, every method&#8217;s Reporting tab and
+        the certificate layout. Change the live settings freely: certificates keep using the issued revision
+        until the next one is issued.</p>
+    </section>
+
+    <section class="bench-block" tal:condition="st/history">
+      <h2 class="bench-h">History</h2>
+      <table class="pfas-table">
+        <thead><tr><th>Revision</th><th>Issued</th><th>By</th><th>Note</th></tr></thead>
+        <tbody><tr tal:repeat="r st/history">
+          <td tal:content="r/rev">1</td>
+          <td tal:content="python: (r.get('issued_at') or '')[:16].replace('T', ' ')">x</td>
+          <td tal:content="r/issued_by">admin</td>
+          <td tal:content="r/note">first issue</td>
+        </tr></tbody>
+      </table>
+    </section>
+  </metal:fill>
+</body>
+</html>

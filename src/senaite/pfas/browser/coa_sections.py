@@ -57,10 +57,27 @@ class PFASCoASectionsView(BrowserView):
 
     # ── settings / identity ───────────────────────────────────────────────
 
+    def template_revision(self):
+        """(snapshot, rev) the certificate is drawn from: a preview's draft
+        when one is set, else the ISSUED reporting-template revision; (None,
+        None) before any is issued (DECISIONS 2026-10-02)."""
+        if not hasattr(self, "_template"):
+            override = getattr(self, "snapshot_override", None)
+            if override is not None:
+                self._template = (override, getattr(self, "snapshot_rev", None))
+            else:
+                from senaite.pfas.report_templates import issued_snapshot
+                self._template = issued_snapshot(api.get_portal())
+        return self._template
+
     def settings(self):
         if not hasattr(self, "_settings"):
-            from senaite.pfas.print_settings import get_print_settings
-            self._settings = get_print_settings(api.get_portal())
+            snap, _rev = self.template_revision()
+            if snap is not None:
+                self._settings = dict(snap.get("print_settings") or {})
+            else:
+                from senaite.pfas.print_settings import get_print_settings
+                self._settings = get_print_settings(api.get_portal())
         return self._settings
 
     def show(self, key):
@@ -79,7 +96,8 @@ class PFASCoASectionsView(BrowserView):
         """Report ID (with its prospective revision) and issue date for the
         header -- the same identity the controlled-document stamp prints."""
         from DateTime import DateTime
-        meta = {"report_id": u"", "issued": DateTime().strftime("%Y-%m-%d")}
+        meta = {"report_id": u"", "issued": DateTime().strftime("%Y-%m-%d"),
+                "template_rev": self.template_revision()[1]}
         try:
             att = api.get_portal().restrictedTraverse("@@pfas-coa-attestation")
             meta["report_id"] = att.controlled_doc_meta(self.collection).get("report_id") or u""
@@ -181,7 +199,11 @@ class PFASCoASectionsView(BrowserView):
                 analysed.append(when)
         # this sample's certificate format: its method x matrix (Reporting tab)
         from senaite.pfas import report_format
-        fmt = report_format.resolve(profile, matrix)
+        # the format comes from the issued reporting-template revision
+        snap, _rev = self.template_revision()
+        fmt = report_format.resolve(
+            {report_format.KEY: (snap.get("report_formats") or {}).get(method_id) or {}}
+            if snap is not None else profile, matrix)
         merged = dict(self.settings())
         merged.update(fmt)
         rows = coa_format.build_rows(data, profile, matrix, merged, cas)

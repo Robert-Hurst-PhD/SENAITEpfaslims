@@ -52,6 +52,9 @@
       </div>
       <div class="doc" tal:define="meta view/doc_meta">
         <div class="t" i18n:translate="">Certificate of Analysis</div>
+        <div class="sub" tal:condition="meta/template_rev">
+          <span i18n:translate="">Template revision</span> <strong tal:content="meta/template_rev">3</strong>
+        </div>
         <div class="sub" tal:condition="meta/report_id">
           <span i18n:translate="">Report</span> <strong tal:content="meta/report_id">FEED-0002-R2</strong>
         </div>

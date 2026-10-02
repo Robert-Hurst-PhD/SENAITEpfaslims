@@ -554,6 +554,11 @@
     /* ── Workspace landing grid ──────────────────────────────────────────── */
     /* Bench landing: extraction queue + needs attention (BENCH_WORKFLOW_REVIEW phase 1) */
   .bench-block { margin: 0 0 22px; }
+  /* Reporting template page */
+  .rt-line { margin: 6px 0; }
+  .rt-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .rt-note { flex: 1 1 320px; }
+  .rt-preview { width: 100%; height: 640px; border: 1px solid var(--s-border); border-radius: 6px; background: #fff; }
   .bench-h { font-size: var(--fs-lg); margin: 0 0 8px; }
   .bench-sub { color: var(--s-secondary); font-size: var(--fs-sm); }
   .bench-state { font-weight: 600; }

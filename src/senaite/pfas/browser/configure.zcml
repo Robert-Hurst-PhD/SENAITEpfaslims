@@ -309,6 +309,20 @@
       permission="zope2.View"
       />
 
+  <!-- The certificate template as a controlled document (report_templates) -->
+  <browser:page
+      name="pfas-report-template"
+      for="*"
+      class=".report_template.PFASReportTemplateView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-report-template-preview"
+      for="*"
+      class=".report_template.PFASReportTemplatePreviewView"
+      permission="zope2.View"
+      />
+
   <!-- Lot usage + recall search (bench phase 3, inventory_ledger) -->
   <browser:page
       name="pfas-lot-usage"
@@ -496,6 +510,14 @@
       for="bika.lims.interfaces.IAnalysisRequest"
       provides="bika.lims.interfaces.IGuardAdapter"
       name="senaite.pfas.sample_method"
+      />
+
+  <!-- No certificate before a reporting-template revision is issued -->
+  <adapter
+      factory=".guards.ReportTemplateGuard"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.report_template"
       />
 
   <!-- Controlled publication register (D65 B): record an immutable issuance

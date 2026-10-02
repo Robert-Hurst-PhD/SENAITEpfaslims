@@ -1218,7 +1218,10 @@ def test_the_certificate_reads_each_samples_own_format():
     tpl = _read("templates", "coa_sections.pt")
     assert "s.get('coa_show_" not in tpl and "smp['fmt'].get('coa_show_cas')" in tpl
     src = _read("coa_sections.py")
-    assert "report_format.resolve(profile, matrix)" in src
+    # each sample's own method x matrix format -- from the issued
+    # reporting-template revision once one exists (DECISIONS 2026-10-02)
+    assert "fmt = report_format.resolve(" in src and "if snap is not None else profile, matrix)" in src
+    assert '(snap.get("report_formats") or {}).get(method_id)' in src
     import io
     with io.open(os.path.join(PKG, "print_settings.py"), encoding="utf-8") as fh:
         ps = fh.read()

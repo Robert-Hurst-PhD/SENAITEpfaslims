@@ -90,6 +90,15 @@ def _review_state_at_issue(ar):
         return u"unknown"
 
 
+def _template_rev():
+    try:
+        from senaite.pfas.report_templates import issued_snapshot
+        return issued_snapshot(api.get_portal())[1]
+    except Exception as exc:                                # noqa: BLE001
+        logger.error("controlled-pub: no template revision: %s", exc)
+        return None
+
+
 def record_publication(ar):
     """Append an immutable issuance entry to the sample's publication log."""
     ann = IAnnotations(ar)
@@ -121,6 +130,8 @@ def record_publication(ar):
         # decision — but an auditor must be able to see that a certificate went
         # out ahead of its review, rather than having to infer it.
         "review_state": _review_state_at_issue(ar),
+        # the reporting-template revision the certificate was drawn from
+        "template_rev": _template_rev(),
     }
 
     # Freeze the reviewer report against this revision. Regenerating it later
