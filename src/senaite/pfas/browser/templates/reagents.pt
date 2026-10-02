@@ -370,6 +370,8 @@
                     tal:attributes="data-rg python:__import__('json').dumps(rg)">
               Edit
             </button>
+            <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
+               tal:attributes="href python:'%s/@@pfas-lot-usage?kind=reagent&amp;uid=%s' % (view.portal_url(), rg.get('uid', ''))">Where used</a>
             <tal:open tal:condition="python:rg.get('status') not in ('opened','exhausted','expired')">
               <form method="post" style="display:inline;"
                     tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
@@ -656,6 +658,11 @@
                 </select>
               </div>
             </div>
+            <div class="form-field">
+              <label>Low-stock level</label>
+              <input type="text" name="low_stock_level" id="f-low"
+                     placeholder="e.g. 500 mL (blank: no alert)" />
+            </div>
           </div>
 
           <div class="form-row">
@@ -939,7 +946,7 @@
   function clearForm() {
     var ids = ['form-uid','f-name','f-category','f-supplier','f-cat','f-lot',
                'f-received','f-mfr-expiry','f-opened','f-expiry','f-location',
-               'f-qty','f-notes'];
+               'f-qty','f-low','f-notes'];
     ids.forEach(function(id) {
       var el = document.getElementById(id);
       if (el) el.value = '';
@@ -968,7 +975,16 @@
     set('f-expiry',     rec.expiry_date);
     set('f-location',   rec.storage_location);
     set('f-qty',        rec.quantity);
+    /* A unit the menu does not list ("cartridges") is added, not lost: an
+       unmatched value left the select empty and the save blanked the unit. */
+    var unitSel = document.getElementById('f-unit');
+    if (unitSel && rec.unit && !Array.prototype.some.call(unitSel.options,
+            function(o) { return o.value === rec.unit; })) {
+      var o = document.createElement('option'); o.value = o.textContent = rec.unit;
+      unitSel.appendChild(o);
+    }
     set('f-unit',       rec.unit || 'L');
+    set('f-low',        rec.low_stock_level);
     set('f-status',     rec.status || 'active');
     set('f-notes',      rec.notes);
   }

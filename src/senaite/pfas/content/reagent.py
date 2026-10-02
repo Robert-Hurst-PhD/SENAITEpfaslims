@@ -101,6 +101,13 @@ class IReagent(model.Schema):
         title=_(u"Unit"),
         required=False,
     )
+    # Bench phase 3 (DECISIONS 2026-10-02 DB3): the Bench lists the lot as
+    # low once what is left (received less every recorded use) reaches this.
+    low_stock_level = schema.TextLine(
+        title=_(u"Low-stock level"),
+        description=_(u"An amount, e.g. 500 mL; a bare number is in the stock unit."),
+        required=False,
+    )
     scan_count = schema.Int(
         title=_(u"Scan Count"),
         default=0,

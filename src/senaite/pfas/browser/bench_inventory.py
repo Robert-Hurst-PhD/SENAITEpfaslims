@@ -12,7 +12,10 @@ role (DECISIONS 2026-10-02 "Bench phase 2").
 item = {"uid", "kind" ("reagent" | "prepared_standard"), "kind_label", "name",
         "lot_number", "expiry", "status", "category", "received", "supplier",
         "cat_number", "barcode", "is_archived", "quantity_value",
-        "low_stock_level", "quantity_unit"}
+        "low_stock_level", "quantity_unit", "remaining_text"}
+
+quantity_value is what is LEFT (received less every recorded use,
+inventory_ledger), in quantity_unit; low_stock_level is in that unit.
 
 `uid` is the object id inside its own folder, so a lot is named by
 (kind, uid). Expiry is the effective one each folder already computes
@@ -33,14 +36,36 @@ REAGENT, PREPARED = u"reagent", u"prepared_standard"
 KIND_LABELS = {REAGENT: u"Reagent", PREPARED: u"Prepared standard"}
 
 
+def _stock(received_text, unit, low_text, uses):
+    """quantity_value / quantity_unit = what is left (inventory_ledger.
+    remaining); low_stock_level converted to that unit; remaining_text for
+    display. All None/"" when the received amount is not a number + unit."""
+    from senaite.pfas.inventory_ledger import convert, parse_amount, remaining
+    left = remaining(received_text, unit, uses)
+    if left is None:
+        return {"quantity_value": None, "quantity_unit": unit or u"",
+                "low_stock_level": None, "remaining_text": u""}
+    low = parse_amount(low_text, left["unit"]) if low_text else None
+    low_v = convert(low[0], low[1], left["unit"]) if low else None
+    return {"quantity_value": left["value"], "quantity_unit": left["unit"],
+            "low_stock_level": low_v,
+            "remaining_text": u"{0:g} {1} left".format(left["value"], left["unit"])}
+
+
 def inventory_items(portal):
     items = []
+    try:
+        from senaite.pfas.inventory_ledger import uses_for_items
+        uses = uses_for_items()
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("inventory usage ledger unavailable: %s", exc)
+        uses = {}
     try:
         from senaite.pfas.browser.reagents import (
             _list_reagents, _effective_expiry, get_expiry_defaults)
         defaults = get_expiry_defaults(portal)
         for r in _list_reagents(portal, show_archived=True):
-            items.append({
+            item = {
                 "uid": r.get("uid") or u"", "kind": REAGENT,
                 "kind_label": KIND_LABELS[REAGENT],
                 "name": r.get("name") or u"", "lot_number": r.get("lot_number") or u"",
@@ -50,16 +75,16 @@ def inventory_items(portal):
                 "supplier": r.get("supplier") or u"", "cat_number": r.get("cat_number") or u"",
                 "barcode": r.get("barcode") or u"",
                 "is_archived": bool(r.get("is_archived")),
-                "quantity_value": r.get("quantity_value"),
-                "low_stock_level": r.get("low_stock_level"),
-                "quantity_unit": r.get("unit") or u"",
-            })
+            }
+            item.update(_stock(r.get("quantity"), r.get("unit"), r.get("low_stock_level"),
+                               uses.get((REAGENT, r.get("uid") or u""))))
+            items.append(item)
     except Exception as exc:                                # noqa: BLE001
         logger.warning("inventory (reagents): %s", exc)
     try:
         from senaite.pfas.browser.prepared_standards import _list
         for s in _list(portal):
-            items.append({
+            item = {
                 "uid": s.get("uid") or u"", "kind": PREPARED,
                 "kind_label": KIND_LABELS[PREPARED],
                 "name": s.get("title") or u"", "lot_number": s.get("lot_number") or u"",
@@ -68,8 +93,11 @@ def inventory_items(portal):
                 "received": s.get("prepared_date") or u"",
                 "supplier": u"In-house", "cat_number": u"", "barcode": u"",
                 "is_archived": False,
-                "quantity_value": None, "low_stock_level": None, "quantity_unit": u"",
-            })
+            }
+            # a prepared standard's received amount is the volume prepared
+            item.update(_stock(s.get("volume_prepared"), u"", u"",
+                               uses.get((PREPARED, s.get("uid") or u""))))
+            items.append(item)
     except Exception as exc:                                # noqa: BLE001
         logger.warning("inventory (prepared standards): %s", exc)
     return items

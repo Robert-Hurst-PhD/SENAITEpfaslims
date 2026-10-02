@@ -312,7 +312,8 @@ class PFASExtractionGuideView(BrowserView):
         slim = [{"key": key(i), "kind": i["kind"], "kind_label": i["kind_label"],
                  "uid": i["uid"], "name": i["name"], "lot": i["lot_number"],
                  "expiry": i["expiry"], "status": i["status"], "barcode": i["barcode"],
-                 "cat_number": i["cat_number"]}
+                 "cat_number": i["cat_number"], "left": i.get("remaining_text") or u"",
+                 "unit": i.get("quantity_unit") or u""}
                 for i in sorted(lots, key=lambda i: (i["name"].lower(), i["lot_number"]))]
         return json.dumps({"lots": slim, "roles": roles,
                            "role_order": list(stage.get("reagent_roles", [])),
@@ -465,6 +466,19 @@ class PFASExtractionGuideView(BrowserView):
         sess["current_stage"] = remaining[0] if remaining else current
 
         _save_session(b, sess)
+        # Phase 3: the inventory learns where each lot went and how much
+        # (inventory_ledger; completing the stage again replaces its rows).
+        try:
+            from senaite.pfas import inventory_ledger
+            from senaite.pfas.browser.bench_inventory import item_index
+            units = dict((k, v.get("quantity_unit") or u"")
+                         for k, v in item_index(self._portal()).items())
+            inventory_ledger.record_stage(
+                None, b.UID(), b.getId(), stage_order, stage_def.get("name") or u"",
+                reagents, analyst, stage_data["completed_at"], stock_units=units)
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("usage ledger not written for %s stage %s: %s",
+                         b.getId(), stage_order, exc)
         url = "{0}?batch_uid={1}&ok=Stage+completed".format(self._self_url(), b.UID())
         return self._redirect(url)
 

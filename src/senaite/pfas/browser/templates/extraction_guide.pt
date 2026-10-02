@@ -519,6 +519,7 @@
 
   function lotLabel(l) {
     return l.name + ' \u00b7 lot ' + l.lot + (l.expiry ? ' \u00b7 exp ' + l.expiry : '') +
+           (l.left ? ' \u00b7 ' + l.left : '') +
            (l.kind === 'prepared_standard' ? ' \u00b7 prepared' : '');
   }
 
@@ -557,7 +558,8 @@
         '\u003cbutton type="button" class="btn btn-scan-sm" title="Scan the label" onclick="scanReagentLot(' + i + ')">&#128247;\u003c/button>' +
         '\u003cbutton type="button" class="btn-sm btn-secondary" title="A lot that is not in the inventory yet" onclick="openReceive(' + i + ')">New lot\u003c/button>' +
         (ec ? '\u003cspan class="' + ec + '">' + (ec === 'exp-expired' ? 'EXPIRED' : 'Expires ' + esc(r.expiry)) + '\u003c/span>' : '') +
-        '\u003cinput class="reagent-qty-field" type="text" placeholder="Qty used"' +
+        '\u003cinput class="reagent-qty-field" type="text" title="Amount used, e.g. 5 mL"' +
+               ' placeholder="Qty used' + ((LOT_BY_KEY[r.key] || {}).unit ? ' (' + esc(LOT_BY_KEY[r.key].unit) + ')' : '') + '"' +
                ' value="' + esc(r.qty_used) + '"' +
                ' oninput="reagentData[' + i + '].qty_used=this.value;syncReagents()"/>' +
         (r.kind === 'reagent' ?

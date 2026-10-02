@@ -787,6 +787,12 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
           <span class="pfas-si-icon"><svg><use href="#ico-prep-standards"/></svg></span>
           <span class="pfas-si-label">Prepared Standards</span>
         </a>
+        <a class="pfas-si" title="Where each lot was used; recall search by lot number"
+           tal:attributes="href string:${purl}/@@pfas-lot-usage;
+                           class python:'pfas-si si-active' if '@@pfas-lot-usage' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-reagents"/></svg></span>
+          <span class="pfas-si-label">Lot Usage &amp; Recall</span>
+        </a>
         <!-- Manager only: prep_logbooks.py returns 403 to everyone else, so
              showing this to bench staff is a guaranteed dead end. Same
              reasoning as Logbook Setup below. -->

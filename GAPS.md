@@ -6965,3 +6965,42 @@ consumables by lot) and DB4 (warn + deviation note).
 stage asks for a note today (a lab action); usage ledger and count-down (phase 3, DB3);
 sample table in the weighing stage (phase 4); inventory categories editable by
 the lab.
+
+
+## 88. Bench phase 3: the inventory learns where each lot went (2026-10-02)
+
+Decision DB3 (DECISIONS 2026-10-02): numeric quantities counted down by each
+use, with a low-stock alert on the Bench.
+
+- **Usage ledger** (inventory_ledger.py; SQLite /data/qc/inventory_usage.db,
+  cross-object time series per CLAUDE.md §7): one row per lot per extraction
+  stage -- lot, item, batch, stage, role, amount as typed and parsed, who,
+  when. Written when a stage completes (never when DB4 refuses it); completing
+  a stage again REPLACES its rows, so nothing is counted twice.
+- **What is left is derived:** received amount (reagent quantity + unit; a
+  prepared standard's volume prepared, "10 x 1 mL" = 10 mL) less every use
+  converted to the stock unit (uL/mL/L, mg/g/kg, any count word = one item;
+  volume never converts to mass). A bare "2" is read in the lot's stock unit;
+  uses that cannot be converted are counted and shown, not guessed. Free text
+  such as "1 case" is shown as it is and never counted down.
+- **Low stock:** reagents gained a "Low-stock level" field (e.g. 500 mL; a bare
+  number is in the stock unit); the Bench lists a lot as low once what is
+  left reaches it. The picker shows what is left ("98 g left") and the stock
+  unit in the quantity box.
+- **Where used / recall** (@@pfas-lot-usage): one lot's every batch and stage
+  ("Where used" button on each reagent and prepared standard), or every use of
+  any lot whose number contains the text; sidebar Bench > Lot Usage & Recall.
+- **Found on the way:** (1) editing a reagent whose unit the menu does not list
+  ("96 cartridges") blanked the unit on save -- the unit is now added to the
+  menu; (2) the Bench's "Prepared standards" button (§86) linked to a view that
+  does not exist (@@pfas-prepared-standards); test_view_links now checks every
+  @@pfas-* link in templates, scripts and modules against the ZCML (the
+  original bug reinstated is caught).
+- **Tests:** test_inventory_ledger (5; 9 mutants killed), test_view_links (1;
+  mutant killed). Live on B-002: 2 g used at stage 1 -> ledger row, the picker
+  went from 100 g to 98 g left, where-used and recall pages list it; ledger
+  rows, session and remembered picks removed afterwards.
+
+**Still open:** low-stock level for prepared standards (no field yet); the
+inventory list itself does not show what is left yet (the picker, Bench and
+where-used page do); phase 4 (the weighing stage carries the sample table).

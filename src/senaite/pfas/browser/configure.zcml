@@ -300,6 +300,14 @@
       permission="senaite.core.permissions.ManageBika"
       />
 
+  <!-- Lot usage + recall search (bench phase 3, inventory_ledger) -->
+  <browser:page
+      name="pfas-lot-usage"
+      for="*"
+      class=".lot_usage.PFASLotUsageView"
+      permission="zope2.View"
+      />
+
   <!-- PFAS Analyst Batch Status — five-stage tracker driven from WS workflow -->
   <browser:page
       name="pfas-sample-status"

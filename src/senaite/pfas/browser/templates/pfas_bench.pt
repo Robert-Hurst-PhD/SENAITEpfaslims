@@ -51,7 +51,7 @@
             tal:condition="extra">
           <span tal:replace="extra">3</span> more not shown.
           <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-reagents">Reagent inventory</a>
-          <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prepared-standards">Prepared standards</a></li>
+          <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-standards">Prepared standards</a></li>
         <tal:b condition="python:bal is None">
           <li class="bench-warn"><strong>No balances registered</strong> in Facility QC, so
             today&#8217;s balance verification cannot be shown.</li>

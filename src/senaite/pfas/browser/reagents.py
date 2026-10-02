@@ -318,6 +318,7 @@ def _obj_to_dict(obj):
         "barcode":            obj.barcode or u"",
         "quantity":           obj.quantity or u"",
         "unit":               obj.unit or u"",
+        "low_stock_level":    getattr(obj, "low_stock_level", None) or u"",
         "scan_count":         obj.scan_count or 0,
         "status":             obj.status or STATUS_ACTIVE,
         "notes":              obj.notes or u"",
@@ -357,6 +358,7 @@ def _populate_obj(obj, data):
     obj.barcode = data.get("barcode") or u""
     obj.quantity = data.get("quantity") or u""
     obj.unit = data.get("unit") or u""
+    obj.low_stock_level = data.get("low_stock_level") or u""
     obj.notes = data.get("notes") or u""
     obj.scan_count = int(data.get("scan_count") or 0)
     obj.status = data.get("status") or STATUS_ACTIVE
@@ -877,6 +879,7 @@ class PFASReagentsView(GateMixin, BrowserView):
             "storage_location":    f.get("storage_location", "").strip(),
             "quantity":            f.get("quantity", "").strip(),
             "unit":                f.get("unit", "").strip(),
+            "low_stock_level":     f.get("low_stock_level", "").strip(),
             "notes":               f.get("notes", "").strip(),
             "status":              f.get("status", STATUS_ACTIVE).strip(),
         }
