@@ -15,6 +15,8 @@ is, and which inventory items need attention. Pure; Python 2.7 and 3.
     resolve_rows(index, rows)                 -> rows as the inventory has them
     is_standard_row(row)                      -> FM-ENV-252 standards[] or reagents[]
     is_consumable_row(row)                    -> FM-ENV-252 extraction_materials[]
+    equipment_family(label)                   -> "balance" | "pipette" | ""
+    units_for(label, units)                   -> registered units of that family
     stage_warnings(rows, balances, today)     -> what a deviation note must
                                                  explain before the stage is
                                                  complete (DB4)
@@ -277,3 +279,24 @@ def stage_warnings(rows, balances, today):
         elif not b.get("verified"):
             out.append(u"%s (%s): not verified today" % (label, b["unit_name"]))
     return out
+
+
+def equipment_family(label):
+    """The Facility QC unit family a stage equipment label names: a balance
+    (verified daily) or a pipette (calibrated on a period); "" for equipment
+    Facility QC does not register (vortex, centrifuge, manifold...)."""
+    words = _tokens(label)
+    if any(w.startswith(u"balance") for w in words):
+        return u"balance"
+    if any(w.startswith(u"pipet") for w in words):
+        return u"pipette"
+    return u""
+
+
+def units_for(label, units):
+    """Registered, active units of the family the label names."""
+    fam = equipment_family(label)
+    if not fam:
+        return []
+    return [u for u in units or []
+            if (u.get("unit_type") or u"").startswith(fam) and u.get("active", 1)]

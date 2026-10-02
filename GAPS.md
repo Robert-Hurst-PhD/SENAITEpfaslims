@@ -6928,9 +6928,19 @@ consumables by lot) and DB4 (warn + deviation note).
   server refusal with draft, completion with note, consumables card at FDA
   stage 2; test sessions and remembered picks removed afterwards.
 
-**Still open:** equipment chosen from facility units with today's verification
-shown (no balance is registered in Facility QC, so every weighing stage asks
-for a note today); scan resolves GS1 (R9) and the R11 library upgrades; inline
+- **Equipment from Facility QC (2d):** a stage balance or pipette is chosen
+  from the registered units with today's status (balance verified today;
+  pipette calibration in force), "Not listed" falls back to a typed serial;
+  other equipment keeps a serial field. Stored shape unchanged (label ->
+  serial), so the DB4 balance check and the certificate's unit resolution
+  read it as before. **Found:** the Bench landing's balance status filtered
+  unit_type == "balance", but balances are stored as balance_analytical /
+  balance_prep, so a registered balance would never have shown. Live: the
+  real state (no balance registered) shows the hint; injected units in the
+  page exercised pick, flag and fallback without touching lab data.
+
+**Still open:** no balance is registered in Facility QC, so every weighing
+stage asks for a note today (a lab action); scan resolves GS1 (R9) and the R11 library upgrades; inline
 receive for an unknown lot (DB2); usage ledger and count-down (phase 3, DB3);
 sample table in the weighing stage (phase 4); inventory categories editable by
 the lab.

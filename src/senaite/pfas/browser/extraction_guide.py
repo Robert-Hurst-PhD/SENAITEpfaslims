@@ -512,6 +512,40 @@ class PFASExtractionGuideView(BrowserView):
                         "verified": verified})
         return out
 
+    def stage_equipment_json(self):
+        """Per stage equipment label: the registered Facility QC units it can
+        be (balances, pipettes) with today's status, so the chemist picks the
+        unit instead of typing its serial. Other equipment keeps a serial
+        field. The stored shape (label -> serial) is unchanged."""
+        from datetime import date
+        from senaite.pfas.bench_queue import equipment_family, units_for
+        try:
+            from senaite.pfas import facility_qc as fq
+            units = fq.list_units()
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("stage equipment: %s", exc)
+            fq, units = None, []
+        today = date.today().strftime("%Y-%m-%d")
+        out = []
+        for label in self.current_stage().get("equipment") or []:
+            fam = equipment_family(label)
+            opts = []
+            for u in units_for(label, units):
+                ok, note = True, u""
+                try:
+                    if fam == u"balance":
+                        ok = bool(fq.get_balance_verification_for_date(u["id"], today))
+                        note = u"verified today" if ok else u"NOT verified today"
+                    elif fam == u"pipette":
+                        ok = bool(fq.get_pipette_calibration_in_force(u["id"], today))
+                        note = u"calibration in force" if ok else u"calibration NOT in force"
+                except Exception as exc:                    # noqa: BLE001
+                    logger.warning("unit status %s: %s", u.get("id"), exc)
+                opts.append({"serial": u.get("serial_number") or u"",
+                             "name": u.get("name") or u"", "ok": ok, "note": note})
+            out.append({"label": label, "family": fam, "units": opts})
+        return json.dumps(out)
+
     def stage_draft(self):
         """The current stage's kept entries after a completion was refused
         for want of a deviation note, or {}."""

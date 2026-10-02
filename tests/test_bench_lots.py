@@ -175,6 +175,22 @@ def test_the_record_says_what_needed_a_note():
         "No water lot on the bench [needed a note: Water: no lot recorded]"
 
 
+def test_equipment_family_and_units():
+    assert bq.equipment_family("Analytical Balance") == "balance"
+    assert bq.equipment_family("Pipette (100-1000 \u03bcL)") == "pipette"
+    assert bq.equipment_family("Pipettor 10 uL") == "pipette"
+    for other in ("Vortex Mixer", "Centrifuge", "SPE Manifold", "Turbovap / N\u2082 Evaporator"):
+        assert bq.equipment_family(other) == "", other
+    units = [{"unit_type": "balance_analytical", "name": "XPR205", "active": 1},
+             {"unit_type": "balance_prep", "name": "PB3002", "active": 1},
+             {"unit_type": "balance_analytical", "name": "Retired", "active": 0},
+             {"unit_type": "pipette", "name": "P1000", "active": 1},
+             {"unit_type": "refrigerator", "name": "Fridge 1", "active": 1}]
+    assert [u["name"] for u in bq.units_for("Analytical Balance", units)] == ["XPR205", "PB3002"]
+    assert [u["name"] for u in bq.units_for("Pipette", units)] == ["P1000"]
+    assert bq.units_for("Vortex Mixer", units) == []
+
+
 def _src(*parts):
     with io.open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
         return fh.read()
@@ -199,7 +215,10 @@ def test_the_guide_reads_and_resolves_through_the_inventory():
     assert '"drafts"' in refuse and "_save_session(" in refuse and "reagents" in refuse
     assert '"warnings":            warnings' in stage
     assert "DRAFT.reagents" in t and "stageWarnings()" in t
+    assert "view/stage_equipment_json" in t and "function pickUnit(" in t
     h = _src("src", "senaite", "pfas", "browser", "workspace_home.py")
+    assert '.startswith("balance")' in h and '== "balance"' not in h, \
+        "unit types are balance_analytical / balance_prep"
     assert "inventory_items(" in h, "the Bench alerts and the picker read one inventory"
 
 

@@ -162,7 +162,10 @@ class PFASBenchHomeView(BrowserView):
         from datetime import date
         try:
             from senaite.pfas import facility_qc as fq
-            units = [u for u in fq.list_units() if (u.get("unit_type") or "") == "balance"]
+            # balance_analytical / balance_prep (facility_qc.UNIT_TYPES): an
+            # equality test against "balance" never matched a registered unit
+            units = [u for u in fq.list_units()
+                     if (u.get("unit_type") or "").startswith("balance")]
         except Exception as exc:                            # noqa: BLE001
             logger.warning("bench balances: %s", exc)
             return None

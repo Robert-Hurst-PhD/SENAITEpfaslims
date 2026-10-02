@@ -96,8 +96,9 @@
     .eq-grid { display:flex; flex-wrap:wrap; gap:12px; }
     .eq-field { display:flex; flex-direction:column; flex:1 1 160px; }
     .eq-field label { font-size:var(--fs-sm); font-weight:600; margin-bottom:3px; color:var(--s-dark); }
-    .eq-field input { padding:7px 10px; font-size:var(--fs-base);
-                      border:1px solid var(--s-input-border); border-radius:6px; }
+    .eq-field input, .eq-field select { padding:7px 10px; font-size:var(--fs-base);
+                      border:1px solid var(--s-input-border); border-radius:6px; margin-bottom:4px; }
+    .eq-hint { font-size:var(--fs-xs); color:var(--s-muted, #6c757d); }
 
     /* ── Solutions prepared ──────────────────────────────────── */
     .sol-card { background:#f0fff4; border:1px solid #c3e6cb; border-radius:8px;
@@ -176,6 +177,7 @@
     var SESSION     = <tal:d tal:replace="structure view/session_json" />;
     var STAGE_LOTS  = <tal:d tal:replace="structure view/stage_lots_json" />;
     var DRAFT       = <tal:d tal:replace="structure view/stage_draft_json" />;
+    var EQUIPMENT   = <tal:d tal:replace="structure view/stage_equipment_json" />;
     var PEDIGREE    = <tal:d tal:replace="structure view/pedigree_json" />;
     var PORTAL_URL  = "<tal:p tal:replace="view/portal_url" />";
     var BATCH_UID   = "<tal:b tal:replace="view/batch_uid" />";
@@ -353,7 +355,7 @@
           <!-- ── Equipment S/Ns ── -->
           <tal:eqs tal:condition="python:stage.get('equipment')">
           <div class="eg-card">
-            <h3>Equipment Serial / Verification Numbers</h3>
+            <h3>Equipment used</h3>
             <div class="eq-grid" id="eq-grid"></div>
           </div>
           </tal:eqs>
@@ -610,22 +612,51 @@
      ═══════════════════════════════════════════════════════════════════ */
   var equipmentSNs = (DRAFT && DRAFT.equipment_sns) || {};
 
+  /* A balance or pipette is chosen from the units registered in Facility QC,
+     with today's verification / calibration shown; anything else (or a unit
+     not registered yet) keeps a serial number field. */
   function renderEquipment() {
     var el = document.getElementById('eq-grid');
     if (!el) return;
     el.innerHTML = '';
-    var equipList = <tal:eq tal:replace="structure python:__import__('json').dumps(view.current_stage().get('equipment', []))" />;
-    equipList.forEach(function(eq) {
-      equipmentSNs[eq] = equipmentSNs[eq] || '';
+    (EQUIPMENT || []).forEach(function(eq, i) {
+      var label = eq.label, cur = equipmentSNs[label] || '';
+      equipmentSNs[label] = cur;
+      var known = eq.units.some(function(u) { return u.serial === cur; });
       var div = document.createElement('div');
       div.className = 'eq-field';
-      div.innerHTML =
-        '\u003clabel>'+esc(eq)+' S/N\u003c/label>'+
-        '\u003cinput type="text" value="'+esc(equipmentSNs[eq])+'"'+
-               ' oninput="equipmentSNs[\''+eq.replace(/'/g,"\\'")+'\']=this.value;syncEquipment()"/>';
+      var html = '\u003clabel>' + esc(label) + '\u003c/label>';
+      if (eq.units.length) {
+        html += '\u003cselect onchange="pickUnit(' + i + ',this.value)">' +
+          '\u003coption value="">\u2014 choose the ' + esc(eq.family) + ' \u2014\u003c/option>' +
+          eq.units.map(function(u) {
+            return '\u003coption value="' + esc(u.serial) + '"' + (u.serial === cur ? ' selected' : '') + '>' +
+                   esc(u.name + ' \u00b7 S/N ' + u.serial + ' \u00b7 ' + u.note) + '\u003c/option>';
+          }).join('') +
+          '\u003coption value="__other__"' + (cur && !known ? ' selected' : '') + '>Not listed (type the serial)\u003c/option>' +
+          '\u003c/select>';
+        if (cur && known) {
+          var u = eq.units.filter(function(x) { return x.serial === cur; })[0];
+          if (!u.ok) html += '\u003cspan class="exp-expired">' + esc(u.note) + '\u003c/span>';
+        }
+      } else if (eq.family) {
+        html += '\u003cspan class="eq-hint">No ' + esc(eq.family) + ' registered in Facility QC\u003c/span>';
+      }
+      if (!eq.units.length || (cur && !known) || eq.other) {
+        html += '\u003cinput type="text" placeholder="Serial number" value="' + esc(known ? '' : cur) + '"' +
+                ' oninput="equipmentSNs[EQUIPMENT[' + i + '].label]=this.value;syncEquipment()"/>';
+      }
+      div.innerHTML = html;
       el.appendChild(div);
     });
     syncEquipment();
+  }
+
+  function pickUnit(i, serial) {
+    var eq = EQUIPMENT[i];
+    eq.other = (serial === '__other__');
+    equipmentSNs[eq.label] = eq.other ? '' : serial;
+    renderEquipment();
   }
 
   function syncEquipment() {
