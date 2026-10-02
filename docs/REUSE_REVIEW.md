@@ -30,6 +30,11 @@ with the reason.
   session data line by line.
 
 ### U2. Calibration curve maths on the Calibrations page (high; correctness)
+- **Correction after measuring (2026-10-02):** on the FDA and EPA 1633A ladders
+  the old solver and bisection were accurate (~1e-13 against numpy); the
+  numerical-fragility risk below was overstated. The real defect was R²: up
+  to 0.076 away from the weighted R² (a forced-origin 1/x² curve), and the
+  old code ignored "force through origin" for quadratic fits.
 - Hand-written JavaScript: weighted linear fit, quadratic fit by **Cramer's
   rule** (numerically fragile for ranges like 0.039–20 ng/mL), back-calculation
   by **60-step bisection** (a quadratic has a closed-form inverse), and
@@ -108,6 +113,12 @@ with the reason.
 ## Maintenance notes (no replacement, just upkeep)
 - tesseract.js is pinned at v2 (current v5); @zxing/library 0.19 is superseded
   by @zxing/browser. Upgrade when the reagent scanner is next touched.
+
+## Status
+- 2026-10-02: U1, U2, U7 done (GAPS §82). D-U2 decided: fit, weighting and
+  origin are selectable per curve and R² follows the chosen weighting. D-U7
+  decided: Levey-Jennings by default, Westgard as a view, warnings dismissible
+  and points removable (DECISIONS 2026-10-02).
 
 ## Decisions needed
 - **D-U0:** which of U1–U8 to do, and in what order. Recommended: U1, U2,

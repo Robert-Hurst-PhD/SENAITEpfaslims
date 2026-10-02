@@ -36,12 +36,8 @@ setup(
         "senaite.storage",
         # QR code generation for printed sample receipts (Python 2.7 compatible)
         "qrcode==6.1",
-        # ReportLab PDF generation for extraction logbooks.
-        # 3.0-3.3.x is the last series with full Python 2.7 support.
-        # Must be installed separately (requires gcc + network for T1 fonts);
-        # not declared here so it doesn't break buildout in minimal containers.
-        # The @@pfas-extraction-pdf view handles ImportError gracefully.
-        # "reportlab>=3.0,<3.4",
+        # PDFs (extraction logbook, settings report) use WeasyPrint, which
+        # senaite.impress already brings in; no ReportLab (REUSE_REVIEW U1).
         # senaite.queue requires senaite.lims<2.0.0 and is incompatible with 2.x
         # senaite.patient is optional; omit unless clinical matrices are needed
         # pandas/pypdf/requests/pyyaml are worker-container deps only;

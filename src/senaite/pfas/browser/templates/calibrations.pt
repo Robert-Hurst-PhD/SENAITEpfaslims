@@ -259,83 +259,31 @@
   </tal:rjson>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/ml-matrix-6.12.1.umd.js"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=1"></script>
   <script>
   //<![CDATA[
   // ── Weighted regression helpers ───────────────────────────────────────────
-  function wt(x, wtype) {
-    if (wtype === '1/x')  return x > 0 ? 1/x     : 1;
-    if (wtype === '1/x2') return x > 0 ? 1/(x*x) : 1;
-    return 1;
-  }
-
-  function fitLinear(pts, wtype, forceOrigin) {
-    if (!pts || pts.length === 0) return function(x){ return x; };
-    var xs=[], ys=[], ws=[];
-    pts.forEach(function(p){ xs.push(p.x); ys.push(p.y); ws.push(wt(p.x, wtype)); });
-    if (forceOrigin) {
-      var num=0, den=0;
-      for (var i=0; i<xs.length; i++) { num+=ws[i]*xs[i]*ys[i]; den+=ws[i]*xs[i]*xs[i]; }
-      var slope = den > 0 ? num/den : 0;
-      return function(x){ return slope*x; };
-    }
-    var sw=0, swx=0, swy=0, swxx=0, swxy=0;
-    for (var j=0; j<xs.length; j++) {
-      sw+=ws[j]; swx+=ws[j]*xs[j]; swy+=ws[j]*ys[j];
-      swxx+=ws[j]*xs[j]*xs[j]; swxy+=ws[j]*xs[j]*ys[j];
-    }
-    var denom = sw*swxx - swx*swx;
-    if (Math.abs(denom) < 1e-30) return function(x){ return x; };
-    var b = (sw*swxy - swx*swy)/denom;
-    var a = (swy - b*swx)/sw;
-    return function(x){ return a + b*x; };
-  }
-
-  function fitQuad(pts, wtype) {
-    if (!pts || pts.length < 3) return fitLinear(pts, wtype, false);
-    var n=pts.length, s=[0,0,0,0,0], t=[0,0,0];
-    pts.forEach(function(p){
-      var w=wt(p.x,wtype), x=p.x, y=p.y;
-      s[0]+=w; s[1]+=w*x; s[2]+=w*x*x; s[3]+=w*x*x*x; s[4]+=w*x*x*x*x;
-      t[0]+=w*y; t[1]+=w*x*y; t[2]+=w*x*x*y;
-    });
-    var A=[[s[0],s[1],s[2]],[s[1],s[2],s[3]],[s[2],s[3],s[4]]];
-    var det=A[0][0]*(A[1][1]*A[2][2]-A[1][2]*A[2][1])
-           -A[0][1]*(A[1][0]*A[2][2]-A[1][2]*A[2][0])
-           +A[0][2]*(A[1][0]*A[2][1]-A[1][1]*A[2][0]);
-    if (Math.abs(det) < 1e-30) return fitLinear(pts, wtype, false);
-    var cr=function(col){
-      var M=A.map(function(r){ return r.slice(); });
-      for(var i=0;i<3;i++) M[i][col]=t[i];
-      return (M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1])
-             -M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0])
-             +M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]))/det;
-    };
-    var c=cr(0), b=cr(1), a=cr(2);
-    return function(x){ return a*x*x+b*x+c; };
-  }
-
-  function fitAvgRF(pts) {
-    var rfs=pts.filter(function(p){return p.x>0;}).map(function(p){return p.y/p.x;});
-    var rf=rfs.length>0 ? rfs.reduce(function(a,b){return a+b;},0)/rfs.length : 1;
-    return function(x){ return rf*x; };
-  }
-
+  /* Curve maths: static/calibration_fit.js (least squares by ml-matrix QR,
+     closed-form inverse, R² with the fit's own weights; REUSE_REVIEW U2).
+     computeFn returns a callable curve carrying its model, so the plotting
+     code below draws it as before. */
   function computeFn(pts, fitType, wtype, origin) {
-    if (!pts || pts.length===0) return null;
-    var ft=(fitType||'Linear').toLowerCase().replace(' ','');
-    var force = origin==='force';
-    if (origin==='include') pts = [{x:0,y:0}].concat(pts);
-    if (ft==='quadratic')  return fitQuad(pts, wtype);
-    if (ft==='averagerf'||ft==='avg_rf') return fitAvgRF(pts);
-    return fitLinear(pts, wtype, force);
+    var m = PFASCalFit.fit(pts, {type: fitType, weight: wtype, origin: origin});
+    if (!m) return null;
+    var f = function (x) { return m.f(x); };
+    f.model = m;
+    return f;
   }
 
   function computeR2(pts, fn) {
-    if (!pts||pts.length<2||!fn) return null;
-    var ym=pts.reduce(function(s,p){return s+p.y;},0)/pts.length;
-    var ss_tot=pts.reduce(function(s,p){return s+(p.y-ym)*(p.y-ym);},0);
-    var ss_res=pts.reduce(function(s,p){return s+(p.y-fn(p.x))*(p.y-fn(p.x));},0);
-    return ss_tot>0 ? 1-ss_res/ss_tot : 1;
+    return fn ? PFASCalFit.r2(pts, fn.model) : null;
+  }
+
+  function backCalc(fn, y) {
+    if (!fn || y == null) return null;
+    var x = fn.model.inverse(y);
+    return (x != null && x >= 0) ? x : null;
   }
 
   // ── Chart colours — derived from site CSS tokens so they track the theme ───
@@ -371,11 +319,11 @@
     if (ft==='averagerf'||ft==='avg_rf') {
       return 'y = '+fn(1).toExponential(4)+' × x  (Avg RF)';
     }
+    var co = fn.model.coef;
     if (ft==='quadratic') {
-      var c0 = fn(0), c1 = (fn(1)-fn(-1))/2, c2 = (fn(1)+fn(-1)-2*fn(0))/2;
-      return 'y = '+c2.toExponential(3)+'x\u00B2'+_fmtCoeff(c1,false)+'x'+_fmtCoeff(c0,false);
+      return 'y = '+co.c2.toExponential(3)+'x\u00B2'+_fmtCoeff(co.c1,false)+'x'+_fmtCoeff(co.c0,false);
     }
-    var slope = fn(1)-fn(0), intercept = fn(0);
+    var slope = co.c1, intercept = co.c0;
     return 'y = '+slope.toExponential(4)+'x'+_fmtCoeff(intercept,false);
   }
 
@@ -909,10 +857,9 @@
     }).map(function(l){ return {x:l.expected, y:l.response_ratio}; });
     if (useResp) {
       var fn2 = computeFn(pts2.slice(), ft, wtp, ori);
-      var xMax2 = pts2.length > 0 ? Math.max.apply(null, pts2.map(function(p){return p.x;})) : 10;
       var updLvs = lvs.map(function(l) {
         if (l.response_ratio == null || l.expected == null || l.expected === 0) return l;
-        var xBack = backCalcBisect(fn2, l.response_ratio, xMax2);
+        var xBack = backCalc(fn2, l.response_ratio);
         var pctDev = xBack != null
           ? Math.round((xBack - l.expected) / l.expected * 10000) / 100
           : l.pct_deviation;
@@ -933,13 +880,12 @@
     });
     if (icvccvWithRR.length > 0 && useResp) {
       var fn3 = computeFn(pts2.slice(), ft, wtp, ori);
-      var xMax3 = pts2.length > 0 ? Math.max.apply(null, pts2.map(function(p){return p.x;})) : 10;
       var l3 = limFor(uid);
       var limMax3 = (l3.ICV.max == null && l3.CCV.max == null) ? null
                     : Math.max(l3.ICV.max || 0, l3.CCV.max || 0);
       var updQC = (cal.qc||[]).map(function(r) {
         if ((r.qc_type!=='ICV'&&r.qc_type!=='CCV') || r.response_ratio==null || !r.expected_value) return r;
-        var xBack = backCalcBisect(fn3, r.response_ratio, xMax3);
+        var xBack = backCalc(fn3, r.response_ratio);
         var pctDev = xBack != null
           ? Math.round((xBack - r.expected_value) / r.expected_value * 10000) / 100
           : r.pct_dev;
@@ -952,21 +898,6 @@
     } else {
       drawPlot3(uid, cal);
     }
-  }
-
-  // Numerical bisection to invert a monotonically increasing calibration curve fn(x)=y
-  function backCalcBisect(fn, y, xMax) {
-    if (!fn) return null;
-    var lo = 0, hi = xMax * 2;
-    // Extend upper bound if the curve hasn't reached y yet
-    for (var ext=0; ext<5 && fn(hi)<y; ext++) hi *= 3;
-    if (fn(lo) > y) return null;  // y is below fn(0) — out of range
-    for (var i=0; i<60; i++) {
-      var mid = (lo+hi)/2;
-      if (fn(mid) < y) lo = mid; else hi = mid;
-    }
-    var result = (lo+hi)/2;
-    return (result >= 0) ? result : null;
   }
 
   function saveOverride(calId, uid) {

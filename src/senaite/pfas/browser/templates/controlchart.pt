@@ -98,6 +98,9 @@
       .stat-box { min-width: 70px; padding: 6px 10px; }
       .stat-value { font-size: var(--fs-md); }
     }
+    .cc-act { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .cc-act input[type=text] { min-width: 160px; }
+    .cc-hint { color: var(--s-secondary); font-size: var(--fs-sm); margin: 0 0 8px; }
   </style>
   </tal:extras>
 </head>
@@ -173,6 +176,16 @@
                 tal:attributes="selected python:view.selected_chart_type_override()=='threshold'">
           Threshold
         </option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="view_mode">View</label>
+      <select id="view_mode" name="view_mode" onchange="this.form.submit()">
+        <option value="lj"
+                tal:attributes="selected python:view.selected_view_mode()=='lj'">Levey-Jennings</option>
+        <option value="westgard"
+                tal:attributes="selected python:view.selected_view_mode()=='westgard'">Westgard rules</option>
       </select>
     </div>
 
@@ -280,49 +293,95 @@
                  tal:content="python:'{:.3g}'.format(data['limits']['sd'])">0</div>
           </div>
 
-          <div tal:condition="python:data.get('has_rejects')" class="stat-box rej">
-            <div class="stat-label">Westgard</div>
-            <div class="stat-value">REJECT</div>
-          </div>
-          <div tal:condition="python:data.get('has_warnings') and not data.get('has_rejects')"
-               class="stat-box warn">
-            <div class="stat-label">Westgard</div>
-            <div class="stat-value">WARN</div>
-          </div>
-          <div tal:condition="python:not data.get('has_warnings') and not data.get('has_rejects')"
-               class="stat-box ok">
-            <div class="stat-label">Westgard</div>
-            <div class="stat-value">OK</div>
+          <div class="stat-box"
+               tal:define="n python:len(violations)"
+               tal:attributes="class python:'stat-box warn' if n else 'stat-box ok'">
+            <div class="stat-label">Warnings</div>
+            <div class="stat-value" tal:content="python:n or 'None'">0</div>
           </div>
         </div>
 
-        <tal:viols tal:condition="violations">
-          <div tal:define="has_rej python:any(v['severity']=='reject' for v in violations)"
-               tal:attributes="class python:'viol-card rej' if has_rej else 'viol-card warn'">
-            <h3 tal:condition="has_rej">Westgard Reject Violations</h3>
-            <h3 tal:condition="not:has_rej">Westgard Warnings</h3>
-            <table class="vt">
-              <thead>
-                <tr>
-                  <th>Rule</th><th>Description</th><th>Severity</th><th>Run(s)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tal:vrow tal:repeat="v violations">
-                  <tr>
-                    <td><strong tal:content="v/rule">1-3S</strong></td>
-                    <td tal:content="v/description">-</td>
-                    <td>
-                      <span tal:attributes="class python:'badge badge-rej' if v['severity']=='reject' else 'badge badge-warn'"
-                            tal:content="v/severity">reject</span>
-                    </td>
-                    <td tal:content="python:', '.join(str(x+1) for x in v['indices'])">1</td>
-                  </tr>
-                </tal:vrow>
-              </tbody>
-            </table>
-          </div>
-        </tal:viols>
+        <div class="alert alert-error" tal:condition="request/chart_error|nothing"
+             tal:content="request/chart_error">error</div>
+        <tal:review define="here_url python:request.get('ACTUAL_URL', '') + ('?' + request.get('QUERY_STRING') if request.get('QUERY_STRING') else '');
+                            can view/can_review;
+                            mode_label python:'Westgard rules' if data.get('view_mode') == 'westgard' else 'Levey-Jennings'">
+        <div class="viol-card warn" tal:condition="violations">
+          <h3>Warnings &#8212; <span tal:replace="mode_label">Levey-Jennings</span></h3>
+          <p class="cc-hint" tal:condition="can">Dismiss a warning, or remove the point from the
+            chart (it then leaves the mean and SD). Both need a reason and can be undone below.</p>
+          <table class="vt">
+            <thead><tr><th>Rule</th><th>Warning</th><th>Date</th><th>Batch</th><th>Value</th>
+              <th tal:condition="can">Action</th></tr></thead>
+            <tbody>
+              <tr tal:repeat="v violations">
+                <td><span tal:attributes="class python:'badge badge-rej' if v['severity']=='reject' else 'badge badge-warn'"
+                          tal:content="v/rule">2SD</span></td>
+                <td tal:content="v/message">Beyond 2 SD</td>
+                <td tal:content="v/date">2026-10-01</td>
+                <td tal:content="v/batch_id">B-1</td>
+                <td tal:content="v/value">1.0</td>
+                <td tal:condition="can">
+                  <form method="POST" class="cc-act" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
+                    <input type="hidden" name="came_from" tal:attributes="value here_url" />
+                    <input type="hidden" name="result_id" tal:attributes="value v/point_id" />
+                    <input type="hidden" name="rule" tal:attributes="value v/rule" />
+                    <input type="text" name="reason" required="required" placeholder="Reason" />
+                    <button type="submit" name="chart_action" value="dismiss" class="btn-sm btn-secondary">Dismiss</button>
+                    <button type="submit" name="chart_action" value="remove" class="btn-sm btn-secondary">Remove point</button>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="viol-card" tal:condition="data/dismissed|nothing">
+          <h3>Dismissed warnings</h3>
+          <table class="vt">
+            <thead><tr><th>Rule</th><th>Date</th><th>Batch</th><th>Value</th><th>Reason</th><th>By</th><th>When</th>
+              <th tal:condition="can"></th></tr></thead>
+            <tbody>
+              <tr tal:repeat="v data/dismissed">
+                <td tal:content="v/rule">2SD</td><td tal:content="v/date">d</td>
+                <td tal:content="v/batch_id">b</td><td tal:content="v/value">v</td>
+                <td tal:content="v/note/reason">reason</td><td tal:content="v/note/by_user">who</td>
+                <td tal:content="v/note/at">when</td>
+                <td tal:condition="can">
+                  <form method="POST" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
+                    <input type="hidden" name="came_from" tal:attributes="value here_url" />
+                    <input type="hidden" name="result_id" tal:attributes="value v/point_id" />
+                    <input type="hidden" name="rule" tal:attributes="value v/rule" />
+                    <button type="submit" name="chart_action" value="undismiss" class="btn-sm btn-secondary">Undo</button>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="viol-card" tal:condition="data/removed|nothing">
+          <h3>Removed points (not on the chart, not in the mean / SD)</h3>
+          <table class="vt">
+            <thead><tr><th>Date</th><th>Batch</th><th>Value</th><th>Reason</th><th>By</th><th>When</th>
+              <th tal:condition="can"></th></tr></thead>
+            <tbody>
+              <tr tal:repeat="p data/removed">
+                <td tal:content="p/date">d</td><td tal:content="p/batch_id">b</td>
+                <td tal:content="p/value">v</td><td tal:content="p/note/reason">reason</td>
+                <td tal:content="p/note/by_user">who</td><td tal:content="p/note/at">when</td>
+                <td tal:condition="can">
+                  <form method="POST" tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
+                    <input type="hidden" name="came_from" tal:attributes="value here_url" />
+                    <input type="hidden" name="result_id" tal:attributes="value p/id" />
+                    <button type="submit" name="chart_action" value="restore" class="btn-sm btn-secondary">Restore</button>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        </tal:review>
 
         <div class="chart-card">
           <tal:hasdata tal:condition="view/has_data">

@@ -78,6 +78,8 @@ class PFASControlChartView(BrowserView):
     def __call__(self):
         flatten_form(self.request)
         req = self.request
+        if req.get("REQUEST_METHOD", "GET") == "POST":
+            return self._handle_post()
         fmt = req.get("format", "").lower()
         accept = req.getHeader("Accept", "")
         if fmt == "json" or "application/json" in accept:
@@ -262,7 +264,62 @@ class PFASControlChartView(BrowserView):
             return "{}"
 
     def westgard_violations(self):
+        """The warnings still standing (the active view's, not dismissed)."""
         return self._cached_chart_dict().get("westgard", [])
+
+    def selected_view_mode(self):
+        """'lj' (Levey-Jennings, the default) or 'westgard'."""
+        return "westgard" if self.request.form.get("view_mode") == "westgard" else "lj"
+
+    def can_review(self):
+        """Dismiss a warning / remove a point: managers and QC reviewers."""
+        from senaite.pfas.browser.perms import (
+            MANAGER_ROLES, ANALYST_ROLES, has_role_at_portal)
+        return has_role_at_portal(self.context, MANAGER_ROLES | ANALYST_ROLES)
+
+    # ── Review actions (POST) ────────────────────────────────────────────
+
+    _ACTIONS = {"dismiss": ("dismissed", True), "undismiss": ("dismissed", False),
+                "remove": ("excluded", True), "restore": ("excluded", False)}
+
+    def _handle_post(self):
+        form = self.request.form
+        action = form.get("chart_action", "")
+        back = form.get("came_from") or self.request.get("HTTP_REFERER") or (
+            self.context.absolute_url() + "/@@pfas-control-chart")
+        if not self.can_review():
+            self.request.response.setStatus(403)
+            return "Forbidden"
+        try:   # only after the role check, as every PFAS POST view does
+            from plone.protect.interfaces import IDisableCSRFProtection
+            from zope.interface import alsoProvides
+            alsoProvides(self.request, IDisableCSRFProtection)
+        except ImportError:
+            pass
+        if action not in self._ACTIONS:
+            self.request.response.setStatus(400)
+            return "Unknown action"
+        kind, add = self._ACTIONS[action]
+        try:
+            rid = int(form.get("result_id"))
+        except (TypeError, ValueError):
+            self.request.response.setStatus(400)
+            return "result_id required"
+        rule = form.get("rule", u"") or u""
+        try:
+            if add:
+                user = self.request.get("AUTHENTICATED_USER")
+                who = user.getId() if user is not None else u""
+                self._store().annotate(rid, kind, form.get("reason"), who, rule=rule)
+            else:
+                self._store().unannotate(rid, kind, rule=rule)
+        except ValueError as exc:
+            sep = "&" if "?" in back else "?"
+            self.request.response.redirect("%s%schart_error=%s" % (
+                back, sep, str(exc).replace(" ", "+")))
+            return ""
+        self.request.response.redirect(back)
+        return ""
 
     # ── JSON endpoint ────────────────────────────────────────────────────
 
@@ -325,6 +382,7 @@ class PFASControlChartView(BrowserView):
             except (TypeError, ValueError):
                 continue
             points.append({
+                "id":            r.get("id"),
                 "date":          str(r.get("run_date", ""))[:10],
                 "value":         fv,
                 "batch_id":      str(r.get("batch_id", "")),
@@ -353,12 +411,35 @@ class PFASControlChartView(BrowserView):
         else:
             is_threshold = is_threshold_auto
 
+        # Control-chart review: removed points are off the chart and out of
+        # the mean / SD; dismissed warnings are set aside with who and why.
+        from senaite.pfas import control_chart as cc
+        try:
+            notes = self._store().get_annotations([p["id"] for p in points])
+        except Exception as e:                              # noqa: BLE001
+            logger.error("chart annotations: %s", e)
+            notes = []
+        excluded = dict((n["result_id"], n) for n in notes if n["action"] == "excluded")
+        dismissed = dict(("%s:%s" % (n["result_id"], n["rule"]), n)
+                         for n in notes if n["action"] == "dismissed")
+        removed = [dict(p, note=excluded[p["id"]]) for p in points if p["id"] in excluded]
+        points = [p for p in points if p["id"] not in excluded]
+
+        view_mode = self.selected_view_mode()
         if is_threshold:
             limits = None
-            violations = []
+            all_warnings = []
         else:
-            limits = self._compute_limits([p["value"] for p in points])
-            violations = self._westgard(points, limits)
+            limits = cc.limits([p["value"] for p in points])
+            all_warnings = (cc.westgard if view_mode == "westgard" else cc.lj_warnings)(
+                points, limits)
+        for w in all_warnings:
+            w["date"] = points[w["indices"][-1]]["date"]
+            w["batch_id"] = points[w["indices"][-1]]["batch_id"]
+            w["value"] = self._r(points[w["indices"][-1]]["value"])
+        violations = cc.active(all_warnings, dismissed)
+        dismissed_list = [dict(w, note=dismissed[w["key"]]) for w in all_warnings
+                          if w["key"] in dismissed]
 
         # Annotate points with their worst violation
         violated = {}
@@ -407,6 +488,11 @@ class PFASControlChartView(BrowserView):
             "threshold":      self._r(threshold_val),
             "chart_type":     "threshold" if is_threshold else "levey_jennings",
             "westgard":       violations,
+            "dismissed":      dismissed_list,
+            "removed":        [{"id": p["id"], "date": p["date"], "batch_id": p["batch_id"],
+                                "value": self._r(p["value"]), "note": p["note"]}
+                               for p in removed],
+            "view_mode":      view_mode,
             "has_rejects":    any(v["severity"] == "reject" for v in violations),
             "has_warnings":   any(v["severity"] == "warning" for v in violations),
             "n_points":       len(points),
@@ -423,95 +509,11 @@ class PFASControlChartView(BrowserView):
             "flags": [], "analysts": [], "instruments": [],
             "violations": [], "point_status": [],
             "limits": None, "target": None,
-            "westgard": [], "has_rejects": False,
+            "westgard": [], "dismissed": [], "removed": [], "view_mode": "lj",
+            "has_rejects": False,
             "has_warnings": False, "n_points": 0,
             "limit": limit, "show_history": history,
         }
-
-    @staticmethod
-    def _compute_limits(values, n_baseline=20):
-        import math as _math
-        valid = [v for v in values
-                 if v is not None and not (_math.isinf(v) or _math.isnan(v))]
-        if len(valid) < 5:
-            return None
-        baseline = valid[:n_baseline]
-        n = len(baseline)
-        mean = sum(baseline) / float(n)
-        if n < 2:
-            return None
-        variance = sum((x - mean) ** 2 for x in baseline) / float(n - 1)
-        sd = variance ** 0.5
-        if sd == 0.0:
-            sd = max(abs(mean) * 0.01, 0.01)
-        return {
-            "mean":       round(mean, 4),
-            "sd":         round(sd, 4),
-            "n_baseline": n,
-            "ucl_1":      round(mean + sd,     4),
-            "lcl_1":      round(mean - sd,     4),
-            "ucl_2":      round(mean + 2 * sd, 4),
-            "lcl_2":      round(mean - 2 * sd, 4),
-            "ucl_3":      round(mean + 3 * sd, 4),
-            "lcl_3":      round(mean - 3 * sd, 4),
-        }
-
-    @staticmethod
-    def _westgard(points, limits):
-        if not limits or not points:
-            return []
-        mean = limits["mean"]
-        sd = limits["sd"]
-
-        def sigma(v):
-            return (v - mean) / sd if sd else 0.0
-
-        sigs = [sigma(p["value"]) for p in points]
-        n = len(sigs)
-        violations = []
-        seen = set()
-
-        def _add(rule, desc, severity, indices):
-            key = (rule, tuple(indices))
-            if key not in seen:
-                seen.add(key)
-                violations.append({
-                    "rule": rule, "description": desc,
-                    "severity": severity, "indices": list(indices),
-                })
-
-        for i in range(1, n):
-            s = sigs[i]
-            if abs(s) > 3.0:
-                _add("1-3S", "Single value beyond +/-3SD (reject)", "reject", [i])
-            elif abs(s) > 2.0:
-                _add("1-2S", "Single value beyond +/-2SD (warning)", "warning", [i])
-            if i >= 1:
-                sp = sigs[i - 1]
-                if s > 2.0 and sp > 2.0:
-                    _add("2-2S", "Two consecutive above +2SD (reject)", "reject", [i-1, i])
-                elif s < -2.0 and sp < -2.0:
-                    _add("2-2S", "Two consecutive below -2SD (reject)", "reject", [i-1, i])
-            if i >= 1 and abs(s - sigs[i-1]) >= 4.0:
-                _add("R-4S", "Adjacent range >= 4SD (reject)", "reject", [i-1, i])
-            if i >= 3:
-                run4 = sigs[i-3:i+1]
-                if all(v > 1.0 for v in run4):
-                    _add("4-1S", "Four consecutive above +1SD (reject)",
-                         "reject", list(range(i-3, i+1)))
-                elif all(v < -1.0 for v in run4):
-                    _add("4-1S", "Four consecutive below -1SD (reject)",
-                         "reject", list(range(i-3, i+1)))
-            if i >= 9:
-                run10 = sigs[i-9:i+1]
-                if all(v > 0 for v in run10):
-                    _add("10X", "Ten consecutive above mean (reject)",
-                         "reject", list(range(i-9, i+1)))
-                elif all(v < 0 for v in run10):
-                    _add("10X", "Ten consecutive below mean (reject)",
-                         "reject", list(range(i-9, i+1)))
-
-        return violations
 
     @staticmethod
     def _r(v, digits=4):

@@ -166,6 +166,20 @@ _SCHEMA_STMTS = [
     "CREATE INDEX IF NOT EXISTS idx_inj_analyte  ON injection_results(analyte)",
     "CREATE INDEX IF NOT EXISTS idx_inj_qc_type  ON injection_results(qc_type)",
     "CREATE INDEX IF NOT EXISTS idx_inj_sample   ON injection_results(sample_id)",
+
+    # Control-chart review (DECISIONS 2026-10-02): a warning DISMISSED with a
+    # reason, or a point REMOVED from the chart (and from its mean / SD) with a
+    # reason. The QC result itself is never edited; undo deletes the row.
+    # action = 'dismissed' (rule = the warning's rule) | 'excluded' (rule = '').
+    """CREATE TABLE IF NOT EXISTS chart_annotations (
+        result_id   INTEGER NOT NULL REFERENCES qc_results(id),
+        action      TEXT    NOT NULL,
+        rule        TEXT    NOT NULL DEFAULT '',
+        reason      TEXT    NOT NULL,
+        by_user     TEXT    NOT NULL,
+        at          TEXT    NOT NULL,
+        PRIMARY KEY (result_id, action, rule)
+    )""",
 ]
 
 # ALTER TABLE migrations — run once; silently ignored if column already exists.
@@ -538,6 +552,44 @@ class QCResultStore(object):
                 (batch_id, analyte, qc_type, qc_level),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ── Control-chart review (dismiss a warning / remove a point) ───────────
+
+    def annotate(self, result_id, action, reason, by_user, rule=u""):
+        """Record a dismissal ('dismissed', with the warning's rule) or a removal
+        ('excluded'). A reason is required: it is the audit record."""
+        if action not in ("dismissed", "excluded"):
+            raise ValueError("unknown chart action %r" % action)
+        reason = (reason or u"").strip()
+        if not reason:
+            raise ValueError("a reason is required")
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO chart_annotations "
+                "(result_id, action, rule, reason, by_user, at) VALUES (?,?,?,?,?,?)",
+                (int(result_id), action, rule if action == "dismissed" else u"",
+                 reason, by_user or u"", _now_iso()))
+
+    def unannotate(self, result_id, action, rule=u""):
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM chart_annotations WHERE result_id=? AND action=? AND rule=?",
+                (int(result_id), action, rule if action == "dismissed" else u""))
+
+    def get_annotations(self, result_ids):
+        """[{result_id, action, rule, reason, by_user, at}] for these results."""
+        ids = [int(i) for i in result_ids or [] if i is not None]
+        if not ids:
+            return []
+        out = []
+        with self._connect() as conn:
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                rows = conn.execute(
+                    "SELECT result_id, action, rule, reason, by_user, at FROM chart_annotations "
+                    "WHERE result_id IN (%s) ORDER BY at" % ",".join("?" * len(chunk)), chunk)
+                out.extend(dict(r) for r in rows)
+        return out
 
     # ── Read (chart data) ───────────────────────────────────────────────────
 

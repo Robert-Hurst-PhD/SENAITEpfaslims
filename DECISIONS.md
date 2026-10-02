@@ -5701,3 +5701,14 @@ Lab answers:
 - **D4:** SENAITE AnalysisSpecs become a read-only copy of the profile: an
   edit made there is put back from the profile, never written into it
   (spec_overrides retired).
+
+## 2026-10-02 — Reuse review approved; calibration options; control charts (confirmed)
+- docs/REUSE_REVIEW.md: U1-U7 approved (U8 waits for the MDL study).
+- **Calibration curves:** fit, weighting (none / 1/x / 1/x²) and origin
+  (exclude / include / force through) are selectable per curve. R² follows
+  the selected weighting (none = the plain R²; 1/x or 1/x² = the weighted R²,
+  as the instrument software reports a weighted curve).
+- **Control charts:** a Levey-Jennings chart by default, with an option to view
+  it with the Westgard rules. A point beyond the limits raises a warning; each
+  warning can be dismissed, or the point removed from the chart. (The R-4s
+  definition is therefore not a decision now.)

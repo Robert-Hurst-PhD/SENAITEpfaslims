@@ -6664,3 +6664,43 @@ Approved by the lab as the first recommendation of
   grid) await approval. No reference-definition method is configured, so new
   Reference Definitions get no ranges until one is chosen (existing ones are
   untouched).
+
+## 82. Reuse review U1 / U2 / U7: extraction PDF, calibration maths, control charts (2026-10-02)
+- Review: docs/REUSE_REVIEW.md; decisions: DECISIONS 2026-10-02 "Reuse review
+  approved; calibration options; control charts".
+- **U1 — extraction logbook PDF works for the first time.** It was built with
+  ReportLab, never installed in the SENAITE image, so @@pfas-extraction-pdf
+  answered 500. Now WeasyPrint (already installed) renders a print template
+  (`templates/extraction_pdf.pt`) from pure data (`extraction_logbook.py`).
+  Found on the way: the old code also assumed data shapes the session does
+  not have (reagent role/expiry; "pedigree" as standard levels, where the
+  session holds one spike record per spiked QC sample) and would have failed
+  on real data even with ReportLab. Live: kcp-b-001 renders 5 pages (stages,
+  equipment serials, reagents with supplier/amount, the deviation note, spike
+  records, sign-off).
+- **U2 — calibration maths** (`static/calibration_fit.js`): least squares by
+  the vendored ml-matrix QR (MIT, `static/vendor/`, licence beside it), the
+  concentration read back by a cancellation-free closed-form inverse, R²
+  with the fit's own weights. Fit (linear / quadratic / average RF),
+  weighting (none / 1/x / 1/x²) and origin (exclude / include / force) are
+  the existing per-curve controls; forcing a quadratic through the origin now
+  works (the old code ignored it). Measured: the old solver was accurate; its
+  R² differed from the weighted R² by up to 0.076. Checked against numpy on
+  144 cases (FDA and 1633A ladders, curvature, noise, every weighting and
+  origin): fitted values within 1e-9 relative, R² within 1e-10, inverse
+  exact.
+- **U7 — control charts:** Levey-Jennings by default (a warning for each
+  point beyond ±2 SD, marked when beyond the ±3 SD limit), a "View: Westgard
+  rules" option (1-2s, 1-3s, 2-2s, R-4s, 4-1s, 10x; the first point is now
+  checked too). Each warning can be **dismissed** or its point **removed**
+  (off the chart, out of the mean / SD), each with a required reason, who and
+  when, and undoable; recorded in `chart_annotations` (the QC result is never
+  edited). Managers and QC reviewers only. Logic in `control_chart.py` (pure).
+  Live (13C8-PFOA IS, 32 points): dismiss, remove (n 32→31, SD 8.85→7.92),
+  undo, restore; no JS errors.
+- **Tests:** test_extraction_pdf (4), test_calibration_fit (2; Node + numpy,
+  skipped where absent), test_control_chart (7); mutants killed: 6 (JS) + 8
+  (charts). The extraction PDF template joins the print-template exemption in
+  the UI ratchet.
+- **Still to do (approved):** U5 (EDD generator in one place), U6 (QC results
+  schema in one place), U3 (SortableJS), U4 (Chart.js / annotation plugin).
