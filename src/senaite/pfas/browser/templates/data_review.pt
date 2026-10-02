@@ -141,7 +141,17 @@
     .coc-value  { font-weight:600; color:var(--s-text); }
     .coc-bool-ok { color:#28a745; }
     .coc-bool-fail { color:#dc3545; }
-  </style>
+      /* Extraction tab */
+    .dr-extraction-flags ul { margin:4px 0 8px 18px; }
+    .dr-ext-head { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+    .dr-section-h { font-size:var(--fs-base); margin:18px 0 8px; }
+    .dr-stage { border:1px solid var(--s-border); border-radius:8px; padding:10px 14px; margin-bottom:10px; }
+    .dr-stage-h { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+    .dr-stage-meta { color:var(--s-secondary); font-size:var(--fs-sm); }
+    .dr-line { font-size:var(--fs-sm); margin:4px 0; }
+    .dr-warn { margin:2px 0 6px 18px; font-size:var(--fs-sm); }
+    .dr-empty { color:var(--s-secondary); font-size:var(--fs-sm); }
+</style>
   </tal:styles>
 </head>
 <body>
@@ -327,6 +337,9 @@
         <a class="dr-tab" href="?tab=traceability"
            tal:attributes="class python:'dr-tab active' if at == 'traceability' else 'dr-tab'">
            Traceability</a>
+        <a class="dr-tab" href="?tab=extraction" title="The guided extraction of this worksheet's batch"
+           tal:attributes="class python:'dr-tab active' if at == 'extraction' else 'dr-tab'">
+           Extraction</a>
         <a class="dr-tab" href="?tab=qc_summary"
            tal:attributes="class python:'dr-tab active' if at == 'qc_summary' else 'dr-tab'">
            QC Summary</a>
@@ -348,7 +361,14 @@
 
     <!-- ══════ OVERVIEW TAB ════════════════════════════════════════════ -->
     <div class="dr-tab-pane"
-         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'overview' else 'dr-tab-pane'">
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'overview' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'overview'">
+
+      <div class="alert-warn dr-extraction-flags" tal:define="flags view/extraction_flags" tal:condition="flags">
+        <strong>Extraction</strong> (information, not a release gate):
+        <ul><li tal:repeat="f flags" tal:content="f">x</li></ul>
+        <a class="btn-sm btn-secondary" href="?tab=extraction">Open the extraction record</a>
+      </div>
 
       <div class="cl-grid">
         <tal:cl tal:repeat="item view/checklist_status">
@@ -546,7 +566,8 @@
 
     <!-- ══════ COC TAB ══════════════════════════════════════════════════ -->
     <div class="dr-tab-pane"
-         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'coc' else 'dr-tab-pane'">
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'coc' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'coc'">
 
       <tal:coc_data tal:define="coc view/coc_summary">
         <tal:with_coc tal:condition="coc/client_name|nothing">
@@ -702,7 +723,8 @@
 
     <!-- ══════ TRACEABILITY TAB ═════════════════════════════════════════ -->
     <div class="dr-tab-pane"
-         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'traceability' else 'dr-tab-pane'">
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'traceability' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'traceability'">
 
       <tal:tree tal:define="t view/get_traceability_tree">
 
@@ -721,7 +743,7 @@
                 <li>
                   <span tal:content="u/lot">lot</span>
                   <tal:src tal:condition="u/source|nothing">
-                    (<tal:s tal:replace="u/source">src</tal:s>)
+                    (<tal:s tal:replace="python: view.source_label(u['source'])">src</tal:s>)
                   </tal:src>
                   <!-- Every entry carries a reason (see _build_traceability_tree),
                        so there is no fallback branch here and no `not:...|nothing`
@@ -886,9 +908,90 @@
       </tal:tree>
     </div><!-- /traceability -->
 
+    <!-- ══════ EXTRACTION TAB (the guided extraction record) ═══════════════ -->
+    <div class="dr-tab-pane"
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'extraction' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'extraction'">
+    <tal:x tal:condition="python: view.active_tab() == 'extraction'">
+    <tal:r tal:define="rec view/extraction_record">
+      <p class="dr-empty" tal:condition="not:rec">This worksheet has no batch, so there is no extraction to show.</p>
+      <p class="dr-empty" tal:condition="python: rec and not rec['started']">No guided extraction is recorded for
+        batch <strong tal:content="rec/batch_id">B-1</strong>.</p>
+      <tal:s tal:condition="python: rec and rec['started']">
+      <div class="dr-ext-head">
+        <span tal:attributes="class python:'cl-badge ' + ('cl-auto' if rec['finalized'] else 'cl-manual')"
+              tal:content="python: 'Finalized' if rec['finalized'] else 'Not finalized'">Finalized</span>
+        <span>Batch <strong tal:content="rec/batch_id">B-1</strong> &#183;
+          started <span tal:replace="python: rec['started_at'][:16].replace('T', ' ')">x</span>
+          by <span tal:replace="rec/analyst">AN1</span>
+          <tal:f tal:condition="rec/finalized"> &#183; finalized
+            <span tal:replace="python: rec['finalized_at'][:16].replace('T', ' ')">x</span>
+            by <span tal:replace="rec/finalized_by">AN1</span></tal:f></span>
+        <a class="btn-sm btn-secondary" target="_blank" tal:attributes="href rec/pdf_url">Logbook PDF</a>
+        <a class="btn-sm btn-secondary" tal:attributes="href rec/guide_url">Open the extraction</a>
+      </div>
+
+      <h3 class="dr-section-h">Samples</h3>
+      <table class="pfas-table" tal:condition="rec/samples">
+        <thead><tr><th>Sample</th><th>Matrix</th><th>Amount</th><th>Final volume (mL)</th></tr></thead>
+        <tbody><tr tal:repeat="x rec/samples">
+          <td tal:content="x/sample_id">S-1</td>
+          <td tal:content="python: x.get('matrix_type') or u'\u2014'">Eggs</td>
+          <td tal:content="python: ('%s %s' % (x.get('amount'), x.get('amount_unit') or '')) if x.get('amount') else u'\u2014'">1 g</td>
+          <td tal:content="python: x.get('final_volume_ml') or u'\u2014'">1</td>
+        </tr></tbody>
+      </table>
+      <p class="dr-empty" tal:condition="not:rec/samples">No per-sample amounts recorded.</p>
+
+      <h3 class="dr-section-h">Dilutions</h3>
+      <table class="pfas-table" tal:condition="rec/dilutions">
+        <thead><tr><th>Diluted from</th><th>Injection</th><th>Fold</th><th>Logged</th></tr></thead>
+        <tbody><tr tal:repeat="d rec/dilutions">
+          <td tal:content="d/dilution_of">S-1</td><td tal:content="d/sample_id">S-1 x10</td>
+          <td><span tal:replace="d/dilution_factor">10</span>
+              <span class="cl-badge cl-fail" tal:condition="not:d/fold_ok"
+                    title="Dilutions are logged as a total fold (DECISIONS 2026-10-02); a ratio is not applied">not a fold</span></td>
+          <td tal:content="python: '%s %s' % ((d.get('logged_at') or '')[:16].replace('T', ' '), d.get('logged_by') or '')">x</td>
+        </tr></tbody>
+      </table>
+      <p class="dr-empty" tal:condition="not:rec/dilutions">No dilutions logged.</p>
+
+      <h3 class="dr-section-h">Stages</h3>
+      <div class="dr-stage" tal:repeat="st rec/review/stages">
+        <div class="dr-stage-h">
+          <strong tal:content="python: 'Stage %s: %s' % (st['order'], st['name'])">Stage 1</strong>
+          <span class="dr-stage-meta" tal:condition="st/completed_at"
+                tal:content="python: u'%s \u00b7 %s' % (st['analyst'] or u'\u2014', st['completed_at'][:16].replace('T', ' '))">x</span>
+          <span class="cl-badge cl-manual" tal:condition="not:st/completed_at">not recorded</span>
+          <span class="cl-badge cl-fail" tal:condition="python: st['warnings'] and not st['deviations']">needs a note</span>
+        </div>
+        <table class="pfas-table" tal:condition="python: st['reagents'] or st['consumables']">
+          <thead><tr><th>Item</th><th>Lot</th><th>Qty</th><th></th></tr></thead>
+          <tbody><tr tal:repeat="r python: st['reagents'] + st['consumables']">
+            <td tal:content="python: r['name'] or r['role']">Methanol</td>
+            <td tal:content="python: r['lot'] or u'\u2014'">L1</td>
+            <td tal:content="python: r['qty'] or u'\u2014'">5 mL</td>
+            <td><a class="btn-sm btn-secondary" tal:condition="r/lot"
+                   tal:attributes="href python: '%s/@@pfas-lot-usage?q=%s' % (view.portal_url(), r['lot'])">Where used</a></td>
+          </tr></tbody>
+        </table>
+        <p class="dr-line" tal:condition="st/equipment"><strong>Equipment:</strong>
+          <span tal:replace="python: ', '.join('%s %s' % (k, v or '(no serial)') for k, v in st['equipment'])">x</span></p>
+        <tal:w tal:condition="st/warnings"><p class="dr-line"><strong>Needed a note:</strong></p>
+          <ul class="dr-warn"><li tal:repeat="w st/warnings" tal:content="w">x</li></ul></tal:w>
+        <p class="dr-line" tal:condition="st/deviations"><strong>Note:</strong> <span tal:replace="st/deviations">x</span></p>
+        <p class="dr-line" tal:repeat="c st/corrections"><strong>Corrected</strong>
+          <span tal:replace="python: '%s by %s: %s' % (c['at'][:16].replace('T', ' '), c['by'], c['reason'])">x</span></p>
+      </div>
+      </tal:s>
+    </tal:r>
+    </tal:x>
+    </div>
+
     <!-- ══════ QC SUMMARY TAB ═══════════════════════════════════════════ -->
     <div class="dr-tab-pane"
-         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'qc_summary' else 'dr-tab-pane'">
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'qc_summary' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'qc_summary'">
 
       <tal:qcs tal:define="qc view/get_qc_summary">
 
@@ -967,7 +1070,8 @@
 
     <!-- ══════ SAMPLES TAB (per-result verification) ═══════════════════════ -->
     <div class="dr-tab-pane"
-         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'samples' else 'dr-tab-pane'">
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'samples' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'samples'">
       <tal:s tal:define="samples view/sample_results_page">
         <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:760px;">
           Every field-sample result per analyte, with its retention time and
@@ -1013,7 +1117,8 @@
 
     <!-- ══════ SPIKE QC TAB (recovery + RPD vs spec) ═══════════════════════ -->
     <div class="dr-tab-pane"
-         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'spike_qc' else 'dr-tab-pane'">
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'spike_qc' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'spike_qc'">
       <tal:sq tal:define="page view/spike_qc_page">
         <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:760px;">
           Spike QC recoveries and duplicate RPD per analyte, checked against
@@ -1106,7 +1211,8 @@
 
     <!-- ══════ FINAL DATA TAB ════════════════════════════════════════════ -->
     <div class="dr-tab-pane"
-         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'final_data' else 'dr-tab-pane'">
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'final_data' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'final_data'">
 
       <p style="color:var(--s-secondary);font-size:var(--fs-sm);margin-bottom:14px;">
         <i class="fas fa-info-circle"></i>
@@ -1131,6 +1237,7 @@
                   <th>Result</th>
                   <th>Unit</th>
                   <th>State</th>
+                  <th>Reported</th>
                 </tr>
               </thead>
               <tbody>
@@ -1145,6 +1252,7 @@
                     <td tal:content="row/unit|string:—">—</td>
                     <td><span class="cl-badge cl-auto" style="font-size:var(--fs-xs);"
                               tal:content="row/review_state|string:">state</span></td>
+                    <td tal:content="row/reported|string:">reported</td>
                   </tr>
                 </tal:row>
               </tbody>
@@ -1198,7 +1306,8 @@
 
     <!-- ══════ INSTRUMENT REPORT TAB ═════════════════════════════════════ -->
     <div class="dr-tab-pane"
-         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'instrument_report' else 'dr-tab-pane'">
+         tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'instrument_report' else 'dr-tab-pane'"
+         tal:condition="python: view.active_tab() == 'instrument_report'">
 
       <!-- existing files -->
       <tal:files tal:define="files view/get_instrument_reports">

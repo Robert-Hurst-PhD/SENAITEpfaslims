@@ -7093,3 +7093,50 @@ Decision: DECISIONS 2026-10-02 "Dilution fold and reporting limits".
 
 **Still open:** no RLs are configured for most method x matrix pairs yet, so
 the scaled RL shows only where an RL exists; MDL is not scaled (not decided).
+
+
+## 91. Guided extraction ease of use; the extraction in Data Review (2026-10-02)
+
+Plan: docs/EXTRACTION_REVIEW_REPORTING_PLAN.md (A1-A8, B1-B4); decisions in
+DECISIONS 2026-10-02 "Extraction UI, Data Review, reporting template".
+
+- **Guided extraction:** on narrow screens the stage list becomes a stepper on
+  top (the 820 px tablet showed a third of the form; the sample table was cut
+  off). Progress fixed: `int(done / total * 100)` is integer division under
+  Python 2, so the bar read 0 % until the last stage. The analyst is shown once
+  ("recorded by", changeable). The stage's action bar is pinned. Completed
+  stages open read-only; "Correct this stage" reopens with a reason, keeping the
+  previous version, then returns to the first unfinished stage
+  (extraction_review.py). A Review & finalize screen lists every stage's lots,
+  equipment, per-sample values, warnings, notes and corrections, flags stages
+  with warnings but no note, and signs off by the login. Dilutions appear only
+  on the review and finished screens. Inline styles moved to classes (ratchet
+  821 -> 804).
+- **Data Review:** an Extraction tab built from the same summary (stages with
+  who / when, lots with "Where used", equipment, notes, corrections, per-sample
+  amounts and volumes, dilutions, finalized or not, logbook PDF). The Overview
+  flags an unfinished extraction, missing stages, warnings without a note,
+  corrections and dilutions logged as a ratio (not applied under the fold rule)
+  -- information only, the 5-item checklist is unchanged. Traceability messages
+  name the form ("Extraction Log (FM-ENV-003), standards") instead of storage
+  slugs. Final Data marks the reported value (a neat reading "replaced by its
+  dilution"; the retest "reported -- dilution N-fold").
+- **Data Review speed:** every tab took ~40 s on WS-0005. The checklist (~8 s:
+  traceability tree + QC status) was computed up to seven times per page, and
+  all nine panes were rendered although the tabs are links. Now the checklist is
+  computed once per request (cleared when it is saved) and only the active
+  pane renders: 0.6-10 s per tab, no JS errors.
+- **Found:** the demo batch's dilutions are logged "1:10"; under the fold rule
+  they are not applied, and the Overview says so.
+- **Guards:** TAL python expressions must write unicode escapes as u'' (the
+  review printed "\u00b7"); the guide's stage stepper counts as navigation
+  chrome in the links-are-buttons rule.
+- **Tests:** test_extraction_review (6; 6 mutants killed), test_dr_extraction
+  (5; mutant killed), template guard (mutant killed). Live: full walk on the
+  probe batch (complete, view, empty reason blocked, reopen, correct, finish,
+  review, finalize) at desktop and tablet width; Data Review on WS-0005; probe
+  session, logbook and ledger rows restored afterwards.
+
+**Still open:** the checklist itself still costs ~8 s once per page; the
+finished screen of the guide links to the logbook PDF but not yet to Data
+Review; the reporting template (step 3).

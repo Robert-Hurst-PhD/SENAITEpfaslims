@@ -626,6 +626,7 @@ class PFASDataReviewView(BrowserView):
         return self._default_checklist(ws)
 
     def _save_checklist(self, ws, data):
+        self._checklist_cache = None      # recomputed on the next read
         IAnnotations(ws)[CHECKLIST_KEY] = json.dumps(data)
 
     def _audit(self, ws):
@@ -875,6 +876,21 @@ class PFASDataReviewView(BrowserView):
     # ── Public checklist interface ────────────────────────────────────────
 
     def checklist_status(self):
+        """The checklist with its auto items computed -- once per request.
+
+        The page asks for it up to seven times (overview cards, the release
+        button, three tab notices, the gate) and each computation walks the
+        traceability tree and QC results: ~8 s on a real worksheet, so a tab
+        took ~40 s. The view lives for one request; saving the checklist
+        clears the cached copy."""
+        import copy
+        cached = getattr(self, "_checklist_cache", None)
+        if cached is None:
+            cached = self._checklist_status_uncached()
+            self._checklist_cache = cached
+        return copy.deepcopy(cached)
+
+    def _checklist_status_uncached(self):
         """Return ordered list of item dicts with live-computed auto-checks."""
         ws = self._get_worksheet()
         if not ws:
@@ -2199,12 +2215,26 @@ class PFASDataReviewView(BrowserView):
                     except Exception:
                         pass
 
+                # which value is reported: a neat reading replaced by its
+                # dilution is kept for review, its retest is what reports
+                reported = u""
+                try:
+                    if analysis.isRetested():
+                        reported = u"replaced by its dilution"
+                    elif analysis.isRetest():
+                        from senaite.pfas.browser.dilution_retests import dilution_fold
+                        fold = dilution_fold(analysis)
+                        reported = (u"reported \u2014 dilution %g-fold" % fold) if fold \
+                            else u"reported \u2014 retest"
+                except Exception:                           # noqa: BLE001
+                    pass
                 ar_map[ar_uid]["analyses"].append({
                     "analyte":      keyword,
                     "result":       result,
                     "unit":         unit,
                     "qualifier":    qualifier,
                     "review_state": state,
+                    "reported":     reported,
                 })
             except Exception as exc:
                 logger.error("get_final_data analysis loop: %s", exc)
@@ -2221,8 +2251,93 @@ class PFASDataReviewView(BrowserView):
                     "unit":             a["unit"],
                     "qualifier":        a["qualifier"],
                     "review_state":     a["review_state"],
+                    "reported":         a.get("reported") or u"",
                 })
         return rows
+
+    # ── Extraction record (docs/EXTRACTION_REVIEW_REPORTING_PLAN.md B1) ──────
+
+    _SOURCE_LABELS = {"252": (u"252", u"Extraction Log"), "253": (u"253", u"Sample Processing Log"),
+                      "251": (u"251", u"Calibration Curve Prep Log")}
+
+    def source_label(self, source):
+        """A traceability source as the reader knows it: "252.standards" ->
+        "Extraction Log (FM-ENV-003), standards"; storage slugs never shown."""
+        slug, _sep, part = (source or u"").partition(u".")
+        if slug in self._SOURCE_LABELS:
+            key, title = self._SOURCE_LABELS[slug]
+            return u"%s (%s)%s" % (title, self._fc(key),
+                                   u", " + part.replace(u"_", u" ") if part else u"")
+        if slug == u"prepstd":
+            return u"prepared standard parents"
+        return (source or u"").replace(u"_", u" ")
+
+    def extraction_record(self):
+        """The guided extraction of this worksheet's batch, for review: every
+        stage (extraction_review.review), the per-sample amounts and final
+        volumes and the dilutions recorded in FM-ENV-003, finalized or not.
+        Shown, not a release gate (DECISIONS 2026-10-02)."""
+        batch = self._worksheet_batch()
+        if batch is None:
+            return None
+        try:
+            from senaite.pfas.browser.extraction_guide import _load_session
+            from senaite.pfas.browser.logbooks import _get_logbook
+            from senaite.pfas.extraction_review import review
+            from senaite.pfas.method_profile_store import get_profile
+            from senaite.pfas import sample_table
+            from senaite.pfas.dilution_ref import parse_factor
+            sess = _load_session(batch)
+            if not sess:
+                return {"started": False, "batch_uid": batch.UID(), "batch_id": batch.getId()}
+            stages = get_profile(self._portal(), sess.get("method_id", "")).get("extraction_stages") or []
+            rv = review(sess, stages)
+            rows = (_get_logbook(batch, "252") or {}).get("samples") or []
+            samples = sample_table.rows_for_card(rows, [])
+            return {
+                "started": True, "batch_uid": batch.UID(), "batch_id": batch.getId(),
+                "finalized": bool(sess.get("finalized")),
+                "finalized_at": sess.get("finalized_at") or u"",
+                "finalized_by": sess.get("finalized_by") or u"",
+                "started_at": sess.get("started_at") or u"",
+                "analyst": sess.get("analyst") or u"",
+                "review": rv,
+                "samples": samples,
+                "dilutions": [dict(d, fold_ok=parse_factor(d.get("dilution_factor")) is not None)
+                              for d in sample_table.dilutions(rows)],
+                "pdf_url": u"{0}/@@pfas-extraction-pdf?batch_uid={1}".format(
+                    self._portal().absolute_url(), batch.UID()),
+                "guide_url": u"{0}/@@pfas-extraction-guide?batch_uid={1}".format(
+                    self._portal().absolute_url(), batch.UID()),
+            }
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("extraction_record: %s", exc)
+            return None
+
+    def extraction_flags(self):
+        """What the Overview says about the extraction (information only)."""
+        rec = self.extraction_record()
+        if rec is None:
+            return []
+        if not rec.get("started"):
+            return [u"No guided extraction is recorded for batch %s." % rec["batch_id"]]
+        out = []
+        rv = rec["review"]
+        if not rec["finalized"]:
+            out.append(u"The extraction is not finalized.")
+        if rv["missing"]:
+            out.append(u"Stage(s) not recorded: %s." % u", ".join(u"%s" % o for o in rv["missing"]))
+        if rv["unnoted"]:
+            out.append(u"Stage(s) with warnings but no deviation note: %s."
+                       % u", ".join(u"%s" % o for o in rv["unnoted"]))
+        bad = [d["sample_id"] for d in rec["dilutions"] if not d["fold_ok"]]
+        if bad:
+            out.append(u"Dilution(s) not recorded as a fold, so not applied: %s \u2014 log the "
+                       u"total fold (e.g. 10)." % u", ".join(bad))
+        if rv["corrections"]:
+            out.append(u"%d stage correction(s) recorded \u2014 see the Extraction tab."
+                       % rv["corrections"])
+        return out
 
     # ── Instrument Report ─────────────────────────────────────────────────
 
