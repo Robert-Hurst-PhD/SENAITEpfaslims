@@ -247,6 +247,9 @@ def setup_handler(context):
     try:
         from senaite.pfas.logbook_store import seed_defaults as seed_logbook_defaults
         seed_logbook_defaults(portal)
+        # one number per form, the pool in number order (DECISIONS 2026-10-02)
+        from senaite.pfas.logbook_store import normalise_form_codes
+        normalise_form_codes(portal)
     except Exception as e:
         logger.warning("Logbook defaults not seeded: %s", e)
 

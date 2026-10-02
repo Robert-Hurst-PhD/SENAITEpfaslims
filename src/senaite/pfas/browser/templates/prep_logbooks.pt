@@ -331,7 +331,7 @@
             <div class="form-field">
               <label>Form number</label>
               <input type="text" name="logbook_code" id="lbCode"
-                     placeholder="e.g. FM-ENV-250" />
+                     placeholder="e.g. FM-ENV-005" />
               <span class="fld-help">Printed on the record and shown in the
                 batch list.</span>
             </div>

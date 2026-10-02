@@ -68,7 +68,7 @@
       </tal:m>
       <span tal:content="view/batch_title">Batch</span>
       <span class="lb-bc-sep">›</span>
-      <strong>FM-ENV-252</strong>
+      <strong tal:content="python:view.form_code('252')">FM-ENV-00x</strong>
     </div>
 
     <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>

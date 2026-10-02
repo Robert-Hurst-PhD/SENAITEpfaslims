@@ -34,6 +34,15 @@ from senaite.pfas.logbook_schema import (
 logger = logging.getLogger("senaite.pfas.browser.prep_logbooks")
 
 
+
+def sort_value(value, default=100):
+    """A stored sort position. 0 is the FIRST place: `int(v or 100)` read it
+    back as 100 and sent FM-ENV-001 to the end of every logbook list."""
+    try:
+        return int(value) if value not in (None, u"", "") else default
+    except (TypeError, ValueError):
+        return default
+
 def _urlmsg(msg):
     """URL-encode a status message for the ?ok= / ?error= query string.
 
@@ -104,7 +113,7 @@ def _obj_to_dict(obj):
         "method_slug":       getattr(obj, "method_slug", None) or u"",
         "logbook_code":      getattr(obj, "logbook_code", None) or u"",
         "field_schema_json": getattr(obj, "field_schema_json", None) or u"[]",
-        "sort_order":        int(getattr(obj, "sort_order", 100) or 100),
+        "sort_order":        sort_value(getattr(obj, "sort_order", None)),
         "active":            bool(getattr(obj, "active", True)),
         "builtin":           bool(getattr(obj, "builtin", False)),
         # getattr-with-default: objects created before these fields existed
@@ -142,7 +151,7 @@ def _populate_obj(obj, data):
     obj.steps_json = data.get("steps_json") or u"[]"
     obj.guided_default = bool(data.get("guided_default", False))
     try:
-        obj.sort_order = int(data.get("sort_order") or 100)
+        obj.sort_order = sort_value(data.get("sort_order"))
     except (ValueError, TypeError):
         obj.sort_order = 100
     # active defaults True; treat any truthy value or absence as True
@@ -223,7 +232,7 @@ def _get_active_families(portal):
             elif d["status"] == existing["status"] and d["revision"] > existing["revision"]:
                 families[slug] = d
     fams = list(families.values())
-    fams.sort(key=lambda x: (int(x.get("sort_order") or 100), (x.get("title") or u"").lower()))
+    fams.sort(key=lambda x: (sort_value(x.get("sort_order")), (x.get("title") or u"").lower()))
     return fams
 
 

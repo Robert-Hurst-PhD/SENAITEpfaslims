@@ -94,6 +94,9 @@
       </div>
     </tal:saved>
 
+    <div class="alert-error" tal:condition="view/admin_error"
+         tal:content="view/admin_error">Form number FM-ENV-001 is already used by another logbook.</div>
+
     <!-- Tab buttons  -->
     <div class="pfas-tabs admin-tabs" id="admin-tabs">
       <tal:m tal:repeat="m view/available_methods">
@@ -170,25 +173,9 @@
         <tbody>
           <tr tal:repeat="lb view/logbook_defs">
 
-            <!-- Move up/down in pool order -->
-            <td>
-              <div class="move-btns">
-                <form method="POST"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
-                  <input type="hidden" name="action" value="move_up"/>
-                  <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
-                  <button type="submit" class="btn-sm btn-secondary"
-                          tal:condition="not:repeat/lb/start">&#8593;</button>
-                </form>
-                <form method="POST"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
-                  <input type="hidden" name="action" value="move_down"/>
-                  <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
-                  <button type="submit" class="btn-sm btn-secondary"
-                          tal:condition="not:repeat/lb/end">&#8595;</button>
-                </form>
-              </div>
-            </td>
+            <!-- No move buttons: the pool is listed in form-number order
+                 (DECISIONS 2026-10-02 "Form numbers"). -->
+            <td></td>
 
             <!-- Inline rename: form# -->
             <td>

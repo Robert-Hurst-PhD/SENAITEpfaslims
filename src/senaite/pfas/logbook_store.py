@@ -94,7 +94,9 @@ def _prep_def_to_logbook_def(d):
         "table_columns": [],
         "field_schema_json": d.get("field_schema_json") or "[]",
         "method_slug":   d.get("method_slug") or "",
-        "sort_order":    int(d.get("sort_order") or 100),
+        # 0 is the FIRST place: `or 100` read it back as 100 and sent the
+        # first logbook (FM-ENV-001) to the end of every list
+        "sort_order":    int(d["sort_order"]) if d.get("sort_order") not in (None, u"", "") else 100,
     }
 
 
@@ -162,6 +164,30 @@ def get_logbook_defs(portal):
     return [dict(d) for d in DEFAULT_LOGBOOK_DEFS]
 
 
+def form_code(portal, slug, default=None):
+    """The form number the lab gave a logbook (FM-ENV-003...), read from the
+    pool -- the one source for every label (DECISIONS 2026-10-02 "Form
+    numbers"). The slug (250-253) is a storage key, never shown as one."""
+    for d in get_logbook_defs(portal):
+        if u"%s" % d.get("slug") == u"%s" % slug:
+            return d.get("form_num") or default or u"%s" % slug
+    return default or u"%s" % slug
+
+
+def normalise_form_codes(portal):
+    """Startup: each form number used once (a custom logbook sharing a
+    built-in's number takes the next free one), the pool in number order.
+    Idempotent; returns [(slug, old, new)]."""
+    from senaite.pfas.form_codes import normalise
+    defs = get_logbook_defs(portal)
+    ordered, renamed = normalise(defs)
+    if renamed or [d.get("slug") for d in ordered] != [d.get("slug") for d in defs]:
+        save_logbook_defs(portal, ordered)
+        for slug, old, new in renamed:
+            logger.info("logbook %s: form number %s was already used; now %s", slug, old, new)
+    return renamed
+
+
 def get_active_logbook_defs(portal):
     """Return only logbook defs with active=True."""
     return [d for d in get_logbook_defs(portal) if d.get("active", True)]
@@ -170,9 +196,16 @@ def get_active_logbook_defs(portal):
 def save_logbook_defs(portal, defs):
     """Persist logbook definition changes back to PrepLogbookDef objects.
 
-    Handles: rename (title/form_num), toggle active, reorder (sort_order),
-    add custom, delete custom.  Never deletes built-in slugs.
+    Handles: rename (title/form_num), toggle active, add custom, delete
+    custom. Never deletes built-in slugs. Refuses (ValueError) a form number
+    used twice; stores the pool in form-number order.
     """
+    from senaite.pfas.form_codes import duplicates, normalise
+    dup = duplicates(defs)
+    if dup:
+        raise ValueError(u"Form number {0} is already used by another logbook.".format(
+            u", ".join(dup)))
+    defs, _renamed = normalise(defs)
     try:   # change history (R1)
         from senaite.pfas import config_history
         config_history.track(portal, 'logbook_defs', "all", lambda: get_logbook_defs(portal), label=u"Logbook definitions")

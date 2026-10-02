@@ -561,7 +561,7 @@
             <ul style="font-size:var(--fs-xs);color:#555;margin:8px 0 0 16px;padding:0;">
               <li><em>native_area</em> &larr; column mapped to "Raw Peak Area (native)"</li>
               <li><em>IS_area</em> &larr; column mapped to "IS Peak Area"</li>
-              <li><em>cal_factor</em> &larr; computed from the calibration curve (FM-ENV-251)</li>
+              <li><em>cal_factor</em> &larr; computed from the calibration curve (Calibration Curve Prep Log)</li>
               <li><em>salt_factor</em>, <em>matrix_factor</em> &larr; from Method Profile per analyte/matrix</li>
             </ul>
           </div>

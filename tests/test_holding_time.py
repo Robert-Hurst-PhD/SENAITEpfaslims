@@ -73,7 +73,7 @@ def test_a_missing_date_refuses_and_names_which_one():
 
     v = ht.evaluate("2025-10-15", None, 14)
     assert v["status"] == ht.NO_DATES
-    assert "FM-ENV-252" in v["message"], v["message"]
+    assert "Extraction Log" in v["message"], v["message"]
 
 
 def test_within_and_beyond_the_limit():

@@ -619,9 +619,10 @@ def test_every_logbook_the_walk_reads_warns_when_it_has_no_date():
     the failure mode §43.1 exists to prevent."""
     src = _source()
     fn = _seg(src, "_build_traceability_tree")
-    for name in ("FM-ENV-252", "FM-ENV-251", "FM-ENV-253"):
-        assert '("%s", use_' % name in fn, (
-            "%s is read but a missing date on it is not reported" % name)
+    # labelled with the lab's form number from the pool (DECISIONS 2026-10-02)
+    for slug in ("252", "251", "253"):
+        assert '(self._fc("%s"), use_%s)' % (slug, slug) in fn, (
+            "logbook %s is read but a missing date on it is not reported" % slug)
 
 
 def test_the_253_balance_reuses_the_established_warning_policy():

@@ -26,6 +26,11 @@ import logging
 import os
 from datetime import date
 
+try:
+    from urllib import quote_plus
+except ImportError:                                         # Python 3
+    from urllib.parse import quote_plus
+
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
@@ -172,6 +177,12 @@ def _rows_from_form(form, field, existing, key):
 
 
 class _LogbookBase(BrowserView):
+
+    def form_code(self, slug):
+        """The lab's form number for a logbook (FM-ENV-003...), from the pool --
+        never the storage slug (DECISIONS 2026-10-02 "Form numbers")."""
+        from senaite.pfas.logbook_store import form_code
+        return form_code(getToolByName(self.context, "portal_url").getPortalObject(), slug)
 
     def stored_json(self, key):
         """The saved rows for `key`, rendered into the hidden field so the
@@ -710,6 +721,11 @@ class PFASLogbookAdminView(BrowserView):
     def saved(self):
         return self.request.get("saved", "")
 
+    def admin_error(self):
+        """Why a save was refused (a form number used twice)."""
+        return self.request.get("error", "") if self.request.get("error", "") not in (
+            "sequence_not_saved",) else ""
+
     # ── Method-aware helpers ──────────────────────────────────────────────────
 
     def available_methods(self):
@@ -880,9 +896,12 @@ class PFASLogbookAdminView(BrowserView):
             table_columns = [c.strip() for c in cols_raw.split(",") if c.strip()]
             if new_title:
                 new_slug = "custom-" + uuid.uuid4().hex[:8]
+                if not new_form_num:            # the next form number, not a slug
+                    from senaite.pfas.form_codes import next_code
+                    new_form_num = next_code([d.get("form_num") for d in defs])
                 defs.append({
                     "slug":             new_slug,
-                    "form_num":         new_form_num or new_slug,
+                    "form_num":         new_form_num,
                     "title":            new_title,
                     "builtin":          False,
                     "active":           True,
@@ -943,7 +962,13 @@ class PFASLogbookAdminView(BrowserView):
             )
             return ""
 
-        save_logbook_defs(portal, defs)
+        try:
+            save_logbook_defs(portal, defs)
+        except ValueError as exc:
+            self.request.response.redirect(
+                self.portal_url() + "/@@pfas-logbook-admin?error=" + quote_plus(
+                    (u"%s" % exc).encode("utf-8")))
+            return ""
         self.request.response.redirect(
             self.portal_url() + "/@@pfas-logbook-admin?saved=1"
         )

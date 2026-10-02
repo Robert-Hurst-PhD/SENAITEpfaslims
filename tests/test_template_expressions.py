@@ -225,6 +225,31 @@ def test_no_view_url_is_relative_to_the_server_root():
 # person does not spend the same hour on it.
 
 
+_PY_EXPR = re.compile(
+    r'(?:tal:)?(?:content|replace|condition)="python:([^"]*)"')
+
+
+def test_every_single_python_expression_compiles():
+    """A python: expression that does not parse 500s its page the moment it is
+    rendered. A text substitution once wrote `form_code(\\'250\\')` into four
+    logbook templates and every one of them broke; nothing static noticed.
+    (tal:define / tal:attributes hold ;-separated lists and are not checked.)"""
+    bad = []
+    for path in _templates():
+        with open(path, "rb") as fh:
+            text = fh.read().decode("utf-8")
+        for m in _PY_EXPR.finditer(text):
+            expr = (m.group(1).replace("&quot;", '"').replace("&lt;", "<")
+                    .replace("&gt;", ">").replace("&amp;", "&"))
+            try:
+                # Chameleon reads a multi-line expression as one line
+                compile(" ".join(expr.split()), "<tal>", "eval")
+            except SyntaxError as exc:
+                line = text.count("\n", 0, m.start()) + 1
+                bad.append("%s:%d %s (%s)" % (os.path.basename(path), line, expr[:60], exc.msg))
+    assert not bad, "python: expressions that do not compile:\n  " + "\n  ".join(bad)
+
+
 if __name__ == "__main__":
     ok = fail = 0
     for name, fn in sorted(globals().items()):

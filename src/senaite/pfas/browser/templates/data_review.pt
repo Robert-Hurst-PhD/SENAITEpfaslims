@@ -755,7 +755,7 @@
           <div class="tree-section">
             <div class="tree-heading">
               <i class="fas fa-flask" style="margin-right:5px;"></i>
-              Prepared Standards (FM-ENV-251)
+              Prepared Standards (<tal:f replace="python:view.form_code('251')"/>)
             </div>
             <tal:ps tal:repeat="ps t/prepared_standards">
               <div style="margin-bottom:14px; padding-left:2px;">
@@ -817,7 +817,7 @@
           <div class="tree-section">
             <div class="tree-heading">
               <i class="fas fa-vial" style="margin-right:5px;"></i>
-              Direct Reagents (FM-ENV-252)
+              Direct Reagents (<tal:f replace="python:view.form_code('252')"/>)
             </div>
             <tal:dr tal:repeat="r t/direct_reagents">
               <div class="tree-row">
@@ -845,7 +845,7 @@
           <div class="tree-section">
             <div class="tree-heading">
               <i class="fas fa-balance-scale" style="margin-right:5px;"></i>
-              Standards Used (FM-ENV-252)
+              Standards Used (<tal:f replace="python:view.form_code('252')"/>)
             </div>
             <tal:ds tal:repeat="s t/direct_standards">
               <div class="tree-row">
@@ -868,17 +868,17 @@
         <tal:empty_tree
             tal:condition="python:not t.get('direct_reagents') and not t.get('direct_standards') and not t.get('prepared_standards')">
           <p style="color:var(--s-secondary);font-size:var(--fs-base);">
-            No traceability data found. Ensure FM-ENV-251 and FM-ENV-252 logbooks are
+            No traceability data found. Ensure the <tal:f replace="python:view.form_code('251')"/> and <tal:f replace="python:view.form_code('252')"/> logbooks are
             filled in for this worksheet.
           </p>
           <div style="display:flex;gap:10px;margin-top:10px;">
             <a class="btn btn-action"
                tal:attributes="href string:${view/batch_url}/@@pfas-logbook-dynamic?slug=251">
-               Open FM-ENV-251
+               Open <tal:f replace="python:view.form_code('251')"/>
             </a>
             <a class="btn btn-action"
                tal:attributes="href string:${view/batch_url}/@@pfas-logbook-dynamic?slug=252">
-               Open FM-ENV-252
+               Open <tal:f replace="python:view.form_code('252')"/>
             </a>
           </div>
         </tal:empty_tree>

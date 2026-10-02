@@ -22,7 +22,7 @@ class ILogbookDef(model.Schema):
 
     form_num = schema.TextLine(
         title=_(u"Form Number"),
-        description=_(u"Display code shown in the logbook index, e.g. FM-ENV-250"),
+        description=_(u"Display code shown in the logbook index, e.g. FM-ENV-005"),
         required=False,
     )
     builtin = schema.Bool(

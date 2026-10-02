@@ -381,6 +381,17 @@ class PFASDataReviewView(BrowserView):
         except Exception:
             return {}
 
+    def _fc(self, slug):
+        """The lab's form number for a logbook (FM-ENV-003...), from the pool."""
+        try:
+            from senaite.pfas.logbook_store import form_code
+            return form_code(self._portal(), slug)
+        except Exception:                                   # noqa: BLE001
+            return u"logbook %s" % slug
+
+    def form_code(self, slug):
+        return self._fc(slug)
+
     def _worksheet_batch(self):
         """The batch of this worksheet's samples (the project link lives there)."""
         ws = self._get_worksheet()
@@ -930,7 +941,7 @@ class PFASDataReviewView(BrowserView):
             if not (tree.get("prepared_standards") or tree.get("direct_reagents")):
                 return "blocked", (
                     u"No reagent or standard lots recorded \u2014 fill in "
-                    u"FM-ENV-251 and FM-ENV-252.")
+                    u"{0} and {1}.".format(self._fc("251"), self._fc("252")))
             return "fail", u""
         if key == "qc_summary":
             summary = self._get_qc_summary(ws)
@@ -1317,9 +1328,9 @@ class PFASDataReviewView(BrowserView):
         # Every logbook the walk reads appears here. A logbook left out would skip
         # its expiry check SILENTLY, which is the failure §43.1 exists to prevent —
         # an unenforceable check must not look like a satisfied one.
-        for lb_name, lb_date in (("FM-ENV-252", use_252),
-                                 ("FM-ENV-251", use_251),
-                                 ("FM-ENV-253", use_253)):
+        for lb_name, lb_date in ((self._fc("252"), use_252),
+                                 (self._fc("251"), use_251),
+                                 (self._fc("253"), use_253)):
             if not lb_date:
                 tree["warnings"].append(
                     u"%s records no date, so the lots it names cannot be checked "
@@ -1466,7 +1477,7 @@ class PFASDataReviewView(BrowserView):
                 # The analyst said this material has no lot. Reported, not
                 # enforced — see lot_or_none.
                 tree["warnings"].append(
-                    u"FM-ENV-253 records %s with lot \u201c%s\u201d, so it is "
+                    self._fc("253") + u" records %s with lot \u201c%s\u201d, so it is "
                     u"traced to nothing; strike the row instead if it is genuinely "
                     u"not applicable" % (name or u"a processing material",
                                          sentinel))
@@ -1500,7 +1511,7 @@ class PFASDataReviewView(BrowserView):
         if bal_sn:
             try:
                 from senaite.pfas import facility_qc as _fq253
-                entry = {"label": u"FM-ENV-253 balance", "serial": bal_sn,
+                entry = {"label": self._fc("253") + u" balance", "serial": bal_sn,
                          "unit": None, "records": [], "problems": [],
                          "warnings": []}
                 unit = _fq253.unit_by_serial(bal_sn)
@@ -1510,7 +1521,7 @@ class PFASDataReviewView(BrowserView):
                         u"calibration on the processing date is unknown" % bal_sn)
                 elif not use_253:
                     entry["warnings"].append(
-                        u"FM-ENV-253 records no processing date, so balance %s "
+                        self._fc("253") + u" records no processing date, so balance %s "
                         u"cannot be checked for the day it was used" % bal_sn)
                 else:
                     prov = _fq253.equipment_provenance(unit.get("id"), use_253)
@@ -1522,7 +1533,7 @@ class PFASDataReviewView(BrowserView):
                 for prob in entry["problems"]:
                     tree["unresolved"].append({
                         "source": "253.balance_sn", "lot": bal_sn,
-                        "name": u"FM-ENV-253 balance", "reason": prob,
+                        "name": self._fc("253") + u" balance", "reason": prob,
                     })
                 tree["warnings"].extend(entry["warnings"])
             except Exception as exc:                        # noqa: BLE001

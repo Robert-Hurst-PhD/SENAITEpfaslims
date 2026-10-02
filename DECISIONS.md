@@ -5782,3 +5782,32 @@ pipeline corrects every sample with the method's one matrix factor
 anywhere, the lab decides whether per-sample mass should enter the
 calculation (a model change, CLAUDE.md §3) and therefore which table owns it.
 Open in QUESTIONS.md.
+
+
+## 2026-10-02 — Form numbers, per-sample correction, dilutions (confirmed)
+
+Context: the lab's form code is FM (form) - ENV (environmental) - the
+logbook's sequence number. The pool held Solvent/Reagent Prep FM-ENV-001,
+Calibration Curve Prep 002, Extraction Log 003, Sample Processing 004 -- but
+a custom "Extraction" logbook also carried 001, the sort order was not the
+number order, and ~44 screens and messages showed the internal slugs
+(250-253) as if they were form numbers.
+
+- **Form numbers:** every label reads the form number from the logbook pool
+  (one source); the pool is ordered by number; the custom "Extraction" becomes
+  FM-ENV-005; Chain of Custody keeps COC; a form number may not be used twice.
+  The slugs 250-253 stay as internal keys (stored data is keyed on them).
+- **Per-sample correction: a per-method choice.** "In the MS software" (the
+  imported results are already per sample, so the LIMS applies no matrix
+  factor and nothing is corrected twice) or "Back-calculated in the LIMS"
+  (result = extract concentration x final volume / aliquot mass x dilution,
+  from the mass and volume logged per sample on FM-ENV-003). The method's
+  nominal matrix factor stays the fallback until a method chooses. This makes
+  per-sample mass part of the calculation, so it is logged on FM-ENV-003's
+  sample rows (the table the pipeline reads), answering QUESTIONS 2026-10-02.
+- **Dilutions: SENAITE retest.** A dilution must be logged and recorded. The
+  neat analysis keeps its above-LOQ value and its own analysis time; the
+  dilution is appended as SENAITE's native retest of that analysis with its
+  own result, factor and analysis time, and the retest is what the
+  certificate reports. Created at Data Review submission (a retest needs a
+  submitted original).

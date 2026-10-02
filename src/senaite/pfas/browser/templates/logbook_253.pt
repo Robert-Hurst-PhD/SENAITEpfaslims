@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">FM-ENV-253: Sample Processing Log</title>
+  <title metal:fill-slot="title"><tal:f replace="python:view.form_code('253')"/>: Sample Processing Log</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .btn-add-row { margin-top: 8px; }   /* look: shared .btn-sm */
@@ -50,7 +50,7 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">FM-ENV-253: Sample Processing Log</tal:t>
+  <tal:t metal:fill-slot="header-title"><tal:f replace="python:view.form_code('253')"/>: Sample Processing Log</tal:t>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary btn-back"
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
@@ -69,7 +69,7 @@
       </tal:m>
       <span tal:content="view/batch_title">Batch</span>
       <span class="lb-bc-sep">›</span>
-      <strong>FM-ENV-253</strong>
+      <strong tal:content="python:view.form_code('253')">FM-ENV-00x</strong>
     </div>
 
     <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>

@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">FM-ENV-251: Calibration Curve Prep Log</title>
+  <title metal:fill-slot="title"><tal:f replace="python:view.form_code('251')"/>: Calibration Curve Prep Log</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .lb-form { max-width: 860px; }
@@ -52,7 +52,7 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">FM-ENV-251: Calibration Curve Prep Log</tal:t>
+  <tal:t metal:fill-slot="header-title"><tal:f replace="python:view.form_code('251')"/>: Calibration Curve Prep Log</tal:t>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary btn-back"
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
@@ -71,7 +71,7 @@
       </tal:m>
       <span tal:content="view/batch_title">Batch</span>
       <span class="lb-bc-sep">›</span>
-      <strong>FM-ENV-251</strong>
+      <strong tal:content="python:view.form_code('251')">FM-ENV-00x</strong>
     </div>
 
     <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>

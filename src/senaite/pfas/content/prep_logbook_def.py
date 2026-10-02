@@ -83,7 +83,7 @@ class IPrepLogbookDef(model.Schema):
     )
     logbook_code = schema.TextLine(
         title=_(u"Logbook Code"),
-        description=_(u"FM-ENV code or other form code (e.g. FM-ENV-250)."),
+        description=_(u"FM-ENV code or other form code (e.g. FM-ENV-005)."),
         required=False,
     )
     field_schema_json = schema.Text(

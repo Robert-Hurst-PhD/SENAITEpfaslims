@@ -149,7 +149,7 @@ def evaluate(collected, extracted, limit_days):
         if start is None:
             missing.append(u"sample collection date (Chain of Custody)")
         if end is None:
-            missing.append(u"extraction date (FM-ENV-252)")
+            missing.append(u"extraction date (Extraction Log)")
         result["message"] = (
             u"Holding time cannot be calculated: missing {0}.".format(
                 u" and ".join(missing)))
