@@ -6802,6 +6802,12 @@ Approved by the lab as the first recommendation of
   (derivation replaces the setter tests), test_labelled_coverage (5; 4 mutants),
   test_config_forms (SUR grid; 3 mutants). UI ratchet lowered (828 style
   attributes, 207 hex colours).
+- **No-op save audit:** all 31 method-profile saves change nothing. The first
+  run found the three new QC composition saves writing `LFSM.frequency: null`
+  where the key was absent; config_forms now never creates a key for a blank
+  value (as it already never created a block). History check: every case
+  reverts (the SUR case now edits the grid), configuration afterwards equals
+  before, no JS errors.
 - **Live:** FDA per_analyte rows migrated; 1633A grid shows 17 SUR rows with
   every class column; QC composition fields and button present; a throwaway
   project's specs show Calibration & QC run (and SUR limits for 1633A only);

@@ -301,6 +301,8 @@ def apply(section, stored, updates, env=None):
                 node = node.setdefault(p, {})
         if new is REMOVE:
             node.pop(path[-1], None)
+        elif new is None and path[-1] not in node:
+            continue                    # an unset value never creates a key either
         else:
             node[path[-1]] = new
     return value

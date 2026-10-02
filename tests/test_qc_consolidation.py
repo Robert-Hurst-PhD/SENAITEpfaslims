@@ -191,6 +191,7 @@ def test_an_unset_field_never_creates_a_block():
     updates = {("icv", "pct_dev_max"): None, ("ccv", "pct_dev_warn"): None}
     after = cf.apply(mps.CALIBRATION_CCV, stored, updates)
     assert "icv" not in after["instrument_verification"]
+    assert "pct_dev_warn" not in after["instrument_verification"]["ccv"]      # nor a key
     after = cf.apply(mps.CALIBRATION_CCV, stored, {("icv", "pct_dev_max"): 20.0})
     assert after["instrument_verification"]["icv"] == {"pct_dev_max": 20.0}
     del form

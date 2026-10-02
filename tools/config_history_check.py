@@ -135,9 +135,9 @@ def case_corrections(pg):
 
 
 def case_eis(pg):
-    """EIS Limits (1633A): declared collections on one tab form (R2)."""
+    """SUR limits (1633A): one grid (consolidation P4), saved on its own."""
     open_profile(pg, "EPA_1633A", "pane-eis")
-    f = pg.locator("[name='c__eis__0__recovery_5fmax']")
+    f = pg.locator("[name='c__eis_5fgrid__0__aq_5fmax']")
     f.fill(str(float(f.input_value()) + 1))
     save_profile_form(pg)
     return "eis_overrides", True, None
