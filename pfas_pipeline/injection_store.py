@@ -18,31 +18,7 @@ from datetime import datetime
 
 DB_PATH = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
-_SCHEMA = """CREATE TABLE IF NOT EXISTS injection_results (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    batch_id        TEXT    NOT NULL DEFAULT '',
-    run_date        TEXT    NOT NULL DEFAULT '',
-    sample_id       TEXT    NOT NULL DEFAULT '',
-    injection_name  TEXT    NOT NULL DEFAULT '',
-    qc_type         TEXT    NOT NULL DEFAULT '',
-    analyte         TEXT    NOT NULL DEFAULT '',
-    role            TEXT    NOT NULL DEFAULT 'analyte',
-    method          TEXT    NOT NULL DEFAULT '',
-    rt              REAL,
-    rrt             REAL,
-    ion_ratio_obs   REAL,
-    ion_ratio_exp   REAL,
-    is_area         REAL,
-    sn              REAL,
-    qual_sn         REAL,
-    response        REAL,
-    calc_conc       REAL,
-    conc_qualifier  TEXT    NOT NULL DEFAULT '',
-    recovery        REAL,
-    flag            TEXT    NOT NULL DEFAULT '',
-    passed          INTEGER NOT NULL DEFAULT 1,
-    created_at      TEXT    NOT NULL
-)"""
+# Schema: the add-on's senaite.pfas.qc_schema, shared (REUSE_REVIEW U6).
 
 _ROLE_MAP = {"Target": "analyte", "IS": "is", "Qualifier": "qualifier"}
 
@@ -111,14 +87,8 @@ def persist_injection_results(batch, db_path: str = None) -> int:
     ph = ",".join(["?"] * 22)
     conn = sqlite3.connect(path)
     try:
-        conn.execute(_SCHEMA)
-        # Older databases predate conc_qualifier; add it rather than requiring
-        # a rebuild, so an existing QC database keeps its history.
-        have = {row[1] for row in conn.execute(
-            "PRAGMA table_info(injection_results)")}
-        if "conc_qualifier" not in have:
-            conn.execute("ALTER TABLE injection_results "
-                         "ADD COLUMN conc_qualifier TEXT NOT NULL DEFAULT ''")
+        from .addon import load
+        load("qc_schema").ensure(conn)       # tables + numbered migrations
         conn.execute("DELETE FROM injection_results WHERE batch_id=?",
                      (getattr(batch, "batch_id", "") or "",))
         conn.executemany(

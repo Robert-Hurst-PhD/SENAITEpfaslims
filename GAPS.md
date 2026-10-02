@@ -6704,3 +6704,30 @@ Approved by the lab as the first recommendation of
   the UI ratchet.
 - **Still to do (approved):** U5 (EDD generator in one place), U6 (QC results
   schema in one place), U3 (SortableJS), U4 (Chart.js / annotation plugin).
+
+## 83. Reuse review U5 / U6: the EDD format and the QC database schema, one copy each (2026-10-02)
+- **U5 — EDD row format:** `egad_format.py` (pure) holds the 53 EDD v6.0
+  columns, the lab / QC required fields, MM/DD/YYYY + HH:MM formatting and the
+  per-row checks; `egad_builder` imports them. The Python 3 twin
+  `pfas_pipeline/egad_edd.py` ("keep them in sync") is deleted: it had no
+  callers, the two agreed on columns and checks, and its hard-coded qualifier /
+  QC-type / test-code maps are editable settings (EDD Config) on the add-on
+  side. Its command-line check only compared its header with its own list.
+  Live: no batch currently has samples attached, so no live EDD was built;
+  test_egad_format covers the format.
+- **U6 — QC results database schema:** `qc_schema.py` (pure) holds every
+  table and the numbered migrations (PRAGMA user_version). The add-on store,
+  the worker's qc_store / injection_store and the seed tool all call
+  `ensure(conn)`; the worker loads add-on files through `pfas_pipeline/addon.py`
+  (calibration_levels uses the same loader now). Found: the seed tool's private
+  qc_results lacked five columns its own inserts use (qc_level, units, flag,
+  parent_result_id, reanalysis_reason), so on a fresh database it failed;
+  injection_store patched conc_qualifier privately (now migration 9).
+  Live: the database moved from version 0 to 9 with no change to its 888 rows;
+  the control chart works; the real instrument files run through the pipeline
+  with identical results and flags, writing 1,422 QC and 2,567 injection rows
+  through the shared schema (on a copy). Backup:
+  /data/qc/pfas_qc_results.db.bak_pre_schema_20261002.
+- **Tests:** test_egad_format (5), test_qc_schema (6; 5 mutants killed,
+  including a migration re-running).
+- **Still to do (approved):** U3 (SortableJS), U4 (Chart.js / annotation plugin).

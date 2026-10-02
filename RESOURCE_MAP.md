@@ -164,7 +164,6 @@ senaite_pfas/
 │   ├── run_queue.py            review prompts + persistence
 │   ├── qc_store.py             batches / qc_results / calibrations → SQLite
 │   ├── barcode.py              GS1/vendor parsing, lot registry, ZPL labels
-│   ├── egad_edd.py             Maine EGAD electronic data deliverable
 │   ├── report.py               PDF generation + merge (replaces Adobe COM)
 │   ├── senaite_connector.py    jsonapi REST client
 │   └── pipeline.py             orchestrator; apply_extract_corrections()

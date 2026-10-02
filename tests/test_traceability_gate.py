@@ -417,11 +417,11 @@ def test_the_egad_export_keeps_its_required_non_iso_format():
     """The ONE exception, and it must not be 'fixed'. Maine DEP's EGAD EDD
     specifies MM/DD/YYYY; making it ISO would break the state submission. A
     blanket date sweep would do exactly that, so this pins it deliberately."""
-    egad = os.path.join(_ROOT, "src", "senaite", "pfas", "egad_builder.py")
+    egad = os.path.join(_ROOT, "src", "senaite", "pfas", "egad_format.py")   # the EDD row format
     with open(egad) as fh:
         body = fh.read()
     assert '"%m/%d/%Y"' in body, (
-        "egad_builder no longer emits MM/DD/YYYY — the EGAD EDD requires it and "
+        "egad_format no longer emits MM/DD/YYYY — the EGAD EDD requires it and "
         "a state submission will be rejected without it")
 
 

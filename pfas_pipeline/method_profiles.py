@@ -984,30 +984,11 @@ _TIER_STRUCTURAL_KEYS = frozenset([
 # engine refuses: it never guesses which window a spike belongs to.
 LOW_LEVEL_KEY = "low_level_x_rl"
 
-_CAL_MODULE = []
-
-
 def _cal():
-    """senaite.pfas.calibration_levels, loaded from the add-on's file (the
-    worker mounts it at /app/senaite_pfas) -- the RL rule lives once."""
-    if not _CAL_MODULE:
-        try:
-            from senaite.pfas import calibration_levels as mod
-        except ImportError:
-            import importlib.util
-            here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            for path in (os.environ.get("PFAS_CALIBRATION_LEVELS"),
-                         "/app/senaite_pfas/calibration_levels.py",
-                         os.path.join(here, "src", "senaite", "pfas", "calibration_levels.py")):
-                if path and os.path.exists(path):
-                    spec = importlib.util.spec_from_file_location("senaite_pfas_calibration_levels", path)
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    break
-            else:
-                raise ImportError("calibration_levels.py not found (set PFAS_CALIBRATION_LEVELS)")
-        _CAL_MODULE.append(mod)
-    return _CAL_MODULE[0]
+    """senaite.pfas.calibration_levels, loaded from the add-on (pfas_pipeline
+    .addon) -- the RL rule lives once."""
+    from .addon import load
+    return load("calibration_levels")
 
 
 def _ordinary_tiers(tiers):

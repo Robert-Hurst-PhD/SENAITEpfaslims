@@ -25,85 +25,12 @@ from datetime import date
 
 DB_PATH = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
-# ── Schema (mirrors QCResultStore._SCHEMA_STMTS) ──────────────────────────────
-
-_SCHEMA = [
-    """CREATE TABLE IF NOT EXISTS calibrations (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        batch_id        TEXT    NOT NULL DEFAULT '',
-        run_date        TEXT    NOT NULL,
-        analyte         TEXT    NOT NULL,
-        method          TEXT    NOT NULL DEFAULT '',
-        analyst         TEXT    NOT NULL DEFAULT '',
-        instrument_id   TEXT    NOT NULL DEFAULT '',
-        equation        TEXT    NOT NULL DEFAULT '',
-        fit_type        TEXT    NOT NULL DEFAULT '',
-        weight_type     TEXT    NOT NULL DEFAULT '',
-        r2              REAL,
-        n_levels        INTEGER NOT NULL DEFAULT 0,
-        min_level       REAL,
-        max_level       REAL,
-        status          TEXT    NOT NULL DEFAULT 'pending',
-        notes           TEXT    NOT NULL DEFAULT '',
-        created_at      TEXT    NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS calibration_levels (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        calibration_id  INTEGER NOT NULL REFERENCES calibrations(id),
-        level           INTEGER NOT NULL,
-        expected        REAL,
-        calculated      REAL,
-        pct_deviation   REAL,
-        passed          INTEGER NOT NULL DEFAULT 1
-    )""",
-    "CREATE INDEX IF NOT EXISTS idx_cal_analyte  ON calibrations(analyte)",
-    "CREATE INDEX IF NOT EXISTS idx_cal_run_date ON calibrations(run_date)",
-    "CREATE INDEX IF NOT EXISTS idx_cal_batch    ON calibrations(batch_id)",
-    """CREATE TABLE IF NOT EXISTS batches (
-        batch_id      TEXT    PRIMARY KEY,
-        run_date      TEXT    NOT NULL,
-        analyst       TEXT    NOT NULL DEFAULT '',
-        instrument_id TEXT    NOT NULL DEFAULT '',
-        method        TEXT    NOT NULL DEFAULT '',
-        status        TEXT    NOT NULL DEFAULT 'pending',
-        notes         TEXT    NOT NULL DEFAULT '',
-        created_at    TEXT    NOT NULL,
-        updated_at    TEXT    NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS qc_results (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        batch_id        TEXT    NOT NULL,
-        run_date        TEXT    NOT NULL,
-        analyte         TEXT    NOT NULL,
-        qc_type         TEXT    NOT NULL,
-        injection_name  TEXT    NOT NULL DEFAULT '',
-        value           REAL,
-        lower_limit     REAL,
-        upper_limit     REAL,
-        passed          INTEGER NOT NULL DEFAULT 1,
-        result_status   TEXT    NOT NULL DEFAULT 'active',
-        instrument_id   TEXT    NOT NULL DEFAULT '',
-        analyst         TEXT    NOT NULL DEFAULT '',
-        method          TEXT    NOT NULL DEFAULT '',
-        notes           TEXT    NOT NULL DEFAULT '',
-        created_at      TEXT    NOT NULL
-    )""",
-    "CREATE INDEX IF NOT EXISTS idx_qcr_batch   ON qc_results(batch_id)",
-    "CREATE INDEX IF NOT EXISTS idx_qcr_analyte ON qc_results(analyte)",
-    "CREATE INDEX IF NOT EXISTS idx_qcr_status  ON qc_results(result_status)",
-]
-
-
-# ── Synthetic calibration records ─────────────────────────────────────────────
-# Each entry: (batch_id, run_date, analyte, method, analyst, instrument_id,
-#              r2, fit_type, weight_type, min_level, max_level, status, notes,
-#              levels_list)
-# levels_list: list of (level_index, expected_conc, pct_deviation)
-#              calculated = expected * (1 + pct_deviation/100)
-#              passed = abs(pct_deviation) <= 20.0
+# The schema is the add-on's, shared: senaite.pfas.qc_schema (REUSE_REVIEW U6).
+# This tool's private copy had a qc_results without columns its own inserts use.
 
 import random as _random
 _random.seed(42)  # reproducible synthetic noise
+
 
 def _levels(expected_list, deviations, slope=0.004, intercept=0.00005):
     """Build levels list from expected concentrations and % deviations.
@@ -234,27 +161,14 @@ def _connect(path):
     return conn
 
 
-_MIGRATIONS = [
-    "ALTER TABLE calibrations ADD COLUMN approved_by      TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE calibrations ADD COLUMN approved_at      TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE calibrations ADD COLUMN fit_type_override  TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE calibrations ADD COLUMN weight_override    TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE calibrations ADD COLUMN origin_override    TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE calibration_levels ADD COLUMN response_ratio REAL",
-    "ALTER TABLE qc_results ADD COLUMN expected_value REAL",
-    "ALTER TABLE qc_results ADD COLUMN response_ratio REAL",
-]
-
-
 def ensure_schema(conn):
-    for stmt in _SCHEMA:
-        conn.execute(stmt)
-    for stmt in _MIGRATIONS:
-        try:
-            conn.execute(stmt)
-        except Exception:
-            pass  # column already exists
-    conn.commit()
+    try:
+        from pfas_pipeline.addon import load
+    except ImportError:                      # run as a script from pfas_pipeline/
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from pfas_pipeline.addon import load
+    load("qc_schema").ensure(conn)
 
 
 def seed(conn):

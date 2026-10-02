@@ -44,6 +44,8 @@ def _run_date(batch) -> str:
 def _connect(path):
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
+    from .addon import load
+    load("qc_schema").ensure(conn)           # one schema, shared (REUSE_REVIEW U6)
     return conn
 
 
