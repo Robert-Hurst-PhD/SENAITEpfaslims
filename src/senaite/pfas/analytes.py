@@ -49,15 +49,8 @@ PFAS_ANALYTES = [
 # Key analytes with tighter criteria (PFOS, PFNA, PFHxS, PFOA + their branched
 # isomers in certain matrices). Derived from analyte_reference.py is_key_analyte
 # field (row[8]) — do not duplicate here.
-from senaite.pfas.analyte_reference import (
-    get_key_analyte_keywords as _get_key_kw,
-    get_no_labeled_keywords as _get_no_labeled_kw,
-)
+from senaite.pfas.analyte_reference import get_key_analyte_keywords as _get_key_kw
 KEY_ANALYTES = _get_key_kw()
-
-# Non-isotopically linked analytes (looser QQ criteria) — derived from
-# analyte_reference.py no_labeled field (row[7]).
-NON_ISO_ANALYTES = _get_no_labeled_kw()
 
 # ── MRM transitions for IS ────────────────────────────────────────────────────
 IS_MRM = {

@@ -66,15 +66,11 @@ def _fda_per_analyte():
         if keyword not in master_kws:
             continue
         analyte = row[1]   # display name (e.g. "lr-PFHxS", "GenX (HFPO-DA)")
-        no_std = row[7]
-        is_key = row[8]
-        tier = 3 if no_std else (1 if is_key else 2)
+        # "no labelled standard", key analyte and tier are derived from the
+        # method's links and key list (consolidation P4) -- not stored here
         rows.append({
             "analyte":        analyte,
             "surrogate":      _IS_KW_TO_NAME.get(_FDA_SURROGATE_MAP_DICT.get(analyte, ""), ""),
-            "no_labeled_std": no_std,
-            "is_key_analyte": is_key,
-            "recovery_tier":  tier,
             "confirm_ion_mz": confirm_map.get(analyte, ""),
             "notes": "",
         })
@@ -1053,7 +1049,8 @@ def migrate_profile_models(portal):
         from senaite.pfas.qc.rules import method_toggles
         j = qc_consolidation.move_from_rules(profile, method_id, saved_rules,
                                              method_toggles({}, method_id))
-        if a or b or c or d or e or f or g or h or i or j:
+        k = qc_consolidation.drop_derived_per_analyte(profile)
+        if a or b or c or d or e or f or g or h or i or j or k:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
     if changed:

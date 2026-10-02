@@ -563,12 +563,10 @@ def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM",
 
     # New structure: tiers have analyte_group and matrix_scope keys
     if tiers and "analyte_group" in tiers[0]:
-        # Membership comes from the analyte reference table and the method's
-        # own tight_matrices — not from lists hardcoded here. The hardcoded
-        # sets disagreed with the reference table on DONA and PFHpS, so both
-        # were judged at 65-135% when the method allows 40-140%.
-        from .analyte_alias import no_labeled_names, key_analyte_names
-        no_std = no_labeled_names()
+        # "No labelled standard" is derived from THIS method's surrogate links
+        # (consolidation P4); tight matrices are the method's own list.
+        from .analyte_alias import no_labelled_names_for, key_analyte_names
+        no_std = no_labelled_names_for(profile_data)
         key = key_analyte_names()
         # Canonical titles, plus the profile's own alias list. Substring
         # matching had quietly narrowed this: "deer muscle" meets neither
@@ -1419,12 +1417,14 @@ def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
     Reads ``no_std_analytes`` from tier 3 of the method's recovery_tiers.
     Falls back to tier 3 of the inline FDA default if the profile isn't loaded.
     """
-    # Membership is a property of the ANALYTE, not of a QC profile, so it is
-    # read from the analyte reference table. This used to read the retired
-    # `recovery_tiers` key — retired by migrate_profile_structure, hence always
-    # empty — so the N.C. qualifier never fired from this path at all.
-    from .analyte_alias import no_labeled_names
-    names = no_labeled_names()
+    # Derived from THIS method's surrogate links (consolidation P4), not a
+    # global column: a link changed in one method moves the analyte there.
+    from .analyte_alias import no_labelled_names_for
+    try:
+        data = get_profile(method_id)._profile_data()
+    except KeyError:
+        data = {}
+    names = no_labelled_names_for(data)
     if not names:
         return frozenset()
     # Scope to the method's own panel so 1633A-only analytes do not leak in.

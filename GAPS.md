@@ -6751,3 +6751,58 @@ Approved by the lab as the first recommendation of
   regenerated.
 - **Reuse review status:** U1-U7 done; U8 (MDL t-values) waits for the MDL
   study feature.
+
+## 85. Consolidation P3 + P4: one project system; "no labelled standard" derived; one SUR grid (2026-10-02)
+- Decisions: DECISIONS 2026-10-02 "Consolidation P3 + P4 approved; Project
+  Specs scope".
+- **P3 — Project Specs is the one way a project overrides criteria.**
+  - The Projects page's "QAPP Criteria" editor and the per-project ruleset it
+    stored are removed (no project ever had one). `ruleset.get_project_ruleset`
+    now DERIVES the project tier from Project Specs (`ruleset_from_specs`, pure:
+    the registered criteria whose project-applied value differs from the
+    method's), so the per-batch criteria file, the worksheet snapshot, the
+    disclosure and the Run Builder's composition keep working, fed from one
+    input. `resolve_for_batch` passes the bare method profile as the lab tier,
+    so each value names the source that actually set it.
+  - Project Specs gained the Calibration & CCV section (R², S/N, CCV window /
+    frequency, ICV), the new QC composition section and the SUR limits -- all
+    the old editor could override. SUR limits show only for a method that has
+    them (EPA 1633A); a tab with nothing in it is not drawn.
+  - **QC composition** (new, method profile QC Types tab, its own Save): "LFSM
+    every N field samples" and "Duplicate every field sample" (blank = not
+    required; a blank duplicate choice removes the key), overridable per project;
+    the Run Builder reads them through the ruleset as before.
+  - The certificate's departures now also list a looser R², point deviation,
+    S/N, ion-ratio tolerance, CCV window or frequency, ICV limit, LFSM interval,
+    a dropped "duplicate every sample", and looser SUR limits (aqueous and per
+    class).
+- **P4 — "no labelled standard" is derived per method** from its surrogate links
+  (`labelled_coverage.no_labelled_standard`: linked to its own labelled analog
+  = has one; anything else, including no link, = none). Proven first: on every
+  shipped profile the derivation equals the old global column exactly (FDA 12,
+  EPA 537.1 4, EPA 1633A 16 analytes), and FDA's per_analyte flags agreed on all
+  32. Readers switched: the pipeline's recovery tier and its N.C. qualifier set
+  (worker loads the module via pfas_pipeline.addon), project departures (each
+  profile's own links), the recovery grid and spec sync (which also dropped its
+  per_analyte recovery_tier path). FDA's per_analyte rows lost no_labeled_std /
+  is_key_analyte / recovery_tier (migration; confirm-ion and notes stay); the
+  editor's "No IS" checkbox is gone. The global column stays as documented,
+  unread reference (rows are positional). Real instrument files: results and
+  flags identical.
+- **P4 — one SUR limits grid:** the five lists (aqueous + four matrix classes)
+  are one table, designations down the side and aqueous / solid / biosolid /
+  leachate / tissue min-max across, full content width. Storage unchanged
+  (eis_overrides + eis_matrix_overrides, which the engine, ruleset and baselines
+  read); clearing a designation removes its class limits; a class limit for a
+  designation the grid never showed is kept.
+- **Found on the way:** a mutation run left a stale `__pycache__` .pyc (a
+  same-length mutant restored within the same second), so later runs executed
+  the mutant; caches are now cleared after mutation runs.
+- **Tests:** test_project_specs_scope (5; 7 mutants killed), test_ruleset
+  (derivation replaces the setter tests), test_labelled_coverage (5; 4 mutants),
+  test_config_forms (SUR grid; 3 mutants). UI ratchet lowered (828 style
+  attributes, 207 hex colours).
+- **Live:** FDA per_analyte rows migrated; 1633A grid shows 17 SUR rows with
+  every class column; QC composition fields and button present; a throwaway
+  project's specs show Calibration & QC run (and SUR limits for 1633A only);
+  removed afterwards. No JS errors.

@@ -49,18 +49,6 @@ _mod = _load()
 NAME_TO_KEYWORD = dict(getattr(_mod, "COMPOUND_NAME_TO_KEYWORD", {}) or {})
 
 
-def no_labeled_names() -> set:
-    """Display names of analytes with no commercially matched labelled standard.
-
-    This is the tier-3 (40-140%) membership. It used to be a hardcoded set in
-    method_profiles._resolve_fda_tier that disagreed with this table on DONA
-    and PFHpS — both in the FDA 32 panel, both judged at the stricter 65-135%
-    as a result.
-    """
-    fn = getattr(_mod, "get_no_labeled_names", None)
-    return set(fn()) if fn else set()
-
-
 def key_analyte_names() -> set:
     """Display names of the regulatory priority analytes (tier 1)."""
     fn = getattr(_mod, "get_key_analyte_names", None)
@@ -120,6 +108,17 @@ def native_keyword_for(published_name: str) -> str:
     analyte_reference.NATIVE_NAME_SYNONYMS for why those three exist."""
     fn = getattr(_mod, "native_keyword_for", None)
     return fn(published_name) if fn else published_name
+
+
+def no_labelled_names_for(profile_data: dict) -> set:
+    """Analytes of ONE method with no labelled standard of their own, derived
+    from that method's surrogate links (senaite.pfas.labelled_coverage;
+    consolidation P4) -- keywords and display names both, since the engine
+    compares instrument display names."""
+    from .addon import load
+    kws = load("labelled_coverage").no_labelled_standard(profile_data, labeled_analog_map())
+    display = dict((row[0], row[1]) for row in (getattr(_mod, "NATIVE_ANALYTES", None) or []))
+    return set(kws) | set(display[k] for k in kws if k in display)
 
 
 def keyword_for(analyte_name: str) -> str:

@@ -241,9 +241,6 @@
       tr.setAttribute('data-analyte', row.analyte || '');
       tr.innerHTML =
         '<td class="pa-name">' + _esc(_paLabels[row.analyte] || row.analyte || '') + '</td>' +
-        '<td style="text-align:center">' +
-          '<input type="checkbox" class="pa-cb" data-field="no_labeled_std"' +
-          (row.no_labeled_std ? ' checked' : '') + ' onchange="syncPerAnalyteJson()" /></td>' +
         '<td><input type="text" class="pa-inp pa-mono" data-field="confirm_ion_mz"' +
           ' value="' + _esc(row.confirm_ion_mz || '') + '" placeholder="413.04>369.00"' +
           ' oninput="syncPerAnalyteJson()" /></td>' +
@@ -259,7 +256,6 @@
     if (!jsonEl) return;
     var result = [];
     document.querySelectorAll('#perAnalyteBody tr[data-analyte]').forEach(function(tr) {
-      var noIs      = tr.querySelector('[data-field="no_labeled_std"]');
       var confirmIon = tr.querySelector('[data-field="confirm_ion_mz"]');
       var notes     = tr.querySelector('[data-field="notes"]');
       /* Edits merge onto the STORED row: rebuilding it from the three inputs
@@ -267,9 +263,10 @@
          spec_sync reads). */
       var orig = _paOrig[tr.getAttribute('data-analyte')] || {};
       var row = {};
-      Object.keys(orig).forEach(function (k) { row[k] = orig[k]; });
+      Object.keys(orig).forEach(function (k) {
+        if (k !== 'no_labeled_std') row[k] = orig[k];    /* derived now (P4) */
+      });
       row.analyte        = tr.getAttribute('data-analyte');
-      row.no_labeled_std = noIs      ? noIs.checked       : false;
       row.confirm_ion_mz = confirmIon ? confirmIon.value.trim() : '';
       row.notes          = notes     ? notes.value.trim() : '';
       result.push(row);

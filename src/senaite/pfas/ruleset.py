@@ -32,13 +32,11 @@ does, and tests/test_ruleset.py exercises it that way.
 
 `resolve_for_batch()` is the thin shell: it fetches the real Project (via
 senaite.pfas.project_ref, reused rather than re-derived), the real method
-profile (via senaite.pfas.method_profile_store, READ-ONLY), and the real
-project-ruleset annotation, then calls resolve(). `get_project_ruleset` /
-`set_project_ruleset` / `set_project_criterion` are the ZODB-touching get/set
-helpers for the project-tier annotation, following project_ref.py's pattern
-of deferring `from zope.annotation.interfaces import IAnnotations` to inside
-the function body so importing this module never requires Zope to be
-installed.
+profile (via senaite.pfas.method_profile_store, READ-ONLY), and the project
+tier, then calls resolve(). The project tier is DERIVED from the project's
+Project Specs (`ruleset_from_specs`, pure; `get_project_ruleset` is its
+shell) -- there is no separately stored per-project ruleset any more
+(DECISIONS 2026-10-02, P3).
 
 Three refusals, not features (see resolve()'s docstring for where each is
 enforced):
@@ -79,7 +77,8 @@ TIER_PROJECT = "project"
 TIER_LAB = "lab"
 TIER_BASELINE = "baseline"
 
-PROJECT_RULESET_KEY = u"senaite.pfas.project.ruleset"
+# The project tier is DERIVED from Project Specs (get_project_ruleset); the
+# separately stored per-project ruleset it once read is retired (P3).
 
 
 ResolvedCriterion = collections.namedtuple(
@@ -410,59 +409,62 @@ def resolve(method_id, matrix, key, analyte=None,
 # Zope to be installed (see the try/except at the top of this file for why
 # that matters here specifically).
 
-def _annotations(project):
-    from zope.annotation.interfaces import IAnnotations
-    return IAnnotations(project)
+def ruleset_from_specs(profiles, specs, effective, env=None):
+    """The project tier, DERIVED from a project's Project Specs (DECISIONS
+    2026-10-02, P3): {method_id: {matrix: {key: value}}} holding exactly the
+    registered criteria whose value in the project-applied profile differs
+    from the method profile's. Analyte-scoped keys hold {analyte: value}.
+
+    `profiles` = {method_id: method profile}, `specs` = the project's specs,
+    `effective(profile, method_specs, matrix, env=env)` -> (profile, stale)
+    (project_specs.effective). Pure: no Zope, no storage."""
+    out = {}
+    for method_id, method_specs in sorted((specs or {}).items()):
+        profile = (profiles or {}).get(method_id)
+        if not profile or not method_specs:
+            continue
+        for matrix in profile.get("supported_matrices") or []:
+            eff = effective(profile, method_specs, matrix, env=env)[0]
+            node = {}
+            for key, extractor in sorted(_LAB_EXTRACTORS.items()):
+                if key in ANALYTE_SCOPED_KEYS:
+                    names = set()
+                    for prof in (profile, eff):
+                        for row in prof.get("eis_overrides") or []:
+                            if isinstance(row, dict) and row.get("analyte"):
+                                names.add(row["analyte"])
+                        for by in (prof.get("eis_matrix_overrides") or {}).values():
+                            names.update((by or {}).keys())
+                    per = dict((a, extractor(eff, matrix, a)) for a in sorted(names)
+                               if extractor(eff, matrix, a) != extractor(profile, matrix, a))
+                    if per:
+                        node[key] = per
+                else:
+                    value = extractor(eff, matrix, None)
+                    if value != extractor(profile, matrix, None):
+                        node[key] = value
+            if node:
+                out.setdefault(method_id, {})[matrix] = node
+    return out
 
 
-def get_project_ruleset(project):
-    """The JSON ruleset dict stored on `project` (a PFASProject), or {} for
-    no project, no ruleset ever set, or a corrupt annotation -- never raises.
-    Mirrors project_ref.get_project()'s "absence is not an error" contract."""
+def get_project_ruleset(portal, project):
+    """The project tier for `project`, derived from its Project Specs -- {}
+    for no project or no specs. Never raises."""
     if project is None:
         return {}
     try:
-        ann = _annotations(project)
-    except Exception:
+        from senaite.pfas import project_specs
+        from senaite.pfas.method_profile_store import get_profile
+        specs = project_specs.get_specs(project) or {}
+        if not specs:
+            return {}
+        profiles = dict((mid, get_profile(portal, mid)) for mid in specs)
+        return ruleset_from_specs(profiles, specs, project_specs.effective,
+                                  env=project_specs.site_env())
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("project ruleset for %r could not be derived: %s", project, exc)
         return {}
-    raw = ann.get(PROJECT_RULESET_KEY)
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError):
-        logger.warning("Corrupt project ruleset annotation on %r", project)
-        return {}
-
-
-def set_project_ruleset(project, ruleset):
-    """Replace the WHOLE project ruleset annotation with `ruleset`.
-
-    Prefer set_project_criterion() for a single edit -- see its docstring.
-    This exists for bulk operations (import/export, migration) where
-    replacing the whole thing really is the intent.
-    """
-    if project is None:
-        return
-    ann = _annotations(project)
-    ann[PROJECT_RULESET_KEY] = json.dumps(ruleset or {})
-
-
-def set_project_criterion(project, method_id, matrix, key, value):
-    """Set one (method_id, matrix, key) criterion in the project ruleset,
-    MERGING into whatever is already stored -- it never replaces the whole
-    ruleset for a single-field edit.
-
-    GAPS.md Sec7.1 records a method-profile form handler that ASSIGNED the
-    whole payload from a partial POST, nulling every criterion the POST did
-    not mention. A project-ruleset editor built the same way -- read the one
-    field an operator changed, write the whole ruleset back -- would
-    reproduce that exact defect at the project tier. Every write here goes
-    through this merge so it structurally cannot.
-    """
-    ruleset = get_project_ruleset(project)
-    ruleset.setdefault(method_id, {}).setdefault(matrix, {})[key] = value
-    set_project_ruleset(project, ruleset)
 
 
 def _project_source(portal, project):
@@ -502,17 +504,14 @@ def resolve_for_batch(portal, batch, method_id, matrix, key, analyte=None):
     from senaite.pfas import method_profile_store
 
     project = project_ref.get_project(portal, batch)
-    project_ruleset = get_project_ruleset(project) if project is not None else {}
+    project_ruleset = get_project_ruleset(portal, project) if project is not None else {}
     project_doc, project_rev = (None, None)
     if project is not None:
         project_doc, project_rev = _project_source(portal, project)
 
+    # the lab tier is the METHOD profile; what the project's specs change is
+    # the project tier above it, so each value names the source that set it
     profile = method_profile_store.get_profile(portal, method_id)
-    if project is not None:
-        # the project's specs are part of what this batch runs to (DECISIONS
-        # 2026-10-01): its QAPP criteria above still win over them
-        from senaite.pfas import project_specs
-        profile = project_specs.effective_for_project(project, method_id, matrix, profile)[0]
 
     return resolve(method_id, matrix, key, analyte=analyte,
                     profile=profile, project_ruleset=project_ruleset,

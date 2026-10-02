@@ -237,7 +237,7 @@ def resolve_rows_for_batch(portal, batch, method_id, matrix):
     from senaite.pfas import project_ref
 
     project = project_ref.get_project(portal, batch) if batch is not None else None
-    project_ruleset = (ruleset.get_project_ruleset(project)
+    project_ruleset = (ruleset.get_project_ruleset(portal, project)
                         if project is not None else {})
     profile = method_profile_store.get_profile(portal, method_id)
 

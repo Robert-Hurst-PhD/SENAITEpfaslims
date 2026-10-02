@@ -17,7 +17,11 @@ Fields (NATIVE_ANALYTES tuple, 9 elements):
   [4] klass          — PFCA | PFSA | FTS | FOSA | PFECA | Cl-PFAES | FTCA | other
   [5] chain          — perfluorocarbon chain length (approx, for sort order)
   [6] surrogate_is   — the labeled IS keyword that quantifies this native (FDA §9-1)
-  [7] no_labeled     — True if no commercially matched labeled standard (N.C. tier)
+  [7] no_labeled     — reference only, NOT read: whether an analyte has its own
+                       labelled standard is derived per method from its surrogate
+                       links (labelled_coverage; consolidation P4). Kept so the
+                       row layout does not shift; tests pin that the derivation
+                       agrees with it on the shipped profiles.
   [8] is_key_analyte — True for the four regulatory priority analytes and their
                        branched isomers: PFOS, PFOA, PFHxS, PFNA (+ br-PFOS,
                        br-PFHxS). FDA Table 10-1 Tier 1 analytes in tight matrices.
@@ -202,16 +206,6 @@ def get_key_analyte_keywords():
 def get_key_analyte_names():
     """Frozenset of display names for key analytes."""
     return frozenset(row[1] for row in NATIVE_ANALYTES if row[8])
-
-
-def get_no_labeled_keywords():
-    """Frozenset of SENAITE keywords for analytes with no matched labeled standard."""
-    return frozenset(row[0] for row in NATIVE_ANALYTES if row[7])
-
-
-def get_no_labeled_names():
-    """Frozenset of display names for analytes with no matched labeled standard."""
-    return frozenset(row[1] for row in NATIVE_ANALYTES if row[7])
 
 
 def get_cas_by_keyword(dashed=True):

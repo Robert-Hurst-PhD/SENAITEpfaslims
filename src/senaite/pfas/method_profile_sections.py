@@ -226,6 +226,23 @@ ANALYTE_SCALE = cf.Table(
     rows=analyte_scale_rows)
 
 
+# QC composition (DECISIONS 2026-10-02, P3): what a run must contain beyond
+# the run template, read by the Run Builder (ruleset composition keys).
+# Blank = the method does not require it. A project can override both.
+QC_COMPOSITION = cf.Section(
+    id=u"qc_comp", title=u"QC composition", base=("qc_acceptance",),
+    groups=[(u"QC composition", [
+        cf.Field("LFSM.frequency", u"LFSM every N field samples", kind=cf.INT, minimum=1,
+                 placeholder=u"not required",
+                 help=u"The Run Builder adds one LFSM after every Nth field sample. "
+                      u"Blank = only what the run template holds."),
+        cf.Field("Dup.duplicate_all_samples", u"Duplicate every field sample",
+                 kind=cf.CHOICE, blank=u"remove",
+                 choices=[(u"", u"No (not required)"), (u"yes", u"Yes")],
+                 help=u"The Run Builder injects a duplicate straight after each field sample."),
+    ])])
+
+
 REPORTING_LIMITS = cf.Table(
     id=u"rl", title=u"Reporting Limits", base=("reporting_limits",),
     columns=[cf.Field("rl", u"RL", minimum=0), cf.Field("mdl", u"MDL", minimum=0)],
@@ -481,48 +498,9 @@ MATRIX_FACTORS = cf.Table(
 # SAME designation, so a class row may only name a designation that exists.
 
 
-def _min_not_above_max(label_key):
-    def check(profile, rows):
-        out = []
-        for r in rows:
-            lo, hi = r.get("recovery_min"), r.get("recovery_max")
-            if lo is not None and hi is not None and lo > hi:
-                out.append(u"%s: recovery min (%s) is above max (%s)." % (r[label_key], lo, hi))
-        return out
-    return check
-
-
-def read_eis(profile):
-    return [{"analyte": r.get("analyte"), "recovery_min": r.get("recovery_min"),
-             "recovery_max": r.get("recovery_max")}
-            for r in (profile.get("eis_overrides") or []) if isinstance(r, dict)]
-
-
-def write_eis(profile, rows):
-    old = dict((r.get("analyte"), r) for r in (profile.get("eis_overrides") or [])
-               if isinstance(r, dict))
-    out = []
-    for r in rows:
-        entry = dict(old.get(r["analyte"]) or {})     # keep any other keys a row had
-        entry.update({"analyte": r["analyte"], "recovery_min": r.get("recovery_min"),
-                      "recovery_max": r.get("recovery_max")})
-        out.append(entry)
-    _set(profile, "eis_overrides", out)
-    return profile
-
-
-EIS = cf.Collection(
-    id=u"eis", title=u"SUR Recovery Overrides", noun=u"SUR row", new_rows=2,
-    allow_empty=True,
-    columns=[cf.Field("analyte", u"Surrogate (SUR)", kind=cf.TEXT,
-                      placeholder=u"new designation"),
-             cf.Field("recovery_min", u"Recovery Min (%)", minimum=0),
-             cf.Field("recovery_max", u"Recovery Max (%)", minimum=0)],
-    read=read_eis, write=write_eis, check=_min_not_above_max("analyte"))
-
-
 EIS_MATRIX_CLASSES = [(u"solid", u"Solid (soil, sediment)"), (u"biosolid", u"Biosolid"),
                       (u"leachate", u"Landfill leachate"), (u"tissue", u"Tissue")]
+_EIS_COLS = [(u"aq", u"Aqueous")] + [(k, l.split(" (")[0]) for k, l in EIS_MATRIX_CLASSES]
 
 
 def eis_designations(profile, env=None):
@@ -531,42 +509,73 @@ def eis_designations(profile, env=None):
     return [(n, n) for n in names]
 
 
-def _eis_class(key, label):
-    def read(profile):
-        entries = (profile.get("eis_matrix_overrides") or {}).get(key) or {}
-        return [{"analyte": a, "recovery_min": (entries[a] or {}).get("recovery_min"),
-                 "recovery_max": (entries[a] or {}).get("recovery_max")}
-                for a in sorted(entries)]
+def read_eis_grid(profile):
+    """One row per SUR designation: aqueous limits (eis_overrides) and each
+    matrix class's (eis_matrix_overrides), side by side."""
+    classes = profile.get("eis_matrix_overrides") or {}
+    rows = []
+    for r in profile.get("eis_overrides") or []:
+        if not isinstance(r, dict) or not r.get("analyte"):
+            continue
+        row = {"analyte": r["analyte"], "aq_min": r.get("recovery_min"),
+               "aq_max": r.get("recovery_max")}
+        for key, _l in EIS_MATRIX_CLASSES:
+            lim = (classes.get(key) or {}).get(r["analyte"]) or {}
+            row[key + "_min"], row[key + "_max"] = lim.get("recovery_min"), lim.get("recovery_max")
+        rows.append(row)
+    return rows
 
-    def write(profile, rows):
-        allc = dict(profile.get("eis_matrix_overrides") or {})
-        entries = {}
+
+def write_eis_grid(profile, rows):
+    old = dict((r.get("analyte"), r) for r in (profile.get("eis_overrides") or [])
+               if isinstance(r, dict))
+    out = []
+    for r in rows:
+        entry = dict(old.get(r["analyte"]) or {})     # keep any other keys a row had
+        entry.update({"analyte": r["analyte"], "recovery_min": r.get("aq_min"),
+                      "recovery_max": r.get("aq_max")})
+        out.append(entry)
+    _set(profile, "eis_overrides", out)
+    allc = dict(profile.get("eis_matrix_overrides") or {})
+    for key, _l in EIS_MATRIX_CLASSES:
+        # a class limit for a designation the grid never showed is kept
+        entries = dict((a, lim) for a, lim in (allc.get(key) or {}).items() if a not in old)
         for r in rows:
-            if r.get("recovery_min") is None and r.get("recovery_max") is None:
-                continue                            # no limit: no row
-            entry = {}
-            for f in ("recovery_min", "recovery_max"):
-                if r.get(f) is not None:
-                    entry[f] = r[f]
-            entries[r["analyte"]] = entry
+            lim = {}
+            for f, col in (("recovery_min", key + "_min"), ("recovery_max", key + "_max")):
+                if r.get(col) is not None:
+                    lim[f] = r[col]
+            if lim:
+                entries[r["analyte"]] = lim
         if entries:
             allc[key] = entries
         else:
             allc.pop(key, None)
-        _set(profile, "eis_matrix_overrides", allc)
-        return profile
-
-    return cf.Collection(
-        id=u"eis_" + key, title=u"SUR limits: %s" % label, noun=u"row", new_rows=2,
-        allow_empty=True,
-        columns=[cf.Field("analyte", u"Surrogate (SUR)", kind=cf.CHOICE,
-                          choices=eis_designations),
-                 cf.Field("recovery_min", u"Recovery Min (%)", minimum=0),
-                 cf.Field("recovery_max", u"Recovery Max (%)", minimum=0)],
-        read=read, write=write, check=_min_not_above_max("analyte"))
+    _set(profile, "eis_matrix_overrides", allc)
+    return profile
 
 
-EIS_CLASSES = [(_eis_class(k, l), l) for k, l in EIS_MATRIX_CLASSES]
+def _eis_grid_check(profile, rows):
+    out = []
+    for r in rows:
+        for key, label in _EIS_COLS:
+            lo, hi = r.get(key + "_min"), r.get(key + "_max")
+            if lo is not None and hi is not None and lo > hi:
+                out.append(u"%s %s: recovery min (%s) is above max (%s)." % (
+                    r["analyte"], label, lo, hi))
+    return out
+
+
+# One grid for every SUR limit (consolidation P4): designations down the side,
+# aqueous and each 1633A matrix class across. A class limit overrides the
+# aqueous one for that class; a blank class cell uses the aqueous limit.
+EIS_GRID = cf.Collection(
+    id=u"eis_grid", title=u"SUR recovery limits", noun=u"SUR row", new_rows=2,
+    allow_empty=True,
+    columns=[cf.Field("analyte", u"Surrogate (SUR)", kind=cf.TEXT, placeholder=u"new designation")] +
+            [cf.Field(key + "_" + end, u"%s %s %%" % (label, end), minimum=0)
+             for key, label in _EIS_COLS for end in ("min", "max")],
+    read=read_eis_grid, write=write_eis_grid, check=_eis_grid_check)
 
 
 # ── Surrogate Map: injection IS, native -> surrogate, surrogate -> injection IS
@@ -1110,6 +1119,19 @@ def low_level_tier(profile, base, matrix, qc=RECOVERY_QC):
     return sorted(out, key=lambda t: float(t[LOW_LEVEL_KEY]))
 
 
+def no_std_set(profile):
+    """Keywords with no labelled standard of their own in THIS method,
+    derived from its surrogate links (senaite.pfas.labelled_coverage;
+    consolidation P4)."""
+    try:
+        from senaite.pfas import labelled_coverage as lc
+        from senaite.pfas.analyte_reference import get_labeled_analog_map
+    except Exception:                        # tests: loaded without the package
+        import labelled_coverage as lc
+        from analyte_reference import get_labeled_analog_map
+    return lc.no_labelled_standard(profile, get_labeled_analog_map())
+
+
 def recovery_grid(profile):
     """Read-only grid: analyte group rows x matrix columns, each cell the
     window the engine applies there."""
@@ -1118,7 +1140,8 @@ def recovery_grid(profile):
     except Exception:
         from analyte_reference import NATIVE_ANALYTES
     keys = key_analytes(profile)
-    flags = dict((r[0], (r[0] in keys, bool(r[7]))) for r in NATIVE_ANALYTES)   # (key, no_std)
+    no_std = no_std_set(profile)
+    flags = dict((r[0], (r[0] in keys, r[0] in no_std)) for r in NATIVE_ANALYTES)   # (key, no_std)
     labels = _analyte_titles(profile)
     panel = profile.get("master_analyte_set") or []
     groups = [(u"Key analytes", lambda k, n: k and not n),
@@ -1310,16 +1333,17 @@ def apply_qc_toggles(profile, offered, enabled):
 # sections whose save must pass them.
 PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 
-SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, REPORTING_LIMITS, MATRICES,
-                                    SALT, MATRIX_FACTORS, EIS, SURROGATE_MAP,
+SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, QC_COMPOSITION, REPORTING_LIMITS, MATRICES,
+                                    SALT, MATRIX_FACTORS, EIS_GRID, SURROGATE_MAP,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
                                     REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS] +
-                list(SPIKE_LEVELS.values()) +
-                [c for c, _l in EIS_CLASSES])
+                list(SPIKE_LEVELS.values()))
 
 
 # What a Project may override, in the order a project's differences are
 # applied: added analytes first (the other tables list them), then the groups
 # and tiers, then standards, links and limits (DECISIONS 2026-10-01).
-PROJECT_SECTIONS = [PANEL_EXTRAS, GROUPS, RECOVERY_TIERS, LFB_TIERS, DUP_RPD, LFSMD_RPD,
-                    LABELLED_STANDARDS, SURROGATE_MAP, REPORTING_LIMITS]
+PROJECT_SECTIONS = ([PANEL_EXTRAS, GROUPS, RECOVERY_TIERS, LFB_TIERS, DUP_RPD, LFSMD_RPD,
+                     LABELLED_STANDARDS, SURROGATE_MAP, REPORTING_LIMITS,
+                     # P3: everything the retired Projects-page editor could override
+                     CALIBRATION_CCV, QC_COMPOSITION, EIS_GRID])

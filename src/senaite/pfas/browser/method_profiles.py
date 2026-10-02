@@ -435,11 +435,6 @@ class PFASMethodProfileEditView(BrowserView):
         from senaite.pfas.method_profile_store import raw_profile
         return recovery_grid(raw_profile(_portal(self.context), self.method_id()))
 
-    def eis_class_sections(self):
-        """[(section id, label)] for the four 1633A matrix-class EIS tables."""
-        from senaite.pfas.method_profile_sections import EIS_CLASSES
-        return [(c.id, label) for c, label in EIS_CLASSES]
-
     def section_env(self):
         """What a declared section needs from the site that the profile does
         not hold: the reagent inventory's standard lots (salt CoA lots), the

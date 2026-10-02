@@ -287,14 +287,6 @@ def _published(method_id, key, value, matrix=None):
         return _PUBLISHED_NONE
 
 
-def _flags():
-    try:
-        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
-    except Exception:
-        from analyte_reference import NATIVE_ANALYTES
-    return dict((r[0], bool(r[7])) for r in NATIVE_ANALYTES)
-
-
 def _fmt(v):
     return u"not set" if v is None else u"%g" % v
 
@@ -304,7 +296,7 @@ def departures(profile, eff, method_id=None, matrices=None):
     in `eff` looser than in `profile` (the method), in `matrices` (default:
     all the method's)."""
     method_id = method_id or profile.get("method_id")
-    no_std = _flags()
+    no_m, no_e = mps.no_std_set(profile), mps.no_std_set(eff)   # each profile's own links
     out, grouped = [], {}
     keys_m, keys_e = set(mps.key_analytes(profile)), set(mps.key_analytes(eff))
     panel = [kw for kw in profile.get("master_analyte_set") or []]
@@ -317,8 +309,8 @@ def departures(profile, eff, method_id=None, matrices=None):
     for kw in panel:
         for m in matrices:
             for qc, field, label, looser in checks:
-                tm = mps.resolve_tier(profile, kw in keys_m, no_std.get(kw, False), m, qc)
-                te = mps.resolve_tier(eff, kw in keys_e, no_std.get(kw, False), m, qc)
+                tm = mps.resolve_tier(profile, kw in keys_m, kw in no_m, m, qc)
+                te = mps.resolve_tier(eff, kw in keys_e, kw in no_e, m, qc)
                 a = (tm or {}).get(field)
                 b = (te or {}).get(field)
                 if a is None or a == b:
@@ -376,6 +368,7 @@ def departures(profile, eff, method_id=None, matrices=None):
                 if a is not None and a != b and (b is None or b > a):
                     out.append({"what": u"%s %s" % (field.upper(), kw), "method": _fmt(a),
                                 "project": _fmt(b), "where": m, "published": _PUBLISHED_NONE})
+    out.extend(_instrument_departures(profile, eff, method_id))
     grid_m = profile.get("labelled_standards") or {}
     grid_e = eff.get("labelled_standards") or {}
     for name in sorted(grid_m):
@@ -383,6 +376,73 @@ def departures(profile, eff, method_id=None, matrices=None):
             out.append({"what": u"Labelled standard %s" % name, "method": u"used",
                         "project": u"not used", "where": u"all matrices",
                         "published": _PUBLISHED_NONE})
+    return out
+
+
+def _dig(d, path):
+    for k in path:
+        d = d.get(k) if isinstance(d, dict) else None
+    return d
+
+
+# Criteria Project Specs can override since P3 (Calibration & CCV, QC
+# composition, SUR limits): (label, path, which way is looser, baseline key)
+_INSTRUMENT_CHECKS = [
+    (u"Calibration R\u00b2 min", ("instrument_verification", "calibration", "r2_min"), "lower", "cal_r2_min"),
+    (u"Calibration point % deviation max", ("instrument_verification", "calibration", "point_pct_dev_max"), "higher", None),
+    (u"S/N min (quantitation)", ("instrument_verification", "confirmation", "sn_quan_min"), "lower", "sn_quan_min"),
+    (u"S/N min (confirmation ion)", ("instrument_verification", "confirmation", "sn_confirm_min"), "lower", None),
+    (u"Ion ratio tolerance %", ("instrument_verification", "confirmation", "ion_ratio_tol_pct"), "higher", None),
+    (u"CCV recovery min %", ("instrument_verification", "ccv", "recovery_min"), "lower", None),
+    (u"CCV recovery max %", ("instrument_verification", "ccv", "recovery_max"), "higher", None),
+    (u"CCV every N samples", ("instrument_verification", "ccv", "frequency"), "higher", "ccv_frequency"),
+    (u"ICV % deviation max", ("instrument_verification", "icv", "pct_dev_max"), "higher", None),
+    (u"LFSM every N field samples", ("qc_acceptance", "LFSM", "frequency"), "higher", "lfsm_frequency"),
+]
+
+
+def _instrument_departures(profile, eff, method_id):
+    """The P3 criteria a project loosens: a lower floor, a higher ceiling or
+    interval, a requirement removed."""
+    out = []
+    for label, path, looser, key in _INSTRUMENT_CHECKS:
+        a, b = _dig(profile, path), _dig(eff, path)
+        if a is None or a == b:
+            continue
+        if b is None or (b < a if looser == "lower" else b > a):
+            out.append({"what": label, "method": _fmt(a), "project": _fmt(b),
+                        "where": u"all matrices",
+                        "published": _published(method_id, key, b) if b is not None else _PUBLISHED_NONE})
+    dup_m = _dig(profile, ("qc_acceptance", "Dup", "duplicate_all_samples"))
+    if dup_m and not _dig(eff, ("qc_acceptance", "Dup", "duplicate_all_samples")):
+        out.append({"what": u"Duplicate every field sample", "method": u"yes",
+                    "project": u"no", "where": u"all matrices", "published": _PUBLISHED_NONE})
+    # SUR (EIS) limits: per analyte, a lower min or a higher max
+    def rows(p):
+        return dict((r.get("analyte"), r) for r in p.get("eis_overrides") or []
+                    if isinstance(r, dict) and r.get("analyte"))
+    em, ee = rows(profile), rows(eff)
+    for analyte in sorted(em):
+        for field, looser in (("recovery_min", "lower"), ("recovery_max", "higher")):
+            a = em[analyte].get(field)
+            b = (ee.get(analyte) or {}).get(field)
+            if a is None or a == b:
+                continue
+            if b is None or (b < a if looser == "lower" else b > a):
+                out.append({"what": u"SUR %s %s %%" % (analyte, field.replace("recovery_", "recovery ")),
+                            "method": _fmt(a), "project": _fmt(b), "where": u"aqueous",
+                            "published": _PUBLISHED_NONE})
+    for cls, by in sorted((profile.get("eis_matrix_overrides") or {}).items()):
+        for analyte, lim in sorted((by or {}).items()):
+            for field, looser in (("recovery_min", "lower"), ("recovery_max", "higher")):
+                a = (lim or {}).get(field)
+                b = (((eff.get("eis_matrix_overrides") or {}).get(cls) or {}).get(analyte) or {}).get(field)
+                if a is None or a == b:
+                    continue
+                if b is None or (b < a if looser == "lower" else b > a):
+                    out.append({"what": u"SUR %s %s %%" % (analyte, field.replace("recovery_", "recovery ")),
+                                "method": _fmt(a), "project": _fmt(b), "where": cls,
+                                "published": _PUBLISHED_NONE})
     return out
 
 

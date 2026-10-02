@@ -118,9 +118,8 @@ different limits.
   the Calibration & CCV fields. Same fact, two tabs, two values.
 
 ## Status (2026-10-02)
-- **P1 and P2 done** (GAPS §81). P3 (one project system) and P4 (derive
-  "no labelled standard"; one EIS grid) await approval; D4 (SENAITE specs
-  read-only) was decided and is done.
+- **P1 and P2 done** (GAPS §81); **P3 and P4 done** (GAPS §85); D4 (SENAITE
+  specs read-only) done. Every finding C1-C11 is closed.
 
 ## Proposed plan
 

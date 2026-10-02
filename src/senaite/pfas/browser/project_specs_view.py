@@ -29,7 +29,9 @@ FORM_ID = "project-specs"
 # the page's tabs: (id, label, section ids)
 TABS = [("an", u"Analytes & limits", ("px", "rl")),
         ("rec", u"Recovery & RPD", ("groups", "tiers", "tiers_lfb", "dup", "lfsmd")),
-        ("std", u"Standards & links", ("ls", "sur"))]
+        ("std", u"Standards & links", ("ls", "sur")),
+        ("ins", u"Calibration & QC run", ("cal", "qc_comp")),
+        ("eis", u"SUR limits", ("eis_grid",))]
 
 
 class PFASProjectSpecsView(BrowserView):
@@ -124,6 +126,8 @@ class PFASProjectSpecsView(BrowserView):
             skip.add("lfsmd")
         if "LFB" not in qca:
             skip.add("tiers_lfb")
+        if "eis_overrides" not in self.method_profile():
+            skip.update(s.id for s in PROJECT_SECTIONS if s.id.startswith("eis"))   # EPA 1633A only
         return [s for s in PROJECT_SECTIONS if s.id not in skip]
 
     def section_ids(self):
@@ -131,8 +135,9 @@ class PFASProjectSpecsView(BrowserView):
 
     def tabs(self):
         ids = set(self.section_ids())
-        return [{"id": t, "label": label, "sections": [s for s in sids if s in ids]}
+        tabs = [{"id": t, "label": label, "sections": [s for s in sids if s in ids]}
                 for t, label, sids in TABS]
+        return [t for t in tabs if t["sections"]]       # no empty tab (FDA has no SUR limits)
 
     def _section(self, sid):
         return dict((s.id, s) for s in self.sections())[sid]

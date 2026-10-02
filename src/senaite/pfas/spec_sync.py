@@ -63,43 +63,14 @@ def _build_kw_to_tier(profile):
     """Return {keyword: tier_int(1|2|3)} for every analyte in master_analyte_set.
 
     Tier values: 1=key (tight), 2=linked (standard), 3=no-labeled-std.
-    Uses the per_analyte table (user-editable) cross-referenced against
-    NATIVE_ANALYTES to map display-names back to SENAITE keywords.
-    Falls back to computing from no_labeled/is_key flags for keywords
-    that don't appear in per_analyte.
+    "No labelled standard" is derived from the method's own surrogate links
+    and key analytes are the method's own list (consolidation P4) -- the
+    engine's rule, so the specs match what results are judged by.
     """
-    from senaite.pfas.analyte_reference import NATIVE_ANALYTES
-
-    # name → keyword  (e.g. "lr-PFHxS" → "PFHxS")
-    name_to_kw = {row[1]: row[0] for row in NATIVE_ANALYTES}
-
-    # keyword → default tier from no_labeled/is_key flags; key analytes are the
-    # METHOD's own list where it has one (2026-10-01)
-    own_keys = profile.get("key_analytes")
-    kw_flags = {row[0]: (bool(row[7]),
-                         (row[0] in own_keys) if isinstance(own_keys, list) else bool(row[8]))
-                for row in NATIVE_ANALYTES}
-
-    kw_to_tier = {}
-
-    # Only use per_analyte rows when they carry an explicit recovery_tier —
-    # older stored profiles may lack this field; in that case fall through to
-    # the NATIVE_ANALYTES default so is_key / no_labeled are read correctly.
-    for row in profile.get("per_analyte", []):
-        if "recovery_tier" not in row:
-            continue
-        display_name = row.get("analyte", "")
-        kw = name_to_kw.get(display_name)
-        if kw:
-            kw_to_tier[kw] = int(row["recovery_tier"])
-
-    # Fill in from NATIVE_ANALYTES for every keyword not already covered
-    for kw in profile.get("master_analyte_set", []):
-        if kw not in kw_to_tier:
-            no_labeled, is_key = kw_flags.get(kw, (False, False))
-            kw_to_tier[kw] = 3 if no_labeled else (1 if is_key else 2)
-
-    return kw_to_tier
+    from senaite.pfas.method_profile_sections import key_analytes, no_std_set
+    keys, no_std = set(key_analytes(profile)), no_std_set(profile)
+    return dict((kw, 3 if kw in no_std else (1 if kw in keys else 2))
+                for kw in profile.get("master_analyte_set", []))
 
 
 def _tier_limits(qc_acceptance, qc_type):

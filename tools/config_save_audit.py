@@ -57,6 +57,10 @@ STEPS = [
     ("method profile EPA 537.1: Recovery Tiers", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-rt", ("button", "Save & Export")),
     ("method profile EPA 1633A: Recovery Tiers", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-rt", ("button", "Save & Export")),
     ("method profile FDA 32-PFAS: Recovery Tiers", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-rt", ("button", "Save & Export")),
+    # QC composition (P3) saves from its own button on the QC Types tab
+    ("method profile EPA 537.1: QC composition", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-qct", ("button", "Save QC composition")),
+    ("method profile EPA 1633A: QC composition", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-qct", ("button", "Save QC composition")),
+    ("method profile FDA 32-PFAS: QC composition", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-qct", ("button", "Save QC composition")),
     ("method profile EPA 537.1: Reporting", "@@pfas-method-profile-edit?method_id=EPA_537_1#pane-rf", ("button", "Save & Export")),
     ("method profile EPA 1633A: Reporting", "@@pfas-method-profile-edit?method_id=EPA_1633A#pane-rf", ("button", "Save & Export")),
     ("method profile FDA 32-PFAS: Reporting", "@@pfas-method-profile-edit?method_id=FDA_32PFAS#pane-rf", ("button", "Save & Export")),

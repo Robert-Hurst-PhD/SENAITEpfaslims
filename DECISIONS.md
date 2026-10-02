@@ -5712,3 +5712,17 @@ Lab answers:
   it with the Westgard rules. A point beyond the limits raises a warning; each
   warning can be dismissed, or the point removed from the chart. (The R-4s
   definition is therefore not a decision now.)
+
+## 2026-10-02 — Consolidation P3 + P4 approved; Project Specs scope (confirmed)
+- P3 and P4 of docs/QC_PROFILE_CONSOLIDATION.md approved.
+- **Project Specs is the one way a project overrides criteria.** It gains the
+  Calibration & CCV section (R², S/N, CCV window and frequency, ICV limit) and
+  the EIS limits, so it covers everything the Projects-page criteria editor
+  could; that editor and its separate stored ruleset are removed. The
+  ruleset / per-batch criteria file / worksheet snapshot / disclosure keep
+  working, fed from Project Specs.
+- **QC composition:** "LFSM every N samples" and "duplicate all samples" become
+  method-profile fields (QC Types tab; blank = not required by the method),
+  overridable in Project Specs; the Run Builder reads them as before.
+- P4: "no labelled standard" derived per method from its surrogate links
+  (proven against today's FDA list first); one EIS limits grid.

@@ -407,143 +407,72 @@ def test_project_ruleset_analyte_scoping_is_silent_for_other_analytes():
     assert other.tier == rs.TIER_LAB, "an untouched analyte must still inherit"
 
 
-def test_set_project_criterion_merges_and_does_not_null_siblings():
-    """The GAPS.md Sec7.1 shape, defended structurally: setting one criterion
-    must not clobber another already stored for the same or a different
-    method/matrix."""
-    class FakeAnnotations(dict):
-        pass
+def _effective(profile, method_specs, matrix, env=None):
+    """A stand-in for project_specs.effective: deep-merge {"*": patch,
+    matrix: patch} over the profile (enough for these tests)."""
+    import copy
 
-    store = {}
-
-    class FakeProject(object):
-        pass
-
-    project = FakeProject()
-
-    # Patch _annotations() for this test only, so it never touches zope.
-    original = rs._annotations
-    rs._annotations = lambda proj: store.setdefault(id(proj), FakeAnnotations())
-    try:
-        rs.set_project_criterion(project, "FDA_32PFAS", "Eggs", "cal_r2_min", 0.98)
-        rs.set_project_criterion(project, "FDA_32PFAS", "Eggs", "dup_rpd_max", 15.0)
-        rs.set_project_criterion(project, "FDA_32PFAS", "Milk", "cal_r2_min", 0.99)
-
-        ruleset = rs.get_project_ruleset(project)
-        assert ruleset["FDA_32PFAS"]["Eggs"]["cal_r2_min"] == 0.98
-        assert ruleset["FDA_32PFAS"]["Eggs"]["dup_rpd_max"] == 15.0, (
-            "setting cal_r2_min must not have nulled the sibling dup_rpd_max")
-        assert ruleset["FDA_32PFAS"]["Milk"]["cal_r2_min"] == 0.99, (
-            "setting Eggs must not have nulled Milk")
-    finally:
-        rs._annotations = original
+    def merge(a, b):
+        for k, v in b.items():
+            if isinstance(v, dict) and isinstance(a.get(k), dict):
+                merge(a[k], v)
+            else:
+                a[k] = copy.deepcopy(v)
+    out = copy.deepcopy(profile)
+    for scope in ("*", matrix):
+        merge(out, (method_specs or {}).get(scope) or {})
+    return out, []
 
 
-def test_clearing_a_project_criterion_falls_back_to_lab_tier():
-    """Task requirement 2: clearing an override must resolve tier=='lab'
-    with the LAB'S REAL VALUE -- never a project tier carrying None. resolve()
-    tests `if pv is not None`, so storing None through set_project_criterion
-    (the same, and only, write path -- no second function for clearing) is
-    silence at the project tier, which correctly falls through."""
-    class FakeAnnotations(dict):
-        pass
-
-    store = {}
-
-    class FakeProject(object):
-        pass
-
-    project = FakeProject()
-    profile = {"instrument_verification": {"calibration": {"r2_min": 0.995}}}
-
-    original = rs._annotations
-    rs._annotations = lambda proj: store.setdefault(id(proj), FakeAnnotations())
-    try:
-        rs.set_project_criterion(project, "FDA_32PFAS", "Eggs", "cal_r2_min", 0.999)
-        overridden = rs.resolve(
-            "FDA_32PFAS", "Eggs", "cal_r2_min", profile=profile,
-            project_ruleset=rs.get_project_ruleset(project))
-        assert overridden.tier == rs.TIER_PROJECT
-        assert overridden.value == 0.999
-
-        # Clear it -- same function, value=None.
-        rs.set_project_criterion(project, "FDA_32PFAS", "Eggs", "cal_r2_min", None)
-        cleared = rs.resolve(
-            "FDA_32PFAS", "Eggs", "cal_r2_min", profile=profile,
-            project_ruleset=rs.get_project_ruleset(project))
-        assert cleared.tier == rs.TIER_LAB, cleared.tier
-        assert cleared.value == 0.995, cleared.value
-        assert cleared.value is not None, (
-            "a cleared override must report the lab's real value, not a "
-            "project tier carrying None")
-    finally:
-        rs._annotations = original
+def test_the_project_tier_is_derived_from_project_specs():
+    """P3 (DECISIONS 2026-10-02): no stored per-project ruleset; the project
+    tier is exactly what the project's specs change, per matrix."""
+    profile = {"supported_matrices": ["Eggs", "Milk"],
+               "instrument_verification": {"calibration": {"r2_min": 0.99},
+                                           "ccv": {"recovery_min": 70.0, "recovery_max": 130.0,
+                                                   "frequency": 10}},
+               "qc_acceptance": {"Dup": {"tiers": [{"rpd_max": 30.0}]}}}
+    specs = {"FDA_32PFAS": {
+        "*": {"instrument_verification": {"calibration": {"r2_min": 0.995}}},
+        "Milk": {"qc_acceptance": {"Dup": {"tiers": [{"rpd_max": 20.0}]}},
+                 "instrument_verification": {"ccv": {"frequency": 5}}}}}
+    rs_ = rs.ruleset_from_specs({"FDA_32PFAS": profile}, specs, _effective)
+    assert rs_["FDA_32PFAS"]["Eggs"] == {"cal_r2_min": 0.995}
+    assert rs_["FDA_32PFAS"]["Milk"] == {"cal_r2_min": 0.995, "dup_rpd_max": 20.0,
+                                         "ccv_frequency": 5}
+    eggs = rs.resolve("FDA_32PFAS", "Eggs", "dup_rpd_max", profile=profile, project_ruleset=rs_)
+    assert eggs.tier == rs.TIER_LAB and eggs.value == 30.0          # unchanged: the method's
+    r2 = rs.resolve("FDA_32PFAS", "Eggs", "cal_r2_min", profile=profile, project_ruleset=rs_)
+    assert r2.tier == rs.TIER_PROJECT and r2.value == 0.995
+    assert rs.ruleset_from_specs({"FDA_32PFAS": profile}, {}, _effective) == {}
+    same = {"FDA_32PFAS": {"*": {"instrument_verification": {"calibration": {"r2_min": 0.99}}}}}
+    assert rs.ruleset_from_specs({"FDA_32PFAS": profile}, same, _effective) == {}   # no change
 
 
-def test_clearing_one_eis_analyte_override_does_not_leak_to_a_sibling():
-    """eis_recovery is analyte-scoped one level deeper than every other key
-    (ruleset.ANALYTE_SCOPED_KEYS): clearing ONE analyte's override must not
-    clear another's stored under the same (method, matrix, key) node --
-    the exact isolation senaite.pfas.browser.projects._set_eis_analyte exists
-    to preserve, proven here at the ruleset layer it writes through."""
-    class FakeAnnotations(dict):
-        pass
-
-    store = {}
-
-    class FakeProject(object):
-        pass
-
-    project = FakeProject()
-
-    original = rs._annotations
-    rs._annotations = lambda proj: store.setdefault(id(proj), FakeAnnotations())
-    try:
-        node = {
-            "13C4-PFBA": {"min": 1.0, "max": 200.0},
-            "13C5-PFPeA": {"min": 2.0, "max": 210.0},
-        }
-        rs.set_project_criterion(
-            project, "EPA_1633A", "Groundwater", "eis_recovery", node)
-
-        # Clear ONE analyte the way the editor does: read the node, drop
-        # one entry, write the whole (still one-key) node back.
-        current = rs.get_project_ruleset(project)
-        remaining = dict(current["EPA_1633A"]["Groundwater"]["eis_recovery"])
-        remaining.pop("13C4-PFBA")
-        rs.set_project_criterion(
-            project, "EPA_1633A", "Groundwater", "eis_recovery", remaining)
-
-        cleared = rs.resolve(
-            "EPA_1633A", "Groundwater", "eis_recovery", analyte="13C4-PFBA",
-            profile=_EPA1633A_PROFILE,
-            project_ruleset=rs.get_project_ruleset(project))
-        assert cleared.tier == rs.TIER_LAB, cleared.tier
-
-        untouched = rs.resolve(
-            "EPA_1633A", "Groundwater", "eis_recovery", analyte="13C5-PFPeA",
-            profile=_EPA1633A_PROFILE,
-            project_ruleset=rs.get_project_ruleset(project))
-        assert untouched.tier == rs.TIER_PROJECT, (
-            "clearing one analyte's override must not clear a sibling's")
-        assert untouched.value == {"min": 2.0, "max": 210.0}
-    finally:
-        rs._annotations = original
+def test_a_project_eis_change_touches_only_that_analyte():
+    profile = {"supported_matrices": ["Drinking Water"],
+               "eis_overrides": [{"analyte": "13C4-PFBA", "recovery_min": 5.0, "recovery_max": 130.0},
+                                 {"analyte": "13C5-PFPeA", "recovery_min": 20.0, "recovery_max": 150.0}]}
+    specs = {"EPA_1633A": {"*": {"eis_overrides": [
+        {"analyte": "13C4-PFBA", "recovery_min": 10.0, "recovery_max": 130.0},
+        {"analyte": "13C5-PFPeA", "recovery_min": 20.0, "recovery_max": 150.0}]}}}
+    rs_ = rs.ruleset_from_specs({"EPA_1633A": profile}, specs, _effective)
+    assert rs_ == {"EPA_1633A": {"Drinking Water": {"eis_recovery": {
+        "13C4-PFBA": {"min": 10.0, "max": 130.0}}}}}
+    other = rs.resolve("EPA_1633A", "Drinking Water", "eis_recovery", analyte="13C5-PFPeA",
+                       profile=profile, project_ruleset=rs_)
+    assert other.tier == rs.TIER_LAB
 
 
-# ── QC COMPOSITION keys: ccv_frequency / lfsm_frequency / duplicate_all_samples
-#
-# A QAPP can require "all samples run in duplicate" or "LFSM every 5 samples
-# instead of every 20" -- a different override CLASS from the numeric
-# criteria above (WHAT QC runs, not its limits), but resolved through the
-# identical three-tier path. See ruleset.py's SEEDING DISCIPLINE comment:
-# no baseline is ever registered for any of the three in production, so
-# get_baseline() returns None for them today and every test below that wants
-# a real DEPARTS/CONFORMS verdict installs a synthetic one, exactly like
-# test_ceiling_departure_via_full_resolution_is_not_inverted does for
-# dup_rpd_max above.
+def test_nothing_stores_a_separate_project_ruleset_any_more():
+    import io as _io
+    src = _io.open(os.path.join(os.path.dirname(os.path.abspath(rs.__file__)), "ruleset.py"),
+                   encoding="utf-8").read()
+    for gone in ("def set_project_criterion", "def set_project_ruleset", "IAnnotations"):
+        assert gone not in src, gone
 
-import json as _json
+
+import json as _json  # noqa: E402
 
 
 def _real_profile(method_id):

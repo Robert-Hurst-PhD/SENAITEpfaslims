@@ -53,6 +53,19 @@ def drop_dead_keys(profile, method_id=u""):
     return changed
 
 
+def drop_derived_per_analyte(profile):
+    """P4: per_analyte rows lose what is now derived -- no_labeled_std (from
+    the surrogate links), is_key_analyte and recovery_tier (from the key
+    list + links). confirm_ion_mz and notes stay. True if changed."""
+    changed = False
+    for row in profile.get("per_analyte") or []:
+        for k in ("no_labeled_std", "is_key_analyte", "recovery_tier"):
+            if isinstance(row, dict) and k in row:
+                row.pop(k)
+                changed = True
+    return changed
+
+
 def move_from_rules(profile, method_id, saved_rules, defaults=None):
     """Copy this method's slice of a RAW qc_rules.json dict into the profile;
     True if changed. `defaults` = {rule: on} for this method (the library's);

@@ -590,55 +590,57 @@ def test_setting_a_factor_back_to_one_removes_its_row():
     assert len(after["matrix_factors"]) == len(stored["matrix_factors"]) - 1
 
 
-# ── EIS limits (1633A) ───────────────────────────────────────────────────────
+# ── SUR (EIS) limits: one grid (1633A; consolidation P4) ─────────────────────
 
-EIS = mps.EIS
-EIS_CLASSES = [c for c, _l in mps.EIS_CLASSES]
+EIS = mps.EIS_GRID
 
 
-def test_unchanged_eis_saves_change_nothing():
+def test_unchanged_eis_grid_saves_change_nothing():
     for mid, stored in _profiles().items():
-        for coll in [EIS] + EIS_CLASSES:
-            after = save(coll, stored, coll_form(coll, stored))
-            assert ch.diff(stored, after) == [], (mid, coll.id, ch.diff(stored, after)[:3])
-            for key in ("eis_overrides", "eis_matrix_overrides"):
-                assert (key in stored) == (key in after), (mid, coll.id, key)
+        after = save(EIS, stored, coll_form(EIS, stored))
+        assert ch.diff(stored, after) == [], (mid, ch.diff(stored, after)[:3])
+        for key in ("eis_overrides", "eis_matrix_overrides"):
+            assert (key in stored) == (key in after), (mid, key)
 
 
-def test_a_class_limit_may_only_name_an_existing_designation():
+def test_a_class_cell_sets_that_class_limit_only():
     stored = _profiles()["EPA_1633A"]
-    solid = EIS_CLASSES[0]
-    n = len(solid.read(stored))
-    form = coll_form(solid, stored)
-    form[_cell(solid, n, "analyte")] = "13C4-PFBAA"          # a typo
-    form[_cell(solid, n, "recovery_min")] = "10"
-    assert "not one of the options" in cf.parse(solid, form, stored)[1][0]
-    free = next(r["analyte"] for r in stored["eis_overrides"]
-                if r["analyte"] not in stored["eis_matrix_overrides"]["solid"])
-    form[_cell(solid, n, "analyte")] = free
-    after = save(solid, stored, form)
-    assert after["eis_matrix_overrides"]["solid"][free] == {"recovery_min": 10.0}
+    rows = EIS.read(stored)
+    free = next(i for i, r in enumerate(rows)
+                if r["analyte"] not in stored["eis_matrix_overrides"].get("solid", {}))
+    form = coll_form(EIS, stored)
+    form[_cell(EIS, free, "solid_min")] = "10"
+    after = save(EIS, stored, form)
+    name = rows[free]["analyte"]
+    assert after["eis_matrix_overrides"]["solid"][name] == {"recovery_min": 10.0}
+    assert after["eis_overrides"] == stored["eis_overrides"]
 
 
 def test_eis_min_above_max_and_bad_numbers_are_refused():
     stored = _profiles()["EPA_1633A"]
     form = coll_form(EIS, stored)
-    form[_cell(EIS, 0, "recovery_min")] = "140"
+    form[_cell(EIS, 0, "aq_min")] = "140"
     assert "is above max" in cf.parse(EIS, form, stored)[1][0]
     form = coll_form(EIS, stored)
-    form[_cell(EIS, 0, "recovery_max")] = "abc"
+    form[_cell(EIS, 0, "tissue_max")] = "abc"
     assert cf.parse(EIS, form, stored)[1]
 
 
-def test_clearing_every_class_row_removes_the_class_only():
-    stored = _profiles()["EPA_1633A"]
-    solid = EIS_CLASSES[0]
-    form = coll_form(solid, stored)
-    for i in range(len(solid.read(stored))):
-        form[_cell(solid, i, "analyte")] = ""
-    after = save(solid, stored, form)
-    assert "solid" not in after["eis_matrix_overrides"]
-    assert after["eis_matrix_overrides"]["tissue"] == stored["eis_matrix_overrides"]["tissue"]
+def test_clearing_a_designation_removes_its_class_limits_and_keeps_unseen_ones():
+    import copy as _copy
+    stored = _copy.deepcopy(_profiles()["EPA_1633A"])
+    stored.setdefault("eis_matrix_overrides", {}).setdefault("tissue", {})["NOT-A-ROW"] = {"recovery_min": 1.0}
+    rows = EIS.read(stored)
+    target = next(i for i, r in enumerate(rows)
+                  if any(r[k + "_min"] is not None or r[k + "_max"] is not None
+                         for k in ("solid", "biosolid", "leachate", "tissue")))
+    name = rows[target]["analyte"]
+    form = coll_form(EIS, stored)
+    form[_cell(EIS, target, "analyte")] = ""
+    after = save(EIS, stored, form)
+    assert name not in [r["analyte"] for r in after["eis_overrides"]]
+    assert all(name not in (by or {}) for by in after["eis_matrix_overrides"].values())
+    assert after["eis_matrix_overrides"]["tissue"]["NOT-A-ROW"] == {"recovery_min": 1.0}
 
 
 # ── Surrogate Map + Internal Standards grid ──────────────────────────────────
