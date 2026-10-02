@@ -6653,6 +6653,12 @@ Approved by the lab as the first recommendation of
   R² 0.99 / 20 % for an FDA filter and "each run's method profile" otherwise;
   @@pfas-qc-rules redirects; worker loads all three methods; real instrument
   files: results and flags identical.
+- **No-op save audit:** all 28 method-profile saves change nothing -- the
+  three full-form saves no longer restamp qc_rules.json (the §51 item 3
+  churn is gone with the switches living on the profile). History check:
+  every case reverts, configuration afterwards equals before, no JS errors;
+  the labelled-standards case that timed out in §80 now completes (spec sync
+  skips unchanged specs).
 - **Still open:** P3 (one project system: Projects-page criteria box vs
   Project Specs) and P4 (derive "no labelled standard" per method; one EIS
   grid) await approval. No reference-definition method is configured, so new
