@@ -7298,3 +7298,26 @@ matrix (27 for EPA 1633A alone).
   ignored), windows once with analytes, one differing analyte keeps matrices
   apart, the low-level tier never becomes the window in either order (mutant
   killed).
+
+
+## 97. Example data in the control charts (2026-10-03)
+
+Lab, 2026-10-03: "Control charts seem okay but I need some example data in
+them." The pool held about two points per analyte and QC type -- too few for
+a mean and SD to mean anything.
+
+- **tools/demo_control_charts.py** writes 25 weekly EXAMPLE runs for FDA
+  32-PFAS (PFOA, PFOS, PFHxS, PFNA x CCV % deviation, LFSM % recovery, MB
+  ng/mL; 300 points) into /data/qc/pfas_qc_results.db, with a planted 1-3s
+  (LFSM PFOA, DEMO-CC-18) and 2-2s (CCV PFOS, DEMO-CC-21/22) so the rule
+  markers show. Generated with a fixed seed; no value is a lab result and none
+  cites a source.
+- **Marked everywhere:** batch ids DEMO-CC-01..25, analyst DEMO, instrument
+  DEMO-LCMS, batch notes "... not laboratory results"; the chart shows an
+  "Example data" banner with how many points are examples whenever one is on
+  it. `--remove` deletes exactly the DEMO-CC-* rows and their chart notes;
+  rerunning replaces the set. Nothing is shipped in data/.
+- **Written to the live pool** at the lab's request (300 points).
+- **Tests** (test_demo_control_charts, 3): every point marked and >= 20 per
+  series; the planted events are present; remove / rewrite touch only the
+  examples (mutant killed: remove matching every batch).

@@ -496,6 +496,9 @@ class PFASControlChartView(BrowserView):
             "has_rejects":    any(v["severity"] == "reject" for v in violations),
             "has_warnings":   any(v["severity"] == "warning" for v in violations),
             "n_points":       len(points),
+            # example runs (tools/demo_control_charts.py, GAPS §97): the page
+            # says so whenever one is on the chart
+            "demo_points":    sum(1 for b in batch_ids if b.startswith("DEMO-")),
             "limit":          limit,
             "show_history":   history,
         }

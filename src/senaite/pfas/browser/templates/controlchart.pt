@@ -274,6 +274,13 @@
           shown as hollow markers and excluded from Westgard evaluation.
         </div>
 
+        <div class="history-banner" tal:condition="python:data.get('demo_points')">
+          <strong>Example data.</strong>
+          <span tal:replace="python:'%d of these %d points are' % (data['demo_points'], data['n_points'])">25 of these points are</span>
+          generated example runs (batches DEMO-CC-&#8230;), not laboratory results.
+          Remove them with <code>tools/demo_control_charts.py --remove</code>.
+        </div>
+
         <div class="stats-bar" tal:condition="view/has_data">
 
           <div class="stat-box">
