@@ -4,10 +4,10 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Lot Usage</title>
+  <title metal:fill-slot="title">Lot usage</title>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Lot usage and recall</tal:t>
+  <tal:t metal:fill-slot="header-title">Lot usage</tal:t>
 
   <metal:fill fill-slot="content" tal:define="it view/item; rows view/rows; q view/query">
     <section class="bench-block">

@@ -649,7 +649,7 @@
       <div class="pfas-sg-items">
         <a class="pfas-si" title="Reagent Inventory"
            tal:attributes="href string:${purl}/@@pfas-reagents;
-                           class python:'pfas-si si-active' if '@@pfas-reagents' in path else 'pfas-si'">
+                           class python:'pfas-si si-active' if ('@@pfas-reagents' in path or '@@pfas-lot-usage' in path) else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-reagents"/></svg></span>
           <span class="pfas-si-label">Reagent Inventory</span>
         </a>
@@ -659,36 +659,13 @@
           <span class="pfas-si-icon"><svg><use href="#ico-prep-standards"/></svg></span>
           <span class="pfas-si-label">Prepared Standards</span>
         </a>
-        <a class="pfas-si" title="Where each lot was used; recall search by lot number"
-           tal:attributes="href string:${purl}/@@pfas-lot-usage;
-                           class python:'pfas-si si-active' if '@@pfas-lot-usage' in path else 'pfas-si'">
-          <span class="pfas-si-icon"><svg><use href="#ico-reagents"/></svg></span>
-          <span class="pfas-si-label">Lot Usage &amp; Recall</span>
-        </a>
-        <!-- Manager only: prep_logbooks.py returns 403 to everyone else, so
-             showing this to bench staff is a guaranteed dead end. Same
-             reasoning as Logbook Setup below. -->
-        <a class="pfas-si" title="Prep Logbooks" tal:condition="is_mgr"
-           tal:attributes="href string:${purl}/@@pfas-prep-logbooks;
-                           class python:'pfas-si si-active' if '@@pfas-prep-logbooks' in path else 'pfas-si'">
-          <span class="pfas-si-icon"><svg><use href="#ico-book-open"/></svg></span>
-          <span class="pfas-si-label">Prep Logbooks</span>
-        </a>
-        <!-- Bench: pick a batch and fill its logbooks in. -->
-        <a class="pfas-si" title="Batch Logbooks"
+        <!-- One Logbooks item (GAPS §98): Templates -> Method sequence -> By
+             batch are tabs of one page; bench staff see By batch only. -->
+        <a class="pfas-si" title="Logbooks: templates, method sequence, by batch"
            tal:attributes="href string:${purl}/@@pfas-logbook-batches;
-                           class python:'pfas-si si-active' if ('@@pfas-logbook-batches' in path or '@@pfas-logbook-index' in path or '@@pfas-logbook-dynamic' in path) else 'pfas-si'">
-          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
-          <span class="pfas-si-label">Batch Logbooks</span>
-        </a>
-        <!-- Manager: which logbooks a method requires, and the logbook pool.
-             The view already returns 403 to non-managers; hiding it keeps bench
-             staff from walking into that. -->
-        <a class="pfas-si" title="Logbook Setup" tal:condition="is_mgr"
-           tal:attributes="href string:${purl}/@@pfas-logbook-admin;
-                           class python:'pfas-si si-active' if '@@pfas-logbook-admin' in path else 'pfas-si'">
-          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
-          <span class="pfas-si-label">Logbook Setup</span>
+                           class python:'pfas-si si-active' if ('@@pfas-logbook-batches' in path or '@@pfas-logbook-index' in path or '@@pfas-logbook-dynamic' in path or '@@pfas-prep-logbooks' in path or '@@pfas-logbook-admin' in path) else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book-open"/></svg></span>
+          <span class="pfas-si-label">Logbooks</span>
         </a>
         <a class="pfas-si" title="Extraction Guide"
            tal:attributes="href string:${purl}/@@pfas-extraction-guide;

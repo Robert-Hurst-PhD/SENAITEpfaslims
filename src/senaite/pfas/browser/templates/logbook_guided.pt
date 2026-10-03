@@ -93,7 +93,7 @@
     <tal:noguide tal:condition="not:view/has_steps">
       <div class="lbg-card">
         This logbook has no instructions yet. A manager can add them in
-        <b>Prep Logbooks &#8594; Edit &#8594; Instructions</b>.
+        <b>Logbooks &#8594; Templates &#8594; Edit &#8594; Instructions</b>.
       </div>
     </tal:noguide>
 

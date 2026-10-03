@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Where a lot was used, and a recall search by lot number
-(@@pfas-lot-usage; docs/BENCH_WORKFLOW_REVIEW.md phase 3).
+"""Where a lot was used, and a search by lot number
+(@@pfas-lot-usage; docs/BENCH_WORKFLOW_REVIEW.md phase 3). Reached from each
+lot's "Where used" button; not a sidebar item (lab, 2026-10-03: useful, but
+the lab does not issue recalls -- GAPS §98).
 
     ?kind=reagent&uid=<id>   one lot: every batch and stage that used it
-    ?q=<lot text>            recall: every use of any lot whose number
+    ?q=<lot text>            every use of any lot whose number
                              contains the text
 
 Reads the usage ledger the guided extraction writes (inventory_ledger).

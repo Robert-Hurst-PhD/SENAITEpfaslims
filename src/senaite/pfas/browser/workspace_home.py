@@ -194,7 +194,7 @@ class PFASBenchHomeView(BrowserView):
             {
                 "url":   u"{0}/@@pfas-logbook-batches".format(base),
                 "icon":  u"✎",
-                "title": u"Batch Logbooks",
+                "title": u"Logbooks",
                 "desc":  u"Fill in and correct FM-ENV logbooks for a batch",
             },
             {

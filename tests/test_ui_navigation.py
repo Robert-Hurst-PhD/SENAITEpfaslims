@@ -155,3 +155,23 @@ if __name__ == "__main__":
             print("FAIL", name, exc)
     print("{0}/{1} passed".format(len(tests) - failed, len(tests)))
     sys.exit(1 if failed else 0)
+
+
+def test_logbooks_are_one_page_with_three_tabs():
+    """Lab, 2026-10-03: three sidebar items all called logbooks, and no way to
+    tell how they build on each other (GAPS §98). One sidebar item; the three
+    pages share one tab strip in flow order."""
+    base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "src", "senaite", "pfas", "browser", "templates")
+
+    def read(name):
+        with open(os.path.join(base, name)) as fh:
+            return fh.read()
+    side = read("pfas_sidebar.pt")
+    labels = re.findall(r'<span class="pfas-si-label">([^<]*Logbook[^<]*)</span>', side)
+    assert labels == ["Logbooks"], labels
+    for page in ("prep_logbooks.pt", "logbook_admin.pt", "logbook_batches.pt"):
+        assert "macros/logbook-tabs" in read(page), page
+    tabs = read("logbook_field_macros.pt")
+    order = [tabs.index(t) for t in ("Templates</a>", "Method sequence</a>", "By batch</a>")]
+    assert order == sorted(order)

@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Batch Logbooks</title>
+  <title metal:fill-slot="title">Logbooks: by batch</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .bq-intro { font-size:var(--fs-base); color:var(--s-secondary); margin-bottom:18px; }
@@ -33,13 +33,8 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Batch Logbooks</tal:t>
-
-  <tal:hr metal:fill-slot="header-right">
-    <!-- Setup is a manager task; bench staff never see a link that 403s. -->
-    <a class="btn-sm" tal:condition="view/is_manager"
-       tal:attributes="href view/setup_url">Logbook Setup</a>
-  </tal:hr>
+  <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
+  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-tabs" /></tal:tabs>
 
   <div metal:fill-slot="content">
   <div class="page-body">

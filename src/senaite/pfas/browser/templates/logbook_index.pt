@@ -35,9 +35,7 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">
-    Batch Logbooks
-  </tal:t>
+  <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
   <tal:r metal:fill-slot="header-context">
     <span class="header-meta"
           tal:content="view/batch_title">Batch</span>

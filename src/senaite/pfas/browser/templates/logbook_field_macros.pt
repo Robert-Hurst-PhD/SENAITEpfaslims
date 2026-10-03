@@ -197,5 +197,31 @@
 
       </tal:fdef>
 </metal:field>
+
+<!--
+  The three logbook pages as ONE page with tabs (lab, 2026-10-03: "We have 3
+  tabs all called logbooks and I am unsure ... how they build into each
+  other"; GAPS §98). Templates and Method sequence are manager pages (their
+  views refuse anyone else), so bench staff see only By batch.
+-->
+<metal:tabs define-macro="logbook-tabs"
+     tal:define="purl python:context.portal_url();
+                 here python:request.get('ACTUAL_URL', '');
+                 mgr python:context.restrictedTraverse('@@pfas-macros').is_manager_role()">
+  <div class="pfas-tabs">
+    <a tal:condition="mgr" tal:attributes="href string:${purl}/@@pfas-prep-logbooks;
+         class python:'pfas-tab active' if '@@pfas-prep-logbooks' in here else 'pfas-tab'">1 &#183; Templates</a>
+    <a tal:condition="mgr" tal:attributes="href string:${purl}/@@pfas-logbook-admin;
+         class python:'pfas-tab active' if '@@pfas-logbook-admin' in here else 'pfas-tab'">2 &#183; Method sequence</a>
+    <a tal:attributes="href string:${purl}/@@pfas-logbook-batches;
+         class python:'pfas-tab' if ('@@pfas-prep-logbooks' in here or '@@pfas-logbook-admin' in here) else 'pfas-tab active'"
+       tal:content="python:mgr and u'3 \u00b7 By batch' or u'By batch'">3 &#183; By batch</a>
+  </div>
+  <p class="lb-flow" tal:condition="mgr">
+    <strong>Templates</strong> are the versioned logbook forms (FM-ENV-001&#8230;).
+    A method&#8217;s <strong>sequence</strong> says which templates its batches use, in
+    order. <strong>By batch</strong> is where a batch&#8217;s logbooks are filled in.
+  </p>
+</metal:tabs>
 </body>
 </html>

@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Preparation Logbooks</title>
+  <title metal:fill-slot="title">Logbooks: templates</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .lb-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
@@ -163,7 +163,8 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Preparation Logbooks</tal:t>
+  <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
+  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-tabs" /></tal:tabs>
   <tal:r metal:fill-slot="header-right">
     
   </tal:r>

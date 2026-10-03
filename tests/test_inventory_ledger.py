@@ -98,8 +98,11 @@ def test_wiring():
     assert "remaining(" in inv and "uses_for_items()" in inv
     zcml = _src("src", "senaite", "pfas", "browser", "configure.zcml")
     assert 'name="pfas-lot-usage"' in zcml
-    for t in ("reagents.pt", "prep_standards.pt", "pfas_sidebar.pt"):
+    for t in ("reagents.pt", "prep_standards.pt"):
         assert "@@pfas-lot-usage" in _src("src", "senaite", "pfas", "browser", "templates", t), t
+    # reached from "Where used", not the sidebar (lab, 2026-10-03; GAPS §98)
+    side = _src("src", "senaite", "pfas", "browser", "templates", "pfas_sidebar.pt")
+    assert "href string:${purl}/@@pfas-lot-usage" not in side and "Recall" not in side
     r = _src("src", "senaite", "pfas", "browser", "reagents.py")
     assert '"low_stock_level":    getattr(obj, "low_stock_level", None)' in r
     assert 'obj.low_stock_level = data.get("low_stock_level")' in r

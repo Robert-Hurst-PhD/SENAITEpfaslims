@@ -154,6 +154,10 @@
     .pfas-tabs-wrap {
       flex: 0 0 auto;
     }
+    /* one line under a page-group tab strip saying how its tabs relate */
+    .lb-flow { margin: 0; padding: var(--sp-2) 20px; font-size: var(--fs-sm);
+               color: var(--s-secondary); background: var(--s-bg);
+               border-bottom: 1px solid var(--s-border); }
     .pfas-tabs {
       background: var(--s-bg);
       border-bottom: 2px solid var(--s-border);
@@ -1156,8 +1160,10 @@ document.addEventListener('click', function (ev) {
   }
   var titleText = title ? title.textContent.trim() : '';
   function bare(u) { return (u || '').split('#')[0].split('?')[0].replace(/\/+$/, ''); }
-  var samePage = !!active && bare(active.href) === bare(location.href);
   var activeText = active ? active.textContent.trim() : '';
+  /* a tab of the item's page (Logbooks > Templates) is the same page, not a
+     page beneath it: no "Logbooks > Logbooks" */
+  var samePage = !!active && (bare(active.href) === bare(location.href) || activeText === titleText);
   if (active) {
     var g = active.closest('.pfas-sg');
     var gl = g && g.querySelector('.pfas-sg-label');

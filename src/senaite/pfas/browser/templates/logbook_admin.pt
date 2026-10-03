@@ -4,7 +4,7 @@
       xmlns:tal="http://xml.zope.org/namespaces/tal"
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
-  <title metal:fill-slot="title">Logbook Management</title>
+  <title metal:fill-slot="title">Logbooks: method sequence</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
     .admin-tab-panel { display:none; }
@@ -78,7 +78,8 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Logbook Management</tal:t>
+  <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
+  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-tabs" /></tal:tabs>
 
   <div metal:fill-slot="content">
   <div class="page-body-narrow">

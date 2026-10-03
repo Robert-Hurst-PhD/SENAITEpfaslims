@@ -48,7 +48,7 @@
     <tal:noschema condition="not:view/field_schema">
       <div class="empty-schema">
         No field schema defined for this logbook.
-        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks">Configure in Prep Logbooks</a>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks">Configure in Logbooks: Templates</a>
       </div>
     </tal:noschema>
 

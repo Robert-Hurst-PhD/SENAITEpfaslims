@@ -7321,3 +7321,33 @@ a mean and SD to mean anything.
 - **Tests** (test_demo_control_charts, 3): every point marked and >= 20 per
   series; the planted events are present; remove / rewrite touch only the
   examples (mutant killed: remove matching every batch).
+
+
+## 98. Bench: Lot Usage off the sidebar; the three logbook items become one page (2026-10-03)
+
+Lab, 2026-10-03: "Lots usage and recall does not have to be its own tab but is
+useful information although we do not issue recalls. Batch logbooks is not
+clear what it is, We have 3 tabs all called logbooks and I am unsure of how
+what any of them do or build into eachother."
+
+- **Lot usage** is no longer a sidebar item; it opens from each lot's "Where
+  used" button (Reagent Inventory, Prepared Standards, Data Review) and keeps
+  its lot-number search. Renamed "Lot usage"; the recall wording is gone. The
+  sidebar shows Reagent Inventory as current, so the breadcrumb reads
+  Bench > Reagent Inventory > Lot usage.
+- **Logbooks: one sidebar item, one page, three tabs in flow order:**
+  1 Templates (was Prep Logbooks: the versioned forms) -> 2 Method sequence
+  (was Logbook Setup: which templates a method's batches use, in order) ->
+  3 By batch (was Batch Logbooks: fill in a batch's logbooks). A line under
+  the tabs says how they relate. Templates and Method sequence stay manager
+  pages (their views refuse anyone else), so bench staff see By batch only.
+  The URLs are unchanged, so no redirects are needed. The shared strip is
+  the `logbook-tabs` macro (@@pfas-logbook-macros).
+- **Breadcrumb:** a tab of the sidebar item's page is the same page, so no
+  more "Logbooks > Logbooks".
+- **Tests:** test_ui_navigation (one Logbooks item; all three pages use the
+  strip; tabs in flow order; mutant killed); test_inventory_ledger updated
+  (Lot usage reachable from Where used, not the sidebar).
+- **Found:** the only row in the usage ledger (inventory_usage.db, B-002,
+  2026-10-02) was written by the extraction probe of §91 and survived its
+  cleanup; left in place pending the lab's word.
