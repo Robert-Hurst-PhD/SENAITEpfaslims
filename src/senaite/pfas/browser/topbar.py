@@ -34,8 +34,16 @@ class PFASToolbarManager(ToolbarViewletManager):
     custom_template = ViewPageTemplateFile("templates/core_topbar.pt")
 
     def page_title(self):
-        """The title the bar shows before pfas-topbar.js swaps in the page's
-        own H1: the view's title if it has one, else the object's."""
+        """The object's title on its default view (a batch is "B-001", not
+        its "Samples" listing); on any other view the view's own title (Audit
+        Log, Edit) when it has one, else the object's."""
+        state = self.context_state
+        try:
+            default_view = state.is_view_template()
+        except Exception:
+            default_view = False
+        if default_view:
+            return state.object_title() or u"LIMS"
         title = getattr(self.__parent__, "title", None)
         if callable(title):
             try:

@@ -17,7 +17,7 @@
 }
 .pfas-topbar .navbar-nav { align-items: center; flex-direction: row; }
 .pfas-topbar .ml-auto { margin-left: auto; }
-.pfas-topbar-left { min-width: 0; flex: 1 1 auto; }
+.pfas-topbar-left { min-width: 0; flex: 0 1 auto; }
 .pfas-topbar.main-header .nav-link {
   height: var(--pfas-header-h);
   display: flex;
@@ -49,9 +49,10 @@
   min-width: 0;
   padding: 0 var(--sp-3);
 }
-.pfas-topbar-context { display: flex; align-items: center; gap: var(--sp-2); min-width: 0;
-                       color: rgba(255, 255, 255, .85); }
-.pfas-topbar-context:empty { display: none; }
+.pfas-topbar-context { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
+                       min-width: 0; flex: 0 1 auto; color: rgba(255, 255, 255, .85); }
+.pfas-topbar-context:not(:has(*)) { display: none; }
+.pfas-topbar-context > .navbar-nav { flex-wrap: wrap; }
 /* core's content views (e.g. "Audit Log") arrive as nav-items */
 .pfas-topbar-context .nav-item { list-style: none; }
 .pfas-topbar-context .nav-link { font-size: var(--fs-sm); }
@@ -89,7 +90,12 @@
 
 @media (max-width: 768px) {
   .pfas-topbar-title { font-size: var(--fs-base); padding: 0 var(--sp-2); }
-  .pfas-topbar-context { display: none; }
+  /* the context zone (core's object tabs, a PFAS chip) takes its own row */
+  .pfas-topbar.main-header { flex-wrap: wrap; height: auto; }
+  .pfas-topbar-left { flex: 1 1 0; }
+  .pfas-topbar-context { order: 3; flex: 1 1 100%; padding: 0 var(--sp-2);
+                         border-top: 1px solid rgba(255, 255, 255, .1); }
+  .pfas-topbar-context .nav-link { height: 36px !important; font-size: var(--fs-sm); }
   .pfas-topbar-user span { display: none; }
   .pfas-topbar.main-header .nav-link { padding: 0 4px; }
 }

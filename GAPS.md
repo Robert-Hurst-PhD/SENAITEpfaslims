@@ -7351,3 +7351,29 @@ what any of them do or build into eachother."
 - **Found:** the only row in the usage ledger (inventory_usage.db, B-002,
   2026-10-02) was written by the extraction probe of §91 and survived its
   cleanup; left in place pending the lab's word.
+
+
+### 93a. Top toolbar on core object pages (2026-10-03, follow-up)
+
+§93 was measured on listing and setup pages only. On object pages (sample,
+batch, worksheet) core puts the object's tabs and its workflow menu in the
+toolbar's content views, now the bar's context zone:
+
+- **Phone:** the context zone was hidden below 768 px, so a worksheet's
+  Manage Results / Add Analyses / ... and a sample's workflow menu were
+  unreachable. It now wraps to its own row under the bar (wrapping, not
+  scrolling, so core's dropdowns are not clipped).
+- **Workflow menu:** the bar's "click elsewhere closes menus" handler closed
+  core's Bootstrap dropdown as it opened; it now closes only the bar's own
+  menus.
+- **Title:** an object's default view shows the object ("B-001"'s title, not
+  its "Samples" listing H1); other views show their own title. A core H1 is
+  hidden only when it repeats the bar title; otherwise it stays as the
+  section heading.
+- **User menu:** core's personal-bar actions (Site Setup for managers, My
+  Organization for client contacts, My Profile, Log out) via
+  PersonalBarViewlet -- the first cut offered only My Profile / Sign Out.
+- **Measured:** sample FEED-0002, batch B-001, worksheet WS-0001, Samples and
+  Setup at 1366 and 390 px: every object tab visible; the sample's workflow
+  menu opens with Create partitions / Dispatch / Invalidate / Store sample at
+  both widths; the user menu matches core on core and PFAS pages.

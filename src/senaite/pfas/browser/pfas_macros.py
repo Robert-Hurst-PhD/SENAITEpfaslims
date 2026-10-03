@@ -141,6 +141,28 @@ class PFASMacrosView(BrowserView):
             )
         return u''.join(parts)
 
+    _USER_ICONS = {"site-setup": u"fa-wrench", "my-organization": u"fa-building",
+                   "user-profile": u"fa-user-cog", "logout": u"fa-sign-out-alt"}
+
+    def user_actions(self):
+        """The user menu: Plone's `user` actions, as core's personal bar shows
+        them (Site Setup for managers, My Organization for client contacts,
+        My Profile, Log out) -- the top bar must not offer less than core's."""
+        # The same source core's toolbar uses (PersonalBarViewlet): its hrefs
+        # are evaluated for this context. plone_context_state.actions() handed
+        # back unevaluated Expressions on a sample's views.
+        from plone.app.layout.viewlets.common import PersonalBarViewlet
+        bar = PersonalBarViewlet(self.context, self.request, self, None)
+        bar.update()
+        acts = [{"id": a.get("id"), "title": a.get("title"), "url": a.get("href")}
+                for a in bar.user_actions or []]
+        out = []
+        for a in acts or []:
+            aid = (a.get("id") or u"").replace(u"personaltools-", u"")
+            out.append({"id": aid, "title": a.get("title") or aid, "url": a.get("url") or u"#",
+                        "icon": self._USER_ICONS.get(aid, u"fa-user")})
+        return out
+
     def render_lang_available(self):
         """Return True when more than one language is configured."""
         lt = getToolByName(self.context, 'portal_languages', None)
