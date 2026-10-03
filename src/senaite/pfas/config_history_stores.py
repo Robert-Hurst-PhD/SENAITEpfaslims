@@ -74,5 +74,7 @@ def register_all():
                         ("logbook_definition", u"Logbook definition"),
                         ("logbook_defs", u"Logbook definitions"), ("client_edd", u"Client EDD settings"),
                         ("reagent_expiry", u"Expiry defaults"), ("facility_unit", u"Facility unit"),
-                        ("weight_set", u"Weight set"), ("facility_api_key", u"Sensor API key")):
+                        ("weight_set", u"Weight set"), ("facility_api_key", u"Sensor API key"),
+                        # GAPS §102: equipment types and per-instrument settings
+                        ("equipment_type", u"Equipment type"), ("equipment", u"Equipment settings")):
         config_history.TITLES[name] = title

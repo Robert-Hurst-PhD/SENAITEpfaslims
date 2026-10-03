@@ -99,6 +99,7 @@ class PFASSettingsReportView(BrowserView):
                (u"Laboratory name on reports", ps.get("lab_name")),
                (u"Footer", ps.get("footer_text")),
                (u"Sign-off layout", ps.get("coa_signature_style"))]
+        equipment = self._equipment()
         user = api.get_current_user()
         self._report = {
             "title": (u"%s \u2014 QC settings" % methods[0]["name"]) if only and methods
@@ -107,14 +108,52 @@ class PFASSettingsReportView(BrowserView):
             "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "user": (user.getProperty("fullname") or user.getId()) if user else u"",
             "fingerprint": sr.fingerprint(profiles, reg, ps,
-                                          [p["specs"] for p in projects]),
+                                          [p["specs"] for p in projects],
+                                          equipment["config"]),
             "methods": methods,
             "limits": reg.get("limits") or [],
             "programs": reg.get("programs") or {},
             "projects": projects,
             "lab": [(k, v) for k, v in lab if v],
+            "equipment": equipment,
         }
         return self._report
+
+    def _equipment(self):
+        """Equipment for the report (GAPS §102): the type obligations, how the
+        system applies them, every instrument's state, and the facility
+        defaults. Read with the same functions the Equipment pages use."""
+        from senaite.pfas import equipment_report as er
+        from senaite.pfas import facility_qc as fq
+        from senaite.pfas.browser import equipment as eq
+        portal = api.get_portal()
+        types = []
+        for b in api.search({"portal_type": "InstrumentType", "sort_on": "sortable_title"},
+                            "senaite_catalog_setup"):
+            t = api.get_object(b)
+            types.append({"uid": api.get_uid(t), "title": api.get_title(t),
+                          "req": eq.type_requirements(t)})
+        insts = []
+        for u in fq.list_units(active_only=False):
+            cf = fq.current_correction(u["id"]) if fq._requires_correction(u) else None
+            st = None
+            if cf:
+                det = fq.get_study(cf["study_id"]) or {}
+                st = {"study": det.get("study") or {},
+                      "changes": len(fq.study_point_changes(cf["study_id"]))}
+            insts.append({"unit": u, "due": eq.due_status(u), "correction": cf, "study": st})
+        d = fq.get_facility_defaults(portal)
+        defaults = [(u"Eye wash temperature range (\u00b0C)",
+                     u"%s to %s" % (d.get("eyewash_temp_min"), d.get("eyewash_temp_max"))),
+                    (u"Type 1 water, maximum conductivity (\u00b5S/cm)", d.get("water_conductivity_max")),
+                    (u"Type 1 water, maximum TOC (ppb)", d.get("water_toc_max")),
+                    (u"Temperature study tolerance per reading pair (\u00b0C)", d.get("study_tolerance"))]
+        for kind, pts in sorted((d.get("balance_points") or {}).items()):
+            defaults.append((u"Default weight points, %s (g)" % kind,
+                             u", ".join(u"%s" % p[0] for p in pts)))
+        return {"application": er.application(fq.STUDY_POINTS, fq.STUDY_MIN_DAYS),
+                "types": er.type_rows(types), "instruments": er.instrument_rows(insts),
+                "defaults": defaults, "config": er.config(types, insts)}
 
     def _projects(self, portal, profiles, env):
         from senaite.pfas import project_specs

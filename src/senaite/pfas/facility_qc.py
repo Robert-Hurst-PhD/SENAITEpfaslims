@@ -316,6 +316,21 @@ CREATE TABLE IF NOT EXISTS waste_logs (
     created_at   TEXT NOT NULL
 );
 
+-- A study reading changed after it was recorded keeps what it was, who changed
+-- it and when (GAPS §102): a correction factor an auditor follows back must not
+-- rest on a value that was silently overwritten.
+CREATE TABLE IF NOT EXISTS temperature_study_point_changes (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    study_id       INTEGER NOT NULL,
+    time_point     INTEGER NOT NULL,
+    old_sensor     REAL,
+    old_nist       REAL,
+    old_recorded_at TEXT,
+    old_entered_by TEXT,
+    changed_by     TEXT,
+    changed_at     TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS eyewash_logs (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     unit_id      TEXT NOT NULL,
@@ -364,6 +379,8 @@ _ADDED_COLUMNS = [
     # the thermometer correction applied to a reading (GAPS §101); the raw
     # probe value stays in `temperature`
     ("temperature_readings", "correction", "REAL"),
+    # who entered each study reading (GAPS §102)
+    ("temperature_study_points", "entered_by", "TEXT"),
 ]
 
 
@@ -619,6 +636,17 @@ def study_correction(points):
     return round(nist - probe, 3)
 
 
+def study_point_changes(study_id):
+    """Every change to a study's recorded readings, oldest first."""
+    ensure_schema()
+    with _connect() as conn:
+        rows = conn.execute("""
+            SELECT * FROM temperature_study_point_changes WHERE study_id=?
+            ORDER BY changed_at, id
+        """, (study_id,)).fetchall()
+    return list(map(dict, rows))
+
+
 def current_correction(unit_id, as_of=None):
     """{"correction", "study_id", "study_date"} from the unit's latest PASSED
     study dated on or before `as_of`, or None."""
@@ -685,7 +713,10 @@ def create_study(unit_id, operator, nist_serial, nist_cert_date=None,
 
 
 def save_study_point(study_id, time_point, sensor_reading, nist_reading,
-                     recorded_at=None):
+                     recorded_at=None, entered_by=None):
+    """Record one paired reading. A reading already recorded that is changed
+    keeps its previous values, who changed it and when, in
+    temperature_study_point_changes (GAPS §102)."""
     ensure_schema()
     recorded_at = recorded_at or _now()
     deviation = None
@@ -699,12 +730,28 @@ def save_study_point(study_id, time_point, sensor_reading, nist_reading,
         if study and deviation is not None:
             # dict() first -- a unicode key on a Row raises; see _connect.
             passed = 1 if abs(deviation) <= float(dict(study)["tolerance"]) else 0
+        prev = conn.execute("""
+            SELECT sensor_reading, nist_reading, recorded_at, entered_by
+            FROM temperature_study_points WHERE study_id=? AND time_point=?
+        """, (study_id, time_point)).fetchone()
+        old = dict(prev) if prev else {}
+        had = old.get("sensor_reading") is not None or old.get("nist_reading") is not None
+        changed = (old.get("sensor_reading"), old.get("nist_reading")) != (sensor_reading, nist_reading)
+        if had and changed:
+            conn.execute("""
+                INSERT INTO temperature_study_point_changes
+                (study_id, time_point, old_sensor, old_nist, old_recorded_at,
+                 old_entered_by, changed_by, changed_at)
+                VALUES (?,?,?,?,?,?,?,?)
+            """, (study_id, time_point, old.get("sensor_reading"), old.get("nist_reading"),
+                  old.get("recorded_at"), old.get("entered_by"), entered_by, _now()))
         conn.execute("""
             UPDATE temperature_study_points
-            SET sensor_reading=?, nist_reading=?, deviation=?, passed=?, recorded_at=?
+            SET sensor_reading=?, nist_reading=?, deviation=?, passed=?, recorded_at=?,
+                entered_by=?
             WHERE study_id=? AND time_point=?
         """, (sensor_reading, nist_reading, deviation, passed, recorded_at,
-              study_id, time_point))
+              entered_by, study_id, time_point))
         _refresh_study_status(conn, study_id)
 
 

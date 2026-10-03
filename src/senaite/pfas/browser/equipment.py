@@ -89,6 +89,15 @@ def type_requirements(itype):
 
 
 def save_type_requirements(itype, req):
+    """Store a type's requirements; the change is recorded in the
+    configuration change history (@@pfas-config-history, GAPS §102)."""
+    try:
+        from senaite.pfas import config_history
+        config_history.track(None, "equipment_type", api.get_uid(itype),
+                             lambda: _ann_json(itype, TYPE_KEY),
+                             label=u"Equipment type %s" % api.get_title(itype))
+    except Exception:                                       # noqa: BLE001
+        logger.warning("equipment type change not tracked", exc_info=True)
     _set_ann_json(itype, TYPE_KEY, dict((k, req.get(k)) for k in et.FIELDS))
 
 

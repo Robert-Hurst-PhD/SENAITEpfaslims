@@ -27,6 +27,15 @@ def _portal(context):
     return getToolByName(context, "portal_url").getPortalObject()
 
 
+def _current_user_id():
+    try:
+        from bika.lims import api
+        user = api.get_current_user()
+        return user.getId() if user else None
+    except Exception:                                       # noqa: BLE001
+        return None
+
+
 def _facility_defaults():
     """Lab-wide facility defaults — saved values over the seed.
 
@@ -195,6 +204,7 @@ class PFASTemperatureLogView(BrowserView):
             sensor_reading=float(sr) if sr else None,
             nist_reading=float(nr) if nr else None,
             recorded_at=ra,
+            entered_by=_current_user_id(),      # the study's audit trail (GAPS §102)
         )
 
     def unit(self):
@@ -226,6 +236,10 @@ class PFASTemperatureLogView(BrowserView):
             det = db.get_study(s["id"]) or {}
             out.append(dict(s, correction=db.study_correction(det.get("points"))))
         return out
+
+    def study_changes(self):
+        det = self.study_detail()
+        return db.study_point_changes(det["study"]["id"]) if det else []
 
     def correction(self):
         """The correction applied to this unit's readings now (GAPS §101),

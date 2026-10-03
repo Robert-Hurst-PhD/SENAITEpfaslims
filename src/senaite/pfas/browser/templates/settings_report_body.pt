@@ -160,6 +160,56 @@
     </tal:p>
   </section>
 
+  <!-- Equipment (GAPS §102): ISO/IEC 17025 §6.4 record. The statements are
+       built from the constants the code applies (equipment_report.py). -->
+  <section class="sr-method" tal:define="eq report/equipment">
+    <h2>Equipment</h2>
+    <p class="sr-meta">Every piece of equipment is a SENAITE instrument with a type; the type
+      sets what is owed. Status is as of this report.</p>
+    <h3>How equipment obligations are applied</h3>
+    <table class="sr-table">
+      <tbody><tr tal:repeat="a eq/application"><th tal:content="python:a[0]">Balance</th>
+                                               <td tal:content="python:a[1]">rule</td></tr></tbody>
+    </table>
+    <h3>Equipment types</h3>
+    <p class="sr-meta" tal:condition="not:eq/types">No instrument types.</p>
+    <table class="sr-table" tal:condition="eq/types">
+      <thead><tr><th>Type</th><th>Kind</th><th>Check every</th><th>Correction factor</th>
+                 <th>External certificate</th><th>Unit</th><th>Tolerance</th><th>In worksheets</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="t eq/types">
+          <td><span tal:replace="t/title">Balance</span>
+              <div class="sr-how" tal:condition="not:t/configured">not set up</div></td>
+          <td tal:content="t/kind">Balance</td><td tal:content="t/every">90 days</td>
+          <td tal:content="t/correction">Yes</td><td tal:content="t/external">No</td>
+          <td tal:content="t/unit">g</td><td tal:content="t/tolerance">0.2 %</td>
+          <td tal:content="t/worksheets">No</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Instruments</h3>
+    <p class="sr-meta" tal:condition="not:eq/instruments">No instruments.</p>
+    <table class="sr-table" tal:condition="eq/instruments">
+      <thead><tr><th>Instrument</th><th>Type</th><th>Location</th><th>Internal check</th>
+                 <th>External certificate</th><th>Correction factor</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="i eq/instruments">
+          <td><span tal:replace="i/name">Fridge 1</span>
+              <div class="sr-how" tal:condition="i/serial" tal:content="string:SN ${i/serial}">SN 1</div>
+              <div class="sr-how" tal:condition="not:i/active">inactive</div></td>
+          <td tal:content="i/type">Fridge</td><td tal:content="i/location">Lab</td>
+          <td tal:content="i/internal">last</td><td tal:content="i/external">not required</td>
+          <td tal:content="i/correction">+0.350</td><td tal:content="i/status">OK</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Facility defaults</h3>
+    <table class="sr-table">
+      <tbody><tr tal:repeat="kv eq/defaults"><th tal:content="python:kv[0]">Setting</th>
+                                             <td tal:content="python:kv[1]">value</td></tr></tbody>
+    </table>
+  </section>
+
   <section class="sr-method">
     <h2>Laboratory-wide settings</h2>
     <table class="sr-table">

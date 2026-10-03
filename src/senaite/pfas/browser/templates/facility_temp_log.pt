@@ -152,6 +152,20 @@
             NIST <tal:s tal:replace="python:det['study']['nist_serial']"/>
             (tol ±<tal:t tal:replace="python:det['study']['tolerance']"/>&deg;C)
           </strong>
+          <tal:ch define="changes view/study_changes" condition="changes">
+            <p class="form-note">Readings changed after they were recorded (kept for audit):</p>
+            <table class="pfas-table">
+              <thead><tr><th>Point</th><th>Was (probe / NIST)</th><th>Recorded</th><th>By</th><th>Changed</th><th>By</th></tr></thead>
+              <tbody><tr tal:repeat="c changes">
+                <td tal:content="c/time_point">1</td>
+                <td tal:content="python:'%s / %s' % (c['old_sensor'], c['old_nist'])">4.0 / 4.4</td>
+                <td tal:content="c/old_recorded_at">2026-07-01T09:00</td>
+                <td tal:content="c/old_entered_by">AN1</td>
+                <td tal:content="c/changed_at">2026-07-02</td>
+                <td tal:content="c/changed_by">AN1</td>
+              </tr></tbody>
+            </table>
+          </tal:ch>
           <div class="point-grid" style="margin-top:10px;">
             <tal:each tal:repeat="pt python:det['points']">
               <div class="point-cell">

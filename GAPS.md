@@ -7555,3 +7555,43 @@ quarterly."
   rendered the factor and its study.
 - Readings recorded before this change carry no correction and keep their
   original verdict (there were none: the facility DB is empty).
+
+
+## 102. Equipment in the audit record (2026-10-03)
+
+Lab, 2026-10-03: "Make sure this is included in the system audit so it
+properly documents and produces a record for an audit."
+
+- **Settings Report (@@pfas-settings-report and its PDF) has an Equipment
+  section** (equipment_report.py): how each obligation is applied (balance
+  verification, thermometer correction factor, internal checks and due dates,
+  external certificates, worksheet selection, release); every equipment type
+  with its obligations (marked "not set up" where the lab has not set it);
+  every instrument with its internal check (last, due), external certificate,
+  correction factor (value, study date, NIST serial, operator, and how many of
+  that study's readings were changed after entry) and status as of the report;
+  the facility defaults. Screen and PDF share the body; an issued revision
+  freezes it with the rest.
+- **The statements are built from the code's constants** (STUDY_POINTS,
+  STUDY_MIN_DAYS, BALANCE_TOLERANCE_PCT, DUE_SOON_DAYS, STUDY_EVERY_DAYS), and
+  a test runs the rules as stated.
+- **The fingerprint covers equipment configuration** (type requirements and
+  each instrument's PFAS settings, not its records): changing a type changes
+  the report's fingerprint.
+- **Change history:** saving an equipment type is recorded in
+  @@pfas-config-history ("Equipment type"), like equipment settings
+  ("Equipment settings").
+- **Study readings keep a trail:** each paired reading records who entered
+  it; a reading changed after entry keeps its previous values, who entered
+  them, who changed them and when (temperature_study_point_changes), shown on
+  the study on the Temperature Log and counted in the report. Re-saving the
+  same values is not a change.
+- **Tests** (test_equipment_report, 5): statements follow the constants; the
+  stated rules are the run rules; a changed reading keeps its previous value;
+  instrument rows say what is and is not corrected; the fingerprint moves
+  with equipment configuration. Mutants killed: the change trail disabled;
+  type requirements dropped from the fingerprint.
+- **Live:** the report page shows the section (LC-MS/MS type "not set up");
+  PDF rendered in an aborted transaction with a DEMO fridge: types table,
+  the instrument row "+0.375 degC, study of 2026-07-01 (NIST NIST-DEMO-1,
+  AN1); 1 reading(s) changed after entry", Overdue. Nothing kept.
