@@ -1344,3 +1344,70 @@ if __name__ == "__main__":
             print("FAIL", name, exc)
     print("{0}/{1} passed".format(len(tests) - failed, len(tests)))
     sys.exit(1 if failed else 0)
+
+
+# ── Reporting Limits: the action level / MCL beside each RL (GAPS §95) ──────
+
+def _reg_env(verified=True, matrices=("Drinking Water",)):
+    return {"regulatory": {
+        "programs": {"federal": {"name": "US EPA"}},
+        "limits": [{"id": "t-pfoa", "program": "federal", "label": "PFOA", "analytes": ["PFOA"],
+                    "matrices": list(matrices), "value": 4.0, "unit": "ng/L", "kind": "MCL",
+                    "verified": verified},
+                   {"id": "t-sum", "program": "federal", "label": "Sum of two",
+                    "analytes": ["PFOA", "PFOS"], "matrices": list(matrices), "value": 20,
+                    "unit": "ng/L", "kind": "Action level", "verified": verified}]}}
+
+
+def _rl_info(stored, env, matrix, kw):
+    groups = cf.render(mps.REPORTING_LIMITS, stored, env)
+    grp = next(g for g in groups if g["key"] == matrix)
+    assert grp["info_labels"] == ["Action level / MCL"]
+    row = next(r for r in grp["rows"] if r["sublabel"] == kw)
+    return row["info"][0]
+
+
+def test_the_rl_table_shows_each_analytes_limits_in_its_matrix():
+    """Lab, 2026-10-03: "The reporting limits need an action level or MCL
+    column". Each limit naming the matrix shows on every analyte it covers
+    (a sum limit on each member), and on no other matrix or analyte."""
+    stored = _profiles()["EPA_537_1"]
+    env = _reg_env()
+    pfoa = [e["text"] for e in _rl_info(stored, env, "Drinking Water", "PFOA")]
+    assert len(pfoa) == 2 and pfoa[0].startswith("4 ng/L MCL") and "US EPA" in pfoa[0]
+    assert "Sum of two" in pfoa[1]
+    assert len(_rl_info(stored, env, "Drinking Water", "PFOS")) == 1
+    assert _rl_info(stored, env, "Drinking Water", "PFNA") == []
+    assert _rl_info(stored, env, "Groundwater", "PFOA") == []
+    assert _rl_info(stored, None, "Drinking Water", "PFOA") == []     # no store: nothing shown
+
+
+def test_an_unverified_or_switched_off_limit_is_marked_not_hidden():
+    stored = _profiles()["EPA_537_1"]
+    e = _rl_info(stored, _reg_env(verified=False), "Drinking Water", "PFOA")[0]
+    assert e["warn"] and "not verified" in e["text"] and not e["off"]
+    import copy as _copy
+    off = _copy.deepcopy(stored)
+    mps._rf.set_limit(off, "Drinking Water", "t-pfoa", False)
+    e = _rl_info(off, _reg_env(), "Drinking Water", "PFOA")[0]
+    assert e["off"] and "not evaluated" in e["text"]
+
+
+def test_the_limit_column_is_never_saved():
+    """Read-only: an unchanged RL save writes nothing, limits or not."""
+    stored = _profiles()["EPA_537_1"]
+    env = _reg_env()
+    form = {}
+    for g in cf.render(mps.REPORTING_LIMITS, stored, env):
+        for r in g["rows"]:
+            for c in r["cells"]:
+                form[c["name"]] = c["value"]
+    updates, errors = cf.parse(mps.REPORTING_LIMITS, form, stored, env)
+    assert not errors
+    after = cf.apply(mps.REPORTING_LIMITS, _copy_profile(stored), updates)
+    assert ch.diff(stored, after) == []
+
+
+def _copy_profile(p):
+    import copy as _copy
+    return _copy.deepcopy(p)

@@ -335,8 +335,13 @@ class Table(object):
     rows that differ from the default."""
 
     def __init__(self, id, title, base, columns, rows, check=None, intro=u"",
-                 read=None, write=None, rows_take_env=False, row_heading=u"Analyte"):
+                 read=None, write=None, rows_take_env=False, row_heading=u"Analyte",
+                 info=None):
         self.id = id
+        # [(id, heading)]: read-only columns after the inputs, showing what
+        # another owner holds (e.g. the regulatory limits beside an RL). A
+        # row gives {id: [{"text", "warn", "off"}]}; nothing here is saved.
+        self.info = list(info or [])
         self.row_heading = row_heading      # the first column's heading
         # rows(stored, env) when the rows show page data (a suggestion, or
         # site records such as the regulatory limits); the stamp is taken
@@ -410,7 +415,9 @@ def stamp_table(table, stored, env=None):
 def render_table(table, stored, env=None):
     table = _bound(table, stored)
     groups, rows = _rows(table, stored, env)
-    by_group = dict((g["key"], dict(g, rows=[], set=0)) for g in groups)
+    info_labels = [label for _i, label in getattr(table, "info", [])]
+    by_group = dict((g["key"], dict(g, rows=[], set=0, info_labels=info_labels))
+                    for g in groups)
     order = [g["key"] for g in groups]
     for r in rows:
         vals = _cells(table, stored, r["key"])
@@ -433,6 +440,8 @@ def render_table(table, stored, env=None):
         suggest = r.get("suggest")          # (value, label): shown, never pre-selected
         g["rows"].append({"label": r.get("label"), "sublabel": r.get("sublabel"),
                           "note": r.get("note"), "warn": r.get("warn"), "cells": cells,
+                          "info": [(r.get("info") or {}).get(i) or []
+                                   for i, _l in getattr(table, "info", [])],
                           "suggest": ({"value": suggest[0], "label": suggest[1],
                                        "target": cells[0]["name"]}
                                       if suggest and not vals[table.columns[0].name] else None)})

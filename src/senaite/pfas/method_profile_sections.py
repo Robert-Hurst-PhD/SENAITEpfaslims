@@ -125,13 +125,43 @@ def _analyte_titles(profile):
     return _Labels(profile)
 
 
-def reporting_limit_rows(profile):
+def _limits_for(profile, env):
+    """{(matrix, keyword): [info entry]}: every regulatory limit naming one of
+    the method's matrices, on each analyte it covers (lab, 2026-10-03: the
+    action level / MCL beside the RL). Values stay on Regulatory Limits; this
+    only shows them, marked when not verified (never printed) or switched off
+    for this method x matrix (the list under the table)."""
+    store = (env or {}).get("regulatory") or {}
+    names = store.get("programs") or {}
+    out = {}
+    for lim in store.get("limits") or []:
+        if not lim.get("id"):
+            continue
+        prog = (names.get(lim.get("program")) or {}).get("name") or lim.get("program") or u""
+        analytes = lim.get("analytes") or []
+        text = u"%s %s %s · %s" % (_sig(lim.get("value")) if lim.get("value") is not None
+                                       else u"?", lim.get("unit") or u"", lim.get("kind") or u"", prog)
+        if len(analytes) > 1:
+            text += u" · %s" % (lim.get("label") or lim["id"])
+        for m in _limit_matrices(profile, lim):
+            off = lim["id"] in _rf.limits_off(profile, m)
+            entry = {"text": text + (u" · not evaluated" if off else u"")
+                             + (u" · not verified" if not lim.get("verified") else u""),
+                     "warn": not lim.get("verified"), "off": off}
+            for kw in analytes:
+                out.setdefault((m, kw), []).append(entry)
+    return out
+
+
+def reporting_limit_rows(profile, env=None):
     """One group per supported matrix, one row per analyte that matrix REPORTS
     (the analyte x matrix inclusion grid decides -- PFODA is not listed under
     FDA x Eggs, CLAUDE.md §3 rule 2). The group's unit is the matrix's unit_map
     entry: a limit is entered in, and printed with, the unit the method
-    reports that matrix in."""
+    reports that matrix in. Beside it, the regulatory limits for the analyte
+    in that matrix (read-only, from env)."""
     titles = _analyte_titles(profile)
+    limits = _limits_for(profile, env)
     inclusion = profile.get("analyte_matrix_inclusion") or {}
     units = profile.get("unit_map") or {}
     groups, rows = [], []
@@ -141,7 +171,8 @@ def reporting_limit_rows(profile):
             if (inclusion.get(kw) or {}).get(matrix, True) is False:
                 continue
             row = {"key": (matrix, kw), "group": matrix,
-                   "label": titles.get(kw, kw), "sublabel": kw}
+                   "label": titles.get(kw, kw), "sublabel": kw,
+                   "info": {"al": limits.get((matrix, kw)) or []}}
             rl = _cal.derived_rl(profile, matrix, kw)    # DECISIONS 2026-10-02
             if rl is not None:
                 # blank = the analyte's lowest calibrator; a typed RL overrides it
@@ -246,7 +277,8 @@ QC_COMPOSITION = cf.Section(
 REPORTING_LIMITS = cf.Table(
     id=u"rl", title=u"Reporting Limits", base=("reporting_limits",),
     columns=[cf.Field("rl", u"RL", minimum=0), cf.Field("mdl", u"MDL", minimum=0)],
-    rows=reporting_limit_rows, check=_mdl_not_above_rl)
+    rows=reporting_limit_rows, rows_take_env=True, check=_mdl_not_above_rl,
+    info=[(u"al", u"Action level / MCL")])
 
 # ── Matrices & Units: one row per matrix, five stored keys ───────────────────
 

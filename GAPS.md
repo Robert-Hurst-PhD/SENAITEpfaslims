@@ -7243,3 +7243,29 @@ applies to the SUR Limits" (and the calibration levels).
 - **Live:** FDA Matrices & Units draws its 6 matrices; two clicks add rows
   named c__mtx__6__* and c__mtx__7__*. Not saved (the parse is unit-tested;
   a test save would write the lab's change history).
+
+
+## 95. Action level / MCL beside the reporting limits (2026-10-03)
+
+Lab, 2026-10-03: "The reporting limits need an action level or MCL column
+which is in the reporting limits tab under reporting?"
+
+- **Reporting Limits tab:** each analyte row now shows, read-only, every
+  regulatory limit that names that matrix and covers that analyte (a sum
+  limit appears on each member): value, unit, kind, program, and the sum's
+  label. Amber "not verified" = never printed; struck through "not evaluated"
+  = switched off for this method x matrix. Values stay owned by Regulatory
+  Limits (one source; nothing typed here, no seed changed).
+- **The on/off list (`al`) moved** from the Reporting tab to under the RL
+  table and now saves with the RL form (`_section=rl,al`); the Reporting tab
+  form saves `rf` only.
+- **config_forms.Table `info`:** declared read-only columns after the inputs
+  (rows give `{id: [{text, warn, off}]}`), drawn by the shared table macro;
+  never parsed or saved. REPORTING_LIMITS reads the regulatory store through
+  env (`rows_take_env`).
+- **Tests** (test_config_forms, 3): limits per analyte and matrix (none on
+  other matrices / analytes, none without a store); unverified and
+  switched-off are marked, not hidden; an unchanged RL save writes nothing.
+  Mutants killed: matrix scoping dropped; off-marking dropped.
+- **Live:** EPA 537.1 Drinking Water lists the federal MCLs and the Maine sum
+  on their analytes, all "not verified"; Groundwater / Surface Water empty.

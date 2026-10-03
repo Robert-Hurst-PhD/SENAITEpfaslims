@@ -434,21 +434,6 @@
           <div tal:define="cf_groups python:view.section_groups('rf'); cf_form string:section-rf">
             <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
           </div>
-
-          <div class="section-group-hdr">Action levels &amp; MCLs</div>
-          <p class="pane-intro">
-            The regulatory limits that name one of <strong>this method&#8217;s</strong>
-            matrices. Each is evaluated on the certificate unless set to
-            <em>Not evaluated</em> here; the note prints only while
-            <em>Regulatory-limit notes</em> is shown above, and only for limits
-            marked verified. Values, units, programs and verification live on
-            Regulatory Limits. A limit naming none of these matrices is not listed.
-            <a class="btn-sm btn-secondary"
-               tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits">Open Regulatory Limits</a>
-          </p>
-          <div tal:define="cf_groups python:view.section_groups('al'); cf_form string:section-rf">
-            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
-          </div>
         </div>
       </div><!-- /pane-rf -->
 
@@ -768,11 +753,29 @@
             method reports that matrix in. A non-detect prints as
             &#8220;&lt; RL&#8221;; an analyte with no RL here prints its result
             without one. Only the analytes the matrix reports are listed (see
-            Analyte &#215; Matrix).
+            Analyte &#215; Matrix). <strong>Action level / MCL</strong> shows the
+            regulatory limits for the analyte in that matrix (from Regulatory
+            Limits; a struck-through one is not evaluated for this method).
           </p>
           <!-- Saved ON ITS OWN (R2, config_forms table): cells belong to
                form#section-rl through the form= attribute. -->
           <div tal:define="cf_groups python:view.section_groups('rl'); cf_form string:section-rl">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+
+          <div class="section-group-hdr">Action levels &amp; MCLs</div>
+          <p class="pane-intro">
+            The regulatory limits that name one of <strong>this method&#8217;s</strong>
+            matrices &#8212; the same ones shown beside each RL above. Each is
+            evaluated on the certificate unless set to
+            <em>Not evaluated</em> here; the note prints only while
+            <em>Regulatory-limit notes</em> is shown on the Reporting tab, and only for limits
+            marked verified. Values, units, programs and verification live on
+            Regulatory Limits. A limit naming none of these matrices is not listed.
+            <a class="btn-sm btn-secondary"
+               tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits">Open Regulatory Limits</a>
+          </p>
+          <div tal:define="cf_groups python:view.section_groups('al'); cf_form string:section-rl">
             <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
           </div>
         </div>
@@ -948,11 +951,10 @@
     <form id="section-rf" method="POST" class="pfas-section-form"
           data-tab-label="Reporting"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="rf,al" />
+      <input type="hidden" name="_section" value="rf" />
       <input type="hidden" name="_pane" value="pane-rf" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__rf" tal:attributes="value python:view.section_stamp('rf')" />
-      <input type="hidden" name="section_stamp__al" tal:attributes="value python:view.section_stamp('al')" />
     </form>
     <form id="section-rt" method="POST" class="pfas-section-form"
           data-tab-label="Recovery Tiers"
@@ -1011,9 +1013,10 @@
     <form id="section-rl" method="POST" class="pfas-section-form"
           data-tab-label="Reporting Limits"
           tal:attributes="action string:@@pfas-method-profile-edit">
-      <input type="hidden" name="_section" value="rl" />
+      <input type="hidden" name="_section" value="rl,al" />
       <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
       <input type="hidden" name="section_stamp__rl" tal:attributes="value python:view.section_stamp('rl')" />
+      <input type="hidden" name="section_stamp__al" tal:attributes="value python:view.section_stamp('al')" />
     </form>
     <form id="section-qcc" method="POST" class="pfas-section-form"
           data-tab-label="QC composition"

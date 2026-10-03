@@ -95,6 +95,7 @@
           <th class="rl-name" tal:content="grp/row_heading">Analyte</th>
           <th tal:repeat="col grp/columns"><span tal:replace="col/label">RL</span><span
               class="rl-unit" tal:condition="col/unit" tal:content="string: (${col/unit})"> (ng/L)</span></th>
+          <th tal:repeat="lbl grp/info_labels|nothing" tal:content="lbl">Action level / MCL</th>
         </tr>
       </thead>
       <tbody>
@@ -135,6 +136,13 @@
                       tal:attributes="value python:c[0]; selected python:'selected' if c[0] == cell['value'] else None"
                       tal:content="python:c[1]">Std &#8212; lot 123</option>
             </select>
+          </td>
+          <!-- read-only: what another owner holds (config_forms.Table info) -->
+          <td tal:repeat="entries row/info|nothing" class="cf-info">
+            <div tal:repeat="e entries"
+                 tal:attributes="class python:'cf-info-off' if e.get('off') else ('cf-info-warn' if e.get('warn') else None)"
+                 tal:content="e/text">4 ng/L MCL &#183; US EPA</div>
+            <span tal:condition="not:entries" class="cf-hint">&#8212;</span>
           </td>
         </tr>
       </tbody>

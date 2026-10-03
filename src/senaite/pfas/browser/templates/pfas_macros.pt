@@ -194,6 +194,11 @@
     .cf-coll td:first-child input { min-width: 9em; }
     /* settings report (screen; the PDF has its own print styles) */
     .cf-hint { color: var(--s-secondary); font-size: var(--fs-sm); }
+    /* read-only info columns (config_forms.Table info): e.g. the action level
+       / MCL beside an RL. Struck = not evaluated here; amber = not verified. */
+    .cf-info { font-size: var(--fs-sm); white-space: nowrap; }
+    .cf-info-off { text-decoration: line-through; color: var(--s-secondary); }
+    .cf-info-warn { color: var(--s-warning); }
     .mp-actions { white-space: nowrap; }
     .mp-issue { display: inline-block; margin-left: var(--sp-2, 8px); }
     .mp-issue form { display: flex; gap: 6px; margin-top: 6px; }
