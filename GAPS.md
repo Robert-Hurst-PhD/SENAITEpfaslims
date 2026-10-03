@@ -7413,3 +7413,40 @@ Senaite style of tables."
   action layout answers the complaint. Revisit if the lab wants bulk
   actions on many lots at once.
 - Prepared Standards' title now matches the sidebar ("Prepared Standards").
+
+
+## 100. Equipment: types carry the obligations; balances in grams at 0.2 % (2026-10-03)
+
+Lab, 2026-10-03: "Facility QC can be consolidated with an equipment tab, each
+equipment gets assigned a type like the LC-MS/MS does. The type of equipment
+determines frequency of calibration, correction factor if required or need
+for external audit. We do not need a unit registry, this can be folded into
+the equipment tab. Balances should always be in g with acceptable tolerances
+of 0.2%." Decided: every item a core SENAITE Instrument with a core Instrument
+Type; types that measure no results hidden from the worksheet instrument
+picker; due dates split (external certificate from SENAITE's certificate on
+the instrument; internal checks from the type's frequency).
+
+### 100a. The type model and the balance rule
+
+- **equipment_types.py (pure):** per type -- kind, calibration frequency
+  (days), correction factor required, external certificate required, unit,
+  tolerance (% of nominal), offered in worksheets. Seeds only what the lab
+  stated: balances in g at 0.2 %; analytical instruments offered in
+  worksheets. Every frequency, factor and certificate requirement is blank
+  until the lab enters it. `due()` returns the internal and external dates
+  and one status (ok / due soon / overdue / missing / not set).
+- **Balance verification is relative:** a point passes when |actual -
+  nominal| <= tolerance % x nominal, compared at 9 places so a reading exactly
+  on the limit passes (0.501 g against 0.5 g; the float difference is
+  0.0010000000000000009). The absolute tolerance judged against is stored
+  with each point. Weight points are now `nominal_g, label`; the per-point
+  absolute tolerances (10 mg at 0.1 mg was 1 %, 500 g at 0.5 g was 0.1 %)
+  and the lab-wide `balance_tolerance` in grams are gone, and so is its
+  settings-console entry.
+- **Tests:** test_equipment_types (5: grams and 0.2 % for balances; nothing
+  else guessed; relative acceptance exact at the limit; parse refuses
+  nonsense; split due dates) and test_equipment_chain (the type's % decides;
+  a point cannot carry its own tolerance; the verdict goes through the
+  relative rule). Mutants killed: rounding dropped at the limit; a grams
+  constant in the verdict.

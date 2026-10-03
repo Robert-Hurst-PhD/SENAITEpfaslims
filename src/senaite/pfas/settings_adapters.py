@@ -176,12 +176,8 @@ def declare_all():
     declare_all._done = True
 
     # ── Thresholds & schedules ───────────────────────────────────────────────
-    _link("facility.balance_tolerance",
-          u"Balance verification tolerance",
-          GROUP_THRESHOLDS, KIND_FLOAT, _facility("balance_tolerance"),
-          "pfas-facility-units", unit=u"g", judging=True,
-          reader="senaite.pfas.facility_qc.get_facility_defaults",
-          help=u"Applied to a weight point that carries no tolerance of its own.")
+    # Balance acceptance is the balance TYPE's tolerance, % of nominal
+    # (equipment_types.py, GAPS §100) -- no lab-wide value in grams any more.
     _link("facility.study_tolerance",
           u"Temperature study tolerance",
           GROUP_THRESHOLDS, KIND_FLOAT, _facility("study_tolerance"),

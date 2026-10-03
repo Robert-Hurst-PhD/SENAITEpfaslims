@@ -27,6 +27,22 @@ from datetime import datetime
 
 logger = logging.getLogger("senaite.pfas.facility_qc")
 
+try:
+    from senaite.pfas import equipment_types as _et
+except ImportError:          # loaded by file path (tests): the module beside this one
+    def _load_beside(name):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name + ".py")
+        try:
+            import importlib.util as _ilu
+            spec = _ilu.spec_from_file_location("pfas_" + name, path)
+            mod = _ilu.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+        except ImportError:                          # Python 2
+            import imp
+            return imp.load_source("pfas_" + name, path)
+    _et = _load_beside("equipment_types")
+
 DB_PATH = os.environ.get("PFAS_FACILITY_QC_DB", "/data/qc/facility_monitoring.db")
 
 UNIT_TYPES = [
@@ -60,20 +76,22 @@ UNIT_TYPES = [
 
 FACILITY_DEFAULTS_KEY = "senaite.pfas.facility_defaults"
 
-# Default balance weight points per type: [nominal_g, label, tolerance_g]
+# Default balance weight points per type: [nominal_g, label]. Acceptance is
+# NOT per point: it is the balance type's tolerance, % of nominal (0.2 %, lab
+# 2026-10-03; equipment_types.py), in grams (GAPS §100).
 BALANCE_DEFAULTS = {
     "balance_analytical": [
-        [0.010, "10 mg",  0.0001],
-        [1.0,   "1 g",    0.001],
-        [10.0,  "10 g",   0.005],
-        [100.0, "100 g",  0.050],
+        [0.010, "10 mg"],
+        [1.0,   "1 g"],
+        [10.0,  "10 g"],
+        [100.0, "100 g"],
     ],
     "balance_prep": [
-        [1.0,   "1 g",    0.001],
-        [10.0,  "10 g",   0.010],
-        [100.0, "100 g",  0.100],
-        [200.0, "200 g",  0.200],
-        [500.0, "500 g",  0.500],
+        [1.0,   "1 g"],
+        [10.0,  "10 g"],
+        [100.0, "100 g"],
+        [200.0, "200 g"],
+        [500.0, "500 g"],
     ],
 }
 
@@ -87,7 +105,6 @@ WATER_QC_DEFAULTS = {
 
 # Fallbacks used when a unit records none of its own.
 STUDY_TOLERANCE_DEFAULT = 1.0   # °C, temperature-mapping study
-BALANCE_TOLERANCE_DEFAULT = 0.001  # g, when a weight point carries no tolerance
 
 
 def _defaults_seed():
@@ -99,7 +116,6 @@ def _defaults_seed():
         "water_conductivity_max": WATER_QC_DEFAULTS["conductivity_max"],
         "water_toc_max": WATER_QC_DEFAULTS["toc_max"],
         "study_tolerance": STUDY_TOLERANCE_DEFAULT,
-        "balance_tolerance": BALANCE_TOLERANCE_DEFAULT,
     }
 
 
@@ -866,32 +882,28 @@ def equipment_provenance(unit_id, as_of):
 
 
 def save_balance_verification(unit_id, operator, verified_date, points, notes=None,
-                              weight_set_id=None, portal=None):
-    """points: list of {nominal_g, label, actual_g, tolerance_g}
+                              weight_set_id=None, portal=None, tolerance_pct=None):
+    """points: list of {nominal_g, label, actual_g}, in grams.
 
-    `portal` is how the lab-wide `balance_tolerance` reaches the pass/fail
-    decision. Without it the seed applies, which is the same documented headless
-    degradation `get_facility_defaults(portal=None)` already has for the worker
-    and the migration scripts.
+    Acceptance is the balance TYPE's tolerance, % of nominal (lab, 2026-10-03:
+    "Balances should always be in g with acceptable tolerances of 0.2%"; GAPS
+    §100). The caller passes the type's `tolerance_pct`; without one the lab's
+    stated 0.2 % applies. The absolute tolerance each point was judged against
+    is stored with it, so a record shows what it passed against. This replaced
+    per-point absolute tolerances (10 mg at 0.1 mg was 1 %) and the lab-wide
+    `balance_tolerance` in grams. `portal` is accepted for older callers.
     """
     ensure_schema()
-    # The tolerance for a weight point that carries none of its own. This USED to
-    # read the module constant while the Unit Registry collected, saved and
-    # displayed a lab-wide `balance_tolerance` that nothing consumed -- and the
-    # comment below claimed it was configured. So the field was editable and
-    # inert: a lab could loosen or tighten it and no balance changed its verdict.
-    # Found by the Lab Settings console, which is what it is for.
-    tol_default = get_facility_defaults(portal).get(
-        "balance_tolerance") or BALANCE_TOLERANCE_DEFAULT
+    pct = float(tolerance_pct) if tolerance_pct else _et.BALANCE_TOLERANCE_PCT
     now = _now()
     all_passed = True
     processed = []
     for p in points:
         actual = _f(p.get("actual_g"))
         nominal = float(p["nominal_g"])
-        tol = float(p.get("tolerance_g") or tol_default)
+        tol = round(_et.tolerance_abs(nominal, pct), 9)
         dev = round(actual - nominal, 6) if actual is not None else None
-        passed = (1 if dev is not None and abs(dev) <= tol else 0) if dev is not None else None
+        passed = (1 if _et.within(nominal, actual, pct) else 0) if actual is not None else None
         if passed == 0:
             all_passed = False
         processed.append({

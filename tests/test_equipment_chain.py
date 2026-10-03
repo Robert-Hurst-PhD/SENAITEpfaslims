@@ -67,8 +67,8 @@ def _good_set(fq, set_id="WS-001", **over):
 
 
 def _points(fq):
-    return [{"nominal_g": n, "label": l, "actual_g": n, "tolerance_g": t}
-            for n, l, t in fq.BALANCE_DEFAULTS["balance_analytical"]]
+    return [{"nominal_g": n, "label": l, "actual_g": n}
+            for n, l in fq.BALANCE_DEFAULTS["balance_analytical"]]
 
 
 # ── The chain, end to end ────────────────────────────────────────────────────
@@ -247,78 +247,51 @@ def _portal_with_annotations():
     return _Portal()
 
 
-def _one_point_verdict(fq, unit, date_, portal, own_tol=None):
-    """A single weight point deviating by 0.003 g. Returns (tolerance, passed)."""
+def _one_point_verdict(fq, unit, date_, pct=None, own_tol=None):
+    """A single 10 g weight point reading 10.003 g (0.03 %). Returns
+    (tolerance_g recorded, passed)."""
+    pt = {"nominal_g": 10.0, "label": "10 g", "actual_g": 10.003}
+    if own_tol is not None:
+        pt["tolerance_g"] = own_tol
     vid = fq.save_balance_verification(
-        unit_id=unit, operator="tol", verified_date=date_,
-        points=[{"nominal_g": 10.0, "label": "10 g", "actual_g": 10.003,
-                 "tolerance_g": own_tol}],
-        portal=portal)
-    rows = fq.list_balance_verifications(unit)
-    for r in rows:
+        unit_id=unit, operator="tol", verified_date=date_, points=[pt],
+        tolerance_pct=pct)
+    for r in fq.list_balance_verifications(unit):
         if r["id"] == vid:
-            pt = r["points"][0]
-            return pt["tolerance_g"], pt["passed"]
+            p = r["points"][0]
+            return p["tolerance_g"], p["passed"]
     raise AssertionError("verification not read back")
 
 
-def test_the_lab_wide_balance_tolerance_decides_the_verdict():
-    """It did not. The Unit Registry collected, saved and displayed
-    `balance_tolerance` while the only consumer read the module constant -- so the
-    field was editable and inert, and the code comment beside it claimed the
-    opposite. A lab could loosen or tighten its balance criterion and no
-    verification changed its verdict. Found by the Lab Settings console.
-    """
-    fq = _fresh_module()
-    portal = _portal_with_annotations()
-    unit = _balance(fq)
-    seed = fq._defaults_seed()["balance_tolerance"]
-    assert seed == 0.001, "seed moved; the deviation below assumes 0.001"
-
-    tol, passed = _one_point_verdict(fq, unit, "2026-09-29", portal)
-    assert (tol, passed) == (seed, 0), (tol, passed)
-
-    fq.save_facility_defaults(portal, {"balance_tolerance": 0.005})
-    tol2, passed2 = _one_point_verdict(fq, unit, "2026-09-30", portal)
-    assert tol2 == 0.005, (
-        "the configured tolerance did not reach the verdict; it is %s" % tol2)
-    assert passed2 == 1, "the same reading must pass under the looser setting"
-
-
-def test_a_weight_point_with_its_own_tolerance_still_wins():
-    """The lab-wide value is the fallback for a point that carries none, not an
-    override of the per-point tolerances a calibrated set defines."""
-    fq = _fresh_module()
-    portal = _portal_with_annotations()
-    unit = _balance(fq)
-    fq.save_facility_defaults(portal, {"balance_tolerance": 0.5})
-    tol, passed = _one_point_verdict(fq, unit, "2026-09-29", portal,
-                                     own_tol=0.001)
-    assert tol == 0.001, "a point's own tolerance was overridden by the default"
-    assert passed == 0
-
-
-def test_a_headless_caller_still_gets_the_seed():
-    """`portal=None` is the documented degradation for the worker and migration
-    scripts, matching get_facility_defaults(None)."""
+def test_the_balance_types_tolerance_decides_the_verdict():
+    """Lab, 2026-10-03: "Balances should always be in g with acceptable
+    tolerances of 0.2%" (GAPS §100). Acceptance is % of nominal, from the
+    balance's type; the absolute tolerance judged against is recorded."""
     fq = _fresh_module()
     unit = _balance(fq)
-    tol, passed = _one_point_verdict(fq, unit, "2026-09-29", None)
-    assert tol == fq._defaults_seed()["balance_tolerance"]
-    assert passed == 0
+    tol, passed = _one_point_verdict(fq, unit, "2026-09-29")          # the 0.2 % seed
+    assert (tol, passed) == (0.02, 1), (tol, passed)
+    tol, passed = _one_point_verdict(fq, unit, "2026-09-30", pct=0.01)  # a stricter type
+    assert (tol, passed) == (0.001, 0), (tol, passed)
 
 
-def test_the_verdict_does_not_read_the_module_constant_directly():
-    """Static counterpart: the constant may be the SEED, but the pass/fail line
-    must go through the configured value."""
+def test_a_weight_point_cannot_carry_its_own_tolerance():
+    """The old per-point absolute tolerances (10 mg at 0.1 mg = 1 %) are gone:
+    a point offering one is judged by the type's % all the same."""
+    fq = _fresh_module()
+    unit = _balance(fq)
+    tol, passed = _one_point_verdict(fq, unit, "2026-09-29", own_tol=0.0001)
+    assert (tol, passed) == (0.02, 1), (tol, passed)
+
+
+def test_the_verdict_goes_through_the_relative_rule():
+    """Static counterpart: the pass/fail line is equipment_types.within at the
+    type's %, never a grams constant or a per-point tolerance."""
     with open(MODULE) as fh:
         body = fh.read()
     fn = body.split("def save_balance_verification(", 1)[1].split("\ndef ", 1)[0]
-    assert "get_facility_defaults" in fn, (
-        "the verdict no longer resolves the lab-wide tolerance")
-    assert "p.get(\"tolerance_g\") or BALANCE_TOLERANCE_DEFAULT" not in fn, (
-        "the pass/fail fallback reads the module constant again, which is the "
-        "defect: the field becomes editable and inert")
+    assert "_et.within(nominal, actual, pct)" in fn
+    assert 'p.get("tolerance_g")' not in fn and "BALANCE_TOLERANCE_DEFAULT" not in body
 
 
 # ── The py2 sqlite3.Row key trap ─────────────────────────────────────────────

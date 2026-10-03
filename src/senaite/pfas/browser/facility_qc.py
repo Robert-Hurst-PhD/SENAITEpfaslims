@@ -142,13 +142,8 @@ class PFASFacilityUnitsView(GateMixin, BrowserView):
             for i, d in enumerate(defaults):
                 nom = f.get("wp_nominal_{}".format(i))
                 lbl = f.get("wp_label_{}".format(i))
-                tol = f.get("wp_tolerance_{}".format(i))
-                if nom:
-                    pts.append([
-                        float(nom),
-                        lbl or d[1],
-                        float(tol) if tol else d[2],
-                    ])
+                if nom:      # acceptance is the type's % of nominal (GAPS §100)
+                    pts.append([float(nom), lbl or d[1]])
             if pts:
                 weight_points = json.dumps(pts)
         extra = {}
@@ -227,7 +222,7 @@ class PFASFacilityUnitsView(GateMixin, BrowserView):
         data = {"balance_points": points}
         for field in ("eyewash_temp_min", "eyewash_temp_max",
                       "water_conductivity_max", "water_toc_max",
-                      "study_tolerance", "balance_tolerance"):
+                      "study_tolerance"):
             raw = (f.get(field) or "").strip()
             if raw:
                 try:
@@ -242,21 +237,22 @@ class PFASFacilityUnitsView(GateMixin, BrowserView):
 
 
 def _points_to_text(points):
-    """Weight points as editable text: one per line, `nominal, label, tol`."""
+    """Weight points as editable text: one per line, `nominal, label`."""
     return u"\n".join(
-        u"{0}, {1}, {2}".format(p[0], p[1], p[2]) for p in (points or []))
+        u"{0}, {1}".format(p[0], p[1]) for p in (points or []))
 
 
 def _points_from_text(text):
-    """Parse the editable form back. A malformed line is skipped rather than
-    silently zeroing a tolerance, which would make every weighing pass."""
+    """Parse the editable form back: `nominal_g, label` per line (acceptance
+    is the balance type's % of nominal, GAPS §100). A malformed line is
+    skipped and logged."""
     out = []
     for line in (text or u"").splitlines():
         parts = [x.strip() for x in line.split(",")]
-        if len(parts) < 3 or not parts[0]:
+        if len(parts) < 2 or not parts[0]:
             continue
         try:
-            out.append([float(parts[0]), parts[1], float(parts[2])])
+            out.append([float(parts[0]), parts[1]])
         except ValueError:
             logger.warning("facility defaults: skipping unparseable weight "
                            "point %r", line)
@@ -406,7 +402,6 @@ class PFASBalanceLogView(BrowserView):
                 "nominal_g": wp[0],
                 "label": wp[1],
                 "actual_g": float(actual) if actual else None,
-                "tolerance_g": wp[2],
             })
         db.save_balance_verification(
             unit_id=unit_id,
@@ -418,8 +413,8 @@ class PFASBalanceLogView(BrowserView):
             # row would be counted as traced by any `weight_set_id IS NOT NULL`
             # query. Same idiom as the pipette handler.
             weight_set_id=(f.get("weight_set_id", "").strip() or None),
-            # So the lab-wide balance_tolerance actually reaches the verdict.
-            portal=_portal(self.context),
+            # the balance's TYPE decides acceptance: % of nominal (GAPS §100)
+            tolerance_pct=unit.get("tolerance_pct"),
         )
 
     def unit(self):
