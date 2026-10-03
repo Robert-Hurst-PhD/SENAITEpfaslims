@@ -144,15 +144,23 @@ def test_an_unknown_unit_type_does_not_claim_compliance():
 
 
 def test_every_declared_unit_type_has_a_real_check():
-    """A type that reaches the fallback is not being monitored."""
+    """A type that reaches the fallback is not being monitored. The kinds are
+    the ones the Equipment Types page offers (equipment_types.KIND_KEYS), not
+    the old registry list; the kinds with no daily check are named, and are
+    left off the checklist rather than shown as rows nobody can tick."""
     fq = _fresh_module()
-    for unit_type, label in fq.UNIT_TYPES:
-        _unit(fq, unit_type, "U-%s" % unit_type)
-    statuses = {r["unit_type"]: r["status"] for r in fq.dashboard_summary()}
-    # with no data at all, every type must say so -- never "ok"
-    green = sorted(t for t, s in statuses.items() if s == "ok")
+    et = fq._et
+    for kind in et.KIND_KEYS:
+        _unit(fq, kind, "U-%s" % kind)
+    rows = fq.dashboard_summary()
+    listed = set(r["unit_type"] for r in rows)
+    assert listed == set(et.KIND_KEYS) - set(et.NOT_DAILY_KINDS), listed
+    green = sorted(r["unit_type"] for r in rows if r["status"] == "ok")
     assert not green, (
         "these unit types report OK with no data recorded at all: %s" % green)
+    fallback = sorted(r["unit_type"] for r in rows if r["status"] == "no_data"
+                      and r["unit_type"] not in ("refrigerator", "freezer", "room_sensor", "eyewash"))
+    assert not fallback, "kinds with no real check (fell through): %s" % fallback
 
 
 def test_the_dashboard_statuses_all_render():

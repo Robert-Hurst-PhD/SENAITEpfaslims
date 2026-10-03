@@ -1160,6 +1160,8 @@ def dashboard_summary():
     )
     result = []
     for u in units:
+        if u["unit_type"] in _et.NOT_DAILY_KINDS:
+            continue          # on the Equipment page by due date, not daily
         row = dict(u)
         ut = u["unit_type"]
         if ut in ("refrigerator", "freezer", "room_sensor"):

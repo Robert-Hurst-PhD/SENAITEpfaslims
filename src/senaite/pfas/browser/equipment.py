@@ -92,11 +92,31 @@ def save_type_requirements(itype, req):
     _set_ann_json(itype, TYPE_KEY, dict((k, req.get(k)) for k in et.FIELDS))
 
 
+# Lookups are UNRESTRICTED, like the SQLite registry they replace: the sensor
+# ingest endpoint is anonymous (it authenticates with the API key), and a
+# permission-filtered search returns no instruments to it at all.
+def _setup_catalog():
+    return api.get_tool("senaite_catalog_setup")
+
+
+def _by_uid(uid, portal_type=None):
+    if not uid:
+        return None
+    q = {"UID": uid}
+    if portal_type:
+        q["portal_type"] = portal_type
+    brains = _setup_catalog().unrestrictedSearchResults(**q)
+    return brains[0]._unrestrictedGetObject() if brains else None
+
+
 def _instrument_type(inst):
     try:
-        return inst.getInstrumentType()
+        uid = inst.getField("InstrumentType").getRaw(inst)
     except Exception:                                       # noqa: BLE001
-        return None
+        uid = None
+    if isinstance(uid, (list, tuple)):
+        uid = uid[0] if uid else None
+    return _by_uid(uid, "InstrumentType")
 
 
 def unit_for(inst):
@@ -107,7 +127,8 @@ def unit_for(inst):
     item = _ann_json(inst, ITEM_KEY) or {}
     loc = None
     try:
-        loc = inst.getInstrumentLocation()
+        raw = inst.getField("InstrumentLocation").getRaw(inst)
+        loc = _by_uid(raw[0] if isinstance(raw, (list, tuple)) and raw else raw)
     except Exception:                                       # noqa: BLE001
         pass
     unit = {"id": api.get_uid(inst), "unit_type": req["kind"], "name": api.get_title(inst),
@@ -129,7 +150,7 @@ def _instruments(active_only=True):
     q = {"portal_type": "Instrument", "sort_on": "sortable_title"}
     if active_only:
         q["is_active"] = True
-    return [api.get_object(b) for b in api.search(q, "senaite_catalog_setup")]
+    return [b._unrestrictedGetObject() for b in _setup_catalog().unrestrictedSearchResults(**q)]
 
 
 def list_units(active_only=True):
@@ -138,12 +159,8 @@ def list_units(active_only=True):
 
 
 def get_unit(unit_id):
-    if not unit_id:
-        return None
-    obj = api.get_object_by_uid(unit_id, default=None)
-    if obj is None or api.get_portal_type(obj) != "Instrument":
-        return None
-    return unit_for(obj)
+    obj = _by_uid(unit_id, "Instrument")
+    return unit_for(obj) if obj is not None else None
 
 
 def get_unit_by_sensor(sensor_id):
@@ -169,7 +186,7 @@ def due_status(unit, inst=None):
     """equipment_types.due for one unit: its type's frequency since the last
     PFAS check, and its SENAITE certificate when the type requires one."""
     cert_to = None
-    inst = inst or api.get_object_by_uid(unit["id"], default=None)
+    inst = inst or _by_uid(unit["id"], "Instrument")
     try:
         cert = inst.getLatestValidCertification() if inst is not None else None
         cert_to = cert.getValidTo().asdatetime().date() if cert is not None else None

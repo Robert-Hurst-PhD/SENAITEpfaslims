@@ -27,7 +27,7 @@
     <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-equipment-settings?uid=${u/id}">
       <input type="hidden" name="action" value="save" tal:condition="view/can_configure" />
 
-      <tal:temp condition="python:kind in ('refrigerator', 'freezer', 'room_sensor', 'thermometer')">
+      <tal:temp condition="python:kind in ('refrigerator', 'freezer', 'room_sensor')">
         <div class="section-group-hdr">Temperature monitoring</div>
         <div class="field-row"><label>Sensor id</label>
           <input type="text" name="sensor_id" tal:attributes="value u/sensor_id" /></div>

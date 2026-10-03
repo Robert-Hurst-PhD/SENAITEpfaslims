@@ -354,8 +354,10 @@ It replaces the situation where important features were buried on a separate
 Inside a workspace page, content uses the panel layout proven on the Method
 Profile pages:
 - TOP BAR: ONE macro on every page, core and PFAS (templates/pfas_topbar.pt,
-  AdminLTE 3 navbar; GAPS §93): menu + page title | context chip (core: the
-  object's tabs) | global icons. Nothing clickable in the context zone.
+  AdminLTE 3 navbar; GAPS §93): menu + page title | context zone | global
+  icons. On PFAS pages the context zone is a chip (`header-context`: method,
+  batch, state) with nothing clickable; on core pages it carries core's own
+  object tabs and workflow menu.
 - SUB-BAR under it: breadcrumb (left) + the page's actions and back buttons
   (`header-right` slot, right); fixed above the tabs.
 - TOP SUB-HEADING TABS: a page's sections render as tabs across the top — NOT a

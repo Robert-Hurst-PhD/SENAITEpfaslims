@@ -36,13 +36,15 @@ KINDS = [
     ("refrigerator", u"Refrigerator"),
     ("freezer", u"Freezer"),
     ("room_sensor", u"Room sensor"),
-    ("thermometer", u"Thermometer"),
     ("water_system", u"Type 1 water system"),
     ("eyewash", u"Eye wash station"),
     ("other", u"Other"),
 ]
 KIND_KEYS = [k for k, _l in KINDS]
 BALANCE_KINDS = ("balance_analytical", "balance_prep")
+# Kinds with no DAILY check: tracked by their due dates on the Equipment page,
+# not listed on the Daily Checklist (GAPS §100b).
+NOT_DAILY_KINDS = ("analytical", "pipette", "other")
 FIELDS = ("kind", "cal_frequency_days", "correction_factor_required",
           "external_cert_required", "unit", "tolerance_pct", "in_worksheets")
 

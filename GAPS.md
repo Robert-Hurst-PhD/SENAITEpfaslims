@@ -7490,3 +7490,30 @@ the instrument; internal checks from the type's frequency).
   a valid certificate "out of date"; the Equipment page is the PFAS view.
 - Tests: test_action_gates follows the moved actions (Equipment Types,
   Equipment settings). CLAUDE.md §3/§5/§6A/§6B/§10 and WIRING.md updated.
+
+
+### 100c. Equipment follow-up: anonymous sensor lookups, the checklist, honest gaps
+
+- **Sensor ingest would have found nothing:** the endpoint is public (it
+  authenticates with the API key), and the provider used permission-filtered
+  catalog searches, which return no instruments to an anonymous caller
+  (checked: 0). Every provider lookup is now unrestricted, as the SQLite
+  registry was. Live, aborted: a fridge with sensor DEMO-SENSOR-1 created as
+  admin is found by sensor and by UID after dropping to anonymous.
+  test_equipment_registry pins it (no search / get_object_by_uid /
+  getInstrumentType in the provider; mutant killed) and that the endpoint is
+  still public.
+- **Daily Checklist:** every instrument is now a unit, so the unconfigured
+  LC-MS/MS (kind "other") hid the "no equipment" message and drew nothing.
+  Kinds with no daily check (analytical, pipette, other) are left off the
+  checklist and tracked by due date on Equipment; an unknown kind still
+  reports no data. The guard now iterates the kinds the UI offers
+  (equipment_types.KIND_KEYS), not the old registry list; mutants killed
+  (skip removed; a kind added without a check).
+- **Removed an inert option:** the `thermometer` kind had no check anywhere.
+- **Not applied, said so:** "correction factor required" is recorded on the
+  type and shown, but no reading is corrected yet -- the Equipment Types page
+  says so. What it should do is the lab's decision (open).
+- **Manage Results override exercised:** the view in use is
+  PFASManageResultsView; WS-0001's instrument list is the blank option + the
+  LC-MS.

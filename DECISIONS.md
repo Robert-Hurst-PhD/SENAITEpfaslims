@@ -5898,8 +5898,8 @@ From the lab's write-up of 2026-10-03 (eleven items; plan in GAPS §93 onward).
   buttons live in a sub-bar under the bar, beside the breadcrumb.
   *Core override, upgrade-fragile:* PFASToolbarManager subclasses
   senaite.core.browser.viewlets.toolbar.ToolbarViewletManager (base_render for
-  content views); the core page's H1 is moved into the bar by pfas-topbar.js
-  and hidden.
+  content views); a core page's H1 that repeats the bar's title is hidden
+  (pfas-topbar.js), any other H1 stays as the section heading (GAPS §93a).
 - **Equipment = core SENAITE Instruments with core Instrument Types** (as the
   LC-MS/MS already is). The type carries the obligations: calibration
   frequency, correction factor required, external audit/certification

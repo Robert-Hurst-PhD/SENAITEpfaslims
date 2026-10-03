@@ -23,6 +23,8 @@
       not set: the system never assumes a frequency. A type nobody has set up
       stays offered in worksheets, as in SENAITE. Balances always read in
       grams; their tolerance is a percentage of the nominal weight.
+      <strong>Correction factor</strong> is recorded for the type but not yet
+      applied to any reading.
     </p>
 
     <form method="post" tal:attributes="action string:${purl}/@@pfas-equipment-types"
