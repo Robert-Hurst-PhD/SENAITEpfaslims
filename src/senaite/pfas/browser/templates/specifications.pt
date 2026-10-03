@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Specifications</title>
+  <metal:fill fill-slot="header-title">Specifications</metal:fill>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary"
+       tal:attributes="href string:${view/portal_url}/bika_setup/bika_analysisspecs">SENAITE list</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="methods view/methods">
+
+    <p class="form-note">
+      The recovery windows SENAITE checks QC results against, per method and QC
+      type. Matrices with the same windows share a row; each window is listed
+      once with the analytes it applies to. These are a copy of the method
+      profile: change a window on the method&#8217;s Recovery Tiers.
+    </p>
+
+    <p class="form-note" tal:condition="not:methods">No method profile has written specifications yet.</p>
+
+    <tal:m repeat="m methods">
+      <div class="section-group-hdr">
+        <span tal:replace="m/label">EPA 537.1</span>
+        <a class="btn-sm btn-secondary" tal:attributes="href m/url">Recovery Tiers</a>
+      </div>
+      <table class="pfas-table">
+        <thead>
+          <tr><th>QC type</th><th>Matrices</th><th>Recovery window</th><th>Analytes</th><th>Open in SENAITE</th></tr>
+        </thead>
+        <tbody>
+          <tr tal:repeat="r m/rows">
+            <td><strong tal:content="r/qc">LFSM</strong>
+                <div class="cf-hint" tal:content="r/qc_label">Lab Fortified Sample Matrix</div></td>
+            <td tal:content="python:', '.join(r['matrices'])">Drinking Water, Groundwater</td>
+            <td><div tal:repeat="w r/windows" tal:content="w/text">70&#8211;130 %</div></td>
+            <td tal:condition="python:len(r['windows']) == 1"
+                tal:content="python:'All %d analytes' % len(r['windows'][0]['analytes'])">All 18 analytes</td>
+            <td tal:condition="python:len(r['windows']) != 1"><div tal:repeat="w r/windows" class="cf-hint"
+                     tal:content="python:'%d: %s' % (len(w['analytes']), ', '.join(w['analytes']))">18: PFOA, PFOS</div></td>
+            <td>
+              <a tal:condition="python:len(r['specs']) == 1" class="btn-sm btn-secondary"
+                 tal:attributes="href python:r['specs'][0]['url']">Open</a>
+              <details tal:condition="python:len(r['specs']) > 1" class="spec-open">
+                <summary class="btn-sm btn-secondary"
+                         tal:content="python:'Open (%d)' % len(r['specs'])">Open (3)</summary>
+                <a tal:repeat="s r/specs" class="btn-sm btn-secondary"
+                   tal:attributes="href s/url" tal:content="s/matrix">Drinking Water</a>
+              </details>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </tal:m>
+
+    <tal:o define="others view/others" condition="others">
+      <div class="section-group-hdr">Other specifications (made in SENAITE)</div>
+      <table class="pfas-table">
+        <thead><tr><th>Specification</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="o others">
+            <td tal:content="o/title">Spec</td>
+            <td><a class="btn-sm btn-secondary" tal:attributes="href o/url">Open</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </tal:o>
+
+  </div>
+  </div>
+</html>

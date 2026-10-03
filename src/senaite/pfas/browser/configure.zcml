@@ -279,6 +279,14 @@
       permission="senaite.core.permissions.ManageBika"
       />
 
+  <!-- Analysis Specifications grouped by method x QC type (GAPS §96) -->
+  <browser:page
+      name="pfas-specifications"
+      for="*"
+      class=".specifications.PFASSpecificationsView"
+      permission="zope2.View"
+      />
+
   <browser:page
       name="pfas-regulatory-limits"
       for="*"

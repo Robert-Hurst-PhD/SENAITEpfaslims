@@ -197,6 +197,12 @@
     /* read-only info columns (config_forms.Table info): e.g. the action level
        / MCL beside an RL. Struck = not evaluated here; amber = not verified. */
     .cf-info { font-size: var(--fs-sm); white-space: nowrap; }
+    /* Specifications: per-matrix "open" buttons folded under one */
+    details.spec-open, details.spec-open[open] { border: 0; box-shadow: none; background: none;
+                                                 margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+    details.spec-open > summary.btn-sm { padding: 4px 10px; font-weight: 400; border-radius: 4px;
+                                         border: 1px solid var(--s-border); background: var(--s-bg); }
+    details.spec-open > summary::before { content: none; }
     .cf-info-off { text-decoration: line-through; color: var(--s-secondary); }
     .cf-info-warn { color: var(--s-warning); }
     .mp-actions { white-space: nowrap; }

@@ -90,6 +90,13 @@ def _tier_limits(qc_acceptance, qc_type):
         r_max = t.get("recovery_max")
         if r_min is None and r_max is None:
             continue
+        # A low-level tier (low_level_x_rl, GAPS §71) applies only to spikes
+        # at or below N x RL -- a condition a SENAITE spec cannot hold. It used
+        # to fall through as "all" and, listed after the ordinary tier, became
+        # every analyte's window (EPA 537.1 LFSM showed 50-150 % for every
+        # result, not 70-130 %). GAPS §96.
+        if t.get("low_level_x_rl") is not None:
+            continue
         lims = {"min": r_min, "max": r_max}
         ag = t.get("analyte_group", "all")
         if ag == "key":

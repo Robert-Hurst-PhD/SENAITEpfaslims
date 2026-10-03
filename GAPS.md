@@ -7269,3 +7269,32 @@ which is in the reporting limits tab under reporting?"
   Mutants killed: matrix scoping dropped; off-marking dropped.
 - **Live:** EPA 537.1 Drinking Water lists the federal MCLs and the Maine sum
   on their analytes, all "not verified"; Groundwater / Surface Water empty.
+
+
+## 96. Specifications grouped; a low-level window leaking into the specs (2026-10-03)
+
+Lab, 2026-10-03: "Recovery tiers in the summary table should be grouped
+together rather than repeated 30 times per matrix." The table is Analysis
+Specifications: spec_sync writes one core AnalysisSpec per method x QC type x
+matrix (27 for EPA 1633A alone).
+
+- **@@pfas-specifications** (sidebar: QC & Methods > Specifications) reads the
+  same core specs (spec_sync.spec_id_for) and groups them (spec_groups.py,
+  pure): matrices with identical ranges share one row; each distinct window
+  is listed once with its analytes ("All 18 analytes" when one window covers
+  all). "Open (n)" opens each matrix's core spec; "SENAITE list" opens core's
+  own listing; specs no profile wrote are listed separately. EPA 1633A: 27
+  rows -> 3; EPA 537.1: 9 -> 3.
+- **Defect found and fixed (flagged):** spec_sync._tier_limits read a
+  low-level tier (`low_level_x_rl`, §71) as an ordinary "all analytes" tier;
+  listed after the ordinary tier, it overwrote it. SENAITE's EPA 537.1 LFSM
+  specs said 50-150 % for every analyte instead of 70-130 % (50-150 % applies
+  only within 2 x MRL, §9.3.6.3). A low-level tier is now skipped (a spec
+  cannot hold the concentration condition; the QC engine applies it). The
+  live 537.1 specs were re-synced from the profile (what a profile save
+  does): LFSM now 70-130 %. LFB was right only because its tiers are listed
+  the other way round.
+- **Tests:** test_spec_groups (4): grouping by identical ranges (row order
+  ignored), windows once with analytes, one differing analyte keeps matrices
+  apart, the low-level tier never becomes the window in either order (mutant
+  killed).

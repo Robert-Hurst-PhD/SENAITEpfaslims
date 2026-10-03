@@ -630,8 +630,8 @@
           <span class="pfas-si-label">Control Charts</span>
         </a>
         <a class="pfas-si" title="Specifications"
-           tal:attributes="href string:${purl}/bika_setup/bika_analysisspecs;
-                           class python:'pfas-si si-active' if 'bika_analysisspecs' in path else 'pfas-si'">
+           tal:attributes="href string:${purl}/@@pfas-specifications;
+                           class python:'pfas-si si-active' if ('pfas-specifications' in path or 'bika_analysisspecs' in path) else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-specifications"/></svg></span>
           <span class="pfas-si-label">Specifications</span>
         </a>
