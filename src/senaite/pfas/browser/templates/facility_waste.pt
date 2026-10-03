@@ -17,11 +17,6 @@
                                border-radius:4px; color:var(--s-input-text); }
     .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
     .fld-row .fld { flex:1; min-width:120px; }
-    .log-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
-    .log-table th { background:var(--s-light); padding:7px 10px; font-size:var(--fs-xs);
-                    font-weight:700; color:var(--s-secondary);
-                    border-bottom:2px solid var(--s-border); text-align:left; }
-    .log-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
     .cond-ok     { color:var(--s-success); font-weight:600; }
     .cond-needs  { color:var(--s-danger);  font-weight:600; }
   </style>
@@ -73,7 +68,7 @@
     <tal:none tal:condition="python:not view.logs()">
       <p style="color:var(--s-secondary);font-size:var(--fs-sm)">No entries yet.</p>
     </tal:none>
-    <table class="log-table" tal:condition="python:bool(view.logs())">
+    <table class="pfas-table log-table" tal:condition="python:bool(view.logs())">
       <tr>
         <th>Date</th><th>Time</th><th>Container</th>
         <th>Operator</th><th>Condition</th><th>Notes</th>

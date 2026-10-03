@@ -26,12 +26,7 @@
     .rg-card.danger .rg-num { color:#dc3545; }
 
     /* ── Reagent table ───────────────────────────────── */
-    .rg-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
-    .rg-table th { background:#f8f9fa; padding:8px 10px; text-align:left;
-                   border-bottom:2px solid var(--s-border); font-weight:700; white-space:nowrap; }
-    .rg-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
-                   vertical-align:middle; }
-    .rg-table tr:hover td { background:var(--s-primary-lt); }
+    /* the table itself is the shared .pfas-table (GAPS §99) */
     .rg-name { font-weight:600; }
     .rg-cat { font-family: var(--font-mono); font-size:var(--fs-xs); color:#555; }
     .rg-lot { font-family: var(--font-mono); font-size:var(--fs-xs); font-weight:700; }
@@ -320,7 +315,7 @@
 
     <!-- ─── Reagent table ───────────────────────────────────── -->
     <div class="table-wrap">
-    <table class="rg-table">
+    <table class="pfas-table rg-table">
       <thead>
         <tr>
           <th>Name</th>
@@ -339,8 +334,7 @@
         <tr tal:attributes="class python:'rg-archived' if rg.get('is_archived') else None">
           <td>
             <div class="rg-name" tal:content="python:rg.get('name','')"></div>
-            <div style="font-size:var(--fs-xs);color:var(--s-secondary);"
-                 tal:content="python:rg.get('category','')"></div>
+            <div class="cf-hint" tal:content="python:rg.get('category','')"></div>
             <tal:sc tal:define="sc python:rg.get('scan_count',0)">
               <span class="scan-count-badge"
                     tal:attributes="id python:'scan-badge-' + rg.get('uid','');
@@ -364,99 +358,72 @@
             <span tal:attributes="class python:'badge ' + view.status_badge_class(rg)"
                   tal:content="python:view.status_label(rg)"></span>
           </td>
-          <td style="white-space:nowrap;">
-            <button type="button" class="btn-sm rg-edit-btn"
-                    tal:attributes="data-rg python:__import__('json').dumps(rg)">
-              Edit
-            </button>
+          <!-- The same four controls on every row, in the same place
+               (lab, 2026-10-03; GAPS §99): Edit, Where used, the CoA, and
+               More for what changes the lot's state. -->
+          <td class="row-actions-cell"
+              tal:define="rg_uid python:rg.get('uid','');
+                          coa python:view.coa_meta(rg_uid);
+                          can_open python:rg.get('status') not in ('opened','exhausted','expired')">
+           <div class="row-actions">
+            <button type="button" class="btn-sm rg-edit-btn" title="Edit this lot's details"
+                    tal:attributes="data-rg python:__import__('json').dumps(rg)">Edit</button>
             <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
-               tal:attributes="href python:'%s/@@pfas-lot-usage?kind=reagent&amp;uid=%s' % (view.portal_url(), rg.get('uid', ''))">Where used</a>
-            <tal:open tal:condition="python:rg.get('status') not in ('opened','exhausted','expired')">
-              <form method="post" style="display:inline;"
-                    tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-                <input type="hidden" name="action" value="open" />
-                <input type="hidden" name="uid"
-                       tal:attributes="value python:rg.get('uid','')" />
-                <input type="hidden" name="opened_date"
-                       tal:attributes="value python:__import__('datetime').date.today().strftime('%Y-%m-%d')" />
-                <button class="btn-sm" type="submit">Mark Opened</button>
-              </form>
-            </tal:open>
-            <!-- CoA upload/view -->
-            <!-- `rg_uid` is bound here because a `string:` expression may only
-                 interpolate a SIMPLE PATH: `${python:...}` inside one raises
-                 "$ must be doubled or followed by a simple path" and 500s the
-                 page. This branch renders only when a reagent HAS a CoA, so with
-                 none on file it never evaluated and the defect sat here from
-                 2026-06-24 until specimen CoAs were attached (GAPS §40). -->
-            <tal:coa tal:define="coa python:view.coa_meta(rg.get('uid',''));
-                                 rg_uid python:rg.get('uid','')">
-              <tal:has tal:condition="coa">
-                <a class="btn-sm"
-                   target="_blank"
-                   tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${rg_uid}">
-                  CoA
-                </a>
-                <button class="btn-sm open-coa-modal"
-                        title="Replace CoA"
-                        tal:attributes="data-uid python:rg.get('uid','');
-                                        data-name python:rg.get('name','');
+               tal:attributes="href python:'%s/@@pfas-lot-usage?kind=reagent&amp;uid=%s' % (view.portal_url(), rg_uid)">Where used</a>
+            <a tal:condition="coa" class="btn-sm" target="_blank" title="Open the certificate of analysis"
+               tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${rg_uid}">View CoA</a>
+            <button tal:condition="not:coa" type="button" class="btn-sm open-coa-modal"
+                    title="Attach the supplier's certificate of analysis"
+                    tal:attributes="data-uid rg_uid; data-name python:rg.get('name','');
+                                    data-cat python:rg.get('cat_number','');
+                                    data-lot python:rg.get('lot_number','');
+                                    data-tab string:find">Upload CoA</button>
+            <details class="row-more">
+              <summary class="btn-sm" title="Open, replace the CoA, archive">More &#9662;</summary>
+              <div class="row-more-menu">
+                <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+                  <input type="hidden" name="action" value="open" />
+                  <input type="hidden" name="uid" tal:attributes="value rg_uid" />
+                  <input type="hidden" name="opened_date"
+                         tal:attributes="value python:__import__('datetime').date.today().strftime('%Y-%m-%d')" />
+                  <button class="btn-sm" type="submit"
+                          tal:attributes="disabled python:None if can_open else 'disabled';
+                                          title python:'Record today as the day this container was opened (starts its opened shelf life)' if can_open else 'Already %s' % (rg.get('status') or 'opened')">Mark opened</button>
+                </form>
+                <button tal:condition="coa" type="button" class="btn-sm open-coa-modal"
+                        title="Replace the certificate of analysis on file"
+                        tal:attributes="data-uid rg_uid; data-name python:rg.get('name','');
                                         data-cat python:rg.get('cat_number','');
                                         data-lot python:rg.get('lot_number','');
-                                        data-tab string:upload">
-                  &#8593;
-                </button>
-              </tal:has>
-              <tal:none tal:condition="not:coa">
-                <button class="btn-sm open-coa-modal"
-                        tal:attributes="data-uid python:rg.get('uid','');
-                                        data-name python:rg.get('name','');
-                                        data-cat python:rg.get('cat_number','');
-                                        data-lot python:rg.get('lot_number','');
-                                        data-tab string:find">
-                  + CoA
-                </button>
-              </tal:none>
-            </tal:coa>
-            <!-- Production mode: Archive / Restore -->
-            <tal:prod_del tal:condition="view/is_production_mode">
-              <tal:not_arch tal:condition="not:python:rg.get('is_archived')">
-                <form method="post" style="display:inline;"
+                                        data-tab string:upload">Replace CoA</button>
+                <tal:prod tal:condition="view/is_production_mode">
+                  <form method="post" tal:condition="not:python:rg.get('is_archived')"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="uid" tal:attributes="value rg_uid" />
+                    <button class="btn-sm btn-danger" type="submit"
+                            title="Hide this lot from the inventory; it can be restored"
+                            onclick="return confirm('Archive this reagent? It can be restored later.')">Archive</button>
+                  </form>
+                  <form method="post" tal:condition="python:rg.get('is_archived')"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
+                    <input type="hidden" name="action" value="restore" />
+                    <input type="hidden" name="uid" tal:attributes="value rg_uid" />
+                    <button class="btn-sm btn-success" type="submit"
+                            tal:attributes="title python:'Archived %s; put it back in the inventory' % (rg.get('archived_at') or '')[:10]">Restore</button>
+                  </form>
+                </tal:prod>
+                <form method="post" tal:condition="not:view/is_production_mode"
                       tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
                   <input type="hidden" name="action" value="delete" />
-                  <input type="hidden" name="uid"
-                         tal:attributes="value python:rg.get('uid','')" />
+                  <input type="hidden" name="uid" tal:attributes="value rg_uid" />
                   <button class="btn-sm btn-danger" type="submit"
-                          onclick="return confirm('Archive this reagent? It can be restored later.')">
-                    Archive
-                  </button>
+                          title="Test mode: delete this record permanently"
+                          onclick="return confirm('Delete this reagent record?')">Delete</button>
                 </form>
-              </tal:not_arch>
-              <tal:arch tal:condition="python:rg.get('is_archived')">
-                <form method="post" style="display:inline;"
-                      tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-                  <input type="hidden" name="action" value="restore" />
-                  <input type="hidden" name="uid"
-                         tal:attributes="value python:rg.get('uid','')" />
-                  <button class="btn-sm" type="submit" style="color:#1a7a3a;border-color:#1a7a3a">Restore</button>
-                </form>
-                <small style="font-size:var(--fs-xs);color:#888;display:block;margin-top:2px;"
-                       tal:content="python:rg.get('archived_at','')[:10]"></small>
-              </tal:arch>
-            </tal:prod_del>
-            <!-- Test mode: permanent delete -->
-            <tal:test_del tal:condition="not:view/is_production_mode">
-              <form method="post" style="display:inline;"
-                    tal:attributes="action string:${view/portal_url}/@@pfas-reagents">
-                <input type="hidden" name="action" value="delete" />
-                <input type="hidden" name="uid"
-                       tal:attributes="value python:rg.get('uid','')" />
-                <button class="btn-sm btn-danger" type="submit"
-                        onclick="return confirm('Delete this reagent record?')">
-                  Del
-                </button>
-              </form>
-            </tal:test_del>
+              </div>
+            </details>
+           </div>
           </td>
         </tr>
         </tal:rows>

@@ -490,16 +490,19 @@
 
     /* ── Tables ──────────────────────────────────────────────────────────── */
     .pfas-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
+    /* the core listing look (senaite.app.listing, measured 2026-10-03:
+       11px uppercase 600 headers, 12px cells) -- GAPS §99 */
     .pfas-table th {
       background: var(--s-light);
       color: var(--s-secondary);
       font-size: var(--fs-xs);
-      font-weight: 700;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: .04em;
-      padding: 8px 12px;
+      letter-spacing: .03em;
+      padding: 12px;
       border-bottom: 2px solid var(--s-border);
       text-align: left;
+      white-space: nowrap;
     }
     /* A table of form rows: fixed layout, every control fills its cell, so a
        wide record never pushes columns off the page. Widths come from <col>. */
@@ -507,7 +510,22 @@
     .pfas-table.pfas-table-form td { padding: 6px 6px; }
     .pfas-table-form input:not([type=checkbox]), .pfas-table-form select,
     .pfas-table-form textarea { width: 100%; }
-    .pfas-table td { padding: 8px 12px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    .pfas-table td { padding: 12px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    /* Row actions: the same controls in the same place on every row; what
+       changes a record's state sits under More (GAPS §99). */
+    .row-actions { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+    .row-actions-cell { width: 1%; white-space: nowrap; }
+    details.row-more, details.row-more[open] { position: relative; border: 0; box-shadow: none;
+                                               background: none; margin: 0; }
+    details.row-more > summary.btn-sm { padding: 4px 10px; font-weight: 400; border-radius: 4px;
+                                        border: 1px solid var(--s-border); background: var(--s-bg); }
+    details.row-more > summary::before { content: none; }
+    .row-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50;
+                     display: flex; flex-direction: column; gap: 4px; padding: 6px;
+                     background: var(--s-bg); border: 1px solid var(--s-border); border-radius: 6px;
+                     box-shadow: 0 6px 18px rgba(0,0,0,.12); min-width: 150px; }
+    .row-more-menu form { margin: 0; }
+    .row-more-menu .btn-sm { width: 100%; text-align: left; }
     .pfas-table tr:last-child td { border-bottom: none; }
     .pfas-table tbody tr:hover td { background: var(--s-primary-lt); }
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -1207,6 +1225,16 @@ document.addEventListener('click', function (e) {
   body.appendChild(row);
   var first = row.querySelector('input, select');
   if (first) first.focus();
+});
+</script>
+
+<script>
+/* Row "More" menus (.row-more): one open at a time; a click elsewhere closes. */
+document.addEventListener('click', function (e) {
+  var mine = e.target.closest ? e.target.closest('details.row-more') : null;
+  document.querySelectorAll('details.row-more[open]').forEach(function (d) {
+    if (d !== mine) d.removeAttribute('open');
+  });
 });
 </script>
 

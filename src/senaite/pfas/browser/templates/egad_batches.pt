@@ -31,13 +31,6 @@
     .editor-header { margin-bottom:16px; }
     .editor-header h3 { font-size:var(--fs-base); font-weight:700; color:var(--s-primary); margin:0 0 4px; }
     .editor-header p { font-size:var(--fs-sm); color:var(--s-secondary); margin:0; }
-    .st-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); margin-bottom:16px; }
-    .st-table th { background:var(--s-light); color:var(--s-secondary);
-                   font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
-                   letter-spacing:.04em; padding:8px 10px; text-align:left;
-                   border-bottom:2px solid var(--s-border); }
-    .st-table td { padding:8px 10px; border-bottom:1px solid var(--s-border);
-                   vertical-align:middle; }
     .st-table select { padding:4px 8px; font-size:var(--fs-sm); border:1px solid var(--s-input-border);
                        border-radius:3px; }
     .ar-id { font-family: var(--font-mono); font-size:var(--fs-sm); }
@@ -90,7 +83,7 @@
             tal:attributes="action string:${view/portal_url}/@@pfas-egad-batches">
         <input type="hidden" name="batch_id" tal:attributes="value view/batch_id" />
 
-        <table class="st-table">
+        <table class="pfas-table st-table">
           <thead>
             <tr>
               <th>Sample ID</th>

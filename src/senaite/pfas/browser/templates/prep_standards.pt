@@ -13,12 +13,7 @@
     .ps-toolbar select { padding:7px 10px; font-size:var(--fs-base);
       border:1px solid var(--s-input-border); border-radius:6px; }
 
-    .ps-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
-    .ps-table th { background:var(--s-light); padding:8px 12px; text-align:left;
-                   font-size:var(--fs-xs); text-transform:uppercase; font-weight:700;
-                   letter-spacing:.04em; color:var(--s-secondary); }
-    .ps-table td { padding:9px 12px; border-top:1px solid var(--s-border); vertical-align:middle; }
-    .ps-table tr:hover td { background:var(--s-primary-lt); }
+    /* the table itself is the shared .pfas-table (GAPS §99) */
 
     .exp-expired { color:var(--s-danger); font-weight:700; }
     .exp-warning { color:#856404; font-weight:700; }
@@ -85,7 +80,7 @@
   </tal:styles>
 </head>
 <body>
-  <tal:t metal:fill-slot="header-title">Prepared Standards &amp; Reagents</tal:t>
+  <tal:t metal:fill-slot="header-title">Prepared Standards</tal:t>
   <tal:r metal:fill-slot="header-right">
     
   </tal:r>
@@ -130,7 +125,7 @@
       </div>
 
       <div class="table-wrap" tal:condition="stds">
-        <table class="ps-table">
+        <table class="pfas-table ps-table">
           <thead>
             <tr>
               <th>Name / Lot</th>
@@ -172,38 +167,36 @@
                   <span tal:attributes="class python:'badge badge-' + std['status']"
                         tal:content="std/status">active</span>
                 </td>
-                <td>
-                  <div style="display:flex;gap:6px;flex-wrap:wrap">
-                    <button class="row-pill"
-                            tal:attributes="onclick string:editStandard(${std_json})"
-                            >Edit</button>
-                    <a class="row-pill"
-                       target="_blank"
-                       tal:attributes="href string:${context/absolute_url}/@@pfas-prep-standards?action=cert&amp;uid=${std/uid}"
-                       >Certificate</a>
-                    <a class="row-pill" title="Every batch and stage that used this lot"
-                       tal:attributes="href string:${context/absolute_url}/@@pfas-lot-usage?kind=prepared_standard&amp;uid=${std/uid}"
-                       >Where used</a>
-                    <!-- Emptied lots must leave the logbook lot picker; this is
-                         how an analyst says a standard is used up. -->
-                    <form method="POST" style="display:inline"
-                          tal:condition="python:std.get('status') == 'active'"
-                          tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
-                      <input type="hidden" name="action" value="status" />
-                      <input type="hidden" name="uid" tal:attributes="value std/uid" />
-                      <input type="hidden" name="new_status" value="exhausted" />
-                      <button type="submit" class="row-pill"
-                              onclick="return confirm('Mark this lot as emptied? It will no longer be offered when filling a logbook.')"
-                              >Mark Emptied</button>
-                    </form>
-                    <form method="POST" style="display:inline"
-                          tal:condition="python:std.get('status') == 'exhausted'"
-                          tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
-                      <input type="hidden" name="action" value="status" />
-                      <input type="hidden" name="uid" tal:attributes="value std/uid" />
-                      <input type="hidden" name="new_status" value="active" />
-                      <button type="submit" class="row-pill">Reactivate</button>
-                    </form>
+                <!-- Same layout as Reagent Inventory (GAPS §99): Edit, Where
+                     used, the certificate, and More for what changes the lot. -->
+                <td class="row-actions-cell">
+                  <div class="row-actions">
+                    <button type="button" class="btn-sm" title="Edit this standard's preparation record"
+                            tal:attributes="onclick string:editStandard(${std_json})">Edit</button>
+                    <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
+                       tal:attributes="href string:${context/absolute_url}/@@pfas-lot-usage?kind=prepared_standard&amp;uid=${std/uid}">Where used</a>
+                    <a class="btn-sm" target="_blank" title="Open the preparation certificate (PDF)"
+                       tal:attributes="href string:${context/absolute_url}/@@pfas-prep-standards?action=cert&amp;uid=${std/uid}">Certificate</a>
+                    <details class="row-more">
+                      <summary class="btn-sm" title="Mark emptied or reactivate">More &#9662;</summary>
+                      <div class="row-more-menu">
+                        <!-- Emptied lots must leave the logbook lot picker; this
+                             is how an analyst says a standard is used up. -->
+                        <form method="POST" tal:attributes="action string:${view/portal_url}/@@pfas-prep-standards">
+                          <input type="hidden" name="action" value="status" />
+                          <input type="hidden" name="uid" tal:attributes="value std/uid" />
+                          <input type="hidden" name="new_status"
+                                 tal:attributes="value python:'active' if std.get('status') == 'exhausted' else 'exhausted'" />
+                          <button type="submit" class="btn-sm"
+                                  tal:condition="python:std.get('status') != 'exhausted'"
+                                  tal:attributes="disabled python:None if std.get('status') == 'active' else 'disabled';
+                                                  title python:'No longer offered when filling a logbook' if std.get('status') == 'active' else 'Only an active lot can be marked emptied (this one is %s)' % std.get('status')"
+                                  onclick="return confirm('Mark this lot as emptied? It will no longer be offered when filling a logbook.')">Mark emptied</button>
+                          <button type="submit" class="btn-sm" tal:condition="python:std.get('status') == 'exhausted'"
+                                  title="Offer this lot in logbooks again">Reactivate</button>
+                        </form>
+                      </div>
+                    </details>
                   </div>
                 </td>
               </tr>

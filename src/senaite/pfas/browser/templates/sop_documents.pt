@@ -16,13 +16,6 @@
     .sop-tab.active { background:var(--s-primary); color:#fff; border-color:var(--s-primary); }
 
     /* ── table ── */
-    .sop-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
-    .sop-table th { background:var(--s-light); padding:8px 12px; text-align:left;
-                    font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
-                    text-transform:uppercase; letter-spacing:.04em;
-                    border-bottom:2px solid var(--s-border); }
-    .sop-table td { padding:9px 12px; border-bottom:1px solid var(--s-border); vertical-align:middle; }
-    .sop-table tr:hover > td { background:var(--s-primary-lt); }
     .sop-row-toggle { cursor:pointer; }
 
     /* ── badges (.badge base is global — only colours here) ── */
@@ -56,11 +49,6 @@
     .sig-chip.unsigned { background:#f8d7da; color:#721c24; }
 
     /* ── rev history ── */
-    .rev-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); margin-top:10px; }
-    .rev-table th { background:var(--s-light); padding:6px 10px; text-align:left;
-                    font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
-                    border-bottom:2px solid var(--s-border); }
-    .rev-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
 
     /* ── modal ── */
     .sop-modal-overlay { display:none; position:fixed; inset:0;
@@ -157,7 +145,7 @@
 
   <!-- ── Document table ───────────────────────────────────────────────────── -->
   <div class="table-wrap">
-  <table class="sop-table">
+  <table class="pfas-table sop-table">
     <thead>
       <tr>
         <th>ID</th>
@@ -327,7 +315,7 @@
                 <div class="sop-dpanel"
                      tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
                      tal:attributes="id string:panel-${sop_id_js}-history">
-                  <table class="rev-table">
+                  <table class="pfas-table rev-table">
                     <tr>
                       <th>Rev</th><th>Status</th><th>Uploaded</th>
                       <th>Activated</th><th>By</th><th>Release Notes</th>
@@ -388,7 +376,7 @@
       <summary style="cursor:pointer;font-weight:600;color:var(--s-secondary,#6c757d)">
         Archived Documents (<tal:n tal:replace="python:len(arch)">0</tal:n>)
       </summary>
-      <table class="sop-table" style="margin-top:10px;opacity:.85">
+      <table class="pfas-table sop-table" style="margin-top:10px;opacity:.85">
         <thead>
           <tr><th>ID</th><th>Title</th><th>Type</th><th>Category</th><th>Method</th>
               <th>Deleted</th><th>By</th><th></th></tr>

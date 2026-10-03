@@ -33,8 +33,8 @@ SHARED = {"pfas_macros.pt", "pfas_sidebar.pt"}
 
 # Ceilings, measured 2026-09-30. Lower them as consolidation lands; never raise.
 MAX_PAGES_WITH_STYLE_BLOCK = 50
-MAX_STYLE_ATTRIBUTES = 804
-MAX_DISTINCT_HEX = 206
+MAX_STYLE_ATTRIBUTES = 792   # 2026-10-03 (GAPS §99): list tables on .pfas-table
+MAX_DISTINCT_HEX = 202
 MAX_DISTINCT_FONT_SIZES = 3   # the 36-64px display glyphs; all text uses var(--fs-*)
 
 

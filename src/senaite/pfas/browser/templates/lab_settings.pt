@@ -34,13 +34,6 @@
     .ls-group { border:1px solid var(--s-border); border-radius:8px;
                 margin-bottom:14px; background:var(--s-bg); }
     .ls-count { font-weight:400; color:var(--s-secondary); font-size:var(--fs-sm); }
-    .ls-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
-    .ls-table th { background:var(--s-light); padding:7px 10px; font-size:var(--fs-xs);
-                font-weight:700; color:var(--s-secondary); text-align:left;
-                border-top:1px solid var(--s-border);
-                border-bottom:2px solid var(--s-border); }
-    .ls-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
-                vertical-align:top; }
     .ls-key { font-family: var(--font-mono); font-size:var(--fs-xs); color:var(--s-secondary); }
     .ls-val { font-weight:600; color:var(--s-body); }
     .ls-seed { color:var(--s-secondary); font-size:var(--fs-xs); }
@@ -141,7 +134,7 @@
     <div class="pfas-pane ls-group" tal:attributes="id string:ls-${g/id}">
 
       <div class="ls-scroll" tal:condition="g/rows">
-        <table class="ls-table">
+        <table class="pfas-table ls-table">
           <thead><tr>
             <th>Setting</th><th>Value</th><th>Default</th>
             <th>Status</th><th>Who may edit</th><th>Edit in</th>

@@ -16,15 +16,6 @@
                     color: var(--s-primary); }
     .info-card p  { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.6; margin-bottom: 6px; }
 
-    .ref-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm);
-                 background: var(--s-bg); border-radius: 6px;
-                 box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
-    .ref-table th { background: var(--s-dark); color: #fff; padding: 8px 12px;
-                    text-align: left; font-size: var(--fs-xs); text-transform: uppercase;
-                    letter-spacing: .05em; font-weight: 700; }
-    .ref-table td { padding: 8px 12px; border-bottom: 1px solid var(--s-border); }
-    .ref-table tr:last-child td { border-bottom: none; }
-    .ref-table tr:hover td { background: var(--s-primary-lt); }
 
     /* .badge base is global (pfas_macros) — page-specific colours: */
     .badge-blank    { background: var(--s-primary-lt); color: var(--s-primary); }
@@ -137,7 +128,7 @@
     </div>
 
     <div class="table-wrap">
-    <table class="ref-table">
+    <table class="pfas-table ref-table">
       <thead>
         <tr>
           <th>QC Type</th>

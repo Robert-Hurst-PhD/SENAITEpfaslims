@@ -20,12 +20,6 @@
     .fld-row .fld { flex:1; min-width:140px; }
     .chk { display:flex; align-items:center; gap:6px; font-size:var(--fs-sm);
            color:var(--s-body); margin-bottom:10px; }
-    .log-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
-    .log-table th { background:var(--s-light); padding:7px 10px; font-size:var(--fs-xs);
-                    font-weight:700; color:var(--s-secondary);
-                    border-bottom:2px solid var(--s-border); text-align:left; }
-    .log-table td { padding:7px 10px; border-bottom:1px solid var(--s-border);
-                    vertical-align:top; }
     .p-ok  { background:#d4edda; color:#155724; padding:2px 9px; border-radius:8px;
              font-size:var(--fs-xs); font-weight:700; }
     .p-fail { background:#f8d7da; color:#721c24; padding:2px 9px; border-radius:8px;
@@ -106,7 +100,7 @@
   </div>
 
   <h3 style="font-size:var(--fs-base);margin:0 0 8px">Registered sets</h3>
-  <table class="log-table">
+  <table class="pfas-table log-table">
     <thead><tr>
       <th>Set</th><th>Class</th><th>Calibration laboratory</th>
       <th>Certificate</th><th>Calibrated</th><th>Due</th><th>Status</th>

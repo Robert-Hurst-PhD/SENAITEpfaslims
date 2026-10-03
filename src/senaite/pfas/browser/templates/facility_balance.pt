@@ -27,11 +27,6 @@
     .dev-cell { font-weight:600; }
     .dev-pass { color:var(--s-success); }
     .dev-fail { color:var(--s-danger); }
-    .history-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
-    .history-table th { background:var(--s-light); padding:6px 10px;
-                        font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
-                        border-bottom:2px solid var(--s-border); text-align:left; }
-    .history-table td { padding:7px 10px; border-bottom:1px solid var(--s-border); }
     .p-ok { background:#d4edda; color:#155724; padding:2px 9px;
              border-radius:8px; font-size:var(--fs-xs); font-weight:700; }
     .p-fail { background:#f8d7da; color:#721c24; padding:2px 9px;
@@ -184,7 +179,7 @@
               nothing and blocks release for any work it supports.
             </span>
           </div>
-          <table class="history-table">
+          <table class="pfas-table history-table">
             <tr><th>Nominal</th><th>Actual (g)</th><th>Deviation (g)</th><th>Tol (g)</th><th>Result</th></tr>
             <tal:each tal:repeat="pt python:v.get('points',[])">
               <tr>

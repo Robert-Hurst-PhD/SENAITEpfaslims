@@ -7377,3 +7377,39 @@ toolbar's content views, now the bar's context zone:
   Setup at 1366 and 390 px: every object tab visible; the sample's workflow
   menu opens with Create partitions / Dispatch / Invalidate / Store sample at
   both widths; the user menu matches core on core and PFAS pages.
+
+
+## 99. Tables in the SENAITE style; one action layout on the bench lists (2026-10-03)
+
+Lab, 2026-10-03: "The action buttons inside reagent inventory are not clear
+what they do and are inconsistently placed. Same comment to prepared
+standards. A general comment regarding tables is that they do not match the
+Senaite style of tables."
+
+- **Measured, not guessed** (computed styles, Samples / Instruments listings
+  vs PFAS pages): core headers are 11 px uppercase, weight 600, 0.03 em
+  tracking, 12 px padding, grey on #f8f9fa with a 2 px rule; cells 14 px with
+  12 px padding. Reagent Inventory used bold 13 px mixed-case headers and
+  11 px cells; Prepared Standards, Deviations, SOPs, the logbook lists and
+  the facility logs each carried a private copy with different padding.
+- **.pfas-table now has the core values** and those pages use it: Reagent
+  Inventory, Prepared Standards, Deviations, Controlled Documents (and
+  revisions), Logbooks (templates, method sequence), Lab Settings, Setup
+  references, EGAD batches, and the facility logs. 48 duplicated table rules
+  are gone; style attributes 803 -> 792, hex colours 203 -> 202 (ratchet
+  ceilings lowered to match). Dense logbook form grids are unchanged.
+- **Row actions, one layout:** every row of Reagent Inventory and Prepared
+  Standards has the same controls in the same place -- Edit, Where used,
+  View CoA / Upload CoA (Certificate for a standard), and More, which holds
+  what changes the lot's state: Mark opened (disabled, with the reason, when
+  already opened), Replace CoA, Archive / Restore (Delete in test mode); for
+  standards, Mark emptied / Reactivate. Every control has a tooltip saying
+  what it does; the unlabelled up-arrow is now "Replace CoA". Nothing
+  overflows the row at 1366 px (it used to cut "Archive" off).
+- **Not done, deliberately:** converting these pages to senaite.app.listing.
+  Their actions are custom POST handlers (open, archive, restore, CoA upload,
+  scan log), not workflow transitions, so core's selection buttons cannot
+  drive them without rebuilding each one; the measured style plus the fixed
+  action layout answers the complaint. Revisit if the lab wants bulk
+  actions on many lots at once.
+- Prepared Standards' title now matches the sidebar ("Prepared Standards").

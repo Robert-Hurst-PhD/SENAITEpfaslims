@@ -33,14 +33,6 @@
                  padding:12px 0; }
 
     /* Pool table ----------------------------------------------------------- */
-    .lb-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
-    .lb-table th { background:var(--s-light); color:var(--s-secondary);
-                   font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
-                   letter-spacing:.04em; padding:8px 12px; text-align:left;
-                   border-bottom:2px solid var(--s-border); }
-    .lb-table td { padding:9px 12px; border-bottom:1px solid var(--s-border);
-                   vertical-align:middle; }
-    .lb-table tr:hover td { background:var(--s-primary-lt); }
     .badge-builtin { background:#e3f2fd; color:#1565c0; font-size:var(--fs-xs);
                      padding:2px 8px; border-radius:3px; font-weight:600; }
     .badge-custom  { background:#f3e5f5; color:#6a1b9a; font-size:var(--fs-xs);
@@ -160,7 +152,7 @@
       </p>
 
       <div class="table-wrap">
-      <table class="lb-table">
+      <table class="pfas-table lb-table">
         <thead>
           <tr>
             <th>Order</th>

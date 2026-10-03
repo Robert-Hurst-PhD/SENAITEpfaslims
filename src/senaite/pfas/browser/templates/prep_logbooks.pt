@@ -7,12 +7,6 @@
   <title metal:fill-slot="title">Logbooks: templates</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
-    .lb-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
-    .lb-table th { background:var(--s-light); padding:8px 12px; text-align:left;
-                   font-size:var(--fs-xs); color:var(--s-secondary); text-transform:uppercase;
-                   font-weight:700; letter-spacing:.04em; }
-    .lb-table td { padding:9px 12px; border-top:1px solid var(--s-border); vertical-align:middle; }
-    .lb-table tr:hover td { background:var(--s-primary-lt); }
 
     .rev-list { list-style:none; margin:0; padding:0; }
     .rev-list li { display:flex; align-items:center; gap:10px; padding:4px 0;
@@ -194,7 +188,7 @@
       </div>
 
       <div class="table-wrap" tal:condition="fams">
-        <table class="lb-table">
+        <table class="pfas-table lb-table">
           <thead>
             <tr>
               <th>Logbook Name</th>

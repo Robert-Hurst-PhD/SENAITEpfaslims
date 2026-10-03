@@ -20,15 +20,6 @@
     .dev-filter-sep { width:1px; height:20px; background:var(--s-border);
                       margin:0 4px; }
     /* ── List table ─────────────────────────────────────────── */
-    .dev-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
-    .dev-table th { background:var(--s-light); font-weight:700;
-                    padding:8px 12px; text-align:left;
-                    border-bottom:2px solid var(--s-border);
-                    color:var(--s-secondary); text-transform:uppercase;
-                    font-size:var(--fs-xs); letter-spacing:.04em; }
-    .dev-table td { padding:9px 12px; border-bottom:1px solid var(--s-border);
-                    vertical-align:middle; }
-    .dev-table tr:hover td { background:var(--s-primary-lt); }
     .dev-empty { text-align:center; padding:40px; color:var(--s-secondary);
                  font-size:var(--fs-base); }
     /* ── Badges (page-specific — base .badge is global) ─────── */
@@ -764,7 +755,7 @@
 
       <tal:notempty tal:condition="devs">
         <div class="table-wrap">
-        <table class="dev-table">
+        <table class="pfas-table dev-table">
           <thead>
             <tr>
               <th>ID</th>
