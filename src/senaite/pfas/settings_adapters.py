@@ -181,24 +181,24 @@ def declare_all():
     _link("facility.study_tolerance",
           u"Temperature study tolerance",
           GROUP_THRESHOLDS, KIND_FLOAT, _facility("study_tolerance"),
-          "pfas-facility-units", unit=u"°C", judging=True,
+          "pfas-equipment-types", unit=u"°C", judging=True,
           reader="senaite.pfas.facility_qc.get_facility_defaults")
     _link("facility.eyewash_temp_min", u"Eye wash minimum temperature",
           GROUP_THRESHOLDS, KIND_FLOAT, _facility("eyewash_temp_min"),
-          "pfas-facility-units", unit=u"°C", judging=True,
+          "pfas-equipment-types", unit=u"°C", judging=True,
           reader="senaite.pfas.facility_qc.get_facility_defaults")
     _link("facility.eyewash_temp_max", u"Eye wash maximum temperature",
           GROUP_THRESHOLDS, KIND_FLOAT, _facility("eyewash_temp_max"),
-          "pfas-facility-units", unit=u"°C", judging=True,
+          "pfas-equipment-types", unit=u"°C", judging=True,
           reader="senaite.pfas.facility_qc.get_facility_defaults")
     _link("facility.water_conductivity_max",
           u"Type 1 water conductivity maximum",
           GROUP_THRESHOLDS, KIND_FLOAT, _facility("water_conductivity_max"),
-          "pfas-facility-units", unit=u"µS/cm", judging=True,
+          "pfas-equipment-types", unit=u"µS/cm", judging=True,
           reader="senaite.pfas.facility_qc.get_facility_defaults")
     _link("facility.water_toc_max", u"Type 1 water TOC maximum",
           GROUP_THRESHOLDS, KIND_FLOAT, _facility("water_toc_max"),
-          "pfas-facility-units", unit=u"ppb", judging=True,
+          "pfas-equipment-types", unit=u"ppb", judging=True,
           reader="senaite.pfas.facility_qc.get_facility_defaults")
 
     for field, label, unit in (

@@ -175,12 +175,21 @@ LABORATORY
         → factors/qualifiers applied. Optional EDD export reads results + CAS
         map + qualifier map; BLOCKS if any analyte in the batch lacks a CAS.
 
-  FACILITY QC RECORDS (parallel compliance subsystem, ISO 17025 §6.4):
-           Time-stamped environmental and equipment verification records:
-           temperature (refrigerators, freezers, room), balance verification,
-           reagent water, waste, eyewash. Stored in SQLite at
-           /data/qc/facility_monitoring.db. Independent facility compliance
-           obligation — records do NOT gate individual batch release; audited
+  EQUIPMENT (ISO 17025 §6.4; decided 2026-10-03, GAPS §100):
+           every piece is a core SENAITE Instrument with a core Instrument
+           Type (as the LC-MS/MS is). The TYPE owns the obligations
+           (equipment_types.py, annotation on the type): kind, calibration /
+           check frequency, correction factor, external certificate, unit,
+           tolerance (% of nominal; balances always g at 0.2 %), offered in
+           worksheets. Due = the type's frequency since the last internal
+           record, and SENAITE's certificate when the type requires one.
+           The per-item PFAS settings (sensor, temperature range, weight
+           points) annotate the instrument. Time-stamped verification records
+           -- temperature, balance verification, pipette calibration, reagent
+           water, waste, eyewash -- stay in SQLite at
+           /data/qc/facility_monitoring.db, keyed by the instrument UID
+           (browser/equipment.py is facility_qc's unit provider). Independent
+           compliance obligation: records do NOT gate batch release; audited
            on their own cadence by the QAO.
 ```
 
@@ -272,7 +281,7 @@ What each landing is for:
   parent-reagent traceability chain), batch logbooks, SOPs, deviations. Built
   so a robot service account can perform the same actions (§4).
 
-**Not workspaces — sidebar groups (§6A):** Facility QC, Sample Workflow,
+**Not workspaces — sidebar groups (§6A):** Equipment (was Facility QC), Sample Workflow,
 Method & Analyte Setup, Instrument & Import, Reporting & EDD, and
 Configuration (which holds the lab-admin settings console `@@pfas-lab-settings`,
 GAPS §45). A new landing for any of these is a new decision, not a gap.
@@ -310,9 +319,12 @@ It replaces the situation where important features were buried on a separate
   QC & METHODS        Method Profiles · QC Rules · Control Charts ·
                       Calibrations · Specifications/Recovery
   BENCH               Reagent Inventory · Prepared Standards ·
-                      Prep Logbooks · Batch Logbooks · SOPs / Deviations
-  FACILITY QC         Temperature · Balance · Reagent Water ·
-                      Waste · Eyewash
+                      Logbooks (tabs: Templates -> Method sequence -> By
+                      batch) · Extraction Guide · SOPs / Deviations
+                      (Lot usage opens from "Where used", not the sidebar)
+  EQUIPMENT           Equipment · Equipment Types · Daily Checklist ·
+                      Temperature · Balance · Weight Sets · Pipettes ·
+                      Reagent Water · Waste · Eyewash
   INSTRUMENTS & IMPORT  Instruments · Import Studio · Calibrations
   REPORTING           Reports · EGAD EDD
   CONFIGURATION       (collapsible, out-of-the-way) the old Setup tiles grouped:
@@ -341,7 +353,11 @@ It replaces the situation where important features were buried on a separate
 
 Inside a workspace page, content uses the panel layout proven on the Method
 Profile pages:
-- TOP HEADER BAR: page title (left), context badge + back/switch (right).
+- TOP BAR: ONE macro on every page, core and PFAS (templates/pfas_topbar.pt,
+  AdminLTE 3 navbar; GAPS §93): menu + page title | context chip (core: the
+  object's tabs) | global icons. Nothing clickable in the context zone.
+- SUB-BAR under it: breadcrumb (left) + the page's actions and back buttons
+  (`header-right` slot, right); fixed above the tabs.
 - TOP SUB-HEADING TABS: a page's sections render as tabs across the top — NOT a
   long vertical accordion of collapsible sections. (Finish converting the
   remaining collapsible-section pages to tabs.)
@@ -524,13 +540,16 @@ auto-check blocks submission if any non-voided QC result fails.
 CoA from an accredited supplier establishing NIST traceability. Expired CRMs
 must not be used; the reagent inventory displays expiry status.
 
-**Facility QC as an independent compliance obligation (ISO 17025 §6.4).**
-Environmental monitoring (temperature, balance verification, reagent water,
-waste, eyewash) is documented on its own cadence — continuous/daily for
-sensors, daily for balance and water, periodic for eyewash and waste. Records
+**Equipment and facility checks as an independent compliance obligation (ISO
+17025 §6.4).** Environmental monitoring and equipment verification
+(temperature, balance verification, pipette calibration, reagent water, waste,
+eyewash) are documented on their own cadence. What each piece of equipment owes
+-- how often, whether readings are corrected, whether an external certificate
+is required -- is set on its TYPE (Equipment Types), never per page. Records
 are reviewed by the QAO independently, not per-batch. A failing reading on a
-run date is noted in the Facility QC dashboard but evaluated separately from
-batch release.
+run date is noted on the Daily Checklist but evaluated separately from batch
+release; the extraction's equipment chain (balance verification -> weight set
+-> metrology certificate) is still traced in Data Review.
 
 **Data Review as the formal technical review (ISO 17025 §7.8.4).** Report
 issuance requires a documented technical review. The 5-item checklist + Analyst

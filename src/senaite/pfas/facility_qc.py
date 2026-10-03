@@ -385,7 +385,32 @@ def _now():
 
 # ── Unit registry ─────────────────────────────────────────────────────────────
 
+# ── The equipment registry (GAPS §100b) ──────────────────────────────────────
+# Inside SENAITE every unit IS a core Instrument (browser/equipment.py
+# registers itself here at start-up): a unit's id is the instrument's UID, its
+# name / serial / type come from the instrument, its PFAS settings from an
+# annotation on it. The readings and verifications below stay in SQLite, keyed
+# by that id. Without a provider (tests, scripts) the legacy facility_units
+# table answers, so the pure layer keeps working headlessly.
+_PROVIDER = None
+
+
+def set_unit_provider(provider):
+    global _PROVIDER
+    _PROVIDER = provider
+
+
+def _provider():
+    p = _PROVIDER
+    try:
+        return p if (p is not None and p.available()) else None
+    except Exception:                                       # noqa: BLE001
+        return None
+
+
 def list_units(active_only=True):
+    if _provider():
+        return _provider().list_units(active_only)
     ensure_schema()
     with _connect() as conn:
         if active_only:
@@ -400,6 +425,8 @@ def list_units(active_only=True):
 
 
 def get_unit(unit_id):
+    if _provider():
+        return _provider().get_unit(unit_id)
     ensure_schema()
     with _connect() as conn:
         row = conn.execute(
@@ -409,6 +436,8 @@ def get_unit(unit_id):
 
 
 def get_unit_by_sensor(sensor_id):
+    if _provider():
+        return _provider().get_unit_by_sensor(sensor_id)
     ensure_schema()
     with _connect() as conn:
         row = conn.execute(
@@ -760,14 +789,42 @@ def unit_by_serial(serial):
     (`equipment_sns`), which were read only by the PDF. This is the join that
     turns one into a registered unit whose calibration can be asked about.
     """
-    ensure_schema()
     if not serial:
         return None
+    if _provider():
+        return _provider().unit_by_serial(serial)
+    ensure_schema()
     with _connect() as conn:
         row = conn.execute(
             "SELECT * FROM facility_units WHERE serial_number=? LIMIT 1",
             (str(serial).strip(),)).fetchone()
     return dict(row) if row else None
+
+
+# The internal check each kind owes on its type's frequency (GAPS §100):
+# a balance its verification, a pipette its calibration, a cold store or room
+# its temperature-mapping study, an eye wash its log.
+_LAST_CHECK = {
+    "balance_analytical": ("balance_verifications", "verified_date"),
+    "balance_prep": ("balance_verifications", "verified_date"),
+    "pipette": ("pipette_calibrations", "cal_date"),
+    "refrigerator": ("temperature_studies", "study_date"),
+    "freezer": ("temperature_studies", "study_date"),
+    "room_sensor": ("temperature_studies", "study_date"),
+    "eyewash": ("eyewash_logs", "log_date"),
+}
+
+
+def last_check_date(unit_id, kind):
+    """The date of the last internal check recorded for a unit, or None."""
+    table = _LAST_CHECK.get(kind)
+    if not table or not unit_id:
+        return None
+    ensure_schema()
+    with _connect() as conn:
+        row = conn.execute("SELECT MAX(%s) FROM %s WHERE unit_id=?" % (table[1], table[0]),
+                           (unit_id,)).fetchone()
+    return (row[0] or None) if row else None
 
 
 # Unit types whose measurements a reported result depends on, and which therefore

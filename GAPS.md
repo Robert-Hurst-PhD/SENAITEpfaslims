@@ -7450,3 +7450,43 @@ the instrument; internal checks from the type's frequency).
   a point cannot carry its own tolerance; the verdict goes through the
   relative rule). Mutants killed: rounding dropped at the limit; a grams
   constant in the verdict.
+
+
+### 100b. Equipment replaces Facility QC and the Unit Registry
+
+- **Instruments are the registry:** browser/equipment.py registers itself as
+  facility_qc's unit provider, so `list_units`, `get_unit`, `unit_by_serial`
+  and `get_unit_by_sensor` answer from core Instruments (id = instrument UID;
+  name, serial, type and location from SENAITE; sensor, temperature range,
+  weight points and water limits from an annotation on the instrument). The
+  extraction guide, Data Review's equipment chain, prepared standards, the
+  daily checklist and the sensor endpoint read instruments unchanged. Without
+  a provider (tests, scripts) the legacy table still answers.
+- **Pages:** Equipment (every instrument, its type and kind, the last internal
+  check and when the next is due, the external certificate, one status;
+  Edit in SENAITE, Settings, Records), Equipment Types (what each SENAITE
+  instrument type obliges, plus the lab-wide facility defaults and the sensor
+  API key that the Unit Registry held, same gates), Equipment settings (one
+  instrument's PFAS fields). @@pfas-facility-units redirects to Equipment.
+  "+ Add equipment" and "+ Add type" open SENAITE's own add forms (types are
+  Dexterity items under setup/instrumenttypes in 2.6).
+- **Worksheet pickers:** the worksheet add form and Manage Results offer only
+  instruments whose type is "in worksheets" (core view subclasses on the PFAS
+  layer, overrides.zcml). A type nobody has set up stays offered, as before.
+- **Sidebar:** the Facility QC group is now Equipment (Equipment, Equipment
+  Types, Daily Checklist, Temperature, Balance, Weight Sets, Pipettes, Water,
+  Waste, Eye Wash); Unit Registry is gone. Settings-console links for the
+  facility defaults point at Equipment Types.
+- **Live check** (aborted transaction, throwaway facility DB): a DEMO balance
+  type (balance, every 1 day, external certificate) and a DEMO fridge type;
+  the provider returned both instruments with their kinds; the balance read
+  in g at 0.2 %; 10 g at 10.019 g passed and at 10.021 g failed (tolerance
+  0.02 g); provenance named the failed verification and the missing weight
+  set; due = missing (no certificate); the worksheet picker offered only the
+  LC-MS where core would have offered all three. Nothing kept.
+- **Not set by me:** no frequency, correction factor or certificate
+  requirement for any type -- the LC-MS/MS type is "not set up yet" until the
+  lab sets it. Core's own Instruments list still marks an instrument without
+  a valid certificate "out of date"; the Equipment page is the PFAS view.
+- Tests: test_action_gates follows the moved actions (Equipment Types,
+  Equipment settings). CLAUDE.md §3/§5/§6A/§6B/§10 and WIRING.md updated.

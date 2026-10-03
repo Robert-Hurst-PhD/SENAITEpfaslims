@@ -38,9 +38,12 @@ SITE_ADMIN = "TIER_SITE_ADMIN"
 
 # (module, view class, gate table, {action: tier}, actions that must stay open)
 SPEC = [
-    ("facility_qc.py", "PFASFacilityUnitsView", "UNITS_GATES",
-     {"save": CONFIG, "delete": CONFIG, "save_defaults": CONFIG,
-      "save_api_key": SITE_ADMIN},
+    # the Unit Registry's actions, now on Equipment Types (GAPS §100b)
+    ("equipment.py", "PFASEquipmentTypesView", "TYPES_GATES",
+     {"save_types": CONFIG, "save_defaults": CONFIG, "save_api_key": SITE_ADMIN},
+     set()),
+    ("equipment.py", "PFASEquipmentSettingsView", "ITEM_GATES",
+     {"save": CONFIG},
      set()),
     ("facility_qc.py", "PFASWeightSetsView", "WEIGHT_SET_GATES",
      {"save": CONFIG, "delete": CONFIG},
@@ -378,10 +381,10 @@ TEMPLATES = os.path.join(BROWSER, "templates")
 
 # (template, action value or onclick marker, the condition that must enclose it)
 HIDDEN_CONTROLS = [
-    ("facility_units.pt", "save_api_key", "view/can_site_admin"),
-    ("facility_units.pt", "delete", "view/can_configure"),
-    ("facility_units.pt", "save", "view/can_configure"),
-    ("facility_units.pt", "save_defaults", "view/can_configure"),
+    ("equipment_types.pt", "save_api_key", "view/can_site_admin"),
+    ("equipment_types.pt", "save_types", "view/can_configure"),
+    ("equipment_types.pt", "save_defaults", "view/can_configure"),
+    ("equipment_settings.pt", "save", "view/can_configure"),
     ("facility_weight_sets.pt", "save", "view/can_configure"),
     ("import_studio.pt", "upload", "view/can_configure"),
     ("import_studio.pt", "save_profile", "view/can_configure"),
@@ -451,7 +454,7 @@ def test_gated_controls_are_hidden_from_those_refused():
 def test_api_key_is_not_rendered_to_non_site_admins():
     """Hiding the card is presentation; api_key() itself returns nothing to a
     user who may not set the key, so no template change can leak it."""
-    cls = _class(_tree("facility_qc.py"), "PFASFacilityUnitsView")
+    cls = _class(_tree("equipment.py"), "PFASEquipmentTypesView")
     func = _method(cls, "api_key")
     first = func.body[0]
     assert isinstance(first, ast.If) and "can_site_admin" in ast.dump(first.test)

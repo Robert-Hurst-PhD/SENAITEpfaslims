@@ -44,16 +44,16 @@
   ">
   <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 18px">
     ISO 17025 daily instrument and environmental verifications.
-    <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-facility-units"
-      >Manage units</a>
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment"
+      >Equipment</a>
   </p>
 
   <tal:no-units tal:condition="python:not summary">
     <div style="padding:32px;text-align:center;color:var(--s-secondary);
                 border:1px dashed var(--s-border);border-radius:8px;">
-      No active facility units configured.
-      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-facility-units"
-        >Add units</a>
+      No equipment yet: each item is a SENAITE instrument with a type.
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment"
+        >Equipment</a>
     </div>
   </tal:no-units>
 

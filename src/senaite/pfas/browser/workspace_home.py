@@ -113,8 +113,8 @@ class PFASQCManagementView(BrowserView):
             {
                 "url":   u"{0}/@@pfas-facility-qc".format(base),
                 "icon":  u"⌂",
-                "title": u"Facility QC",
-                "desc":  u"Environmental monitoring, balance and water verification",
+                "title": u"Equipment & daily checks",
+                "desc":  u"Temperatures, balances, pipettes, water, eye wash; what is due",
             },
             {
                 "url":   u"{0}/@@pfas-sop".format(base),

@@ -688,15 +688,29 @@
       </div>
     </div>
 
-    <!-- ── FACILITY QC (all staff roles) ──────────────────────────────── -->
+    <!-- ── EQUIPMENT (all staff roles; was Facility QC, GAPS §100b): every
+         item a SENAITE instrument with a type; the daily checks below. -->
     <div class="pfas-sg" id="pfas-sg-facilityqc"
          tal:condition="python:is_mgr or is_ana or is_clk">
       <button class="pfas-sg-head" type="button"
               onclick="pfasSgToggle('pfas-sg-facilityqc')">
-        <span class="pfas-sg-label">Facility QC</span>
+        <span class="pfas-sg-label">Equipment</span>
         <span class="pfas-sg-arrow">&#9660;</span>
       </button>
       <div class="pfas-sg-items">
+        <a class="pfas-si" title="Every instrument and piece of equipment, with what is due"
+           tal:attributes="href string:${purl}/@@pfas-equipment;
+                           class python:'pfas-si si-active' if ('@@pfas-equipment' in path and '@@pfas-equipment-types' not in path) else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-unit-registry"/></svg></span>
+          <span class="pfas-si-label">Equipment</span>
+        </a>
+        <a class="pfas-si" title="What each type obliges: calibration frequency, correction factor, external certificate"
+           tal:condition="is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-equipment-types;
+                           class python:'pfas-si si-active' if '@@pfas-equipment-types' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-unit-registry"/></svg></span>
+          <span class="pfas-si-label">Equipment Types</span>
+        </a>
         <a class="pfas-si" title="Daily Checklist"
            tal:attributes="href string:${purl}/@@pfas-facility-qc;
                            class python:'pfas-si si-active' if '@@pfas-facility-qc' in path else 'pfas-si'">
@@ -744,12 +758,6 @@
                            class python:'pfas-si si-active' if '@@pfas-eyewash-log' in path else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-eyewash"/></svg></span>
           <span class="pfas-si-label">Eye Wash</span>
-        </a>
-        <a class="pfas-si" title="Unit Registry" tal:condition="is_mgr"
-           tal:attributes="href string:${purl}/@@pfas-facility-units;
-                           class python:'pfas-si si-active' if '@@pfas-facility-units' in path else 'pfas-si'">
-          <span class="pfas-si-icon"><svg><use href="#ico-unit-registry"/></svg></span>
-          <span class="pfas-si-label">Unit Registry</span>
         </a>
       </div>
     </div>

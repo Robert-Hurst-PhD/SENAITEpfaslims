@@ -507,6 +507,7 @@
     /* A table of form rows: fixed layout, every control fills its cell, so a
        wide record never pushes columns off the page. Widths come from <col>. */
     .pfas-table-form { table-layout: fixed; }
+    .pfas-table.pfas-table-form th { white-space: normal; }   /* fixed columns: headings wrap */
     .pfas-table.pfas-table-form td { padding: 6px 6px; }
     .pfas-table-form input:not([type=checkbox]), .pfas-table-form select,
     .pfas-table-form textarea { width: 100%; }
@@ -1186,7 +1187,7 @@ document.addEventListener('click', function (ev) {
     var g = active.closest('.pfas-sg');
     var gl = g && g.querySelector('.pfas-sg-label');
     var glText = gl ? gl.textContent.trim() : '';
-    if (glText) {
+    if (glText && glText !== activeText) {     /* no "Equipment > Equipment" */
       var s = document.createElement('span'); s.textContent = glText; parts.push(s);
     }
     /* a page beneath a listed item (a worksheet's review): link the item */

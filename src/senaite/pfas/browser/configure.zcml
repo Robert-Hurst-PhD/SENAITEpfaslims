@@ -722,10 +722,30 @@
       class=".facility_qc.PFASFacilityDashboardView"
       permission="zope2.View"
       />
+  <!-- Equipment (GAPS §100b): instruments + types; the Unit Registry's old
+       address redirects to the list. -->
   <browser:page
       name="pfas-facility-units"
       for="*"
-      class=".facility_qc.PFASFacilityUnitsView"
+      class=".equipment.PFASFacilityUnitsRedirect"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-equipment"
+      for="*"
+      class=".equipment.PFASEquipmentView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-equipment-types"
+      for="*"
+      class=".equipment.PFASEquipmentTypesView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-equipment-settings"
+      for="*"
+      class=".equipment.PFASEquipmentSettingsView"
       permission="zope2.View"
       />
   <browser:page

@@ -5911,3 +5911,12 @@ From the lab's write-up of 2026-10-03 (eleven items; plan in GAPS §93 onward).
   Method sequence (which forms a method uses, in order) -> By batch (fill in).
 - **"The summary table" = Analysis Specifications**, one row per method x QC
   type x matrix; it is grouped so matrices with the same window share a row.
+
+
+**Core overrides added 2026-10-03 (upgrade-fragile; GAPS §93, §100b):**
+PFASToolbarManager replaces senaite.core's `plone.toolbar` viewlet manager
+(subclass of ToolbarViewletManager; uses base_render for content views).
+PFASWorksheetFolderView (FolderView._get_instruments_brains) and
+PFASManageResultsView (ManageResultsView.getInstruments) filter the worksheet
+instrument pickers by equipment type. All registered on ISenaitePFASLayer in
+overrides.zcml; check them on any senaite.core upgrade.

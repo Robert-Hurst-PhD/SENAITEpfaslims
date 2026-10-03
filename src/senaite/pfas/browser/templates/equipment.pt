@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Equipment</title>
+  <metal:fill fill-slot="header-title">Equipment</metal:fill>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-equipment-types">Equipment types</a>
+    <a class="btn-sm btn-primary" tal:attributes="href view/add_url">+ Add equipment</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="rows view/rows">
+
+    <p class="form-note">
+      Every piece of equipment is a SENAITE instrument with a type, like the
+      LC-MS/MS. The <strong>type</strong> decides what is owed: how often it is
+      calibrated or checked, whether readings are corrected, and whether an
+      external certificate is required. <em>Internal check</em> counts from the
+      last record kept here (balance verification, pipette calibration,
+      temperature study, eye wash log); <em>External certificate</em> is the
+      certificate on the instrument in SENAITE.
+    </p>
+
+    <p class="form-note" tal:condition="not:rows">No equipment yet.</p>
+
+    <table class="pfas-table" tal:condition="rows">
+      <thead>
+        <tr><th>Equipment</th><th>Type</th><th>Location</th><th>Internal check</th>
+            <th>External certificate</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr tal:repeat="r rows">
+          <td><strong tal:content="r/name">Balance 1</strong>
+              <div class="cf-hint" tal:condition="r/serial_number" tal:content="string:SN ${r/serial_number}">SN 123</div>
+              <span class="badge badge-archived" tal:condition="not:r/active">inactive</span></td>
+          <td><span tal:replace="r/type_title">Balance</span>
+              <div class="cf-hint" tal:content="r/kind_label">Balance, analytical</div></td>
+          <td tal:content="r/location">Prep room</td>
+          <td tal:define="i r/due/internal">
+            <tal:i condition="i">
+              <div tal:content="python:'last %s' % (i['last'] or 'none')">last 2026-09-01</div>
+              <div class="cf-hint" tal:condition="i/due" tal:content="string:due ${i/due}">due 2026-12-01</div>
+            </tal:i>
+            <span class="cf-hint" tal:condition="not:i">no frequency set</span>
+          </td>
+          <td tal:define="x r/due/external">
+            <tal:x condition="x">
+              <span tal:replace="python:x['valid_to'] and ('valid to %s' % x['valid_to']) or 'none on file'">valid to 2027-01-01</span>
+            </tal:x>
+            <span class="cf-hint" tal:condition="not:x">not required</span>
+          </td>
+          <td><span tal:attributes="class python:'badge ' + {'ok': 'badge-active', 'due_soon': 'badge-quarantine', 'overdue': 'badge-expired', 'missing': 'badge-expired'}.get(r['due']['status'], 'badge-archived')"
+                    tal:content="r/status_label">OK</span></td>
+          <td class="row-actions-cell">
+            <div class="row-actions">
+              <a class="btn-sm" title="Name, serial, type, location and certificates (SENAITE)"
+                 tal:attributes="href string:${r/url}/base_edit">Edit</a>
+              <a class="btn-sm btn-secondary" title="Sensor, temperature range, weight points"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-equipment-settings?uid=${r/id}">Settings</a>
+              <a class="btn-sm btn-secondary" tal:condition="r/records_url" title="Its checks and calibrations"
+                 tal:attributes="href r/records_url">Records</a>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  </div>
+</html>

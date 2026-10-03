@@ -74,8 +74,8 @@
     <div style="padding:24px;text-align:center;color:var(--s-secondary);
                 border:1px dashed var(--s-border);border-radius:8px;">
       Select a unit above, or
-      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-facility-units"
-        >Configure temperature units</a>.
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment"
+        >Equipment</a>.
     </div>
   </tal:no-unit>
 

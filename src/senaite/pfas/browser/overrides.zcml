@@ -52,6 +52,29 @@
       />
 
   <!--
+    Worksheet instrument pickers offer analysis instruments only (GAPS §100b):
+    equipment whose type is not "offered in worksheets" (a fridge, an eye
+    wash) is left out. Subclasses of core's views, same registrations, on the
+    PFAS layer. Upgrade note: PFASWorksheetFolderView overrides
+    FolderView._get_instruments_brains and PFASManageResultsView
+    ManageResultsView.getInstruments (browser/equipment.py).
+  -->
+  <browser:page
+      for="bika.lims.interfaces.IWorksheetFolder"
+      name="base_view"
+      class="senaite.pfas.browser.equipment.PFASWorksheetFolderView"
+      permission="zope.Public"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+  <browser:page
+      for="bika.lims.interfaces.IWorksheet"
+      name="manage_results"
+      class="senaite.pfas.browser.equipment.PFASManageResultsView"
+      permission="senaite.core.permissions.ViewResults"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
+  <!--
     Override @@email (report/COA delivery) from senaite.core
     (bika.lims.browser.publish.emailview.EmailView) so the state EDD CSV rides
     the same email as the report PDF (D63 step D). Registered on

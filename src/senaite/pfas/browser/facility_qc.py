@@ -89,151 +89,41 @@ class PFASFacilityDashboardView(BrowserView):
 
 # Which POST actions are lab configuration (GAPS §46). The daily bench logs in
 # this module -- temperature, balance, water, waste, eyewash, pipette
-# calibration -- are deliberately absent: any lab user records them.
-UNITS_GATES = {
-    "save": TIER_CONFIG,
-    "delete": TIER_CONFIG,
-    "save_defaults": TIER_CONFIG,
-    # The sensor secret authenticates the unauthenticated ingest endpoint.
-    "save_api_key": TIER_SITE_ADMIN,
-}
-
+# calibration -- are deliberately absent: any lab user records them. The Unit
+# Registry's actions moved to Equipment Types (browser/equipment.py TYPES_GATES)
+# when units became core Instruments (GAPS §100b).
 WEIGHT_SET_GATES = {
     "save": TIER_CONFIG,
     "delete": TIER_CONFIG,
 }
 
 
-class PFASFacilityUnitsView(GateMixin, BrowserView):
-    """Unit registry — CRUD for lab manager."""
-    _template = ViewPageTemplateFile("templates/facility_units.pt")
-
-    def __call__(self):
-        flatten_form(self.request)
-        req = self.request
-        action = req.form.get("action", "")
-        if req.method == "POST":
-            denied = deny_gated_action(self.context, req, action, UNITS_GATES)
-            if denied is not None:
-                return denied
-            if action == "save":
-                self._save()
-            elif action == "delete":
-                db.delete_unit(req.form.get("unit_id", ""))
-            elif action == "save_defaults":
-                self._save_defaults()
-            elif action == "save_api_key":
-                db.set_api_key(_portal(self.context), req.form.get("api_key", ""))
-            self.request.response.redirect(
-                _portal(self.context).absolute_url() + "/@@pfas-facility-units"
-            )
-            return ""
-        return self._template()
-
-    def _save(self):
-        f = self.request.form
-        uid = f.get("unit_id") or None
-        unit_type = f.get("unit_type", "")
-        weight_points = None
-        if unit_type in _facility_defaults()["balance_points"]:
-            # Rebuild weight points from posted form fields
-            pts = []
-            defaults = _facility_defaults()["balance_points"][unit_type]
-            for i, d in enumerate(defaults):
-                nom = f.get("wp_nominal_{}".format(i))
-                lbl = f.get("wp_label_{}".format(i))
-                if nom:      # acceptance is the type's % of nominal (GAPS §100)
-                    pts.append([float(nom), lbl or d[1]])
-            if pts:
-                weight_points = json.dumps(pts)
-        extra = {}
-        if unit_type == "water_system":
-            d = _facility_defaults()
-            extra["conductivity_max"] = f.get(
-                "conductivity_max", str(d["water_conductivity_max"]))
-            extra["toc_max"] = f.get("toc_max", str(d["water_toc_max"]))
-        if unit_type in ("eyewash",):
-            extra["temp_min"] = f.get("temp_min", "15")
-            extra["temp_max"] = f.get("temp_max", "25")
-        data = {
-            "id": uid,
-            "unit_type": unit_type,
-            "name": f.get("name", ""),
-            "location": f.get("location", ""),
-            "serial_number": f.get("serial_number", ""),
-            "sensor_id": f.get("sensor_id", "") or None,
-            "temp_min": f.get("temp_min") or None,
-            "temp_max": f.get("temp_max") or None,
-            "humidity_min": f.get("humidity_min") or None,
-            "humidity_max": f.get("humidity_max") or None,
-            # The lab-wide default, not a literal: the Unit Registry collects
-            # `study_tolerance` in its Defaults panel and every consumer used to
-            # hardcode 1.0, so that field was inert too.
-            "study_tolerance": (f.get("study_tolerance")
-                                or _facility_defaults().get("study_tolerance")),
-            "weight_points_json": weight_points,
-            "extra_config_json": json.dumps(extra) if extra else None,
-            "active": True,
-        }
-        db.save_unit(data)
-
-    def units(self):
-        return db.list_units(active_only=False)
-
-    def unit_types(self):
-        return db.UNIT_TYPES
-
-    def balance_defaults_json(self):
-        return _safe_json(_facility_defaults()["balance_points"])
-
-    def api_key(self):
-        # Never rendered to anyone who may not set it (GAPS §46.7).
-        if not self.can_site_admin():
-            return ""
-        return db.get_api_key(_portal(self.context))
-
-    def portal_url(self):
-        return _portal(self.context).absolute_url()
-
-    # ── Lab-wide defaults ────────────────────────────────────────────────────
-
-    def facility_defaults(self):
-        """Current lab-wide defaults, with weight points as editable text."""
-        d = dict(_facility_defaults())
-        d["balance_points_text"] = dict(
-            (k, _points_to_text(v)) for k, v in
-            (d.get("balance_points") or {}).items())
-        return d
-
-    def balance_unit_types(self):
-        # Dicts, not tuples: TAL's string: expression takes a simple path, so
-        # ${bt/key} works where ${python:bt[0]} does not.
-        return [{"key": k, "label": label} for k, label in db.UNIT_TYPES
-                if k.startswith("balance_")]
-
-    def _save_defaults(self):
-        f = self.request.form
-        points = {}
-        for bt in self.balance_unit_types():
-            key = bt["key"]
-            parsed = _points_from_text(f.get("bal_points.%s" % key, u""))
-            if parsed:
-                points[key] = parsed
-        data = {"balance_points": points}
-        for field in ("eyewash_temp_min", "eyewash_temp_max",
-                      "water_conductivity_max", "water_toc_max",
-                      "study_tolerance"):
-            raw = (f.get(field) or "").strip()
-            if raw:
-                try:
-                    data[field] = float(raw)
-                except ValueError:
-                    logger.warning("facility defaults: %s=%r not a number, "
-                                   "left unchanged", field, raw)
-        db.save_facility_defaults(_portal(self.context), data)
+def facility_defaults_for_form():
+    """Lab-wide facility defaults, with balance weight points as editable text
+    (Equipment Types page)."""
+    d = dict(_facility_defaults())
+    d["balance_points_text"] = dict(
+        (k, _points_to_text(v)) for k, v in (d.get("balance_points") or {}).items())
+    return d
 
 
-
+def save_defaults_from_form(form, portal):
+    points = {}
+    for key in ("balance_analytical", "balance_prep"):
+        parsed = _points_from_text(form.get("bal_points.%s" % key, u""))
+        if parsed:
+            points[key] = parsed
+    data = {"balance_points": points}
+    for field in ("eyewash_temp_min", "eyewash_temp_max",
+                  "water_conductivity_max", "water_toc_max", "study_tolerance"):
+        raw = (form.get(field) or "").strip()
+        if raw:
+            try:
+                data[field] = float(raw)
+            except ValueError:
+                logger.warning("facility defaults: %s=%r not a number, "
+                               "left unchanged", field, raw)
+    db.save_facility_defaults(portal, data)
 
 
 def _points_to_text(points):
