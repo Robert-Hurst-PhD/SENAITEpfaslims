@@ -7517,3 +7517,41 @@ the instrument; internal checks from the type's frequency).
 - **Manage Results override exercised:** the view in use is
   PFASManageResultsView; WS-0001's instrument list is the blank option + the
   LC-MS.
+
+
+## 101. Thermometer correction factors (2026-10-03)
+
+Lab, 2026-10-03: "Correction factors are applied to thermometers. They in
+theory correct the reading to a NIST reference thermometer. A temperature study
+is done over two days and the difference in average between the two probes, 4
+readings over two days becomes the correction factor. This is performed
+quarterly."
+
+- **The study** (facility_qc, existing tables): 4 paired readings (probe and
+  NIST reference), was 5 over a day. It stays pending until all 4 are in AND
+  they span two days; then pass if every pair is within the study tolerance,
+  else fail. Reading times are now date + time (was HH:MM, so two days could
+  never be shown).
+- **The factor** = NIST average - probe average (`study_correction`), from the
+  unit's latest PASSED study on or before the reading (`current_correction`);
+  a failed study supplies none.
+- **Applied:** for a type with "correction factor required", every new reading
+  is judged against the range as probe + correction; the raw probe value is
+  stored as before and the correction beside it (new column
+  temperature_readings.correction). The Temperature Log charts the corrected
+  value and states the factor and its study; each study row shows its factor.
+  With no passed study the page says readings are judged uncorrected.
+- **Seeds (the lab's statement):** refrigerator, freezer and room-sensor types
+  start with correction required, a check every 90 days (quarterly) and unit
+  degC; editable per type. The quarterly study is that type's internal check
+  (only a completed study counts).
+- **Tests:** test_thermometer_correction (5: 4 pairs over two days; factor =
+  NIST avg - probe avg; judged corrected, stored raw; a failed study does not
+  correct; the study is the quarterly check). Mutants killed: correction left
+  out of the range check; the two-day rule; failed studies supplying a factor.
+- **Live** (aborted, throwaway facility DB): DEMO fridge type seeded as
+  required / 90 days; study passed, factor +0.35 degC; a 7.8 degC probe reading
+  judged 8.15 degC, out of 2-8; due 2026-09-29 (overdue); the Temperature Log
+  rendered the factor and its study.
+- Readings recorded before this change carry no correction and keep their
+  original verdict (there were none: the facility DB is empty).

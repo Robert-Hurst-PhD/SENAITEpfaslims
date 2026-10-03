@@ -221,7 +221,20 @@ class PFASTemperatureLogView(BrowserView):
         unit = self.unit()
         if not unit:
             return []
-        return db.list_studies(unit["id"])
+        out = []
+        for s in db.list_studies(unit["id"]):
+            det = db.get_study(s["id"]) or {}
+            out.append(dict(s, correction=db.study_correction(det.get("points"))))
+        return out
+
+    def correction(self):
+        """The correction applied to this unit's readings now (GAPS §101),
+        or None; and whether its type requires one."""
+        unit = self.unit()
+        if not unit:
+            return None
+        return {"required": db._requires_correction(unit),
+                "current": db.current_correction(unit["id"])}
 
     def study_detail(self):
         sid = self.request.form.get("study_id")

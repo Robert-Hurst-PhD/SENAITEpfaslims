@@ -5920,3 +5920,12 @@ PFASWorksheetFolderView (FolderView._get_instruments_brains) and
 PFASManageResultsView (ManageResultsView.getInstruments) filter the worksheet
 instrument pickers by equipment type. All registered on ISenaitePFASLayer in
 overrides.zcml; check them on any senaite.core upgrade.
+
+
+## 2026-10-03 — Thermometer correction factor (confirmed by the lab)
+
+A correction factor applies to temperature probes: quarterly, 4 paired
+readings over two days against a NIST-traceable reference; factor = NIST
+average - probe average; readings are judged as probe + factor until the next
+study. Only a passed study supplies a factor. Seeded on refrigerator, freezer
+and room-sensor types (required, every 90 days); editable per type (GAPS §101).

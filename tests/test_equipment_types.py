@@ -20,11 +20,17 @@ def test_a_balance_reads_in_grams_at_two_tenths_of_a_percent():
 
 
 def test_nothing_else_is_guessed():
-    """Frequencies, factors and certificates are the lab's to enter."""
+    """Frequencies, factors and certificates are the lab's to enter, except
+    what the lab stated: temperature probes are corrected to a NIST reference
+    by a quarterly study (2026-10-03)."""
     for kind in et.KIND_KEYS:
         req = et.seed(kind)
-        assert req["cal_frequency_days"] is None
-        assert req["external_cert_required"] is False and req["correction_factor_required"] is False
+        assert req["external_cert_required"] is False
+        if kind in et.TEMPERATURE_KINDS:
+            assert req["correction_factor_required"] is True
+            assert req["cal_frequency_days"] == 90 and req["unit"] == u"\u00b0C"
+            continue
+        assert req["cal_frequency_days"] is None and req["correction_factor_required"] is False
         if kind not in et.BALANCE_KINDS:
             assert req["tolerance_pct"] is None and req["unit"] == ""
     assert et.seed("analytical")["in_worksheets"] is True

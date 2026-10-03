@@ -15,8 +15,9 @@ pure model of them. Stored per InstrumentType (annotation, browser/equipment.py)
     tolerance_pct               acceptance, % of nominal
     in_worksheets               offered in SENAITE's worksheet instrument picker
 
-Seeds are only what the lab has stated: balances read in grams with an
-acceptance of 0.2 % of nominal (lab, 2026-10-03); analytical instruments are
+Seeds are only what the lab has stated (2026-10-03): balances read in grams
+with an acceptance of 0.2 % of nominal; temperature probes are corrected to a
+NIST reference by a study every quarter (90 days); analytical instruments are
 offered in worksheets. Every other value is the lab's to enter -- blank means
 "not set", never a guessed frequency.
 
@@ -48,6 +49,8 @@ NOT_DAILY_KINDS = ("analytical", "pipette", "other")
 FIELDS = ("kind", "cal_frequency_days", "correction_factor_required",
           "external_cert_required", "unit", "tolerance_pct", "in_worksheets")
 
+TEMPERATURE_KINDS = ("refrigerator", "freezer", "room_sensor")
+STUDY_EVERY_DAYS = 90                 # "performed quarterly" (lab, 2026-10-03)
 BALANCE_UNIT = u"g"
 BALANCE_TOLERANCE_PCT = 0.2          # the lab, 2026-10-03: "balances ... 0.2%"
 DUE_SOON_DAYS = 14
@@ -60,6 +63,11 @@ def seed(kind):
            "unit": u"", "tolerance_pct": None, "in_worksheets": kind == "analytical"}
     if kind in BALANCE_KINDS:
         req.update(unit=BALANCE_UNIT, tolerance_pct=BALANCE_TOLERANCE_PCT)
+    if kind in TEMPERATURE_KINDS:
+        # the lab, 2026-10-03: probes are corrected to a NIST reference by a
+        # quarterly two-day study (facility_qc, GAPS §101)
+        req.update(unit=u"\u00b0C", correction_factor_required=True,
+                   cal_frequency_days=STUDY_EVERY_DAYS)
     return req
 
 

@@ -361,6 +361,9 @@ def _connect():
 # not lose them to get the weight-set link.
 _ADDED_COLUMNS = [
     ("balance_verifications", "weight_set_id", "TEXT"),
+    # the thermometer correction applied to a reading (GAPS §101); the raw
+    # probe value stays in `temperature`
+    ("temperature_readings", "correction", "REAL"),
 ]
 
 
@@ -510,17 +513,36 @@ def delete_unit(unit_id):
 
 # ── Temperature readings ──────────────────────────────────────────────────────
 
+def _requires_correction(unit):
+    req = (unit or {}).get("requirements") or _et.seed((unit or {}).get("unit_type"))
+    return bool(req.get("correction_factor_required"))
+
+
 def record_temperature(unit_id, sensor_id, temperature, humidity=None,
                         ts=None, source="sensor"):
+    """Store a reading; judge it against the unit's range.
+
+    A unit whose type requires a correction factor (thermometers corrected to
+    the NIST reference, GAPS §101) is judged on probe + correction, where the
+    correction comes from its latest PASSED temperature study on or before the
+    reading. The raw probe value is stored as `temperature`, the correction
+    beside it."""
     ensure_schema()
     unit = get_unit(unit_id)
+    ts = ts or _now()
     in_range = 1
-    if unit and temperature is not None:
+    correction = None
+    if unit and temperature is not None and _requires_correction(unit):
+        cur = current_correction(unit_id, ts[:10])
+        correction = cur["correction"] if cur else None
+    judged = (temperature + correction) if (temperature is not None and correction is not None) \
+        else temperature
+    if unit and judged is not None:
         lo = unit.get("temp_min")
         hi = unit.get("temp_max")
-        if lo is not None and temperature < lo:
+        if lo is not None and judged < lo:
             in_range = 0
-        if hi is not None and temperature > hi:
+        if hi is not None and judged > hi:
             in_range = 0
     if humidity is not None and unit:
         hlo = unit.get("humidity_min")
@@ -529,15 +551,25 @@ def record_temperature(unit_id, sensor_id, temperature, humidity=None,
             in_range = 0
         if hhi is not None and humidity > hhi:
             in_range = 0
-    ts = ts or _now()
     now = _now()
     with _connect() as conn:
         conn.execute("""
             INSERT INTO temperature_readings
-            (unit_id, sensor_id, ts, temperature, humidity, in_range, source, created_at)
-            VALUES (?,?,?,?,?,?,?,?)
-        """, (unit_id, sensor_id, ts, temperature, humidity, in_range, source, now))
+            (unit_id, sensor_id, ts, temperature, humidity, in_range, source, created_at,
+             correction)
+            VALUES (?,?,?,?,?,?,?,?,?)
+        """, (unit_id, sensor_id, ts, temperature, humidity, in_range, source, now,
+              correction))
     return in_range
+
+
+def _with_corrected(row):
+    """A reading as a dict, with `corrected` = probe + correction (or the
+    probe value when no correction applied)."""
+    r = dict(row)
+    t, c = r.get("temperature"), r.get("correction")
+    r["corrected"] = (round(t + c, 4) if (t is not None and c is not None) else t)
+    return r
 
 
 def get_temperature_readings(unit_id, days=7):
@@ -550,7 +582,7 @@ def get_temperature_readings(unit_id, days=7):
             WHERE unit_id=? AND ts >= ?
             ORDER BY ts ASC
         """, (unit_id, cutoff)).fetchall()
-    return [dict(r) for r in rows]
+    return [_with_corrected(r) for r in rows]
 
 
 def latest_reading(unit_id):
@@ -561,10 +593,50 @@ def latest_reading(unit_id):
             WHERE unit_id=?
             ORDER BY ts DESC LIMIT 1
         """, (unit_id,)).fetchone()
-    return dict(row) if row else None
+    return _with_corrected(row) if row else None
 
 
 # ── Temperature studies ───────────────────────────────────────────────────────
+#
+# The thermometer correction (lab, 2026-10-03; GAPS §101): quarterly, the probe
+# is read beside a NIST-traceable reference thermometer -- 4 readings over two
+# days. The correction factor is the difference between the two averages,
+# NIST minus probe, and is added to the probe's readings until the next study.
+
+STUDY_POINTS = 4
+STUDY_MIN_DAYS = 2
+
+
+def study_correction(points):
+    """NIST average minus probe average over a study's paired readings, or
+    None until all STUDY_POINTS pairs are in."""
+    pairs = [(p.get("sensor_reading"), p.get("nist_reading")) for p in points or []
+             if p.get("sensor_reading") is not None and p.get("nist_reading") is not None]
+    if len(pairs) < STUDY_POINTS:
+        return None
+    probe = sum(a for a, _b in pairs) / float(len(pairs))
+    nist = sum(b for _a, b in pairs) / float(len(pairs))
+    return round(nist - probe, 3)
+
+
+def current_correction(unit_id, as_of=None):
+    """{"correction", "study_id", "study_date"} from the unit's latest PASSED
+    study dated on or before `as_of`, or None."""
+    ensure_schema()
+    as_of = as_of or _now()[:10]
+    with _connect() as conn:
+        rows = conn.execute("""
+            SELECT id, study_date FROM temperature_studies
+            WHERE unit_id=? AND status='pass' AND study_date<=?
+            ORDER BY study_date DESC, id DESC
+        """, (unit_id, as_of)).fetchall()
+    for r in rows:
+        r = dict(r)
+        st = get_study(r["id"])
+        cf = study_correction((st or {}).get("points"))
+        if cf is not None:
+            return {"correction": cf, "study_id": r["id"], "study_date": r["study_date"]}
+    return None
 
 def list_studies(unit_id):
     ensure_schema()
@@ -604,7 +676,7 @@ def create_study(unit_id, operator, nist_serial, nist_cert_date=None,
         """, (unit_id, study_date, operator, nist_serial, nist_cert_date,
               tolerance, "pending", notes, now))
         study_id = cur.lastrowid
-        for i in range(1, 6):
+        for i in range(1, STUDY_POINTS + 1):
             conn.execute("""
                 INSERT INTO temperature_study_points (study_id, time_point)
                 VALUES (?,?)
@@ -637,13 +709,16 @@ def save_study_point(study_id, time_point, sensor_reading, nist_reading,
 
 
 def _refresh_study_status(conn, study_id):
-    pts = conn.execute(
-        "SELECT passed FROM temperature_study_points WHERE study_id=?",
-        (study_id,)
-    ).fetchall()
+    """pending until every paired reading is in AND they span STUDY_MIN_DAYS
+    days (4 readings over two days); then pass if every pair is within the
+    study tolerance, else fail."""
+    pts = [dict(p) for p in conn.execute(
+        "SELECT passed, recorded_at FROM temperature_study_points WHERE study_id=?",
+        (study_id,)).fetchall()]
     # dict() first: a unicode key on a sqlite3.Row raises -- see _connect.
-    filled = [v for v in (dict(p)["passed"] for p in pts) if v is not None]
-    if len(filled) < 5:
+    filled = [p["passed"] for p in pts if p["passed"] is not None]
+    days = set((p["recorded_at"] or "")[:10] for p in pts if p["passed"] is not None)
+    if len(filled) < max(len(pts), STUDY_POINTS) or len(days) < STUDY_MIN_DAYS:
         status = "pending"
     elif all(v == 1 for v in filled):
         status = "pass"
@@ -821,8 +896,9 @@ def last_check_date(unit_id, kind):
     if not table or not unit_id:
         return None
     ensure_schema()
+    extra = " AND status!='pending'" if table[0] == "temperature_studies" else ""
     with _connect() as conn:
-        row = conn.execute("SELECT MAX(%s) FROM %s WHERE unit_id=?" % (table[1], table[0]),
+        row = conn.execute("SELECT MAX(%s) FROM %s WHERE unit_id=?%s" % (table[1], table[0], extra),
                            (unit_id,)).fetchone()
     return (row[0] or None) if row else None
 

@@ -105,6 +105,12 @@
           &bull; Humidity:
           <tal:hn tal:replace="python:unit.get('humidity_min','—')"/>–<tal:hx tal:replace="python:unit.get('humidity_max','—')"/>% RH
         </tal:h>
+        <tal:c define="cf view/correction" condition="cf/required">
+          &bull; Correction factor:
+          <strong tal:condition="cf/current"
+                  tal:content="python:u'%+.3f \u00b0C (study of %s); the chart and the range check use probe + correction' % (cf['current']['correction'], cf['current']['study_date'])">+0.300 °C</strong>
+          <strong tal:condition="not:cf/current">none yet: no passed study, readings are judged uncorrected</strong>
+        </tal:c>
       </div>
     </div>
 
@@ -112,8 +118,10 @@
     <div class="study-section">
       <h3>Quarterly Temperature Studies (NIST Verification)</h3>
       <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 12px">
-        Five time-point readings over a day compared against a NIST-traceable reference thermometer.
-        Required at unit installation and every quarter thereafter.
+        Four paired readings over two days: the probe beside a NIST-traceable
+        reference thermometer. The correction factor is the NIST average minus
+        the probe average, and is added to the probe&#8217;s readings until the
+        next study. Every quarter, and at installation.
       </p>
 
       <!-- Existing studies -->
@@ -125,6 +133,8 @@
           <span tal:content="s/operator"></span>
           <span tal:attributes="class python:'study-badge study-'+s['status']"
                 tal:content="python:s['status'].upper()"></span>
+          <span tal:condition="python:s.get('correction') is not None"
+                tal:content="python:u'correction %+.3f \u00b0C' % s['correction']">correction +0.300 °C</span>
           <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;study_id=${s/id}"
             >Enter / view data</a>
         </div>
@@ -160,9 +170,8 @@
                          tal:attributes="value python:det['study']['id']"/>
                   <input type="hidden" name="time_point"
                          tal:attributes="value pt/time_point"/>
-                  <input type="text" name="recorded_at" placeholder="HH:MM"
-                         tal:attributes="value python:pt.get('recorded_at','')[:16] if pt.get('recorded_at') else ''"
-                         style="width:60px;margin-bottom:3px"/>
+                  <input type="datetime-local" name="recorded_at" title="When this pair was read (the four span two days)"
+                         tal:attributes="value python:pt.get('recorded_at','')[:16] if pt.get('recorded_at') else ''"/>
                   <input type="number" step="0.01" name="sensor_reading" placeholder="Sensor °C"
                          tal:attributes="value python:pt.get('sensor_reading','')"/>
                   <input type="number" step="0.01" name="nist_reading" placeholder="NIST °C"
@@ -234,7 +243,7 @@
   var tempData = [], humData = [], hasHum = false;
   _readings.forEach(function(r){
     if (r.temperature != null)
-      tempData.push({x: r.ts.replace('T',' '), y: r.temperature,
+      tempData.push({x: r.ts.replace('T',' '), y: (r.corrected != null ? r.corrected : r.temperature),
                      in_range: r.in_range, humidity: r.humidity});
     if (r.humidity != null) hasHum = true;
   });
