@@ -1170,6 +1170,29 @@ document.addEventListener('click', function (ev) {
 })();
 </script>
 
+<script>
+/* Declared collections (config_form_macros.pt): "+ Add <noun>" clones the
+   template row with the next index; config_forms.parse_collection reads every
+   index the form carries (GAPS §94). */
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest ? e.target.closest('.cf-add-row') : null;
+  if (!btn) return;
+  var wrap = btn.closest('.cf-coll-wrap');
+  var tpl = wrap && wrap.querySelector('template.cf-row-template');
+  var body = wrap && wrap.querySelector('table.cf-coll tbody');
+  if (!tpl || !body) return;
+  var n = parseInt(btn.getAttribute('data-next'), 10) || 0;
+  btn.setAttribute('data-next', String(n + 1));
+  var row = tpl.content.firstElementChild.cloneNode(true);
+  row.querySelectorAll('[name]').forEach(function (el) {
+    el.name = el.name.replace('__NEW__', '__' + n + '__');
+  });
+  body.appendChild(row);
+  var first = row.querySelector('input, select');
+  if (first) first.focus();
+});
+</script>
+
 <!-- Backward-compat JS slots (placed before </body> so scripts can reference DOM) -->
 <tal:body-extra metal:define-slot="body-extra" />
 <tal:scripts metal:define-slot="scripts" />

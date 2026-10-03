@@ -144,17 +144,21 @@
 
 <!--
   Draws one declared COLLECTION (config_forms.render_collection): a row per
-  stored item plus blank rows to add; clearing a row's name removes it. The
-  header comes from the first row's cell labels. Caller: cf_rows, cf_form.
+  stored item and a "+ Add" button that clones the template row (the last
+  entry of cf_rows) with the next index; clearing a row's name removes it.
+  The header comes from the first entry's cell labels. Caller: cf_rows, cf_form.
 -->
 <metal:collection define-macro="collection">
+  <div class="cf-coll-wrap" tal:define="tpl python:cf_rows[-1]">
   <table class="factor-table cf-coll">
     <thead>
       <tr><th tal:repeat="cell python:cf_rows[0]['cells']" tal:content="cell/label">Matrix</th></tr>
     </thead>
     <tbody>
-      <tr tal:repeat="row cf_rows" tal:attributes="class python:'cf-new-row' if row['new'] else None">
+      <tal:r repeat="row python:cf_rows[:-1]">
+      <tr>
         <td tal:repeat="cell row/cells">
+          <metal:cell define-macro="coll-cell">
           <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
                  tal:attributes="name cell/name; form cf_form; value cell/value;
                                  placeholder cell/placeholder; aria-label cell/label" />
@@ -173,10 +177,21 @@
                     tal:attributes="value python:c[0]; selected python:'selected' if c[0] == cell['value'] else None"
                     tal:content="python:c[1]">ng/kg</option>
           </select>
+          </metal:cell>
         </td>
       </tr>
+      </tal:r>
     </tbody>
   </table>
+  <template class="cf-row-template">
+    <tr class="cf-new-row">
+      <td tal:repeat="cell tpl/cells"><metal:c use-macro="context/@@pfas-config-form-macros/macros/coll-cell" /></td>
+    </tr>
+  </template>
+  <button type="button" class="btn btn-sm btn-secondary cf-add-row"
+          tal:attributes="data-next tpl/next"
+          tal:content="string:+ Add ${tpl/noun}">+ Add matrix</button>
+  </div>
 </metal:collection>
 </body>
 </html>

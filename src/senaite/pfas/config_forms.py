@@ -536,15 +536,20 @@ def _prune(value, base, keep_base=False):
 #     check(stored, rows) -> [error]                  optional: e.g. what a
 #                                                     removal or rename orphans
 #
-# The page draws every existing row plus `new_rows` blank ones. Clearing a
-# row's name removes it; a blank row with a name adds one. Rows are addressed
-# by POSITION, which is safe because the stamp is the whole read() list: if
-# anyone changed the collection after the page was drawn, the save is stale.
+# The page draws every existing row and a "+ Add <noun>" button (lab,
+# 2026-10-03: no spare blank rows). The button clones a template row whose
+# index is NEW_INDEX, numbered from len(rows) upward in the browser; the parse
+# reads every index the form carries. Clearing a row's name removes it. Rows
+# are addressed by POSITION, which is safe because the stamp is the whole
+# read() list: if anyone changed the collection after the page was drawn, the
+# save is stale.
+
+NEW_INDEX = u"NEW"   # alphanumeric: the page swaps "__NEW__" for "__<n>__"
 
 
 class Collection(object):
 
-    def __init__(self, id, title, columns, read, write, check=None, new_rows=3,
+    def __init__(self, id, title, columns, read, write, check=None,
                  noun=u"row", intro=u"", allow_empty=False):
         self.id = id
         self.title = title
@@ -552,7 +557,6 @@ class Collection(object):
         self.read = read
         self.write = write
         self.check = check
-        self.new_rows = new_rows
         self.noun = noun
         self.intro = intro
         self.allow_empty = allow_empty    # False: removing every row is refused
@@ -566,15 +570,30 @@ class Collection(object):
 
 
 def collection_name(coll, index, column):
-    return u"__".join([u"c", _enc(coll.id), u"%d" % index] + [_enc(p) for p in column.path])
+    return u"__".join([u"c", _enc(coll.id), u"%s" % index] + [_enc(p) for p in column.path])
+
+
+def _new_indices(coll, form, start):
+    """Indices >= start that any field of the form names (rows added with
+    "+ Add" -- a row with values but no name must still be seen, and
+    refused), in order."""
+    head = u"c__%s__" % _enc(coll.id)
+    found = set()
+    for k in (form or {}).keys():
+        k = k.decode("utf-8") if isinstance(k, bytes) else u"%s" % k
+        if k.startswith(head):
+            mid = k[len(head):].partition(u"__")[0]
+            if mid.isdigit() and int(mid) >= start:
+                found.add(int(mid))
+    return sorted(found)
 
 
 def render_collection(coll, stored, env=None):
     coll = _bound(coll, stored)
     rows = coll.read(stored or {})
     out = []
-    for i in range(len(rows) + coll.new_rows):
-        vals = rows[i] if i < len(rows) else {}
+    for i in list(range(len(rows))) + [NEW_INDEX]:
+        vals = rows[i] if i != NEW_INDEX else {}
         cells = []
         for c in coll.columns:
             v = vals.get(c.path[0])
@@ -583,12 +602,13 @@ def render_collection(coll, stored, env=None):
                 choices.append((v, u"%s (stored value)" % v))
             cells.append({"name": collection_name(coll, i, c), "kind": c.kind,
                           "label": c.label, "min": c.minimum, "max": c.maximum,
-                          "placeholder": c.placeholder if i < len(rows) or c is coll.key
+                          "placeholder": c.placeholder if i != NEW_INDEX or c is coll.key
                                          else u"",
                           "choices": choices,
                           "value": u"" if v is None else u"%s" % v,
                           "checked": bool(v) if c.kind == BOOL else False})
-        out.append({"index": i, "new": i >= len(rows), "cells": cells})
+        out.append({"index": i, "new": i == NEW_INDEX, "template": i == NEW_INDEX,
+                    "noun": coll.noun, "next": len(rows), "cells": cells})
     return out
 
 
@@ -597,7 +617,8 @@ def parse_collection(coll, form, stored, env=None):
     coll = _bound(coll, stored)
     before = coll.read(stored or {})
     rows, errors, seen = [], [], set()
-    for i in range(len(before) + coll.new_rows):
+    added = _new_indices(coll, form, len(before))
+    for i in list(range(len(before))) + added:
         old = before[i] if i < len(before) else {}
         name, error = _value(coll.key, form.get(collection_name(coll, i, coll.key)),
                              old.get(coll.key.path[0]),
@@ -610,7 +631,7 @@ def parse_collection(coll, form, stored, env=None):
                           _text(form.get(collection_name(coll, i, c)))]
                 if filled:
                     errors.append(u"New %s %d: give it a name, or clear %s." % (
-                        coll.noun, i - len(before) + 1, u", ".join(filled)))
+                        coll.noun, added.index(i) + 1, u", ".join(filled)))
             continue                    # cleared name: removed (or an unused blank row)
         label = name
         if name.lower() in seen:

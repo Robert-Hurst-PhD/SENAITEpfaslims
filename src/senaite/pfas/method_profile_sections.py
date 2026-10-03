@@ -195,7 +195,7 @@ def check_cal_levels(profile, rows):
 
 
 CAL_LEVELS = cf.Collection(
-    id=u"cal_levels", title=u"Calibration levels", noun=u"level", new_rows=1, allow_empty=True,
+    id=u"cal_levels", title=u"Calibration levels", noun=u"level", allow_empty=True,
     columns=[cf.Field("name", u"Level", kind=cf.TEXT, placeholder=u"CAL-n"),
              cf.Field("conc", u"Concentration", greater_than=0,
                       placeholder=u"in the level unit")],
@@ -352,7 +352,7 @@ def check_matrices(profile, rows):
 
 
 MATRICES = cf.Collection(
-    id=u"mtx", title=u"Matrices & Units", noun=u"matrix", new_rows=3,
+    id=u"mtx", title=u"Matrices & Units", noun=u"matrix",
     columns=[
         cf.Field("name", u"Matrix", kind=cf.TEXT, placeholder=u"new matrix"),
         cf.Field("aliases", u"Aliases (comma-separated)", kind=cf.TEXT,
@@ -583,7 +583,7 @@ def _eis_grid_check(profile, rows):
 # aqueous and each 1633A matrix class across. A class limit overrides the
 # aqueous one for that class; a blank class cell uses the aqueous limit.
 EIS_GRID = cf.Collection(
-    id=u"eis_grid", title=u"SUR recovery limits", noun=u"SUR row", new_rows=2,
+    id=u"eis_grid", title=u"SUR recovery limits", noun=u"SUR row",
     allow_empty=True,
     columns=[cf.Field("analyte", u"Surrogate (SUR)", kind=cf.TEXT, placeholder=u"new designation")] +
             [cf.Field(key + "_" + end, u"%s %s %%" % (label, end), minimum=0)
@@ -860,8 +860,7 @@ def _spike_collection(qc):
         return profile
 
     return cf.Collection(id=u"spk_" + qc, title=u"Spike levels: %s" % SPIKE_LABELS[qc],
-                         columns=columns, read=read, write=write, noun=u"level",
-                         new_rows=1, allow_empty=True)
+                         columns=columns, read=read, write=write, noun=u"level", allow_empty=True)
 
 
 SPIKE_LEVELS = dict((qc, _spike_collection(qc)) for qc in SPIKE_QC_TYPES)
@@ -962,7 +961,7 @@ _RECOVERY_FIELDS = ("recovery_min", "recovery_max", "rsd_max", LOW_LEVEL_KEY)
 def _recovery_collection(qc, id_):
     return cf.Collection(
         id=id_, title=u"%s recovery tiers" % qc if qc != RECOVERY_QC else u"Recovery tiers",
-        noun=u"tier", new_rows=1, allow_empty=(qc != RECOVERY_QC),
+        noun=u"tier", allow_empty=(qc != RECOVERY_QC),
         columns=_TIER_HEAD + [cf.Field("recovery_min", u"Min %", minimum=0),
                               cf.Field("recovery_max", u"Max %", minimum=0),
                               cf.Field("rsd_max", u"RSD \u2264 %", minimum=0)],
@@ -990,13 +989,13 @@ _RPD_FIELDS = ("rpd_max", LOW_LEVEL_KEY)
 # Sample duplicate RPD tiers (2026-10-02: a tier list like LFSMD, so a
 # low-level tier -- EPA 537.1 §9.3.7.2, <= 50% within 2 x MRL -- is editable).
 DUP_RPD = cf.Collection(
-    id=u"dup", title=u"Sample Duplicate RPD", noun=u"tier", new_rows=1, allow_empty=True,
+    id=u"dup", title=u"Sample Duplicate RPD", noun=u"tier", allow_empty=True,
     columns=_TIER_HEAD + [cf.Field("rpd_max", u"Max RPD %", minimum=0)],
     read=_tier_reader(u"Dup", _RPD_FIELDS), write=_tier_writer(u"Dup", _RPD_FIELDS),
     check=_tier_checker(u"Dup", False))
 
 LFSMD_RPD = cf.Collection(
-    id=u"lfsmd", title=u"LFSMD RPD", noun=u"tier", new_rows=1, allow_empty=True,
+    id=u"lfsmd", title=u"LFSMD RPD", noun=u"tier", allow_empty=True,
     columns=_TIER_HEAD + [cf.Field("rpd_max", u"Max RPD %", minimum=0)],
     read=_tier_reader(u"LFSMD", _RPD_FIELDS), write=_tier_writer(u"LFSMD", _RPD_FIELDS),
     check=_tier_checker(u"LFSMD", False))

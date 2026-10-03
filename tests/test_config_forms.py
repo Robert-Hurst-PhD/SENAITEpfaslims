@@ -457,6 +457,37 @@ def test_adding_a_matrix_writes_every_setting():
     assert after["matrix_aliases"]["Bottled Water"] == ["bottled", "spring water"]
 
 
+def test_a_collection_draws_its_rows_and_one_template_not_blank_rows():
+    """Lab, 2026-10-03: "there should be a + indicator to add a new row, not 3
+    empty rows" (GAPS §94). N stored rows draw N rows plus ONE template row
+    (index NEW) that the page clones; no blank rows are drawn."""
+    for coll in (MTX, mps.SECTIONS["eis_grid"], mps.SECTIONS["cal_levels"]):
+        for mid, stored in _profiles().items():
+            rows = cf.render(coll, stored)
+            n = len(coll.read(stored))
+            assert len(rows) == n + 1, (coll.id, mid, len(rows), n)
+            assert [r["template"] for r in rows] == [False] * n + [True], (coll.id, mid)
+            assert all("__NEW__" in c["name"] for c in rows[-1]["cells"]), coll.id
+            assert rows[-1]["next"] == n and rows[-1]["noun"] == coll.noun
+
+
+def test_rows_added_with_plus_save_at_any_index_past_the_stored_rows():
+    """The browser numbers added rows from len(rows); a row added, removed
+    and added again leaves a gap (n, n+2). Every added index is read, in
+    order, and the template row (never submitted by a browser) adds nothing."""
+    stored = _profiles()["EPA_537_1"]
+    n = len(stored["supported_matrices"])
+    form = coll_form(MTX, stored)
+    form[_cell(MTX, n, "name")] = "Bottled Water"
+    form[_cell(MTX, n, "unit")] = "ng/L"
+    form[_cell(MTX, n + 2, "name")] = "Spring Water"
+    form[_cell(MTX, n + 2, "unit")] = "ng/L"
+    form[_cell(MTX, cf.NEW_INDEX, "name")] = "Template Water"
+    after = save(MTX, stored, form)
+    assert after["supported_matrices"][-2:] == ["Bottled Water", "Spring Water"]
+    assert "Template Water" not in after["supported_matrices"]
+
+
 def test_a_bad_holding_time_is_refused_not_stored_as_unset():
     stored = _profiles()["EPA_537_1"]
     for bad in ("0", "-3", "two weeks"):

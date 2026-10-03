@@ -529,7 +529,7 @@
             matrices across. LFSMD uses the LFSM levels. The pipeline matches an
             injection name (e.g. <em>&#8220;LFSM High&#8221;</em>) to the level and
             reads the ppt for the batch&#8217;s matrix. Clear a level&#8217;s name to
-            remove it; the blank row adds one.
+            remove it; <strong>+ Add level</strong> adds one.
           </p>
           <div class="pane-intro" tal:define="rec view/recommended_spikes" tal:condition="rec">
             Recommended from the calibration curve (lowest, nearest the
@@ -654,8 +654,8 @@
                 recovery window) is set on the <em>Recovery Tiers</em> tab.<br />
                 <strong>Unit</strong> is the reporting unit for this method
                 &#215; matrix.<br />
-                Clear a matrix&#8217;s name to remove it. Blank rows at the
-                bottom add new matrices.
+                Clear a matrix&#8217;s name to remove it;
+                <strong>+ Add matrix</strong> adds one.
               </p>
               <!-- Saved ON ITS OWN (R2, config_forms collection): inputs
                    belong to form#section-mtx through the form= attribute. -->
@@ -747,7 +747,7 @@
               classes (Sediment and Soil are both <em>solid</em>). A class limit
               overrides the aqueous one for that class; a blank class cell uses the
               aqueous limit. Clear a designation&#8217;s name to remove the row and its
-              class limits; the blank rows add new ones. Saved on its own.
+              class limits; <strong>+ Add</strong> adds one. Saved on its own.
             </p>
             <div class="table-wrap"
                  tal:define="cf_rows python:view.section_groups('eis_grid'); cf_form string:section-eis">
@@ -815,8 +815,8 @@
             an ng/mL level times the matrix factor (Sample Corrections) gives
             the RL in the matrix&#8217;s reporting unit, so a matrix without a
             factor gets no derived RL. The curve also suggests the spike levels
-            on Recovery Tiers. Clear a level&#8217;s name to remove it; the
-            blank row adds one.
+            on Recovery Tiers. Clear a level&#8217;s name to remove it;
+            <strong>+ Add level</strong> adds one.
           </p>
           <p class="cf-hint" tal:condition="view/calibration_levels_source"
              tal:content="view/calibration_levels_source">Source</p>

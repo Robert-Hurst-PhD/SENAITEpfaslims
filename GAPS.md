@@ -7218,3 +7218,28 @@ under Setup).
   control; pfas_macros.pt and core_topbar.pt both use the macro and no other
   template draws a header. Both mutation-tested (a button in a chip, a page's
   own `<header>`).
+
+
+## 94. Configuration grids: "+ Add" instead of blank rows (2026-10-03)
+
+Lab, 2026-10-03: "Matrices & Units have example matrices and then there are 3
+empty rows, there should be a + indicator to add a new row ... Same comment
+applies to the SUR Limits" (and the calibration levels).
+
+- **config_forms collections** draw the stored rows only, plus one template
+  row (index `NEW`) inside a `<template>` and a "+ Add <noun>" button
+  (config_form_macros.pt). The page clones the template with the next index
+  (len(rows), then +1 per click); `parse_collection` reads every index >=
+  len(rows) that any field of the form names, so a gap (a row added and
+  cleared) is fine and a row with values but no name is still refused.
+  `Collection(new_rows=...)` is gone (7 declarations).
+- Applies to every declared collection: Matrices & Units, SUR recovery
+  limits, calibration levels, spike levels, recovery / LFB tiers, Dup and
+  LFSMD RPD tiers, and the same grids on Project Specs. Help text now says
+  "+ Add ... adds one".
+- **Tests** (test_config_forms): N rows draw N + one template, no blanks; rows
+  added at n and n+2 save in order and the template adds nothing. Mutants
+  killed: an off-by-one in the index scan; a blank row drawn again.
+- **Live:** FDA Matrices & Units draws its 6 matrices; two clicks add rows
+  named c__mtx__6__* and c__mtx__7__*. Not saved (the parse is unit-tested;
+  a test save would write the lab's change history).
