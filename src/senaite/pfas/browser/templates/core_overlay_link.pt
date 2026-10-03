@@ -4,4 +4,10 @@
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-tokens.css" />
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-core-overlay.css" />
+  <!-- the one top toolbar, shared with PFAS pages (GAPS §93) -->
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/vendor/adminlte-topbar-3.2.0.css" />
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-topbar.css" />
+  <script tal:attributes="src string:${portal}/++resource++senaite.pfas/pfas-topbar.js"></script>
 </tal:overlay>

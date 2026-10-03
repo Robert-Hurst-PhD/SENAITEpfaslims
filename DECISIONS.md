@@ -5881,3 +5881,33 @@ Plan: docs/EXTRACTION_REVIEW_REPORTING_PLAN.md.
   completed stage opens read-only; "Correct this stage" reopens it, keeps the
   previous version and records why (logbook PDF, Data Review). After
   finalizing, corrections go through a deviation.
+
+
+## 2026-10-03 — UI consistency, config tables, bench, logbooks, equipment (confirmed)
+
+From the lab's write-up of 2026-10-03 (eleven items; plan in GAPS §93 onward).
+
+- **One top toolbar, based on AdminLTE 3** (MIT, Bootstrap 4.6 -- the major
+  version SENAITE core ships). Only its navbar is vendored
+  (static/vendor/adminlte-topbar-3.2.0.css, cut by
+  tools/vendor_adminlte_topbar.py, every selector scoped under .pfas-topbar,
+  licence alongside). One macro (templates/pfas_topbar.pt) is drawn by every
+  PFAS page and, through PFASToolbarManager overriding core's `plone.toolbar`
+  viewlet manager on the PFAS layer, by every core page. Zones: menu + title |
+  context chip (or core's content views) | global icons. Page actions and back
+  buttons live in a sub-bar under the bar, beside the breadcrumb.
+  *Core override, upgrade-fragile:* PFASToolbarManager subclasses
+  senaite.core.browser.viewlets.toolbar.ToolbarViewletManager (base_render for
+  content views); the core page's H1 is moved into the bar by pfas-topbar.js
+  and hidden.
+- **Equipment = core SENAITE Instruments with core Instrument Types** (as the
+  LC-MS/MS already is). The type carries the obligations: calibration
+  frequency, correction factor required, external audit/certification
+  required, unit and tolerance. The Facility QC unit registry is folded in
+  (it was empty). Balances: grams, tolerance 0.2 % of nominal.
+- **Calibration levels stay their own table** (they set the RL), with a
+  "+ Add" row like every other configuration grid; no spare blank rows.
+- **Logbooks: one page, three tabs** -- Templates (versioned forms) ->
+  Method sequence (which forms a method uses, in order) -> By batch (fill in).
+- **"The summary table" = Analysis Specifications**, one row per method x QC
+  type x matrix; it is grouped so matrices with the same window share a row.

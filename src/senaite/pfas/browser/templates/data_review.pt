@@ -163,7 +163,7 @@
     </tal:batch>
   </tal:t>
 
-  <tal:r metal:fill-slot="header-right">
+  <tal:r metal:fill-slot="header-context">
     <span class="role-badge"
           tal:attributes="class string:ws-badge ws-${view/ws_state}; title view/ws_state"
           tal:content="view/ws_state">open</span>

@@ -202,8 +202,9 @@
   <tal:t metal:fill-slot="header-title"
          tal:content="view/display_name">Method Profile</tal:t>
 
+  <tal:c metal:fill-slot="header-context"><span class="header-badge" tal:content="view/method_id">FDA_32PFAS</span></tal:c>
   <tal:r metal:fill-slot="header-right">
-    <span class="header-badge" tal:content="view/method_id">FDA_32PFAS</span>
+    
     <a href="@@pfas-method-profiles" class="btn-sm btn-secondary btn-back">All Methods</a>
   </tal:r>
 

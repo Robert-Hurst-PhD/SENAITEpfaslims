@@ -198,92 +198,8 @@
 #pfas-shell.panel-collapsed .pfas-sb-dash-label,
 #sidebar.pfas-sidebar.toggled .pfas-sb-dash-label { display: none; }
 
-/* ── Core SENAITE page header unification ──────────────────────────── */
-body:not(.pfas-app) #senaite-toolbar {
-  background: #343a40 !important;
-  border-bottom: none !important;
-  height: 52px !important;
-  min-height: 52px !important;
-  max-height: 52px !important;
-  padding: 0 16px 0 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  flex-wrap: nowrap !important;
-}
-body:not(.pfas-app) #senaite-toolbar .navbar-collapse,
-body:not(.pfas-app) #senaite-toolbar .collapse {
-  height: 52px !important;
-  display: flex !important;
-  align-items: center !important;
-  flex: 1 !important;
-  justify-content: flex-end !important;
-}
-body:not(.pfas-app) .navbar-brand {
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  color: #fff !important;
-  letter-spacing: -.01em;
-  white-space: nowrap;
-  flex: 1;
-  margin: 0 10px;
-}
-body:not(.pfas-app) .navbar-brand img { display: none; }
-body:not(.pfas-app) #senaite-toolbar .nav-link,
-body:not(.pfas-app) #senaite-toolbar .dropdown-toggle {
-  color: rgba(255,255,255,.7) !important;
-  height: 52px;
-  display: flex !important;
-  align-items: center !important;
-  padding-left: 6px !important;
-  padding-right: 6px !important;
-}
-body:not(.pfas-app) #senaite-toolbar .nav-link i.fas,
-body:not(.pfas-app) #senaite-toolbar .dropdown-toggle i.fas {
-  font-size: var(--fs-xl) !important;
-}
-body:not(.pfas-app) #senaite-toolbar .navbar-nav { gap: 0 !important; }
-body:not(.pfas-app) #senaite-toolbar .nav-link:hover,
-body:not(.pfas-app) #senaite-toolbar .dropdown-toggle:hover {
-  color: #fff !important;
-}
-/* Bootstrap's collapse toggler is redundant — we force navbar-collapse always
-   open via display:flex!important above, so hide it on all screen sizes. */
-body:not(.pfas-app) #senaite-toolbar .navbar-toggler { display: none !important; }
-
-/* Desktop: user dropdown shows text; mobile overrides show icon-only */
-body:not(.pfas-app) #navbarUserDropdown .pfas-user-icon { display: none; }
-
-/* Sidebar toggle button injected before the navbar-brand on core pages */
-body:not(.pfas-app) .pfas-core-toggle {
-  background: none; border: none; border-right: 1px solid rgba(255,255,255,.1);
-  outline: none; color: rgba(255,255,255,.7); cursor: pointer;
-  width: 48px; height: 52px;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: var(--fs-xl); flex-shrink: 0; padding: 0;
-  transition: color .12s, background .12s;
-}
-body:not(.pfas-app) .pfas-core-toggle:hover {
-  color: #fff; background: rgba(255,255,255,.07);
-}
-/* Dark dropdown menus on core pages */
-body:not(.pfas-app) #senaite-toolbar .dropdown-menu {
-  background: #2d3236 !important;
-  border: 1px solid rgba(255,255,255,.12) !important;
-  border-radius: 6px !important;
-  padding: 4px !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,.35) !important;
-}
-body:not(.pfas-app) #senaite-toolbar .dropdown-menu a,
-body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link {
-  color: rgba(255,255,255,.82) !important;
-  border-radius: 4px !important;
-  padding: 8px 12px !important;
-}
-body:not(.pfas-app) #senaite-toolbar .dropdown-menu a:hover,
-body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
-  background: rgba(255,255,255,.08) !important;
-  color: #fff !important;
-}
+/* Core pages draw the one top toolbar (templates/pfas_topbar.pt, GAPS §93);
+   nothing here restyles core's old #senaite-toolbar any more. */
 
 /* Collapse toggle at bottom */
 .pfas-sb-foot {
@@ -354,54 +270,10 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   #pfas-mobile-backdrop.active { display: block; }
   /* Hide the collapse-to-rail footer button on mobile — replaced by open/close */
   body:not(.pfas-app) .pfas-sb-foot { display: none; }
-  /* Make the toolbar toggle visible on mobile */
-  body:not(.pfas-app) .pfas-core-toggle { display: inline-flex !important; }
   /* Scrollable content on core pages */
   body:not(.pfas-app) .pat-structure,
   body:not(.pfas-app) .container { overflow-x: auto; }
 
-  /* ── Toolbar layout on mobile ──────────────────────────────────────────── */
-  /* Single row, never wraps.  Clip horizontal spill only — overflow-y MUST
-     stay visible or the header dropdowns (apps / language / user) get clipped
-     by the bar.  z-index keeps those dropdowns above the page content below. */
-  body:not(.pfas-app) #senaite-toolbar {
-    flex-wrap: nowrap !important;
-    overflow-x: clip;
-    overflow-y: visible;
-    position: relative;
-    z-index: 1030;
-  }
-  /* Collapse takes its natural width so icons are never squeezed out */
-  body:not(.pfas-app) #senaite-toolbar .navbar-collapse {
-    flex: 0 0 auto !important;
-  }
-  /* Brand: fills remaining space, truncates long names */
-  body:not(.pfas-app) .navbar-brand {
-    flex: 1 1 0 !important;
-    min-width: 0 !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: var(--fs-base) !important;
-    margin: 0 4px !important;
-  }
-  /* Bootstrap mobile sets navbar-nav to column — override so icons stay in one row */
-  body:not(.pfas-app) #senaite-toolbar .navbar-nav {
-    flex-direction: row !important;
-    align-items: center !important;
-  }
-  /* Tighten icon padding on mobile to gain space */
-  body:not(.pfas-app) #senaite-toolbar .nav-link,
-  body:not(.pfas-app) #senaite-toolbar .dropdown-toggle {
-    padding-left: 4px !important;
-    padding-right: 4px !important;
-  }
-  /* User dropdown: show icon, hide username text to save width */
-  body:not(.pfas-app) #navbarUserDropdown .pfas-user-icon {
-    display: inline-block !important;
-  }
-  body:not(.pfas-app) #navbarUserDropdown .pfas-user-text {
-    display: none !important;
-  }
 }
 </style>
 
@@ -1237,43 +1109,9 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   render();
 })();
 
-/* ── Core SENAITE page: replace SENAITE logo + inject sidebar toggle ── */
+/* ── Core SENAITE page: mobile drawer, rail state, viewport ── */
 (function () {
   if (document.body.classList.contains('pfas-app')) return;
-
-  function applyModuleName() {
-    var brand = document.querySelector('#senaite-toolbar .navbar-brand');
-    if (!brand) return;
-    var raw = (document.title || '').trim();
-    /* Split on em-dash (—), en-dash (–), pipe, or space-hyphen-space.
-       JS \uXXXX escapes are ASCII and are not entity-encoded by Chameleon.
-       Literal Unicode chars in script blocks get encoded (e.g. — -> &#8212;)
-       which would break the regex; escapes avoid that entirely. */
-    var reSep = /\s*[\u2014\u2013|]\s*|\s+-\s+/;
-    var parts = raw.split(reSep);
-    var clean = [];
-    for (var i = 0; i < parts.length; i++) {
-      var p = parts[i].trim();
-      if (p && !/^senaite/i.test(p)) { clean.push(p); }
-    }
-    var name = clean[0] || 'LIMS';
-    brand.textContent = name;
-    brand.style.cssText = 'color:#fff;font-size:var(--fs-lg);font-weight:600;letter-spacing:-.01em;white-space:nowrap';
-  }
-
-  function injectSidebarToggle() {
-    var nav = document.getElementById('senaite-toolbar');
-    if (!nav || nav.querySelector('.pfas-core-toggle')) return;
-    var brand = nav.querySelector('.navbar-brand');
-    if (!brand) return;
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pfas-core-toggle';
-    btn.setAttribute('onclick', 'pfasSidebarCollapseToggle()');
-    btn.setAttribute('title', 'Toggle navigation');
-    btn.innerHTML = '&#9776;';
-    nav.insertBefore(btn, brand);
-  }
 
   function injectBackdrop() {
     if (document.getElementById('pfas-mobile-backdrop')) return;
@@ -1284,17 +1122,6 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
     document.body.appendChild(bd);
   }
 
-  /* Replace plain username text with icon+text span so CSS can
-     show only the icon on narrow screens */
-  function fixUserButton() {
-    var btn = document.getElementById('navbarUserDropdown');
-    if (!btn || btn.querySelector('.pfas-user-icon')) return;
-    var text = btn.textContent.trim();
-    if (!text) return;
-    btn.innerHTML =
-      '<i class="fas fa-user-circle pfas-user-icon" aria-hidden="true"></i>' +
-      '<span class="pfas-user-text">' + text + '</span>';
-  }
 
   function wireNavLinks() {
     /* Auto-close the sidebar when a nav link is tapped on mobile */
@@ -1336,9 +1163,6 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
 
   function init() {
     fixViewport();
-    applyModuleName();
-    injectSidebarToggle();
-    fixUserButton();
     injectBackdrop();
     wireNavLinks();
     restoreRailState();
@@ -1349,8 +1173,6 @@ body:not(.pfas-app) #senaite-toolbar .dropdown-menu .nav-link:hover {
   } else {
     init();
   }
-  /* Re-apply after all page scripts run, in case SENAITE JS overwrites the brand */
-  window.addEventListener('load', applyModuleName);
 })();
 </script>
 

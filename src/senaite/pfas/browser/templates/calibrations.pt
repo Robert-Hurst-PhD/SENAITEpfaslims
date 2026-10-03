@@ -140,7 +140,7 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Calibration Review</tal:t>
-  <tal:r metal:fill-slot="header-right">
+  <tal:r metal:fill-slot="header-context">
     <span class="header-meta" tal:define="r2 view/r2_minimum; pct view/cal_pct_max">
       <tal:m condition="view/selected_method">
         R&sup2; min <strong tal:content="python:r2 if r2 is not None else 'not set'">0.99</strong>

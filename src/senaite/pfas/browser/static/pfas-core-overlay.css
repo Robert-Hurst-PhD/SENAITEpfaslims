@@ -114,6 +114,23 @@ dl.portalMessage.info {
    jumped whenever you crossed between them. */
 body:not(.pfas-app) > div.mb-2 { margin-bottom: 0 !important; }  /* Bootstrap utilities are !important */
 
+/* ── Breadcrumb: the same line as PFAS pages' .pfas-crumb (GAPS §93) —
+   core drew it in a grey box at a larger size. ────────────────────────── */
+body:not(.pfas-app) ol.breadcrumb {
+  background: none;
+  padding: 0;
+  margin: var(--sp-3) 0 var(--sp-3);   /* the PFAS sub-bar's line (y = 73) */
+  font-family: var(--font-subtitle);
+  font-size: var(--fs-sm);
+  color: var(--s-secondary);
+}
+body:not(.pfas-app) .breadcrumb-item + .breadcrumb-item::before {
+  content: "\203A";
+  color: var(--s-border);
+}
+body:not(.pfas-app) .breadcrumb-item a { color: var(--s-primary); }
+body:not(.pfas-app) .breadcrumb-item.active a { color: var(--s-body) !important; font-weight: 600; }
+
 
 /* ── One typeface on core pages too (pfas-tokens.css --font-sans): Samples,
    Batches, Worksheets and Setup used Bootstrap's system stack, so text changed

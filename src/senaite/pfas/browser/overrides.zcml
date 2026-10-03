@@ -36,6 +36,22 @@
       />
 
   <!--
+    Override senaite.core's toolbar (plone.toolbar viewlet manager) so core
+    pages draw the same top bar as PFAS pages (GAPS §93, DECISIONS
+    2026-10-03). Same specificity rule as the sidebar above.
+
+    Upgrade note: PFASToolbarManager subclasses core's ToolbarViewletManager;
+    check browser/topbar.py if core changes it.
+  -->
+  <browser:viewletManager
+      name="plone.toolbar"
+      provides="plone.app.layout.viewlets.interfaces.IToolbar"
+      permission="zope2.View"
+      class="senaite.pfas.browser.topbar.PFASToolbarManager"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
+  <!--
     Override @@email (report/COA delivery) from senaite.core
     (bika.lims.browser.publish.emailview.EmailView) so the state EDD CSV rides
     the same email as the report PDF (D63 step D). Registered on

@@ -158,7 +158,8 @@ def test_links_are_buttons_not_text():
     button (btn-*), a tab, a card / tile / row, or a pill picker -- never an
     underlined word in a sentence. Navigation chrome (sidebar, header menu,
     wizard stepper) and the printed certificate are exempt."""
-    exempt = {"pfas_sidebar.pt", "pfas_macros.pt", "coa_sections.pt", "method_wizard.pt"}
+    exempt = {"pfas_sidebar.pt", "pfas_macros.pt", "pfas_topbar.pt", "coa_sections.pt",
+              "method_wizard.pt"}
     ok_class = re.compile(r"\b(btn|btn-[\w-]+|pfas-tab|pfas-ws-card|lb-card|bq-row|pfas-tile-link|tile|"
                           r"dr-tab|dev-tab|egad-tab|sop-tab|is-on|lbg-seg|row-pill|"
                           # the guided extraction's stage stepper is navigation
@@ -332,3 +333,38 @@ if __name__ == "__main__":
     print("counts (pages, style=, hex, font-size):", _counts())
     print("{0}/{1} passed".format(len(tests) - failed, len(tests)))
     sys.exit(1 if failed else 0)
+
+
+def _slot_fills(slot):
+    """(template, body) for every element that fills the named page slot."""
+    for name, text in _screen_templates():
+        for m in re.finditer(r'<([\w:]+)[^>]*metal:fill-slot="%s"[^>]*>' % slot, text):
+            tag = m.group(1)
+            end = text.find("</%s>" % tag, m.end())
+            yield name, text[m.end():end if end >= 0 else len(text)]
+
+
+def test_topbar_context_holds_no_actions():
+    """GAPS §93 (lab, 2026-10-03: "the tool bar on the top is still
+    inconsistent"). The top bar is the same on every page: title, a context
+    chip, the global icons. A link or button in the context zone is a page
+    action and belongs in header-right, which the sub-bar draws beside the
+    breadcrumb."""
+    bad = [name for name, body in _slot_fills("header-context")
+           if re.search(r"<(a|button|form|input|select)\b", body)]
+    assert not bad, "actions in the top bar's context zone (use header-right): %s" % bad
+
+
+def test_every_page_draws_the_one_topbar():
+    """The bar exists once, as a macro; pfas_macros.pt (PFAS pages) and
+    core_topbar.pt (core pages, via PFASToolbarManager) both use it, and no
+    other template draws a header of its own."""
+    with open(os.path.join(TEMPLATES, "pfas_macros.pt")) as fh:
+        macros = fh.read()
+    with open(os.path.join(TEMPLATES, "core_topbar.pt")) as fh:
+        core = fh.read()
+    use = "@@pfas-topbar/macros/topbar"
+    assert use in macros and use in core
+    own = [name for name, text in _screen_templates()
+           if name != "pfas_topbar.pt" and re.search(r"<header\b|class=\"pfas-header\b", text)]
+    assert not own, "templates drawing their own top bar: %s" % own

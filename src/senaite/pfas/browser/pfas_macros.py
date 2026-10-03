@@ -134,8 +134,8 @@ class PFASMacrosView(BrowserView):
             name = lang.get('native') or lang.get('name', lang['code'])
             params = params_base + ['set_language={0}'.format(lang['code'])]
             url = u'{0}?{1}'.format(base, '&'.join(params))
-            css = (u'pfas-hdr-useritem pfas-hdr-langactive'
-                   if lang['active'] else u'pfas-hdr-useritem')
+            css = (u'dropdown-item active'
+                   if lang['active'] else u'dropdown-item')
             parts.append(
                 u'<a href="{0}" class="{1}">{2}</a>'.format(url, css, name)
             )
@@ -168,7 +168,7 @@ class PFASMacrosView(BrowserView):
             name = tab.get('name') or tab.get('title', '')
             url = tab.get('url', '#')
             parts.append(
-                u'<a href="{0}" class="pfas-hdr-useritem">{1}</a>'.format(
+                u'<a href="{0}" class="dropdown-item">{1}</a>'.format(
                     url, name
                 )
             )

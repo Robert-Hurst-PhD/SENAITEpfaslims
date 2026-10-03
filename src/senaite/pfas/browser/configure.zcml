@@ -122,6 +122,15 @@
       permission="zope2.Public"
       />
 
+  <!-- The one top toolbar macro (GAPS §93): context/@@pfas-topbar/macros/topbar,
+       filled by pfas_macros.pt and by PFASToolbarManager on core pages. -->
+  <browser:page
+      name="pfas-topbar"
+      for="*"
+      class=".topbar.PFASTopbarView"
+      permission="zope2.Public"
+      />
+
   <!-- Unified accordion sidebar — used by PFASSidebarManager (core pages)
        and called directly from pfas_macros.pt (PFAS workspace pages). -->
   <browser:page

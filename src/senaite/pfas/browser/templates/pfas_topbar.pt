@@ -1,0 +1,57 @@
+<metal:topbar define-macro="topbar"
+     xmlns:tal="http://xml.zope.org/namespaces/tal"
+     xmlns:metal="http://xml.zope.org/namespaces/metal">
+<!-- The ONE top toolbar (GAPS §93, DECISIONS 2026-10-03). Drawn by every
+     PFAS page (pfas_macros.pt) and by every core page (PFASToolbarManager
+     replaces senaite.core's toolbar), so the two can no longer drift.
+     Layout: AdminLTE 3 main-header (MIT; static/vendor). Three zones, always
+     in this order: menu + page title | context (a chip naming what the page
+     is about, or core's content views) | global icons. Page actions do NOT
+     go here: they sit in the sub-bar under it, beside the breadcrumb. -->
+<nav class="pfas-topbar main-header navbar navbar-expand navbar-dark" id="pfas-topbar"
+     tal:define="mv python:context.restrictedTraverse('@@pfas-macros');
+                 purl python:context.portal_url();
+                 uname mv/user_name;
+                 is_mgr mv/is_manager_role">
+  <ul class="navbar-nav pfas-topbar-left">
+    <li class="nav-item">
+      <button type="button" class="nav-link pfas-topbar-toggle" onclick="pfasTopbarToggle()"
+              aria-label="Toggle navigation" title="Show or hide the menu">&#9776;</button>
+    </li>
+    <li class="nav-item pfas-topbar-title" id="pfas-topbar-title"><metal:t define-slot="bar-title">LIMS</metal:t></li>
+    <li class="nav-item pfas-topbar-context"><metal:c define-slot="bar-context" /></li>
+  </ul>
+
+  <ul class="navbar-nav ml-auto pfas-topbar-global" tal:condition="uname">
+    <li class="nav-item dropdown">
+      <button type="button" class="nav-link dropdown-toggle" data-pfas-drop=""
+              title="Global sections" aria-haspopup="true"><i class="fas fa-th"></i></button>
+      <div class="dropdown-menu dropdown-menu-right"
+           tal:content="structure mv/render_section_items"></div>
+    </li>
+    <li class="nav-item dropdown" tal:condition="mv/render_lang_available">
+      <button type="button" class="nav-link dropdown-toggle" data-pfas-drop=""
+              title="Language" aria-haspopup="true"><i class="fas fa-globe"></i></button>
+      <div class="dropdown-menu dropdown-menu-right"
+           tal:content="structure mv/render_language_items"></div>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" title="Search (Ctrl+Space)"
+         tal:attributes="href string:${purl}/spotlight"><i class="fas fa-search"></i></a>
+    </li>
+    <li class="nav-item" tal:condition="is_mgr">
+      <a class="nav-link" title="LIMS Setup"
+         tal:attributes="href string:${purl}/@@lims-setup"><i class="fas fa-cog"></i></a>
+    </li>
+    <li class="nav-item dropdown">
+      <button type="button" class="nav-link dropdown-toggle pfas-topbar-user" data-pfas-drop=""
+              aria-haspopup="true"><i class="fas fa-user-circle"></i> <span tal:content="uname">user</span></button>
+      <div class="dropdown-menu dropdown-menu-right">
+        <a class="dropdown-item" tal:attributes="href string:${purl}/@@personal-information"><i class="fas fa-user-cog"></i> My Profile</a>
+        <div class="dropdown-divider"></div>
+        <a class="dropdown-item pfas-topbar-logout" tal:attributes="href string:${purl}/logout"><i class="fas fa-sign-out-alt"></i> Sign Out</a>
+      </div>
+    </li>
+  </ul>
+</nav>
+</metal:topbar>

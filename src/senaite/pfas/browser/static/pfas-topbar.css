@@ -1,0 +1,105 @@
+/* The one top toolbar and the sub-bar under it (GAPS §93). Layout comes from
+   vendor/adminlte-topbar-3.2.0.css; this sheet only sets the lab's palette
+   and sizes, from pfas-tokens.css. Loaded on PFAS and core pages alike. */
+
+.pfas-topbar.main-header {
+  flex: 0 0 var(--pfas-header-h);
+  height: var(--pfas-header-h);
+  min-height: var(--pfas-header-h);
+  margin: 0;
+  padding: 0 var(--sp-3) 0 0;
+  background: var(--s-dark);
+  border-bottom: 0;
+  flex-wrap: nowrap;
+  font-family: var(--font-sans);
+  position: relative;
+  z-index: 1035;
+}
+.pfas-topbar .navbar-nav { align-items: center; flex-direction: row; }
+.pfas-topbar .ml-auto { margin-left: auto; }
+.pfas-topbar-left { min-width: 0; flex: 1 1 auto; }
+.pfas-topbar.main-header .nav-link {
+  height: var(--pfas-header-h);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--sp-2);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+.pfas-topbar.main-header .nav-link i.fas { font-size: var(--fs-xl); }
+.pfas-topbar-toggle.nav-link {
+  width: var(--pfas-rail-width);
+  justify-content: center;
+  border-right: 1px solid var(--pfas-rail-border);
+  font-size: var(--fs-xl);
+}
+.pfas-topbar-title {
+  color: #fff;
+  font-family: var(--font-heading);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  padding: 0 var(--sp-3);
+}
+.pfas-topbar-context { display: flex; align-items: center; gap: var(--sp-2); min-width: 0;
+                       color: rgba(255, 255, 255, .85); }
+.pfas-topbar-context:empty { display: none; }
+/* core's content views (e.g. "Audit Log") arrive as nav-items */
+.pfas-topbar-context .nav-item { list-style: none; }
+.pfas-topbar-context .nav-link { font-size: var(--fs-sm); }
+/* a context chip: what the page is about (method, batch, state) */
+.pfas-topbar-context > * { white-space: nowrap; color: inherit; }
+.pfas-topbar .dropdown-menu {
+  font-size: var(--fs-base);
+  z-index: 9000;
+}
+.pfas-topbar .dropdown-item { display: flex; align-items: center; gap: var(--sp-2); }
+.pfas-topbar .dropdown-item i.fas { color: var(--s-secondary); width: 14px; }
+.pfas-topbar .dropdown-item.active { font-weight: 600; }
+.pfas-topbar .pfas-topbar-logout,
+.pfas-topbar .pfas-topbar-logout i.fas { color: var(--s-danger); }
+
+/* the core page's H1 now lives in the bar (pfas-topbar.js) */
+.pfas-h1-in-topbar { display: none !important; }
+
+/* ── Sub-bar: breadcrumb (left) + page actions (right) ─────────────────── */
+.pfas-subbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  min-height: 40px;
+  padding: var(--sp-2) var(--frame-gutter-x);
+  background: var(--s-light);
+}
+/* nothing to show (no crumb, no actions): no empty strip */
+.pfas-subbar:not(:has(.pfas-crumb > *)):not(:has(.pfas-subbar-actions *)) { display: none; }
+.pfas-subbar .pfas-crumb { margin: 0; flex: 1 1 auto; }
+.pfas-subbar-actions { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
+.pfas-subbar-actions:empty { display: none; }
+
+@media (max-width: 768px) {
+  .pfas-topbar-title { font-size: var(--fs-base); padding: 0 var(--sp-2); }
+  .pfas-topbar-context { display: none; }
+  .pfas-topbar-user span { display: none; }
+  .pfas-topbar.main-header .nav-link { padding: 0 4px; }
+}
+@media (max-width: 480px) {
+  /* phone: the title keeps the room; icons lose carets and shrink */
+  .pfas-topbar .dropdown-toggle::after { display: none; }
+  .pfas-topbar.main-header .nav-link i.fas { font-size: var(--fs-md); }
+  .pfas-topbar-toggle.nav-link { width: 40px; }
+  .pfas-topbar-title { flex: 1 1 auto; }
+}
+@media print {
+  .pfas-topbar, .pfas-subbar { display: none !important; }
+}

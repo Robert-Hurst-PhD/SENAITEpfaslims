@@ -7182,3 +7182,39 @@ template" (both: controlled template and an issue step).
 
 **Still open:** issue revision 1 (the lab's action); derived-RL display
 precision; emailing stays in SENAITE's publisher.
+
+
+## 93. One top toolbar on every page (2026-10-03)
+
+Decision: DECISIONS 2026-10-03 "UI consistency ..." (AdminLTE 3).
+
+Before: core pages drew senaite.core's toolbar, restyled by ~200 lines of CSS
+and JS in pfas_sidebar.pt (logo hidden, title guessed from document.title,
+toggle injected, user button rewritten) and showed core's content views as a
+stray centred "Audit Log"; PFAS pages drew their own copy of the bar, and 23
+templates put different things in its right side (back links, "+ New
+Deviation", method badges, a "Site Setup" back link on pages that are not
+under Setup).
+
+- **One macro, two callers:** templates/pfas_topbar.pt (AdminLTE main-header
+  markup) is used by pfas_macros.pt and by core_topbar.pt, which
+  PFASToolbarManager (browser/topbar.py, overrides.zcml) renders in place of
+  core's toolbar. The core restyling CSS/JS in pfas_sidebar.pt is gone.
+- **Zones:** menu + title | `header-context` (a chip: method, batch, state;
+  nothing clickable) | apps, language, search, setup, user. On core pages the
+  context zone carries core's content views; the page's own H1 becomes the
+  title (pfas-topbar.js) and is hidden.
+- **Sub-bar:** breadcrumb (left) and the page's `header-right` actions
+  (right), fixed above the tab strip so neither scrolls away -- on the method
+  profile editor the tabs used to cover the breadcrumb. Core's breadcrumb is
+  restyled to the same line.
+- **Removed:** "Site Setup" back links on Reagent Inventory and Import
+  Studio, "Setup" on the method wizard (the breadcrumb says where you are).
+- **Measured** (Playwright, 1366 px): bar 52 px high at y=0 and the title at
+  x=48 on Samples, Setup, Analysis Specifications, Clients, Reagents, Method
+  Profile, Deviations and Bench; exactly one bar per page; dropdowns open and
+  close on core and PFAS pages; at 390 px the title keeps its room.
+- **Guards** (test_ui_ratchet): the context zone holds no link, button or form
+  control; pfas_macros.pt and core_topbar.pt both use the macro and no other
+  template draws a header. Both mutation-tested (a button in a chip, a page's
+  own `<header>`).

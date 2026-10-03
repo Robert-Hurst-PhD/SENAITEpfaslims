@@ -206,7 +206,6 @@
 <body>
   <tal:t metal:fill-slot="header-title">Reagent Inventory</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@lims-setup">Site Setup</a>
   </tal:r>
 
   <div metal:fill-slot="content">

@@ -1,0 +1,8 @@
+<metal:use use-macro="context/@@pfas-topbar/macros/topbar"
+     xmlns:tal="http://xml.zope.org/namespaces/tal"
+     xmlns:metal="http://xml.zope.org/namespaces/metal">
+  <!-- Core SENAITE pages: the same bar as PFAS pages (browser/topbar.py). -->
+  <tal:t metal:fill-slot="bar-title" tal:content="view/page_title">Samples</tal:t>
+  <ul class="navbar-nav pfas-topbar-views" metal:fill-slot="bar-context"
+      tal:content="structure view/base_render"></ul>
+</metal:use>

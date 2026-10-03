@@ -128,10 +128,6 @@
 <body>
   <tal:t metal:fill-slot="header-title">New Method Wizard</tal:t>
   <tal:r metal:fill-slot="header-right">
-    <a class="header-meta"
-       tal:attributes="href string:${view/portal_url}/@@lims-setup">
-      &#8592; Setup
-    </a>
   </tal:r>
 
   <div metal:fill-slot="content">

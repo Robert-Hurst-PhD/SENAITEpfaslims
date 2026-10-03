@@ -10,6 +10,12 @@
   <title metal:define-slot="title">LIMS Tool</title>
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-tokens.css" />
+  <!-- the one top toolbar, shared with core pages (GAPS §93) -->
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/vendor/adminlte-topbar-3.2.0.css" />
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-topbar.css" />
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-topbar.js"></script>
   <!-- Font Awesome 5 Solid — font face + icon glyphs used by the PFAS sidebar.
        senaite.core.css is not loaded on PFAS workspace pages (they bypass
        Plone's main_template), so we inline the @font-face, the .fas base
@@ -58,6 +64,7 @@
     .fa-sliders-h:before{content:"\f1de"}
     .fa-tasks:before{content:"\f0ae"}
     .fa-th:before{content:"\f00a"}
+    .fa-user-circle:before{content:"\f2bd"}
     .fa-times:before{content:"\f00d"}
     .fa-toggle-on:before{content:"\f205"}
     .fa-tools:before{content:"\f7d9"}
@@ -78,11 +85,11 @@
     /* Type roles (pfas-tokens.css): headers / body / subtitles. Defined once
        here for every PFAS page; core pages get the same in the overlay. */
     body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, body.pfas-app h4,
-    .pfas-header-title, .pfas-ws-card-title, body.pfas-app details > summary,
+    .pfas-topbar-title, .pfas-ws-card-title, body.pfas-app details > summary,
     .pfas-tabs .pfas-tab, #method-profile-tabs .pfas-tab {
       font-family: var(--font-heading);
     }
-    body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, .pfas-header-title,
+    body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, .pfas-topbar-title,
     .pfas-ws-card-title { font-weight: var(--fw-heading); }
     .pfas-table th, .factor-table th, .section-group-hdr, .field-row label,
     .pfas-crumb, .pfas-tab-count {
@@ -101,67 +108,6 @@
       flex-direction: column;
       height: 100vh;
       overflow: hidden;
-    }
-
-    /* ── Top header bar ──────────────────────────────────────────────────── */
-    .pfas-header {
-      flex: 0 0 var(--pfas-header-h);
-      height: var(--pfas-header-h);
-      background: var(--s-dark);
-      color: #fff;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 0 16px 0 0;
-      z-index: 50;
-    }
-    .pfas-header-toggle {
-      flex: 0 0 var(--pfas-rail-width);
-      height: var(--pfas-header-h);
-      background: none;
-      border: none;
-      border-right: 1px solid var(--pfas-rail-border);
-      color: rgba(255,255,255,.65);
-      font-size: var(--fs-xl);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: color .12s, background .12s;
-    }
-    .pfas-header-toggle:hover { color: #fff; background: rgba(255,255,255,.06); }
-    .pfas-header-title {
-      flex: 1;
-      font-size: var(--fs-lg);
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .pfas-header-right {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      flex-shrink: 0;
-    }
-    .pfas-header-right a {
-      color: rgba(255,255,255,.65);
-      font-size: var(--fs-sm);
-      text-decoration: none;
-      white-space: nowrap;
-    }
-    .pfas-header-right a:hover { color: #fff; text-decoration: underline; }
-    .pfas-header-right .back-link::before { content: "\2190  "; }
-    /* A .btn-sm placed in the dark header would otherwise take the global
-       light pill background while this rule keeps the text white — i.e.
-       white on white. Give it a treatment that belongs on the dark bar. */
-    .pfas-header-right .btn-sm {
-      background: rgba(255,255,255,.10);
-      border-color: rgba(255,255,255,.25);
-      color: rgba(255,255,255,.85);
-    }
-    .pfas-header-right .btn-sm:hover {
-      background: rgba(255,255,255,.20); color: #fff; text-decoration: none;
     }
 
     /* Context badge */
@@ -712,13 +658,6 @@
 
     /* ── Mobile (≤768px) ─────────────────────────────────────────────────── */
     @media (max-width: 768px) {
-      /* Header: compact — hide plain back-links, keep role badge + context nav */
-      .pfas-header { padding: 0 8px 0 0; min-height: 44px; }
-      .pfas-header-title { font-size: var(--fs-base); }
-      .pfas-header-right { gap: 6px; }
-      .pfas-header-right .back-link { display: none; }
-      .pfas-header-right .header-meta { display: none; }
-
       /* Sidebar floats as an overlay on mobile */
       .pfas-shell > #sidebar.pfas-sidebar {
         position: absolute;
@@ -861,7 +800,7 @@
       .pfas-printfoot { display: block !important; position: fixed;
         bottom: 0; left: 0; right: 0; font-size: var(--fs-xs); color: #444;
         border-top: 1px solid #999; padding-top: 3px; text-align: center; }
-      .pfas-header { display: none !important; }
+      .pfas-topbar, .pfas-subbar { display: none !important; }
       #sidebar.pfas-sidebar { display: none !important; }
       .pfas-tabs-wrap { display: none !important; }
       .pfas-action-bar-wrap { display: none !important; }
@@ -909,59 +848,6 @@
       .has-correction > select { display: none !important; }
     }
 
-    /* ── Persistent header toolbar actions ───────────────────────────── */
-    .pfas-hdr-btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      flex-shrink: 0; padding: 0 6px;
-      color: rgba(255,255,255,.65); border-radius: 4px;
-      text-decoration: none; transition: color .12s, background .12s;
-    }
-    .pfas-hdr-btn i.fas { font-size: var(--fs-xl); }
-    .pfas-hdr-btn:hover {
-      color: #fff; background: rgba(255,255,255,.1); text-decoration: none;
-    }
-    .pfas-hdr-userbtn i.fas { font-size: var(--fs-xl); }
-    .pfas-hdr-user { position: static; flex-shrink: 0; }
-    .pfas-hdr-userbtn {
-      display: flex; align-items: center; gap: 2px;
-      background: none; border: none; padding: 4px 6px; border-radius: 4px;
-      color: rgba(255,255,255,.75); cursor: pointer; font-size: var(--fs-md);
-      font-family: inherit; transition: color .12s, background .12s;
-    }
-    .pfas-hdr-userbtn:hover { color: #fff; background: rgba(255,255,255,.1); }
-    /* Bootstrap-identical caret for dropdown buttons */
-    .pfas-hdr-userbtn::after {
-      display: inline-block; margin-left: 2px; vertical-align: .255em;
-      content: ""; border-top: .3em solid; border-right: .3em solid transparent;
-      border-bottom: 0; border-left: .3em solid transparent;
-    }
-    /* Dropdown: position:fixed computed by JS so no ancestor overflow can clip it.
-       Matches Bootstrap 4 dropdown-menu style used by SENAITE core. */
-    .pfas-hdr-userdrop {
-      display: none; position: fixed;
-      background: #fff; border: 1px solid rgba(0,0,0,.15);
-      border-radius: 0.25rem; min-width: 180px;
-      box-shadow: 0 0.5rem 1rem rgba(0,0,0,.175);
-      z-index: 9000; overflow: hidden; padding: 0.5rem 0;
-    }
-    .pfas-hdr-userdrop.open { display: block; }
-    /* Higher specificity (drop + a) beats .pfas-header-right a which sets white text */
-    .pfas-hdr-userdrop a.pfas-hdr-useritem {
-      display: flex; align-items: center; gap: 8px;
-      padding: 0.35rem 1.25rem; color: #212529;
-      text-decoration: none; font-size: var(--fs-base); white-space: nowrap;
-      transition: background .1s;
-    }
-    .pfas-hdr-userdrop a.pfas-hdr-useritem:hover {
-      background: #f8f9fa; color: #1a1e21; text-decoration: none;
-    }
-    .pfas-hdr-userdrop a.pfas-hdr-useritem i.fas { color: #6c757d; font-size: var(--fs-base); width: 14px; }
-    .pfas-hdr-userdrop a.pfas-hdr-logout { color: #dc3545; }
-    .pfas-hdr-userdrop a.pfas-hdr-logout:hover { background: #f8d7da; color: #a71d2a; }
-    .pfas-hdr-userdrop a.pfas-hdr-logout i.fas { color: #dc3545; }
-    .pfas-hdr-langactive { font-weight: 600; }
-    .pfas-hdr-user-sep { height: 0; border-top: 1px solid rgba(0,0,0,.15); margin: 0.5rem 0; }
-    @media (max-width: 768px) { .pfas-hdr-userbtn span { display: none; } }
   </style>
   <tal:head-extra metal:define-slot="head-extra" />
 </head>
@@ -1135,86 +1021,14 @@
     </div>
   </div>
 
-<!-- ── Top header bar ──────────────────────────────────────────────────────── -->
-<header class="pfas-header">
-  <button class="pfas-header-toggle" id="pfas-header-toggle"
-          onclick="pfasTogglePanel()" type="button" aria-label="Toggle navigation">
-    &#9776;
-  </button>
-  <div class="pfas-header-title">
-    <tal:t metal:define-slot="header-title">LIMS Tool</tal:t>
-  </div>
-  <div class="pfas-header-right">
-    <tal:r metal:define-slot="header-right" />
-
-    <!-- ── Persistent toolbar actions (always present on PFAS pages) ── -->
-    <tal:acts tal:define="
-        macros_view python:context.restrictedTraverse('@@pfas-macros');
-        purl        python:context.portal_url();
-        is_anon     python:context.portal_membership.isAnonymousUser();
-        uname       python:'' if is_anon else (context.portal_membership.getAuthenticatedMember().getId() or '');
-        roles       python:[] if is_anon else list(context.portal_membership.getAuthenticatedMember().getRolesInContext(context));
-        is_mgr      python:'LabManager' in roles or 'Manager' in roles">
-
-      <!-- Global sections (apps grid) — same icon as core: fas fa-th -->
-      <div class="pfas-hdr-user" id="pfas-hdr-apps" tal:condition="uname">
-        <button class="pfas-hdr-userbtn" type="button"
-                onclick="pfasAppsMenuToggle(event)" title="Global sections">
-          <i class="fas fa-th"></i>
-        </button>
-        <div class="pfas-hdr-userdrop" id="pfas-appsdrop"
-             tal:content="structure python:macros_view.render_section_items()">
-        </div>
-      </div>
-
-      <!-- Language selector (globe) — hidden when only 1 language configured -->
-      <div class="pfas-hdr-user" id="pfas-hdr-lang"
-           tal:condition="python:uname and macros_view.render_lang_available()">
-        <button class="pfas-hdr-userbtn" type="button"
-                onclick="pfasLangMenuToggle(event)" title="Language">
-          <i class="fas fa-globe"></i>
-        </button>
-        <div class="pfas-hdr-userdrop" id="pfas-langdrop"
-             tal:content="structure python:macros_view.render_language_items()">
-        </div>
-      </div>
-
-      <!-- Spotlight search — same icon as core: fas fa-search -->
-      <a class="pfas-hdr-btn" title="Search (Ctrl+Space)"
-         tal:condition="uname"
-         tal:attributes="href string:${purl}/@@spotlight">
-        <i class="fas fa-search"></i>
-      </a>
-
-      <!-- LIMS Setup cog — same icon as core: fas fa-cog -->
-      <a class="pfas-hdr-btn" title="LIMS Setup"
-         tal:condition="is_mgr"
-         tal:attributes="href string:${purl}/@@lims-setup">
-        <i class="fas fa-cog"></i>
-      </a>
-
-      <!-- User/personal bar — same pattern as core: name + dropdown -->
-      <div class="pfas-hdr-user" id="pfas-hdr-user" tal:condition="uname">
-        <button class="pfas-hdr-userbtn" type="button"
-                onclick="pfasUserMenuToggle(event)">
-          <span tal:content="uname">User</span>
-        </button>
-        <div class="pfas-hdr-userdrop" id="pfas-userdrop">
-          <a class="pfas-hdr-useritem"
-             tal:attributes="href string:${purl}/@@personal-information">
-            <i class="fas fa-user-cog"></i> My Profile
-          </a>
-          <div class="pfas-hdr-user-sep"></div>
-          <a class="pfas-hdr-useritem pfas-hdr-logout"
-             tal:attributes="href string:${purl}/logout">
-            <i class="fas fa-sign-out-alt"></i> Sign Out
-          </a>
-        </div>
-      </div>
-
-    </tal:acts>
-  </div>
-</header>
+<!-- ── Top toolbar: the one bar every page draws (templates/pfas_topbar.pt).
+     header-title names the page; header-context holds a chip saying what the
+     page is about (method, batch, state) and nothing clickable. Page actions
+     and back buttons go in header-right, drawn in the sub-bar below. -->
+<metal:topbar use-macro="context/@@pfas-topbar/macros/topbar">
+  <tal:t metal:fill-slot="bar-title"><tal:t metal:define-slot="header-title">LIMS Tool</tal:t></tal:t>
+  <tal:c metal:fill-slot="bar-context"><tal:c metal:define-slot="header-context" /></tal:c>
+</metal:topbar>
 
 <!-- ── Shell ───────────────────────────────────────────────────────────────── -->
 <div class="pfas-shell" id="pfas-shell">
@@ -1232,6 +1046,14 @@
   <!-- Main: tabs + content + action bar -->
   <div class="pfas-main">
 
+    <!-- Sub-bar: breadcrumb + page actions, fixed above the tabs so neither
+         scrolls away (GAPS §93). The crumb is filled from the sidebar's active
+         item, so it can never disagree with the nav (CLAUDE.md §6C). -->
+    <div class="pfas-subbar">
+      <nav class="pfas-crumb" id="pfas-crumb" aria-label="Breadcrumb"></nav>
+      <div class="pfas-subbar-actions"><tal:r metal:define-slot="header-right" /></div>
+    </div>
+
     <!-- Top tabs -->
     <div class="pfas-tabs-wrap">
       <tal:tabs metal:define-slot="tabs">
@@ -1241,9 +1063,6 @@
 
     <!-- Stable content area -->
     <div class="pfas-content-area" id="pfas-content-area">
-      <!-- Breadcrumb under the header title (CLAUDE.md §6C): filled from the
-           sidebar's active item, so it can never disagree with the nav. -->
-      <nav class="pfas-crumb" id="pfas-crumb" aria-label="Breadcrumb"></nav>
       <tal:body metal:define-slot="content">
         <div class="page-body">
           <p>No content.</p>
@@ -1319,7 +1138,7 @@ document.addEventListener('click', function (ev) {
   var crumb = document.getElementById('pfas-crumb');
   if (!crumb) return;
   var active = document.querySelector('.pfas-sidebar .pfas-sb-scroll .pfas-si.si-active');   /* not a pinned copy */
-  var title = document.querySelector('.pfas-header-title');
+  var title = document.getElementById('pfas-topbar-title');
   var parts = [];
   function link(href, text) {
     var a = document.createElement('a'); a.href = href; a.textContent = text; return a;
@@ -1393,66 +1212,10 @@ document.addEventListener('click', function (ev) {
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       window.pfasClosePanel();
-      ['pfas-userdrop', 'pfas-appsdrop', 'pfas-langdrop'].forEach(function (id) {
-        var el = document.getElementById(id);
-        if (el) el.classList.remove('open');
-      });
     }
   });
 })();
 
-/* ── Header dropdowns (apps grid, language, user menu) ── */
-var _hdrDrops = [
-  { btn: 'pfas-hdr-apps', drop: 'pfas-appsdrop' },
-  { btn: 'pfas-hdr-lang', drop: 'pfas-langdrop' },
-  { btn: 'pfas-hdr-user', drop: 'pfas-userdrop' }
-];
-
-function _closeAllHdrDrops(except) {
-  _hdrDrops.forEach(function (d) {
-    if (d.btn === except) return;
-    var el = document.getElementById(d.drop);
-    if (el) el.classList.remove('open');
-  });
-}
-
-/* Position a fixed dropdown below its trigger button, flush with the right
-   edge. Uses getBoundingClientRect() so no ancestor overflow can clip it. */
-function _positionDrop(drop, trigger) {
-  if (!drop || !trigger) return;
-  var rect = trigger.getBoundingClientRect();
-  drop.style.top  = (rect.bottom + 4) + 'px';
-  /* Align right edge of drop with right edge of button; clamp to keep it on screen */
-  var rightFromEdge = window.innerWidth - rect.right;
-  drop.style.right = Math.max(4, rightFromEdge) + 'px';
-  drop.style.left  = 'auto';
-}
-
-function _toggleDrop(btnId, dropId, e) {
-  if (e) e.stopPropagation();
-  _closeAllHdrDrops(btnId);
-  var drop    = document.getElementById(dropId);
-  var trigger = document.getElementById(btnId);
-  if (!drop) return;
-  var opening = !drop.classList.contains('open');
-  if (opening) {
-    /* Position before making visible so size is known */
-    drop.classList.add('open');
-    _positionDrop(drop, trigger ? trigger.querySelector('button') || trigger : trigger);
-  } else {
-    drop.classList.remove('open');
-  }
-}
-
-window.pfasAppsMenuToggle  = function (e) { _toggleDrop('pfas-hdr-apps', 'pfas-appsdrop',  e); };
-window.pfasLangMenuToggle  = function (e) { _toggleDrop('pfas-hdr-lang', 'pfas-langdrop',  e); };
-window.pfasUserMenuToggle  = function (e) { _toggleDrop('pfas-hdr-user', 'pfas-userdrop',  e); };
-
-/* Close all drops when clicking outside */
-document.addEventListener('click', function () { _closeAllHdrDrops(null); });
-
-/* Reposition on scroll/resize in case viewport shifts */
-window.addEventListener('resize', function () { _closeAllHdrDrops(null); });
 </script>
 
 
