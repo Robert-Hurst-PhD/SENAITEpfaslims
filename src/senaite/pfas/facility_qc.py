@@ -712,12 +712,14 @@ def _refresh_study_status(conn, study_id):
     """pending until every paired reading is in AND they span STUDY_MIN_DAYS
     days (4 readings over two days); then pass if every pair is within the
     study tolerance, else fail."""
-    pts = [dict(p) for p in conn.execute(
+    rows = conn.execute(
         "SELECT passed, recorded_at FROM temperature_study_points WHERE study_id=?",
-        (study_id,)).fetchall()]
+        (study_id,)).fetchall()
     # dict() first: a unicode key on a sqlite3.Row raises -- see _connect.
-    filled = [p["passed"] for p in pts if p["passed"] is not None]
-    days = set((p["recorded_at"] or "")[:10] for p in pts if p["passed"] is not None)
+    pts = list(map(dict, rows))
+    done = [d for d in pts if d.get("passed") is not None]
+    filled = [d.get("passed") for d in done]
+    days = set((d.get("recorded_at") or "")[:10] for d in done)
     if len(filled) < max(len(pts), STUDY_POINTS) or len(days) < STUDY_MIN_DAYS:
         status = "pending"
     elif all(v == 1 for v in filled):
