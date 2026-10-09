@@ -12,6 +12,8 @@ judged one batch by different methods. The lab chose core first:
     4. 252        the Extraction Log (FM-ENV-003)
     5. 251        the Calibration Prep Log (FM-ENV-002)
     6. manifest   the Run Builder's run manifest
+    7. study      a study worksheet's method study (study_runs; it holds no
+                  sample, so nothing above names its method before extraction)
 
 The first source that names a method wins; every source that names a
 DIFFERENT one is a conflict, shown on Data Review and the Extraction Guide.
@@ -26,10 +28,11 @@ import logging
 
 logger = logging.getLogger("senaite.pfas.batch_method")
 
-ORDER = ("analyses", "core", "session", "252", "251", "manifest")
+ORDER = ("analyses", "core", "session", "252", "251", "manifest", "study")
 LABELS = {"analyses": u"the batch's analyses", "core": u"the batch's Method (SENAITE)",
           "session": u"the guided extraction", "252": u"the Extraction Log",
-          "251": u"the Calibration Prep Log", "manifest": u"the run manifest"}
+          "251": u"the Calibration Prep Log", "manifest": u"the run manifest",
+          "study": u"the method study"}
 _ANNOTATIONS = {"252": u"senaite.pfas.logbook.252", "251": u"senaite.pfas.logbook.251",
                 "manifest": u"senaite.pfas.run_manifest"}
 
@@ -102,6 +105,10 @@ def sources(batch):
     for name, key in _ANNOTATIONS.items():
         obj = home if name == "252" else client_batch
         out[name] = _annotation_method(obj, key) if obj is not None else u""
+    out["study"] = u""
+    if is_ws:
+        from senaite.pfas import study_runs
+        out["study"] = (study_runs.load_run(batch) or {}).get("method_id") or u""
     return out
 
 

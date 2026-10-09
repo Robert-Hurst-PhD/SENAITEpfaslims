@@ -863,7 +863,7 @@ def run_pipeline(
     # any batch that logged none, so those behave exactly as before.
     dilution_map = {}
     spike_map = {}
-    field_blanks, field_duplicates = [], []
+    field_blanks, field_duplicates, trip_blanks = [], [], []
     logged_amounts = {}
     if senaite is not None and not senaite_batch_id and not batch_id:
         # (the worksheet id is enough: it is the extraction batch; D1 -- the
@@ -895,6 +895,7 @@ def run_pipeline(
         run_roles.update(dict((k, (v or {}).get("role") or "Sample") for k, v in member_map.items()))
         field_blanks = sorted(k for k, v in member_map.items() if (v or {}).get("field_qc") == "FRB")
         field_duplicates = sorted(k for k, v in member_map.items() if (v or {}).get("field_qc") == "FD")
+        trip_blanks = sorted(k for k, v in member_map.items() if (v or {}).get("field_qc") == "TB")
         set_member_roles(run_roles)
         # a re-injection replaces the injection it repeats
         # (only where the re-injection is among the rows: a run uploaded
@@ -1005,6 +1006,7 @@ def run_pipeline(
         spikes=spike_map,
         field_blanks=field_blanks,
         field_duplicates=field_duplicates,
+        trip_blanks=trip_blanks,
         # the marked blank AS RUN: a re-injection carries the mark and the
         # original it replaced is no longer among the rows
         subtraction_blank=next((k for k, v in sorted(member_map.items())
@@ -1029,6 +1031,13 @@ def run_pipeline(
     # reviewer clears it
     from .run_shape import problems as _shape_problems, QC_TYPE as _SHAPE
     for reason in _shape_problems(planned, rows, spike_map):
+        batch.unconfigured.append({"qc_type": _SHAPE, "analyte": "", "reason": reason,
+                                   "method_id": method_id})
+    # the instrument's clock against the run's order, planned or not: held
+    # for a reviewer like a plan difference (CCVs and samples stamped before
+    # their calibrators were bracketed and passed as if in order)
+    from .run_shape import time_order_problems as _time_problems
+    for reason in _time_problems(rows, lambda n: classify_injection(n, dilution_map)):
         batch.unconfigured.append({"qc_type": _SHAPE, "analyte": "", "reason": reason,
                                    "method_id": method_id})
     # After the engine, so the flag informs the reviewer and changes no

@@ -23,7 +23,7 @@
               background:var(--s-bg); border:1px solid var(--s-border);
               border-radius:8px; padding:12px 14px; margin-bottom:16px; }
     .ls-fld { display:flex; flex-direction:column; gap:3px; }
-    .ls-fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
+    .ls-fld label { font-size:var(--fs-sm); font-weight:600; color:var(--s-body); }
     .ls-fld input, .ls-fld select { padding:6px 8px; font-size:var(--fs-base);
               border:1px solid var(--s-input-border); border-radius:4px;
               color:var(--s-input-text); }
@@ -155,9 +155,10 @@
                 <span class="ls-seed" tal:condition="r/unit|nothing"
                       tal:content="r/unit"></span>
               </td>
+              <!-- the default only where it differs from the value in force -->
               <td class="ls-seed">
-                <tal:s tal:condition="r/has_seed" tal:content="r/display_seed">seed</tal:s>
-                <tal:s tal:condition="not:r/has_seed">no default &mdash; must be set</tal:s>
+                <tal:s tal:condition="python:r['has_seed'] and r.get('customised')" tal:content="r/display_seed">seed</tal:s>
+                <tal:s tal:condition="python:not r['has_seed'] and r.get('value') in (None, u'')">no default &mdash; must be set</tal:s>
               </td>
               <td>
                 <!-- a tag only for something to act on -->

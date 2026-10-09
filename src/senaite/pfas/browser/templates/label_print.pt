@@ -92,7 +92,7 @@
 
     <div id="builtin-ui">
     <div class="size-row">
-      <label for="size-sel">Label Size:</label>
+      <label for="size-sel">Label size:</label>
       <select id="size-sel" onchange="applySize()">
         <tal:opts tal:repeat="size view/label_sizes">
           <option tal:attributes="value python:size[0];
@@ -380,8 +380,8 @@
   <script tal:condition="view/designed"
           tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/pdfme/pdfme.min.js"></script>
 
-  <!-- JsBarcode for CODE128 rendering -->
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <!-- JsBarcode (MIT, static/vendor) for CODE128 rendering -->
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/JsBarcode-3.11.5.all.min.js"></script>
 
 </body>
 </html>

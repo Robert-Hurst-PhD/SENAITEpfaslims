@@ -35,7 +35,7 @@
           <input type="date" name="log_date" id="wstDate" required/></div>
         <div class="fld"><label>Time</label>
           <input type="time" name="log_time" id="wstTime"/></div>
-        <div class="fld"><label>Operator Initials *</label>
+        <div class="fld"><label>Operator initials *</label>
           <input type="text" name="operator" maxlength="10" required/></div>
         <div class="fld"><label>Container</label>
           <select name="unit_id">

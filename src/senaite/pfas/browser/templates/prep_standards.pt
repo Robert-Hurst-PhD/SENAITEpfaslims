@@ -42,8 +42,7 @@
     .form-row  { display:flex; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
     .form-field { display:flex; flex-direction:column; flex:1 1 180px; }
     .form-field.full { flex:1 1 100%; }
-    .form-field label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
-                        text-transform:uppercase; margin-bottom:3px; }
+    .form-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body); margin-bottom:3px; }
     .form-field input, .form-field select, .form-field textarea {
       padding:7px 10px; border:1px solid var(--s-input-border); border-radius:5px;
       font-size:var(--fs-base); color:var(--s-body); }
@@ -154,8 +153,8 @@
                   </span>
                 </td>
                 <td tal:content="std/prepared_by">—</td>
-                <td tal:content="std/prepared_date">—</td>
-                <td tal:attributes="class python:view.expiry_class(std)">
+                <td class="cell-nowrap" tal:content="std/prepared_date">—</td>
+                <td tal:attributes="class python:'cell-nowrap ' + view.expiry_class(std)">
                   <span tal:content="std/effective_expiry|std/expiry_date">—</span>
                   <div tal:condition="std/expiry_inherited_from|nothing"
                        tal:attributes="title string:Tighter parent-lot expiry inherited from ${std/expiry_inherited_from}"
@@ -167,19 +166,19 @@
                   <span tal:attributes="class python:'badge badge-' + std['status']"
                         tal:content="std/status">active</span>
                 </td>
-                <!-- Same layout as Reagent Inventory: Edit, Where
-                     used, the certificate, and More for what changes the lot. -->
+                <!-- Same layout as Reagent Inventory: Edit, and More for
+                     everything else. -->
                 <td class="row-actions-cell">
                   <div class="row-actions">
                     <button type="button" class="btn-sm" title="Edit this standard's preparation record"
                             tal:attributes="onclick string:editStandard(${std_json})">Edit</button>
-                    <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
-                       tal:attributes="href string:${context/absolute_url}/@@pfas-lot-usage?kind=prepared_standard&amp;uid=${std/uid}">Where used</a>
-                    <a class="btn-sm" target="_blank" title="Open the preparation certificate (PDF)"
-                       tal:attributes="href string:${context/absolute_url}/@@pfas-prep-standards?action=cert&amp;uid=${std/uid}">Certificate</a>
                     <details class="row-more">
-                      <summary class="btn-sm" title="Print a label, mark emptied or reactivate">More &#9662;</summary>
+                      <summary class="btn-sm" title="Where used, the certificate, a label, mark emptied">More &#9662;</summary>
                       <div class="row-more-menu">
+                        <a class="btn-sm" title="Every batch and stage that used this lot"
+                           tal:attributes="href string:${context/absolute_url}/@@pfas-lot-usage?kind=prepared_standard&amp;uid=${std/uid}">Where used</a>
+                        <a class="btn-sm" target="_blank" title="Open the preparation certificate (PDF)"
+                           tal:attributes="href string:${context/absolute_url}/@@pfas-prep-standards?action=cert&amp;uid=${std/uid}">Certificate</a>
                         <a class="btn-sm" target="_blank" title="Print a label for this lot (the issued label template, or the built-in layout)"
                            tal:attributes="href python:view.label_url(std)">Print label</a>
                         <!-- Emptied lots must leave the logbook lot picker; this
@@ -232,19 +231,19 @@
           <div class="modal-pane active" id="tabBasic">
             <div class="form-row">
               <div class="form-field" style="flex:2 1 280px">
-                <label>Standard Name *</label>
+                <label>Standard name *</label>
                 <input type="text" name="title" id="psTitle" required
                        placeholder="e.g. Native Mix 100 ng/mL" />
               </div>
               <div class="form-field">
-                <label>In-House Lot # *</label>
+                <label>In-house lot # *</label>
                 <input type="text" name="lot_number" id="psLot" required
                        placeholder="2026-06-22-001" />
               </div>
             </div>
             <div class="form-row">
               <div class="form-field">
-                <label>Standard Type</label>
+                <label>Standard type</label>
                 <select name="standard_type" id="psType">
                   <option value="">— Select —</option>
                   <tal:opts tal:repeat="t view/standard_types">
@@ -253,7 +252,7 @@
                 </select>
               </div>
               <div class="form-field">
-                <label>Prep Logbook</label>
+                <label>Prep logbook</label>
                 <select name="logbook_slug" id="psLogbookSlug" onchange="onLogbookChange(this)">
                   <option value="">— None —</option>
                   <tal:lbs tal:repeat="lb view/prep_logbooks">
@@ -270,27 +269,27 @@
             </div>
             <div class="form-row">
               <div class="form-field">
-                <label>Prepared By</label>
+                <label>Prepared by</label>
                 <input type="text" name="prepared_by" id="psPrepBy" />
               </div>
               <div class="form-field">
-                <label>Date Prepared</label>
+                <label>Date prepared</label>
                 <input type="date" name="prepared_date" id="psPrepDate"
                        onchange="autoExpiry()" />
               </div>
             </div>
             <div class="form-row">
               <div class="form-field">
-                <label>Expiry Date</label>
+                <label>Expiry date</label>
                 <input type="date" name="expiry_date" id="psExpiry" />
                 <span class="form-hint">Auto-filled from logbook default. Adjust if needed.</span>
               </div>
               <div class="form-field">
-                <label>Volume / Amount Prepared</label>
+                <label>Volume / amount prepared</label>
                 <input type="text" name="volume_prepared" id="psVol" placeholder="e.g. 10 mL" />
               </div>
               <div class="form-field">
-                <label>Storage Location</label>
+                <label>Storage location</label>
                 <!-- core Storage Locations (core_lists.py) -->
                 <select name="storage_location" id="psStorage">
                   <option value="">Choose a location</option>
@@ -332,7 +331,7 @@
             </div>
             <div class="form-row">
               <div class="form-field full">
-                <label>Expiry Justification (required if not default)</label>
+                <label>Expiry justification (required if not default)</label>
                 <input type="text" name="expiry_notes" id="psExpiryNotes"
                        placeholder="e.g. Extended per supervisor review — see audit trail" />
               </div>

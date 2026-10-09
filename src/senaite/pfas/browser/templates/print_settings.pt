@@ -94,7 +94,7 @@
       <!-- ── QA sign-off attestation signers ──────────────────────────────── -->
       <h3 style="font-size:var(--fs-base);font-weight:700;margin:18px 0 4px;">QA Sign-off Attestation</h3>
       <p class="hint" style="margin:0 0 10px;">The Prepared, Verified, Authorized sign-off block on SOPs and prep logs; signatures come from each person&#8217;s Lab Contact. <tal:h define="hid string:sign-rights"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
-      <div class="ps-row"><label>Quality Assurance Officer</label>
+      <div class="ps-row"><label>Quality assurance officer</label>
         <select name="qao_initials">
           <option value="">— none —</option>
           <option tal:repeat="s view/staff"
@@ -102,7 +102,7 @@
                                   selected python:s['initials']==ps.get('qao_initials')"
                   tal:content="string:${s/fullname} (${s/initials})">name</option>
         </select></div>
-      <div class="ps-row"><label>Laboratory Director</label>
+      <div class="ps-row"><label>Laboratory director</label>
         <select name="director_initials">
           <option value="">— none —</option>
           <option tal:repeat="s view/staff"

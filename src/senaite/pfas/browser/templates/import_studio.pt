@@ -580,7 +580,7 @@
               <input type="text" id="s-instr-display" readonly="readonly"
                      style="background:#f0f0f0;" />
 
-              <label for="s-vendor">Software / Vendor</label>
+              <label for="s-vendor">Software / vendor</label>
               <select id="s-vendor" name="vendor_key_display"
                       onchange="document.getElementById('save-vendor-key').value=this.value;updateCalChain()">
                 <tal:opts tal:repeat="pair view/vendor_names">
@@ -588,11 +588,11 @@
                 </tal:opts>
               </select>
 
-              <label for="s-version">Software Version <span style="color: var(--s-danger-dk);">*</span></label>
+              <label for="s-version">Software version <span style="color: var(--s-danger-dk);">*</span></label>
               <input type="text" id="s-version" name="software_version"
                      placeholder="e.g. 3.4.1.0" required="required" />
 
-              <label for="s-calc">Calculation Mode <span style="color: var(--s-danger-dk);">*</span></label>
+              <label for="s-calc">Calculation mode <span style="color: var(--s-danger-dk);">*</span></label>
               <select id="s-calc" name="calc_mode"
                       onchange="updateCalChain()">
                 <option value="final">Final — file has measured concentrations</option>

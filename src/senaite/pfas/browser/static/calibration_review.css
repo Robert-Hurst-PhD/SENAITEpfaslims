@@ -18,8 +18,7 @@
                 border:1px solid var(--s-border);
                 padding:10px 14px; margin-bottom:14px;
                 display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
-  .filter-bar label { font-size:var(--fs-xs); color:var(--s-secondary); font-weight:700;
-                      text-transform:uppercase; display:block; margin-bottom:2px; }
+  .filter-bar label { font-size: var(--fs-sm); color: var(--s-body); font-weight: 600; display:block; margin-bottom:2px; }
   .filter-bar select, .filter-bar input[type=number] {
     padding:5px 8px; border:1px solid var(--s-input-border); border-radius:4px;
     font-size:var(--fs-base); background:#fafafa; color:var(--s-input-text); }
@@ -67,8 +66,7 @@
   .card-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
                    padding:6px 14px; background:var(--s-light);
                    border-bottom:1px solid var(--s-border); }
-  .card-controls label { font-size:var(--fs-xs); color:var(--s-secondary); font-weight:700;
-                         text-transform:uppercase; }
+  .card-controls label { font-size: var(--fs-sm); color: var(--s-body); font-weight: 600; }
   .card-controls select { font-size:var(--fs-xs); padding:3px 6px;
                           border:1px solid var(--s-input-border); border-radius:3px;
                           background:#fff; color:var(--s-input-text); }

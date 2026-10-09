@@ -142,6 +142,16 @@ body, button, input, select, textarea, .btn, .form-control, .popover, .tooltip {
 code, pre, kbd, samp { font-family: var(--font-mono); }
 /* the same three type roles as PFAS pages */
 h1, h2, h3, h4, .documentFirstHeading, .card-title { font-family: var(--font-heading); }
+/* the same sizes too: core titles were 28-32px light against the PFAS
+   pages' 20px bold, so a heading changed weight between neighbouring pages */
+body:not(.pfas-app) #content h1, body:not(.pfas-app) .documentFirstHeading {
+  font-size: var(--fs-xl); font-weight: var(--fw-heading);
+}
+body:not(.pfas-app) #content h2, body:not(.pfas-app) #content h3 {
+  font-size: var(--fs-lg); font-weight: var(--fw-heading);
+}
+body:not(.pfas-app) .bootstrap-select .dropdown-toggle,
+body:not(.pfas-app) .btn.dropdown-toggle { font-size: var(--fs-base); }
 table.contentstable th, .listing th {
   font-family: var(--font-subtitle);
   font-weight: var(--fw-subtitle);
@@ -190,7 +200,23 @@ input[type=checkbox], input[type=radio] { accent-color: var(--s-primary); }
 .ajax-contents-table tr.state-rejected { border-left: 2px solid var(--s-danger) !important; }
 .ajax-contents-table tr.state-cancelled { border-left: 2px solid var(--s-secondary) !important; }
 .ajax-contents-table tr td div.progress div.progress-bar,
-.progress-bar { background-color: var(--s-primary) !important; }
+.progress-bar { background-color: var(--s-primary-dk) !important; }
+
+/* Contrast on core pages (WCAG AA 4.5:1): a link in a state-tinted row takes
+   that row's text colour (primary-dk on the mint tint is 4.49); core's grey
+   for the empty choice of a bootstrap-select (2.7), its footer link blue
+   (3.82) and its hovered sortable header (3.01 with the header grey) all
+   fall short. The row links need !important: core-page links are set above
+   through #content, which outranks any class chain. */
+body:not(.pfas-app) .contentstable .state-published a,
+body:not(.pfas-app) .contentstable .state-verified a { color: var(--s-success-text) !important; }
+body:not(.pfas-app) .contentstable .state-to_be_verified a,
+body:not(.pfas-app) .contentstable .state-received a { color: var(--s-info-text) !important; }
+body:not(.pfas-app) .contentstable .state-invalid a,
+body:not(.pfas-app) .contentstable .state-rejected a { color: var(--s-danger-dk) !important; }
+table.contentstable thead th.sortable:hover { color: var(--s-body); }
+.bootstrap-select .bs-placeholder .filter-option-inner-inner { color: var(--s-secondary); }
+#portal-footer-wrapper a { color: var(--s-primary-dk); }
 
 /* Phone: a core page's wide tables (Manage Results, the sample header, the
    listings) scroll inside the content column instead of dragging the whole

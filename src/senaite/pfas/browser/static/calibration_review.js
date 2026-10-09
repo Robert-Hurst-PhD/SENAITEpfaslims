@@ -6,6 +6,8 @@
      CAL_APPROVE   null (archive, read-only) or {url, can, state}: the
                    approve / reject bar posting to Data Review
      limFor(uid)   the analyte's limits (page script) */
+// charts draw in the page's face, not Chart.js's Helvetica default
+if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
   /* Curve maths: static/calibration_fit.js (least squares by ml-matrix QR,
      closed-form inverse, R² with the fit's own weights;.
      computeFn returns a callable curve carrying its model, so the plotting

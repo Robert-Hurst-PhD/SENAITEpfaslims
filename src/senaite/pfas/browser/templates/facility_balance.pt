@@ -81,7 +81,7 @@
         <div class="fld-row">
           <div class="fld"><label>Date *</label>
             <input type="date" name="verified_date" id="vDate" required/></div>
-          <div class="fld"><label>Operator Initials *</label>
+          <div class="fld"><label>Operator initials *</label>
             <input type="text" name="operator" maxlength="10" required/></div>
           <div class="fld" style="flex:2"><label>Reference weight set *</label>
             <select name="weight_set_id" required="required">

@@ -96,7 +96,7 @@
             </select>
           </div>
           <div class="lb-field corr-field" data-field="prepared_by">
-            <label>Prepared By <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_by')">correct</button></label>
+            <label>Prepared by <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_by')">correct</button></label>
             <input class="lb-input lb-input-lg" type="text" name="prepared_by"
                    tal:attributes="value python:view.data().get('prepared_by','')" />
             <div class="corr-panel" id="cp-prepared_by">
@@ -107,7 +107,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="prepared_date">
-            <label>Date Prepared <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_date')">correct</button></label>
+            <label>Date prepared <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_date')">correct</button></label>
             <input class="lb-input lb-input-md" type="date" name="prepared_date"
                    tal:attributes="value python:view.data().get('prepared_date','')" />
             <div class="corr-panel" id="cp-prepared_date">
@@ -125,7 +125,7 @@
         <h3>Standard Solutions — Lot Numbers</h3>
         <div class="pds-grid">
           <div class="lb-field corr-field" data-field="pds_a_lot">
-            <label>IS/SUR PDS-A Lot # <button class="btn-correct" type="button" onclick="toggleCorrect('pds_a_lot')">correct</button></label>
+            <label>IS/SUR PDS-A lot # <button class="btn-correct" type="button" onclick="toggleCorrect('pds_a_lot')">correct</button></label>
             <input class="lb-input lb-lot" type="text" name="pds_a_lot"
                    tal:attributes="value python:view.data().get('pds_a_lot','')" />
             <div class="corr-panel" id="cp-pds_a_lot">
@@ -136,7 +136,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="pds_b_lot">
-            <label>IS/SUR PDS-B Lot # <button class="btn-correct" type="button" onclick="toggleCorrect('pds_b_lot')">correct</button></label>
+            <label>IS/SUR PDS-B lot # <button class="btn-correct" type="button" onclick="toggleCorrect('pds_b_lot')">correct</button></label>
             <input class="lb-input lb-lot" type="text" name="pds_b_lot"
                    tal:attributes="value python:view.data().get('pds_b_lot','')" />
             <div class="corr-panel" id="cp-pds_b_lot">
@@ -147,7 +147,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="analyte_pds_lot">
-            <label>Analyte PDS Lot # <button class="btn-correct" type="button" onclick="toggleCorrect('analyte_pds_lot')">correct</button></label>
+            <label>Analyte PDS lot # <button class="btn-correct" type="button" onclick="toggleCorrect('analyte_pds_lot')">correct</button></label>
             <input class="lb-input lb-lot" type="text" name="analyte_pds_lot"
                    tal:attributes="value python:view.data().get('analyte_pds_lot','')" />
             <div class="corr-panel" id="cp-analyte_pds_lot">
@@ -158,7 +158,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="analyte_spike_lot">
-            <label>Analyte Spike Lot # <button class="btn-correct" type="button" onclick="toggleCorrect('analyte_spike_lot')">correct</button></label>
+            <label>Analyte spike lot # <button class="btn-correct" type="button" onclick="toggleCorrect('analyte_spike_lot')">correct</button></label>
             <input class="lb-input lb-lot" type="text" name="analyte_spike_lot"
                    tal:attributes="value python:view.data().get('analyte_spike_lot','')" />
             <div class="corr-panel" id="cp-analyte_spike_lot">
@@ -169,7 +169,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="cal_a_lot">
-            <label>CAL-A Lot # <button class="btn-correct" type="button" onclick="toggleCorrect('cal_a_lot')">correct</button></label>
+            <label>CAL-A lot # <button class="btn-correct" type="button" onclick="toggleCorrect('cal_a_lot')">correct</button></label>
             <input class="lb-input lb-lot" type="text" name="cal_a_lot"
                    tal:attributes="value python:view.data().get('cal_a_lot','')" />
             <div class="corr-panel" id="cp-cal_a_lot">
@@ -206,7 +206,7 @@
         <h3>CCV / ICV / Diluent</h3>
         <div class="lb-row">
           <div class="lb-field corr-field" data-field="icv_conc_ng_ml">
-            <label>ICV Concentration (ng/mL) <button class="btn-correct" type="button" onclick="toggleCorrect('icv_conc_ng_ml')">correct</button></label>
+            <label>ICV concentration (ng/mL) <button class="btn-correct" type="button" onclick="toggleCorrect('icv_conc_ng_ml')">correct</button></label>
             <input class="lb-input lb-input-sm" type="number" step="0.001"
                    name="icv_conc_ng_ml"
                    tal:attributes="value python:view.data().get('icv_conc_ng_ml','1.25')" />
@@ -218,7 +218,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="ccv_conc_ng_ml">
-            <label>CCV Concentration (ng/mL) <button class="btn-correct" type="button" onclick="toggleCorrect('ccv_conc_ng_ml')">correct</button></label>
+            <label>CCV concentration (ng/mL) <button class="btn-correct" type="button" onclick="toggleCorrect('ccv_conc_ng_ml')">correct</button></label>
             <input class="lb-input lb-input-sm" type="number" step="0.001"
                    name="ccv_conc_ng_ml"
                    tal:attributes="value python:view.data().get('ccv_conc_ng_ml','1.25')" />
@@ -230,7 +230,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="diluent_is_conc">
-            <label>Diluent IS/SUR Concentration (ng/mL) <button class="btn-correct" type="button" onclick="toggleCorrect('diluent_is_conc')">correct</button></label>
+            <label>Diluent IS/SUR concentration (ng/mL) <button class="btn-correct" type="button" onclick="toggleCorrect('diluent_is_conc')">correct</button></label>
             <input class="lb-input lb-input-sm" type="number" step="0.001"
                    name="diluent_is_conc"
                    tal:attributes="value python:view.data().get('diluent_is_conc','1.0')" />
@@ -267,7 +267,7 @@
         <h3>Sign-off</h3>
         <div class="sig-block">
           <div class="sig-field corr-field" data-field="reviewed_by">
-            <label>Reviewed By <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_by')">correct</button></label>
+            <label>Reviewed by <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_by')">correct</button></label>
             <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
                    tal:attributes="value python:view.data().get('reviewed_by','')" />
             <div class="corr-panel" id="cp-reviewed_by">
@@ -278,7 +278,7 @@
             </div>
           </div>
           <div class="sig-field corr-field" data-field="reviewed_date">
-            <label>Date Reviewed <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_date')">correct</button></label>
+            <label>Date reviewed <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_date')">correct</button></label>
             <input class="lb-input lb-input-md" type="date" name="reviewed_date"
                    tal:attributes="value python:view.data().get('reviewed_date','')" />
             <div class="corr-panel" id="cp-reviewed_date">

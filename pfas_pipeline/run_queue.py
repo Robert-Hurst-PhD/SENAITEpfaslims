@@ -146,7 +146,8 @@ def _summed_row(rows, analyte, sums=None):
     if sums:
         from .analyte_alias import keyword_for
         comps = sums.get(keyword_for(analyte) or analyte) or sums.get(analyte) or []
-    parts = [r for r in rows if r.compound_name in comps]
+    # a component asked for by its own name is its own row, never the whole sum
+    parts = [] if analyte in comps else [r for r in rows if r.compound_name in comps]
     if not parts:
         for row in rows:
             if row.compound_name == analyte:
@@ -992,18 +993,27 @@ class RunQueue:
         # method profile, beside its limits.
         if profile is not None:
             frbs = set(getattr(self.batch, "field_blanks", None) or [])
+            tbs = set(getattr(self.batch, "trip_blanks", None) or [])
             for inj in order:
                 role = classify_injection(inj, dilutions)
                 # a field reagent blank is a client sample judged against the
                 # method blank's limit
                 frb = inj in frbs
+                # a trip blank is a client sample judged against the method's
+                # own trip blank limit (Blank limits); none set is a gap
+                tb = inj in tbs and not frb
                 # a solvent blank (CCB) is reviewed on its chromatogram; it is
                 # judged only where the method sets it a limit (Blank limits)
-                if role not in BLANK_ROLES and not frb:
+                if role not in BLANK_ROLES and not frb and not tb:
                     continue
-                rule_role, role = ("MB", "FRB") if frb else (role, role)
+                rule_role, role = ("MB", "FRB") if frb else ("TB", "TB") if tb else (role, role)
                 judged = False
                 for analyte in _analytes:
+                    if analyte in _components:
+                        # judged once, as its summed analyte: a component
+                        # exceeding the limit was a second finding of the same
+                        # exceedance (its stored row carries the sum's verdict)
+                        continue
                     row = _row(inj, analyte)
                     if row is None:
                         continue
@@ -1017,6 +1027,13 @@ class RunQueue:
                     except UnconfiguredCriterion as exc:
                         _record_gap(role, analyte, exc)
                         continue
+                    if tb and (rule is None or rule.max_conc_x_rl is None):
+                        # never another blank's limit, never passed in silence
+                        _record_gap(role, "", UnconfiguredCriterion(
+                            "{0}: the trip blank is not judged -- no trip blank limit is set "
+                            "for {1} (Method Profiles -> QC Types -> Blank limits).".format(
+                                inj, self.method_id)))
+                        break
                     if rule is None:
                         continue                     # the QC type is switched off
                     if rule.max_conc_x_rl is None:
@@ -1218,6 +1235,8 @@ class RunQueue:
                     continue
                 judged = False
                 for analyte in _analytes:
+                    if analyte in _components:
+                        continue          # judged once, as its summed analyte
                     r1, r2 = _row(parent, analyte), _row(inj, analyte)
                     if r1 is None or r2 is None:
                         continue

@@ -1786,8 +1786,9 @@ class PFASRunManifestView(BrowserView):
 
 def _field_qc_code(member):
     """u"FRB" for a member sample whose CoC Field QC says it is a field
-    reagent blank -- read from the sample, which owns it; else u"". The
-    worker judges it against the blank limit."""
+    reagent blank, u"TB" for a trip blank -- read from the sample, which owns
+    it; else u"". The worker judges an FRB against the blank limit and a TB
+    against the method's trip blank limit (a gap while none is set)."""
     if member.get("role") != u"Sample" or not member.get("sample_uid"):
         return u""
     try:
@@ -1797,10 +1798,8 @@ def _field_qc_code(member):
         value = (fld.get(sample) if fld else u"") or u""
     except Exception:                                       # noqa: BLE001
         return u""
-    from senaite.pfas.coc_records import FIELD_QC_TYPES
-    # the worker's codes: FRB is judged as a blank; FD is left out of EPA
-    # 537.1's CCV count (\u00a710.3)
-    return {FIELD_QC_TYPES[0]: u"FRB", FIELD_QC_TYPES[1]: u"FD"}.get(value, u"")
+    from senaite.pfas.coc_records import WORKER_FIELD_QC
+    return WORKER_FIELD_QC.get(value, u"")
 
 
 class PFASBatchDilutionsView(BrowserView):

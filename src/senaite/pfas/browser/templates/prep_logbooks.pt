@@ -29,8 +29,7 @@
     .form-row  { display:flex; gap:14px; margin-bottom:14px; flex-wrap:wrap; }
     .form-field { display:flex; flex-direction:column; flex:1 1 200px; }
     .form-field.full { flex:1 1 100%; }
-    .form-field label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
-                        text-transform:uppercase; margin-bottom:3px; }
+    .form-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body); margin-bottom:3px; }
     .form-field input, .form-field select, .form-field textarea {
       padding:7px 10px; border:1px solid var(--s-input-border); border-radius:5px;
       font-size:var(--fs-base); color:var(--s-body); }
@@ -298,11 +297,11 @@
 
           <div class="form-row">
             <div class="form-field" style="flex:2 1 300px">
-              <label>Logbook Name *</label>
+              <label>Logbook name *</label>
               <input type="text" name="title" id="lbTitle" required placeholder="e.g. Native Stock Standard Preparation" />
             </div>
             <div class="form-field">
-              <label>Standard Type</label>
+              <label>Standard type</label>
               <select name="standard_type" id="lbType">
                 <option value="">— Select —</option>
                 <tal:opts tal:repeat="t view/standard_types">
@@ -340,7 +339,7 @@
 
           <div class="form-row">
             <div class="form-field">
-              <label>Default Expiry (days)</label>
+              <label>Default expiry (days)</label>
               <input type="number" name="default_expiry_days" id="lbExpiry"
                      value="365" min="1" max="3650" />
             </div>
@@ -433,7 +432,7 @@
           </div>
 
           <div class="form-field full" style="margin-bottom:14px">
-            <label>Analyte Template (default concentrations for this logbook)</label>
+            <label>Analyte template (default concentrations for this logbook)</label>
             <table class="analyte-editor" id="analyteTable">
               <thead>
                 <tr><th>Analyte</th><th>Concentration</th><th>Unit</th><th></th></tr>

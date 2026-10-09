@@ -194,7 +194,7 @@
     .eg-start { margin:40px 24px; text-align:center; }   /* the batch table fills the page */
     .eg-batch-table { width:100%; text-align:left; }
     .eg-start .start-form { max-width:500px; margin:0 auto; }
-    .eg-start h2 { font-size:var(--fs-2xl); font-weight:800; margin-bottom:8px; }
+    .eg-start h2 { font-size:var(--fs-xl); font-weight:var(--fw-heading); margin-bottom:8px; }
     .eg-start p { color:var(--s-secondary); margin-bottom:24px; }
     .start-form { text-align:left; }
     .start-form label { font-size:var(--fs-base); font-weight:600; display:block; margin-bottom:4px; }
@@ -281,7 +281,7 @@
           </tal:opts>
         </select>
 
-        <label>Lead Analyst</label>
+        <label>Lead analyst</label>
         <input type="text" name="analyst" placeholder="Your name" required="required"
                tal:attributes="value view/current_user_name" />
 

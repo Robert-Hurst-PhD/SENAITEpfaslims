@@ -29,6 +29,12 @@ against the window (the Calibration page's old defect):
     groups(columns, rows, notes)           the two tables, each with the
                                            rows and notes it uses
     column_unit(qc_type, values)           the unit for the column header
+    tables(columns, rows, keep)            the tables a page shows, for the
+                                           columns `keep` selects, numbered
+                                           afresh (QC Summary: all; Spike QC:
+                                           the spikes)
+    code_cell(codes, reasons)              a result's QC qualifier codes as a
+                                           cell (Final Data)
 
 Pure; Python 2.7 and 3.
 """
@@ -40,13 +46,13 @@ except ImportError:                                          # loaded by path (t
     from extraction_batch import QC_ROLES
 
 # QC prepared WITH the samples (the extraction batch's QC members, and the
-# field reagent blank extracted beside them); everything else is the
+# field reagent and trip blanks extracted beside them); everything else is the
 # instrument's: calibration, ICV, CCV, CCB, internal-standard response
 # ("extracted and non-extracted QC to simplify the review")
-EXTRACTED = frozenset(QC_ROLES) | frozenset(("FRB",))
+EXTRACTED = frozenset(QC_ROLES) | frozenset(("FRB", "TB"))
 # reading order: blanks, fortified blanks, matrix QC; then the run's own
 # order -- the curve, its verification, the bracket, the standards
-ORDER = ("MB", "LRB", "MxB", "FRB", "LFB", "LCS", "LFSM", "LFSMD", "Dup",
+ORDER = ("MB", "LRB", "MxB", "FRB", "TB", "LFB", "LCS", "LFSM", "LFSMD", "Dup",
          "Calibration", "ICV", "CCV", "CCB", "IS")
 GROUPS = (("extracted", u"Extracted QC"), ("instrument", u"Instrument QC (not extracted)"))
 
@@ -56,7 +62,7 @@ STATUS_WORD = {"ok": u"Pass", "fail": u"Fail", "qualified": u"Qualified",
                "warn": u"Review", "unevaluated": u"Not evaluated"}
 ND = u"N.D."
 NOT_RECORDED = u"Criterion not recorded for this run: re-process it to show it."
-BLANKS = ("MB", "LRB", "MxB", "CCB", "FRB")
+BLANKS = ("MB", "LRB", "MxB", "CCB", "FRB", "TB")
 RECOVERY_FROM_EXPECTED = ("CCV", "ICV")
 UNIT_LABEL = {"%": u"%", "% RPD": u"% RPD", "% deviation": u"% dev.",
               "% of ICAL avg": u"% of ICAL"}
@@ -243,3 +249,48 @@ def groups(columns, rows, notes):
         out.append({"key": key, "title": title, "columns": cols, "rows": mine,
                     "notes": [n for n in notes if n[0] in used]})
     return out
+
+
+# Data Review's Spike QC tab: the spiked and fortified QC and the duplicate's
+# RPD column (LFSMD RPD goes with LFSMD)
+SPIKE = ("LFSM", "LFSMD", "LFB", "LCS", "SD")
+
+
+def is_spike(column):
+    return column.split(" ")[0] in SPIKE
+
+
+def tables(columns, rows, keep=None):
+    """What a page draws from the QC Summary's cells: the columns `keep`
+    selects (every one when None), the analytes with a cell in them, the
+    criteria those cells cite numbered from 1, and the two tables.
+    `columns`: [{key, unit}] in display order; `rows`: [{analyte, display}].
+    Copies: the summary's own rows are not changed."""
+    cols = [dict(c) for c in columns if keep is None or keep(c["key"])]
+    keys = [c["key"] for c in cols]
+    mine = []
+    for r in rows:
+        display = dict((k, dict(d)) for k, d in (r.get("display") or {}).items()
+                       if k in keys and d)
+        if display:
+            mine.append({"analyte": r["analyte"], "display": display})
+    header, cells, notes = footnotes(keys, mine)
+    for c in cols:
+        c["notes"] = header.get(c["key"]) or []
+    for r in mine:
+        for k, d in r["display"].items():
+            d["notes"] = cells.get((r["analyte"], k)) or []
+    return {"columns": cols, "rows": mine, "notes": notes,
+            "groups": groups(cols, mine, notes)}
+
+
+def code_cell(codes, reasons=u""):
+    """A result's QC qualifier codes ("M, P") as a cell the shared macro
+    draws: review colour -- the result is released with a qualifier, as a
+    qualified cell reads in the QC Summary -- and why in the tooltip.
+    None when the result carries no code."""
+    if not codes:
+        return None
+    return {"text": codes, "cls": STATUS_CLASS["qualified"], "tip": reasons or codes,
+            "bases": [], "n": 1, "notes": []}
+

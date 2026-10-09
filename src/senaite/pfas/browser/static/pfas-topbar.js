@@ -278,3 +278,99 @@ if (document.readyState === 'loading') {
     }, 80);
   }, true);
 }());
+
+
+/* Accessibility of core listings: senaite.app.listing draws checkboxes,
+   icon buttons and selects with no accessible name, and redraws its rows on
+   every sort, page and search. On core pages, name each one from what the row or control
+   already shows; only attributes the listing does not set are touched, and
+   a name the page already gives is kept. */
+(function () {
+  function txt(el) { return el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+  function named(el) {
+    return el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby') ||
+           (el.labels && el.labels.length);
+  }
+  function name(el, label) { if (label && !named(el)) el.setAttribute('aria-label', label); }
+  /* a row is named by its identifying column (the sample id, the analysis'
+     service, the worksheet or client title), else by its first link, else
+     by its first cell with text */
+  var KEY_COLS = ['getId', 'Service', 'Title', 'title', 'getFullname', 'Fullname'];
+  function rowName(row) {
+    if (!row) return '';
+    for (var c = 0; c < KEY_COLS.length; c++) {
+      var cell = row.querySelector('td.' + KEY_COLS[c]);
+      if (cell && txt(cell)) return txt(cell);
+    }
+    var links = row.querySelectorAll('td a');
+    for (var i = 0; i < links.length; i++) if (txt(links[i])) return txt(links[i]);
+    var cells = row.querySelectorAll('td');
+    for (var k = 0; k < cells.length; k++) {
+      if (!cells[k].querySelector('input, select') && txt(cells[k])) return txt(cells[k]);
+    }
+    return '';
+  }
+  var ICONS = {'fa-search': 'Search', 'fa-undo': 'Clear search'};
+  function label(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('input[type=checkbox][name=select_all]'), function (c) {
+      name(c, 'Select all rows');
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('input[type=checkbox][name="uids:list"]'), function (c) {
+      var r = rowName(c.closest('tr'));
+      name(c, r ? 'Select ' + r : 'Select row');
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('button'), function (b) {
+      if (txt(b)) return;
+      var i = b.querySelector('i');
+      if (!i) return;
+      for (var k in ICONS) if (i.classList.contains(k)) { name(b, ICONS[k]); return; }
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('a.pull-right'), function (a) {
+      if (!txt(a) && a.querySelector('i.fa-ellipsis-h')) name(a, 'Configure table columns');
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('button img, a.btn img'), function (img) {
+      var host = img.closest('button, a');
+      if (!img.hasAttribute('alt') && txt(host)) img.setAttribute('alt', '');
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('select'), function (s) {
+      if (named(s)) return;
+      var first = s.options && s.options.length ? s.options[0] : null;
+      if (s.title) {
+        var r = rowName(s.closest('tr'));
+        name(s, r ? s.title + ' for ' + r : s.title);
+      } else if (first && first.value === '' && txt(first)) {
+        name(s, txt(first).replace(/^Select\s+/i, '').replace(/^./, function (c) { return c.toUpperCase(); }));
+      }
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('input[name=ar_count]'), function (n) {
+      name(n, 'Number of samples to add');
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('.input-group input[type=text][size="3"]'), function (n) {
+      name(n, 'Rows per page');
+    });
+  }
+  window.pfasLabelListings = label;
+  var queued = false;
+  function soon() {
+    if (queued) return;
+    queued = true;
+    (window.requestAnimationFrame || setTimeout)(function () { queued = false; label(document); });
+  }
+  function start() {
+    if (document.body.classList.contains('pfas-app')) return;   /* core pages only */
+    /* core pages have no main landmark: the content column is it; and of
+       their three <footer>s only the outermost is the page footer */
+    var col = document.getElementById('portal-column-content');
+    if (col && !document.querySelector('main, [role=main]')) col.setAttribute('role', 'main');
+    Array.prototype.forEach.call(document.querySelectorAll(
+        '#portal-column-content footer, footer footer'), function (f) {
+      if (!f.getAttribute('role')) f.setAttribute('role', 'none');
+    });
+    label(document);
+    if (window.MutationObserver) {
+      new MutationObserver(soon).observe(document.body, {childList: true, subtree: true});
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+}());

@@ -80,6 +80,24 @@ def get_tracking_by_ar_uid(portal, ar_uid):
     return rev.get(ar_uid)
 
 
+def tracking_for(portal, ar):
+    """(tracking number, the sample that holds it) for `ar`, or (None, None).
+
+    A sample's own number; for a retest, the number of the sample it
+    re-analyses. Core creates a retest already received (no 'receive'
+    transition), so it is never given a number of its own: the client keeps
+    the original's slip, and the tracker follows that slip from the
+    invalidated original to its retest."""
+    seen = set()
+    while ar is not None and ar.UID() not in seen:
+        seen.add(ar.UID())
+        number = get_tracking_by_ar_uid(portal, ar.UID())
+        if number:
+            return number, ar
+        ar = ar.getInvalidated() if hasattr(ar, 'getInvalidated') else None
+    return None, None
+
+
 def get_or_assign_tracking(portal, ar):
     """Idempotent: return existing tracking number for *ar*, or mint and store one.
 

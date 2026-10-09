@@ -44,12 +44,12 @@
 
           <div class="field-grid">
             <div class="field-row">
-              <label for="pj-title">Project Name</label>
+              <label for="pj-title">Project name</label>
               <input type="text" id="pj-title" name="title" required="required"
                      tal:attributes="value python:editing['title'] if editing else ''"/>
             </div>
             <div class="field-row">
-              <label for="pj-code">Project Code</label>
+              <label for="pj-code">Project code</label>
               <input type="text" id="pj-code" name="project_code" required="required"
                      tal:attributes="value python:editing['project_code'] if editing else ''"/>
             </div>
@@ -68,7 +68,7 @@
               </div>
             </div>
             <div class="field-row">
-              <label for="pj-qapp">QAPP Document</label>
+              <label for="pj-qapp">QAPP document</label>
               <select id="pj-qapp" name="qapp_document_id">
                 <option value="">None: the laboratory&#8217;s internal quality system</option>
                 <tal:opts tal:repeat="q view/qapp_docs">
@@ -83,12 +83,12 @@
               </div>
             </div>
             <div class="field-row">
-              <label for="pj-start">Start Date</label>
+              <label for="pj-start">Start date</label>
               <input type="date" id="pj-start" name="start_date"
                      tal:attributes="value python:editing['start_date'] if editing else ''"/>
             </div>
             <div class="field-row">
-              <label for="pj-end">End Date</label>
+              <label for="pj-end">End date</label>
               <input type="date" id="pj-end" name="end_date"
                      tal:attributes="value python:editing['end_date'] if editing else ''"/>
             </div>

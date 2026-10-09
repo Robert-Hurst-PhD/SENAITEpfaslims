@@ -766,7 +766,10 @@ class QCResultStore(object):
                     "SELECT * FROM calibration_levels WHERE calibration_id IN (%s) "
                     "ORDER BY calibration_id, level ASC" % ",".join("?" * len(chunk)), chunk).fetchall()
                 for r in rows:
-                    out[r["calibration_id"]].append(dict(r))
+                    # dict first: under Python 2 a sqlite3.Row refuses a
+                    # unicode key (this module has unicode_literals)
+                    d = dict(r)
+                    out[d["calibration_id"]].append(d)
         return out
 
     def get_calibration_levels(self, calibration_id):

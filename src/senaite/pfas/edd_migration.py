@@ -118,9 +118,28 @@ def migrate(portal):
     if types is not None and OLD_TYPE in types.objectIds():
         types.manage_delObjects([OLD_TYPE])
         summary["removed"].append(OLD_TYPE)
+    if _drop_catalog_mapping(OLD_TYPE):
+        summary["removed"].append("catalog mapping " + OLD_TYPE)
     if any(summary[k] for k in ("profiles", "clients", "samples", "batches", "removed")):
         logger.info("EDD export settings moved into profiles: %s", summary)
     return summary
+
+
+def _drop_catalog_mapping(portal_type):
+    """Remove a deleted type from core's catalog mappings. Left behind, the
+    record no longer validates (its keys must be existing types) and every
+    later set_catalogs() write fails."""
+    try:
+        from senaite.core.catalog import CATALOG_MAPPINGS_REGISTRY_KEY
+        from senaite.core.registry import get_registry_record, set_registry_record
+    except ImportError:
+        return False
+    mapping = dict(get_registry_record(CATALOG_MAPPINGS_REGISTRY_KEY) or {})
+    if portal_type not in mapping:
+        return False
+    mapping.pop(portal_type)
+    set_registry_record(CATALOG_MAPPINGS_REGISTRY_KEY, mapping)
+    return True
 
 
 def _move_clients(portal, summary):

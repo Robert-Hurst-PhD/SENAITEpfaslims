@@ -370,6 +370,9 @@ class Batch:
     # field duplicates (the CoC's Field QC): client samples, left out of a
     # method's CCV interval where it counts field samples only (§10.3)
     field_duplicates:   list                 = field(default_factory=list)
+    # trip blanks (the CoC's Field QC): client samples judged against the
+    # method's own trip blank limit, never another blank's
+    trip_blanks:        list                 = field(default_factory=list)
     # the method blank the extraction batch marks for subtraction and the
     # "< LOD" comparison; "" = none marked
     subtraction_blank:  str                  = ""

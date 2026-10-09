@@ -100,7 +100,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="processing_date">
-            <label>Processing Date <button class="btn-correct" type="button" onclick="toggleCorrect('processing_date')">correct</button></label>
+            <label>Processing date <button class="btn-correct" type="button" onclick="toggleCorrect('processing_date')">correct</button></label>
             <input class="lb-input lb-input-md" type="date" name="processing_date"
                    tal:attributes="value python:view.data().get('processing_date','')" />
             <div class="corr-panel" id="cp-processing_date">

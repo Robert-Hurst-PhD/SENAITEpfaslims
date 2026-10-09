@@ -282,7 +282,7 @@
 
             <!-- Interactive risk matrix -->
             <div class="dev-form-group">
-              <label>Risk Assessment (tap cell to change)</label>
+              <label>Risk assessment (tap cell to change)</label>
               <div class="risk-matrix-wrap">
                 <table class="risk-matrix" id="detail-risk-matrix">
                   <tr>
@@ -318,18 +318,18 @@
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
               <div class="dev-form-group">
-                <label>Affected Date From</label>
+                <label>Affected date from</label>
                 <input type="date" name="affected_date_from" id="ws_date_from"
                        tal:attributes="value dev/affected_date_from"/>
               </div>
               <div class="dev-form-group">
-                <label>Affected Date To</label>
+                <label>Affected date to</label>
                 <input type="date" name="affected_date_to" id="ws_date_to"
                        tal:attributes="value dev/affected_date_to"/>
               </div>
             </div>
             <div class="dev-form-group">
-              <label>Affected Worksheets</label>
+              <label>Affected worksheets</label>
               <!-- Method selector drives the worksheet lookup (not a saved field) -->
               <div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-end">
                 <div style="flex:1">
@@ -357,14 +357,14 @@
                         tal:attributes="value python:', '.join(dev.get('affected_worksheets',[]))"/>
             </div>
             <div class="dev-form-group">
-              <label>Scale Description
+              <label>Scale description
                 <span style="font-weight:400;color:#888">(extent of affected data)</span>
               </label>
               <textarea name="scale_description" rows="3"
                         tal:content="dev/scale_description"/>
             </div>
             <div class="dev-form-group">
-              <label>Root Cause Analysis</label>
+              <label>Root cause analysis</label>
               <textarea name="root_cause" rows="5"
                         tal:content="dev/root_cause"/>
             </div>
@@ -592,7 +592,7 @@
               <!-- SOP Revision fields -->
               <div id="ca-fields-sop_revision">
                 <div class="dev-form-group">
-                  <label>SOP Reference (optional)</label>
+                  <label>SOP reference (optional)</label>
                   <input type="text" name="ca_sop_id"
                          placeholder="e.g. SOP-001"/>
                 </div>
@@ -601,7 +601,7 @@
               <!-- Training fields -->
               <div id="ca-fields-training" style="display:none">
                 <div class="dev-form-group">
-                  <label>Required Users
+                  <label>Required users
                     <span style="font-weight:400;color:#888">(comma-separated user IDs)</span>
                   </label>
                   <input type="text" name="ca_required_users"
@@ -612,21 +612,21 @@
               <!-- Notification fields -->
               <div id="ca-fields-notification" style="display:none">
                 <div class="dev-form-group">
-                  <label>Notification Type</label>
+                  <label>Notification type</label>
                   <select name="ca_subtype">
                     <option value="impact">Impact Notification</option>
                     <option value="retest">Retest Offer</option>
                   </select>
                 </div>
                 <div class="dev-form-group">
-                  <label>Affected Worksheets
+                  <label>Affected worksheets
                     <span style="font-weight:400;color:#888">(comma-separated)</span>
                   </label>
                   <input type="text" name="ca_affected_ws"
                          tal:attributes="value python:', '.join(dev.get('affected_worksheets',[]))"/>
                 </div>
                 <div class="dev-form-group">
-                  <label>Notification Text</label>
+                  <label>Notification text</label>
                   <textarea name="ca_notification_text" rows="5"
                             placeholder="Text to be included in the notification letter..."></textarea>
                 </div>
@@ -682,7 +682,7 @@
               <input type="hidden" name="action" value="close_deviation"/>
               <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
               <div class="dev-form-group">
-                <label>Closure Notes / QAO Sign-off</label>
+                <label>Closure notes / QAO sign-off</label>
                 <textarea name="closure_notes" rows="4"
                           placeholder="Confirm all corrective actions are effective and the non-conformance is resolved..."></textarea>
               </div>
@@ -835,7 +835,7 @@
       <input type="hidden" name="type" id="new-dev-type" value="deviation"/>
 
       <div class="dev-form-group">
-        <label>Event Type</label>
+        <label>Event type</label>
         <select name="event_type">
           <tal:opts tal:repeat="evt view/event_types">
             <option tal:attributes="value python:evt[0]"
@@ -845,7 +845,7 @@
       </div>
 
       <div class="dev-form-group">
-        <label>Event Date</label>
+        <label>Event date</label>
         <input type="date" name="event_date"
                id="new-dev-date"/>
       </div>
@@ -858,7 +858,7 @@
 
       <!-- Interactive risk matrix -->
       <div class="dev-form-group">
-        <label>Risk Assessment — click a cell to set Likelihood × Severity</label>
+        <label>Risk assessment — click a cell to set likelihood × severity</label>
         <div class="risk-matrix-wrap">
           <table class="risk-matrix" id="new-dev-risk-matrix">
             <tr>

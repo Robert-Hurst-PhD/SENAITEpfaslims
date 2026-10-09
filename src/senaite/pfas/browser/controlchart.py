@@ -71,7 +71,7 @@ QC_TYPE_UNITS = {
 
 # a blank's non-detect is stored with no value; it is charted at 0, hollow,
 # as "not detected" -- skipping it left most blank runs off the chart
-BLANK_TYPES = ("MB", "LRB", "MxB", "CCB", "FRB")
+BLANK_TYPES = ("MB", "LRB", "MxB", "CCB", "FRB", "TB")
 RECOVERY_TYPES = ("CCV", "ICV")
 
 

@@ -37,9 +37,7 @@
           <th>Display Name</th>
           <th class="hide-mobile">Description</th>
           <th>SENAITE Method</th>
-          <th>SENAITE record</th>
           <th>Revision</th>
-          <th>Print</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -62,11 +60,6 @@
             </tal:linked>
             <span class="sur-tag sur-nocore" tal:condition="not:m/core_method_url">not linked</span>
           </td>
-          <td>
-            <a class="btn-sm btn-secondary" tal:condition="m/core_method_url"
-               tal:attributes="href m/core_method_url"
-               title="Open the core SENAITE Method record">Open</a>
-          </td>
           <td class="mp-rev" tal:define="rv m/revision">
             <tal:i condition="rv/rev"><strong tal:content="string:Rev ${rv/rev}">Rev 3</strong>
               <div class="desc" tal:content="rv/issued_at">2026-10-02</div></tal:i>
@@ -74,19 +67,26 @@
             <span class="sur-tag sur-nocore" tal:condition="python:rv['rev'] and rv['unissued']"
                   title="Settings changed since this revision was issued">unissued changes</span>
           </td>
-          <td tal:define="rv m/revision">
-            <a class="btn-sm btn-secondary" tal:condition="rv/rev"
-               tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;rev=${rv/rev}"
-               title="The issued PDF of this revision">Print</a>
-            <a class="btn-sm btn-secondary" tal:condition="not:rv/rev"
-               tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;format=pdf"
-               title="No revision issued yet: a draft PDF of the current settings">Print draft</a>
-          </td>
-          <td class="mp-actions">
-            <a class="btn btn-primary"
-               tal:attributes="href string:@@pfas-method-profile-edit?method_id=${m/method_id}">
-              Edit
-            </a>
+          <!-- Edit, and More for the rest; Issue revision stays in view while
+               there are unissued changes. -->
+          <td class="row-actions-cell" tal:define="rv m/revision">
+           <div class="row-actions">
+            <a class="btn-sm btn-primary"
+               tal:attributes="href string:@@pfas-method-profile-edit?method_id=${m/method_id}">Edit</a>
+            <details class="row-more">
+              <summary class="btn-sm" title="Print the settings, open the SENAITE method">More &#9662;</summary>
+              <div class="row-more-menu">
+                <a class="btn-sm" tal:condition="rv/rev"
+                   tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;rev=${rv/rev}"
+                   title="The issued PDF of this revision">Print revision</a>
+                <a class="btn-sm" tal:condition="not:rv/rev"
+                   tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;format=pdf"
+                   title="No revision issued yet: a draft PDF of the current settings">Print draft</a>
+                <a class="btn-sm" tal:condition="m/core_method_url"
+                   tal:attributes="href m/core_method_url"
+                   title="Open the core SENAITE Method record">SENAITE method</a>
+              </div>
+            </details>
             <details class="mp-issue" tal:condition="m/revision/unissued">
               <summary class="btn-sm btn-secondary">Issue revision</summary>
               <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-settings-report">
@@ -96,6 +96,7 @@
                 <button type="submit" class="btn-sm btn-primary">Issue</button>
               </form>
             </details>
+           </div>
           </td>
         </tr>
       </tbody>

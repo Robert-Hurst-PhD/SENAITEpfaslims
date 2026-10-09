@@ -787,6 +787,15 @@
       handler=".data_review.on_after_transition"
       />
 
+  <!-- Core's front page: a signed-in client opens the tracker, not core's
+       client sample list (workspace_home.front_page_for) -->
+  <adapter
+      for="*"
+      provides="bika.lims.interfaces.IFrontPageAdapter"
+      factory=".workspace_home.PFASFrontPage"
+      name="senaite.pfas.front-page"
+      />
+
   <!-- Role-aware workspace launcher — redirects to the user's default workspace -->
   <browser:page
       name="pfas-home"

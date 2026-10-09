@@ -239,29 +239,24 @@
           preset periods assigned when a reagent/standard has no stated expiry
         </span>
       </summary>
-      <form method="post" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;">
+      <form method="post">
         <input type="hidden" name="action" value="save_expiry_defaults"/>
-        <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
-          Reagent (from receipt, days)
-          <input type="number" name="reagent_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
-                 tal:attributes="value ed/reagent_default_days"/></label>
-        <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
-          Mobile phase (from opening, days)
-          <input type="number" name="mobile_phase_open_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
-                 tal:attributes="value ed/mobile_phase_open_days"/></label>
-        <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
-          Other opened (days)
-          <input type="number" name="opened_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
-                 tal:attributes="value ed/opened_default_days"/></label>
-        <label style="font-size:var(--fs-xs);color:var(--s-secondary);display:flex;flex-direction:column;gap:2px;">
-          Prepared standard (from prep, days)
-          <input type="number" name="prepared_std_default_days" min="1" style="width:110px;padding:5px;border:1px solid var(--s-border);border-radius:4px;"
-                 tal:attributes="value ed/prepared_std_default_days"/></label>
-        <button class="btn btn-primary" type="submit">Save Defaults</button>
-        <span style="font-size:var(--fs-xs);color:var(--s-secondary);max-width:340px;">
-          In-house preps also inherit a parent lot's expiry when it is tighter
-          than their own.
-        </span>
+        <div class="field-grid page-body-narrow">
+          <label>Reagent (from receipt, days)
+            <input type="number" name="reagent_default_days" min="1"
+                   tal:attributes="value ed/reagent_default_days"/></label>
+          <label>Mobile phase (from opening, days)
+            <input type="number" name="mobile_phase_open_days" min="1"
+                   tal:attributes="value ed/mobile_phase_open_days"/></label>
+          <label>Other opened (days)
+            <input type="number" name="opened_default_days" min="1"
+                   tal:attributes="value ed/opened_default_days"/></label>
+          <label>Prepared standard (from prep, days)
+            <input type="number" name="prepared_std_default_days" min="1"
+                   tal:attributes="value ed/prepared_std_default_days"/></label>
+        </div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit">Save defaults</button>
+          <tal:h define="hid string:expiry-defaults"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></div>
       </form>
     </details>
 
@@ -350,17 +345,16 @@
           <td class="rg-cat" tal:content="python:rg.get('cat_number','')"></td>
           <td class="rg-lot" tal:content="python:rg.get('lot_number','')"></td>
           <td tal:content="python:rg.get('supplier','')"></td>
-          <td tal:content="python:rg.get('received_date','')"></td>
-          <td tal:attributes="class python:'exp-cell ' + view.expiry_class(rg)"
+          <td class="cell-nowrap" tal:content="python:rg.get('received_date','')"></td>
+          <td tal:attributes="class python:'cell-nowrap exp-cell ' + view.expiry_class(rg)"
               tal:content="python:view.effective_expiry(rg)"></td>
-          <td tal:content="python:(rg.get('quantity') or '') + ' ' + (rg.get('unit') or '')"></td>
+          <td class="cell-nowrap" tal:content="python:(rg.get('quantity') or '') + ' ' + (rg.get('unit') or '')"></td>
           <td>
             <span tal:attributes="class python:'badge ' + view.status_badge_class(rg)"
                   tal:content="python:view.status_label(rg)"></span>
           </td>
-          <!-- The same four controls on every row, in the same place
-               : Edit, Where used, the CoA, and
-               More for what changes the lot's state. -->
+          <!-- Edit, and More for everything else. A lot with no CoA keeps
+               Upload CoA in view: the missing certificate is a gap. -->
           <td class="row-actions-cell"
               tal:define="rg_uid python:rg.get('uid','');
                           coa python:view.coa_meta(rg_uid);
@@ -368,10 +362,6 @@
            <div class="row-actions">
             <button type="button" class="btn-sm rg-edit-btn" title="Edit this lot's details"
                     tal:attributes="data-rg python:__import__('json').dumps(rg)">Edit</button>
-            <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
-               tal:attributes="href python:'%s/@@pfas-lot-usage?kind=reagent&amp;uid=%s' % (view.portal_url(), rg_uid)">Where used</a>
-            <a tal:condition="coa" class="btn-sm" target="_blank" title="Open the certificate of analysis"
-               tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${rg_uid}">View CoA</a>
             <button tal:condition="not:coa" type="button" class="btn-sm open-coa-modal"
                     title="Attach the supplier's certificate of analysis"
                     tal:attributes="data-uid rg_uid; data-name python:rg.get('name','');
@@ -379,8 +369,12 @@
                                     data-lot python:rg.get('lot_number','');
                                     data-tab string:find">Upload CoA</button>
             <details class="row-more">
-              <summary class="btn-sm" title="Print a label, open, replace the CoA, archive">More &#9662;</summary>
+              <summary class="btn-sm" title="Where used, the CoA, a label, open, archive">More &#9662;</summary>
               <div class="row-more-menu">
+                <a class="btn-sm" title="Every batch and stage that used this lot"
+                   tal:attributes="href python:'%s/@@pfas-lot-usage?kind=reagent&amp;uid=%s' % (view.portal_url(), rg_uid)">Where used</a>
+                <a tal:condition="coa" class="btn-sm" target="_blank" title="Open the certificate of analysis"
+                   tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${rg_uid}">View CoA</a>
                 <a class="btn-sm" target="_blank" title="Print a label for this lot (the issued label template, or the built-in layout)"
                    tal:attributes="href python:view.label_url(rg)">Print label</a>
                 <a class="btn-sm" title="The levels a matrix blank made from this lot is shown against"
@@ -536,7 +530,7 @@
 
           <div class="form-row">
             <div class="form-field full">
-              <label>Reagent Name <span style="color: var(--s-danger-dk)">*</span></label>
+              <label>Reagent name <span style="color: var(--s-danger-dk)">*</span></label>
               <div class="af-wrap">
                 <input type="text" name="name" id="f-name" required="required"
                        placeholder="e.g. Methanol, LC-MS Grade"
@@ -570,12 +564,12 @@
 
           <div class="form-row">
             <div class="form-field">
-              <label>Catalog Number</label>
+              <label>Catalog number</label>
               <input type="text" name="cat_number" id="f-cat"
                      placeholder="e.g. A456-4" />
             </div>
             <div class="form-field">
-              <label>Lot Number <span style="color: var(--s-danger-dk)">*</span></label>
+              <label>Lot number <span style="color: var(--s-danger-dk)">*</span></label>
               <div class="lot-scan-row">
                 <input type="text" name="lot_number" id="f-lot" required="required"
                        placeholder="Scan or type lot #" />
@@ -588,11 +582,11 @@
 
           <div class="form-row">
             <div class="form-field">
-              <label>Received Date</label>
+              <label>Received date</label>
               <input type="date" name="received_date" id="f-received" />
             </div>
             <div class="form-field">
-              <label>Manufacturer Expiry (from label)</label>
+              <label>Manufacturer expiry (from label)</label>
               <input type="date" name="manufacturer_expiry" id="f-mfr-expiry" />
               <p class="field-hint">Leave blank to auto-calculate from open date</p>
             </div>
@@ -600,12 +594,12 @@
 
           <div class="form-row">
             <div class="form-field">
-              <label>Opened Date</label>
+              <label>Opened date</label>
               <input type="date" name="opened_date" id="f-opened"
                      onchange="calcAutoExpiry()" />
             </div>
             <div class="form-field">
-              <label>Calculated Expiry (from open date)</label>
+              <label>Calculated expiry (from open date)</label>
               <input type="date" name="expiry_date" id="f-expiry" />
               <p class="field-hint" id="expiry-hint"></p>
             </div>
@@ -613,7 +607,7 @@
 
           <div class="form-row">
             <div class="form-field">
-              <label>Storage Location</label>
+              <label>Storage location</label>
               <!-- core Storage Locations (core_lists.py) -->
               <select name="storage_location" id="f-location">
                 <option value="">Choose a location</option>

@@ -43,7 +43,7 @@
     <div class="coa-att-title">
       <span i18n:translate="">Certificate authorization &mdash; controlled record</span>
       <span tal:condition="view/meta/report_id"
-            style="float:right; font-family:monospace; font-weight:600;">
+            style="float:right; font-family:var(--font-mono, monospace); font-weight:600;">
         <span tal:content="view/meta/report_id"></span>
       </span>
     </div>

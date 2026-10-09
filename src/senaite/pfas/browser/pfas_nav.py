@@ -8,7 +8,7 @@ from plone.app.layout.viewlets.common import ViewletBase
 from Products.CMFCore.utils import getToolByName
 
 from senaite.pfas.browser.sample_status import _compute_stage, STAGES
-from senaite.pfas.tracking_store import get_tracking_by_ar_uid
+from senaite.pfas.tracking_store import tracking_for
 from senaite.pfas.browser.formutil import flatten_form
 
 
@@ -188,10 +188,10 @@ class PFASARTrackerTabView(BrowserView):
 
     def tracker_info(self):
         ar = self.context
-        ar_uid = ar.UID()
         portal_tool = getToolByName(ar, 'portal_url')
         portal = portal_tool.getPortalObject()
-        tracking_number = get_tracking_by_ar_uid(portal, ar_uid)
+        # a retest shares the slip of the sample it re-analyses
+        tracking_number, holder = tracking_for(portal, ar)
         tracker_url = ''
         if tracking_number:
             tracker_url = '{0}/@@pfas-track?t={1}'.format(
@@ -200,4 +200,5 @@ class PFASARTrackerTabView(BrowserView):
             'tracking_number': tracking_number or '',
             'tracker_url':     tracker_url,
             'ar_id':           ar.getId(),
+            'held_by':         holder.getId() if holder is not None and holder.UID() != ar.UID() else '',
         }

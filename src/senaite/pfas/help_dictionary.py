@@ -76,7 +76,7 @@ _TAB = {
                     "specifications", "qualified-release", "judged-value", "method-studies"),
     "Bench and extraction": ("extraction-batch", "guided-extraction", "traceability", "dilution", "logbooks",
                              "equipment-types", "balance-before-weighing", "homogenisation", "coc",
-                             "temperature-study"),
+                             "temperature-study", "expiry-defaults"),
     "Instrument runs": ("calibration-decision", "ccv-bracketing", "sequence-export", "import-profiles",
                         "manual-integration", "identity-confirmation", "reprocess"),
     "Review and release": ("data-review", "qc-standards-table", "publishing-holds", "method-identified"),
@@ -478,6 +478,18 @@ ENTRIES = [
      "lists": ["doc_categories"],
      "effects": [
          ("Required parts checked when issuing", P + "document_templates.py", "def validate(kind, template)"),
+     ]},
+    {"id": "expiry-defaults", "term": "Expiry defaults",
+     "text": "The shelf life given to a lot whose label states no expiry: a reagent from "
+             "its receipt, a mobile phase and any other container from its opening, a "
+             "prepared standard from its preparation. An in-house preparation also takes "
+             "a parent lot's expiry when that is earlier than its own.",
+     "where": [("Reagent Inventory", "@@pfas-reagents")],
+     "who": "config",
+     "effects": [
+         ("A lot without a stated expiry", P + "browser/reagents.py", "reagent_default_days"),
+         ("A preparation inherits an earlier parent expiry", P + "browser/prepared_standards.py",
+          "expiry_inherited_from"),
      ]},
     {"id": "logbooks", "term": "Logbooks",
      "text": "Templates are the versioned logbook forms, numbered FM-ENV-001 onwards. A "

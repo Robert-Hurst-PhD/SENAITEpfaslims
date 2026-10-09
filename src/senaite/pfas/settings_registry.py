@@ -387,8 +387,13 @@ def describe(portal, key, _data=None):
         return row
     if s.storage == STORAGE_LINKED:
         described = _describe_linked(portal, s)
+        source = described["source"]
+        if (source == "seed" and described["seed"] is None
+                and described["value"] in (None, u"")):
+            source = "unset"        # a default with no default value is unset
         row.update(value=described["value"], seed=described["seed"],
-                   source=described["source"],
+                   has_seed=described["seed"] is not None,
+                   source=source,
                    customised=described["customised"])
         return row
     overrides = (_data if _data is not None else _load(portal)).get(

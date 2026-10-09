@@ -592,6 +592,50 @@
          tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'coc' else 'dr-tab-pane'"
          tal:condition="python: view.active_tab() == 'coc'">
 
+      <!-- a study run: no chain of custody; the study's matrix source instead -->
+      <tal:study tal:condition="view/study_run"><tal:d tal:define="chk view/study_source_check; d python:chk[3]">
+        <div class="coc-summary">
+          <div class="coc-field">
+            <span class="coc-label">Method study</span>
+            <span class="coc-value" tal:content="string:${d/study} part ${d/part}">MS-0001 part P1</span>
+          </div>
+          <div class="coc-field">
+            <span class="coc-label">Matrix source</span>
+            <span class="coc-value" tal:content="d/source_label">In-house reagent water system</span>
+          </div>
+          <div class="coc-field">
+            <span class="coc-label" tal:content="python:chk[0]">Reference sample receipt</span>
+            <span tal:attributes="class python:'coc-value coc-bool-ok' if chk[1] == 'pass' else 'coc-value coc-bool-fail'"
+                  tal:content="python:u'Pass' if chk[1] == 'pass' else chk[2]">Pass</span>
+          </div>
+          <div class="coc-field">
+            <span class="coc-label">Extraction date</span>
+            <span class="coc-value" tal:content="python:d['use_date'] or u'not recorded'">date</span>
+          </div>
+          <div class="coc-field" tal:condition="d/water_check">
+            <span class="coc-label">Reagent-water check</span>
+            <span class="coc-value" tal:content="python:u'%s %s by %s: %s' % (d['water_check'].get('log_date'), d['water_check'].get('log_time'), d['water_check'].get('operator'), u'passed' if d['water_check'].get('passed') else u'FAILED')">passed</span>
+          </div>
+          <div class="coc-field" tal:condition="d/lot">
+            <span class="coc-label">Lot</span>
+            <span class="coc-value" tal:content="python:u'%s %s, received %s, expires %s' % (d['lot'].get('name'), d['lot'].get('lot_number'), d['lot'].get('received') or u'\u2014', d['lot'].get('expiry') or u'\u2014')">lot</span>
+          </div>
+          <div class="coc-field" tal:condition="d/receipt">
+            <span class="coc-label">Receipt</span>
+            <span class="coc-value" tal:content="python:u'%s; %s; %s' % (d['receipt'].get('received_by'), d['receipt'].get('condition'), d['receipt'].get('provider_ref') or u'')">receipt</span>
+          </div>
+        </div>
+        <div>
+          <a class="btn-sm btn-secondary" tal:condition="python:d['source'].get('kind') == 'reference_lot'"
+             tal:attributes="href string:${view/portal_url}/@@pfas-method-studies#rm-${d/source/uid}">Receipt record</a>
+          <a class="btn-sm btn-secondary" target="_blank" tal:condition="d/coa"
+             tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${d/source/uid}">View CoA</a>
+          <a class="btn-sm btn-secondary" tal:condition="d/study"
+             tal:attributes="href string:${view/portal_url}/@@pfas-method-studies?id=${d/study}">Open study</a>
+        </div>
+      </tal:d></tal:study>
+
+      <tal:routine tal:condition="not:view/study_run">
       <a class="btn-sm btn-secondary" target="_blank"
          tal:attributes="href string:${view/batch_url}/@@pfas-coc-document">Print CoC</a>
       <table class="pfas-table" tal:define="crs python:(view.coc_summary() or {}).get('records')" tal:condition="crs">
@@ -712,6 +756,7 @@
           </form>
         </tal:coc_check_btn>
       </div>
+      </tal:routine>
 
       <!-- ── Corrections (ISO 17025: initialed + dated, old value preserved) ── -->
       <div class="tree-section" style="margin-top:26px;">
@@ -1122,43 +1167,9 @@
             </div>
             <!-- extracted QC and the instrument's, each its own table;
                  citations keep one number across both -->
-            <section class="qv-group" tal:repeat="g qc/groups">
-              <h3 class="qv-group-title" tal:content="g/title">Extracted QC</h3>
-              <div class="qc-matrix-wrap">
-                <table class="qc-matrix">
-                  <thead>
-                    <tr>
-                      <th>Analyte</th>
-                      <th tal:repeat="col g/columns">
-                        <span tal:replace="col/key">LFSM</span>
-                        <span class="qv-unit" tal:condition="col/unit" tal:content="col/unit">%</span><sup class="qv-cite"
-                             tal:condition="col/notes" tal:content="python:u','.join(str(n) for n in col['notes'])">1</sup>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr tal:repeat="row g/rows">
-                      <td class="qv-analyte" tal:content="row/analyte">analyte</td>
-                      <td tal:repeat="col g/columns">
-                        <tal:c tal:define="d python:row['display'].get(col['key'])">
-                          <tal:d tal:condition="d">
-                            <span tal:attributes="class string:qv ${d/cls}; title d/tip; aria-label d/tip"
-                                  tal:content="d/text">98</span><sup class="qv-cite"
-                                 tal:condition="d/notes" tal:content="python:u','.join(str(n) for n in d['notes'])">2</sup>
-                            <span class="qv-n" tal:condition="python:d['n'] > 1" tal:content="python:u'\u00d7%d' % d['n']">x2</span>
-                          </tal:d>
-                          <span class="qc-cell-na" tal:condition="not:d">&#8212;</span>
-                        </tal:c>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <ol class="qv-notes" tal:condition="g/notes">
-                <li tal:repeat="n g/notes" tal:attributes="value python:n[0]"
-                    tal:content="python:u'%s (%s method profile)' % (n[1], view.batch_method() or u'the')">LFSM recovery 70-130 %</li>
-              </ol>
-            </section>
+            <tal:g tal:repeat="qv_group qc/groups"><tal:m tal:define="qv_method view/batch_method">
+              <metal:m use-macro="context/@@pfas-macros/macros/qc_values" />
+            </tal:m></tal:g>
           </tal:has_rows>
 
           <tal:no_rows tal:condition="not:qc/rows|nothing">
@@ -1223,7 +1234,7 @@
         <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
         <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/ml-matrix-6.12.1.umd.js"></script>
         <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=1"></script>
-        <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=3"></script>
+        <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=4"></script>
         <script>renderAll(CAL_RUNS);</script>
         <div id="pfas-cal-modal" class="cal-detail-modal"
              onclick="if(event.target===this)this.classList.remove('open')">
@@ -1286,7 +1297,7 @@
          tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'spike_qc' else 'dr-tab-pane'"
          tal:condition="python: view.active_tab() == 'spike_qc'">
       <tal:sq tal:define="page view/spike_qc_page">
-        <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:760px;">Spike recoveries and duplicate RPDs per analyte, judged against this method&#8217;s windows (shown in each header). <tal:h define="hid string:judged-value"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+        <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:760px;">Spike recoveries and RPDs, coloured by verdict; windows cited below. <tal:h define="hid string:judged-value"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
         <!-- A spike that was run but has no recorded level cannot be
              evaluated. Ask for the value rather than skipping it. -->
         <div class="tree-warn-box" tal:condition="page/pending_spikes"
@@ -1330,51 +1341,19 @@
         </div>
 
         <div class="tree-warn-box"
-             tal:condition="python:not page['types'] and not page['pending_spikes']">
+             tal:condition="python:not page['groups'] and not page['pending_spikes']">
           No spike QC results for this worksheet yet.
         </div>
-        <div class="qc-matrix-wrap" tal:condition="page/types">
-          <table class="qc-matrix">
-            <thead>
-              <tr>
-                <th>Analyte</th>
-                <tal:th tal:repeat="t page/types">
-                  <th tal:define="sp python:page['specs'].get(t, {})">
-                    <span tal:content="t">LFSM</span>
-                    <div style="font-weight:400;font-size:var(--fs-xs);text-transform:none;">
-                      <tal:r tal:condition="python:sp.get('recovery_min') is not None">
-                        <tal:x tal:content="sp/recovery_min">80</tal:x>&#8211;<tal:y tal:content="sp/recovery_max">120</tal:y>%</tal:r>
-                      <tal:rp tal:condition="python:sp.get('rpd_max') is not None">
-                        RPD&#8804;<tal:z tal:content="sp/rpd_max">20</tal:z>%</tal:rp>
-                      <span tal:condition="sp/required" title="required every run"
-                            style="color:var(--s-warn-text);">&#9733;</span>
-                    </div>
-                  </th>
-                </tal:th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr tal:repeat="row page/rows">
-                <td tal:content="row/analyte">PFOA</td>
-                <tal:c tal:repeat="t page/types">
-                  <td tal:define="cell python:row['cells'].get(t)">
-                    <tal:has tal:condition="cell">
-                      <span tal:attributes="class python:'qc-cell-'+(cell.get('status') or 'na')"
-                            tal:content="python:cell.get('badge','')">PASS</span>
-                      <tal:v tal:condition="cell/values|nothing"
-                             tal:repeat="v cell/values">
-                        <div style="font-size:var(--fs-xs);color:var(--s-secondary);"
-                             tal:condition="v/recovery|nothing"
-                             tal:content="python:'%.0f%%' % v['recovery']">96%</div>
-                      </tal:v>
-                    </tal:has>
-                    <span tal:condition="not:cell" class="qc-cell-na">&#8212;</span>
-                  </td>
-                </tal:c>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <tal:has tal:condition="page/groups">
+          <div class="qv-legend">
+            <span class="qv qv-pass">Pass</span><span class="qv qv-review">Review</span><span class="qv qv-fail">Fail</span>
+          </div>
+          <p class="hint" tal:define="req python:[t for t in page['types'] if page['specs'][t]['required']]"
+             tal:condition="req">Required every run: <span tal:replace="python:u', '.join(req)">LFSM</span></p>
+          <tal:g tal:repeat="qv_group page/groups"><tal:m tal:define="qv_method view/batch_method">
+            <metal:m use-macro="context/@@pfas-macros/macros/qc_values" />
+          </tal:m></tal:g>
+        </tal:has>
       </tal:sq>
     </div><!-- /spike_qc -->
 
@@ -1458,7 +1437,8 @@
                     <td tal:content="row/sample_type|string:—">—</td>
                     <td style="font-weight:600;" tal:content="row/analyte">analyte</td>
                     <td tal:content="row/qualifier|string:">—</td>
-                    <td tal:attributes="title row/qc_reasons|nothing" tal:content="row/qc_codes|string:">M</td>
+                    <td><tal:c tal:define="qv_cell row/qc_cell|nothing" tal:condition="qv_cell"><metal:m
+                        use-macro="context/@@pfas-macros/macros/qc_value" /></tal:c></td>
                     <td tal:content="row/result|string:—">—</td>
                     <td tal:content="row/unit|string:—">—</td>
                     <td><span class="cl-badge cl-auto" style="font-size:var(--fs-xs);"

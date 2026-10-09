@@ -175,3 +175,10 @@
   --frame-gutter-y:   16px;
   --form-width:       960px;   /* the one narrow width for reading/form pages */
 }
+
+/* ── Form controls take the type scale (core and PFAS pages) ─────────────
+   Browsers draw a control with no size of its own at 13.33px, so unsized
+   buttons and inputs sat between the scale's steps. :where() keeps this at
+   zero specificity: any class that sizes a control still wins. */
+:where(button, input, select, textarea) { font-size: var(--fs-base); }
+:where(code, pre, kbd, samp) { font-family: var(--font-mono); }

@@ -60,7 +60,7 @@
                  box-shadow:0 8px 32px rgba(0,0,0,.2); }
     .sop-modal h3 { margin:0 0 16px; font-size:var(--fs-lg); color:var(--s-body); }
     .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:12px; }
-    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); text-transform:uppercase; }
+    .fld label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body); }
     .fld input,.fld select,.fld textarea {
       padding:7px 9px; font-size:var(--fs-base); border:1px solid var(--s-input-border);
       border-radius:4px; }
@@ -428,7 +428,7 @@
             <input type="text" name="title" id="sopTitle" placeholder="e.g. PFAS Extraction Procedure"/>
           </div>
           <div class="fld">
-            <label>Document Type</label>
+            <label>Document type</label>
             <select name="doc_type">
               <tal:each tal:repeat="dt doc_types">
                 <option tal:attributes="value dt/code; selected dt/is_default"
@@ -454,12 +454,12 @@
           <textarea name="description" placeholder="Brief description of this document's scope"></textarea>
         </div>
         <div class="fld">
-          <label>Release Notes</label>
+          <label>Release notes</label>
           <textarea name="release_notes"
                     placeholder="What changed in this revision?"></textarea>
         </div>
         <div class="fld">
-          <label>Document File * (PDF only)</label>
+          <label>Document file * (PDF only)</label>
           <input type="file" name="sop_file" accept=".pdf,application/pdf" required/>
         </div>
         <div class="modal-actions">

@@ -58,21 +58,20 @@
 
     <!-- Has tracking number -->
     <tal:hasnum tal:condition="info/tracking_number">
-      <div style="font-size:var(--fs-sm);color:#616161;">Tracking number</div>
+      <div style="font-size:var(--fs-sm);color:#616161;">Tracking number<tal:h tal:condition="info/held_by">
+        (the slip of <span tal:replace="info/held_by">DW-0012</span>, re-analysed here)</tal:h></div>
       <div class="pfas-tracking-number" tal:content="info/tracking_number">
         PF-260611-A3K9
       </div>
       <div class="pfas-tracker-links">
         <a class="btn-sm btn-secondary" tal:attributes="href info/tracker_url" target="_blank">Open client tracker &#8599;</a>
-        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-receipt?ar_id=${info/ar_id}">Print receipt</a>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-receipt?t=${info/tracking_number}">Print receipt</a>
       </div>
     </tal:hasnum>
 
     <!-- No tracking number yet -->
     <div class="pfas-no-tracking" tal:condition="not:info/tracking_number">
-      No tracking number assigned yet.
-      Tracking numbers are generated automatically when the sample is received
-      (workflow transition: <em>receive</em>).
+      No tracking number yet: one is issued when the sample is received.
     </div>
   </div>
 

@@ -41,6 +41,10 @@ DIGITAL, PAPER = u"digital", u"paper"
 FIELD_QC_TYPES = (u"Field reagent blank", u"Field duplicate", u"Trip blank")
 # each one's QC code, which an EDD profile translates into its format's code
 FIELD_QC_CODES = {u"Field reagent blank": "FB", u"Field duplicate": "FD", u"Trip blank": "TB"}
+# each one's role for the pipeline worker: FRB and TB are judged as blanks
+# (each against its own limit), FD is left out of a CCV count that counts
+# field samples only
+WORKER_FIELD_QC = {u"Field reagent blank": "FRB", u"Field duplicate": "FD", u"Trip blank": "TB"}
 
 _NUMBER = re.compile(r"^COC-(\d{4})-(\d{4,})$")
 

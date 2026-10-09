@@ -82,7 +82,11 @@ class PFASExtractionBatchView(BrowserView):
 
     def matrix(self):
         mats = [s["matrix"] for s in self.samples() if s.get("matrix")]
-        return max(set(mats), key=mats.count) if mats else u""
+        if mats:
+            return max(set(mats), key=mats.count)
+        # a study worksheet holds no sample: its matrix is the study's
+        from senaite.pfas import study_runs
+        return (study_runs.load_run(self.context) or {}).get("matrix") or u""
 
     def unit(self):
         from senaite.pfas.calibration_levels import matrix_unit

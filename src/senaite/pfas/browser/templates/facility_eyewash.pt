@@ -48,7 +48,7 @@
           <input type="date" name="log_date" id="ewDate" required/></div>
         <div class="fld"><label>Time</label>
           <input type="time" name="log_time" id="ewTime"/></div>
-        <div class="fld"><label>Operator Initials *</label>
+        <div class="fld"><label>Operator initials *</label>
           <input type="text" name="operator" maxlength="10" required/></div>
       </div>
       <div class="fld-row">
@@ -60,7 +60,7 @@
           </select>
         </div>
         <div class="fld">
-          <label>Flush Water Temp (&deg;C)
+          <label>Flush water temp (&deg;C)
             <small style="color:var(--s-secondary)">15–25°C required</small>
           </label>
           <input type="number" step="0.1" name="temperature"
@@ -68,7 +68,7 @@
         </div>
       </div>
       <div class="fld-row">
-        <div class="fld" style="flex:3"><label>Notes / Corrective Action</label>
+        <div class="fld" style="flex:3"><label>Notes / corrective action</label>
           <input type="text" name="notes"/></div>
       </div>
       <button type="submit" class="btn btn-primary">

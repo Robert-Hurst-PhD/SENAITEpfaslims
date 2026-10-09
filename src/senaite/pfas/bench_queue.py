@@ -99,9 +99,11 @@ def inventory_alerts(items, today, soon_days=30):
 
 
 def _expired(it, today):
+    """`today` may be a date or an ISO date string (callers pass both)."""
+    today = _date(today) if not hasattr(today, "toordinal") else today
     exp = _date(it.get("expiry"))
     return (it.get("status") or u"").lower() == u"expired" or (
-        exp is not None and exp < today)
+        exp is not None and today is not None and exp < today)
 
 
 def is_usable(item, today):

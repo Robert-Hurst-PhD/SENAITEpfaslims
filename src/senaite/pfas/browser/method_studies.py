@@ -8,8 +8,10 @@ the results, writes the study's MDL / RL to the method profile (recorded in
 configuration history with the study as its source) and freezes the packet
 PDF under /data/qc/studies/.
 
-Staff create studies and exclude results with a reason; approval is
-manager tier (perms.TIER_CONFIG).
+Staff create studies and exclude results with a reason; approval and
+assigning a study's parts to analysts (study_runs: one worksheet per part)
+are manager tier (perms.TIER_CONFIG). A reference sample's receipt is
+recorded here by any staff member, beside its CoA.
 """
 from __future__ import absolute_import, unicode_literals
 
@@ -23,12 +25,15 @@ from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas import study_data as sd
 from senaite.pfas import study_records as sr
+from senaite.pfas import study_runs as sru
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action, is_staff, refuse
 
 logger = logging.getLogger("senaite.pfas.browser.method_studies")
 
-GATES = {"approve": TIER_CONFIG}
+GATES = {"approve": TIER_CONFIG, "assign": TIER_CONFIG}
+# reagent categories never offered as purchased reagent water
+NOT_WATER = (u"Consumable", u"Internal Standard", u"Salt", u"Acid / Base", u"Buffer")
 QC_DB = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 PDF_DIR = os.path.join(os.path.dirname(QC_DB), "studies")
 
@@ -79,6 +84,10 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self._save_pt()
             elif action == "approve":
                 self._approve()
+            elif action == "assign":
+                self._assign()
+            elif action == "receipt":
+                self._receipt()
         return self.template()
 
     # ── identity ───────────────────────────────────────────────────────────
@@ -167,7 +176,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                                            matrix=rec["matrix"])
                 else:
                     spikes = sd.injections(conn, rec["method"], ["LFB"],
-                                           batches=rec.get("worksheets") or [u"-"])
+                                           batches=sru.study_worksheets(rec) or [u"-"])
             finally:
                 conn.close()
             # runs that passed technical review only: an
@@ -214,16 +223,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
 
     def reference_lots(self):
         """Usable reference-material lots (the inventory's own category)."""
-        if not hasattr(self, "_rm_lots"):
-            from senaite.pfas.browser.bench_inventory import REAGENT, usable_lots
-            from senaite.pfas.content.reagent import CATEGORY_REFERENCE
-            try:
-                lots = usable_lots(self.portal(), date.today().isoformat())
-            except Exception:                                # noqa: BLE001
-                lots = []
-            self._rm_lots = [l for l in lots if l.get("kind") == REAGENT
-                             and l.get("category") == CATEGORY_REFERENCE]
-        return self._rm_lots
+        return self.lot_options(sru.REFERENCE_LOT)
 
     def pt_analytes(self):
         rec = self.record() or {}
@@ -277,6 +277,173 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         if isinstance(v, float):
             return u"%.4g" % v
         return u"%s" % v
+
+    # ── parts, assigned to analysts ───────────────────────────────────────
+    def elements(self):
+        rec = self.record() or {}
+        return sru.elements_for(rec.get("kind"))
+
+    def element_label(self, element):
+        return (sru.ELEMENT.get(element) or (None, element))[1]
+
+    def sources(self):
+        return sru.SOURCES
+
+    def source_label(self, kind):
+        return sru.SOURCE_LABELS.get(kind, kind)
+
+    def source_text(self, source):
+        return sru.source_text(source)
+
+    def analysts(self):
+        """[(user id, full name)] -- the people core offers as a worksheet's
+        Analyst."""
+        if not hasattr(self, "_analysts"):
+            from bika.lims.utils import getUsers
+            try:
+                users = getUsers(self.context, ["Manager", "LabManager", "Analyst"], allow_empty=False)
+                self._analysts = [(k, users.getValue(k)) for k in users.keys()]
+            except Exception:                                # noqa: BLE001
+                logger.exception("analysts")
+                self._analysts = []
+        return self._analysts
+
+    def _usable(self):
+        if not hasattr(self, "_usable_lots"):
+            from senaite.pfas.browser.bench_inventory import usable_lots
+            try:
+                self._usable_lots = usable_lots(self.portal(), date.today().isoformat())
+            except Exception:                                # noqa: BLE001
+                logger.exception("usable lots")
+                self._usable_lots = []
+        return self._usable_lots
+
+    def lot_options(self, kind):
+        """The usable lots a source of `kind` may name."""
+        from senaite.pfas.content.reagent import CATEGORY_INHOUSE_WATER, CATEGORY_REFERENCE
+        return sru.lot_choices(self._usable(), kind, CATEGORY_REFERENCE,
+                               NOT_WATER + (CATEGORY_INHOUSE_WATER,))
+
+    def all_worksheets(self):
+        return sru.study_worksheets(self.record() or {})
+
+    def parts(self):
+        return (self.record() or {}).get("parts") or []
+
+    def can_assign(self):
+        rec = self.record() or {}
+        return bool(self.can_configure() and rec.get("status") == sr.DRAFT and self.elements())
+
+    def worksheet_url(self, ws_id):
+        from bika.lims import api
+        for b in api.get_tool("senaite_catalog_worksheet")(portal_type="Worksheet", id=ws_id):
+            return b.getURL()
+        return u""
+
+    def _assign(self):
+        """One part of the study, given to one analyst, as one worksheet."""
+        f = self.request.form
+        rec = self.record()
+        if rec is None:
+            self.error = u"No such study."
+            return
+        analyst = (f.get("analyst") or u"").strip()
+        names = dict(self.analysts())
+        if analyst and analyst not in names:
+            self.error = u"%s is not one of the lab's analysts." % analyst
+            return
+        kind = f.get("source_kind") or u""
+        source = {"kind": kind}
+        if kind and kind != sru.WATER_SYSTEM:
+            uid = (f.get("source_lot.%s" % kind) or u"").strip()
+            lot = dict((l["uid"], l) for l in self.lot_options(kind)).get(uid)
+            if uid and lot is None:
+                self.error = u"That lot cannot be used today (expired, quarantined or not this kind)."
+                return
+            if lot is not None:
+                source.update(uid=uid, name=lot.get("name") or u"", lot_number=lot.get("lot_number") or u"")
+        part, self.error = sru.new_part(rec, f.get("element") or u"", analyst, names.get(analyst),
+                                        f.get("level"), f.get("replicates"), source, _user(), _now())
+        if self.error:
+            return
+        ws = self._make_worksheet(rec, part)
+        part["worksheets"].append(ws.getId())
+        rec.setdefault("parts", []).append(part)
+        sru.add_reference(rec, source)
+        sr.save(self.portal(), self.records())
+        self.message = u"%s assigned to %s as %s." % (part["id"], part["analyst_name"], ws.getId())
+
+    def _make_worksheet(self, rec, part):
+        """The part's worksheet: its Analyst, its method, the study run record
+        and the extraction batch holding the part's replicates."""
+        from bika.lims import api
+        from senaite.pfas import extraction_batch as eb
+        from senaite.pfas.method_bridge import get_core_method
+        ws = api.create(self.portal().worksheets, "Worksheet")
+        ws.setAnalyst(part["analyst"])
+        method = get_core_method(self.portal(), rec["method"])
+        if method is not None:
+            ws.setMethod(method)
+        sru.save_run(ws, sru.run_record(rec, part))
+        members = eb.populate([], sru.plan(part, rec["method"]), ws.getId(), _user(), _now())
+        eb.save(ws, sru.set_levels(members, part))
+        ws.reindexObject()
+        return ws
+
+    # ── reference samples: receipt and CoA ─────────────────────────────────
+    def reference_samples(self):
+        """Every usable reference-sample lot with its receipt and CoA."""
+        from senaite.pfas.browser.reagents import _get_coa_meta
+        out = []
+        for l in self.lot_options(sru.REFERENCE_LOT):
+            out.append(dict(l, receipt=self._receipt_of(l["uid"]),
+                            coa=_get_coa_meta(self.portal(), l["uid"]) or None))
+        return out
+
+    def _reagent(self, uid):
+        folder = self.portal().get("pfas_reagents")
+        obj = folder.get(uid) if folder is not None and uid else None
+        return obj if getattr(obj, "portal_type", "") == "Reagent" else None
+
+    def _receipt_of(self, uid):
+        obj = self._reagent(uid)
+        return sru.load_receipt(obj) if obj is not None else None
+
+    def _receipt(self):
+        """Record a reference sample's receipt; its CoA goes where every
+        lot's CoA goes (the reagent's own)."""
+        f = self.request.form
+        uid = (f.get("uid") or u"").strip()
+        if uid not in [l["uid"] for l in self.lot_options(sru.REFERENCE_LOT)]:
+            self.error = u"Only a usable reference-sample lot takes a receipt here."
+            return
+        obj = self._reagent(uid)
+        receipt, self.error = sru.new_receipt(f, sru.load_receipt(obj), _user(), _now())
+        if self.error:
+            return
+        from senaite.pfas.browser.reagents import _get_reagent, _save_coa, _save_reagent, _str_to_date
+        received = _str_to_date((f.get("received_at") or u"").strip()[:10])
+        if received is None:
+            self.error = u"Give the date it was received as a date."
+            return
+        upload, data = f.get("coa_file"), None
+        if upload is not None and getattr(upload, "filename", u""):
+            data = upload.read()
+            if not data.startswith(b"%PDF"):
+                self.error = u"The CoA must be a PDF."
+                return
+        # checked first, written after: a refused receipt changes nothing
+        if data is not None and not _save_coa(self.portal(), uid, data, upload.filename,
+                                              "application/pdf", _user()):
+            self.error = u"The CoA was not saved."
+            return
+        sru.save_receipt(obj, receipt)
+        # the lot's own Received Date, through the inventory's save (its
+        # derived expiry and its modified event, the audit log's snapshot)
+        lot = _get_reagent(self.portal(), uid)
+        lot["received_date"] = received.isoformat()
+        _save_reagent(self.portal(), lot)
+        self.message = u"Receipt recorded."
 
     # ── actions ────────────────────────────────────────────────────────────
     def _create(self):

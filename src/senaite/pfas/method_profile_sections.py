@@ -737,8 +737,11 @@ MATRIX_FACTORS = cf.Table(
 # solvent blank (CCB) is reviewed on its chromatogram; with a limit entered
 # here it is also judged (against the export's own, extract-basis RL). Each
 # value is the default tier (all analytes, all matrices) the worker reads.
+# A trip blank (Field QC on the CoC) is judged only against its own row: it
+# never borrows another blank's limit, and with none set it is not evaluated.
 BLANK_TYPES = [(u"MB", u"Method blank"), (u"LRB", u"Laboratory reagent blank"),
-               (u"MxB", u"Matrix blank"), (u"CCB", u"Solvent blank (reviewed on its chromatogram)")]
+               (u"MxB", u"Matrix blank"), (u"CCB", u"Solvent blank (reviewed on its chromatogram)"),
+               (u"TB", u"Trip blank (Field QC on the CoC)")]
 
 
 def _default_tier(cfg):

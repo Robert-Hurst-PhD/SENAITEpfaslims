@@ -51,7 +51,7 @@
       </table>
 
       <div class="section-group-hdr">How</div>
-      <div class="field-row">
+      <div class="field-grid page-body-narrow">
         <label>Method used
           <select name="method">
             <option value="">Choose</option>
@@ -68,13 +68,13 @@
                                     selected python:'selected' if u['serial'] == view.form_value('unit_serial') else None"
                     tal:content="python:u'%s \u00b7 S/N %s' % (u['name'], u['serial'])">Mill 1</option>
           </select></label>
-        <label><input type="checkbox" name="cleaned" value="on"
+        <label class="field-wide">Note
+          <textarea name="note" rows="2" tal:content="python:view.form_value('note')"></textarea></label>
+        <label class="field-check"><input type="checkbox" name="cleaned" value="on"
                       tal:attributes="checked python:'checked' if view.form_value('cleaned') else None" />
           Cleaned before use</label>
       </div>
-      <label>Note
-        <textarea name="note" rows="2" tal:content="python:view.form_value('note')"></textarea></label>
-      <button class="btn btn-primary" type="submit">Record</button>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Record</button></div>
 
       <div class="section-group-hdr">Recorded</div>
       <table class="pfas-table" tal:define="rows view/recorded">

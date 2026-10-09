@@ -5,10 +5,12 @@ from __future__ import absolute_import, print_function, unicode_literals
 import logging
 
 from AccessControl import getSecurityManager
+from bika.lims.interfaces import IFrontPageAdapter
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
+from zope.interface import implementer
 
 logger = logging.getLogger("senaite.pfas.browser.workspace_home")
 
@@ -39,6 +41,38 @@ def landing_for(roles):
             return {"label": label, "view": view, "group": group}
     label, view, group = DEFAULT_LANDING
     return {"label": label, "view": view, "group": group}
+
+
+def front_page_for(roles, staff_roles):
+    """Where core's front page sends a signed-in user ("" = core decides).
+
+    Core sends a client contact to their client's sample list (its
+    client landing page) whenever they open the site root -- the logo, a
+    bookmark, a link to the portal. A signed-in user without a lab role goes
+    to their landing (the tracker) instead; staff keep core's dashboard."""
+    roles = set(roles or ())
+    if "Authenticated" not in roles or roles.intersection(staff_roles):
+        return ""
+    return "/" + landing_for(roles)["view"]
+
+
+@implementer(IFrontPageAdapter)
+class PFASFrontPage(object):
+    """Core's front-page hook (bika.lims.interfaces.IFrontPageAdapter):
+    asked for a URL before core applies its own landing rules."""
+
+    def __init__(self, context):
+        self.context = context
+
+    def get_front_page_url(self):
+        from senaite.pfas.browser.perms import STAFF_ROLES
+        try:
+            portal = _portal(self.context)
+            user = getSecurityManager().getUser()
+            roles = list(user.getRolesInContext(portal))
+        except Exception:                                   # noqa: BLE001
+            return ""
+        return front_page_for(roles, STAFF_ROLES)
 
 
 class PFASWorkspaceHomeView(BrowserView):

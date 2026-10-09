@@ -93,7 +93,7 @@
     }
     body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, .pfas-topbar-title,
     .pfas-ws-card-title { font-weight: var(--fw-heading); }
-    .pfas-table th, .factor-table th, .section-group-hdr, .field-row label,
+    .pfas-table th, .factor-table th,
     .pfas-crumb, .pfas-tab-count {
       font-family: var(--font-subtitle);
       font-weight: var(--fw-subtitle);
@@ -213,7 +213,6 @@
     details.spec-open > summary::before { content: none; }
     .cf-info-off { text-decoration: line-through; color: var(--s-secondary); }
     .cf-info-warn { color: var(--s-warn-text); }
-    .mp-actions { white-space: nowrap; }
     .mp-issue { display: inline-block; margin-left: var(--sp-2, 8px); }
     .mp-issue form { display: flex; gap: 6px; margin-top: 6px; }
     .mp-issue summary { list-style: none; cursor: pointer; }
@@ -393,20 +392,38 @@
     details[open] summary::before { transform: rotate(90deg); }
     .section-body, .pfas-card-body { padding: 16px; }
 
-    /* ── Field layout ────────────────────────────────────────────────────── */
-    .field-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 14px;
-    }
+    /* ── Field layout (.field-grid itself: with the settings forms below) ── */
+    /* a heading between the parts of one page: space above sets it apart
+       from what ends, a small gap ties it to what follows */
+    .section-group-hdr { font-family: var(--font-heading); font-weight: var(--fw-heading);
+                         font-size: var(--fs-md); color: var(--s-body);
+                         margin: var(--sp-5) 0 var(--sp-2); }
+    .section-group-hdr:first-child { margin-top: 0; }
+    /* a field across the whole grid; a checkbox reads as one line, not a
+       caption over a box; a form's buttons sit in their own row under it */
+    .field-grid .field-wide { grid-column: 1 / -1; }
+    .field-grid label.field-check { flex-direction: row; align-items: center; gap: var(--sp-2);
+                                    font-weight: 400; }
+    .field-grid input[type=checkbox], .field-grid input[type=radio] { width: auto; }
+    .form-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-3) 0 var(--sp-4); }
+    /* a group of choices in a grid: its caption reads like a field label */
+    .field-grid fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+    .field-grid legend { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body);
+                         padding: 0; margin-bottom: 4px; }
+    .field-grid .cf-chips .cf-chip { flex-direction: row; }
+    /* a record's form, opened under its row across the table */
+    .pfas-table tr.row-detail td { padding-top: 0; }
+    .pfas-table tbody tr.row-detail:hover td { background: none; }
+    details.row-form { margin: 0; border: 0; box-shadow: none; background: none; }
+    details.row-form > summary { display: inline-flex; list-style: none; cursor: pointer; }
+    details.row-form > summary::-webkit-details-marker { display: none; }
+    details.row-form[open] > summary { margin-bottom: var(--sp-3); }
     .field-row { display: flex; flex-direction: column; }
     .field-row label {
-      font-size: var(--fs-xs);
-      color: var(--s-secondary);
+      font-size: var(--fs-sm);
+      color: var(--s-body);
       margin-bottom: 4px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .04em;
+      font-weight: 600;
     }
     .field-row input[type=number],
     .field-row input[type=text],
@@ -525,6 +542,8 @@
        changes a record's state sits under More. */
     .row-actions { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
     .row-actions-cell { width: 1%; white-space: nowrap; }
+    /* a date (or an amount with its unit) never breaks at its hyphen */
+    .cell-nowrap { white-space: nowrap; }
     details.row-more, details.row-more[open] { position: relative; border: 0; box-shadow: none;
                                                background: none; margin: 0; }
     details.row-more > summary.btn-sm { padding: 4px 10px; font-weight: 400; border-radius: 4px;
@@ -1051,6 +1070,53 @@
   <tal:defs tal:condition="nothing"><a metal:define-macro="help" class="btn-help" aria-label="Help"
      tal:attributes="href python:'%s/@@pfas-help?entry=%s' % (context.portal_url(), hid);
                      title python:'What is this? (Help)'">?</a></tal:defs>
+
+  <!-- QC values as judged (qc_cells): one cell, and one table of cells.
+       qc_value: define qv_cell = {text, cls, tip, notes, n} (cell_display,
+       code_cell). qc_values: define qv_group = {title, columns, rows, notes}
+       (qc_cells.tables) and qv_method (named in the notes). Data Review's
+       QC Summary, Spike QC and Final Data draw their values with these.
+       Wrapped so the definitions never render inside the page. -->
+  <tal:defs tal:condition="nothing">
+    <tal:cell metal:define-macro="qc_value"><span
+        tal:attributes="class string:qv ${qv_cell/cls}; title qv_cell/tip; aria-label qv_cell/tip"
+        tal:content="qv_cell/text">98</span><sup class="qv-cite"
+        tal:condition="qv_cell/notes|nothing" tal:content="python:u','.join(str(n) for n in qv_cell['notes'])">2</sup><span
+        class="qv-n" tal:condition="python:(qv_cell.get('n') or 1) > 1" tal:content="python:u'\u00d7%d' % qv_cell['n']">x2</span></tal:cell>
+
+    <section class="qv-group" metal:define-macro="qc_values">
+      <h3 class="qv-group-title" tal:content="qv_group/title">Extracted QC</h3>
+      <div class="qc-matrix-wrap">
+        <table class="qc-matrix">
+          <thead>
+            <tr>
+              <th>Analyte</th>
+              <th tal:repeat="col qv_group/columns">
+                <span tal:replace="col/key">LFSM</span>
+                <span class="qv-unit" tal:condition="col/unit" tal:content="col/unit">%</span><sup class="qv-cite"
+                     tal:condition="col/notes" tal:content="python:u','.join(str(n) for n in col['notes'])">1</sup>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr tal:repeat="row qv_group/rows">
+              <td class="qv-analyte" tal:content="row/analyte">analyte</td>
+              <td tal:repeat="col qv_group/columns">
+                <tal:c tal:define="qv_cell python:row['display'].get(col['key'])">
+                  <tal:d tal:condition="qv_cell"><metal:m use-macro="context/@@pfas-macros/macros/qc_value" /></tal:d>
+                  <span class="qc-cell-na" tal:condition="not:qv_cell">&#8212;</span>
+                </tal:c>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <ol class="qv-notes" tal:condition="qv_group/notes">
+        <li tal:repeat="n qv_group/notes" tal:attributes="value python:n[0]"
+            tal:content="python:u'%s (%s method profile)' % (n[1], qv_method or u'the')">LFSM recovery 70-130 %</li>
+      </ol>
+    </section>
+  </tal:defs>
 
   <div class="pfas-printhead" metal:define-macro="printhead"
        tal:define="ps python:context.restrictedTraverse('@@pfas-macros').print_settings()">

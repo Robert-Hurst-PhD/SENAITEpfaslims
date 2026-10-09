@@ -36,7 +36,7 @@
     </div>
   </metal:fill>
   <tal:s metal:fill-slot="scripts">
-    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/JsBarcode-3.11.5.all.min.js"></script>
     <script>
       document.querySelectorAll('svg.xl-barcode').forEach(function (el) {
         try { JsBarcode(el, el.getAttribute('data-code'), {format: 'CODE128', displayValue: false, margin: 0}); }

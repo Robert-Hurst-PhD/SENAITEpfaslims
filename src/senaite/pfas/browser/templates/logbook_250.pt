@@ -86,7 +86,7 @@
         <h3>Preparation Details</h3>
         <div class="lb-row">
           <div class="lb-field corr-field" data-field="prepared_by">
-            <label>Prepared By <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_by')">correct</button></label>
+            <label>Prepared by <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_by')">correct</button></label>
             <input class="lb-input lb-input-lg" type="text" name="prepared_by"
                    tal:attributes="value python:view.data().get('prepared_by','')" />
             <div class="corr-panel" id="cp-prepared_by">
@@ -97,7 +97,7 @@
             </div>
           </div>
           <div class="lb-field corr-field" data-field="prepared_date">
-            <label>Date Prepared <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_date')">correct</button></label>
+            <label>Date prepared <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_date')">correct</button></label>
             <input class="lb-input lb-input-md" type="date" name="prepared_date"
                    tal:attributes="value python:view.data().get('prepared_date','')" />
             <div class="corr-panel" id="cp-prepared_date">
@@ -236,7 +236,7 @@
         <h3>Sign-off</h3>
         <div class="sig-block">
           <div class="sig-field corr-field" data-field="reviewed_by">
-            <label>Reviewed By <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_by')">correct</button></label>
+            <label>Reviewed by <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_by')">correct</button></label>
             <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
                    tal:attributes="value python:view.data().get('reviewed_by','')" />
             <div class="corr-panel" id="cp-reviewed_by">
@@ -247,7 +247,7 @@
             </div>
           </div>
           <div class="sig-field corr-field" data-field="reviewed_date">
-            <label>Date Reviewed <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_date')">correct</button></label>
+            <label>Date reviewed <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_date')">correct</button></label>
             <input class="lb-input lb-input-md" type="date" name="reviewed_date"
                    tal:attributes="value python:view.data().get('reviewed_date','')" />
             <div class="corr-panel" id="cp-reviewed_date">

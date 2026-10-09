@@ -17,7 +17,6 @@
 
     <!-- the list and a new study -->
     <tal:list tal:condition="not:rec">
-      <p class="bench-sub"><tal:h define="hid string:method-studies"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
       <section class="bench-block">
         <table class="pfas-table" tal:condition="view/listed">
           <thead><tr><th>Study</th><th>Kind</th><th>Method</th><th>Matrix</th><th>Status</th><th>Approved</th><th></th></tr></thead>
@@ -36,7 +35,7 @@
         </table>
       </section>
       <section class="bench-block">
-        <h2 class="bench-h">New study</h2>
+        <h2 class="bench-h">New study <tal:h define="hid string:method-studies"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></h2>
         <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
           <input tal:replace="structure context/@@authenticator/authenticator" />
           <div class="field-grid">
@@ -57,16 +56,73 @@
             <label>From (MDL) <input type="date" name="since" tal:attributes="value view/default_since" /></label>
             <label>To (MDL) <input type="date" name="until" /></label>
             <label>Worksheets (MRL, precision, DL) <input type="text" name="worksheets" placeholder="WS-101 WS-102" /></label>
+            <fieldset class="field-wide">
+              <legend>Spiking levels run</legend>
+              <div class="cf-chips">
+                <label class="cf-chip" tal:repeat="l view/level_labels">
+                  <input type="checkbox" value="1" tal:attributes="name string:level.${l}" /> <span tal:replace="l">Low</span></label>
+              </div>
+            </fieldset>
+            <fieldset class="field-wide" tal:condition="view/reference_lots">
+              <legend>Reference materials</legend>
+              <div class="cf-chips">
+                <label class="cf-chip" tal:repeat="l view/reference_lots">
+                  <input type="checkbox" value="1" tal:attributes="name string:rm.${l/uid}" />
+                  <span tal:replace="string:${l/name} ${l/lot_number}">CRM lot</span></label>
+              </div>
+            </fieldset>
           </div>
-          <h3 class="bench-h">Spiking levels run</h3>
-          <label tal:repeat="l view/level_labels">
-            <input type="checkbox" value="1" tal:attributes="name string:level.${l}" /> <span tal:replace="l">Low</span></label>
-          <h3 class="bench-h" tal:condition="view/reference_lots">Reference materials</h3>
-          <label tal:repeat="l view/reference_lots">
-            <input type="checkbox" value="1" tal:attributes="name string:rm.${l/uid}" />
-            <span tal:replace="string:${l/name} ${l/lot_number}">CRM lot</span></label>
-          <button class="btn-sm btn-primary" type="submit" name="action" value="create">Create</button>
+          <div class="form-actions">
+            <button class="btn-sm btn-primary" type="submit" name="action" value="create">Create study</button>
+          </div>
         </form>
+      </section>
+      <section class="bench-block" id="reference-samples" tal:define="rss view/reference_samples">
+        <h2 class="bench-h">Reference samples: receipt and CoA</h2>
+        <div class="bench-sub" tal:condition="not:rss">No usable reference-sample lot.</div>
+        <table class="pfas-table" tal:condition="rss">
+          <thead><tr><th>Lot</th><th>Received</th><th>Receipt</th><th>CoA</th></tr></thead>
+          <tbody tal:repeat="l rss">
+            <tr tal:attributes="id string:rm-${l/uid}">
+              <td tal:content="string:${l/name} ${l/lot_number}">DEMO RM L-1</td>
+              <td tal:content="python:l.get('received') or u'—'">date</td>
+              <td tal:define="r l/receipt">
+                <tal:r condition="r"><span tal:replace="python:u'%s; %s (recorded by %s, %s)' % (r.get('received_by'), r.get('condition'), r.get('recorded_by'), r.get('recorded_at'))">AN1; intact</span></tal:r>
+                <tal:n condition="not:r">not recorded</tal:n></td>
+              <td><a class="btn-sm btn-secondary" target="_blank" tal:condition="l/coa"
+                     tal:attributes="href string:${view/portal_url}/@@pfas-reagents?action=coa&amp;uid=${l/uid}">View CoA</a>
+                  <tal:n condition="not:l/coa">none on file</tal:n></td>
+            </tr>
+            <!-- the receipt form opens under its lot, across the table -->
+            <tr class="row-detail"><td colspan="4">
+              <details class="row-form">
+                <summary class="btn-sm"
+                         tal:content="python:'Update the receipt' if l['receipt'] else 'Record the receipt'">Record the receipt</summary>
+                <form method="post" enctype="multipart/form-data"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
+                  <input tal:replace="structure context/@@authenticator/authenticator" />
+                  <input type="hidden" name="uid" tal:attributes="value l/uid" />
+                  <div class="field-grid page-body-narrow" tal:define="r python:l['receipt'] or {}">
+                    <label>Received <input type="date" name="received_at" required="required"
+                                           tal:attributes="value l/received" /></label>
+                    <label>Received by <input type="text" name="received_by" required="required"
+                                              tal:attributes="value r/received_by|nothing" /></label>
+                    <label>Condition on arrival <input type="text" name="condition" required="required"
+                                                       tal:attributes="value r/condition|nothing" /></label>
+                    <label>Provider's sample or certificate no. <input type="text" name="provider_ref"
+                                                                      tal:attributes="value r/provider_ref|nothing" /></label>
+                    <label>Stored at <input type="text" name="storage" tal:attributes="value r/storage|nothing" /></label>
+                    <label>Note <input type="text" name="note" tal:attributes="value r/note|nothing" /></label>
+                    <label>CoA (PDF) <input type="file" name="coa_file" accept="application/pdf" /></label>
+                  </div>
+                  <div class="form-actions">
+                    <button class="btn-sm btn-primary" type="submit" name="action" value="receipt">Record receipt</button>
+                  </div>
+                </form>
+              </details>
+            </td></tr>
+          </tbody>
+        </table>
       </section>
     </tal:list>
 
@@ -83,7 +139,7 @@
                 <th>Reference materials</th>
                 <td tal:content="python:u', '.join(u'%s %s' % (m.get('name'), m.get('lot_number')) for m in rec.get('reference_materials') or []) or u'\u2014'">CRM</td></tr>
             <tr><th>Period</th><td tal:content="python:u'%s to %s' % (rec.get('since') or u'\u2014', rec.get('until') or u'today')">period</td>
-                <th>Worksheets</th><td tal:content="python:u', '.join(rec.get('worksheets') or []) or u'\u2014'">WS</td></tr>
+                <th>Worksheets</th><td tal:content="python:u', '.join(view.all_worksheets()) or u'\u2014'">WS</td></tr>
             <tr><th>Status</th><td tal:content="rec/status">draft</td>
                 <th>Approved</th><td tal:content="python:u'%s %s' % (rec.get('approved_by') or u'', rec.get('approved_at') or u'')">by</td></tr>
           </tbody>
@@ -91,6 +147,68 @@
         <a class="btn-sm btn-secondary" target="_blank"
            tal:attributes="href string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}&amp;pdf=1">Packet PDF</a>
         <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-method-studies">All studies</a>
+      </section>
+
+      <section class="bench-block" tal:condition="python:view.elements() or view.parts()">
+        <h2 class="bench-h">Parts and analysts</h2>
+        <table class="pfas-table" tal:condition="view/parts">
+          <thead><tr><th>Part</th><th>Element</th><th>Analyst</th><th>Level</th><th>Replicates</th>
+                     <th>Matrix source</th><th>Worksheet</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="p view/parts">
+              <td tal:content="p/id">P1</td>
+              <td tal:content="python:view.element_label(p['element'])">MRL confirmation</td>
+              <td tal:content="p/analyst_name">AN1</td>
+              <td tal:content="python:p.get('level') or u'—'">MRL</td>
+              <td tal:content="p/replicates">7</td>
+              <td tal:content="python:u'%s: %s' % (view.source_label(p['source']['kind']), view.source_text(p['source']))">water</td>
+              <td><tal:w repeat="w p/worksheets"><span tal:replace="w">WS-1</span>
+                <a class="btn-sm btn-secondary" tal:define="u python:view.worksheet_url(w)" tal:condition="u"
+                   tal:attributes="href string:${u}/@@pfas-extraction-batch">Open</a></tal:w></td>
+            </tr>
+          </tbody>
+        </table>
+        <form method="post" tal:condition="view/can_assign"
+              tal:attributes="action string:${view/portal_url}/@@pfas-method-studies">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="id" tal:attributes="value rec/id" />
+          <div class="field-grid">
+            <label>Part
+              <select name="element">
+                <option tal:repeat="e view/elements" tal:attributes="value python:e[0]" tal:content="python:e[1]">MRL</option>
+              </select></label>
+            <label>Analyst
+              <select name="analyst" required="required">
+                <option value="">Choose</option>
+                <option tal:repeat="a view/analysts" tal:attributes="value python:a[0]" tal:content="python:a[1]">AN1</option>
+              </select></label>
+            <label>Spiking level (spiked parts)
+              <select name="level">
+                <option value="">None (blanks)</option>
+                <option tal:repeat="l python:rec.get('levels') or view.level_labels()" tal:attributes="value l" tal:content="l">MRL</option>
+              </select></label>
+            <label>Replicates <input type="number" min="1" step="1" name="replicates" placeholder="the part's default" /></label>
+            <label>Matrix source
+              <select name="source_kind" required="required">
+                <option value="">Choose</option>
+                <option tal:repeat="k view/sources" tal:attributes="value python:k[0]" tal:content="python:k[1]">Water</option>
+              </select></label>
+            <label>Vendor reagent water lot
+              <select name="source_lot.water_lot">
+                <option value="">Not used</option>
+                <option tal:repeat="l python:view.lot_options('water_lot')" tal:attributes="value l/uid"
+                        tal:content="string:${l/name} ${l/lot_number}">water lot</option>
+              </select></label>
+            <label>Reference sample lot
+              <select name="source_lot.reference_lot">
+                <option value="">Not used</option>
+                <option tal:repeat="l view/reference_lots" tal:attributes="value l/uid"
+                        tal:content="string:${l/name} ${l/lot_number}">RM lot</option>
+              </select></label>
+          </div>
+          <button class="btn-sm btn-primary" type="submit" name="action" value="assign">Assign</button>
+          <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-method-studies#reference-samples">Reference sample receipts</a>
+        </form>
       </section>
 
       <section class="bench-block">

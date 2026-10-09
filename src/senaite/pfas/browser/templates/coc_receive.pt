@@ -91,7 +91,7 @@
             </select></label>
         </tal:q>
       </div>
-      <label>Note (needed for any No)
+      <label>Note (needed for any no)
         <textarea name="note" rows="2" tal:content="python:view.value('note')"></textarea></label>
       </fieldset>
       <button class="btn btn-primary" type="submit" tal:condition="python:rec['status'] != 'received'">Receive</button>

@@ -51,7 +51,7 @@
         </div>
         <div tal:repeat="widget view/field_widgets"
              tal:attributes="class python:'login-field login-field-' + widget.name.strip('_') + (' has-error' if widget.error else '')">
-          <label tal:attributes="for widget/id" tal:content="widget/label">Login Name</label>
+          <label tal:attributes="for widget/id" tal:content="widget/label">Login name</label>
           <input type="text" tal:replace="structure widget/render" />
           <div class="login-error" tal:condition="widget/error" tal:content="structure widget/error/render">error</div>
         </div>

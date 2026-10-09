@@ -312,7 +312,8 @@ class PFASDataReviewView(BrowserView):
                     return profile_id_for_method(m)
         except Exception:
             pass
-        return u""
+        # a study run: the study's method
+        return (self.study_run() or {}).get("method_id") or u""
 
     def has_run(self):
         """True once a run of this worksheet is on record: "no departure
@@ -366,6 +367,8 @@ class PFASDataReviewView(BrowserView):
         "coc_holding_time_computed_fail":
                                    u"Cannot mark CoC as reviewed — the recorded dates say "
                                    u"otherwise, regardless of the checkbox.",
+        "coc_study_computed":      u"A study run has no chain of custody: this item is computed from the "
+                                   u"study's source (reagent water or the reference sample's receipt and CoA).",
         "checklist_incomplete":    u"All checklist items must pass before submitting.",
         "checklist_changed":       u"Not approved: the checklist no longer passes (the QC record changed after submission). Send it back.",
         "automated_proposal_recorded": (
@@ -542,9 +545,9 @@ class PFASDataReviewView(BrowserView):
         return out
 
     def spike_qc_page(self):
-        """Page 2 — LFSM/LFSMD/LFB/LCS recoveries + RPD vs the method's spec
-        limits, per analyte. Reads the aggregate qc_results (value=recovery/rpd)
-        and shows the limit each was judged against."""
+        """Page 2 — LFSM/LFSMD/LFB/LCS recoveries and RPDs per analyte, drawn
+        with the QC Summary's cells: each value coloured by its stored
+        verdict, the window it was judged by cited under the table."""
         # Every exit from this method MUST carry the same keys. The template
         # dereferences page/pending_spikes and page['specs'] unconditionally, so
         # an early return that omitted them raised LocationError and 500'd the
@@ -553,7 +556,7 @@ class PFASDataReviewView(BrowserView):
         # is exactly the to_be_verified and verified worksheets this page exists
         # to review. Found by loading the page against a real worksheet in each
         # state rather than only the one that happened to have QC rows.
-        empty = {"rows": [], "types": [], "specs": {}, "pending_spikes": []}
+        empty = {"rows": [], "types": [], "specs": {}, "pending_spikes": [], "groups": []}
         if not self.db_available:
             return empty
         ws = self._get_worksheet()
@@ -564,34 +567,29 @@ class PFASDataReviewView(BrowserView):
             out = dict(empty)
             out["error"] = summary.get("error")
             return out
-        # keep only spike/recovery QC types on this page
-        spike_types = [t for t in summary.get("qc_types", [])
-                       if t in ("LFSM", "LFSMD", "LFB", "LCS", "SD")]
+        # the QC Summary's own cells (qc_cells), for the spike / recovery QC
+        # types only, their criteria numbered for this page
+        try:
+            from senaite.pfas import qc_cells
+        except ImportError:                                  # loaded by path (tests)
+            import qc_cells
+        spike_types = [t for t in summary.get("qc_types", []) if qc_cells.is_spike(t)]
+        shown = qc_cells.tables(summary.get("columns") or [], summary.get("rows") or [],
+                                keep=qc_cells.is_spike)
         prof = self._method_profile()
         qca = prof.get("qc_acceptance", {}) or {}
         from senaite.pfas.qc.qc_types import enabled_qc_types
         required = set(enabled_qc_types(prof))
-        rows = []
-        for row in summary.get("rows", []):
-            cells = {}
-            for t in spike_types:
-                cells[t] = row.get("cells", {}).get(t)
-            rows.append({"analyte": row.get("analyte", ""), "cells": cells})
-        # per-type spec (recovery window / rpd) + whether required every run
-        specs = {}
-        for t in spike_types:
-            cfg = qca.get(t, {}) or {}
-            tiers = cfg.get("tiers", []) or []
-            tier0 = tiers[0] if tiers else {}
-            specs[t] = {
-                "recovery_min": tier0.get("recovery_min"),
-                "recovery_max": tier0.get("recovery_max"),
-                "rpd_max": tier0.get("rpd_max"),
-                "required": t in required,
-                "enabled": bool(cfg.get("enabled", True)),
-            }
-        return {"rows": rows, "types": spike_types, "specs": specs,
-                "pending_spikes": self.pending_spike_levels()}
+        # whether each is required every run (its windows are the cited notes)
+        specs = dict((t, {"required": t in required,
+                          "enabled": bool((qca.get(t) or {}).get("enabled", True))})
+                     for t in spike_types)
+        # per analyte and type, the verdict cells (the QC Review report's table)
+        rows = [{"analyte": row.get("analyte", ""),
+                 "cells": dict((t, (row.get("cells") or {}).get(t)) for t in spike_types)}
+                for row in summary.get("rows", [])]
+        return {"rows": rows, "groups": shown["groups"], "types": spike_types,
+                "specs": specs, "pending_spikes": self.pending_spike_levels()}
 
     def pending_spike_levels(self):
         """Spiked injections whose spike level nobody has recorded.
@@ -700,7 +698,8 @@ class PFASDataReviewView(BrowserView):
                     return st.Title() or u""
         except Exception:
             pass
-        return u""
+        # a study run holds no sample: its matrix is the study's
+        return (self.study_run() or {}).get("matrix") or u""
 
     # ── Checklist data model ──────────────────────────────────────────────
 
@@ -1147,6 +1146,7 @@ class PFASDataReviewView(BrowserView):
         if "qc_summary" in items:
             items["qc_summary"]["checked"] = self._compute_qc_status(ws)
 
+        study = self.study_run()
         result = []
         for key, label, auto in _CHECKLIST_ITEMS:
             item = dict(items.get(key, {
@@ -1156,6 +1156,13 @@ class PFASDataReviewView(BrowserView):
                 "proposed_at": None, "proposed_notes": u"",
             }))
             item["key"] = key
+            if key == "coc" and study is not None:
+                # no chain of custody: the study's source stands in, computed
+                # per request and never written into the stored checklist
+                item["label"], item["verdict"], item["reason"] = self.study_source_check()[:3]
+                item.update(auto=True, study=True, checked=item["verdict"] == "pass")
+                result.append(item)
+                continue
             # An automatic gate that has run and not passed is a FAILURE, and a
             # gate that could not be evaluated is a third thing. Both showed as
             # "PENDING", which reads as "nobody has got to it yet" — the state
@@ -1262,8 +1269,10 @@ class PFASDataReviewView(BrowserView):
             from senaite.pfas.qc.qc_types import enabled_qc_types
             required = set(enabled_qc_types(profile))
             present = set(summary.get("qc_types") or [])
+            # a trip blank comes with the samples that ask for one (Field QC
+            # on the CoC), not with every run
             missing = sorted(r for r in required
-                             if r not in present and r not in ("Dup", "MxB"))
+                             if r not in present and r not in ("Dup", "MxB", "TB"))
             if "LFSMD" in missing and "Dup" in present:
                 # a sample duplicate run instead of the LFSMD satisfies the
                 # batch's precision requirement
@@ -1450,6 +1459,53 @@ class PFASDataReviewView(BrowserView):
             "receipt_temps": [(t.get("sample_id") or u"", t.get("observed"), t.get("corrected"))
                               for x in receipts for t in x.get("readings") or []],
         }
+
+    def study_run(self):
+        """The worksheet's study run record (study_runs), or None."""
+        if not hasattr(self, "_study_run"):
+            ws = self._get_worksheet()
+            self._study_run = None
+            if ws is not None:
+                from senaite.pfas import study_runs
+                self._study_run = study_runs.load_run(ws)
+        return self._study_run
+
+    def study_source_check(self):
+        """(label, verdict, reason, detail) of the chain-of-custody item for a
+        study run: its source, judged on the day of the extraction."""
+        if hasattr(self, "_study_source"):
+            return self._study_source
+        from senaite.pfas import study_runs as sru
+        run = self.study_run() or {}
+        source = run.get("source") or {}
+        ws = self._get_worksheet()
+        use_date = ((self._logbook_json(ws, u"senaite.pfas.logbook.252") or {}).get("extraction_date")
+                    or u"")[:10] if ws is not None else u""
+        detail = {"source": source, "source_label": sru.SOURCE_LABELS.get(source.get("kind"), u""),
+                  "use_date": use_date, "lot": None, "receipt": None, "coa": None, "water_check": None,
+                  "study": run.get("study") or u"", "part": run.get("part") or u""}
+        try:
+            if source.get("kind") == sru.WATER_SYSTEM:
+                if use_date:
+                    from senaite.pfas import facility_qc
+                    detail["water_check"] = facility_qc.get_water_qc_for_date(use_date)
+            elif source.get("uid"):
+                from senaite.pfas.browser.bench_inventory import REAGENT, item_index
+                from senaite.pfas.browser.reagents import _get_coa_meta
+                portal = self._portal()
+                detail["lot"] = item_index(portal).get((REAGENT, source["uid"]))
+                folder = portal.get("pfas_reagents")
+                obj = folder.get(source["uid"]) if folder is not None else None
+                detail["receipt"] = sru.load_receipt(obj) if obj is not None else None
+                detail["coa"] = _get_coa_meta(portal, source["uid"]) or None
+            problems = sru.source_problems(source, detail["lot"], detail["receipt"], detail["coa"],
+                                           detail["water_check"], use_date)
+        except Exception as exc:                            # noqa: BLE001
+            logger.exception("study source check")
+            problems = [u"the study's source could not be read: %s" % exc]
+        label, verdict, reason = sru.coc_item(run, problems)
+        self._study_source = (label, verdict, reason, detail)
+        return self._study_source
 
     def coc_summary(self):
         """The CoC as Data Review checks it: the samples' CoC records, or
@@ -2407,20 +2463,15 @@ class PFASDataReviewView(BrowserView):
         # extracted QC first, then the instrument's; within each, the QC
         # types' order, a split column after its own
         display_cols.sort(key=qc_cells.column_order)
-        header_notes, cell_notes, notes = qc_cells.footnotes(display_cols, rows)
-        columns = []
-        for key in display_cols:
-            columns.append({"key": key, "unit": qc_cells.column_unit(key.split(" ")[0], col_values[key]),
-                            "notes": header_notes.get(key) or []})
-        for row in rows:
-            for qt, d in row["display"].items():
-                d["notes"] = cell_notes.get((row["analyte"], qt)) or []
+        shown = qc_cells.tables(
+            [{"key": key, "unit": qc_cells.column_unit(key.split(" ")[0], col_values[key])}
+             for key in display_cols], rows)
 
         return {
             "qc_types":    qc_type_set,
-            "columns":     columns,
-            "notes":       notes,
-            "groups":      qc_cells.groups(columns, rows, notes),
+            "columns":     shown["columns"],
+            "notes":       shown["notes"],
+            "groups":      shown["groups"],
             "rows":        rows,
             "overall_pass": overall_pass,
             "qualifiers":  qualifiers,
@@ -2813,6 +2864,10 @@ class PFASDataReviewView(BrowserView):
             except Exception as exc:
                 logger.error("get_final_data analysis loop: %s", exc)
 
+        try:
+            from senaite.pfas import qc_cells
+        except ImportError:                                  # loaded by path (tests)
+            import qc_cells
         for ar_uid in sorted(ar_map.keys(), key=lambda u: ar_map[u]["sample_id"]):
             ar_data = ar_map[ar_uid]
             for a in sorted(ar_data["analyses"], key=lambda x: x["analyte"]):
@@ -2826,6 +2881,8 @@ class PFASDataReviewView(BrowserView):
                     "qualifier":        a["qualifier"],
                     "qc_codes":         a.get("qc_codes") or u"",
                     "qc_reasons":       a.get("qc_reasons") or u"",
+                    # the codes drawn as the QC Summary draws a qualified cell
+                    "qc_cell":          qc_cells.code_cell(a.get("qc_codes"), a.get("qc_reasons")),
                     "review_state":     a["review_state"],
                     "reported":         a.get("reported") or u"",
                 })
@@ -3607,6 +3664,8 @@ class PFASDataReviewView(BrowserView):
             if not ok:
                 return self._redirect_with_msg("mi_not_ready", "error", tab="instrument_report",
                                                detail=u"; ".join(need))
+        if item_key == "coc" and self.study_run() is not None:
+            return self._redirect_with_msg("coc_study_computed", "error", tab="coc")
         if item_key == "coc":
             coc = self.coc_summary()
             if coc.get("records") is not None and not coc.get("all_received"):

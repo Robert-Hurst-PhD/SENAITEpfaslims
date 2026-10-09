@@ -177,8 +177,7 @@
                                        color: var(--s-text); }
     .tier-limits input:focus { outline: none; border-color: var(--s-primary); }
     .tier-chipfield { border-top: 1px dashed var(--s-border); padding-top: 7px; }
-    .tier-chipfield > label { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
-                               letter-spacing: .04em; color: var(--s-secondary); display: block;
+    .tier-chipfield > label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body); display: block;
                                margin-bottom: 5px; }
     .tier-chip-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .tier-chip { display: inline-flex; align-items: center; gap: 3px; border-radius: 10px;
@@ -334,7 +333,7 @@
             <div class="section-body">
               <div class="field-grid">
                 <div class="field-row field-row-wide">
-                  <label for="display_name">Display Name</label>
+                  <label for="display_name">Display name</label>
                   <input type="text" id="display_name" name="display_name"
                          tal:attributes="value view/display_name" />
                 </div>

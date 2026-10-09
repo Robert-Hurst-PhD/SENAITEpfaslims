@@ -1,7 +1,7 @@
 <tal:body xmlns:tal="http://xml.zope.org/namespaces/tal"
           xmlns:metal="http://xml.zope.org/namespaces/metal">
 <style type="text/css">
-  .qcr            { font-family: "Helvetica Neue", Arial, sans-serif;
+  .qcr            { font-family: var(--font-sans, "Helvetica Neue", Arial, sans-serif);
                     font-size: 11px; color: #212529; }
   .qcr h1         { font-size: 17px; margin: 0 0 2px; }
   .qcr h2         { font-size: 12.5px; margin: 20px 0 6px; padding-bottom: 3px;

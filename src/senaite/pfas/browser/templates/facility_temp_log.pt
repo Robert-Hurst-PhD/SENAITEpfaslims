@@ -207,9 +207,9 @@
           <input type="hidden" name="action" value="add_study"/>
           <input type="hidden" name="unit_id" tal:attributes="value unit/id"/>
           <div class="fld-row">
-            <div class="fld"><label>Study Date</label>
+            <div class="fld"><label>Study date</label>
               <input type="date" name="study_date"/></div>
-            <div class="fld"><label>Operator Initials</label>
+            <div class="fld"><label>Operator initials</label>
               <input type="text" name="operator" maxlength="10"/></div>
             <div class="fld"><label>Reference thermometer</label>
               <select name="reference_uid">
@@ -218,9 +218,9 @@
                         tal:attributes="value r/id"
                         tal:content="python:'%s (SN %s)' % (r['name'], r['serial_number'] or '?')">Ref 1</option>
               </select></div>
-            <div class="fld"><label>NIST Thermometer Serial</label>
+            <div class="fld"><label>NIST thermometer serial</label>
               <input type="text" name="nist_serial"/></div>
-            <div class="fld"><label>NIST Cert Date</label>
+            <div class="fld"><label>NIST cert date</label>
               <input type="date" name="nist_cert_date"/></div>
             <div class="fld"><label>Tolerance (&deg;C)</label>
               <input type="number" step="0.1" name="tolerance"
@@ -330,6 +330,7 @@
     ticks:{font:{size:10}}, grid:{display:false}
   };
 
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
   new Chart(canvas, {
     type: 'scatter',
     data: {datasets: datasets},

@@ -35,7 +35,7 @@
     <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-site-settings">
       <input type="hidden" name="action" value="save_director" tal:condition="view/can_configure" />
       <div class="field-row">
-        <label for="director">Laboratory Director</label>
+        <label for="director">Laboratory director</label>
         <select name="director" id="director" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
           <option value="">(none)</option>
           <option tal:repeat="c view/director_choices"

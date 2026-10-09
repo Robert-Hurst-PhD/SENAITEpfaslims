@@ -137,7 +137,7 @@
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/ml-matrix-6.12.1.umd.js"></script>
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=1"></script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=3"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=4"></script>
   <script>
   //<![CDATA[
   var CAL_APPROVE = null;      /* the archive: approval is in Data Review */

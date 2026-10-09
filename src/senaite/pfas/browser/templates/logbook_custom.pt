@@ -17,8 +17,7 @@
                        border-bottom:1px solid var(--s-border); }
     .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
     .form-group { display:flex; flex-direction:column; gap:4px; }
-    .form-label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
-                  text-transform:uppercase; letter-spacing:.04em; }
+    .form-label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body); }
     .form-input  { padding:7px 10px; font-size:var(--fs-base);
                    border:1px solid var(--s-input-border); border-radius:4px; }
     .form-input:focus { outline:none; border-color:var(--s-primary); }
@@ -81,12 +80,12 @@
                    tal:attributes="value python:view.data().get('log_date','')"/>
           </div>
           <div class="form-group">
-            <label class="form-label">Reviewed By</label>
+            <label class="form-label">Reviewed by</label>
             <input class="form-input" type="text" name="reviewed_by"
                    tal:attributes="value python:view.data().get('reviewed_by','')"/>
           </div>
           <div class="form-group">
-            <label class="form-label">Review Date</label>
+            <label class="form-label">Review date</label>
             <input class="form-input" type="date" name="reviewed_date"
                    tal:attributes="value python:view.data().get('reviewed_date','')"/>
           </div>

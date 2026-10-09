@@ -203,14 +203,24 @@ def _qc_rows(batch) -> list:
         by_name.setdefault(r.injection_name, []).append(r)
     frb_written = set()
 
-    def _frb_row(inj, analyte, value, failed):
-        return dict(common, analyte=analyte, qc_type="FRB",
+    field_qc = {"FRB": ("FRB within the method's blank limit (QC Types)",
+                     "(BLK) field reagent blank above the blank limit"),
+             "TB": ("TB within the method's trip blank limit (Blank limits)",
+                    "(BLK) trip blank above the trip blank limit")}
+
+    def _frb_row(inj, analyte, value, failed, qc_type="FRB"):
+        basis, issue = field_qc[qc_type]
+        return dict(common, analyte=analyte, qc_type=qc_type,
                     applies_to=inj, qc_level=inj, value=value,
-                    limit_basis="FRB within the method's blank limit (QC Types)",
-                    units="", flag=("(BLK) field reagent blank above the blank limit"
-                                    if failed else ""),
+                    limit_basis=basis, units="", flag=(issue if failed else ""),
                     passed=0 if failed else 1)
-    for inj in (getattr(batch, "field_blanks", None) or []):
+    frbs = list(getattr(batch, "field_blanks", None) or [])
+    # a trip blank is written only where it was judged (a limit is set); an
+    # unset limit is its gap, filed with the run's other gaps
+    judged_tbs = set(k[0] for k in blank_limits)
+    tbs = [i for i in (getattr(batch, "trip_blanks", None) or [])
+           if i not in frbs and i in judged_tbs]
+    for inj, qc_type in [(i, "FRB") for i in frbs] + [(i, "TB") for i in tbs]:
         for r in by_name.get(inj, []):
             if r.compound_type and r.compound_type != "Analyte":
                 continue
@@ -219,10 +229,10 @@ def _qc_rows(batch) -> list:
             # on PFOS or ADONA was stored as a pass
             key = judged_as.get((inj, r.compound_name), (inj, r.compound_name))
             frb_written.add(key)
-            rows.append(_frb_row(inj, r.compound_name, reported_conc(r), key in blank_flags))
+            rows.append(_frb_row(inj, r.compound_name, reported_conc(r), key in blank_flags, qc_type))
         for key, lim in sorted(blank_limits.items()):
             if key[0] == inj and key not in frb_written:
-                rows.append(_frb_row(inj, key[1], lim.get("value"), key in blank_flags))
+                rows.append(_frb_row(inj, key[1], lim.get("value"), key in blank_flags, qc_type))
 
     # CCV and calibration verdicts. They lived only in the run's review queue,
     # which SENAITE never reads, so a failing CCV or calibrator never reached

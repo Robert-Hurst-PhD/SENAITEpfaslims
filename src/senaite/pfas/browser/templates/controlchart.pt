@@ -19,9 +19,8 @@
                   align-items: flex-end; }
     .filter-group { display: flex; flex-direction: column; min-width: 130px; }
     .filter-group.grow { flex: 1 1 150px; }
-    .filter-label { display: block; font-size: var(--fs-xs); color: var(--s-secondary);
-                    margin-bottom: 4px; font-weight: 700;
-                    text-transform: uppercase; letter-spacing: .04em; }
+    .filter-label { display: block; font-size: var(--fs-sm); color: var(--s-body);
+                    margin-bottom: 4px; font-weight: 600; }
     .filter-bar select, .filter-bar input[type=number],
     .filter-bar input[type=date], .filter-bar input[type=text] {
       width: 100%; padding: 6px 8px; border: 1px solid var(--s-input-border);
@@ -130,7 +129,7 @@
     </div>
 
     <div class="filter-group">
-      <label class="filter-label" for="qc_type">QC Type</label>
+      <label class="filter-label" for="qc_type">QC type</label>
       <select id="qc_type" name="qc_type" onchange="this.form.submit()">
         <option value="">&#8212; all QC types &#8212;</option>
         <tal:types tal:repeat="qt view/qc_types">
@@ -156,7 +155,7 @@
     </div>
 
     <div class="filter-group">
-      <label class="filter-label" for="qc_level">QC Level</label>
+      <label class="filter-label" for="qc_level">QC level</label>
       <select id="qc_level" name="qc_level" onchange="this.form.submit()">
         <option value="">&#8212; all levels &#8212;</option>
         <tal:levels tal:repeat="lv python:view.qc_levels(view.selected_qc_type(), view.selected_analyte())">
@@ -168,7 +167,7 @@
     </div>
 
     <div class="filter-group">
-      <label class="filter-label" for="chart_type_override">Chart Type</label>
+      <label class="filter-label" for="chart_type_override">Chart type</label>
       <select id="chart_type_override" name="chart_type_override" onchange="this.form.submit()">
         <option value="">&#8212; auto &#8212;</option>
         <option value="levey_jennings"
