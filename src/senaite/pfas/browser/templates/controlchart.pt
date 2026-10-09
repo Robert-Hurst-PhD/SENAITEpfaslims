@@ -506,9 +506,12 @@
     var ann = {};
     function hline(key, y, colour, dash, width, text, where) {
       if (y === null || y === undefined) return;
+      /* a label on a white tab, so its own line and the points do not
+         strike it through */
       ann[key] = {type: 'line', yMin: y, yMax: y, borderColor: colour, borderDash: dash,
                   borderWidth: width, label: {display: !!text, content: text, position: where || 'start',
-                  backgroundColor: 'transparent', color: colour, font: {size: 10}}};
+                  backgroundColor: 'rgba(255,255,255,0.9)', color: colour, padding: {x: 4, y: 1},
+                  font: {size: 10, weight: '600'}, z: 10}};
     }
     if (CHART_DATA.chart_type === 'threshold') {
       var thresh = (CHART_DATA.threshold !== null && CHART_DATA.threshold !== undefined)
@@ -521,10 +524,10 @@
       hline('l2', lim.lcl_2, cWarn, [6, 3], 1, '-2SD');
       hline('u1', lim.ucl_1, cOk, [2, 4], 0.8, '');
       hline('l1', lim.lcl_1, cOk, [2, 4], 0.8, '');
-      hline('m', lim.mean, cBody, [], 1.2, 'Mean', 'end');
+      hline('m', lim.mean, cBody, [], 1.2, 'Mean', 'start');
     }
     if (CHART_DATA.chart_type !== 'threshold')
-      hline('t', CHART_DATA.target, cMuted, [8, 4], 1, 'Target', 'center');
+      hline('t', CHART_DATA.target, cMuted, [8, 4], 1, 'Target', 'end');
 
     var main = {
       label: CHART_DATA.analyte + ' (' + (CHART_DATA.qc_type_label || CHART_DATA.qc_type) + ')',
@@ -551,9 +554,17 @@
         }
       }
     };
+    /* the page's font, and one label per point: several CCVs of one run
+       printed the same "date worksheet" side by side */
+    Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+    var seenLabel = {};
+    var labels = (CHART_DATA.labels || []).map(function (l) {
+      seenLabel[l] = (seenLabel[l] || 0) + 1;
+      return seenLabel[l] > 1 ? l + ' #' + seenLabel[l] : l;
+    });
     new Chart(document.getElementById('qcChart'), {
       type: 'line',
-      data: {labels: CHART_DATA.labels, datasets: [main]},
+      data: {labels: labels, datasets: [main]},
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         interaction: {mode: 'nearest', intersect: true},

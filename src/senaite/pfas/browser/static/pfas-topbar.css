@@ -193,7 +193,10 @@ a.pfas-search-all {
   .pfas-topbar .dropdown-toggle::after { display: none; }
   .pfas-topbar.main-header .nav-link i.fas { font-size: var(--fs-md); }
   .pfas-topbar-toggle.nav-link { width: 40px; }
-  .pfas-topbar-title { flex: 1 1 auto; }
+  /* the page name may take two lines rather than be cut to ten letters */
+  .pfas-topbar-title { flex: 1 1 auto; white-space: normal; line-height: 1.15;
+                       font-size: var(--fs-sm); display: -webkit-box; -webkit-line-clamp: 2;
+                       -webkit-box-orient: vertical; overflow: hidden; }
 }
 @media print {
   .pfas-topbar, .pfas-subbar { display: none !important; }

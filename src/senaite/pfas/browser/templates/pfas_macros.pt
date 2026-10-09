@@ -463,6 +463,8 @@
     .pfas-content-area textarea {
       line-height: 1.5; resize: vertical;
     }
+    /* the chosen value stops before the arrow instead of running under it */
+    .pfas-content-area select:not([multiple]):not([size]) { padding-right: 28px; text-overflow: ellipsis; }
     .pfas-content-area input:focus,
     .pfas-content-area select:focus,
     .pfas-content-area textarea:focus {
@@ -886,6 +888,16 @@
          for a few words; the row-action cell stays as small as its buttons. */
       .pfas-content-area table:not(.no-mobile-scroll) th { white-space: nowrap; }
       .pfas-content-area table:not(.no-mobile-scroll) td { min-width: 8em; }
+      /* a browser ignores min-width on a cell, so a wide table squeezed its
+         columns to the screen ("WHEN (UTC)WHO SETTING" printed on top of each
+         other): a table of four or more columns is given room to scroll */
+      .pfas-content-area table:not(.no-mobile-scroll):has(tr > :nth-child(4)) { min-width: 40em; }
+      .pfas-content-area table:not(.no-mobile-scroll):has(tr > :nth-child(7)) { min-width: 56em; }
+      /* desktop column percentages would undo it */
+      .pfas-content-area table:not(.no-mobile-scroll) col { width: auto; }
+      /* a form table keeps fixed columns: its headings wrap instead of
+         running into each other */
+      .pfas-content-area table.pfas-table-form th { white-space: normal; }
       /* a column holding a list (matrices, analytes) gets reading width */
       .pfas-content-area table:not(.no-mobile-scroll) td.col-wide { min-width: 16em; }
       .pfas-content-area table:not(.no-mobile-scroll) td.row-actions-cell { min-width: 0; }
@@ -1355,6 +1367,12 @@ document.addEventListener('click', function (ev) {
   here.className = 'pfas-crumb-here';
   here.textContent = (active && samePage) ? activeText : (titleText || activeText);
   if (here.textContent) parts.push(here);
+  /* a page no sidebar item names (a landing, Help, Search, a profile):
+     Home and the page, never no crumb at all */
+  var dash = document.querySelector('.pfas-sidebar .pfas-sb-dash');
+  if (parts.length < 2 && here.textContent && dash && bare(dash.href) !== bare(location.href)) {
+    parts.unshift(link(dash.href, 'Home'));
+  }
   if (parts.length < 2) { crumb.parentNode.removeChild(crumb); return; }
   parts.forEach(function (p, i) {
     if (i) { var sep = document.createElement('span'); sep.className = 'pfas-crumb-sep';

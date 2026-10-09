@@ -117,14 +117,18 @@
           <input class="search-input"
                  type="text"
                  name="t"
-                 placeholder="PF-YYMMDD-XXXX"
-                 maxlength="14"
+                 placeholder="PF-YYMMDD-XXXXXXXX"
+                 maxlength="18"
                  autocomplete="off"
                  autocapitalize="characters"
                  tal:attributes="value view/tracking_number" />
           <button class="search-btn" type="submit">Track</button>
         </div>
       </form>
+    </div>
+
+    <div class="not-found" tal:condition="python:view.tracking_number() and view.limited()">
+      <strong>Too many look-ups</strong> Try again later.
     </div>
 
     <!-- Not found message -->

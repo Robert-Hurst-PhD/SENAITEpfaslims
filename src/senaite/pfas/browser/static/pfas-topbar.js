@@ -249,3 +249,32 @@ if (document.readyState === 'loading') {
   else start();
 }());
 
+
+/* Opening a form moves the keyboard into it: a button that reveals a form
+   or dialog (Add Reagent, New Deviation...) left focus on the button, so a
+   keyboard user had to hunt for the fields it opened. After such a click,
+   the first field that has just become visible gets the focus. */
+(function () {
+  var FIELD = 'input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])';
+  function visible(el) {
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  }
+  function shown() {
+    var out = [];
+    Array.prototype.forEach.call(document.querySelectorAll(FIELD), function (f) {
+      if (visible(f) && !f.closest('#pfas-topbar, .pfas-sidebar')) out.push(f);
+    });
+    return out;
+  }
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('button, a.btn, a.btn-sm, [role=button]') : null;
+    if (!btn || btn.type === 'submit' || btn.closest('form') && btn.type !== 'button') return;
+    var before = shown();
+    setTimeout(function () {
+      if (document.activeElement && document.activeElement !== btn &&
+          document.activeElement !== document.body) return;   /* the page moved focus itself */
+      var now = shown().filter(function (f) { return before.indexOf(f) < 0; });
+      if (now.length) now[0].focus();
+    }, 80);
+  }, true);
+}());

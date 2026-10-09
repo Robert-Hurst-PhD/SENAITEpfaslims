@@ -78,7 +78,7 @@ class CalibrationRule:
 class CCVRule:
     recovery_min:  float
     recovery_max:  float
-    frequency:     int            # one CCV per N analytical samples
+    frequency:     Optional[int]  # one CCV per N analytical samples (None: not set)
     low_level_min: Optional[float] = None   # 537.1: lowest CCC 50–150%
     low_level_max: Optional[float] = None
 
@@ -109,16 +109,6 @@ class ConfirmationRule:
     confirm_technique: str = "LC-HRMS"
     confirm_pct_diff_max: Optional[float] = None  # HRMS vs MS/MS %diff
     notes: str = ""
-
-
-@dataclass(frozen=True)
-class SequenceRule:
-    """How the injection sequence must be structured for this method."""
-    opens_with_solvent_blank: bool = False
-    blank_after_curve:        bool = False
-    ccv_frequency:            int = 10
-    closing_ccv:              bool = True
-    cal_low_to_high:          bool = True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -723,9 +713,6 @@ class MethodProfile:
     def confirmation_rule(self):
         raise NotImplementedError
 
-    def sequence_rule(self):
-        raise NotImplementedError
-
     def sample_factor(self, matrix):
         return None
 
@@ -919,15 +906,6 @@ class FDA32PFASProfile(MethodProfile):
                   "monitored for PFOS (§2024.8.5)",
         )
 
-    def sequence_rule(self):
-        ccv = self._iv().get("ccv", {})
-        return SequenceRule(
-            opens_with_solvent_blank=True,
-            blank_after_curve=True,
-            ccv_frequency=int(ccv.get("frequency") or 6),   # the edited value
-            closing_ccv=True,
-        )
-
     def sample_factor(self, matrix):
         # Matrix factors are keyed by the core SampleType title. Match the
         # sample's matrix EXACTLY first; fall back to legacy substring matching
@@ -995,9 +973,7 @@ class EPA537Profile(MethodProfile):
         )
 
     def ccv_rule(self):
-        return _ccv_rule(self._iv().get("ccv", {}), self.method_id,
-                         default_frequency=10,
-                         low_level_default=(50.0, 150.0))
+        return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
 
     def is_rule(self):
         is_ = _is_section(self._profile_data(), self.method_id)
@@ -1020,14 +996,6 @@ class EPA537Profile(MethodProfile):
             notes="RT within ±0.05 min of expected; "
                   "no qual-ion ratio criterion in 537.1",
         )
-
-    def sequence_rule(self):
-        ccv = self._iv().get("ccv", {})
-        return SequenceRule(
-            ccv_frequency=int(ccv.get("frequency") or 10),   # the edited value
-            closing_ccv=True,
-        )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # EPA 1633A  (aqueous / solid / biosolid / tissue)
@@ -1178,7 +1146,7 @@ def _method_text_rule(profile_data, method_id, citation, low, high, **kw):
     return QCRule(low, high, notes=citation, **kw)
 
 
-def _ccv_rule(ccv, method_id, default_frequency=6, low_level_default=(None, None)):
+def _ccv_rule(ccv, method_id):
     """CCV limits from the profile, or refuse.
 
     The CCV window is the original instance of this whole class of defect: the
@@ -1197,9 +1165,12 @@ def _ccv_rule(ccv, method_id, default_frequency=6, low_level_default=(None, None
         # Frequency and the low-level window are not verdicts on a result:
         # frequency governs sequence layout, and an absent low-level window
         # means the method sets no separate limit at the MRL.
-        frequency=int(ccv.get("frequency", default_frequency)),
-        low_level_min=ccv.get("low_level_min", low_level_default[0]),
-        low_level_max=ccv.get("low_level_max", low_level_default[1]),
+        # no code value stands in for the profile's: an unset frequency is
+        # None (the CCV-frequency check reports it), an unset low-level
+        # window means the method sets none
+        frequency=int(ccv["frequency"]) if ccv.get("frequency") not in (None, "", 0) else None,
+        low_level_min=ccv.get("low_level_min"),
+        low_level_max=ccv.get("low_level_max"),
     )
 
 
@@ -1387,8 +1358,7 @@ class EPA1633AProfile(MethodProfile):
         )
 
     def ccv_rule(self):
-        return _ccv_rule(self._iv().get("ccv", {}), self.method_id,
-                         default_frequency=10)
+        return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
 
     def is_rule(self):
         is_ = _is_section(self._profile_data(), self.method_id)
@@ -1408,14 +1378,6 @@ class EPA1633AProfile(MethodProfile):
             sn_min_confirm=_conf_value(conf, "sn_confirm_min", self.method_id),
             notes="Ion-ratio window wider in 1633A (50–150% of expected typical)",
         )
-
-    def sequence_rule(self):
-        ccv = self._iv().get("ccv", {})
-        return SequenceRule(
-            ccv_frequency=int(ccv.get("frequency") or 10),   # the edited value
-            closing_ccv=True,
-        )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Registry

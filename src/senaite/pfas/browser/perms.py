@@ -12,7 +12,7 @@ Python 2.7 compatible.
 from __future__ import absolute_import, print_function, unicode_literals
 
 # Roles permitted to edit lab configuration (method profiles, logbook
-# definitions, QC criteria). Matches: only Manager / QAO /
+# definitions, QC criteria): only Manager / QAO /
 # Director / Owner may edit configuration tables.
 ALLOWED_ROLES = frozenset(("Manager", "LabManager", "Owner"))
 
@@ -158,7 +158,7 @@ STAFF_ROLES = frozenset(("Manager", "LabManager", "LabClerk", "Analyst", "Verifi
                          "Sampler", "SamplingCoordinator", "Preserver", "Publisher",
                          "RegulatoryInspector", "Owner"))
 CLIENT_VIEWS = frozenset((
-    "pfas-track", "pfas-home", "pfas-sample-status", "pfas-ar-tracker", "pfas-receipt",
+    "pfas-track", "pfas-home", "pfas-ar-tracker", "pfas-receipt",
     "pfas-help",
     # the chain of custody: a client enters their own samples
     "pfas-coc", "pfas-coc-print",

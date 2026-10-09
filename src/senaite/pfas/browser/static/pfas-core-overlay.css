@@ -191,3 +191,10 @@ input[type=checkbox], input[type=radio] { accent-color: var(--s-primary); }
 .ajax-contents-table tr.state-cancelled { border-left: 2px solid var(--s-secondary) !important; }
 .ajax-contents-table tr td div.progress div.progress-bar,
 .progress-bar { background-color: var(--s-primary) !important; }
+
+/* Phone: a core page's wide tables (Manage Results, the sample header, the
+   listings) scroll inside the content column instead of dragging the whole
+   page sideways past the top bar (UI review: worksheet 1137 px at 390 px). */
+@media (max-width: 768px) {
+  #content, #portal-column-content { max-width: 100vw; overflow-x: auto; }
+}

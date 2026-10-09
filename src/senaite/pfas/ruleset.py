@@ -298,7 +298,7 @@ def resolve(method_id, matrix, key, analyte=None,
         available" (e.g. an unconfigured method) -- resolution then falls
         straight through to the baseline tier.
     project_ruleset : the project's ruleset dict (get_project_ruleset() shape),
-        or None/{} for "no project" -- rule 3: this is the default,
+        or None/{} for "no project" -- this is the default,
         overwhelmingly common case, and resolves cleanly through lab then
         baseline exactly like any other absence.
     project_doc, project_rev : the controlled-document id/revision backing a

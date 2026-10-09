@@ -293,7 +293,7 @@
           </div>
         </tal:not_recorded>
 
-        <tal:uncompared tal:condition="python:(not accred.get('out_of_scope')) and accred.get('mode') != 'not_recorded' and accred.get('uncompared')">
+        <tal:uncompared tal:condition="python:(not accred.get('out_of_scope')) and accred.get('mode') != 'not_recorded' and accred.get('uncompared') and view.has_run()">
           <div style="background:var(--s-warn-lt);color:var(--s-warn-text);border:1px solid var(--s-warning);
                       border-radius:6px;padding:10px 14px;margin-bottom:14px;
                       font-size:var(--fs-base)">

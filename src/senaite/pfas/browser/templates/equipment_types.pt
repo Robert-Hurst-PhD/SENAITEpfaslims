@@ -61,10 +61,10 @@
         </tbody>
       </table>
       </fieldset>
-      <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save types</button>
+      <button class="btn btn-primary section-gap" type="submit" tal:condition="view/can_configure">Save types</button>
     </form>
 
-    <div class="section-group-hdr" tal:condition="view/can_configure">Lab-wide facility defaults</div>
+    <div class="section-group-hdr section-gap" tal:condition="view/can_configure">Lab-wide facility defaults</div>
     <form method="post" tal:condition="view/can_configure"
           tal:attributes="action string:${purl}/@@pfas-equipment-types"
           tal:define="d view/facility_defaults">

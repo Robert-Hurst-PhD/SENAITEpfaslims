@@ -1194,63 +1194,50 @@ def _unknown_profile(method_id):
     return {}
 
 
-def get_profile(portal, method_id):
-    """
-    Return the profile dict for method_id.  Falls back to DEFAULT_PROFILES if
-    not yet customised.  Always returns a fresh dict; mutations do not persist.
+class ProfileUnreadable(RuntimeError):
+    """A stored method profile that cannot be read. Serving the shipped seed
+    in its place judged runs against criteria nobody configured (review
+    2026-10-09); the lab restores it from Configuration History instead."""
 
-    When a saved profile exists, top-level keys present in DEFAULT_PROFILES but
-    absent from the saved copy are back-filled from the default.  This lets new
-    fields added to DEFAULT_PROFILES (e.g. extraction_stages) appear in existing
-    saved profiles without requiring a manual re-save.
+
+def _load_saved(method_id, raw):
+    try:
+        saved = json.loads(raw)
+    except (ValueError, TypeError):
+        raise ProfileUnreadable(
+            "The method profile %s cannot be read. Restore it from Configuration "
+            "History (Configuration > Configuration History) before it is used." % method_id)
+    _migrate_spike_levels(saved, DEFAULT_PROFILES.get(method_id))
+    return saved
+
+
+def get_profile(portal, method_id):
+    """The stored profile dict for method_id (a fresh copy; mutations do not
+    persist).
+
+    What is stored is what applies: a section the profile does not hold is
+    NOT filled in from the shipped seeds (the checks report it as not
+    configured), and an unreadable profile raises ProfileUnreadable rather
+    than serving the seed. The seeds are written once, at install; a new
+    section for existing profiles comes with a migration.
     """
     folder = _get_profiles_folder(portal)
     if folder is not None:
         if method_id in folder:
-            obj = folder[method_id]
-            raw = getattr(obj, "profile_json", None)
+            raw = getattr(folder[method_id], "profile_json", None)
             if raw:
-                try:
-                    saved = json.loads(raw)
-                    dflt = DEFAULT_PROFILES.get(method_id)
-                    if dflt:
-                        for key, default_val in dflt.items():
-                            if key not in saved:
-                                saved[key] = copy.deepcopy(default_val)
-                    _migrate_spike_levels(saved, dflt)
-                    return saved
-                except (ValueError, TypeError):
-                    logger.warning("Corrupt profile JSON for %s in Dexterity; returning default",
-                                   method_id)
-        # Folder exists but method_id absent (or JSON corrupt): fall through to default.
-        dflt = DEFAULT_PROFILES.get(method_id)
-        if dflt is None:
-            return _unknown_profile(method_id)
-        return copy.deepcopy(dflt)
+                return _load_saved(method_id, raw)
+        return _unknown_profile(method_id)
 
-    # Annotation fallback (fresh install only — refuses if it would mask a
-    # vanished Dexterity store)
+    # Annotation store (a site from before the profile folder; refuses if it
+    # would mask a vanished folder). A fresh install with neither store reads
+    # the seeds until the install step writes them.
     _refuse_if_stale(portal)
-    store = get_profile_store(portal)
-    raw = store.get(method_id)
+    raw = get_profile_store(portal).get(method_id)
     if raw is None:
         dflt = DEFAULT_PROFILES.get(method_id)
-        if dflt is None:
-            return _unknown_profile(method_id)
-        return copy.deepcopy(dflt)
-    try:
-        saved = json.loads(raw)
-        dflt = DEFAULT_PROFILES.get(method_id)
-        if dflt:
-            for key, default_val in dflt.items():
-                if key not in saved:
-                    saved[key] = copy.deepcopy(default_val)
-        _migrate_spike_levels(saved, dflt)
-        return saved
-    except (ValueError, TypeError):
-        logger.warning("Corrupt profile JSON for %s; returning default", method_id)
-        dflt = DEFAULT_PROFILES.get(method_id)
-        return copy.deepcopy(dflt) if dflt else _unknown_profile(method_id)
+        return copy.deepcopy(dflt) if dflt is not None else _unknown_profile(method_id)
+    return _load_saved(method_id, raw)
 
 
 def raw_profile(portal, method_id):

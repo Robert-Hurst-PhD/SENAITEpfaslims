@@ -49,7 +49,7 @@ class AnalysisServiceExtender(object):
     pfas_quant_surrogate — on an ANALYTE service: the KEYWORD of the surrogate
                            SUGGESTED when this native joins a method with no
                            surrogate chosen yet. Not read at run time: each
-                           method's Surrogate Map owns the link (, superseding D58's "this is the store").
+                           method's Surrogate Map owns the link.
     """
 
     implements(ISchemaExtender)

@@ -27,7 +27,8 @@ LANDINGS = (
     (("LabClerk",),             u"Bench",         "@@pfas-bench", "pfas-sg-bench"),
     (("Client",),               u"Sample Tracker", "@@pfas-track", ""),
 )
-DEFAULT_LANDING = (u"Sample Status", "@@pfas-sample-status", "pfas-sg-operations")
+# anyone else (no lab role): the public tracker, never a staff board
+DEFAULT_LANDING = (u"Sample Tracker", "@@pfas-track", "")
 
 
 def landing_for(roles):

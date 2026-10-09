@@ -25,7 +25,8 @@ from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
 
 logger = logging.getLogger("senaite.pfas.site_settings")
 
-SITE_GATES = {"save_language": TIER_CONFIG, "save_director": TIER_CONFIG}
+SITE_GATES = {"save_language": TIER_CONFIG, "save_director": TIER_CONFIG,
+              "save_timezone": TIER_CONFIG}
 DEFAULT_KEY = "plone.default_language"
 AVAILABLE_KEY = "plone.available_languages"
 COOKIE_KEY = "plone.use_cookie_negotiation"
@@ -67,6 +68,8 @@ class PFASSiteSettingsView(GateMixin, BrowserView):
                 msg = "saved" if self._save_language(req.form.get("language", "")) else "error"
             elif action == "save_director":
                 msg = "saved" if self._save_director(req.form.get("director", "")) else "error"
+            elif action == "save_timezone":
+                msg = "saved" if self._save_timezone(req.form.get("timezone", "")) else "error"
             req.response.redirect("%s/@@pfas-site-settings?%s=1" % (self.portal_url(), msg))
             return ""
         return self.template()
@@ -141,6 +144,31 @@ class PFASSiteSettingsView(GateMixin, BrowserView):
             logger.warning("director change not tracked", exc_info=True)
         IAnnotations(portal)[staff.DIRECTOR_KEY] = userid
         return True
+
+    # ── Laboratory time zone ────────────────────────────────────
+
+    def timezone(self):
+        from senaite.pfas import lab_time
+        return lab_time.get_zone(api.get_portal())
+
+    def timezones(self):
+        from senaite.pfas import lab_time
+        return lab_time.zones()
+
+    def _save_timezone(self, name):
+        from senaite.pfas import lab_time
+        portal = api.get_portal()
+        name = (name or u"").strip()
+        if name and name not in lab_time.zones():
+            return False
+        try:
+            from senaite.pfas import config_history
+            config_history.track(portal, "lab_timezone", "default",
+                                 lambda: {"timezone": lab_time.get_zone(portal)},
+                                 label=u"Laboratory time zone")
+        except Exception:                                   # noqa: BLE001
+            logger.warning("time zone change not tracked", exc_info=True)
+        return lab_time.set_zone(portal, name)
 
     def saved(self):
         return bool(self.request.form.get("saved"))

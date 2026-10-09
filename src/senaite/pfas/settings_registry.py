@@ -3,7 +3,7 @@
 
 WHY THIS EXISTS
 ---------------
- rule 1: *"Configurable, not hardcoded. UI-driven, not code-driven…
+The first rule: *"Configurable, not hardcoded. UI-driven, not code-driven…
 Finding a hardcoded lab value = a defect to migrate."* The project has honoured
 that repeatedly but PER FEATURE, so three things went wrong at once:
 

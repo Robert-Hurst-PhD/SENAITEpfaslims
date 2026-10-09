@@ -45,6 +45,21 @@
       </div>
       <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
     </form>
+
+    <div class="section-group-hdr" id="timezone">Laboratory time zone</div>
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-site-settings">
+      <input type="hidden" name="action" value="save_timezone" tal:condition="view/can_configure" />
+      <div class="field-row">
+        <label for="timezone">Time zone of the instrument's clock</label>
+        <select name="timezone" id="timezone" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
+          <option value="">(not set: UTC)</option>
+          <option tal:repeat="z view/timezones"
+                  tal:attributes="value z; selected python:'selected' if z == view.timezone() else None"
+                  tal:content="z">America/New_York</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
+    </form>
   </div>
   </div>
 </html>

@@ -159,11 +159,21 @@ class EDDBuilder(object):
         if ws is None:
             return None
         from senaite.pfas.browser.extraction_guide import _load_session
+        from senaite.pfas import lab_time
         at = (_load_session(ws) or {}).get("finalized_at") or u""
         try:
-            return datetime.strptime(at[:19], "%Y-%m-%dT%H:%M:%S") if at else None
+            when = datetime.strptime(at[:19], "%Y-%m-%dT%H:%M:%S") if at else None
         except ValueError:
             return None
+        zone = lab_time.get_zone(self.portal)
+        if when is not None and not zone and not getattr(self, "_tz_warned", False):
+            self._tz_warned = True
+            self._qualifier_errors.append({
+                "row": 0, "field": "PREP_DATE", "type": "Lab",
+                "message": "The laboratory time zone is not set (Site Settings): prep "
+                           "dates are UTC while analysis dates are the instrument's clock."})
+        # recorded in UTC; the analysis date is on the laboratory's clock
+        return lab_time.to_lab(when, zone)
 
     def _translate_qc_type(self, our_qc):
         if not our_qc:
@@ -217,6 +227,7 @@ class EDDBuilder(object):
         self._unmapped_matrices = set()
         self._rounding_errors = []
         self._qualifier_errors = []
+        self._tz_warned = False
 
         batch_id = batch_obj.getId()
         sdg = self._build_sdg(batch_id)

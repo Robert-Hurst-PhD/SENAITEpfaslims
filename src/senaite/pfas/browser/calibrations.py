@@ -301,6 +301,11 @@ class PFASCalibrationsView(BrowserView):
         cals = self.calibrations(**scope)
         if not cals:
             return []
+        try:
+            levels_by_id = self._store().get_calibration_levels_many([c.get("id") for c in cals])
+        except Exception as e:                                  # noqa: BLE001
+            logger.error("get_calibration_levels_many: %s", e)
+            levels_by_id = {}
 
         # one group per run (date and the worksheet that ran it), newest first
         seen_dates = []
@@ -324,7 +329,8 @@ class PFASCalibrationsView(BrowserView):
                     "analytes":      [],
                 }
             # Pre-fetch levels for each analyte
-            cal["levels"] = self.calibration_levels(cal["id"], cal.get("method"))
+            cal["levels"] = self.calibration_levels(cal["id"], cal.get("method"),
+                                                    rows=levels_by_id.get(cal["id"]))
             groups[rd]["analytes"].append(cal)
 
         result = []
@@ -335,7 +341,7 @@ class PFASCalibrationsView(BrowserView):
             result.append(grp)
         return result
 
-    def calibration_levels(self, calibration_id, method=None):
+    def calibration_levels(self, calibration_id, method=None, rows=None):
         """Return per-level data for a single calibration: the worker's
         verdict and the ±% it judged the point by (`limit_pct`). A run stored
         before the limit was recorded gets the method's: the lowest level's
@@ -344,11 +350,12 @@ class PFASCalibrationsView(BrowserView):
         calibrator inside its own wider window showed as failed."""
         if not self.db_available:
             return []
-        try:
-            rows = self._store().get_calibration_levels(calibration_id)
-        except Exception as e:
-            logger.error("get_calibration_levels %s: %s", calibration_id, e)
-            return []
+        if rows is None:
+            try:
+                rows = self._store().get_calibration_levels(calibration_id)
+            except Exception as e:
+                logger.error("get_calibration_levels %s: %s", calibration_id, e)
+                return []
 
         lim = self.method_limits(method)["CAL"]
         result = []
@@ -467,9 +474,11 @@ class PFASCalibrationsView(BrowserView):
         # Augment each run with QC data and override values
         for run in runs:
             run["used_by"] = sorted(set(w for c in run["analytes"] for w in used_by.get(c["id"], [])))
-            # a worksheet's own ICV/CCV, whatever date its curve was run on
-            qc_by_analyte = self._qc_for_run(None if scope.get("batch_id") else run["run_date"],
-                                             scope.get("batch_id"))
+            # the worksheet's own ICV/CCV, whatever date its curve was run on.
+            # By date alone, every worksheet run that day was drawn on one
+            # chart (110 bars and 55 solvent-blank chips; UI review 2026-10-09)
+            bid = scope.get("batch_id") or run.get("batch_id")
+            qc_by_analyte = self._qc_for_run(None if bid else run["run_date"], bid)
             for cal in run["analytes"]:
                 cal["qc"] = qc_by_analyte.get(cal["analyte"], [])
                 cal["fit_type_override"] = cal.get("fit_type_override", "")

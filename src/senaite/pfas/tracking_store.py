@@ -9,11 +9,13 @@ Storage layout
   IAnnotations(portal)[TRACKING_KEY]        -> PersistentMapping {tracking_number: ar_uid}
   IAnnotations(portal)[TRACKING_BY_UID_KEY] -> PersistentMapping {ar_uid: tracking_number}
 
-Tracking number format: PF-YYMMDD-XXXX
-  PF     = PFAS lab prefix (fixed)
-  YYMMDD = date received (2-digit year, zero-padded month/day)
-  XXXX   = 4-char uppercase alphanumeric suffix (A-Z, 0-9), ~1.68M combinations per day
-  e.g.   PF-260611-A3K9
+Tracking number format: PF-YYMMDD-XXXXXXXX
+  PF       = PFAS lab prefix (fixed)
+  YYMMDD   = date received (2-digit year, zero-padded month/day)
+  XXXXXXXX = 8-char uppercase alphanumeric suffix (A-Z, 0-9), 36^8 = 2.8e12 per
+             day, so a day's numbers cannot be found by trying them (numbers
+             issued with the earlier 4-character suffix still work)
+  e.g.     PF-260611-A3K9Q7ZD
 
 Idempotency
 -----------
@@ -36,8 +38,8 @@ logger = logging.getLogger('senaite.pfas.tracking_store')
 TRACKING_KEY     = u'senaite.pfas.tracking'
 TRACKING_BY_UID  = u'senaite.pfas.tracking.by_uid'
 
-_CHARS = string.ascii_uppercase + string.digits  # 36 chars  →  36^4 = 1,679,616 combos/day
-_SUFFIX_LEN = 4
+_CHARS = string.ascii_uppercase + string.digits  # 36 chars
+_SUFFIX_LEN = 8
 
 
 def _get_store(portal):
@@ -51,7 +53,7 @@ def _get_store(portal):
 
 
 def generate_tracking_number():
-    """Mint a candidate PF-YYMMDD-XXXX number (not yet checked for collisions)."""
+    """Mint a candidate PF-YYMMDD-XXXXXXXX number (not yet checked for collisions)."""
     today = datetime.date.today()
     date_str = today.strftime('%y%m%d')
     rng = random.SystemRandom()

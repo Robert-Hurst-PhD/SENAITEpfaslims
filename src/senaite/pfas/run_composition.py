@@ -27,7 +27,7 @@ duplicate_all_samples=None/False and lfsm_frequency=None/0 together make
 compose_sample_block() return exactly `[(row, "sample") for row in
 sample_rows]` -- the untouched input, in order. That is the project-less
 default every existing batch resolves to (senaite.pfas.ruleset's resolve()
-rule 3: no project -> no lab data for these two keys yet -> None), which is
+no project -> no lab data for these two keys yet -> None), which is
 what lets a project-less batch build byte-for-byte the same sequence it
 built before this module existed. tests/test_run_composition.py pins this.
 

@@ -752,6 +752,23 @@ class QCResultStore(object):
             analytes = [r[0] for r in conn.execute(sql + " ORDER BY analyte", params)]
         return methods, analytes
 
+    def get_calibration_levels_many(self, calibration_ids):
+        """{calibration id: [level rows]} for many curves in one query (the
+        archive asked once per curve)."""
+        ids = sorted(set(i for i in calibration_ids if i is not None))
+        out = dict((i, []) for i in ids)
+        if not ids:
+            return out
+        with self._connect() as conn:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                rows = conn.execute(
+                    "SELECT * FROM calibration_levels WHERE calibration_id IN (%s) "
+                    "ORDER BY calibration_id, level ASC" % ",".join("?" * len(chunk)), chunk).fetchall()
+                for r in rows:
+                    out[r["calibration_id"]].append(dict(r))
+        return out
+
     def get_calibration_levels(self, calibration_id):
         with self._connect() as conn:
             rows = conn.execute(

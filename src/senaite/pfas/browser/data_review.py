@@ -314,6 +314,17 @@ class PFASDataReviewView(BrowserView):
             pass
         return u""
 
+    def has_run(self):
+        """True once a run of this worksheet is on record: "no departure
+        detected" says nothing about a worksheet with no data."""
+        ws = self._get_worksheet()
+        if ws is None or not self.db_available:
+            return False
+        try:
+            return self._store().get_batch(ws.getId()) is not None
+        except Exception:                                   # noqa: BLE001
+            return False
+
     def import_problems(self):
         """Run files delivered for this worksheet that the worker could not
         import yet (retrying) or gave up on (failed)."""

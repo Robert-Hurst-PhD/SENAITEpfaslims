@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """A method's calibration levels, and what follows from them
-(, "Calibration levels own the RL" and "Calibration
+("Calibration levels own the RL" and "Calibration
 ladders in ng/mL; the matrix factor converts").
 
     instrument_verification.calibration = {

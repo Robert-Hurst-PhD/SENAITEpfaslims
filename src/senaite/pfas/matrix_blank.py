@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Matrix blanks against their lot's assigned levels (;,
-"Matrix blanks").
+"""Matrix blanks against their lot's assigned levels.
 
 A matrix blank is made from a blank-matrix lot (a reference material, or
 material the lab has quantified before), so it is expected to carry PFAS at

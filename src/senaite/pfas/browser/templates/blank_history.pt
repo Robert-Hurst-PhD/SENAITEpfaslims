@@ -83,7 +83,8 @@
       if (!el || !window.Chart || !D.series || !D.series.length) return;
       var css = getComputedStyle(document.documentElement);
       function tok(n) { return css.getPropertyValue(n).trim(); }
-      var bad = tok('--s-danger'), info = tok('--s-info');
+      var bad = tok('--s-danger'), info = tok('--s-info'), grey = tok('--s-secondary');
+      Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
       var sets = D.series.map(function (s, i) {
         var c = tok('--series-' + ((i % 6) + 1));
         return {label: s.analyte, data: s.values, showLine: false, pointRadius: 3.5,
@@ -102,9 +103,20 @@
                                   position: 'end', font: {size: 10}}};
       new Chart(el, {type: 'line', data: {labels: D.labels, datasets: sets},
                      options: {responsive: true, maintainAspectRatio: false, animation: false,
-                               plugins: {legend: {labels: {usePointStyle: true, boxWidth: 8}},
+                               plugins: {legend: {labels: {usePointStyle: true, boxWidth: 8,
+                                         /* the marker key: hollow = not detected, coral ring = failed */
+                                         generateLabels: function (chart) {
+                                           var base = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                           return base.concat([
+                                             {text: 'Not detected', pointStyle: 'circle', fillStyle: 'transparent',
+                                              strokeStyle: grey, lineWidth: 1, hidden: false},
+                                             {text: 'Above the blank limit', pointStyle: 'circle', fillStyle: 'transparent',
+                                              strokeStyle: bad, lineWidth: 2, hidden: false}]);
+                                         }}},
                                          annotation: {annotations: ann}},
-                               scales: {x: {ticks: {maxRotation: 60, minRotation: 30, font: {size: 10}}},
+                               /* every run is a point; one label in several, so they can be read */
+                               scales: {x: {ticks: {autoSkip: true, maxTicksLimit: 16, maxRotation: 45,
+                                                    minRotation: 0, font: {size: 10}}},
                                         y: {beginAtZero: true, grace: '10%',
                                             title: {display: !!D.units, text: D.units}}}}});
     })();

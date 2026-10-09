@@ -38,7 +38,34 @@ from senaite.pfas.browser.formutil import flatten_form
 
 logger = logging.getLogger('senaite.pfas.browser.tracker')
 
-_TRACKING_RE = re.compile(r'^PF-\d{6}-[A-Z0-9]{4}$')
+_TRACKING_RE = re.compile(r'^PF-\d{6}-(?:[A-Z0-9]{8}|[A-Z0-9]{4})$')
+
+# Failed look-ups allowed per visitor address per hour; past it the page
+# answers nothing until the hour has passed, so numbers cannot be tried in
+# bulk. Kept in memory: a restart forgets it, which is harmless.
+FAILED_LOOKUPS_PER_HOUR = 20
+_FAILED = {}
+_FAILED_LOCK = __import__("threading").Lock()
+
+
+def _visitor(request):
+    for key in ("HTTP_CF_CONNECTING_IP", "HTTP_X_REAL_IP", "REMOTE_ADDR"):
+        v = (request.get(key) or "").split(",")[0].strip()
+        if v:
+            return v
+    return "?"
+
+
+def _recent_failures(who, now):
+    with _FAILED_LOCK:
+        times = [t for t in _FAILED.get(who, []) if now - t < 3600]
+        _FAILED[who] = times
+        return len(times)
+
+
+def _record_failure(who, now):
+    with _FAILED_LOCK:
+        _FAILED.setdefault(who, []).append(now)
 
 # ── Stage SVG animations (16-bit pixel-art style) ────────────────────────────
 # Each is a standalone SVG embedded directly in the tracker page.
@@ -417,13 +444,29 @@ class PFASClientTrackerView(BrowserView):
     def tracking_number(self):
         return self.request.form.get('t', u'').strip().upper()
 
+    def limited(self):
+        """True when this visitor has had too many failed look-ups this hour."""
+        if not hasattr(self, "_limited"):
+            import time
+            self._limited = _recent_failures(_visitor(self.request), time.time()) >= FAILED_LOOKUPS_PER_HOUR
+        return self._limited
+
     def status(self):
         """
         Return public status dict, or None if tracking number not found.
         All SENAITE object reads are done under an elevated security context.
+        Looked up once per request; a miss counts against the visitor.
         """
+        if not hasattr(self, "_status"):
+            self._status = self._lookup()
+            if self._status is None and self.tracking_number() and not self.limited():
+                import time
+                _record_failure(_visitor(self.request), time.time())
+        return self._status
+
+    def _lookup(self):
         t = self.tracking_number()
-        if not t or not _TRACKING_RE.match(t):
+        if not t or not _TRACKING_RE.match(t) or self.limited():
             return None
 
         portal = _portal(self.context)
@@ -447,7 +490,7 @@ class PFASClientTrackerView(BrowserView):
     def not_found(self):
         """True if a valid-format tracking number was submitted but has no match."""
         t = self.tracking_number()
-        if not t:
+        if not t or self.limited():
             return False
         if not _TRACKING_RE.match(t):
             return False

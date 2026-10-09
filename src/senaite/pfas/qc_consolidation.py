@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""QC profile consolidation migrations (,
- "P1 + P2 approved"). Pure; Python 2.7 and 3.
+"""QC profile consolidation migrations ("P1 + P2 approved"). Pure; Python 2.7 and 3.
 
 P1 `drop_dead_keys`: profile keys no code reads any more --
   * instrument_verification.sequence  (ccv.frequency is the one CCV interval;
