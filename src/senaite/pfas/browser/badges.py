@@ -39,7 +39,7 @@ logger = logging.getLogger("senaite.pfas.badges")
 
 COOKIE = str("pfas_terminal")
 COOKIE_AGE = 5 * 365 * 24 * 3600
-IDLE_SECONDS = 600                  # lab decision 2026-10-05
+IDLE_SECONDS = 600
 NO_BADGE_ROLES = frozenset(("Manager", "Site Administrator", "Owner"))
 TERMINAL_GATES = {"register_terminal": TIER_CONFIG, "revoke_terminal": TIER_CONFIG,
                   "forget_tile": TIER_CONFIG}

@@ -34,7 +34,7 @@ PATH = ("instrument_verification", "calibration")
 PPT, EXTRACT = "ppt", "ng/mL"
 UNITS = (EXTRACT, PPT)
 
-# What the levels were seeded from (lab instruction 2026-10-02: "every
+# What the levels were seeded from ("every
 # calibration point doubled from the last"). EPA 1633A ranges are Table 4 of
 # the December 2024 method (CS1 to the highest listed standard); each
 # analyte's factor is its CS1 / 0.2, its max the highest standard listed.

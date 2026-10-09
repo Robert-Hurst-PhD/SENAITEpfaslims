@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Badges and registered lab terminals (part C).
 
-Lab decisions 2026-10-05: a badge alone signs a person in, but only at a
+The rules: a badge alone signs a person in, but only at a
 REGISTERED lab terminal, never for a Manager / site-admin account; a scan
 switches user; terminals sign out after 10 minutes idle.
 
