@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title" tal:content="python: u'Design: %s' % view.entry()['title']">Design</title>
+  <tal:h metal:fill-slot="head-extra">
+    <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/vendor/pdfme/pdfme.min.css" />
+  </tal:h>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title" tal:content="python: view.entry()['title']">Vial label</tal:t>
+  <tal:c metal:fill-slot="header-context" tal:define="st view/status">
+    <span class="header-badge" id="dt-status"
+          tal:content="python: 'Not issued' if st['none_issued'] else ('Issued rev %s, draft changed' % st['rev'] if st['unissued'] else 'Issued rev %s' % st['rev'])">Not issued</span>
+  </tal:c>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-document-templates">&#8592; Templates</a>
+    <button class="btn-sm btn-secondary" type="button" id="dt-preview">Preview PDF</button>
+    <button class="btn-sm btn-primary" type="button" id="dt-save" tal:condition="view/can_configure">Save draft</button>
+  </tal:r>
+
+  <metal:fill fill-slot="content">
+    <script type="application/json" id="dt-config" tal:content="structure view/config_json">{}</script>
+    <input type="hidden" id="dt-token" tal:attributes="value context/@@authenticator/token" />
+
+    <div class="dt-toolbar" tal:condition="view/can_configure">
+      <span class="dt-toolbar-label">Add data</span>
+      <select id="dt-add-as" aria-label="Add data as">
+        <option value="text">as text</option>
+        <option value="code128">as Code 128 barcode</option>
+        <option value="qrcode">as QR code</option>
+      </select>
+      <span id="dt-fields"></span>
+      <span id="dt-tables"></span>
+      <button type="button" class="btn-sm btn-secondary" id="dt-every-page"
+              title="Repeat the selected fields on every page (letterhead, report number, page numbers)">On every page</button>
+    </div>
+    <p class="cf-hint" id="dt-every-list"></p>
+    <p class="bench-sub">Data fields show each document&#8217;s own values; everything else you place is fixed content. <tal:h define="hid string:document-designs"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <ul class="bench-alerts" id="dt-problems"></ul>
+    <span class="cf-hint" id="dt-saved"></span>
+
+    <div id="dt-designer" class="dt-designer"></div>
+    <iframe id="dt-pdf" class="rt-preview dt-pdf" title="PDF preview" hidden="hidden"></iframe>
+  </metal:fill>
+
+  <tal:s metal:fill-slot="scripts">
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/pdfme/pdfme.min.js"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/document_designer.js"></script>
+  </tal:s>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal"
+      tal:define="rec view/record">
+<head>
+  <meta charset="utf-8" />
+  <title tal:content="string:Method study ${rec/id}">Method study</title>
+  <!-- Print document for WeasyPrint (method_studies.py): self-contained, as
+       the extraction log; exempt from the screen ratchet. -->
+  <style>
+    @page { size: letter; margin: 19mm;
+            @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #666; } }
+    body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9pt; color: #12121f; }
+    h1 { font-size: 16pt; margin: 0 0 4pt; }
+    h2 { font-size: 12pt; color: #1a61a3; margin: 12pt 0 4pt; }
+    table { width: 100%; border-collapse: collapse; margin: 2pt 0 8pt; }
+    th, td { border: 0.3pt solid #808080; padding: 3pt 5pt; text-align: left; vertical-align: top; }
+    thead th { background: #1a61a3; color: #fff; }
+    .btn-sm { display: none; }
+  </style>
+</head>
+<body>
+  <h1 tal:content="string:Method study ${rec/id}">Method study</h1>
+  <table>
+    <tr><th>Kind</th><td tal:content="python:view.kind_label(rec['kind'])">MDL</td></tr>
+    <tr><th>Source</th><td tal:content="python:{'mdl': u'40 CFR 136 Appendix B, Revision 2 (EPA 821-R-16-006)'}.get(rec['kind'], u'EPA Method 537.1 v2.0 (EPA/600/R-20/006) section 9.2')">source</td></tr>
+    <tr><th>Method / matrix</th><td tal:content="string:${rec/method} / ${rec/matrix}">m</td></tr>
+    <tr><th>Spiking levels</th><td tal:content="python:u', '.join(u'%s (%s)' % (l, view.fmt(view.fortified(l))) for l in rec.get('levels') or []) or u'-'">level</td></tr>
+    <tr><th>Reference materials</th><td tal:content="python:u', '.join(u'%s %s' % (m.get('name'), m.get('lot_number')) for m in rec.get('reference_materials') or []) or u'-'">rm</td></tr>
+    <tr tal:condition="python:rec['kind'] == 'pt'"><th>Proficiency test</th>
+        <td tal:define="pt rec/pt" tal:content="python:u'%s %s, round %s, sample %s, received %s; certificate %s' % (pt.get('provider') or u'', pt.get('scheme') or u'', pt.get('round') or u'', pt.get('sample') or u'', pt.get('received') or u'', (pt.get('certificate') or {}).get('name') or u'none')">pt</td></tr>
+    <tr><th>Period / worksheets</th><td tal:content="python:u'%s to %s; %s' % (rec.get('since') or u'-', rec.get('until') or u'-', u', '.join(rec.get('worksheets') or []) or u'-')">p</td></tr>
+    <tr><th>Created</th><td tal:content="python:u'%s %s' % (rec.get('created_by') or u'', rec.get('created_at') or u'')">c</td></tr>
+    <tr><th>Status</th><td tal:content="python:u'%s %s %s' % (rec['status'], rec.get('approved_by') or u'', rec.get('approved_at') or u'')">s</td></tr>
+    <tr tal:condition="rec/statement|nothing"><th>Statement</th><td tal:content="rec/statement">st</td></tr>
+  </table>
+  <h2>Results</h2>
+  <metal:r use-macro="context/@@pfas-method-study-macros/macros/results" />
+  <tal:x condition="rec/exclusions">
+    <h2>Exclusions</h2>
+    <table>
+      <thead><tr><th>Injection</th><th>Analyte</th><th>Reason</th><th>By</th><th>When</th></tr></thead>
+      <tbody><tr tal:repeat="e rec/exclusions">
+        <td tal:content="e/injection">i</td><td tal:content="e/analyte">a</td><td tal:content="e/reason">r</td>
+        <td tal:content="e/by">b</td><td tal:content="e/at">t</td></tr></tbody>
+    </table>
+  </tal:x>
+</body>
+</html>

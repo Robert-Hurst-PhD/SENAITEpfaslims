@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Method Profiles</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    /* ── Method profiles page-specific ────────────────────────────────── */
+    .lead { color: var(--s-secondary); margin-bottom: 20px; font-size: var(--fs-base); }
+
+    .method-id { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--s-primary-dk);
+                 background: var(--s-primary-lt); padding: 2px 6px; border-radius: 3px; }
+    /* .badge and .badge-custom/.badge-default are all global now (pfas_macros) —
+       promoted when the Lab Settings console needed the same two colours. */
+
+    .desc { color: var(--s-secondary); font-size: var(--fs-sm); margin-top: 2px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Method Profiles</tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="request/ok|nothing" tal:content="request/ok">ok</div>
+    <div class="alert alert-error" tal:condition="request/error|nothing" tal:content="request/error">error</div>
+    <p class="lead">Each method&#8217;s QC criteria; a save is handed to the pipeline at once. <tal:h define="hid string:method-profile"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+    <div class="table-wrap">
+    <table class="pfas-table" style="border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+      <thead>
+        <tr>
+          <th>Method ID</th>
+          <th>Display Name</th>
+          <th class="hide-mobile">Description</th>
+          <th>SENAITE Method</th>
+          <th>SENAITE record</th>
+          <th>Revision</th>
+          <th>Print</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr tal:repeat="m view/methods">
+          <td>
+            <span class="method-id" tal:content="m/method_id">FDA_32PFAS</span>
+          </td>
+          <td tal:content="m/display_name">FDA 32-PFAS in Food</td>
+          <td class="hide-mobile">
+            <div class="desc" tal:content="m/description">...</div>
+          </td>
+          <td>
+            <tal:linked tal:condition="m/core_method_url">
+              <strong tal:content="m/core_method_title">method</strong>
+              <div class="desc">
+                <span tal:content="m/linked_services">0</span> analytes &#183;
+                <span tal:content="m/linked_sampletypes">0</span> matrices
+              </div>
+            </tal:linked>
+            <span class="sur-tag sur-nocore" tal:condition="not:m/core_method_url">not linked</span>
+          </td>
+          <td>
+            <a class="btn-sm btn-secondary" tal:condition="m/core_method_url"
+               tal:attributes="href m/core_method_url"
+               title="Open the core SENAITE Method record">Open</a>
+          </td>
+          <td class="mp-rev" tal:define="rv m/revision">
+            <tal:i condition="rv/rev"><strong tal:content="string:Rev ${rv/rev}">Rev 3</strong>
+              <div class="desc" tal:content="rv/issued_at">2026-10-02</div></tal:i>
+            <span class="desc" tal:condition="not:rv/rev">Not issued</span>
+            <span class="sur-tag sur-nocore" tal:condition="python:rv['rev'] and rv['unissued']"
+                  title="Settings changed since this revision was issued">unissued changes</span>
+          </td>
+          <td tal:define="rv m/revision">
+            <a class="btn-sm btn-secondary" tal:condition="rv/rev"
+               tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;rev=${rv/rev}"
+               title="The issued PDF of this revision">Print</a>
+            <a class="btn-sm btn-secondary" tal:condition="not:rv/rev"
+               tal:attributes="href string:${view/portal_url}/@@pfas-settings-report?method_id=${m/method_id}&amp;format=pdf"
+               title="No revision issued yet: a draft PDF of the current settings">Print draft</a>
+          </td>
+          <td class="mp-actions">
+            <a class="btn btn-primary"
+               tal:attributes="href string:@@pfas-method-profile-edit?method_id=${m/method_id}">
+              Edit
+            </a>
+            <details class="mp-issue" tal:condition="m/revision/unissued">
+              <summary class="btn-sm btn-secondary">Issue revision</summary>
+              <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-settings-report">
+                <input type="hidden" name="action" value="issue_revision" />
+                <input type="hidden" name="method_id" tal:attributes="value m/method_id" />
+                <input type="text" name="reason" placeholder="Reason (optional)" />
+                <button type="submit" class="btn-sm btn-primary">Issue</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </div><!-- /table-wrap -->
+
+  <div class="pane-footer">
+    <span>Per-method QC limits applied by the calibration engine at analysis time</span>
+  </div>
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

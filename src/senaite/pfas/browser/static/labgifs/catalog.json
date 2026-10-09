@@ -1,0 +1,50 @@
+[
+  {
+    "name": "weighing",
+    "label": "Weighing on the balance"
+  },
+  {
+    "name": "pipetting",
+    "label": "Pipetting / dispensing"
+  },
+  {
+    "name": "vortex",
+    "label": "Vortex mixing"
+  },
+  {
+    "name": "centrifuge",
+    "label": "Centrifuging"
+  },
+  {
+    "name": "evaporate",
+    "label": "Nitrogen blow-down"
+  },
+  {
+    "name": "spe",
+    "label": "SPE / filtration"
+  },
+  {
+    "name": "ph",
+    "label": "pH measurement"
+  },
+  {
+    "name": "label",
+    "label": "Labelling a vial"
+  },
+  {
+    "name": "signoff",
+    "label": "Sign-off / record"
+  },
+  {
+    "name": "sonicate",
+    "label": "Sonication / water bath"
+  },
+  {
+    "name": "inject",
+    "label": "LC-MS injection"
+  },
+  {
+    "name": "hood",
+    "label": "Fume hood / PPE"
+  }
+]

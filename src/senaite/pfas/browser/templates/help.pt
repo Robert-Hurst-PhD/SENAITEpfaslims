@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Help</title>
+  <metal:fill fill-slot="header-title">Help</metal:fill>
+  <tal:t metal:fill-slot="tabs">
+    <nav class="pfas-tabs" tal:define="at view/active_tab">
+      <a tal:repeat="t view/tabs" tal:attributes="href t/url;
+           class python:'pfas-tab active' if t['slug'] == at else 'pfas-tab'"><span tal:replace="t/title"></span><span class="pfas-tab-count" tal:condition="t/count|nothing" tal:content="t/count"></span></a>
+    </nav>
+  </tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body help-page">
+
+    <!-- the overview: the order of work -->
+    <ol class="help-flow" tal:condition="python:view.active_tab() == 'overview'">
+      <li tal:repeat="s view/workflow">
+        <strong tal:content="s/title"></strong>
+        <span class="cf-hint" tal:content="s/line"></span>
+        <span class="help-flow-links"><a tal:repeat="e s/entries" class="btn-sm btn-secondary"
+              tal:attributes="href e/url" tal:content="e/term"></a></span>
+      </li>
+    </ol>
+
+    <!-- a tab: its entries beside the one being read -->
+    <div class="help-layout" tal:define="tv view/tab_view" tal:condition="tv">
+      <nav class="help-side">
+        <p class="cf-hint" tal:content="tv/intro"></p>
+        <a tal:repeat="x tv/entries" tal:attributes="href x/url;
+             class python:'help-side-item active' if x['active'] else 'help-side-item'"
+           tal:content="x/term"></a>
+      </nav>
+      <section class="help-entry" tal:define="e tv/entry" tal:condition="e" tal:attributes="id e/id">
+        <h3 tal:content="e/term"></h3>
+        <p tal:content="e/text"></p>
+        <dl class="help-facts">
+          <dt>Set on</dt>
+          <dd><a tal:repeat="w e/where" class="btn-sm btn-secondary"
+                 tal:attributes="href w/url" tal:content="w/label"></a></dd>
+          <dt>Who may change it</dt>
+          <dd><span tal:content="e/who"></span><span class="cf-hint" tal:condition="e/roles"
+                tal:content="python:' (' + ', '.join(e['roles']) + ')'"></span></dd>
+          <dt>Affects</dt>
+          <dd><ul class="help-effects"><li tal:repeat="x e/effects" tal:content="x"></li></ul></dd>
+        </dl>
+        <table class="pfas-table help-list" tal:repeat="lst e/lists">
+          <tbody>
+            <tr tal:repeat="row lst">
+              <td tal:content="python:row[0]"></td>
+              <td class="cf-hint" tal:content="python:row[1]"></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+  <!-- an older link to an entry by #id opens it on its tab -->
+  <script>
+    (function () {
+      var id = (location.hash || '').slice(1);
+      if (id && location.search.indexOf('entry=') < 0 && /^[a-z0-9-]+$/.test(id)) {
+        location.replace(location.pathname + '?entry=' + id);
+      }
+    })();
+  </script>
+  </div>
+</html>

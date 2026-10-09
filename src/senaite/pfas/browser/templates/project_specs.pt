@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Project Specs</title>
+  <metal:fill fill-slot="header-title">Project Specs</metal:fill>
+
+  <tal:ab metal:fill-slot="action-bar">
+    <div class="pfas-action-bar" tal:condition="python:view.can_manage() and view.project() is not None">
+      <button type="submit" form="project-specs" class="btn btn-primary">Save</button>
+      <a class="btn btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-projects">Cancel</a>
+    </div>
+  </tal:ab>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+    <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-projects">All Projects</a>
+
+    <div class="alert alert-success" tal:condition="view/ok_msg" tal:content="view/ok_msg">Saved.</div>
+    <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg">error</div>
+
+    <tal:none condition="python:view.project() is None">
+      <p class="alert alert-error">No such project. Open a project's specs from the Projects page.</p>
+    </tal:none>
+
+    <tal:p condition="python:view.project() is not None">
+    <p class="pane-intro">
+      Where <strong tal:content="view/project_title">Project</strong>&#8217;s batches differ from the method;
+      only the differences are stored. <tal:h define="hid string:project-specs"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+    </p>
+
+    <form method="get" class="cf-scope-bar" tal:attributes="action string:${view/portal_url}/@@pfas-project-specs">
+      <input type="hidden" name="uid" tal:attributes="value view/uid" />
+      <label>Method
+        <select name="method_id" onchange="this.form.submit()">
+          <option tal:repeat="mid view/method_ids" tal:content="mid"
+                  tal:attributes="value mid; selected python:'selected' if mid == view.method_id() else None">FDA</option>
+        </select></label>
+      <label>Applies to
+        <select name="scope" onchange="this.form.submit()">
+          <option tal:repeat="s view/scopes" tal:content="python:s[1]"
+                  tal:attributes="value python:s[0]; selected python:'selected' if s[0] == view.scope() else None">All</option>
+        </select></label>
+      <noscript><button type="submit" class="btn-sm btn-secondary">Show</button></noscript>
+    </form>
+
+    <div class="section-group-hdr">Differences from the method</div>
+    <ul tal:condition="view/differences">
+      <li tal:repeat="d view/differences" tal:content="d">Recovery tiers: tier1 min 70</li>
+    </ul>
+    <p class="form-note" tal:condition="not:view/differences">None for this scope: the project runs to the method.</p>
+    <div class="alert alert-error" tal:repeat="s view/stale" tal:content="s">stale</div>
+    <div class="alert alert-info" tal:repeat="n view/needs" tal:content="n">PFXX needs an RL</div>
+
+    <div class="section-group-hdr">Looser than the method</div>
+    <table class="factor-table cf-table" tal:condition="view/departures">
+      <thead><tr><th>Value</th><th>Method</th><th>Project</th><th>Where</th><th>Published method</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="d view/departures">
+          <td tal:content="d/what">LFSM max</td><td tal:content="d/method">135</td>
+          <td tal:content="d/project">140</td><td tal:content="d/where">PFOA in Milk</td>
+          <td tal:content="d/published">not on file</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="form-note" tal:condition="not:view/departures">Nothing in this scope is looser than the method.</p>
+
+    <div class="pfas-tabs" data-tabs="">
+      <a tal:repeat="t view/tabs"
+         tal:attributes="class python:'pfas-tab active' if repeat['t'].index == 0 else 'pfas-tab';
+                         data-pane string:ps-${t/id}; href string:#ps-${t/id}"
+         tal:content="t/label">Recovery</a>
+    </div>
+    <div tal:repeat="t view/tabs" class="pfas-pane" tal:attributes="id string:ps-${t/id}">
+      <tal:rec condition="python:t['id'] == 'rec'">
+        <p class="pane-intro">The window the QC engine would apply for this project, from the values below (saved values).</p>
+        <div tal:replace="structure view/recovery_grid_html"></div>
+      </tal:rec>
+      <tal:s repeat="sid t/sections">
+        <div class="section-group-hdr" tal:content="python:view.title(sid)">Recovery tiers</div>
+        <div tal:condition="python:view.kind(sid) == 'table'"
+             tal:define="cf_groups python:view.section_groups(sid); cf_form string:project-specs">
+          <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+        </div>
+        <div tal:condition="python:view.kind(sid) == 'collection'"
+             tal:define="cf_rows python:view.section_groups(sid); cf_form string:project-specs">
+          <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+        </div>
+        <div tal:condition="python:view.kind(sid) == 'section'"
+             tal:define="cf_groups python:view.section_groups(sid); cf_form string:project-specs">
+          <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+        </div>
+      </tal:s>
+    </div>
+
+    <form id="project-specs" method="post" tal:attributes="action string:${view/portal_url}/@@pfas-project-specs">
+      <input type="hidden" name="uid" tal:attributes="value view/uid" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="scope" tal:attributes="value view/scope" />
+      <tal:st repeat="sid view/section_ids">
+        <input type="hidden" tal:attributes="name python:'section_stamp__' + sid;
+                                             value python:view.section_stamp(sid)" />
+      </tal:st>
+    </form>
+    </tal:p>
+  </div>
+  </div>
+</html>

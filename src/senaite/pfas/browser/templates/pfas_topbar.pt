@@ -1,0 +1,78 @@
+<metal:topbar define-macro="topbar"
+     xmlns:tal="http://xml.zope.org/namespaces/tal"
+     xmlns:metal="http://xml.zope.org/namespaces/metal">
+<!-- The ONE top bar (revamped §104 on GitHub's own header; Primer's AppHeader): drawn by every PFAS page (pfas_macros.pt) and every
+     core page (PFASToolbarManager). One row:
+       menu + page title | context (PFAS chip / core's object tabs)
+       | search ("/" focuses it; results grouped as you type)
+       | "+" create | settings | avatar
+     Navbar layout CSS: AdminLTE 3 (MIT, static/vendor); page actions go in
+     the sub-bar under it, never here. Language is a site setting (Lab
+     Settings), not a bar control. -->
+<nav class="pfas-topbar main-header navbar navbar-expand navbar-dark" id="pfas-topbar"
+     tal:define="mv python:context.restrictedTraverse('@@pfas-macros');
+                 purl python:context.portal_url();
+                 uname mv/user_name;
+                 is_mgr mv/is_manager_role"
+     tal:attributes="data-terminal-idle mv/terminal_idle;
+                     data-badge-signin string:${purl}/@@pfas-badge-signin">
+  <ul class="navbar-nav pfas-topbar-left">
+    <li class="nav-item">
+      <button type="button" class="nav-link pfas-topbar-toggle" onclick="pfasTopbarToggle()"
+              aria-label="Toggle navigation" title="Show or hide the menu">&#9776;</button>
+    </li>
+    <li class="nav-item pfas-topbar-title" id="pfas-topbar-title"><h1 class="pfas-topbar-h1"><metal:t define-slot="bar-title">LIMS</metal:t></h1></li>
+  </ul>
+  <!-- own list so that on a phone it wraps to a second row: on core object
+       pages it holds the object's tabs (View, Manage Results...) -->
+  <div class="pfas-topbar-context"><metal:c define-slot="bar-context" /></div>
+
+  <form class="pfas-topbar-search" role="search" tal:condition="uname" autocomplete="off"
+        tal:attributes="action string:${purl}/@@pfas-search; data-endpoint string:${purl}/@@pfas-search">
+    <span class="pfas-search-icon" aria-hidden="true"><i class="fas fa-search"></i></span>
+    <input type="search" name="q" id="pfas-search-input" aria-label="Search the site"
+           placeholder="Search samples, equipment, method settings&#8230;"
+           aria-autocomplete="list" aria-controls="pfas-search-results" />
+    <kbd class="pfas-search-kbd" title="Press / to search">/</kbd>
+    <div class="pfas-search-results" id="pfas-search-results" role="listbox" hidden="hidden"></div>
+  </form>
+
+  <ul class="navbar-nav pfas-topbar-global" tal:condition="uname">
+    <li class="nav-item pfas-topbar-search-toggle">
+      <button type="button" class="nav-link" title="Search" aria-label="Search"
+              onclick="pfasSearchOpen()"><i class="fas fa-search"></i></button>
+    </li>
+    <li class="nav-item dropdown" tal:define="create mv/create_items" tal:condition="create">
+      <button type="button" class="nav-link dropdown-toggle pfas-topbar-create" data-pfas-drop=""
+              title="Create new&#8230;" aria-haspopup="true">+</button>
+      <div class="dropdown-menu dropdown-menu-right">
+        <div class="dropdown-header">Create new</div>
+        <a tal:repeat="c create" class="dropdown-item" tal:attributes="href c/url"
+           tal:content="c/label">Sample</a>
+      </div>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link pfas-topbar-help" title="Help: what things mean and what they affect"
+         aria-label="Help" tal:attributes="href string:${purl}/@@pfas-help"><span aria-hidden="true">?</span></a>
+    </li>
+    <li class="nav-item" tal:condition="is_mgr">
+      <a class="nav-link" title="LIMS Setup"
+         tal:attributes="href string:${purl}/@@lims-setup"><i class="fas fa-cog"></i></a>
+    </li>
+    <li class="nav-item dropdown">
+      <button type="button" class="nav-link dropdown-toggle pfas-topbar-user" data-pfas-drop=""
+              aria-haspopup="true" tal:attributes="title uname"><span class="pfas-avatar"
+              tal:content="mv/user_initials">AN</span></button>
+      <div class="dropdown-menu dropdown-menu-right">
+        <div class="dropdown-header" tal:content="string:Signed in as ${uname}">Signed in as admin</div>
+        <tal:a repeat="a mv/user_actions">
+          <div class="dropdown-divider" tal:condition="python:a['id'] == 'logout' and not repeat['a'].start"></div>
+          <a tal:attributes="href a/url;
+                             class python:'dropdown-item pfas-topbar-logout' if a['id'] == 'logout' else 'dropdown-item'"><i
+             tal:attributes="class string:fas ${a/icon}"></i> <span tal:replace="a/title">My Profile</span></a>
+        </tal:a>
+      </div>
+    </li>
+  </ul>
+</nav>
+</metal:topbar>

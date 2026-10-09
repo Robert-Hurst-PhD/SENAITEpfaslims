@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title"
+         tal:content="string:${view/logbook_title} — Guided">Guided logbook</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <!-- Field widget styles, shared with the concise form. Without this the
+       macro-rendered fields fall back to browser defaults. -->
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=3" />
+  <style>
+    .lbg-layout { display:flex; gap:20px; align-items:flex-start; }
+    .lbg-rail { flex:0 0 240px; position:sticky; top:8px; }
+    .lbg-main { flex:1 1 auto; min-width:0; }
+    .lbg-stagehead { margin-bottom:14px; }
+    .lbg-badge { display:inline-block; font-size:var(--fs-xs); font-weight:700;
+                 text-transform:uppercase; letter-spacing:.05em;
+                 color:var(--s-secondary); }
+    .lbg-title { font-size:var(--fs-xl); font-weight:700; margin:3px 0 0; }
+    .lbg-split { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+    .lbg-media { flex:3 1 380px; min-width:0; }
+    .lbg-side  { flex:2 1 280px; min-width:0; }
+    /* no image: the entry column takes the whole row so tables are not
+       squeezed into 40% and clipped. */
+    .lbg-split.no-media .lbg-side { flex:1 1 100%; }
+    .lbg-media-box { border:1px solid var(--s-border); border-radius:10px;
+                     background:var(--s-light); padding:10px; text-align:center; }
+    .lbg-media-box img { image-rendering:pixelated; image-rendering:crisp-edges; max-width:100%; max-height:60vh; object-fit:contain;
+                         display:block; margin:0 auto; border-radius:6px; }
+    .lbg-replay { margin-top:8px; font-size:var(--fs-sm); }
+    .lbg-instr { list-style:none; margin:0; padding:0; }
+    .lbg-instr li { position:relative; padding:7px 0 7px 26px; font-size:var(--fs-base);
+                    line-height:1.5; border-bottom:1px dashed var(--s-border); }
+    .lbg-instr li:last-child { border-bottom:none; }
+    /* CSS escape, NOT the literal glyph. Chameleon charref-encodes non-ASCII
+       when it serialises this style text node, so the raw character would
+       reach the browser as a numeric entity and print as markup over the
+       instruction text. Keep this file ASCII-only inside style blocks. */
+    .lbg-instr li:before { content:"\203A"; position:absolute; left:8px; top:6px;
+                           color:var(--s-secondary); font-weight:700; }
+    .lbg-card { border:1px solid var(--s-border); border-radius:10px;
+                background:var(--s-bg); padding:14px 16px; margin-bottom:14px; }
+    .lbg-card h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 10px;
+                   text-transform:uppercase; letter-spacing:.03em;
+                   color:var(--s-secondary); }
+    /* A table field's own <h3> is emitted by the shared macro inside.
+       lb-section. Without this it collides with .lbg-card h3 at equal
+       specificity and the winner depends on stylesheet order. */
+    .lbg-card .lb-section h3 { font-size:var(--fs-base); text-transform:none;
+                               letter-spacing:normal; color:var(--s-dark);
+                               border-bottom:2px solid var(--s-border);
+                               padding-bottom:6px; }
+    .lbg-nomedia { font-size:var(--fs-sm); color:var(--s-secondary); font-style:italic;
+                   padding:26px 0; }
+    .lbg-modeswitch { display:inline-flex; border:1px solid var(--s-border);
+                      border-radius:16px; overflow:hidden; font-size:var(--fs-sm); }
+    .lbg-modeswitch a { padding:4px 13px; text-decoration:none;
+                        color:var(--s-secondary); background:var(--s-bg); }
+    .lbg-modeswitch a.is-on { background:var(--s-primary-dk); color:#fff; font-weight:600; }
+    .lbg-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .lbg-actions .spacer { flex:1 1 auto; }
+    @media (max-width:900px) {
+      .lbg-layout { flex-direction:column; }
+      .lbg-rail { position:static; flex:1 1 auto; width:100%; }
+    }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title"
+         tal:content="view/logbook_title">Logbook</tal:t>
+
+  <tal:hr metal:fill-slot="header-right">
+    <span class="lbg-modeswitch">
+      <a class="lbg-seg is-on" tal:attributes="href view/guided_url">Guided</a>
+      <a class="lbg-seg" tal:attributes="href view/concise_url">Concise</a>
+    </span>
+    <a class="btn-sm" style="margin-left:10px"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">&#8592; All Logbooks</a>
+  </tal:hr>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/ok_msg"
+         tal:content="view/ok_msg">ok</div>
+    <div class="alert alert-error" tal:condition="view/error_msg"
+         tal:content="view/error_msg">err</div>
+
+    <tal:noguide tal:condition="not:view/has_steps">
+      <div class="lbg-card">
+        This logbook has no instructions yet. A manager can add them in
+        <b>Logbooks &#8594; Templates &#8594; Edit &#8594; Instructions</b>.
+      </div>
+    </tal:noguide>
+
+    <tal:guide tal:condition="view/has_steps"
+               tal:define="step view/current_step">
+    <div class="lbg-layout">
+
+      <!-- ── step rail (shared macro) ─────────────────────────────── -->
+      <div class="lbg-rail">
+        <tal:st tal:define="stepper_items view/stepper_items;
+                            stepper_title string:Steps;
+                            stepper_subtitle view/logbook_code;
+                            stepper_progress view/progress_pct">
+          <tal:m metal:use-macro="context/@@pfas-macros/macros/stepper" />
+        </tal:st>
+      </div>
+
+      <!-- ── current step ─────────────────────────────────────────── -->
+      <div class="lbg-main">
+        <div class="lbg-stagehead">
+          <div class="lbg-badge"
+               tal:content="python:'Step {0} of {1}'.format(view.step_index(), view.total_steps())">Step 1 of 3</div>
+          <h2 class="lbg-title" tal:content="step/title">Step title</h2>
+        </div>
+
+        <form method="post"
+              tal:attributes="action string:${view/batch_url}/@@pfas-logbook-dynamic?slug=${view/slug}">
+          <input type="hidden" name="_step_id" tal:attributes="value step/id" />
+          <input type="hidden" name="_step_fields"
+                 tal:attributes="value view/step_field_names" />
+
+          <tal:layout tal:define="murl python:view.media_url(step)">
+          <div class="lbg-split"
+               tal:attributes="class python:'lbg-split' if murl else 'lbg-split no-media'">
+            <!-- the action, centre stage. An empty placeholder box would eat
+                 half the width and squeeze the entry fields, so a step with no
+                 image simply gives its room back to the content. -->
+            <div class="lbg-media" tal:condition="murl">
+              <div class="lbg-media-box">
+                <img id="lbg-img" tal:attributes="src murl; alt step/media_alt" />
+                <div class="lbg-replay">
+                  <button type="button" class="btn-sm" id="lbg-replay-btn">&#8635; Replay</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- what to do -->
+            <div class="lbg-side">
+              <div class="lbg-card"
+                   tal:define="lines python:view.instruction_lines(step)"
+                   tal:condition="lines">
+                <h3>What to do</h3>
+                <ul class="lbg-instr">
+                  <li tal:repeat="line lines" tal:content="line">instruction</li>
+                </ul>
+              </div>
+
+              <div class="lbg-card" tal:condition="step/fields">
+                <h3>Record</h3>
+                <tal:fields tal:repeat="field step/fields">
+                  <tal:m metal:use-macro="context/@@pfas-logbook-macros/macros/logbook_field" />
+                </tal:fields>
+              </div>
+            </div>
+          </div>
+          </tal:layout>
+
+          <!-- sign-off on the final step -->
+          <tal:last tal:condition="view/is_last_step">
+            <tal:signoff tal:define="signoff_noun view/signoff_noun;
+                                     signoff_prepared_name view/signoff_name;
+                                     signoff_prepared_date view/signoff_date;
+                                     signoff_prepared_initials view/signoff_name">
+              <tal:m metal:use-macro="context/@@pfas-macros/macros/signoff" />
+            </tal:signoff>
+          </tal:last>
+
+          <div class="lbg-actions" style="margin-top:16px">
+            <a class="btn-sm" tal:condition="view/prev_step_url"
+               tal:attributes="href view/prev_step_url">&#8592; Previous</a>
+            <span class="spacer"></span>
+            <button class="btn-save" type="submit"
+                    tal:condition="view/is_last_step">Save &amp; Finish</button>
+            <tal:more tal:condition="not:view/is_last_step">
+              <button class="btn-sm" type="submit" name="_stay" value="1">Save</button>
+              <button class="btn-save" type="submit" name="_next"
+                      tal:attributes="value view/next_step_id">Save &amp; Continue &#8594;</button>
+            </tal:more>
+          </div>
+        </form>
+      </div>
+    </div>
+    </tal:guide>
+
+  </div>
+  </div><!-- /content -->
+
+  <tal:scripts metal:fill-slot="scripts">
+  <script>
+  var SAVED_DATA   = <tal:sd tal:replace="structure view/data_json" />;
+  var FIELD_SCHEMA = <tal:fs tal:replace="structure view/field_schema_json" />;
+  /* {lot_type: most recent usable lot} — applied only to EMPTY boxes */
+  var LOT_DEFAULTS = <tal:ld tal:replace="structure view/lot_defaults_json" />;
+  document.addEventListener('DOMContentLoaded', function () {
+    /* Animated GIFs do not restart once played through. */
+    var rb = document.getElementById('lbg-replay-btn');
+    var im = document.getElementById('lbg-img');
+    if (rb && im) {
+      rb.addEventListener('click', function () {
+        var src = im.getAttribute('src').split('#')[0];
+        im.setAttribute('src', src + '#r=' + Date.now());
+      });
+    }
+  });
+  </script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=3"></script>
+  </tal:scripts>
+</body>
+</html>

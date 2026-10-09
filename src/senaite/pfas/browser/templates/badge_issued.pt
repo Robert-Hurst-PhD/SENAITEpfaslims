@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Badge issued</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Badge issued</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-lab-staff">&#8592; Lab Staff</a>
+  </tal:r>
+  <metal:fill fill-slot="content">
+    <div class="alert alert-warning">
+      This code is shown ONCE and is not kept anywhere: print the badge now. Anyone holding it can sign
+      in as <strong tal:content="view/issued/name">AN1</strong> at a registered lab terminal. A lost badge
+      is revoked on Lab Staff; issuing a new one revokes this one. Do not refresh or go back to this
+      page: that issues another badge, and the one shown here stops working.
+    </div>
+    <p class="rt-line">Badge code (for a badge printer):
+      <code class="badge-code" tal:content="view/issued/code_grouped">ABCD EFGH</code></p>
+    <script type="application/json" id="badge-data" tal:content="structure view/issued/json">{}</script>
+    <div class="rt-form">
+      <button type="button" class="btn-sm btn-primary" id="badge-print">Print badge</button>
+      <a class="btn-sm btn-secondary" id="badge-open" target="_blank" hidden="hidden">Open PDF</a>
+    </div>
+    <iframe id="badge-pdf" class="rt-preview dt-pdf" title="Badge" hidden="hidden"></iframe>
+  </metal:fill>
+  <tal:s metal:fill-slot="scripts">
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/pdfme/pdfme.min.js"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/badge_print.js"></script>
+  </tal:s>
+</body>
+</html>

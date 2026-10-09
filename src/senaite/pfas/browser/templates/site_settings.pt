@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Site Settings</title>
+  <metal:fill fill-slot="header-title">Site Settings</metal:fill>
+
+  <div metal:fill-slot="content">
+  <div class="page-body-narrow">
+    <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
+    <div class="alert alert-error" tal:condition="view/failed">Not saved: choose one of the languages offered.</div>
+
+    <div class="section-group-hdr" id="language">Language</div>
+    <p class="form-note">
+      The language every page is shown in, for everyone. Changing it here
+      replaces any language a browser chose before.
+    </p>
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-site-settings">
+      <input type="hidden" name="action" value="save_language" tal:condition="view/can_configure" />
+      <div class="field-row">
+        <label for="language">Site language</label>
+        <select name="language" id="language" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
+          <option tal:repeat="l view/languages"
+                  tal:attributes="value python:l[0]; selected python:'selected' if l[0] == view.current() else None"
+                  tal:content="python:'%s (%s)' % (l[1], l[0])">English (en)</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
+    </form>
+
+    <div class="section-group-hdr" id="director">Laboratory Director</div>
+    <p class="form-note">Printed as Director with their signature on designed documents; must be linked to a Lab Contact and allowed to sign as director. <tal:h define="hid string:lab-director"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-site-settings">
+      <input type="hidden" name="action" value="save_director" tal:condition="view/can_configure" />
+      <div class="field-row">
+        <label for="director">Laboratory Director</label>
+        <select name="director" id="director" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
+          <option value="">(none)</option>
+          <option tal:repeat="c view/director_choices"
+                  tal:attributes="value python:c[0]; selected python:'selected' if c[0] == view.director() else None"
+                  tal:content="python: c[1] if c[2] else u'%s (may not sign as director yet)' % c[1]">AN3</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
+    </form>
+  </div>
+  </div>
+</html>

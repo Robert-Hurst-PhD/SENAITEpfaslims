@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal"
+      i18n:domain="senaite.pfas">
+<head>
+  <title metal:fill-slot="title">Controlled Publications</title>
+  <tal:t metal:fill-slot="header-title">Controlled Publications</tal:t>
+
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .cp-head { margin-bottom: 16px; }
+    .cp-title { font-size: var(--fs-lg); font-weight: 700; color: var(--s-text); }
+    .cp-sub { color: var(--s-secondary); font-size: var(--fs-base); margin-top: 4px; }
+    table.cp-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
+    table.cp-tbl th { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--s-border);
+      font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .03em; color: var(--s-secondary); }
+    table.cp-tbl td { padding: 8px 10px; border-bottom: 1px solid var(--s-border);
+      vertical-align: top; }
+    .cp-rid { font-weight: 700; font-family: var(--font-mono); }
+    .cp-badge { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+    .cp-current { background: var(--s-success-lt); color: var(--s-success-text); }
+    .cp-superseded { background: var(--s-light); color: var(--s-secondary); }
+    .cp-flag { background: var(--s-danger-lt); color: var(--s-danger-dk); font-weight: 700;
+      padding: 2px 8px; border-radius: 10px; font-size: var(--fs-xs); white-space: nowrap; }
+    .cp-reason { color: var(--s-text); }
+    .cp-empty { padding: 30px; text-align: center; color: var(--s-secondary); }
+  </style>
+  </tal:styles>
+
+  <tal:content metal:fill-slot="content"
+               tal:define="rows view/publications">
+    <div class="cp-head">
+      <div class="cp-title" i18n:translate="">Controlled Publications</div>
+      <div class="cp-sub" i18n:translate="">
+        Register of every issued Certificate of Analysis (ISO/IEC 17025 document
+        control). Each row is an immutable issuance; amended reissues supersede
+        the prior revision. The original report is never altered.
+      </div>
+    </div>
+
+    <table class="cp-tbl" tal:condition="rows">
+      <thead>
+        <tr>
+          <th i18n:translate="">Report ID</th>
+          <th i18n:translate="">Sample</th>
+          <th i18n:translate="">Client</th>
+          <th i18n:translate="">Rev</th>
+          <th i18n:translate="">Status</th>
+          <th i18n:translate="">Authorized by</th>
+          <th i18n:translate="">Issued</th>
+          <th i18n:translate="">Recipients</th>
+          <th i18n:translate="">Amendment</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr tal:repeat="r rows">
+          <td>
+            <!-- printed CoA PDF (issued document) -->
+            <span class="cp-rid" tal:content="r/report_id"></span>
+            <a class="btn-sm btn-secondary" tal:condition="r/pdf_url" target="_blank"
+               tal:attributes="href r/pdf_url"
+               title="Open the printed Certificate of Analysis (PDF)">Open PDF</a>
+            <!-- no stored PDF but current: the publisher to view/print -->
+            <a class="btn-sm btn-secondary" tal:condition="python:not r['pdf_url'] and r['coa_live']"
+               tal:attributes="href r/coa_live"
+               title="Generate / print the Certificate of Analysis">Print</a>
+          </td>
+          <td><span tal:content="r/sample_id"></span>
+              <a class="btn-sm btn-secondary" tal:attributes="href r/sample_url">Open</a></td>
+          <td tal:content="r/client"></td>
+          <td tal:content="r/revision"></td>
+          <td>
+            <span class="cp-badge cp-current" tal:condition="python:r['status']=='current'"
+                  i18n:translate="">Current</span>
+            <span class="cp-badge cp-superseded" tal:condition="python:r['status']=='superseded'"
+                  i18n:translate="">Superseded</span>
+          </td>
+          <td tal:content="r/authorizer"></td>
+          <td tal:content="r/issued_at"></td>
+          <td tal:content="r/recipients"></td>
+          <td>
+            <!-- flagged reissue: QAO fills in the reason (best-effort policy) -->
+            <tal:missing tal:condition="r/reason_missing">
+              <span class="cp-flag" i18n:translate="">Reason not recorded</span>
+              <form method="post" class="cp-reason-form"
+                    style="display:flex; gap:4px; margin-top:4px;">
+                <input type="hidden" name="action" value="record_reason"/>
+                <input type="hidden" name="sample_uid"
+                       tal:attributes="value r/sample_uid"/>
+                <input type="hidden" name="revision"
+                       tal:attributes="value r/revision"/>
+                <input type="text" name="reason" required="required"
+                       placeholder="Reason for this reissue"
+                       style="font-size:var(--fs-sm); padding:2px 6px; min-width:180px;"/>
+                <button type="submit" class="cp-badge cp-current"
+                        style="border:0; cursor:pointer;"
+                        i18n:translate="">Record</button>
+              </form>
+            </tal:missing>
+            <span class="cp-reason" tal:condition="python:not r['reason_missing'] and r['amendment_reason']"
+                  tal:content="r/amendment_reason"></span>
+            <span tal:condition="python:r['revision']==1 and not r['reason_missing'] and not r['amendment_reason']"
+                  style="color:var(--s-secondary)">&mdash;</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="cp-empty" tal:condition="not:rows" i18n:translate="">
+      No controlled publications recorded yet. Certificates issued via the
+      publish workflow will appear here.
+    </div>
+  </tal:content>
+</head>
+</html>

@@ -1,0 +1,44 @@
+<configure
+    xmlns="http://namespaces.zope.org/zope"
+    i18n_domain="senaite.pfas">
+
+  <!-- Reagent (procured lot) -->
+  <class class=".content.reagent.Reagent">
+    <allow attributes="category supplier cat_number lot_number received_date
+                        manufacturer_expiry expiry_date opened_date
+                        storage_location barcode quantity unit
+                        scan_count status notes" />
+  </class>
+
+  <!-- PrepLogbookDef (versioned preparation logbook definition) -->
+  <!-- NOTE: every schema field must be listed here. The six D17 fields
+       (method_slug .. builtin) were previously omitted, so restricted/TAL
+       access to them failed silently. steps_json / guided_default are the
+       guided-workflow fields. -->
+  <class class=".content.prep_logbook_def.PrepLogbookDef">
+    <allow attributes="logbook_slug revision status standard_type description
+                        procedure default_expiry_days analyte_template_json
+                        archived_date notes
+                        method_slug logbook_code field_schema_json sort_order
+                        active builtin steps_json guided_default" />
+  </class>
+
+  <!-- PreparedStandard (in-house prepared reagent or standard) -->
+  <class class=".content.prepared_standard.PreparedStandard">
+    <allow attributes="lot_number standard_type logbook_slug logbook_revision
+                        logbook_title prepared_by prepared_date expiry_date
+                        expiry_notes storage_location volume_prepared
+                        status notes" />
+  </class>
+
+  <!-- LogbookDef (logbook form definition) -->
+  <class class=".content.logbook_def.LogbookDef">
+    <allow attributes="form_num builtin active sort_order table_columns" />
+  </class>
+
+  <!-- MethodProfile (QC method configuration, JSON blob) -->
+  <class class=".content.method_profile.MethodProfile">
+    <allow attributes="profile_json" />
+  </class>
+
+</configure>

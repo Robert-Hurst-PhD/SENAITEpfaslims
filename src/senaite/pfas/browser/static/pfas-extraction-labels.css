@@ -1,0 +1,18 @@
+/* The extraction batch's label sheet (@@pfas-extraction-labels;: the built-in layout when no Extraction label
+   design is issued. One label per box, sized by --lbl-w / --lbl-h. */
+.xl-sheet { display: flex; flex-wrap: wrap; gap: 2mm; }
+.xl-label {
+  width: var(--lbl-w, 50.8mm); height: var(--lbl-h, 25.4mm);
+  box-sizing: border-box; padding: 1.5mm 2mm; overflow: hidden;
+  border: 1px dashed var(--s-border); background: var(--s-bg);
+  font-size: 7pt; line-height: 1.15; display: flex; flex-direction: column;
+}
+.xl-label .xl-name { font-weight: 700; font-size: 8pt; }
+.xl-label .xl-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xl-label svg { width: 100%; height: 9mm; }
+.xl-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+@media print {
+  .xl-tools, .pfas-topbar, .pfas-subbar, #pfas-sidebar { display: none !important; }
+  .xl-sheet { gap: 0; }
+  .xl-label { border: none; page-break-inside: avoid; break-inside: avoid; }
+}

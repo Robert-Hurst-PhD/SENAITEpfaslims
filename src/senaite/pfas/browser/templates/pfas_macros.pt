@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html metal:define-macro="page" lang="en"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal"
+      tal:define="dummy python:context.restrictedTraverse('@@pfas-macros').require_login()">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title metal:define-slot="title">LIMS Tool</title>
+  <link rel="icon" type="image/x-icon" tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/favicon.ico" />
+  <link rel="apple-touch-icon" tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/favicon-180.png" />
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-tokens.css" />
+  <!-- the one top toolbar, shared with core pages -->
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/vendor/adminlte-topbar-3.2.0.css" />
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-topbar.css" />
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-topbar.js"></script>
+  <!-- Font Awesome 5 Solid — font face + icon glyphs used by the PFAS sidebar.
+       senaite.core.css is not loaded on PFAS workspace pages (they bypass
+       Plone's main_template), so we inline the @font-face, the .fas base
+       rule, and the content codes for every icon used in the sidebar here. -->
+  <style>
+    @font-face {
+      font-family: 'Font Awesome 5 Free';
+      font-style: normal;
+      font-weight: 900;
+      font-display: block;
+      src: url('/senaite/++plone++senaite.core.static/fonts/fa-solid-900.woff2') format('woff2'),
+           url('/senaite/++plone++senaite.core.static/fonts/fa-solid-900.woff') format('woff');
+    }
+    .fas {
+      font-family: 'Font Awesome 5 Free';
+      font-weight: 900;
+      display: inline-block;
+      font-style: normal;
+      font-variant: normal;
+      text-rendering: auto;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1;
+    }
+    /* Sidebar icon glyphs (extracted from senaite.core.css FA5 bundle) */
+    .fa-book:before{content:"\f02d"}
+    .fa-book-open:before{content:"\f518"}
+    .fa-building:before{content:"\f1ad"}
+    .fa-chart-line:before{content:"\f201"}
+    .fa-clipboard-list:before{content:"\f46d"}
+    .fa-code-branch:before{content:"\f126"}
+    .fa-cog:before{content:"\f013"}
+    .fa-cogs:before{content:"\f085"}
+    .fa-comments:before{content:"\f086"}
+    .fa-file-alt:before{content:"\f15c"}
+    .fa-file-export:before{content:"\f56e"}
+    .fa-file-upload:before{content:"\f574"}
+    .fa-flask:before{content:"\f0c3"}
+    .fa-globe:before{content:"\f0ac"}
+    .fa-hashtag:before{content:"\f292"}
+    .fa-layer-group:before{content:"\f5fd"}
+    .fa-map-marker-alt:before{content:"\f3c5"}
+    .fa-microscope:before{content:"\f610"}
+    .fa-search:before{content:"\f002"}
+    .fa-sign-out-alt:before{content:"\f2f5"}
+    .fa-sliders-h:before{content:"\f1de"}
+    .fa-tasks:before{content:"\f0ae"}
+    .fa-th:before{content:"\f00a"}
+    .fa-user-circle:before{content:"\f2bd"}
+    .fa-times:before{content:"\f00d"}
+    .fa-toggle-on:before{content:"\f205"}
+    .fa-tools:before{content:"\f7d9"}
+    .fa-user-cog:before{content:"\f4fe"}
+    .fa-vial:before{content:"\f492"}
+    .fa-vials:before{content:"\f493"}
+    .fa-warehouse:before{content:"\f494"}
+    .fa-wrench:before{content:"\f0ad"}
+  </style>
+  <style>
+    /* Tokens (palette, spacing, type, shape, frame) live in ONE file,
+       static/pfas-tokens.css, linked above and shared with core pages. */
+
+    /* ── Reset ───────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── App shell layout ────────────────────────────────────────────────── */
+    /* Type roles (pfas-tokens.css): headers / body / subtitles. Defined once
+       here for every PFAS page; core pages get the same in the overlay. */
+    body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, body.pfas-app h4,
+    .pfas-topbar-title, .pfas-ws-card-title, body.pfas-app details > summary,
+    .pfas-tabs .pfas-tab, #method-profile-tabs .pfas-tab {
+      font-family: var(--font-heading);
+    }
+    body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, .pfas-topbar-title,
+    .pfas-ws-card-title { font-weight: var(--fw-heading); }
+    .pfas-table th, .factor-table th, .section-group-hdr, .field-row label,
+    .pfas-crumb, .pfas-tab-count {
+      font-family: var(--font-subtitle);
+      font-weight: var(--fw-subtitle);
+      letter-spacing: var(--ls-subtitle);
+    }
+    body.pfas-app input[type=checkbox], body.pfas-app input[type=radio] { accent-color: var(--s-primary); }
+    body.pfas-app button, body.pfas-app input,
+    body.pfas-app select, body.pfas-app textarea { font-family: inherit; }
+    body.pfas-app {
+      font-family: var(--font-sans);
+      font-size: var(--fs-base);
+      background: var(--s-light);
+      color: var(--s-body);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Context badge */
+    .header-badge {
+      font-family: var(--font-mono);
+      font-size: var(--fs-sm);
+      background: rgba(255,255,255,.15);
+      padding: 3px 9px;
+      border-radius: 4px;
+    }
+    .header-meta { font-size: var(--fs-sm); color: rgba(255,255,255,.70); }
+    .header-meta code {
+      background: rgba(255,255,255,.12);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: var(--fs-xs);
+    }
+
+    /* ── Shell: left panel + main ────────────────────────────────────────── */
+    .pfas-shell {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── Left panel (now the unified #sidebar from @@pfas-sidebar) ─────── */
+    /* Sizing + collapse is handled by pfas_sidebar.pt's inline CSS.
+       We only need to make #sidebar behave as a flex child of .pfas-shell. */
+    .pfas-shell > #sidebar {
+      flex-shrink: 0;
+    }
+
+    /* ── Main area ───────────────────────────────────────────────────────── */
+    .pfas-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── Top tabs strip ──────────────────────────────────────────────────── */
+    .pfas-tabs-wrap {
+      flex: 0 0 auto;
+    }
+    /* one line under a page-group tab strip saying how its tabs relate */
+    .lb-flow { margin: 0; padding: var(--sp-2) 20px; font-size: var(--fs-sm);
+               color: var(--s-secondary); background: var(--s-bg);
+               border-bottom: 1px solid var(--s-border); }
+    .pfas-tabs {
+      background: var(--s-bg);
+      border-bottom: 2px solid var(--s-border);
+      padding: 0 20px;
+      display: flex;
+      flex-wrap: wrap;   /* a tab past the edge was simply hidden (method profile: 11 tabs) */
+      gap: 0;
+    }
+    .pfas-group-tabs { background: var(--s-bg-alt); }
+    .pfas-tab {
+      background: none; border: 0; font-family: inherit;   /* also for <button> tabs */
+      display: inline-block;
+      padding: 10px 16px;
+      font-size: var(--fs-base);
+      font-weight: 600;
+      color: var(--s-secondary);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: color .1s;
+    }
+    /* A tab strip inside the content (not the header strip) sits on the frame
+       edge and keeps its distance from the panel below. */
+    .pfas-content-area .pfas-tabs { padding: 0; background: none;
+                                    margin-bottom: var(--sp-5); }
+    .pfas-tab:hover { color: var(--s-body); text-decoration: none; }
+    .pfas-tab-count { font-weight: 400; color: var(--s-secondary); margin-left: 4px; }
+    /* Small status tags beside a table row (declared sections: suggested,
+       core-linked, unlinked). Defined once here; they were a page-local
+       <style> on the Surrogate Map tab that other tabs silently relied on. */
+    /* Declared grids (config_forms): one row per item, one column per matrix. */
+    .cf-grid th, .cf-grid td { text-align: center; white-space: nowrap; }
+    /* Declared tables: the label column takes only the width its labels
+       need, so the value columns (often one per matrix) get the room. */
+    .cf-table th:first-child, .cf-table td:first-child { width: 1%; white-space: nowrap; padding-right: var(--sp-4); }
+    .cf-table select.rl-in, .cf-coll select.rl-in { min-width: 7.5em; }
+    .cf-coll td:first-child input { min-width: 9em; }
+    /* settings report (screen; the PDF has its own print styles) */
+    .cf-hint { color: var(--s-secondary); font-size: var(--fs-sm); }
+    /* read-only info columns (config_forms.Table info): e.g. the action level
+       / MCL beside an RL. Struck = not evaluated here; amber = not verified. */
+    .cf-info { font-size: var(--fs-sm); white-space: nowrap; }
+    /* Specifications: per-matrix "open" buttons folded under one */
+    details.spec-open, details.spec-open[open] { border: 0; box-shadow: none; background: none;
+                                                 margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+    details.spec-open > summary.btn-sm { padding: 4px 10px; font-weight: 400; border-radius: 4px;
+                                         border: 1px solid var(--s-border); background: var(--s-bg); }
+    details.spec-open > summary::before { content: none; }
+    .cf-info-off { text-decoration: line-through; color: var(--s-secondary); }
+    .cf-info-warn { color: var(--s-warn-text); }
+    .mp-actions { white-space: nowrap; }
+    .mp-issue { display: inline-block; margin-left: var(--sp-2, 8px); }
+    .mp-issue form { display: flex; gap: 6px; margin-top: 6px; }
+    .mp-issue summary { list-style: none; cursor: pointer; }
+    .mp-issue summary::-webkit-details-marker { display: none; }
+    .mp-issue summary::marker { content: ""; }
+    .mp-issue summary::before { content: none; }   /* a button, not an accordion */
+    .mp-rev { white-space: nowrap; }
+    .sr-revision { font-weight: 600; margin: 0 0 var(--sp-2, 8px); }
+    .sr-stamp { display: flex; flex-wrap: wrap; gap: var(--sp-4); font-size: var(--fs-sm); color: var(--s-secondary); }
+    .sr-method { margin-top: var(--sp-5, 24px); }
+    .sr-table { width: 100%; border-collapse: collapse; margin: var(--sp-2, 8px) 0 var(--sp-4); font-size: var(--fs-sm); }
+    .sr-table th, .sr-table td { border: 1px solid var(--s-border); padding: 4px 8px; text-align: left; vertical-align: top; }
+    .sr-table thead th { background: var(--s-light); }
+    .sr-how { color: var(--s-secondary); font-size: var(--fs-xs); }
+    .sr-yes { color: var(--s-success, var(--s-primary)); font-weight: 600; }
+    .sr-no { color: var(--s-danger, var(--s-body)); font-weight: 600; }
+    .sr-warn { color: var(--s-warning, var(--s-body)); }
+    .cf-center { text-align: center; }
+    .ps-statement textarea { width: 100%; font-size: var(--fs-sm); }
+    .cf-scope-bar { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: end; margin: var(--sp-3) 0; }
+    .cf-scope-bar label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
+    .cf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+    /* .field-row label (uppercase field captions) also matches a chip */
+    .cf-chips .cf-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+               border: 1px solid var(--s-border); border-radius: 14px; background: var(--s-bg);
+               font-size: var(--fs-sm); cursor: pointer;
+               font-family: var(--font-sans); font-weight: 400; text-transform: none;
+               letter-spacing: normal; color: var(--s-body); }
+    .cf-chip:has(input:checked) { background: var(--s-primary-lt); border-color: var(--s-primary); }
+    .cf-label { font-family: var(--font-subtitle); font-weight: var(--fw-subtitle);
+                letter-spacing: var(--ls-subtitle); font-size: var(--fs-xs); text-transform: uppercase;
+                color: var(--s-secondary); }
+    /* tier colour key: a grid cell above and its tier row below share a swatch */
+    .tier-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+                   margin-right: 6px; vertical-align: middle; }
+    .tier-c0 { background: var(--tier-c0); } .tier-c1 { background: var(--tier-c1); }
+    .tier-c2 { background: var(--tier-c2); } .tier-c3 { background: var(--tier-c3); }
+    .tier-c4 { background: var(--tier-c4); } .tier-c5 { background: var(--tier-c5); }
+    #rt-tiers tbody tr td:first-child { border-left: 4px solid transparent; }
+    #rt-tiers tbody tr:nth-child(1) td:first-child { border-left-color: var(--tier-c0); }
+    #rt-tiers tbody tr:nth-child(2) td:first-child { border-left-color: var(--tier-c1); }
+    #rt-tiers tbody tr:nth-child(3) td:first-child { border-left-color: var(--tier-c2); }
+    #rt-tiers tbody tr:nth-child(4) td:first-child { border-left-color: var(--tier-c3); }
+    #rt-tiers tbody tr:nth-child(5) td:first-child { border-left-color: var(--tier-c4); }
+    #rt-tiers tbody tr:nth-child(6) td:first-child { border-left-color: var(--tier-c5); }
+    .cf-grid th:first-child, .cf-grid td:first-child { text-align: left; }
+    .cf-grid-title { font-family: var(--font-heading); font-size: var(--fs-base);
+                     margin: var(--sp-3) 0 var(--sp-2); }
+    .sur-tag { font-size: var(--fs-xs); padding: 1px 7px; border-radius: 8px; font-weight: 700;
+               display: inline-block; text-decoration: none; margin-left: 4px; }
+    .sur-default  { background: var(--s-primary-lt); color: var(--s-primary-dk); }
+    .sur-override { background: var(--s-warn-lt); color: var(--s-warn-text); }
+    .sur-core     { background: var(--s-success-lt); color: var(--s-success-text); }
+    .sur-nocore   { background: var(--s-danger-lt); color: var(--s-danger-dk); }
+    .pfas-tab-flag  { color: var(--s-danger-dk); margin-left: 4px; }
+    @media print { .pfas-pane[hidden] { display: block !important; } }   /* print every pane */
+    .pfas-tab.active { color: var(--s-primary-dk); border-bottom-color: var(--s-primary); }
+
+    /* ── Stable content area (scrollable) ────────────────────────────────── */
+    .pfas-content-area {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: auto;
+      background: var(--s-light);
+      min-height: 0;
+      /* Universal gutter so page content never sits flush against the window
+         edges. Pages that use .page-body keep their own inner padding on top of
+         this (extra breathing room); pages that fill the slot directly (SOPs,
+         Deviations/CARs, batch logbooks, facility, calibrations, ...) get their
+         spacing from here. */
+      padding: var(--frame-gutter-y) var(--frame-gutter-x);
+    }
+
+    /* ── Breadcrumb (top of the content area) ─────────────────────────── */
+    /* items move to the next line whole, never break inside ("QC & / Methods") */
+    .pfas-crumb > * { white-space: nowrap; }
+    .pfas-crumb { flex-wrap: wrap; row-gap: 2px; }
+    .pfas-crumb { display: flex; align-items: center; gap: var(--sp-2);
+                  font-size: var(--fs-sm); color: var(--s-secondary);
+                  margin: 0 0 var(--sp-3); min-height: 16px; }
+    .pfas-crumb a { color: var(--s-primary-dk); text-decoration: none; }
+    .pfas-crumb a:hover { text-decoration: underline; }
+    .pfas-crumb-sep { color: var(--s-border); }
+    .pfas-crumb-here { color: var(--s-body); font-weight: 600; }
+    @media print { .pfas-crumb { display: none; } }
+
+    /* ── Pane footer — storage path + role note ─────────────────────────── */
+    .pane-footer {
+      margin-top: 28px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--s-border);
+      background: var(--s-bg);
+      border-radius: 0 0 6px 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      font-size: var(--fs-xs);
+      color: var(--s-secondary);
+    }
+    .pane-footer .pf-role {
+      background: var(--s-primary-lt);
+      color: var(--s-primary-dk);
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .pane-footer .pf-path { font-family: var(--font-mono); font-size: var(--fs-xs); }
+
+    /* ── Role badge in header-right ─────────────────────────────────────── */
+    .role-badge {
+      font-size: var(--fs-xs);
+      font-weight: 700;
+      background: rgba(255,255,255,.15);
+      color: rgba(255,255,255,.90);
+      padding: 2px 9px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    /* ── Pinned action bar ────────────────────────────────────────────────── */
+    .pfas-action-bar-wrap { flex: 0 0 auto; }
+    .pfas-action-bar {
+      background: var(--s-bg);
+      border-top: 2px solid var(--s-primary);
+      padding: 12px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      box-shadow: 0 -2px 8px rgba(0,0,0,.08);
+    }
+
+    /* ── Flash messages ──────────────────────────────────────────────────── */
+    .alert { padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-weight: 600; }
+    .alert-success { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text); }
+    .alert-error   { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk); }
+    .alert-info    { background: var(--s-primary-lt); border: 1px solid var(--s-info-bd); color: var(--s-info-text); }
+
+    /* ── Content containers ──────────────────────────────────────────────── */
+    /* ONE frame. The content area's gutter is the
+       only page padding, so every page starts at the same x. Lists and tables
+       take the full width; reading/form pages take the one --form-width,
+       left-aligned so the left edge never moves between pages. A page must not
+       set its own max-width on these. */
+    .page-body        { max-width: none;              margin: 0; padding: 0; }
+    .page-body-narrow { max-width: var(--form-width); margin: 0; padding: 0; }
+
+    /* ── Cards ───────────────────────────────────────────────────────────── */
+    details, .pfas-card {
+      background: var(--s-bg);
+      border-radius: 6px;
+      margin-bottom: 14px;
+      border: 1px solid var(--s-border);
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    details[open], .pfas-card { box-shadow: 0 2px 6px rgba(0,0,0,.10); }
+    summary, .pfas-card-head {
+      padding: 11px 16px;
+      cursor: pointer;
+      font-size: var(--fs-base);
+      font-weight: 600;
+      background: var(--s-light);
+      border-radius: 6px;
+      color: var(--s-body);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    details[open] summary { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); }
+    .pfas-card-head { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--s-border); cursor: default; }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: "\25B6"; font-size: var(--fs-xs); transition: transform .15s; color: var(--s-secondary); }
+    details[open] summary::before { transform: rotate(90deg); }
+    .section-body, .pfas-card-body { padding: 16px; }
+
+    /* ── Field layout ────────────────────────────────────────────────────── */
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .field-row { display: flex; flex-direction: column; }
+    .field-row label {
+      font-size: var(--fs-xs);
+      color: var(--s-secondary);
+      margin-bottom: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .field-row input[type=number],
+    .field-row input[type=text],
+    .field-row input[type=date],
+    .field-row select,
+    .field-row textarea {
+      padding: 7px 9px;
+      border: 1px solid var(--s-input-border);
+      border-radius: 4px;
+      font-size: var(--fs-base);
+      background: #fafafa;
+      color: var(--s-input-text);
+      width: 100%;
+    }
+    .field-row input:focus, .field-row select:focus, .field-row textarea:focus {
+      outline: none;
+      border-color: var(--s-primary);
+      box-shadow: 0 0 0 3px var(--s-focus-ring);
+    }
+    .field-row .hint { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: 3px; }
+
+    /* ── Consistent text-field baseline (define once, §7) ─────────────────────
+       Every text/number/date/email input, <select> and <textarea> in the
+       content window shares ONE font (inherits the page font, not the browser
+       default), size and height, ending the ad-hoc / browser-default mix where
+       some boxes were a different font, size or taller than others. Pages may
+       still set width or override with a class; this is only the baseline.
+       Checkboxes, radios and file inputs are intentionally excluded. */
+    .pfas-content-area :where(select:not([multiple]):not([size])) { height: var(--ctl-h); }   /* :where = lowest specificity: a dense table's own rule wins */
+    .pfas-content-area input[type=text],
+    .pfas-content-area input[type=number],
+    .pfas-content-area input[type=date],
+    .pfas-content-area input[type=datetime-local],
+    .pfas-content-area input[type=time],
+    .pfas-content-area input[type=email],
+    .pfas-content-area input[type=search],
+    .pfas-content-area input[type=tel],
+    .pfas-content-area input[type=url],
+    .pfas-content-area input[type=password],
+    .pfas-content-area input:not([type]),
+    .pfas-content-area select,
+    .pfas-content-area textarea {
+      font-family: inherit;
+      font-size: var(--fs-base);
+      line-height: 18px;          /* 18 + 2×8 + 2×1 = 36 = --ctl-h, level with buttons */
+      padding: 8px 10px;
+      border: 1px solid var(--s-input-border, var(--s-input-border));
+      border-radius: 4px;
+      color: var(--s-input-text, var(--s-input-text));
+      background: #fff;
+      box-sizing: border-box;
+      vertical-align: middle;
+    }
+    .pfas-content-area textarea {
+      line-height: 1.5; resize: vertical;
+    }
+    .pfas-content-area input:focus,
+    .pfas-content-area select:focus,
+    .pfas-content-area textarea:focus {
+      outline: none;
+      border-color: var(--s-primary, #0d6efd);
+      box-shadow: 0 0 0 3px var(--s-focus-ring, rgba(13,110,253,.15));
+    }
+    .field-row-wide { grid-column: 1 / -1; }
+
+    /* ── Checkboxes ──────────────────────────────────────────────────────── */
+    .check-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+    .check-row label {
+      font-size: var(--fs-base); color: var(--s-body); font-weight: normal;
+      text-transform: none; letter-spacing: normal;
+    }
+    .check-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+
+    /* ── Toggle switch ───────────────────────────────────────────────────── */
+    .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--s-input-border); border-radius: 20px; transition: background .15s;
+    }
+    .toggle-track::before {
+      content: ""; position: absolute; width: 14px; height: 14px;
+      left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+      transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    }
+    .toggle-switch input:checked + .toggle-track { background: var(--s-primary); }
+    .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
+
+    /* ── Tables ──────────────────────────────────────────────────────────── */
+    .pfas-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
+    /* the core listing look (senaite.app.listing, measured 2026-10-03:
+       11px uppercase 600 headers, 12px cells) -- */
+    .pfas-table th {
+      background: var(--s-light);
+      color: var(--s-secondary);
+      font-size: var(--fs-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      padding: 12px;
+      border-bottom: 2px solid var(--s-border);
+      text-align: left;
+      white-space: nowrap;
+    }
+    /* A table of form rows: fixed layout, every control fills its cell, so a
+       wide record never pushes columns off the page. Widths come from <col>. */
+    .pfas-table-form { table-layout: fixed; }
+    .pfas-table.pfas-table-form th { white-space: normal; }   /* fixed columns: headings wrap */
+    .pfas-table.pfas-table-form td { padding: 6px 6px; }
+    .pfas-table-form input:not([type=checkbox]), .pfas-table-form select,
+    .pfas-table-form textarea { width: 100%; }
+    .pfas-table td { padding: 12px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    /* Row actions: the same controls in the same place on every row; what
+       changes a record's state sits under More. */
+    .row-actions { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+    .row-actions-cell { width: 1%; white-space: nowrap; }
+    details.row-more, details.row-more[open] { position: relative; border: 0; box-shadow: none;
+                                               background: none; margin: 0; }
+    details.row-more > summary.btn-sm { padding: 4px 10px; font-weight: 400; border-radius: 4px;
+                                        border: 1px solid var(--s-border); background: var(--s-bg); }
+    details.row-more > summary::before { content: none; }
+    .row-more-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 50;
+                     display: flex; flex-direction: column; gap: 4px; padding: 6px;
+                     background: var(--s-bg); border: 1px solid var(--s-border); border-radius: 6px;
+                     box-shadow: 0 6px 18px rgba(0,0,0,.12); min-width: 150px; }
+    .row-more-menu form { margin: 0; }
+    .row-more-menu .btn-sm { width: 100%; text-align: left; }
+    .pfas-table tr:last-child td { border-bottom: none; }
+    .pfas-table tbody tr:hover td { background: var(--s-primary-lt); }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* ── Workspace landing grid ──────────────────────────────────────────── */
+    /* Bench landing: extraction queue + needs attention phase 1) */
+  .bench-block { margin: 0 0 22px; }
+  /* filter rows, charts and lot comparisons (Blank History; Control
+     Charts) */
+  .filter-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin: 0 0 var(--sp-3); }
+  .chart-box { position: relative; height: clamp(300px, 46vh, 540px); margin: var(--sp-2) 0 var(--sp-4); }
+  .pick-list { position: relative; }
+  .pick-list > summary { list-style: none; cursor: pointer; }
+  .pick-list > summary::-webkit-details-marker { display: none; }
+  .pick-list-items { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 240px;
+                     max-height: 320px; overflow-y: auto; background: var(--s-bg); border: 1px solid var(--s-border);
+                     border-radius: 6px; padding: var(--sp-2); display: grid; gap: 2px;
+                     box-shadow: 0 6px 18px rgba(0,0,0,.12); }
+  .pick-list-items label { display: flex; gap: var(--sp-2); align-items: center; font-size: var(--fs-sm);
+                           white-space: nowrap; cursor: pointer; }
+  .lot-table tr.lot-changed td, .lot-table tr.lot-new td, .lot-table tr.lot-gone td { background: var(--s-info-lt); }
+  .lot-table tr.lot-changed td:first-child, .lot-table tr.lot-new td:first-child,
+  .lot-table tr.lot-gone td:first-child { box-shadow: inset 3px 0 0 var(--s-info); font-weight: 600; }
+  .lot-table.diff-only tr.lot-same { display: none; }
+  .lot-table { margin-bottom: var(--sp-5); }
+  .lot-tag { font-size: var(--fs-xs); color: var(--s-info-text); }
+  .section-gap { margin-top: var(--sp-4); }
+  /* QC Summary values: coloured by their verdict, criteria cited by
+     number (qc_cells.py; colour meanings in) */
+  .qv { font-variant-numeric: tabular-nums; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+  .qv-pass { color: var(--s-success-text); background: var(--s-success-lt); }
+  .qv-review { color: var(--s-warn-text); background: var(--s-warn-lt); }
+  .qv-fail { color: var(--s-danger-dk); background: var(--s-danger-lt); }
+  .qv-cite { color: var(--s-info-text); font-size: var(--fs-xs); margin-left: 1px; }
+  .qv-unit { color: var(--s-secondary); font-weight: 400; text-transform: none; margin-left: 2px; }
+  .qv-n { color: var(--s-secondary); font-size: var(--fs-xs); margin-left: 3px; }
+  .qv-analyte { font-weight: 600; }
+  .qv-legend { display: flex; gap: var(--sp-2); margin: var(--sp-3) 0 var(--sp-2); font-size: var(--fs-xs); }
+  .qv-notes { margin: var(--sp-3) 0 0; padding-left: var(--sp-5); font-size: var(--fs-sm); color: var(--s-secondary); }
+  .qv-notes li { margin: 2px 0; }
+  .qv-group { margin: var(--sp-4) 0 var(--sp-5); }
+  .qv-group-title { font-size: var(--fs-lg); margin: 0 0 var(--sp-2); }
+  /* a settings form laid out as a grid of labelled fields (EDD export) */
+  .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                gap: var(--sp-3) var(--sp-4); margin: 0 0 var(--sp-3); }
+  .field-grid label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);
+                      font-weight: 600; color: var(--s-body); }
+  .field-grid .field-hint { font-weight: 400; font-size: var(--fs-xs); color: var(--s-secondary); }
+  .field-grid input, .field-grid select, .field-grid textarea { width: 100%; }
+  .mono-area { font-family: var(--font-mono); font-size: var(--fs-xs); width: 100%; }
+  /* a form's action under its table never touches it */
+  .pfas-table + .btn-sm, .pfas-table + button, .pfas-table + .btn { margin-top: var(--sp-3); }
+  /* Reporting template page */
+  .rt-line { margin: 6px 0; }
+  .rt-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .rt-note { flex: 1 1 320px; }
+  .rt-preview { width: 100%; height: 72px; border: 1px solid var(--s-border); border-radius: 6px; background: #fff; }
+  .rt-preview.rt-open { height: 640px; }   /* grows once a preview is loaded */
+  /* Document Templates + designer */
+  .dt-inline { display: inline-flex; gap: 4px; align-items: center; margin: 2px 0; }
+  .dt-note { min-width: 200px; }
+  .dt-archived td { color: var(--s-secondary); }
+  .dt-problem { color: var(--s-warn-text); }
+  .dt-revisions { margin: 6px 0 12px; }
+  .dt-revisions summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
+  .dt-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; }
+  .dt-toolbar-label { font-weight: 600; }
+  .dt-toolbar #dt-fields { display: flex; flex-wrap: wrap; gap: 6px; }
+  .dt-designer { height: calc(100vh - 280px); min-height: 520px; border: 1px solid var(--s-border);
+                 border-radius: 6px; overflow: hidden; }
+  .dt-pdf { margin-top: 12px; }
+  .dt-col-chooser { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+                    border: 1px solid var(--s-border); border-radius: 6px; padding: 8px 10px; background: var(--s-light); }
+  .dt-col-chooser fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .dt-col-chooser legend { font-weight: 600; font-size: var(--fs-sm); width: 100%; margin-bottom: 2px; }
+  .dt-col-chooser label { font-size: var(--fs-sm); white-space: nowrap; }
+  /* Lab Staff / Profile & signature */
+  .staff-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .staff-form input[type=text] { min-width: 150px; }
+  .staff-signas { display: inline-flex; gap: 10px; flex-wrap: wrap; }
+  .staff-signas label { font-size: var(--fs-sm); white-space: nowrap; }
+  .staff-sig { display: block; max-height: 40px; max-width: 160px; margin-bottom: 4px;
+               background: #fff; border: 1px solid var(--s-border); }
+  .staff-sig-lg { max-height: 90px; max-width: 320px; }
+  .bench-h { font-size: var(--fs-lg); margin: 0 0 8px; }
+  .bench-sub { color: var(--s-secondary); font-size: var(--fs-sm); }
+  .bench-state { font-weight: 600; }
+  .bench-in_progress { color: var(--s-primary-dk); }
+  .bench-finished { color: var(--s-success-text); }
+  .bench-alerts { list-style: none; margin: 0; padding: 0; }
+  .bench-alerts li { padding: 6px 10px; border-left: 4px solid var(--s-border); margin: 0 0 4px;
+  background: var(--s-bg-alt); font-size: var(--fs-sm); }
+  .bench-alerts li.bench-bad { border-left-color: var(--s-danger); }
+  .bench-alerts li.bench-warn { border-left-color: var(--s-warning); }
+  .bench-alerts li.bench-ok { border-left-color: var(--s-success); }
+    .pfas-ws-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+      padding: 0;   /* the content gutter already frames the grid */
+    }
+    .pfas-ws-card {
+      background: var(--s-bg);
+      border: 1px solid var(--s-border);
+      border-radius: 8px;
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-decoration: none;
+      color: var(--s-body);
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      transition: box-shadow .15s, border-color .15s;
+    }
+    .pfas-ws-card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,.12);
+      border-color: var(--s-primary);
+      text-decoration: none;
+      color: var(--s-body);
+    }
+    .pfas-ws-card-icon { font-size: var(--fs-xl); color: var(--s-primary-dk); line-height: 1; }
+    .pfas-ws-card-title { font-size: var(--fs-md); font-weight: 600; }
+    .pfas-ws-card-desc  { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.4; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    /* ── Buttons: ONE set (Phase 2) ───────────────────────────
+       Size and colour are independent.btn and .btn-sm set only size, the
+       variants set only colour, so any size combines with any variant. A bare.
+       btn / .btn-sm is the neutral (secondary) look. .btn-save is the primary
+       save action; the print block keys on it, so the name stays.
+       Heights come from --ctl-h / --ctl-h-sm and match the inputs, so a toolbar
+       of search box + select + buttons lines up. Pages must not redefine these
+       names (tests/test_ui_ratchet.py). */
+    .btn, .btn-sm, .btn-lg, .btn-save,
+    .btn-primary, .btn-secondary, .btn-danger, .btn-warn, .btn-success {
+      /* a variant used alone (class="btn-primary") still gets a size */
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px; height: var(--ctl-h); padding: 0 14px;
+      font-family: inherit; font-size: var(--fs-base); font-weight: 600;
+      line-height: 1; white-space: nowrap; vertical-align: middle;
+      border: 1px solid var(--s-border); border-radius: var(--radius);
+      background: var(--s-bg); color: var(--s-body);
+      cursor: pointer; text-decoration: none;
+    }
+    .btn:hover, .btn-sm:hover { background: var(--s-light); color: var(--s-body);
+                                text-decoration: none; }
+    .btn:disabled, .btn-sm:disabled, .btn-save:disabled { opacity: .55; cursor: not-allowed; }
+    .btn-sm { height: var(--ctl-h-sm); padding: 0 10px; font-size: var(--fs-sm); }
+    /* Links are buttons, never underlined text: a page link
+       is an <a class="btn-sm btn-secondary"> beside the text it acts on. */
+    a.btn, a.btn-sm, a.btn-lg, a.btn-primary, a.btn-secondary { text-decoration: none; }
+    a.btn:hover, a.btn-sm:hover, a.btn-secondary:hover { text-decoration: none; }
+    .btn-back::before { content: "\2190"; margin-right: 6px; }
+    /* "?" beside a concept: opens its Help dictionary entry. A button, never an underlined word. */
+    a.btn-help { display: inline-flex; align-items: center; justify-content: center;
+                 width: 20px; height: 20px; margin-left: 6px; vertical-align: middle;
+                 border: 1px solid var(--s-border); border-radius: 50%;
+                 font-size: var(--fs-sm); font-weight: 700; line-height: 1;
+                 color: var(--s-secondary); background: var(--s-bg); text-decoration: none; }
+    a.btn-help:hover { color: var(--s-primary-dk); border-color: var(--s-primary); text-decoration: none; }
+    /* the Help page */
+    /* tabs (help_dictionary.GROUPS): the tab's entries beside the one read */
+    .help-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 0 28px; }
+    .help-side { display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--s-border);
+                 padding-right: 12px; }
+    .help-side p { margin: 0 0 10px; }
+    .help-side-item { padding: 6px 10px; border-radius: 6px; color: var(--s-body); text-decoration: none; }
+    .help-side-item:hover { background: var(--s-bg-alt); text-decoration: none; }
+    .help-side-item.active { background: var(--s-primary-lt); color: var(--s-primary-dk); font-weight: 600; }
+    .help-flow { margin: 0; padding-left: 22px; max-width: 980px; }
+    .help-flow li { padding: 10px 0; border-bottom: 1px solid var(--s-border); }
+    .help-flow li .cf-hint { display: block; margin: 2px 0 6px; }
+    .help-flow-links a.btn-sm { margin: 0 6px 4px 0; }
+    @media (max-width: 760px) { .help-layout { grid-template-columns: 1fr; }
+                                .help-side { border-right: 0; padding-right: 0; margin-bottom: 14px; } }
+    .help-entry { padding: 0 0 16px; max-width: 900px; }
+    .help-page > .help-entry { padding: 12px 0 16px; border-top: 1px solid var(--s-border); }
+    .help-entry h3 { font-size: var(--fs-md); margin: 0 0 6px; }
+    .help-entry p { margin: 0 0 8px; line-height: 1.5; }
+    .help-facts { display: grid; grid-template-columns: 160px 1fr; gap: 4px 12px; margin: 0; }
+    .help-facts dt { font-size: var(--fs-sm); color: var(--s-secondary); font-weight: 600; }
+    .help-facts dd { margin: 0; }
+    .help-facts dd a.btn-sm { margin: 0 6px 4px 0; }
+    .help-effects { margin: 0; padding-left: 18px; }
+    .help-list { margin-top: 8px; max-width: 900px; }
+    /* a form shown read-only to a role that cannot save it */
+    fieldset.pfas-ro { border: 0; margin: 0; padding: 0; min-width: 0; }
+    /* manual integration review */
+    .mi-table tr.mi-qc td { background: var(--s-warn-lt); }
+    .mi-table input.mi-page { width: 70px; }
+    .mi-table input.mi-active { outline: 2px solid var(--s-primary); }
+    .mi-table input.mi-suggested { border-color: var(--s-info-bd); }
+    .mi-add { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+    .mi-inline { display: inline; margin-left: 8px; }
+    .avatar-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .avatar-choice { position: relative; cursor: pointer; border: 2px solid transparent; border-radius: 50%; padding: 2px; }
+    .avatar-choice input { position: absolute; opacity: 0; }
+    .avatar-choice img { display: block; image-rendering: pixelated; border-radius: 50%; }
+    .avatar-choice:has(input:checked), .avatar-choice:has(input:focus-visible) { border-color: var(--s-primary); }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .mi-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .mi-thumb { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px;
+                border: 1px solid var(--s-border); border-radius: var(--radius); background: var(--s-bg); cursor: pointer; }
+    .mi-thumb:hover { border-color: var(--s-primary); }
+    .mi-thumb canvas { max-width: 100%; border: 1px solid var(--s-border); }
+    .mi-thumb-no { font-size: var(--fs-sm); color: var(--s-secondary); }
+    .mi-thumb-tags { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+    .mi-history { margin-top: 16px; }
+    .btn-lg { height: var(--ctl-h-lg); padding: 0 28px; font-size: var(--fs-md); }
+
+    .btn-primary, .btn-save { background: var(--s-primary-dk); border-color: var(--s-primary-dk); color: #fff; }
+    .btn-primary:hover, .btn-save:hover { background: var(--s-primary-dk);
+                                          border-color: var(--s-primary-dk); color: #fff; }
+    .btn-secondary { background: var(--s-bg); border-color: var(--s-border); color: var(--s-body); }
+    .btn-danger { background: var(--s-bg); border-color: var(--s-danger-bd); color: var(--s-danger-dk); }
+    .btn-danger:hover { background: var(--s-danger-lt); border-color: var(--s-danger);
+                        color: var(--s-danger-dk); }
+    .btn-success { background: var(--s-success); border-color: var(--s-success); color: #fff; }
+    .btn-success:hover { background: var(--s-success-text); border-color: var(--s-success-text); color: #fff; }
+    .btn-warn { background: var(--s-bg); border-color: var(--s-warn-bd); color: var(--s-warn-text); }
+    .btn-warn:hover { background: var(--s-warn-lt); color: var(--s-warn-text); }
+    .btn-link { background: none; border-color: transparent; color: var(--s-primary-dk);
+                height: auto; padding: 0 2px; text-decoration: underline; }
+    .btn-link:hover { background: none; color: var(--s-primary-dk); }
+
+    /* ── Legacy save-bar (inside content slot — stays sticky in scroll area) */
+    .save-bar {
+      position: sticky;
+      bottom: 0;
+      background: var(--s-bg);
+      border-top: 2px solid var(--s-primary);
+      padding: 12px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      box-shadow: 0 -2px 8px rgba(0,0,0,.08);
+    }
+
+    /* ── Generic status badges ──────────────────────────────────────────── */
+    .badge {
+      display: inline-block; font-size: var(--fs-xs); font-weight: 700;
+      padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+      text-transform: uppercase; letter-spacing: .03em;
+    }
+    .badge-active     { background: var(--s-success-lt); color: var(--s-success-text); }
+    .badge-draft      { background: #e2e3e5; color: var(--s-input-text); }
+    .badge-archived   { background: #e2e3e5; color: var(--s-input-text); }
+    .badge-exhausted  { background: #e2e3e5; color: var(--s-input-text); }
+    .badge-expired    { background: var(--s-danger-lt); color: var(--s-danger-dk); }
+    .badge-opened     { background: var(--s-info-lt); color: var(--s-info-text); }
+    .badge-quarantine { background: var(--s-warn-lt); color: var(--s-warn-text); }
+    /* Promoted from method_profiles.pt, which defined them page-locally while
+       the .badge base was already global. Two pages now need them (the Lab
+       Settings console reuses the whole set), and a colour defined twice drifts
+       — so they live here with every other badge. */
+    .badge-custom     { background: var(--s-success-lt); color: var(--s-success-text); }
+    .badge-default    { background: var(--s-warn-lt); color: var(--s-warn-text); }
+
+    /* ── Mono badges ─────────────────────────────────────────────────────── */
+    .mono-badge {
+      font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--s-primary-dk);
+      background: var(--s-primary-lt); padding: 2px 7px; border-radius: 3px;
+    }
+    .status-badge {
+      font-size: var(--fs-xs); padding: 2px 8px; border-radius: 10px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    }
+    .status-ok   { background: var(--s-success-lt); color: var(--s-success-text); }
+    .status-warn { background: var(--s-warn-lt); color: var(--s-warn-text); }
+    .status-fail { background: var(--s-danger-lt); color: var(--s-danger-dk); }
+
+    /* ── Logbook breadcrumb ──────────────────────────────────────────────── */
+    .lb-breadcrumb {
+      display: flex; align-items: center; gap: 6px;
+      font-size: var(--fs-xs); color: var(--s-secondary);
+      padding: 8px 0 16px 0;
+    }
+    .lb-breadcrumb a { color: var(--s-secondary); text-decoration: none; }
+    .lb-breadcrumb a:hover { color: var(--s-primary-dk); text-decoration: underline; }
+    .lb-breadcrumb .lb-bc-sep { opacity: .5; }
+    .lb-breadcrumb strong { color: var(--s-body); }
+
+    /* ── Print preview button ────────────────────────────────────────────── */
+    .btn-print-preview {
+      padding: 9px 18px; background: var(--s-light); color: var(--s-secondary);
+      border: 1px solid var(--s-border); border-radius: 7px;
+      font-size: var(--fs-base); font-weight: 600; cursor: pointer;
+    }
+    .btn-print-preview:hover { background: #e9ecef; }
+
+    /* ── Mobile (≤768px) ─────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      /* Sidebar floats as an overlay on mobile */
+      .pfas-shell > #sidebar.pfas-sidebar {
+        position: absolute;
+        top: 0; left: 0; bottom: 0;
+        z-index: 100;
+        transform: translateX(-100%);
+        transition: transform .2s ease;
+        box-shadow: none;
+        min-width: var(--pfas-panel-width) !important;
+        max-width: var(--pfas-panel-width) !important;
+      }
+      .pfas-shell.panel-open > #sidebar.pfas-sidebar {
+        transform: translateX(0);
+        box-shadow: 4px 0 16px rgba(0,0,0,.20);
+      }
+      .pfas-panel-backdrop {
+        display: none;
+        position: absolute; inset: 0;
+        background: rgba(0,0,0,.45);
+        z-index: 99;
+      }
+      .pfas-shell.panel-open .pfas-panel-backdrop { display: block; }
+      .pfas-shell { position: relative; }
+
+      /* Content: let it scroll horizontally rather than clip */
+      .pfas-content-area { overflow-x: auto; }
+
+      /* Tables: contained scroll. Any table inside .table-wrap scrolls
+         sideways as a unit (cells nowrap) so the page chrome never drags.
+         Opt a cell out of nowrap with class="col-wrap". */
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .table-wrap table { display: table; }
+      .table-wrap table td,
+      .table-wrap table th { white-space: nowrap; }
+      .table-wrap table td.col-wrap,
+      .table-wrap table th.col-wrap { white-space: normal; max-width: 180px; }
+      .pfas-table { min-width: 480px; }
+
+      /* ── Content tables on mobile: keep each as ONE real table so <thead> and
+         <tbody> always share the SAME column widths — headers and cells line up
+         on narrow screens (iPhone SE). A table wider than the screen scrolls
+         horizontally INSIDE the content area, which is a width-contained scroll
+         box (overflow-x:auto + min-width:0), so the chrome/page never move.
+
+         Replaces the earlier per-table `display:block` approach: putting
+         display:block on the <table> and display:table on <thead>/<tbody> turned
+         each row-group into an INDEPENDENT table that sized its columns to its
+         own content, so headers and body drifted out of alignment on narrow
+         viewports. A single real table can't do that. Opt a whole table out with
+         class="no-mobile-scroll"; let one cell wrap with class="col-wrap". */
+      .pfas-content-area { min-width: 0; padding: 12px 12px; }
+      .pfas-content-area table:not(.no-mobile-scroll) {
+        min-width: 100%; max-width: none;
+      }
+      /* Phone ("text wrapping issues on mobile"): a table
+         scrolls sideways instead of squeezing columns until words break
+         ("LC- / MS/MS", "QC / type"). Headings never wrap; a cell keeps room
+         for a few words; the row-action cell stays as small as its buttons. */
+      .pfas-content-area table:not(.no-mobile-scroll) th { white-space: nowrap; }
+      .pfas-content-area table:not(.no-mobile-scroll) td { min-width: 8em; }
+      /* a column holding a list (matrices, analytes) gets reading width */
+      .pfas-content-area table:not(.no-mobile-scroll) td.col-wide { min-width: 16em; }
+      .pfas-content-area table:not(.no-mobile-scroll) td.row-actions-cell { min-width: 0; }
+      .pfas-content-area table:not(.no-mobile-scroll) td.col-wrap,
+      .pfas-content-area table:not(.no-mobile-scroll) th.col-wrap {
+        white-space: normal; max-width: 180px;
+      }
+      .hide-mobile { display: none !important; }
+
+      /* Field grids → single column */
+      .field-grid { grid-template-columns: 1fr !important; }
+
+      /* Reduce body padding */
+      .page-body, .page-body-narrow { padding: 10px 10px; }
+      .page-body { max-width: 100% !important; }
+
+      /* Tabs: scrollable, compact */
+      .pfas-tabs { padding: 0 6px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .pfas-tab { padding: 8px 10px; font-size: var(--fs-sm); }
+
+      /* Pane footer: stack vertically */
+      .pane-footer { flex-direction: column; align-items: flex-start; gap: 6px; }
+
+      /* Stat bars: 2-up grid */
+      .stat-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    }
+
+    /* ── Shared print header/footer (see Configuration → Print Settings) ── */
+    .pfas-printhead, .pfas-printfoot { display: none; }
+
+    /* ── Shared QA sign-off attestation (screen + print) ─────────────────── */
+    /* ── shared stepper (guided logbooks; reusable by any multi-step page) ── */
+    .pfas-stepper { display:flex; flex-direction:column; gap:3px; }
+    .pfas-stepper-head { margin-bottom:8px; }
+    .pfas-stepper-title { font-size:var(--fs-sm); font-weight:700; text-transform:uppercase;
+                          letter-spacing:.04em; color:var(--s-secondary); }
+    .pfas-stepper-sub { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:2px; }
+    .pfas-stepper-progress { margin:4px 0 10px; }
+    .pfas-stepper-bar { height:6px; border-radius:3px; background:var(--s-light);
+                        overflow:hidden; border:1px solid var(--s-border); }
+    .pfas-stepper-fill { height:100%; background:var(--s-success-text); transition:width .2s; }
+    .pfas-stepper-pct { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:3px; }
+    .pfas-step-item { display:flex; align-items:center; gap:9px; padding:8px 10px;
+                      border-radius:6px; text-decoration:none; color:var(--s-body);
+                      font-size:var(--fs-sm); border:1px solid transparent; }
+    a.pfas-step-item:hover { background:var(--s-primary-lt); }
+    .pfas-step-item.is-current { background:var(--s-bg); border-color:var(--s-border);
+                                 font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+    .pfas-step-num { flex:0 0 22px; height:22px; border-radius:50%; display:flex;
+                     align-items:center; justify-content:center; font-size:var(--fs-xs);
+                     font-weight:700; border:1px solid var(--s-border);
+                     background:var(--s-bg); color:var(--s-secondary); }
+    .pfas-step-num.status-done { background:var(--s-success-text); border-color:var(--s-success-text); color:#fff; }
+    .pfas-step-num.status-active { background:var(--s-primary-dk); border-color:var(--s-primary-dk); color:#fff; }
+    .pfas-step-label { flex:1 1 auto; }
+    .pfas-step-item.status-pending .pfas-step-label { color:var(--s-secondary); }
+
+    .pfas-signoff { margin: 22px 0 6px; border: 1px solid var(--s-border, #ccc);
+      border-radius: 6px; padding: 12px 14px; background: #fcfcfd;
+      page-break-inside: avoid; }
+    .pfas-signoff-title { font-size: var(--fs-sm); font-weight: 700; letter-spacing: .04em;
+      text-transform: uppercase; color: #444; margin-bottom: 8px; }
+    .pfas-signoff-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+    .pfas-signoff-tbl td { padding: 10px 8px; vertical-align: bottom;
+      border-top: 1px solid #eee; }
+    .pfas-signoff-tbl .so-role { width: 96px; font-weight: 600; color: #555;
+      white-space: nowrap; }
+    .pfas-signoff-tbl .so-title { color: #666; }
+    .pfas-signoff-tbl .so-sig { width: 150px; text-align: center; }
+    .pfas-signoff-tbl .so-date { width: 130px; white-space: nowrap; color: #555; }
+    .pfas-signoff .so-stamp { max-height: 40px; max-width: 140px; }
+    .pfas-signoff .so-line { display: inline-block; min-width: 90px;
+      border-bottom: 1px solid #888; }
+    .pfas-signoff-foot { margin-top: 8px; font-size: var(--fs-xs); color: #92400e;
+      background: var(--s-warn-lt); border-left: 3px solid #f59e0b; padding: 5px 8px;
+      border-radius: 3px; }
+
+    /* ── Print ───────────────────────────────────────────────────────────── */
+    @media print {
+      .pfas-signoff { border-color: #000; background: transparent; }
+      .pfas-signoff-foot { display: none !important; }
+      .pfas-printhead { display: block !important;
+        border-bottom: 2px solid #000; margin: 0 0 12px; padding-bottom: 8px; }
+      .pfas-ph-row  { display: flex; gap: 14px; align-items: center; }
+      .pfas-ph-logo { max-height: 46px; }
+      .pfas-ph-name { font-size: var(--fs-lg); font-weight: 700; color: #000; }
+      .pfas-ph-sub  { font-size: var(--fs-xs); color: #333; }
+      .pfas-ph-date { margin-left: auto; font-size: var(--fs-xs); color: #333; }
+      .pfas-printfoot { display: block !important; position: fixed;
+        bottom: 0; left: 0; right: 0; font-size: var(--fs-xs); color: #444;
+        border-top: 1px solid #999; padding-top: 3px; text-align: center; }
+      .pfas-topbar, .pfas-subbar { display: none !important; }
+      #sidebar.pfas-sidebar { display: none !important; }
+      .pfas-tabs-wrap { display: none !important; }
+      .pfas-action-bar-wrap { display: none !important; }
+      .lb-breadcrumb { display: none !important; }
+      .btn-save, .btn-dl, .btn-print-preview, .btn-add-row,
+      .btn-del-row, .form-actions, #add-sample-btn { display: none !important; }
+      .pfas-content-area { overflow: visible !important; }
+      input[type="text"], input[type="number"], input[type="date"],
+      select, textarea {
+        border: none !important; background: transparent !important;
+        box-shadow: none !important; padding: 2px 0 !important;
+      }
+      table { page-break-inside: auto; }
+      tr { page-break-inside: avoid; }
+      .lb-section h3 { border-bottom: 1px solid #999 !important; }
+      body { font-size: var(--fs-xs); overflow: visible !important; height: auto !important; }
+    }
+
+    /* ── GLP field correction model (logbooks) ── */
+    .btn-correct { background: none; border: none; color: #bbb; font-size: var(--fs-xs);
+                   cursor: pointer; padding: 0 3px; text-decoration: underline;
+                   font-weight: normal; margin-left: 5px; vertical-align: middle; }
+    .btn-correct:hover { color: var(--s-dark); }
+    .corr-existing { display: flex; align-items: baseline; gap: 6px;
+                     flex-wrap: wrap; font-size: var(--fs-sm); margin-bottom: 3px; }
+    .corr-struck { text-decoration: line-through; color: #999; }
+    .corr-arrow { color: #999; font-size: var(--fs-xs); }
+    .corr-meta { font-size: var(--fs-xs); color: var(--s-warn-text); background: var(--s-warn-lt);
+                 border: 1px solid #ffe082; border-radius: 3px;
+                 padding: 1px 5px; white-space: nowrap; }
+    .corr-panel { display: none; margin-top: 5px; padding: 7px 10px;
+                  background: var(--s-warn-lt); border: 1px solid var(--s-warning);
+                  border-radius: 6px; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .corr-panel.open { display: flex; }
+    .corr-panel label { font-size: var(--fs-xs); color: var(--s-warn-text); font-weight: 600;
+                        white-space: nowrap; margin: 0; }
+    .corr-panel input { padding: 4px 8px; font-size: var(--fs-sm);
+                        border: 1px solid var(--s-warning); border-radius: 4px; background: #fff; }
+    .corr-initials { width: 52px !important; }
+    .corr-cancel { background: none; border: none; cursor: pointer;
+                   color: var(--s-warn-text); font-size: var(--fs-md); line-height: 1; padding: 0 3px; }
+    @media print {
+      .btn-correct, .corr-panel { display: none !important; }
+      .has-correction > input, .has-correction > textarea,
+      .has-correction > select { display: none !important; }
+    }
+
+  </style>
+  <tal:head-extra metal:define-slot="head-extra" />
+</head>
+<body class="pfas-app">
+  <a class="pfas-skip" href="#pfas-content-area">Skip to content</a>
+  <!-- ── Shared print header/footer — settings at Configuration → Print
+       Settings (@@pfas-print-settings). Hidden on screen; renders on EVERY
+       print so a standard form and a CoC produce consistent audit copies.
+       Standalone templates (receipt.pt) reuse via macros/printhead. ──── -->
+  <!-- "?" for one concept: define hid (a help_dictionary id) where used.
+       Wrapped so the definition itself never renders inside the page. -->
+  <tal:defs tal:condition="nothing"><a metal:define-macro="help" class="btn-help" aria-label="Help"
+     tal:attributes="href python:'%s/@@pfas-help?entry=%s' % (context.portal_url(), hid);
+                     title python:'What is this? (Help)'">?</a></tal:defs>
+
+  <div class="pfas-printhead" metal:define-macro="printhead"
+       tal:define="ps python:context.restrictedTraverse('@@pfas-macros').print_settings()">
+    <div class="pfas-ph-row">
+      <img class="pfas-ph-logo" tal:condition="ps/logo_url"
+           tal:attributes="src ps/logo_url; alt ps/lab_name"/>
+      <div class="pfas-ph-id">
+        <div class="pfas-ph-name" tal:content="ps/lab_name">Lab name</div>
+        <div class="pfas-ph-sub">
+          <tal:a tal:condition="ps/lab_address" tal:replace="ps/lab_address"/><tal:p
+            tal:condition="ps/lab_phone"> · <tal:x tal:replace="ps/lab_phone"/></tal:p><tal:e
+            tal:condition="ps/lab_email"> · <tal:x tal:replace="ps/lab_email"/></tal:e>
+        </div>
+        <div class="pfas-ph-sub" tal:condition="ps/accreditation"
+             tal:content="ps/accreditation">accreditation</div>
+      </div>
+      <div class="pfas-ph-date" tal:condition="ps/show_print_date">
+        Printed: <tal:d tal:replace="ps/print_date">date</tal:d>
+      </div>
+    </div>
+  </div>
+  <div class="pfas-printfoot"
+       tal:define="ps python:context.restrictedTraverse('@@pfas-macros').print_settings()"
+       tal:condition="ps/show_page_footer"
+       tal:content="ps/footer_text">footer</div>
+
+  <!-- ── Shared QA sign-off attestation ────────────────────────────────────
+       Rendered 3-tier attestation (Analyst prepared → QAO verified → Lab
+       Director authorized) with signature stamps, for controlled printable
+       records (SOP, prep logs FM-ENV-25x, prepared standards). Define-once
+       (§6C/§7). QAO + Director come from Print Settings; the preparer + date
+       are passed by the calling template. A missing stamp prints a ruled line
+       for wet signature. Caller sets: signoff_noun, signoff_prepared_name,
+       signoff_prepared_date, signoff_prepared_initials (any may be omitted).
+         <tal:s metal:use-macro="context/@@pfas-macros/macros/signoff"
+                tal:define="signoff_noun string:reagent;
+                            signoff_prepared_name python:view.data().get('prepared_by','');
+                            signoff_prepared_date python:view.data().get('prepared_date','');
+                            signoff_prepared_initials python:view.data().get('prepared_by','')" />
+       ──────────────────────────────────────────────────────────────────── -->
+  <!-- ────────────────────────────────────────────────────────────────────
+       stepper — shared step rail for any multi-step page.
+
+       Caller defines, ON A WRAPPING ELEMENT (Chameleon does not pass
+       tal:define from the metal:use-macro element itself):
+
+           stepper_items       [{num, label, status, is_current, url}]
+                               status: done | active | pending | defaults
+                               url falsy => rendered as a non-navigable div,
+                               so this one macro serves both a freely
+                               navigable wizard and a strictly linear runner
+           stepper_title       optional heading
+           stepper_subtitle    optional sub-heading
+           stepper_progress    optional int 0-100 (renders a progress bar)
+
+       Gated on stepper_items so, like signoff, it emits nothing on pages
+       that do not use it (a define-macro in the page-macro body would
+       otherwise render inline site-wide).
+       ──────────────────────────────────────────────────────────────────── -->
+  <div class="pfas-stepper" metal:define-macro="stepper"
+       tal:define="items stepper_items|nothing;
+                   s_title stepper_title|nothing;
+                   s_sub stepper_subtitle|nothing;
+                   s_pct stepper_progress|nothing"
+       tal:condition="items">
+    <div class="pfas-stepper-head" tal:condition="s_title">
+      <div class="pfas-stepper-title" tal:content="s_title">Steps</div>
+      <div class="pfas-stepper-sub" tal:condition="s_sub" tal:content="s_sub">sub</div>
+    </div>
+    <div class="pfas-stepper-progress" tal:condition="python:s_pct is not None">
+      <div class="pfas-stepper-bar">
+        <div class="pfas-stepper-fill"
+             tal:attributes="style python:'width:{0}%'.format(s_pct)"></div>
+      </div>
+      <div class="pfas-stepper-pct"
+           tal:content="python:'{0}% complete'.format(s_pct)">0%</div>
+    </div>
+    <tal:items tal:repeat="it items">
+      <a class="pfas-step-item" tal:condition="it/url"
+         tal:attributes="href it/url;
+                         class python:'pfas-step-item status-%s%s' % (it['status'], ' is-current' if it['is_current'] else '')">
+        <span tal:attributes="class python:'pfas-step-num status-%s' % it['status']">
+          <tal:d tal:condition="python:it['status']=='done'">&#10003;</tal:d>
+          <tal:n tal:condition="python:it['status']!='done'" tal:content="it/num">1</tal:n>
+        </span>
+        <span class="pfas-step-label" tal:content="it/label">Step</span>
+      </a>
+      <div class="pfas-step-item" tal:condition="not:it/url"
+           tal:attributes="class python:'pfas-step-item status-%s%s' % (it['status'], ' is-current' if it['is_current'] else '')">
+        <span tal:attributes="class python:'pfas-step-num status-%s' % it['status']">
+          <tal:d tal:condition="python:it['status']=='done'">&#10003;</tal:d>
+          <tal:n tal:condition="python:it['status']!='done'" tal:content="it/num">1</tal:n>
+        </span>
+        <span class="pfas-step-label" tal:content="it/label">Step</span>
+      </div>
+    </tal:items>
+  </div>
+
+  <div class="pfas-signoff" metal:define-macro="signoff"
+       tal:define="nn signoff_noun|nothing;
+                   ps python:context.restrictedTraverse('@@pfas-macros').print_settings();
+                   render python:bool(nn) and ps.get('show_signoff', True);
+                   signers python:context.restrictedTraverse('@@pfas-macros').signoff_signers();
+                   noun python:nn or 'document';
+                   prep_name signoff_prepared_name|string:;
+                   prep_date signoff_prepared_date|string:;
+                   prep_ini signoff_prepared_initials|string:;
+                   prep_sig python:context.restrictedTraverse('@@pfas-macros').signature_for_initials(prep_ini);
+                   qao signers/qao;
+                   director signers/director"
+       tal:condition="render">
+    <div class="pfas-signoff-title">Quality Assurance Documentation</div>
+    <table class="pfas-signoff-tbl no-mobile-scroll">
+      <tbody>
+      <tr>
+        <td class="so-role">Prepared&nbsp;by</td>
+        <td class="so-who">
+          This <tal:n tal:replace="noun">document</tal:n> was prepared by
+          <strong tal:content="python:prep_name or (prep_sig and prep_sig['fullname']) or '—'">analyst</strong>.
+        </td>
+        <td class="so-sig">
+          <img class="so-stamp" tal:condition="prep_sig/signature_url|nothing"
+               tal:attributes="src prep_sig/signature_url; alt prep_sig/fullname"/>
+          <span class="so-line" tal:condition="not:prep_sig/signature_url|python:True">&nbsp;</span>
+        </td>
+        <td class="so-date">Date:
+          <tal:d tal:condition="prep_date" tal:replace="prep_date"/>
+          <span class="so-line" tal:condition="not:prep_date">&nbsp;</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="so-role">Verified&nbsp;by</td>
+        <td class="so-who">
+          Reviewed and verified by
+          <strong tal:content="python:(qao and qao['fullname']) or '—'">QAO</strong>,
+          <span class="so-title">Quality Assurance Officer</span>.
+        </td>
+        <td class="so-sig">
+          <img class="so-stamp" tal:condition="qao/signature_url|nothing"
+               tal:attributes="src qao/signature_url; alt qao/fullname"/>
+          <span class="so-line" tal:condition="not:qao/signature_url|python:True">&nbsp;</span>
+        </td>
+        <td class="so-date">Date: <span class="so-line">&nbsp;</span></td>
+      </tr>
+      <tr>
+        <td class="so-role">Authorized&nbsp;by</td>
+        <td class="so-who">
+          Authorized by
+          <strong tal:content="python:(director and director['fullname']) or '—'">Director</strong>,
+          <span class="so-title">Laboratory Director</span>.
+        </td>
+        <td class="so-sig">
+          <img class="so-stamp" tal:condition="director/signature_url|nothing"
+               tal:attributes="src director/signature_url; alt director/fullname"/>
+          <span class="so-line" tal:condition="not:director/signature_url|python:True">&nbsp;</span>
+        </td>
+        <td class="so-date">Date: <span class="so-line">&nbsp;</span></td>
+      </tr>
+      </tbody>
+    </table>
+    <div class="pfas-signoff-foot" tal:condition="python:(qao and qao['placeholder']) or (director and director['placeholder']) or not qao or not director">
+      &#9888; Set the Quality Assurance Officer and Laboratory Director (with
+      uploaded signature images) at Configuration &#8594; Print Settings.
+    </div>
+  </div>
+
+<!-- ── Top toolbar: the one bar every page draws (templates/pfas_topbar.pt).
+     header-title names the page; header-context holds a chip saying what the
+     page is about (method, batch, state) and nothing clickable. Page actions
+     and back buttons go in header-right, drawn in the sub-bar below. -->
+<metal:topbar use-macro="context/@@pfas-topbar/macros/topbar">
+  <tal:t metal:fill-slot="bar-title"><tal:t metal:define-slot="header-title">LIMS Tool</tal:t></tal:t>
+  <tal:c metal:fill-slot="bar-context"><tal:c metal:define-slot="header-context" /></tal:c>
+</metal:topbar>
+
+<!-- ── Shell ───────────────────────────────────────────────────────────────── -->
+<div class="pfas-shell" id="pfas-shell">
+
+  <!-- Mobile backdrop -->
+  <div class="pfas-panel-backdrop" id="pfas-panel-backdrop"
+       onclick="pfasClosePanel()"></div>
+
+  <!-- Unified sidebar — suppressed for anonymous users (Client Tracker / public pages).
+       Authenticated staff always see the full sidebar regardless of page. -->
+  <tal:sb tal:define="is_anon python:context.portal_membership.isAnonymousUser()"
+          tal:condition="python:not is_anon"
+          tal:replace="structure context/@@pfas-macros/render_sidebar" />
+
+  <!-- Main: tabs + content + action bar -->
+  <div class="pfas-main">
+
+    <!-- Sub-bar: breadcrumb + page actions, fixed above the tabs so neither
+         scrolls away. The crumb is filled from the sidebar's active
+         item, so it can never disagree with the nav. -->
+    <div class="pfas-subbar">
+      <nav class="pfas-crumb" id="pfas-crumb" aria-label="Breadcrumb"></nav>
+      <div class="pfas-subbar-actions"><tal:r metal:define-slot="header-right" /></div>
+    </div>
+
+    <!-- Top tabs. A page in a page group (page_groups.py) first
+         gets the group's strip, one tab per page; its own tabs follow. -->
+    <div class="pfas-tabs-wrap">
+      <nav class="pfas-tabs pfas-group-tabs"
+           tal:define="pgrp python:context.restrictedTraverse('@@pfas-macros').page_group()"
+           tal:condition="pgrp" tal:attributes="aria-label pgrp/label">
+        <a tal:repeat="t pgrp/tabs" tal:content="t/label"
+           tal:attributes="href t/href; class python:'pfas-tab active' if t['active'] else 'pfas-tab';
+                           aria-current python:'page' if t['active'] else None">Tab</a>
+      </nav>
+      <tal:tabs metal:define-slot="tabs">
+        <!-- Default: no tabs; the wrap is present but takes no visual space -->
+      </tal:tabs>
+    </div>
+
+    <!-- Stable content area -->
+    <main class="pfas-content-area" id="pfas-content-area" tabindex="-1">
+      <tal:body metal:define-slot="content">
+        <div class="page-body">
+          <p>No content.</p>
+        </div>
+      </tal:body>
+    </main>
+
+    <!-- Pinned action bar (outside scroll area — always visible) -->
+    <div class="pfas-action-bar-wrap">
+      <tal:ab metal:define-slot="action-bar">
+        <!-- Default: empty; forms fill this slot with a .pfas-action-bar div -->
+      </tal:ab>
+    </div>
+
+  </div><!-- /pfas-main -->
+</div><!-- /pfas-shell -->
+
+<script>
+/* Declared-section "Use" buttons (config_forms): take a shown suggestion
+   into its field -- a suggestion is never pre-selected, so it is only saved
+   when someone picks it. */
+document.addEventListener('click', function (ev) {
+  var btn = ev.target.closest ? ev.target.closest('[data-cf-use]') : null;
+  if (!btn) return;
+  var field = document.querySelector('[name="' + btn.getAttribute('data-cf-use') + '"]');
+  if (!field) return;
+  field.value = btn.getAttribute('data-cf-value');
+  field.dispatchEvent(new Event('input', {bubbles: true}));
+  field.dispatchEvent(new Event('change', {bubbles: true}));
+});
+
+/* Shared tabs: a strip marked data-tabs switches the panes its
+   tabs name in data-pane. The open tab is kept in the URL hash, so a reload or
+   a shared link opens the same tab. Define once; pages only write markup:
+     <div class="pfas-tabs" data-tabs>
+       <a class="pfas-tab active" data-pane="p1" href="#p1">One</a> ...
+     </div>
+     <div class="pfas-pane" id="p1">...</div>                                */
+(function () {
+  var strips = document.querySelectorAll('.pfas-tabs[data-tabs]');
+  Array.prototype.forEach.call(strips, function (strip) {
+    var tabs = Array.prototype.slice.call(strip.querySelectorAll('.pfas-tab[data-pane]'));
+    if (!tabs.length) return;
+    function show(id, remember) {
+      tabs.forEach(function (t) {
+        var on = t.getAttribute('data-pane') === id;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        var pane = document.getElementById(t.getAttribute('data-pane'));
+        if (pane) pane.hidden = !on;
+      });
+      if (remember && window.history && history.replaceState) history.replaceState(null, '', '#' + id);
+    }
+    tabs.forEach(function (t) {
+      t.setAttribute('role', 'tab');
+      t.addEventListener('click', function (ev) { ev.preventDefault(); show(t.getAttribute('data-pane'), true); });
+    });
+    var wanted = location.hash.slice(1), initial = null;
+    tabs.forEach(function (t) { if (t.getAttribute('data-pane') === wanted) initial = wanted; });
+    if (!initial) {
+      var act = strip.querySelector('.pfas-tab.active') || tabs[0];
+      initial = act.getAttribute('data-pane');
+    }
+    show(initial, false);
+  });
+})();
+</script>
+
+<script>
+/* Breadcrumb: sidebar group > page. A page beneath a listed item (a
+   worksheet's review) links the item and ends in the page title. */
+(function () {
+  var crumb = document.getElementById('pfas-crumb');
+  if (!crumb) return;
+  var active = document.querySelector('.pfas-sidebar .pfas-sb-scroll .pfas-si.si-active');   /* not a pinned copy */
+  var title = document.getElementById('pfas-topbar-title');
+  var parts = [];
+  function link(href, text) {
+    var a = document.createElement('a'); a.href = href; a.textContent = text; return a;
+  }
+  var titleText = title ? title.textContent.trim() : '';
+  function bare(u) { return (u || '').split('#')[0].split('?')[0].replace(/\/+$/, ''); }
+  var activeText = active ? active.textContent.trim() : '';
+  /* a tab of the item's page (Logbooks > Templates) is the same page, not a
+     page beneath it: no "Logbooks > Logbooks" */
+  var samePage = !!active && (bare(active.href) === bare(location.href) || activeText === titleText);
+  if (active) {
+    var g = active.closest('.pfas-sg');
+    var gl = g && g.querySelector('.pfas-sg-label');
+    var glText = gl ? gl.textContent.trim() : '';
+    if (glText && glText !== activeText) {     /* no "Equipment > Equipment" */
+      var s = document.createElement('span'); s.textContent = glText; parts.push(s);
+    }
+    /* a page beneath a listed item (a worksheet's review): link the item */
+    if (!samePage) parts.push(link(active.href, activeText));
+  }
+  var here = document.createElement('span');
+  here.className = 'pfas-crumb-here';
+  here.textContent = (active && samePage) ? activeText : (titleText || activeText);
+  if (here.textContent) parts.push(here);
+  if (parts.length < 2) { crumb.parentNode.removeChild(crumb); return; }
+  parts.forEach(function (p, i) {
+    if (i) { var sep = document.createElement('span'); sep.className = 'pfas-crumb-sep';
+             sep.textContent = '\u203A'; crumb.appendChild(sep); }
+    crumb.appendChild(p);
+  });
+})();
+</script>
+
+<script>
+/* Declared collections (config_form_macros.pt): "+ Add <noun>" clones the
+   template row with the next index; config_forms.parse_collection reads every
+   index the form carries. */
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest ? e.target.closest('.cf-add-row') : null;
+  if (!btn) return;
+  var wrap = btn.closest('.cf-coll-wrap');
+  var tpl = wrap && wrap.querySelector('template.cf-row-template');
+  var body = wrap && wrap.querySelector('table.cf-coll tbody');
+  if (!tpl || !body) return;
+  var n = parseInt(btn.getAttribute('data-next'), 10) || 0;
+  btn.setAttribute('data-next', String(n + 1));
+  var row = tpl.content.firstElementChild.cloneNode(true);
+  row.querySelectorAll('[name]').forEach(function (el) {
+    el.name = el.name.replace('__NEW__', '__' + n + '__');
+  });
+  body.appendChild(row);
+  var first = row.querySelector('input, select');
+  if (first) first.focus();
+});
+</script>
+
+<script>
+/* "+" create menu targets: ?new=<kind> opens the page's own
+   create form, through the hook the page registers as window.pfasOpenNew. */
+window.addEventListener('load', function () {
+  var m = /[?&]new=([A-Za-z0-9_]+)/.exec(location.search);   /* new=1 too: the Reagent lot entry never opened */
+  if (m && typeof window.pfasOpenNew === 'function') window.pfasOpenNew(m[1]);
+});
+</script>
+
+<script>
+/* Row "More" menus (.row-more): one open at a time; a click elsewhere closes. */
+document.addEventListener('click', function (e) {
+  var mine = e.target.closest ? e.target.closest('details.row-more') : null;
+  document.querySelectorAll('details.row-more[open]').forEach(function (d) {
+    if (d !== mine) d.removeAttribute('open');
+  });
+});
+</script>
+
+<!-- Backward-compat JS slots (placed before </body> so scripts can reference DOM) -->
+<tal:body-extra metal:define-slot="body-extra" />
+<tal:scripts metal:define-slot="scripts" />
+
+<script>
+(function () {
+  var STORAGE_KEY = 'pfas_panel_collapsed';
+  var isMobile = function () { return window.innerWidth <= 768; };
+
+  function getShell() { return document.getElementById('pfas-shell'); }
+
+  window.pfasTogglePanel = function () {
+    var shell = getShell();
+    if (!shell) return;
+    if (isMobile()) {
+      shell.classList.toggle('panel-open');
+    } else {
+      var collapsed = shell.classList.toggle('panel-collapsed');
+      try { sessionStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0'); } catch (e) {}
+    }
+  };
+
+  window.pfasClosePanel = function () {
+    var shell = getShell();
+    if (shell) shell.classList.remove('panel-open');
+  };
+
+  /* Restore desktop collapse state */
+  (function () {
+    if (isMobile()) return;
+    try {
+      if (sessionStorage.getItem(STORAGE_KEY) === '1') {
+        var shell = getShell();
+        if (shell) shell.classList.add('panel-collapsed');
+      }
+    } catch (e) {}
+  })();
+
+  /* Close mobile panel on Escape */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      window.pfasClosePanel();
+    }
+  });
+})();
+
+</script>
+
+
+<script>
+/* ── GLP field correction UI (logbooks) ── */
+window.initCorrections = function (savedData) {
+  var corr = (savedData && savedData._corrections) || {};
+  Object.keys(corr).forEach(function (fname) {
+    var c = corr[fname];
+    var wrap = document.querySelector('.corr-field[data-field="' + fname + '"]');
+    if (!wrap) return;
+    wrap.classList.add('has-correction');
+    var badge = document.createElement('div');
+    badge.className = 'corr-existing';
+    var curVal = (savedData[fname] != null ? savedData[fname] : '').toString();
+    badge.innerHTML =
+      '<span class="corr-struck">' + _cEsc(c.original) + '</span>' +
+      '<span class="corr-arrow">&#8594;</span>' +
+      '<strong>' + _cEsc(curVal) + '</strong>' +
+      ' <span class="corr-meta">' + _cEsc(c.corrected_by) +
+      ' · ' + _cEsc(c.corrected_at) + '</span>';
+    var firstInp = wrap.querySelector('input, textarea, select');
+    if (firstInp) wrap.insertBefore(badge, firstInp);
+    else wrap.appendChild(badge);
+  });
+};
+
+window.toggleCorrect = function (fname) {
+  var panel = document.getElementById('cp-' + fname);
+  if (!panel) return;
+  var isOpen = panel.classList.contains('open');
+  var mainInp = wrap_inp(fname);
+  if (isOpen) {
+    panel.classList.remove('open');
+    var byInp = document.getElementById('cb-' + fname);
+    if (byInp) byInp.value = '';
+    var nvInp = document.getElementById('cn-' + fname);
+    if (nvInp) nvInp.value = '';
+    if (mainInp) mainInp.disabled = false;
+  } else {
+    panel.classList.add('open');
+    var origSpan = document.getElementById('co-' + fname);
+    if (origSpan && mainInp) origSpan.textContent = mainInp.value || '(empty)';
+    if (mainInp) mainInp.disabled = true;
+    var nvInp = document.getElementById('cn-' + fname);
+    if (nvInp) { nvInp.value = ''; nvInp.focus(); }
+  }
+};
+
+function wrap_inp(fname) {
+  var w = document.querySelector('.corr-field[data-field="' + fname + '"]');
+  return w ? (w.querySelector('input:not([type=hidden]), textarea, select') || null) : null;
+}
+
+function _cEsc(s) {
+  return (s == null ? '' : String(s))
+    .replace(/\x26/g, '&amp;').replace(/\x3c/g, '&lt;').replace(/\x3e/g, '&gt;');
+}
+</script>
+</body>
+</html>

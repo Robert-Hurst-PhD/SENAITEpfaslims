@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal">
+<!-- Badge sign-in: standalone, like the Client Tracker, because
+     it is reached signed out, at a lab terminal. -->
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Badge sign-in</title>
+  <link rel="icon" type="image/x-icon" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/favicon.ico" />
+  <link rel="apple-touch-icon" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/favicon-180.png" />
+  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/pfas-tokens.css" />
+  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/badge.css" />
+</head>
+<body class="badge-page">
+  <main class="badge-card">
+    <h1>Badge sign-in</h1>
+    <tal:t condition="view/terminal">
+      <p class="badge-sub" tal:content="string:Lab terminal: ${view/terminal/name}">Lab terminal</p>
+      <p class="badge-note" tal:condition="view/notice" tal:content="view/notice">Signed out</p>
+      <p class="badge-note" tal:define="who view/current_user" tal:condition="who"
+         tal:content="string:Signed in as ${who}. Scan a badge to switch user.">Signed in</p>
+      <p class="badge-error" tal:condition="view/error" tal:content="view/error">error</p>
+      <form method="post" autocomplete="off" tal:attributes="action string:${view/portal_url}/@@pfas-badge-signin">
+        <input type="hidden" name="action" value="badge" />
+        <input type="password" name="code" id="badge-code" class="badge-input" autofocus="autofocus"
+               aria-label="Badge" placeholder="Scan your badge" />
+        <button type="submit" class="badge-btn">Sign in</button>
+      </form>
+      <p class="badge-foot">Administrators sign in with their password.</p>
+      <p><a class="badge-btn" tal:attributes="href string:${view/portal_url}/login">Password sign-in</a></p>
+    </tal:t>
+    <tal:n condition="not:view/terminal">
+      <p class="badge-error" tal:condition="view/error" tal:content="view/error">error</p>
+      <p>This computer is not a registered lab terminal, so badges do not work here.</p>
+      <p><a class="badge-btn" tal:attributes="href string:${view/portal_url}/login">Sign in with your password</a></p>
+    </tal:n>
+  </main>
+</body>
+</html>

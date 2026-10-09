@@ -1,0 +1,112 @@
+version: "3.8"
+
+services:
+  # ── Nginx reverse proxy (handles ngrok / external access) ───────────
+  nginx:
+    image: nginx:alpine
+    ports: ["80:80"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [senaite]
+    networks: [senaite]
+    restart: unless-stopped
+
+  # ── SENAITE database layer ──────────────────────────────────────────
+  zeo:
+    image: senaite/senaite:v2.6.0
+    command: zeo
+    volumes:
+      - senaite-data:/data
+    networks: [senaite]
+    restart: unless-stopped
+
+  # ── SENAITE web application ─────────────────────────────────────────
+  senaite:
+    build:
+      context: .
+      dockerfile: Dockerfile.senaite
+    environment:
+      - ZEO_ADDRESS=zeo:8080
+      - SITE=senaite
+      # Mount project root as /addon so setup.py is at /addon/setup.py
+      - DEVELOP=/addon
+      - ADDONS=senaite.storage senaite.pfas
+      # shared-blob ensures client and server both use the ZEO server's bushy layout
+      - ZEO_SHARED_BLOB_DIR=on
+      # QC control-chart SQLite database (shared with pfas-worker)
+      - PFAS_QC_DB=/data/qc/pfas_qc_results.db
+    volumes:
+      # Mount the entire project root so buildout can find setup.py
+      - .:/addon
+      - senaite-data:/data
+      - pfas-qc:/data/qc
+    # this machine only: the LAN and the tunnel go through nginx (the ZMI
+    # would otherwise be on every interface over HTTP)
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on: [zeo]
+    networks: [senaite, render]
+    restart: unless-stopped
+
+  # ── PFAS pipeline worker (watcher + QC engine + report gen) ─────────
+  pfas-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    # the same uid as SENAITE's (500): the SQLite files in /data/qc are shared,
+    # and one the worker created as root was read-only to SENAITE (Data
+    # Review answered 500 after a fresh QC database, 2026-10-06)
+    user: "500:500"
+    environment:
+      - HOME=/tmp
+      - SENAITE_URL=http://senaite:8080/senaite
+      - SENAITE_USER=admin
+      - SENAITE_PASS=admin
+      - WATCH_DIR=/data/instrument_output
+      - OUTPUT_DIR=/data/reports
+      # QC control-chart SQLite database (shared with senaite container)
+      - PFAS_QC_DB=/data/qc/pfas_qc_results.db
+    volumes:
+      - ./pfas_pipeline:/app/pfas_pipeline
+      # The canonical instrument-column vocabulary is owned by the add-on and
+      # read by the worker through pfas_pipeline/canonical_columns.py — one
+      # definition, two runtimes.
+      - ./src/senaite/pfas:/app/senaite_pfas:ro
+      # DEV: local placeholder; replace with /mnt/pfas_share/Instrument_Output for production
+      - ./data/instrument_output:/data/instrument_output:ro
+      - pfas-reports:/data/reports
+      - pfas-qc:/data/qc
+    depends_on: [senaite]
+    networks: [senaite]
+    restart: unless-stopped
+
+  # ── Document renderer (pdfme) ────────────────────────────
+  # Renders designed certificates, logbook PDFs and reports from issued
+  # templates. Only on the internal `render` network: no published port, no
+  # route through nginx, no internet. SENAITE reaches it as pfas-render:3000.
+  pfas-render:
+    build:
+      context: ./tools/pdfme
+      dockerfile: Dockerfile.render
+    networks: [render]
+    restart: unless-stopped
+
+  # reads the text of uploaded instrument reports (pdfminer.six)
+  pfas-scan:
+    build:
+      context: ./tools/pdfscan
+    networks: [render]
+    restart: unless-stopped
+
+  # The extraction-ui tablet service (port 9000) was retired 2026-10-02
+  # : the SENAITE guided extraction is the one extraction
+  # record, and the Run Builder writes the run's sidecar from it.
+
+volumes:
+  senaite-data:
+  pfas-reports:
+  pfas-qc:
+
+networks:
+  senaite:
+  render:
+    internal: true

@@ -1,0 +1,338 @@
+<tal:body xmlns:tal="http://xml.zope.org/namespaces/tal"
+          xmlns:metal="http://xml.zope.org/namespaces/metal">
+<style type="text/css">
+  .qcr            { font-family: "Helvetica Neue", Arial, sans-serif;
+                    font-size: 11px; color: #212529; }
+  .qcr h1         { font-size: 17px; margin: 0 0 2px; }
+  .qcr h2         { font-size: 12.5px; margin: 20px 0 6px; padding-bottom: 3px;
+                    border-bottom: 1.5px solid #343a40; text-transform: uppercase;
+                    letter-spacing: .04em; }
+  .qcr .lead      { font-size: 11px; color: #6c757d; margin: 0 0 14px; }
+  .qcr table      { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .qcr th         { text-align: left; font-size: 9.5px; text-transform: uppercase;
+                    letter-spacing: .04em; color: #6c757d; border-bottom: 1px solid #dee2e6;
+                    padding: 4px 6px; }
+  .qcr td         { padding: 3px 6px; border-bottom: 1px solid #f1f3f5;
+                    vertical-align: top; }
+  .qcr .num       { text-align: right; font-variant-numeric: tabular-nums; }
+  .qcr .k         { color: #6c757d; width: 32%; }
+  .qcr .pass      { color: #157347; font-weight: 700; }
+  .qcr .fail      { color: #b02a37; font-weight: 700; }
+  .qcr .blocked   { color: #8a6100; font-weight: 700; }
+  .qcr .muted     { color: #868e96; }
+  .qcr .why       { color: #8a6100; font-size: 10px; }
+  .qcr .note      { background: #f8f9fa; border-left: 3px solid #adb5bd;
+                    padding: 7px 10px; font-size: 10px; color: #495057;
+                    margin: 6px 0 12px; }
+  .qcr .sect      { page-break-inside: avoid; }
+  .qcr .appendix  { page-break-before: always; }
+  .qcr .appendix td, .qcr .appendix th { font-size: 9px; padding: 2px 4px; }
+</style>
+
+<div class="qcr" tal:define="ok view/available">
+
+  <tal:none tal:condition="not:ok">
+    <h1>QC Review Report</h1>
+    <p class="lead">No worksheet could be resolved for this context, so there is
+       no review data to report.</p>
+  </tal:none>
+
+  <tal:report tal:condition="ok">
+  <tal:d tal:define="ident view/identity">
+
+    <h1>QC Review Report</h1>
+    <p class="lead">
+      The reviewer and auditor counterpart to the Certificate of Analysis: the
+      criteria applied, every QC result against them, the reagent chain behind
+      each number, and the full per-injection record.
+    </p>
+
+    <!-- 1. IDENTITY -->
+    <div class="sect">
+      <h2>1 &middot; Run identity</h2>
+      <table>
+        <tr><td class="k">Worksheet</td><td tal:content="ident/worksheet">WS</td></tr>
+        <tr><td class="k">Batch</td>
+            <td><span tal:content="ident/batch_title|nothing">t</span>
+                (<span tal:content="ident/batch|nothing">b</span>)</td></tr>
+        <tr><td class="k">Method &times; matrix</td>
+            <td><span tal:content="ident/method">m</span> &times;
+                <span tal:content="ident/matrix">x</span></td></tr>
+        <tr><td class="k">Analyst</td><td tal:content="ident/analyst">a</td></tr>
+        <tr><td class="k">Acquisition date(s)</td>
+            <td tal:content="python:', '.join(ident.get('run_dates') or []) or '—'">d</td></tr>
+        <tr><td class="k">Reporting unit</td>
+            <td tal:content="ident/unit|nothing">u</td></tr>
+        <tr><td class="k">Matrix factor applied</td>
+            <td tal:content="ident/matrix_factor|nothing">f</td></tr>
+        <tr><td class="k">Worksheet state</td><td tal:content="ident/state">s</td></tr>
+      </table>
+      <p class="note">
+        The matrix factor converts the concentration measured in the extract to
+        the concentration reported for the sample. It is applied to native
+        analytes only; internal standards and surrogates are judged on their own
+        response, and instrument-computed totals are sums of natives.
+      </p>
+    </div>
+
+    <!-- 2. CRITERIA -->
+    <div class="sect">
+      <h2>2 &middot; Criteria applied</h2>
+      <table>
+        <tr><th>Criterion</th><th>Value</th><th>Source</th></tr>
+        <tr tal:repeat="c view/criteria">
+          <td tal:content="c/criterion">c</td>
+          <td class="num" tal:content="c/value">v</td>
+          <td class="muted" tal:content="c/source">s</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 3. GATES -->
+    <div class="sect">
+      <h2>3 &middot; Release gates</h2>
+      <table>
+        <tr><th>Gate</th><th>Type</th><th>Verdict</th><th>Detail</th></tr>
+        <tr tal:repeat="g view/gates">
+          <td tal:content="g/label">g</td>
+          <td class="muted"
+              tal:content="python:'Automatic' if g.get('auto') else 'Manual'">t</td>
+          <td tal:define="v g/verdict|string:pending"
+              tal:attributes="class python:{'pass':'pass','fail':'fail',
+                                            'blocked':'blocked'}.get(v,'muted')"
+              tal:content="python:{'pass':'PASS','fail':'FAIL',
+                                   'blocked':'NOT EVALUATED'}.get(v,'PENDING')">v</td>
+          <td>
+            <span class="why" tal:content="g/reason|nothing">why</span>
+            <span class="muted" tal:condition="g/checked_by|nothing">
+              signed <span tal:content="g/checked_by">u</span>
+              <tal:t tal:condition="g/checked_at|nothing">
+                at <span tal:content="python:(g.get('checked_at') or '')[:16]">t</span>
+              </tal:t>
+            </span>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 4. CALIBRATION -->
+    <div class="sect" tal:define="cal view/calibrations">
+      <h2>4 &middot; Calibration curves</h2>
+      <p class="muted" tal:condition="not:cal">No calibration curves recorded for this run.</p>
+      <table tal:condition="cal">
+        <tr><th>Analyte</th><th class="num">r&sup2;</th>
+            <th class="num">Minimum</th><th>Verdict</th></tr>
+        <tr tal:repeat="c cal">
+          <td tal:content="c/analyte">a</td>
+          <td class="num" tal:content="python:'%.6f' % c['r2'] if c['r2'] is not None else '—'">r</td>
+          <td class="num" tal:content="c/limit">l</td>
+          <td tal:attributes="class python:'pass' if c['passed'] else 'fail'"
+              tal:content="python:'PASS' if c['passed'] else 'FAIL'">v</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 5. QC SUMMARY -->
+    <div class="sect" tal:define="qc view/qc_summary">
+      <h2>5 &middot; QC summary</h2>
+      <p class="muted" tal:condition="qc/error|nothing">
+        QC results unavailable: <span tal:content="qc/error">e</span>
+      </p>
+      <tal:has tal:condition="not:qc/error|nothing">
+        <p class="lead">
+          <span tal:content="python:len(qc.get('rows') or [])">n</span> analytes &middot;
+          QC types <span tal:content="python:', '.join(qc.get('qc_types') or [])">t</span> &middot;
+          overall
+          <span tal:attributes="class python:'pass' if qc.get('overall_pass') else 'fail'"
+                tal:content="python:'PASS' if qc.get('overall_pass') else 'FAIL'">o</span>
+        </p>
+        <table>
+          <tr><th>Analyte</th>
+              <th tal:repeat="t qc/qc_types" tal:content="t">T</th></tr>
+          <tr tal:repeat="row qc/rows">
+            <td tal:content="row/analyte">a</td>
+            <!-- tal:define runs BEFORE tal:repeat on the same element, so the
+                 cell lookup has to sit inside the loop, not beside it. -->
+            <td tal:repeat="t qc/qc_types">
+              <tal:c tal:define="cell python:(row.get('cells') or {}).get(t)">
+                <span tal:condition="cell"
+                      tal:attributes="class python:{'ok':'pass','pass':'pass',
+                                       'fail':'fail'}.get(cell.get('status'),'muted')"
+                      tal:content="python:cell.get('badge') or cell.get('status') or ''">s</span>
+                <span class="muted" tal:condition="not:cell">&mdash;</span>
+              </tal:c>
+            </td>
+          </tr>
+        </table>
+      </tal:has>
+    </div>
+
+    <!-- 6. SPIKE QC -->
+    <div class="sect" tal:define="sq view/spike_qc">
+      <h2>6 &middot; Spike QC</h2>
+      <tal:pend tal:condition="sq/pending_spikes|nothing">
+        <p class="note">
+          Spike level not recorded for:
+          <span tal:repeat="p sq/pending_spikes">
+            <span tal:content="p/injection">i</span><span tal:condition="not:repeat/p/end">, </span>
+          </span>.
+          Recovery cannot be evaluated until it is entered.
+        </p>
+      </tal:pend>
+      <table tal:condition="sq/types|nothing">
+        <tr><th>Analyte</th>
+            <th tal:repeat="t sq/types" tal:content="t">T</th></tr>
+        <tr tal:repeat="row sq/rows">
+          <td tal:content="row/analyte">a</td>
+          <td tal:repeat="t sq/types">
+            <tal:c tal:define="cell python:(row.get('cells') or {}).get(t)">
+              <span tal:condition="cell"
+                    tal:attributes="class python:{'ok':'pass','pass':'pass',
+                                     'fail':'fail'}.get(cell.get('status'),'muted')"
+                    tal:content="python:cell.get('badge') or cell.get('status') or ''">s</span>
+              <span class="muted" tal:condition="not:cell">&mdash;</span>
+            </tal:c>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 7. TRACEABILITY -->
+    <div class="sect" tal:define="tr view/traceability">
+      <h2>7 &middot; Reagent and standard traceability</h2>
+      <table>
+        <tr><th>Standard / reagent</th><th>Lot</th><th>Resolves to</th></tr>
+        <tr tal:repeat="p tr/prepared_standards|nothing">
+          <td tal:content="p/title|p/field|nothing">n</td>
+          <td tal:content="p/lot|nothing">l</td>
+          <td tal:attributes="class python:'pass' if p.get('found') else 'fail'"
+              tal:content="python:'prepared standard, %d parent lot(s)'
+                           % len(p.get('parent_reagents') or [])
+                           if p.get('found') else 'NOT IN INVENTORY'">r</td>
+        </tr>
+        <tr tal:repeat="r tr/direct_reagents|nothing">
+          <td tal:content="r/name|nothing">n</td>
+          <td tal:content="r/lot|nothing">l</td>
+          <td tal:attributes="class python:'pass' if r.get('resolved') else 'fail'"
+              tal:content="python:'reagent lot' if r.get('resolved') else 'NOT IN INVENTORY'">r</td>
+        </tr>
+      </table>
+      <p class="note" tal:condition="tr/unresolved|nothing">
+        <span tal:content="python:len(tr.get('unresolved') or [])">n</span>
+        lot(s) named in the logbooks are not in inventory — the chain from
+        result to certified standard is incomplete.
+      </p>
+    </div>
+
+    <!-- 8. RUN VS PLAN -->
+    <div class="sect" tal:define="rp view/run_vs_plan">
+      <h2>8 &middot; Run against plan</h2>
+      <table>
+        <tr><td class="k">Planned injections</td>
+            <td tal:content="python:len(rp.get('planned') or [])">n</td></tr>
+        <tr><td class="k">Injections acquired</td>
+            <td tal:content="python:len(rp.get('actual') or [])">n</td></tr>
+        <tr><td class="k">Planned but not run</td>
+            <td tal:content="python:', '.join(rp.get('not_run') or []) or '—'">x</td></tr>
+        <tr><td class="k">Run but not planned</td>
+            <td tal:content="python:', '.join(rp.get('unplanned') or []) or '—'">x</td></tr>
+      </table>
+    </div>
+
+    <!-- 9. REPORTED RESULTS AND PROVENANCE -->
+    <div class="sect">
+      <h2>9 &middot; Reported results</h2>
+      <table>
+        <tr><th>Sample</th><th>Analyte</th><th class="num">Result</th>
+            <th>Qualifier</th><th>State</th></tr>
+        <tr tal:repeat="r view/final_data">
+          <td tal:content="r/client_sample_id|r/sample_id">s</td>
+          <td tal:content="r/analyte">a</td>
+          <td class="num" tal:content="r/result">v</td>
+          <td tal:content="r/qualifier|nothing">q</td>
+          <td class="muted" tal:content="r/review_state|nothing">st</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- 10. SIGN-OFFS -->
+    <div class="sect" tal:define="pubs view/publications; devs view/deviations">
+      <h2>10 &middot; Publication history and deviations</h2>
+      <table tal:condition="pubs">
+        <tr><th>Sample</th><th>Report ID</th><th>Issued</th>
+            <th>By</th><th>Status</th><th>Amendment reason</th></tr>
+        <tr tal:repeat="p pubs">
+          <td tal:content="p/sample">s</td>
+          <td tal:content="p/report_id">r</td>
+          <td tal:content="python:(p.get('issued_at') or '')[:16]">d</td>
+          <td tal:content="p/authorizer|nothing">u</td>
+          <td tal:content="p/status|nothing">st</td>
+          <td tal:attributes="class python:'fail' if p.get('reason_missing') else ''"
+              tal:content="python:p.get('amendment_reason') or
+                           ('REASON NOT RECORDED' if p.get('reason_missing') else '—')">x</td>
+        </tr>
+      </table>
+      <p class="muted" tal:condition="not:pubs">Not yet published.</p>
+      <table tal:condition="devs">
+        <tr><th>Deviation</th><th>Raised</th><th>State</th></tr>
+        <tr tal:repeat="d devs">
+          <td tal:content="d/title|d/description|nothing">t</td>
+          <td tal:content="d/created|nothing">c</td>
+          <td tal:content="d/state|d/review_state|nothing">s</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- APPENDIX A — exceptions -->
+    <div class="appendix" tal:define="ex view/exceptions">
+      <h2>Appendix A &middot; Flagged measurements
+        (<span tal:content="python:len(ex)">n</span>)</h2>
+      <table>
+        <tr><th>QC type</th><th>Injection</th><th>Analyte</th>
+            <th class="num">Result</th><th class="num">RT</th>
+            <th class="num">Ion ratio</th><th>Flag</th></tr>
+        <tr tal:repeat="r ex">
+          <td tal:content="r/qc_type|nothing">q</td>
+          <td tal:content="r/injection_name|nothing">i</td>
+          <td tal:content="r/analyte|nothing">a</td>
+          <td class="num" tal:content="r/calc_conc|nothing">c</td>
+          <td class="num" tal:content="r/rt|nothing">rt</td>
+          <td class="num" tal:content="r/ion_ratio_obs|nothing">ir</td>
+          <td class="fail" tal:content="r/flag|nothing">f</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- APPENDIX B — every measurement -->
+    <div class="appendix" tal:define="rows view/injection_detail">
+      <h2>Appendix B &middot; Every measurement
+        (<span tal:content="python:len(rows)">n</span> rows)</h2>
+      <table>
+        <tr><th>QC type</th><th>Injection</th><th>Analyte</th><th>Role</th>
+            <th class="num">Result</th><th class="num">RT</th>
+            <th class="num">RRT</th><th class="num">Ion ratio</th>
+            <th class="num">Expected</th><th class="num">S/N</th>
+            <th class="num">IS area</th><th>Qual.</th><th>Flag</th></tr>
+        <tr tal:repeat="r rows">
+          <td tal:content="r/qc_type|nothing">q</td>
+          <td tal:content="r/injection_name|nothing">i</td>
+          <td tal:content="r/analyte|nothing">a</td>
+          <td class="muted" tal:content="r/role|nothing">ro</td>
+          <td class="num" tal:content="r/calc_conc|nothing">c</td>
+          <td class="num" tal:content="r/rt|nothing">rt</td>
+          <td class="num" tal:content="r/rrt|nothing">rr</td>
+          <td class="num" tal:content="r/ion_ratio_obs|nothing">io</td>
+          <td class="num" tal:content="r/ion_ratio_exp|nothing">ie</td>
+          <td class="num" tal:content="r/sn|nothing">sn</td>
+          <td class="num" tal:content="r/is_area|nothing">is</td>
+          <td tal:content="r/conc_qualifier|nothing">qu</td>
+          <td tal:attributes="class python:'fail' if r.get('flag') else ''"
+              tal:content="r/flag|nothing">f</td>
+        </tr>
+      </table>
+    </div>
+
+  </tal:d>
+  </tal:report>
+</div>
+</tal:body>

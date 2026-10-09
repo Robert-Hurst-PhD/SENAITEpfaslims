@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Print Settings</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .ps-form { max-width: 720px; }
+    .ps-row { display:flex; flex-direction:column; gap:3px; margin-bottom:14px; }
+    .ps-row label { font-size:var(--fs-sm); font-weight:700; color:var(--s-body); }
+    .ps-row .hint { font-size:var(--fs-xs); color:var(--s-secondary); }
+    .ps-row input[type=text] { padding:7px 10px; border:1px solid var(--s-border);
+      border-radius:4px; font-size:var(--fs-base); }
+    .ps-check { display:flex; gap:8px; align-items:center; margin-bottom:10px;
+      font-size:var(--fs-base); }
+    .ps-preview { border:1px dashed var(--s-border); border-radius:8px;
+      padding:14px 16px; margin:18px 0; background:#fff; }
+    .ps-prev-label { font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.04em;
+      color:var(--s-secondary); margin-bottom:8px; font-weight:700; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Print Settings</tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="ps view/settings">
+
+    <div class="alert alert-success" tal:condition="view/saved">
+      Print settings saved — every printable form (logbooks, CoC, SOP copies)
+      now uses the updated header/footer.
+    </div>
+
+    <p style="font-size:var(--fs-base);color:var(--s-secondary);max-width:720px;">The header and footer printed on every form: logbooks, chain of custody, SOP copies.</p>
+
+    <!-- live preview of the print header -->
+    <div class="ps-preview">
+      <div class="ps-prev-label">Print header preview</div>
+      <div style="display:flex;gap:14px;align-items:center;border-bottom:2px solid #000;padding-bottom:8px;">
+        <img tal:condition="ps/logo_url" tal:attributes="src ps/logo_url"
+             style="max-height:46px;"/>
+        <div>
+          <div style="font-size:var(--fs-lg);font-weight:700;" tal:content="ps/lab_name">Lab</div>
+          <div style="font-size:var(--fs-xs);color:#333;">
+            <tal:a tal:replace="ps/lab_address"/><tal:p tal:condition="ps/lab_phone"> · <tal:x tal:replace="ps/lab_phone"/></tal:p><tal:e tal:condition="ps/lab_email"> · <tal:x tal:replace="ps/lab_email"/></tal:e>
+          </div>
+          <div style="font-size:var(--fs-xs);color:#333;" tal:condition="ps/accreditation"
+               tal:content="ps/accreditation">accreditation</div>
+        </div>
+        <div style="margin-left:auto;font-size:var(--fs-xs);color:#333;"
+             tal:condition="ps/show_print_date">Printed: 2026-07-02 12:00</div>
+      </div>
+      <div style="font-size:var(--fs-xs);color:#444;border-top:1px solid #999;margin-top:10px;padding-top:3px;text-align:center;"
+           tal:condition="ps/show_page_footer" tal:content="ps/footer_text">footer</div>
+    </div>
+
+    <form method="post" class="ps-form"
+          tal:attributes="action string:${view/portal_url}/@@pfas-print-settings">
+      <input type="hidden" name="action" value="save"/>
+
+      <div class="ps-row"><label>Laboratory name</label>
+        <input type="text" name="lab_name" tal:attributes="value ps/lab_name"/></div>
+      <div class="ps-row"><label>Address</label>
+        <input type="text" name="lab_address" tal:attributes="value ps/lab_address"/></div>
+      <div class="ps-row"><label>Phone</label>
+        <input type="text" name="lab_phone" tal:attributes="value ps/lab_phone"/></div>
+      <div class="ps-row"><label>Email</label>
+        <input type="text" name="lab_email" tal:attributes="value ps/lab_email"/></div>
+      <div class="ps-row"><label>Logo URL</label>
+        <input type="text" name="logo_url" tal:attributes="value ps/logo_url"/>
+        <span class="hint">Absolute URL or portal-relative path to a logo image.</span></div>
+      <div class="ps-row"><label>Accreditation line</label>
+        <input type="text" name="accreditation" tal:attributes="value ps/accreditation"/>
+        <span class="hint">e.g. “ISO/IEC 17025:2017 — Certificate #1234”.</span></div>
+      <div class="ps-row"><label>Footer text</label>
+        <input type="text" name="footer_text" tal:attributes="value ps/footer_text"/>
+        <span class="hint">Printed at the bottom of every page (controlled-copy notice).</span></div>
+
+      <div class="ps-check">
+        <input type="checkbox" name="show_form_code" id="sfc"
+               tal:attributes="checked ps/show_form_code"/>
+        <label for="sfc" style="font-weight:400;">Show form code block (FM-ENV-xxx)</label></div>
+      <div class="ps-check">
+        <input type="checkbox" name="show_print_date" id="spd"
+               tal:attributes="checked ps/show_print_date"/>
+        <label for="spd" style="font-weight:400;">Show print date/time in the header</label></div>
+      <div class="ps-check">
+        <input type="checkbox" name="show_page_footer" id="spf"
+               tal:attributes="checked ps/show_page_footer"/>
+        <label for="spf" style="font-weight:400;">Show page footer</label></div>
+
+      <!-- ── QA sign-off attestation signers ──────────────────────────────── -->
+      <h3 style="font-size:var(--fs-base);font-weight:700;margin:18px 0 4px;">QA Sign-off Attestation</h3>
+      <p class="hint" style="margin:0 0 10px;">The Prepared, Verified, Authorized sign-off block on SOPs and prep logs; signatures come from each person&#8217;s Lab Contact. <tal:h define="hid string:sign-rights"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <div class="ps-row"><label>Quality Assurance Officer</label>
+        <select name="qao_initials">
+          <option value="">— none —</option>
+          <option tal:repeat="s view/staff"
+                  tal:attributes="value s/initials;
+                                  selected python:s['initials']==ps.get('qao_initials')"
+                  tal:content="string:${s/fullname} (${s/initials})">name</option>
+        </select></div>
+      <div class="ps-row"><label>Laboratory Director</label>
+        <select name="director_initials">
+          <option value="">— none —</option>
+          <option tal:repeat="s view/staff"
+                  tal:attributes="value s/initials;
+                                  selected python:s['initials']==ps.get('director_initials')"
+                  tal:content="string:${s/fullname} (${s/initials})">name</option>
+        </select></div>
+      <div class="ps-check">
+        <input type="checkbox" name="show_signoff" id="sso"
+               tal:attributes="checked ps/show_signoff"/>
+        <label for="sso" style="font-weight:400;">Show QA sign-off block on controlled records</label></div>
+
+      <!-- Certificate of Analysis layout (coa_sections.py / coa_format.py). -->
+      <h3 id="certificate">Certificate of Analysis</h3>
+      <p class="hint">
+        The results format is set per method and matrix on the method&#8217;s <em>Reporting</em> tab. <tal:h define="hid string:reporting-format"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+        <a class="btn-sm btn-secondary"
+           tal:attributes="href string:${view/portal_url}/@@pfas-method-profiles">Open Method Profiles</a>
+      </p>
+      <div class="ps-row ps-statement"><label for="qs-int">Quality system &#8212; internal</label>
+        <textarea id="qs-int" name="coa_qs_internal" rows="3" tal:content="ps/coa_qs_internal">text</textarea></div>
+      <div class="ps-row ps-statement"><label for="qs-qapp">Quality system &#8212; under a QAPP</label>
+        <textarea id="qs-qapp" name="coa_qs_qapp" rows="4" tal:content="ps/coa_qs_qapp">text</textarea></div>
+      <p class="hint">Printed for batches of a project with a QAPP; may use {qapp_title}, {qapp_id}, {qapp_rev} and {project}.</p>
+      <div class="ps-row"><label>Sign-off layout</label>
+        <select name="coa_signature_style">
+          <option value="compact" tal:attributes="selected python:ps.get('coa_signature_style','compact')=='compact'">Compact: one line per signatory</option>
+          <option value="full" tal:attributes="selected python:ps.get('coa_signature_style')=='full'">Full: signature space per signatory</option>
+        </select></div>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:8px">
+        Save Print Settings
+      </button>
+    </form>
+
+
+    <!-- ── QC QUALIFIERS ────────────────────────────────────────────────────
+         What a certificate says when a QC criterion fails. Report
+         configuration, so it belongs on the report editor.
+         ─────────────────────────────────────────────────────────────────── -->
+    <h2 id="qualifiers" style="margin-top:28px;">QC Qualifiers on Certificates</h2>
+    <p class="form-note" style="max-width:70em;">A failed QC criterion either qualifies the result (code and wording below) or holds it; control-material failures always hold. Edit the draft wording before issuing. <tal:h define="hid string:qualified-release"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+    <form method="post" class="ps-form"
+          tal:attributes="action string:${view/portal_url}/@@pfas-print-settings">
+      <input type="hidden" name="action" value="save_qualifiers" />
+      <table class="pfas-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="width:16%">Failure</th>
+            <th style="width:15%">Disposition</th>
+            <th style="width:8%">Code</th>
+            <th>Statement printed on the certificate</th>
+          </tr>
+        </thead>
+        <tbody tal:define="disps view/qualifier_dispositions">
+          <tr tal:repeat="row view/qualifier_rows">
+            <td>
+              <strong tal:content="row/label">Surrogate recovery</strong>
+              <div style="font-size:var(--fs-xs);color:var(--s-secondary);"
+                   tal:condition="row/customised">edited by the lab</div>
+            </td>
+            <td>
+              <select style="width:100%;"
+                      tal:attributes="name string:qual_disp.${row/key}">
+                <option tal:repeat="d disps"
+                        tal:attributes="value d/key;
+                                        selected python:d['key'] == row['disposition']"
+                        tal:content="d/label">Qualify</option>
+              </select>
+            </td>
+            <td>
+              <input type="text" maxlength="6" style="width:100%;"
+                     tal:attributes="name string:qual_code.${row/key};
+                                     value row/code" />
+            </td>
+            <td>
+              <textarea rows="4" style="width:100%;font-size:var(--fs-sm);"
+                        tal:attributes="name string:qual_text.${row/key}"
+                        tal:content="row/statement"></textarea>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn btn-primary" type="submit" style="margin-top:8px">
+        Save QC Qualifiers
+      </button>
+    </form>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

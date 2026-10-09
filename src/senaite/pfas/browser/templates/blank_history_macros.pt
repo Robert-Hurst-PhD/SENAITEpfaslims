@@ -1,0 +1,69 @@
+<metal:m define-macro="comparison">
+  <!-- `cmp` = blank_history.compare(): this blank against another (the
+       previous one by default), the analytes that rose and the lots that
+       differ. Shared by Blank History and Data Review's QC Summary. -->
+  <tal:c tal:define="cur cmp/current; prev cmp/previous; lots cmp/lots">
+    <p tal:condition="python:cur and prev"
+       tal:content="python:u'%s %s (%s) against %s %s' % (cur['run_date'], cur['batch_id'], cur['qc_type'], prev['run_date'], prev['batch_id'])"></p>
+    <tal:a tal:define="asg cmp/assigned" tal:condition="asg">
+      <div class="bench-sub">
+        <tal:x tal:replace="python:u'%s: %s' % (asg['injection'], asg['label'] or u'no blank-matrix lot recorded')" />
+        <tal:x tal:condition="python:asg['label'] and not asg['record']" tal:replace="python:u'· no assigned levels'" />
+        <tal:x tal:condition="python:asg['record'] and not [r for r in asg['rows'] if r['comparable']]"
+               tal:replace="python:u'· assigned in %s, measured in %s' % (asg['record']['unit'], asg['unit'] or u'?')" />
+        <a class="btn-sm btn-secondary" tal:condition="asg/uid"
+           tal:attributes="href string:${context/portal_url}/@@pfas-assigned-levels?uid=${asg/uid}">Assigned levels</a>
+      </div>
+      <table class="pfas-table" tal:condition="asg/rows">
+        <thead><tr><th>Analyte</th><th>Measured</th><th>Assigned</th><th>Difference</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r asg/rows">
+            <td tal:content="r/analyte">PFOA</td>
+            <td tal:content="python:'N.D.' if r['measured'] is None else '%.3g' % r['measured']">0.21</td>
+            <td tal:content="python:'' if r['assigned'] is None else '%.3g %s' % (r['assigned'], asg['record']['unit'])">0.2 ng/g</td>
+            <td tal:content="python:'' if r['difference'] is None else '%+.3g' % r['difference']">+0.01</td>
+          </tr>
+        </tbody>
+      </table>
+    </tal:a>
+    <table class="pfas-table" tal:condition="cmp/rise">
+      <thead><tr><th>Analyte</th><th>This blank</th><th>Previous</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="r python:cmp['rise'][:10]">
+          <td tal:content="python:r[0]">PFOA</td>
+          <td tal:content="python:'%.3g' % r[1]">1.2</td>
+          <td tal:content="python:'N.D.' if r[2] is None else '%.3g' % r[2]">0.4</td>
+        </tr>
+      </tbody>
+    </table>
+    <!-- every lot both runs used: what changed is highlighted, and
+         "Differences only" hides the rest -->
+    <tal:l tal:condition="lots" tal:define="tid python:u'lots-%s' % ((cur or {}).get('key') or u'x')">
+      <label class="filter-row section-gap">
+        <input type="checkbox" tal:attributes="onchange string:document.getElementById('${tid}').classList.toggle('diff-only', this.checked)" />
+        Differences only</label>
+      <table class="pfas-table lot-table" tal:attributes="id tid">
+        <thead><tr><th>Lot of</th><th>This run</th><th>Previous</th><th>Stage</th><th></th></tr></thead>
+        <tbody>
+          <tr class="lot-changed" tal:repeat="c lots/changed">
+            <td tal:content="c/role">Methanol</td><td tal:content="c/now">M-2</td>
+            <td tal:content="c/before">M-1</td><td tal:content="c/stage">Elution</td>
+            <td class="lot-tag">changed</td>
+          </tr>
+          <tr class="lot-new" tal:repeat="c lots/new">
+            <td tal:content="c/role">SPE</td><td tal:content="c/lot">S-2</td>
+            <td></td><td tal:content="c/stage">Loading</td><td class="lot-tag">new</td>
+          </tr>
+          <tr class="lot-gone" tal:repeat="c lots/gone">
+            <td tal:content="c/role">SPE</td><td></td>
+            <td tal:content="c/lot">S-1</td><td tal:content="c/stage">Loading</td><td class="lot-tag">not used</td>
+          </tr>
+          <tr class="lot-same" tal:repeat="c lots/shared">
+            <td tal:content="c/role">Methanol</td><td tal:content="c/lot">M-1</td>
+            <td tal:content="c/lot">M-1</td><td tal:content="c/stage">Elution</td><td></td>
+          </tr>
+        </tbody>
+      </table>
+    </tal:l>
+  </tal:c>
+</metal:m>

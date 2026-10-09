@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Extraction batch</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Extraction batch</tal:t>
+  <tal:c metal:fill-slot="header-context"><span class="chip" tal:content="string:${context/getId} · ${view/method_id}">WS-1 · EPA_537_1</span></tal:c>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href view/guide_url">Guided extraction</a>
+  </tal:r>
+
+  <metal:fill fill-slot="content"
+              tal:define="msg view/message; edit view/can_edit; unit view/unit; probs view/problems">
+    <p class="dr-msg" tal:condition="python:msg[0]" tal:content="python:msg[0]">Saved</p>
+    <p class="dr-msg text-danger" tal:condition="python:msg[1]" tal:content="python:msg[1]">Error</p>
+
+    <!-- 1. Samples: the worksheet's (core's Add Analyses selects them) -->
+    <section class="bench-block">
+      <h2 class="bench-h">1. Samples</h2>
+      <p class="bench-sub"><tal:h define="hid string:extraction-batch"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+        <a class="btn-sm btn-secondary" tal:condition="edit" tal:attributes="href view/add_samples_url">Add samples</a></p>
+      <table class="pfas-table" tal:condition="view/sample_members">
+        <thead><tr><th>Injection name</th><th>Client sample ID</th><th>Matrix</th></tr></thead>
+        <tbody><tr tal:repeat="m view/sample_members">
+          <td tal:content="m/injection">DW-0001</td><td tal:content="m/client_sid">C-1</td><td tal:content="m/matrix">Drinking Water</td>
+        </tr></tbody>
+      </table>
+    </section>
+
+    <!-- 2. QC: populated from the method profile / project plan -->
+    <section class="bench-block">
+      <h2 class="bench-h">2. QC</h2>
+      <p class="bench-sub">The method asks for: <strong tal:content="view/plan_text">MB 1</strong>.
+        <tal:z define="size view/size_text" condition="size">Batch size: <span tal:replace="size">9 of 20 samples</span>.</tal:z>
+        <tal:s condition="view/shortfall">Missing: <span tal:replace="python:', '.join('%s %d' % (r, n) for r, n in sorted(view.shortfall().items()))">LFSM 1</span>.</tal:s></p>
+      <form method="post" tal:condition="python:edit and view.shortfall()"
+            tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
+        <input type="hidden" name="action" value="populate" />
+        <input tal:replace="structure context/@@authenticator/authenticator" />
+        <button class="btn-sm btn-primary" type="submit">Populate QC</button>
+      </form>
+    </section>
+
+    <!-- 3. Parents and levels -->
+    <section class="bench-block" tal:condition="view/qc_members">
+      <h2 class="bench-h">3. Parents and levels</h2>
+      <p class="bench-sub">Amount in <span tal:replace="python:unit or 'the matrix unit'">ng/L</span>.</p>
+      <form method="post" tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
+        <input type="hidden" name="action" value="save" />
+        <input tal:replace="structure context/@@authenticator/authenticator" />
+        <table class="pfas-table">
+          <thead><tr><th>Injection name</th><th>QC</th><th>Made from</th><th>Level or lot</th><th>Added</th><th></th></tr></thead>
+          <tbody><tr tal:repeat="m view/qc_members">
+            <td tal:content="m/injection">WS-1-LFSM1</td>
+            <td tal:content="python:view.role_title(m['role'])">Matrix spike (LFSM)</td>
+            <td>
+              <select tal:condition="python:view.needs_parent(m)" tal:attributes="name string:${m/id}.parent; disabled python:None if edit else 'disabled'">
+                <option value="">Choose a sample&#8230;</option>
+                <option tal:repeat="s view/sample_members" tal:attributes="value s/id; selected python:'selected' if s['id'] == m.get('parent') else None" tal:content="s/injection">DW-0001</option>
+              </select>
+              <select tal:condition="python:m['role'] == 'LFSMD'" tal:attributes="name string:${m/id}.lfsm_of; disabled python:None if edit else 'disabled'">
+                <option value="">Duplicate of&#8230;</option>
+                <option tal:repeat="l view/lfsm_members" tal:attributes="value l/id; selected python:'selected' if l['id'] == m.get('lfsm_of') else None" tal:content="l/injection">WS-1-LFSM1</option>
+              </select>
+              <span tal:condition="python:not view.needs_parent(m) and m['role'] != 'LFSMD'">&#8212;</span>
+            </td>
+            <td>
+              <select tal:condition="python:view.spiked(m) and m['role'] != 'LFSMD'" tal:attributes="name string:${m/id}.level; disabled python:None if edit else 'disabled'">
+                <option value="">Level&#8230;</option>
+                <option tal:repeat="lv view/levels" tal:attributes="value python:lv[0]; selected python:'selected' if lv[0] == m.get('level') else None"
+                        tal:content="python:lv[0] + (' (%g %s)' % (lv[1], unit) if lv[1] else ' (no level set)')">Mid</option>
+              </select>
+              <span tal:condition="python:m['role'] == 'LFSMD'" tal:content="python:m.get('level') or '—'">Mid</span>
+              <select tal:condition="python:m['role'] == 'MxB'" tal:attributes="name string:${m/id}.lot; disabled python:None if edit else 'disabled'">
+                <option value="">Blank-matrix lot&#8230;</option>
+                <option tal:repeat="l python:view.lot_options(m)" tal:attributes="value l/uid; selected python:'selected' if l['uid'] == m.get('lot') else None"
+                        tal:content="string:${l/name} ${l/lot_number}">DEMO milk QC-1</option>
+              </select>
+              <label tal:condition="python:m['role'] == 'MB'">
+                <input type="radio" name="subtract_mb"
+                       tal:attributes="value m/id; checked python:'checked' if m.get('subtract') else None; disabled python:None if edit else 'disabled'" />
+                Subtract</label>
+              <span tal:condition="python:not view.spiked(m) and m['role'] not in ('MxB', 'MB')">&#8212;</span>
+            </td>
+            <td>
+              <input type="number" min="0" step="any" tal:condition="python:view.spiked(m) and m['role'] != 'LFSMD'"
+                     tal:attributes="name string:${m/id}.amount; value m/amount; placeholder python:unit or 'unit not set'; disabled python:None if edit else 'disabled'" />
+              <span tal:condition="python:m['role'] == 'LFSMD'" tal:content="python:('%s %s' % (m['amount'], m.get('unit') or '')) if m.get('amount') else 'its LFSM'">its LFSM</span>
+            </td>
+            <td><button class="btn-sm btn-secondary" type="submit" name="remove" tal:condition="edit"
+                        tal:attributes="value m/id">Remove</button></td>
+          </tr></tbody>
+        </table>
+        <button class="btn-sm btn-primary" type="submit" tal:condition="edit">Save</button>
+      </form>
+      <form method="post" class="dilution-form section-gap" tal:condition="edit"
+            tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
+        <input type="hidden" name="action" value="add" />
+        <input tal:replace="structure context/@@authenticator/authenticator" />
+        <select name="role"><option tal:repeat="r view/add_roles" tal:attributes="value r" tal:content="python:view.role_title(r)">LFSM</option></select>
+        <button class="btn-sm btn-secondary" type="submit">Add QC</button>
+      </form>
+      <ul class="bench-alerts" tal:condition="probs">
+        <li tal:repeat="p probs" tal:content="p">WS-1-LFSM1: choose the spike level.</li>
+      </ul>
+      <p class="bench-sub" tal:condition="not:probs">Ready for labels.</p>
+    </section>
+
+    <!-- 4. Labels: issued once every QC has its sample and level -->
+    <section class="bench-block" tal:condition="view/members" tal:define="ls view/labels_state">
+      <h2 class="bench-h">4. Labels</h2>
+      <p class="bench-sub">
+        <span tal:replace="python:'%d labels' % len(view.label_rows())">12</span>
+        <tal:i condition="ls/issued">&#183; issued <span tal:replace="python:(ls['last'].get('at') or '')[:16].replace('T', ' ')">at</span>
+          <strong tal:condition="not:ls/current">&#183; out of date</strong></tal:i>
+      </p>
+      <form method="post" class="dilution-form" tal:condition="python:edit and not probs and not ls['current']"
+            tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
+        <input type="hidden" name="action" value="issue_labels" />
+        <input tal:replace="structure context/@@authenticator/authenticator" />
+        <input type="text" name="reason" tal:condition="ls/issued" placeholder="Why issued again" required="required" />
+        <button class="btn-sm btn-primary" type="submit" tal:content="python:'Issue labels again' if ls['issued'] else 'Issue labels'">Issue labels</button>
+      </form>
+      <a class="btn-sm btn-secondary" tal:condition="ls/current" tal:attributes="href view/print_url">Print labels</a>
+    </section>
+
+    <!-- 5. Requests from review: dilutions and re-injections -->
+    <section class="bench-block" tal:condition="view/requests">
+      <h2 class="bench-h">5. Requests from review</h2>
+      <table class="pfas-table">
+        <thead><tr><th>Injection</th><th>Asked for</th><th>Why</th><th>Asked by</th><th>Status</th><th>Made as</th><th></th></tr></thead>
+        <tbody><tr tal:repeat="r view/requests">
+          <td tal:content="r/injection">DW-0012</td>
+          <td tal:content="python:('Dilution 1 in %s' % r['fold']) if r['kind'] == 'dilution' else 'Re-injection'">Dilution</td>
+          <td tal:content="r/reason">why</td><td tal:content="r/requested_by">AN1</td>
+          <td tal:content="r/status">open</td><td tal:content="python:r.get('new_injection') or '—'">DW-0012-D10</td>
+          <td><form method="post" tal:condition="python:edit and r['status'] == 'open'"
+                    tal:attributes="action string:${context/absolute_url}/@@pfas-extraction-batch">
+                <input type="hidden" name="action" value="made" />
+                <input type="hidden" name="request" tal:attributes="value r/id" />
+                <input tal:replace="structure context/@@authenticator/authenticator" />
+                <button class="btn-sm btn-primary" type="submit">Made</button>
+              </form></td>
+        </tr></tbody>
+      </table>
+    </section>
+  </metal:fill>
+</body>
+</html>

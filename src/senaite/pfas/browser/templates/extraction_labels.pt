@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Extraction labels</title>
+  <tal:h metal:fill-slot="head-extra">
+    <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/pfas-extraction-labels.css" />
+  </tal:h>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Extraction labels</tal:t>
+  <tal:c metal:fill-slot="header-context"><span class="chip" tal:content="context/getId">WS-1</span></tal:c>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${context/absolute_url}/@@pfas-extraction-batch">Extraction batch</a>
+  </tal:r>
+
+  <metal:fill fill-slot="content" tal:define="rows view/label_rows">
+    <form class="xl-tools" method="get" tal:attributes="action view/print_url">
+      <input type="hidden" name="format" value="sheet" />
+      <select name="size">
+        <option tal:repeat="s view/sizes" tal:attributes="value python:s[0]; selected python:'selected' if s[0] == view.size()['id'] else None" tal:content="python:s[1]">2 x 1</option>
+      </select>
+      <button class="btn-sm btn-secondary" type="submit">Size</button>
+      <button class="btn-sm btn-primary" type="button" onclick="window.print()">Print</button>
+      <span tal:content="python:'%d labels' % len(rows)">12</span>
+    </form>
+    <div class="xl-sheet" tal:attributes="style view/sheet_style">
+      <div class="xl-label" tal:repeat="r rows">
+        <span class="xl-name" tal:content="r/injection">WS-1-LFSM1</span>
+        <svg class="xl-barcode" tal:attributes="data-code r/injection"></svg>
+        <span class="xl-line" tal:content="python:u' \u00b7 '.join(x for x in (r['container'], r['role'] or r['client_sid'], r['parent'] and ('from ' + r['parent']), r['level']) if x)">Tube</span>
+        <span class="xl-line" tal:content="python:u' \u00b7 '.join(x for x in (r['worksheet'], r['matrix'], r['date']) if x)">WS-1</span>
+      </div>
+    </div>
+  </metal:fill>
+  <tal:s metal:fill-slot="scripts">
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script>
+      document.querySelectorAll('svg.xl-barcode').forEach(function (el) {
+        try { JsBarcode(el, el.getAttribute('data-code'), {format: 'CODE128', displayValue: false, margin: 0}); }
+        catch (e) { el.remove(); }
+      });
+    </script>
+  </tal:s>
+</body>
+</html>

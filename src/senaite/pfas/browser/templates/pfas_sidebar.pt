@@ -1,0 +1,1139 @@
+<nav id="sidebar" class="pfas-sidebar"
+     tal:define="purl    view/portal_url;
+                 path    view/current_path;
+                 roles   view/user_roles;
+                 home    view/landing;
+                 me      python:context.portal_membership.getAuthenticatedMember().getId() or '';
+                 is_mgr  python:'LabManager' in roles or 'Manager' in roles;
+                 is_ana  python:'Analyst' in roles or 'Verifier' in roles;
+                 is_clk  python:'LabClerk' in roles;
+                 sect    python:request.get('section','')"
+     aria-label="Main navigation"
+     tal:attributes="data-role-group home/group; data-user me;
+                     data-pins view/pins_json;
+                     data-pins-url string:${purl}/@@pfas-sidebar-pins;
+                     data-portal purl;
+                     data-token context/@@authenticator/token">
+
+<style id="pfas-sidebar-css">
+/* ── PFAS unified sidebar ───────────────────────────────────────────────── */
+#sidebar.pfas-sidebar {
+  /* Fixed line-height: without it each host page decided the row pitch
+     (34px on core pages at line-height 1.5, 29px on PFAS pages), */
+  line-height: 16px;
+  font-size: var(--fs-sm);   /* nav: 13px keeps every label on one line */
+  min-width: 220px;
+  max-width: 220px;
+  background: var(--s-light);
+  border-right: 1px solid var(--s-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: min-width .2s ease, max-width .2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Collapse via PFAS shell (workspace pages) */
+#pfas-shell.panel-collapsed #sidebar.pfas-sidebar {
+  min-width: 48px;
+  max-width: 48px;
+}
+
+/* Collapse via core SENAITE toggle (core pages) */
+#sidebar.pfas-sidebar.toggled {
+  min-width: 48px;
+  max-width: 48px;
+}
+
+/* Inner scroll container */
+.pfas-sb-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
+}
+
+/* ── Group (accordion) ─────────────────────────────────────────────────── */
+.pfas-sg-head {
+  line-height: 16px;   /* a <button>: does not inherit line-height on PFAS pages */
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 12px 5px 12px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--s-secondary);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  user-select: none;
+}
+.pfas-sg-head:hover { color: var(--s-dark); }
+.pfas-sg-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.pfas-sg-arrow {
+  font-size: var(--fs-xs);
+  transition: transform .15s;
+  display: inline-block;
+  color: #adb5bd;
+}
+.pfas-sg.sg-closed .pfas-sg-arrow { transform: rotate(-90deg); }
+
+/* Hide group label + arrow when collapsed to rail */
+#pfas-shell.panel-collapsed .pfas-sg-label,
+#pfas-shell.panel-collapsed .pfas-sg-arrow,
+#sidebar.pfas-sidebar.toggled .pfas-sg-label,
+#sidebar.pfas-sidebar.toggled .pfas-sg-arrow { opacity: 0; }
+
+/* ── Group items ──────────────────────────────────────────────────────── */
+.pfas-sg-items { overflow: hidden; }
+.pfas-sg.sg-closed .pfas-sg-items { display: none; }
+
+/* Show all items in icon-rail mode regardless of group state */
+#pfas-shell.panel-collapsed .pfas-sg-items,
+#sidebar.pfas-sidebar.toggled .pfas-sg-items { display: block; }
+
+/* ── Sidebar item ─────────────────────────────────────────────────────── */
+/* ── Sidebar pins (sidebar_pins.py) ─────────────────────────────────── */
+.pfas-sb-pinned.has-pins { border-top: 1px solid var(--s-border); padding: 4px 0; }
+.pfas-pin-btn {
+  /* Overlaid on the row's right edge: it takes no width (a hidden button
+     that did truncated labels) and no height (16px = the row's line). */
+  position: absolute; right: 6px; top: 50%; margin-top: -8px;
+  width: 20px; height: 16px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; border-radius: 3px; cursor: pointer;
+  color: var(--s-secondary); opacity: 0; transition: opacity .1s;
+}
+.pfas-pin-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor;
+                    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pfas-si:hover .pfas-pin-btn, .pfas-pin-btn:focus { opacity: 1; background: var(--s-light); }
+.pfas-si { position: relative; }
+.pfas-pin-btn:hover { background: #e9ecef; color: var(--s-body); }
+.pfas-sb-scroll .pfas-pin-btn.is-pinned { opacity: .7; color: var(--s-primary-dk); }
+.pfas-si-pinned .pfas-pin-btn { font-size: var(--fs-md); line-height: 1; }
+#pfas-shell.panel-collapsed .pfas-pin-btn,
+#sidebar.pfas-sidebar.toggled .pfas-pin-btn { display: none; }
+
+.pfas-si {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px 7px 16px;
+  color: var(--s-input-text);
+  text-decoration: none;
+  font-size: var(--fs-sm);   /* nav: 13px keeps every label on one line */
+  border-left: 3px solid transparent;
+  overflow: hidden;
+  transition: color .1s, background .1s;
+}
+.pfas-si:hover {
+  color: #212529;
+  background: #e9ecef;
+  text-decoration: none;
+}
+.pfas-si.si-active {
+  color: var(--s-primary-dk);
+  border-left-color: var(--s-primary);
+  background: var(--s-primary-lt);
+  font-weight: 600;
+}
+.pfas-si-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  text-align: center;
+  line-height: 1;
+  color: #adb5bd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pfas-si.si-active .pfas-si-icon { color: var(--s-primary-dk); }
+.pfas-si-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.pfas-si-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Hide labels when collapsed to rail */
+#pfas-shell.panel-collapsed .pfas-si-label,
+#sidebar.pfas-sidebar.toggled .pfas-si-label { display: none; }
+
+/* ── Dashboard pin ─────────────────────────────────────────────────── */
+.pfas-sb-pin {
+  flex: 0 0 auto;
+  border-bottom: 2px solid var(--s-border);
+}
+.pfas-sb-dash {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px 10px 16px;
+  color: var(--s-input-text);
+  text-decoration: none;
+  font-size: var(--fs-sm);   /* nav: 13px keeps every label on one line */
+  font-weight: 600;
+  border-left: 3px solid transparent;
+}
+.pfas-sb-dash:hover {
+  color: #212529;
+  background: #e9ecef;
+  text-decoration: none;
+}
+.pfas-sb-dash.si-active {
+  color: var(--s-primary-dk);
+  border-left-color: var(--s-primary);
+  background: var(--s-primary-lt);
+}
+#pfas-shell.panel-collapsed .pfas-sb-dash-label,
+#sidebar.pfas-sidebar.toggled .pfas-sb-dash-label { display: none; }
+
+/* Core pages draw the one top toolbar (templates/pfas_topbar.pt);
+   nothing here restyles core's old #senaite-toolbar any more. */
+
+/* Collapse toggle at bottom */
+.pfas-sb-foot {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--s-border);
+}
+.pfas-sb-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #adb5bd;
+  font-size: var(--fs-md);
+  transition: color .1s;
+}
+.pfas-sb-collapse-btn:hover { color: var(--s-secondary); }
+.pfas-sb-collapse-arrow { display: inline-block; transition: transform .2s; }
+#pfas-shell.panel-collapsed .pfas-sb-collapse-arrow,
+#sidebar.pfas-sidebar.toggled .pfas-sb-collapse-arrow { transform: rotate(180deg); }
+
+/* ── Mobile (core SENAITE pages, ≤768px) ─────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Sidebar becomes a fixed full-height drawer — taken out of document flow.
+     All key properties use !important to beat SENAITE's #sidebar rules. */
+  body:not(.pfas-app) #sidebar.pfas-sidebar {
+    position: fixed !important;
+    top: 52px !important; left: 0 !important; bottom: 0 !important; right: auto !important;
+    z-index: 1000 !important;
+    transform: translateX(-100%) !important;
+    box-shadow: none !important;
+    transition: transform .22s ease !important;
+    min-width: 260px !important;
+    max-width: 260px !important;
+    width: 260px !important;
+    overflow: hidden !important;
+    overflow-y: auto !important;
+    white-space: normal !important;
+    background-color: #fff !important;
+  }
+  body:not(.pfas-app) #sidebar.pfas-sidebar.mobile-open {
+    transform: translateX(0) !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,.35) !important;
+  }
+  /* Main content takes full width — override SENAITE's width:calc(100% - 50px) */
+  body:not(.pfas-app) .wrapper > div,
+  body:not(.pfas-app) .wrapper div.container-fluid,
+  body:not(.pfas-app) .wrapper div.container-lg,
+  body:not(.pfas-app) .wrapper div.container-md,
+  body:not(.pfas-app) .wrapper div.container-sm,
+  body:not(.pfas-app) .wrapper div.container-xl {
+    width: 100% !important;
+    margin-left: 0 !important;
+    padding-left: 8px !important;
+  }
+  /* Full-page backdrop behind open drawer */
+  #pfas-mobile-backdrop {
+    display: none;
+    position: fixed;
+    top: 52px; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 999;
+    cursor: pointer;
+  }
+  #pfas-mobile-backdrop.active { display: block; }
+  /* Hide the collapse-to-rail footer button on mobile — replaced by open/close */
+  body:not(.pfas-app) .pfas-sb-foot { display: none; }
+  /* Scrollable content on core pages */
+  body:not(.pfas-app) .pat-structure,
+  body:not(.pfas-app) .container { overflow-x: auto; }
+
+}
+</style>
+
+<!-- ── SVG icon sprite (Lucide, MIT) ─────────────────────────────────────── -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none;position:absolute" aria-hidden="true">
+
+  <!-- Operations -->
+  <symbol id="ico-clients" viewBox="0 0 24 24">
+    <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/>
+    <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
+    <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/>
+    <path d="M10 6h4"/><path d="M10 10h4"/>
+    <path d="M10 14h4"/><path d="M10 18h4"/>
+  </symbol>
+
+  <symbol id="ico-samples" viewBox="0 0 24 24">
+    <path d="M9 2v17.5A2.5 2.5 0 0 1 6.5 22 2.5 2.5 0 0 1 4 19.5V2"/>
+    <path d="M15 2v17.5a2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5-2.5V2"/>
+    <path d="M3 2h7"/><path d="M14 2h7"/>
+    <path d="M4 9h5"/><path d="M15 9h5"/>
+  </symbol>
+
+  <symbol id="ico-batches" viewBox="0 0 24 24">
+    <path d="M12 2 2 7l10 5 10-5z"/>
+    <path d="M2 17l10 5 10-5"/>
+    <path d="M2 12l10 5 10-5"/>
+  </symbol>
+
+  <symbol id="ico-worksheets" viewBox="0 0 24 24">
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+    <path d="M12 11h4"/><path d="M12 15h4"/>
+    <path d="M8 11h.01"/><path d="M8 15h.01"/>
+  </symbol>
+
+  <symbol id="ico-tracker" viewBox="0 0 24 24">
+    <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/>
+    <circle cx="12" cy="10" r="3"/>
+  </symbol>
+
+  <symbol id="ico-project" viewBox="0 0 24 24">
+    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+  </symbol>
+
+  <!-- QC and Methods -->
+  <symbol id="ico-method-profiles" viewBox="0 0 24 24">
+    <line x1="21" x2="14" y1="4" y2="4"/>
+    <line x1="10" x2="3" y1="4" y2="4"/>
+    <line x1="21" x2="12" y1="12" y2="12"/>
+    <line x1="8" x2="3" y1="12" y2="12"/>
+    <line x1="21" x2="16" y1="20" y2="20"/>
+    <line x1="12" x2="3" y1="20" y2="20"/>
+    <line x1="14" x2="14" y1="2" y2="6"/>
+    <line x1="8" x2="8" y1="10" y2="14"/>
+    <line x1="16" x2="16" y1="18" y2="22"/>
+  </symbol>
+
+  <symbol id="ico-qc-rules" viewBox="0 0 24 24">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    <path d="m9 12 2 2 4-4"/>
+  </symbol>
+
+  <symbol id="ico-control-charts" viewBox="0 0 24 24">
+    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+    <polyline points="16 7 22 7 22 13"/>
+  </symbol>
+
+  <symbol id="ico-calibrations" viewBox="0 0 24 24">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+  </symbol>
+
+  <symbol id="ico-specifications" viewBox="0 0 24 24">
+    <path d="m3 17 2 2 4-4"/>
+    <path d="m3 7 2 2 4-4"/>
+    <path d="m3 12 2 2 4-4"/>
+    <path d="M13 17h8"/>
+    <path d="M13 12h8"/>
+    <path d="M13 7h8"/>
+  </symbol>
+
+  <!-- Bench -->
+  <symbol id="ico-reagents" viewBox="0 0 24 24">
+    <path d="M10 2v7.31"/>
+    <path d="M14 9.3V2"/>
+    <path d="M8.5 2h7"/>
+    <path d="M14 9.3a6.5 6.5 0 1 1-4 0"/>
+  </symbol>
+
+  <symbol id="ico-prep-standards" viewBox="0 0 24 24">
+    <path d="M14.5 2v17.5c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2"/>
+    <path d="M8.5 2h7"/>
+    <path d="M14.5 13h-5"/>
+  </symbol>
+
+  <symbol id="ico-book-open" viewBox="0 0 24 24">
+    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+  </symbol>
+
+  <symbol id="ico-book" viewBox="0 0 24 24">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+    <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/>
+  </symbol>
+
+  <symbol id="ico-extraction" viewBox="0 0 24 24">
+    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+  </symbol>
+
+  <!-- Data Review / release checklist -->
+  <symbol id="ico-data-review" viewBox="0 0 24 24">
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+    <path d="m9 11 2 2 4-4"/>
+    <line x1="9" y1="16" x2="15" y2="16"/>
+  </symbol>
+
+  <!-- Facility QC -->
+  <symbol id="ico-daily-checklist" viewBox="0 0 24 24">
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+    <path d="m9 14 2 2 4-4"/>
+  </symbol>
+
+  <symbol id="ico-temperature" viewBox="0 0 24 24">
+    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+  </symbol>
+
+  <symbol id="ico-balance" viewBox="0 0 24 24">
+    <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
+    <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
+    <path d="M7 21h10"/>
+    <path d="M12 3v18"/>
+    <path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>
+  </symbol>
+
+  <symbol id="ico-water" viewBox="0 0 24 24">
+    <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>
+  </symbol>
+
+  <symbol id="ico-waste" viewBox="0 0 24 24">
+    <path d="M3 6h18"/>
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+    <line x1="10" x2="10" y1="11" y2="17"/>
+    <line x1="14" x2="14" y1="11" y2="17"/>
+  </symbol>
+
+  <symbol id="ico-eyewash" viewBox="0 0 24 24">
+    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </symbol>
+
+  <symbol id="ico-unit-registry" viewBox="0 0 24 24">
+    <path d="M20 7h-9"/>
+    <path d="M14 17H5"/>
+    <circle cx="17" cy="7" r="3"/>
+    <circle cx="7" cy="17" r="3"/>
+  </symbol>
+
+  <!-- Instruments and Import -->
+  <symbol id="ico-instruments" viewBox="0 0 24 24">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+  </symbol>
+
+  <symbol id="ico-import" viewBox="0 0 24 24">
+    <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <path d="M2 15h10"/>
+    <path d="m9 18 3-3-3-3"/>
+  </symbol>
+
+  <!-- Reporting -->
+  <symbol id="ico-edd-edd" viewBox="0 0 24 24">
+    <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <path d="M12 18v-6"/>
+    <path d="m9 15 3 3 3-3"/>
+  </symbol>
+
+  <symbol id="ico-edd-config" viewBox="0 0 24 24">
+    <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <path d="M5 13h6"/>
+    <path d="M5 17h4"/>
+    <path d="M7 13v4"/>
+  </symbol>
+
+  <!-- Configuration -->
+  <symbol id="ico-sitemap" viewBox="0 0 24 24">
+    <rect width="8" height="6" x="8" y="2" rx="1"/>
+    <rect width="6" height="6" x="2" y="16" rx="1"/>
+    <rect width="6" height="6" x="16" y="16" rx="1"/>
+    <path d="M12 8v4"/><path d="M5 16v-2a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v2"/>
+  </symbol>
+
+  <symbol id="ico-storage" viewBox="0 0 24 24">
+    <path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"/>
+    <path d="M6 18h12"/><path d="M6 14h12"/><path d="M6 10h12"/>
+  </symbol>
+
+  <symbol id="ico-instrument-setup" viewBox="0 0 24 24">
+    <rect width="16" height="16" x="4" y="4" rx="2"/>
+    <rect width="6" height="6" x="9" y="9" rx="1"/>
+    <path d="M15 2v2"/><path d="M15 20v2"/>
+    <path d="M2 15h2"/><path d="M2 9h2"/>
+    <path d="M20 15h2"/><path d="M20 9h2"/>
+    <path d="M9 2v2"/><path d="M9 20v2"/>
+  </symbol>
+
+  <symbol id="ico-method-setup" viewBox="0 0 24 24">
+    <path d="M2 15c6.667-6 13.333 0 20-6"/>
+    <path d="M2 9c6.667 6 13.333 0 20 6"/>
+    <path d="M2 9V7"/><path d="M20 9V7"/>
+    <path d="M2 15v2"/><path d="M20 15v2"/>
+  </symbol>
+
+  <symbol id="ico-workflow" viewBox="0 0 24 24">
+    <circle cx="18" cy="18" r="3"/>
+    <circle cx="6" cy="6" r="3"/>
+    <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
+    <path d="M11 18H8a2 2 0 0 1-2-2V9"/>
+  </symbol>
+
+  <symbol id="ico-regulatory" viewBox="0 0 24 24">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+    <line x1="16" y1="13" x2="8" y2="13"/>
+    <line x1="16" y1="17" x2="8" y2="17"/>
+    <line x1="10" y1="9" x2="8" y2="9"/>
+  </symbol>
+
+  <!-- Dashboard / General -->
+  <symbol id="ico-home" viewBox="0 0 24 24">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    <polyline points="9 22 9 12 15 12 15 22"/>
+  </symbol>
+
+  <symbol id="ico-grid" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="7" height="7" rx="1"/>
+    <rect x="14" y="3" width="7" height="7" rx="1"/>
+    <rect x="14" y="14" width="7" height="7" rx="1"/>
+    <rect x="3" y="14" width="7" height="7" rx="1"/>
+  </symbol>
+
+  <!-- Deviations / CARs — warning triangle with exclamation -->
+  <symbol id="ico-warning" viewBox="0 0 24 24">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+          fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- Pin (sidebar pins) -->
+  <symbol id="ico-pin" viewBox="0 0 24 24">
+    <path d="M9 3h6l-1 6 4 4H6l4-4z"/>
+    <line x1="12" y1="13" x2="12" y2="21"/>
+  </symbol>
+
+  <!-- Collapse arrow -->
+  <symbol id="ico-chevron-left" viewBox="0 0 24 24">
+    <polyline points="15 18 9 12 15 6"/>
+  </symbol>
+
+</svg>
+
+  <!-- ── Dashboard, then the user's own pins (Windows-Explorer style). Pins
+       are filled by the script from data-pins: each is a copy of the user's
+       own sidebar link for that path (sidebar_pins.py). ────────────────── -->
+  <div class="pfas-sb-pin">
+    <a class="pfas-sb-dash" title="Dashboard"
+       tal:attributes="href string:${purl}/@@pfas-home;
+                       class python:'pfas-sb-dash si-active' if path.rstrip('/').endswith('/senaite') else 'pfas-sb-dash'">
+      <span class="pfas-si-icon"><svg><use href="#ico-home"/></svg></span>
+      <span class="pfas-sb-dash-label">Dashboard</span>
+    </a>
+    <div class="pfas-sb-pinned" id="pfas-sb-pinned"></div>
+  </div>
+
+  <div class="pfas-sb-scroll">
+
+    <!-- ── OPERATIONS (all staff roles) ────────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-operations"
+         tal:condition="python:is_mgr or is_ana or is_clk">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-operations')">
+        <span class="pfas-sg-label">Operations</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Clients"
+           tal:attributes="href string:${purl}/clients;
+                           class python:'pfas-si si-active' if '/clients' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-clients"/></svg></span>
+          <span class="pfas-si-label">Clients</span>
+        </a>
+        <a class="pfas-si" title="Samples"
+           tal:attributes="href string:${purl}/samples;
+                           class python:'pfas-si si-active' if '/samples' in path and '@@' not in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-samples"/></svg></span>
+          <span class="pfas-si-label">Samples</span>
+        </a>
+        <a class="pfas-si" title="Batches"
+           tal:attributes="href string:${purl}/batches;
+                           class python:'pfas-si si-active' if '/batches' in path and '@@' not in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-batches"/></svg></span>
+          <span class="pfas-si-label">Batches</span>
+        </a>
+        <a class="pfas-si" title="Worksheets"
+           tal:attributes="href string:${purl}/worksheets;
+                           class python:'pfas-si si-active' if '/worksheets' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-worksheets"/></svg></span>
+          <span class="pfas-si-label">Worksheets</span>
+        </a>
+        <a class="pfas-si" title="Chain of custody: samples entered by samplers, received by the lab"
+           tal:attributes="href string:${purl}/@@pfas-coc;
+                           class python:'pfas-si si-active' if '@@pfas-coc' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-tracker"/></svg></span>
+          <span class="pfas-si-label">Chain of Custody</span>
+        </a>
+        <a class="pfas-si" title="Sample Tracker"
+           tal:attributes="href string:${purl}/@@pfas-track;
+                           class python:'pfas-si si-active' if '@@pfas-track' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-tracker"/></svg></span>
+          <span class="pfas-si-label">Sample Tracker</span>
+        </a>
+        <a class="pfas-si" title="Projects"
+           tal:attributes="href string:${purl}/@@pfas-projects;
+                           class python:'pfas-si si-active' if '@@pfas-projects' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-project"/></svg></span>
+          <span class="pfas-si-label">Projects</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── QC &amp; METHODS (Manager + Analyst) ──────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-qc"
+         tal:condition="python:is_mgr or is_ana">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-qc')">
+        <span class="pfas-sg-label">QC &amp; Methods</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Data Review"
+           tal:attributes="href string:${purl}/@@pfas-data-review;
+                           class python:'pfas-si si-active' if '@@pfas-data-review' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-data-review"/></svg></span>
+          <span class="pfas-si-label">Data Review</span>
+        </a>
+        <a class="pfas-si" title="Method Profiles &amp; QC Rules — per-method configuration console"
+           tal:condition="is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-method-profiles;
+                           class python:'pfas-si si-active' if ('@@pfas-method-profile' in path or '@@pfas-qc-rules' in path) else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-method-profiles"/></svg></span>
+          <span class="pfas-si-label">Method Profiles &amp; QC</span>
+        </a>
+        <a class="pfas-si" title="Control Charts"
+           tal:attributes="href string:${purl}/@@pfas-control-chart;
+                           class python:'pfas-si si-active' if '@@pfas-control-chart' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-control-charts"/></svg></span>
+          <span class="pfas-si-label">Control Charts</span>
+        </a>
+        <a class="pfas-si" title="Blanks over time, and the lots behind a change in background"
+           tal:attributes="href string:${purl}/@@pfas-blank-history;
+                           class python:'pfas-si si-active' if '@@pfas-blank-history' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-control-charts"/></svg></span>
+          <span class="pfas-si-label">Blank History</span>
+        </a>
+        <a class="pfas-si" title="MDL, MRL confirmation, precision and accuracy studies"
+           tal:attributes="href string:${purl}/@@pfas-method-studies;
+                           class python:'pfas-si si-active' if '@@pfas-method-studies' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-control-charts"/></svg></span>
+          <span class="pfas-si-label">Method Studies</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── BENCH (all staff roles) ─────────────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-bench"
+         tal:condition="python:is_mgr or is_ana or is_clk">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-bench')">
+        <span class="pfas-sg-label">Bench</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Reagent Inventory"
+           tal:attributes="href string:${purl}/@@pfas-reagents;
+                           class python:'pfas-si si-active' if ('@@pfas-reagents' in path or '@@pfas-lot-usage' in path or '@@pfas-assigned-levels' in path) else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-reagents"/></svg></span>
+          <span class="pfas-si-label">Reagent Inventory</span>
+        </a>
+        <a class="pfas-si" title="Prepared Standards"
+           tal:attributes="href string:${purl}/@@pfas-prep-standards;
+                           class python:'pfas-si si-active' if '@@pfas-prep-standards' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-prep-standards"/></svg></span>
+          <span class="pfas-si-label">Prepared Standards</span>
+        </a>
+        <!-- One Logbooks item: Templates -> Method sequence -> By
+             batch are tabs of one page; bench staff see By batch only. -->
+        <a class="pfas-si" title="Logbooks: templates, method sequence, by batch"
+           tal:attributes="href string:${purl}/@@pfas-logbook-batches;
+                           class python:'pfas-si si-active' if ('@@pfas-logbook-batches' in path or '@@pfas-logbook-index' in path or '@@pfas-logbook-dynamic' in path or '@@pfas-prep-logbooks' in path or '@@pfas-logbook-admin' in path) else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book-open"/></svg></span>
+          <span class="pfas-si-label">Logbooks</span>
+        </a>
+        <a class="pfas-si" title="Samples awaiting homogenisation, and the record of it"
+           tal:attributes="href string:${purl}/@@pfas-homogenisation;
+                           class python:'pfas-si si-active' if ('@@pfas-homogenisation' in path and '@@pfas-homogenisation-setup' not in path) else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-extraction"/></svg></span>
+          <span class="pfas-si-label">Homogenisation</span>
+        </a>
+        <a class="pfas-si" title="Extraction Guide"
+           tal:attributes="href string:${purl}/@@pfas-extraction-guide;
+                           class python:'pfas-si si-active' if '@@pfas-extraction-guide' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-extraction"/></svg></span>
+          <span class="pfas-si-label">Extraction Guide</span>
+        </a>
+        <a class="pfas-si" title="Controlled Documents — QAM, SOPs, job aids, supplemental"
+           tal:attributes="href string:${purl}/@@pfas-sop;
+                           class python:'pfas-si si-active' if '@@pfas-sop' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book-open"/></svg></span>
+          <span class="pfas-si-label">Controlled Documents</span>
+        </a>
+        <a class="pfas-si" title="Deviations &amp; CARs"
+           tal:attributes="href string:${purl}/@@pfas-deviations;
+                           class python:'pfas-si si-active' if '@@pfas-deviations' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-warning"/></svg></span>
+          <span class="pfas-si-label">Deviations / CARs</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── EQUIPMENT (all staff roles; was Facility QC): every
+         item a SENAITE instrument with a type; the daily checks below. -->
+    <div class="pfas-sg" id="pfas-sg-facilityqc"
+         tal:condition="python:is_mgr or is_ana or is_clk">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-facilityqc')">
+        <span class="pfas-sg-label">Equipment</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Every instrument and piece of equipment, with what is due"
+           tal:attributes="href string:${purl}/@@pfas-equipment;
+                           class python:'pfas-si si-active' if ('@@pfas-equipment' in path and '@@pfas-equipment-types' not in path) else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-unit-registry"/></svg></span>
+          <span class="pfas-si-label">Equipment</span>
+        </a>
+        <a class="pfas-si" title="What each type obliges: calibration frequency, correction factor, external certificate"
+           tal:condition="is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-equipment-types;
+                           class python:'pfas-si si-active' if '@@pfas-equipment-types' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-unit-registry"/></svg></span>
+          <span class="pfas-si-label">Equipment Types</span>
+        </a>
+        <a class="pfas-si" title="Homogenisation methods and each matrix's default"
+           tal:condition="is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-homogenisation-setup;
+                           class python:'pfas-si si-active' if '@@pfas-homogenisation-setup' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-unit-registry"/></svg></span>
+          <span class="pfas-si-label">Homogenisation Methods</span>
+        </a>
+        <!-- One item for a page group: its pages are sub-tabs (page_groups.py) -->
+        <tal:g define="gi python:context.restrictedTraverse('@@pfas-macros').group_item('equipment-checks')" condition="gi">
+        <a class="pfas-si" title="Daily checklist, temperature, balance, weight sets, pipettes, reagent water, waste, eye wash"
+           tal:attributes="href gi/href; class python:'pfas-si si-active' if gi['active'] else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-daily-checklist"/></svg></span>
+          <span class="pfas-si-label">Equipment Checks</span>
+        </a>
+        </tal:g>
+      </div>
+    </div>
+
+    <!-- ── INSTRUMENTS &amp; IMPORT (all staff roles) ───────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-instruments"
+         tal:condition="python:is_mgr or is_ana or is_clk">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-instruments')">
+        <span class="pfas-sg-label">Instruments &amp; Import</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Instruments"
+           tal:condition="python:is_mgr or is_clk"
+           tal:attributes="href string:${purl}/bika_setup/bika_instruments;
+                           class python:'pfas-si si-active' if 'bika_instruments' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-instruments"/></svg></span>
+          <span class="pfas-si-label">Instruments</span>
+        </a>
+        <a class="pfas-si" title="Import Studio"
+           tal:attributes="href string:${purl}/@@pfas-import-studio;
+                           class python:'pfas-si si-active' if '@@pfas-import-studio' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-import"/></svg></span>
+          <span class="pfas-si-label">Import Studio</span>
+        </a>
+        <a class="pfas-si" title="LC-MS Run Builder — build the injection sequence from the extraction form"
+           tal:attributes="href string:${purl}/@@pfas-run-builder;
+                           class python:'pfas-si si-active' if '@@pfas-run-builder' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-instrument-setup"/></svg></span>
+          <span class="pfas-si-label">Run Builder</span>
+        </a>
+        <a class="pfas-si" title="Every run's calibration curves (approved in Data Review)"
+           tal:attributes="href string:${purl}/@@pfas-calibrations;
+                           class python:'pfas-si si-active' if '@@pfas-calibrations' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-calibrations"/></svg></span>
+          <span class="pfas-si-label">Calibration Archive</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── REPORTING (Manager + Analyst) ───────────────────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-reporting"
+         tal:condition="python:is_mgr or is_ana">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-reporting')">
+        <span class="pfas-sg-label">Reporting</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <a class="pfas-si" title="Published Reports"
+           tal:attributes="href string:${purl}/samples?review_state=published;
+                           class python:'pfas-si si-active' if 'review_state=published' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
+          <span class="pfas-si-label">Reports</span>
+        </a>
+        <!-- One item for a page group: its pages are sub-tabs (page_groups.py) -->
+        <tal:g define="gi python:context.restrictedTraverse('@@pfas-macros').group_item('reporting-setup')" condition="gi">
+        <a class="pfas-si" title="Reporting template, document templates, EDD configuration, print settings"
+           tal:attributes="href gi/href; class python:'pfas-si si-active' if gi['active'] else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-edd-config"/></svg></span>
+          <span class="pfas-si-label">Reporting Setup</span>
+        </a>
+        </tal:g>
+        <a class="pfas-si" title="Controlled Publications — CoA issue register (ISO 17025 document control)"
+           tal:condition="python:is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-controlled-publications;
+                           class python:'pfas-si si-active' if '@@pfas-controlled-publications' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
+          <span class="pfas-si-label">Controlled Publications</span>
+        </a>
+        <a class="pfas-si" title="Delivered EDDs — download EDD files per batch"
+           tal:condition="is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-edd-batches;
+                           class python:'pfas-si si-active' if '@@pfas-edd-batches' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-edd-edd"/></svg></span>
+          <span class="pfas-si-label">Delivered EDDs</span>
+        </a>
+        <a class="pfas-si" title="Regulatory Limits: MCLs and action levels printed as certificate notes"
+           tal:condition="python:is_mgr"
+           tal:attributes="href string:${purl}/@@pfas-regulatory-limits;
+                           class python:'pfas-si si-active' if '@@pfas-regulatory-limits' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-warning"/></svg></span>
+          <span class="pfas-si-label">Regulatory Limits</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- ── CONFIGURATION (Manager only — ManageBika) ───────────────────── -->
+    <div class="pfas-sg" id="pfas-sg-config"
+         tal:condition="python:is_mgr">
+      <button class="pfas-sg-head" type="button"
+              onclick="pfasSgToggle('pfas-sg-config')">
+        <span class="pfas-sg-label">Configuration</span>
+        <span class="pfas-sg-arrow">&#9660;</span>
+      </button>
+      <div class="pfas-sg-items">
+        <!-- One item for a page group: its pages are sub-tabs (page_groups.py) -->
+        <tal:g define="gi python:context.restrictedTraverse('@@pfas-macros').group_item('settings')" condition="gi">
+        <a class="pfas-si" title="Lab settings, site settings, lab staff, terminals"
+           tal:attributes="href gi/href; class python:'pfas-si si-active' if gi['active'] else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-workflow"/></svg></span>
+          <span class="pfas-si-label">Settings</span>
+        </a>
+        </tal:g>
+        <a class="pfas-si" title="Configuration History: who changed which setting, when, before and after"
+           tal:attributes="href string:${purl}/@@pfas-config-history;
+                           class python:'pfas-si si-active' if '@@pfas-config-history' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-book"/></svg></span>
+          <span class="pfas-si-label">Configuration History</span>
+        </a>
+        <a class="pfas-si" title="System Map — clickable navigation diagram"
+           tal:attributes="href string:${purl}/@@pfas-system-map;
+                           class python:'pfas-si si-active' if '@@pfas-system-map' in path else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-sitemap"/></svg></span>
+          <span class="pfas-si-label">System Map</span>
+        </a>
+        <a class="pfas-si" title="General — all settings"
+           tal:attributes="href string:${purl}/@@lims-setup;
+                           class python:'pfas-si si-active' if '@@lims-setup' in path and not sect else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-grid"/></svg></span>
+          <span class="pfas-si-label">General</span>
+        </a>
+        <a class="pfas-si" title="Storage &amp; Inventory"
+           tal:attributes="href string:${purl}/@@lims-setup?section=storage;
+                           class python:'pfas-si si-active' if '@@lims-setup' in path and sect=='storage' else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-storage"/></svg></span>
+          <span class="pfas-si-label">Storage &amp; Inventory</span>
+        </a>
+        <a class="pfas-si" title="Instrument Setup"
+           tal:attributes="href string:${purl}/@@lims-setup?section=instruments;
+                           class python:'pfas-si si-active' if '@@lims-setup' in path and sect=='instruments' else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-instrument-setup"/></svg></span>
+          <span class="pfas-si-label">Instrument Setup</span>
+        </a>
+        <a class="pfas-si" title="Method &amp; Analyte Setup"
+           tal:attributes="href string:${purl}/@@lims-setup?section=methods;
+                           class python:'pfas-si si-active' if '@@lims-setup' in path and sect=='methods' else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-method-setup"/></svg></span>
+          <span class="pfas-si-label">Method &amp; Analyte Setup</span>
+        </a>
+        <a class="pfas-si" title="Workflow &amp; QC"
+           tal:attributes="href string:${purl}/@@lims-setup?section=workflow;
+                           class python:'pfas-si si-active' if '@@lims-setup' in path and sect=='workflow' else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-workflow"/></svg></span>
+          <span class="pfas-si-label">Workflow &amp; QC</span>
+        </a>
+        <a class="pfas-si" title="Regulatory Reporting"
+           tal:attributes="href string:${purl}/@@lims-setup?section=regulatory;
+                           class python:'pfas-si si-active' if '@@lims-setup' in path and sect=='regulatory' else 'pfas-si'">
+          <span class="pfas-si-icon"><svg><use href="#ico-regulatory"/></svg></span>
+          <span class="pfas-si-label">Regulatory Reporting</span>
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /pfas-sb-scroll -->
+
+  <!-- Collapse toggle at bottom -->
+  <div class="pfas-sb-foot">
+    <button class="pfas-sb-collapse-btn" type="button"
+            onclick="pfasSidebarCollapseToggle()"
+            title="Collapse sidebar">
+      <span class="pfas-sb-collapse-arrow">&#8249;</span>
+    </button>
+  </div>
+
+<script>
+(function () {
+  /* Group state: by default only the user's role
+     group and the current page's group are open. A group the user opens or
+     closes by hand is remembered per user (localStorage, keyed by user id) and
+     wins over the default next time. */
+  /* per user, not per browser: lab terminals are shared */
+  var _sbNav = document.getElementById('sidebar');
+  var SB_STATE_KEY = 'pfas_sb_groups_v2:' + ((_sbNav && _sbNav.getAttribute('data-user')) || '');
+
+  function loadChoices() {
+    try { var o = JSON.parse(localStorage.getItem(SB_STATE_KEY) || '{}');
+          return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; }
+  }
+
+  function restoreGroups() {
+    var nav = document.getElementById('sidebar');
+    var roleGroup = nav ? nav.getAttribute('data-role-group') : '';
+    var choices = loadChoices();
+    document.querySelectorAll('.pfas-sg').forEach(function (el) {
+      var open = el.id === roleGroup;
+      if (choices.hasOwnProperty(el.id)) open = choices[el.id] === 'open';
+      el.classList.toggle('sg-closed', !open);
+    });
+  }
+
+  function saveGroup(el) {
+    var choices = loadChoices();
+    choices[el.id] = el.classList.contains('sg-closed') ? 'closed' : 'open';
+    try { localStorage.setItem(SB_STATE_KEY, JSON.stringify(choices)); } catch (e) {}
+  }
+
+  window.pfasSgToggle = function (groupId) {
+    var el = document.getElementById(groupId);
+    if (!el) return;
+    el.classList.toggle('sg-closed');
+    saveGroup(el);
+  };
+
+  var _isMobile = function () { return window.innerWidth <= 768; };
+
+  window.pfasCloseMobileSidebar = function () {
+    var sb = document.getElementById('sidebar');
+    if (sb) sb.classList.remove('mobile-open');
+    var bd = document.getElementById('pfas-mobile-backdrop');
+    if (bd) bd.classList.remove('active');
+  };
+
+  /* pfasSidebarCollapseToggle: open/close or collapse the sidebar.
+     PFAS pages:  mobile = panel-open overlay on #pfas-shell;
+                  desktop = panel-collapsed icon rail.
+     Core pages:  mobile = mobile-open slide-in drawer on #sidebar;
+                  desktop = toggled icon rail on #sidebar. */
+  window.pfasSidebarCollapseToggle = function () {
+    var shell = document.getElementById('pfas-shell');
+    if (shell) {
+      /* PFAS workspace page — handled by pfas_macros.pt pfasTogglePanel */
+      if (typeof window.pfasTogglePanel === 'function') {
+        window.pfasTogglePanel();
+      } else {
+        var collapsed = shell.classList.toggle('panel-collapsed');
+        try { sessionStorage.setItem('pfas_panel_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+      }
+    } else {
+      /* Core SENAITE page */
+      var sb = document.getElementById('sidebar');
+      if (!sb) return;
+      if (_isMobile()) {
+        var isOpen = sb.classList.toggle('mobile-open');
+        var bd = document.getElementById('pfas-mobile-backdrop');
+        if (bd) bd.classList.toggle('active', isOpen);
+      } else {
+        var collapsed = sb.classList.toggle('toggled');
+        try { sessionStorage.setItem('pfas_panel_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+      }
+    }
+  };
+
+  function autoExpandActiveGroup() {
+    var active = document.querySelector('.pfas-sb-scroll .pfas-si.si-active');   /* not a pinned copy */
+    if (!active) return;
+    var group = active.closest('.pfas-sg');
+    if (group) group.classList.remove('sg-closed');
+  }
+
+  restoreGroups();
+  autoExpandActiveGroup();
+})();
+
+/* ── Sidebar pins: the user's pinned pages under Dashboard ─────────────
+   Each pin is a copy of the user's own sidebar link for that path, so label,
+   icon and permission come from the sidebar itself; a path the user can no
+   longer see is not shown. Saved on the server per user (sidebar_pins.py). */
+(function () {
+  var nav = document.getElementById('sidebar');
+  var box = document.getElementById('pfas-sb-pinned');
+  if (!nav || !box) return;
+  var portal = (nav.getAttribute('data-portal') || '').replace(/\/+$/, '');
+  var url = nav.getAttribute('data-pins-url');
+  var token = nav.getAttribute('data-token') || '';
+  var pins;
+  try { pins = JSON.parse(nav.getAttribute('data-pins') || '[]'); } catch (e) { pins = []; }
+  if (!Array.isArray(pins)) pins = [];
+  var items = Array.prototype.slice.call(nav.querySelectorAll('.pfas-sb-scroll .pfas-si[href]'));
+
+  function rel(href) {
+    var h = (href || '').split('#')[0];
+    return h.indexOf(portal + '/') === 0 ? h.slice(portal.length + 1) : null;
+  }
+  function itemFor(path) {
+    for (var i = 0; i < items.length; i++) if (rel(items[i].href) === path) return items[i];
+    return null;
+  }
+  function pinButton(onClick, pinned, unpinGlyph) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pfas-pin-btn' + (pinned ? ' is-pinned' : '');
+    b.title = pinned ? 'Unpin' : 'Pin under Dashboard';
+    b.setAttribute('aria-label', b.title);
+    b.tabIndex = -1;              // a mouse convenience: not a tab stop per item
+    if (unpinGlyph) { b.textContent = '\u00D7'; }
+    else { b.innerHTML = '\u003csvg>\u003cuse href="#ico-pin"/>\u003c/svg>'; }
+    b.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); onClick(); });
+    return b;
+  }
+  function save(path, on) {
+    var fd = new FormData();
+    fd.append('path', path); fd.append('pinned', on ? '1' : '0'); fd.append('_authenticator', token);
+    fetch(url, {method: 'POST', body: fd, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && Array.isArray(d.pins)) { pins = d.pins; render(); } })
+      .catch(function () {});
+  }
+  function render() {
+    box.innerHTML = '';
+    pins.forEach(function (p) {
+      var src = itemFor(p);
+      if (!src) return;
+      var a = src.cloneNode(true);
+      a.classList.add('pfas-si-pinned');
+      var old = a.querySelector('.pfas-pin-btn');
+      if (old) old.parentNode.removeChild(old);
+      a.appendChild(pinButton(function () { save(p, false); }, true, true));
+      box.appendChild(a);
+    });
+    box.classList.toggle('has-pins', box.children.length > 0);
+    items.forEach(function (it) {
+      var p = rel(it.href);
+      if (!p) return;
+      var old = it.querySelector('.pfas-pin-btn');
+      if (old) old.parentNode.removeChild(old);
+      var on = pins.indexOf(p) >= 0;
+      it.appendChild(pinButton(function () { save(p, !on); }, on, false));
+    });
+  }
+  render();
+})();
+
+/* ── Core SENAITE page: mobile drawer, rail state, viewport ── */
+(function () {
+  if (document.body.classList.contains('pfas-app')) return;
+
+  function injectBackdrop() {
+    if (document.getElementById('pfas-mobile-backdrop')) return;
+    var bd = document.createElement('div');
+    bd.id = 'pfas-mobile-backdrop';
+    bd.setAttribute('onclick', 'pfasCloseMobileSidebar()');
+    bd.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(bd);
+  }
+
+
+  function wireNavLinks() {
+    /* Auto-close the sidebar when a nav link is tapped on mobile */
+    var links = document.querySelectorAll('#sidebar .pfas-si');
+    for (var i = 0; i < links.length; i++) {
+      links[i].addEventListener('click', function () {
+        if (window.innerWidth <= 768) { pfasCloseMobileSidebar(); }
+      });
+    }
+  }
+
+  /* Restore desktop icon-rail state on core pages */
+  function restoreRailState() {
+    if (window.innerWidth <= 768) return;
+    try {
+      if (sessionStorage.getItem('pfas_panel_collapsed') === '1') {
+        var sb = document.getElementById('sidebar');
+        if (sb) sb.classList.add('toggled');
+      }
+    } catch (e) {}
+  }
+
+  /* Close mobile drawer on Escape */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { pfasCloseMobileSidebar(); }
+  });
+
+  /* Fix SENAITE's initial-scale=0.8 viewport — core pages end up with two
+     <meta name="viewport"> tags and the 0.8 one wins, making everything
+     appear zoomed out on mobile. Force 1.0 by replacing all viewport metas. */
+  function fixViewport() {
+    var metas = document.querySelectorAll('meta[name="viewport"]');
+    if (metas.length <= 1) return;
+    for (var i = 1; i < metas.length; i++) {
+      metas[i].parentNode.removeChild(metas[i]);
+    }
+    metas[0].setAttribute('content', 'width=device-width, initial-scale=1.0');
+  }
+
+  function init() {
+    fixViewport();
+    injectBackdrop();
+    wireNavLinks();
+    restoreRailState();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+</nav>

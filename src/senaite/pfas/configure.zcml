@@ -1,0 +1,112 @@
+<configure
+    xmlns="http://namespaces.zope.org/zope"
+    xmlns:i18n="http://namespaces.zope.org/i18n"
+    xmlns:genericsetup="http://namespaces.zope.org/genericsetup"
+    xmlns:browser="http://namespaces.zope.org/browser"
+    xmlns:plone="http://namespaces.plone.org/plone"
+    i18n_domain="senaite.pfas">
+
+  <includeDependencies package="." />
+  <include package=".browser" />
+
+  <!-- PFAS impress report templates: registers templates/reports/ as a
+       senaite.impress.reports resource directory so the PFAS Certificate of
+       Analysis appears in the impress template picker as
+       "senaite.pfas:CertificateOfAnalysis.pt". Mirrors senaite.impress's own
+       report-dir registration; no core fork (§6C). -->
+  <plone:static
+      name="senaite.pfas"
+      directory="templates/reports"
+      type="senaite.impress.reports"
+      />
+
+  <!-- GenericSetup profile that installs analytes, methods, sample types,
+       containers, storage locations, and custom content types -->
+  <genericsetup:registerProfile
+      name="default"
+      title="senaite.pfas"
+      description="PFAS LIMS extension: analyte library + method profiles +
+                   reagent tracking + run-queue QC + extraction reporting."
+      directory="profiles/default"
+      provides="Products.GenericSetup.interfaces.EXTENSION"
+      post_handler=".setuphandlers.post_install"
+  />
+
+  <genericsetup:registerProfile
+      name="uninstall"
+      title="senaite.pfas (uninstall)"
+      directory="profiles/uninstall"
+      provides="Products.GenericSetup.interfaces.EXTENSION"
+      post_handler=".setuphandlers.post_uninstall"
+  />
+
+  <!-- Custom content types defined by this add-on -->
+  <include file="content.zcml" />
+
+  <!-- Archetypes schema extenders (ReferenceDefinition PFAS QC fields) -->
+  <include package=".extenders" />
+
+  <!--  No SENAITE AnalysisSpec copy of the method profile any more:
+       the spec_reverse subscriber went with it. -->
+
+  <!-- A core Sample Type renamed renames that matrix in every method profile,
+       the regulatory limits and project specs (matrix_rename.py;: core owns matrix names) -->
+  <subscriber
+      for="senaite.core.interfaces.ISampleType
+           zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+      handler=".matrix_rename.on_sampletype_modified"
+      />
+
+  <!-- A core analysis shows the method x matrix unit and the lab-rounded
+       decimals: set inside SENAITE whenever it changes or is submitted
+       (analysis_display.py) -->
+  <subscriber
+      for="bika.lims.interfaces.IRoutineAnalysis
+           zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+      handler=".analysis_display.on_analysis_changed"
+      />
+  <subscriber
+      for="bika.lims.interfaces.IRoutineAnalysis
+           Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".analysis_display.on_analysis_changed"
+      />
+
+  <!-- A new sample with no homogenisation method takes its matrix's
+       default, frozen then (homogenisation.py) -->
+  <subscriber
+      for="bika.lims.interfaces.IAnalysisRequest
+           Products.Archetypes.interfaces.IObjectInitializedEvent"
+      handler=".homogenisation.on_sample_initialized"
+      />
+
+  <!-- A sample registered with a generated Analysis Profile: its analyses
+       carry that method (analysis_profiles.apply_method) -->
+  <subscriber
+      for="bika.lims.interfaces.IAnalysisRequest
+           Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".analysis_profiles.on_sample_changed"
+      />
+
+  <!-- Core's analyses listings show a PFAS result as the certificate states
+       it, rounded by the lab's rule (analysis_display.py) -->
+  <subscriber
+      for="bika.lims.browser.analyses.view.AnalysesView
+           *"
+      provides="senaite.app.listing.interfaces.IListingViewAdapter"
+      factory=".analysis_display.PFASResultListingAdapter"
+      />
+
+  <!-- A core Supplier / Storage Location renamed is renamed on every reagent
+       and prepared standard (browser/core_lists.py) -->
+  <subscriber
+      for="senaite.core.interfaces.ISupplier
+           zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+      handler=".browser.core_lists.on_core_list_modified"
+      />
+  <subscriber
+      for="senaite.core.interfaces.IStorageLocation
+           zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+      handler=".browser.core_lists.on_core_list_modified"
+      />
+
+</configure>

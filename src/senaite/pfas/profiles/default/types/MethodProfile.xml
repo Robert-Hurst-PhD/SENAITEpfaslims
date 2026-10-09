@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<object name="MethodProfile" meta_type="Dexterity FTI">
+  <property name="title">Method Profile</property>
+  <property name="description">A PFAS method QC configuration profile (blob strategy: full JSON in profile_json field)</property>
+  <property name="icon_expr">string:${portal_url}/senaite_theme/icon/method</property>
+  <property name="factory">MethodProfile</property>
+  <property name="add_view_expr">string:${folder_url}/++add++MethodProfile</property>
+  <property name="schema">senaite.pfas.content.method_profile.IMethodProfile</property>
+  <property name="klass">senaite.pfas.content.method_profile.MethodProfile</property>
+  <property name="behaviors">
+    <element value="plone.dublincore"/>
+    <element value="plone.namefromtitle"/>
+    <element value="plone.app.referenceablebehavior.referenceable.IReferenceable"/>
+    <element value="bika.lims.interfaces.IMultiCatalogBehavior"/>
+  </property>
+  <property name="global_allow">True</property>
+  <property name="filter_content_types">False</property>
+</object>

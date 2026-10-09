@@ -1,0 +1,224 @@
+/* The one top toolbar and the sub-bar under it. Layout comes from
+   vendor/adminlte-topbar-3.2.0.css; this sheet only sets the lab's palette
+   and sizes, from pfas-tokens.css. Loaded on PFAS and core pages alike. */
+
+.pfas-topbar.main-header {
+  flex: 0 0 var(--pfas-header-h);
+  height: var(--pfas-header-h);
+  min-height: var(--pfas-header-h);
+  margin: 0;
+  padding: 0 var(--sp-3) 0 0;
+  background: var(--s-dark);
+  border-bottom: 0;
+  flex-wrap: nowrap;
+  font-family: var(--font-sans);
+  position: relative;
+  z-index: 1035;
+}
+.pfas-topbar .navbar-nav { align-items: center; flex-direction: row; }
+.pfas-topbar .ml-auto { margin-left: auto; }
+.pfas-topbar-left { min-width: 0; flex: 0 1 auto; }
+.pfas-topbar.main-header .nav-link {
+  height: var(--pfas-header-h);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--sp-2);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+.pfas-topbar.main-header .nav-link i.fas { font-size: var(--fs-xl); }
+.pfas-topbar-toggle.nav-link {
+  width: var(--pfas-rail-width);
+  justify-content: center;
+  border-right: 1px solid var(--pfas-rail-border);
+  font-size: var(--fs-xl);
+}
+.pfas-topbar-title {
+  color: #fff;
+  font-family: var(--font-heading);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  padding: 0 var(--sp-3);
+}
+.pfas-topbar-context { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
+                       min-width: 0; flex: 0 1 auto; color: rgba(255, 255, 255, .85); }
+.pfas-topbar-context:not(:has(*)) { display: none; }
+.pfas-topbar-context > .navbar-nav { flex-wrap: wrap; }
+/* core's content views (e.g. "Audit Log") arrive as nav-items */
+.pfas-topbar-context .nav-item { list-style: none; }
+.pfas-topbar-context .nav-link { font-size: var(--fs-sm); }
+/* a context chip: what the page is about (method, batch, state) */
+.pfas-topbar-context > * { white-space: nowrap; color: inherit; }
+/* core object pages: their tabs and workflow menu take a row of their own at
+   every width -- beside the search box they were cut off at 1440 px; the bar grows
+   by that row */
+.pfas-topbar.main-header:has(.pfas-topbar-context > .navbar-nav) { flex-wrap: wrap; height: auto; flex: 0 0 auto; }
+.pfas-topbar.main-header:has(.pfas-topbar-context > .navbar-nav) .pfas-topbar-context {
+  order: 3; flex: 1 1 100%; padding: 0 var(--sp-3); border-top: 1px solid rgba(255, 255, 255, .1); }
+.pfas-topbar.main-header:has(.pfas-topbar-context > .navbar-nav) .pfas-topbar-context .nav-link { height: 36px !important; }
+.pfas-topbar .dropdown-menu {
+  font-size: var(--fs-base);
+  z-index: 9000;
+}
+.pfas-topbar .dropdown-item { display: flex; align-items: center; gap: var(--sp-2); }
+.pfas-topbar .dropdown-item i.fas { color: var(--s-secondary); width: 14px; }
+.pfas-topbar .dropdown-item.active { font-weight: 600; }
+.pfas-topbar .pfas-topbar-logout,
+.pfas-topbar .pfas-topbar-logout i.fas { color: var(--s-danger-dk); }
+
+/* ── Search (GitHub's header search) ───────────────────────── */
+.pfas-topbar-search {
+  position: relative;
+  flex: 1 1 320px;
+  max-width: 560px;
+  margin: 0 var(--sp-3) 0 auto;
+  display: flex;
+  align-items: center;
+}
+.pfas-topbar-search input {
+  width: 100%;
+  height: 32px;
+  padding: 0 34px 0 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, .25);
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.pfas-topbar-search input::placeholder { color: rgba(255, 255, 255, .6); }
+.pfas-topbar-search input:focus {
+  outline: none;
+  background: var(--s-bg);
+  color: var(--s-body);
+  border-color: var(--s-primary);
+}
+.pfas-topbar-search input:focus::placeholder { color: var(--s-secondary); }
+.pfas-search-icon {
+  position: absolute; left: 10px; color: rgba(255, 255, 255, .6);
+  font-size: var(--fs-sm); pointer-events: none;
+}
+.pfas-topbar-search input:focus ~ .pfas-search-kbd { display: none; }
+.pfas-topbar-search:focus-within .pfas-search-icon { color: var(--s-secondary); }
+.pfas-search-kbd {
+  position: absolute; right: 8px;
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  color: rgba(255, 255, 255, .7);
+  border: 1px solid rgba(255, 255, 255, .35); border-radius: 4px; padding: 0 5px;
+}
+.pfas-search-results {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  max-height: 70vh; overflow-y: auto; z-index: 9100;
+  background: var(--s-bg); color: var(--s-body);
+  border: 1px solid var(--s-border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+  padding: 6px 0;
+}
+.pfas-search-group {
+  padding: 8px 14px 4px; font-size: var(--fs-xs); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .03em; color: var(--s-secondary);
+}
+a.pfas-search-hit {
+  display: block; padding: 6px 14px; color: var(--s-body); text-decoration: none;
+}
+a.pfas-search-hit:hover, a.pfas-search-hit.active { background: var(--s-primary-lt); }
+.pfas-search-title { display: block; font-size: var(--fs-sm); font-weight: 600; }
+.pfas-search-sub { display: block; font-size: var(--fs-xs); color: var(--s-secondary); }
+a.pfas-search-all {
+  border-top: 1px solid var(--s-border); margin-top: 6px; padding-top: 8px;
+  font-size: var(--fs-sm); color: var(--s-primary-dk);
+}
+.pfas-search-empty { padding: 10px 14px; font-size: var(--fs-sm); color: var(--s-secondary); }
+.pfas-topbar-search-toggle { display: none; }
+
+/* ── "+" create menu and avatar ────────────────────────────────────────── */
+.pfas-topbar.main-header .pfas-topbar-create { font-size: var(--fs-xl); font-weight: 600; }
+.pfas-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--s-primary-dk); color: #fff;
+  font-size: var(--fs-xs); font-weight: 700; letter-spacing: .02em;
+}
+.pfas-topbar .dropdown-header { font-size: var(--fs-xs); color: var(--s-secondary); }
+
+/* the core page's H1 now lives in the bar (pfas-topbar.js) */
+.pfas-h1-in-topbar { display: none !important; }
+
+/* ── Sub-bar: breadcrumb (left) + page actions (right) ─────────────────── */
+.pfas-subbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  min-height: 40px;
+  padding: var(--sp-2) var(--frame-gutter-x);
+  background: var(--s-light);
+}
+/* nothing to show (no crumb, no actions): no empty strip */
+.pfas-subbar:not(:has(.pfas-crumb > *)):not(:has(.pfas-subbar-actions *)) { display: none; }
+.pfas-subbar .pfas-crumb { margin: 0; flex: 1 1 auto; }
+.pfas-subbar-actions { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
+.pfas-subbar-actions:empty { display: none; }
+
+@media (max-width: 768px) {
+  /* phone: the search box hides behind an icon and opens full width */
+  .pfas-topbar-search { display: none; }
+  .pfas-topbar-search-toggle { display: list-item; }
+  body.pfas-search-mobile .pfas-topbar-search {
+    display: flex; position: absolute; left: 8px; right: 8px; top: 10px;
+    max-width: none; margin: 0; z-index: 9200;
+  }
+  .pfas-topbar-title { font-size: var(--fs-base); padding: 0 var(--sp-2); }
+  /* the context zone (core's object tabs, a PFAS chip) takes its own row */
+  /* the bar grows by the wrapped row instead of drawing it over the page */
+  .pfas-topbar.main-header { flex-wrap: wrap; height: auto; flex: 0 0 auto; }
+  .pfas-topbar-left { flex: 1 1 0; }
+  .pfas-topbar-context { order: 3; flex: 1 1 100%; padding: 0 var(--sp-2);
+                         border-top: 1px solid rgba(255, 255, 255, .1); }
+  .pfas-topbar-context .nav-link { height: 36px !important; font-size: var(--fs-sm); }
+  .pfas-topbar.main-header .nav-link { padding: 0 4px; }
+}
+@media (max-width: 480px) {
+  /* phone: the title keeps the room; icons lose carets and shrink */
+  .pfas-topbar .dropdown-toggle::after { display: none; }
+  .pfas-topbar.main-header .nav-link i.fas { font-size: var(--fs-md); }
+  .pfas-topbar-toggle.nav-link { width: 40px; }
+  .pfas-topbar-title { flex: 1 1 auto; }
+}
+@media print {
+  .pfas-topbar, .pfas-subbar { display: none !important; }
+}
+
+/* Help: a circled "?" drawn here -- the icon font
+   subset core ships has no question glyph */
+.pfas-topbar .pfas-topbar-help, .pfas-topbar .pfas-topbar-help:hover { text-decoration: none; }
+.pfas-topbar .pfas-topbar-help span {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border: 2px solid currentColor; border-radius: 50%;
+  font-size: var(--fs-sm); font-weight: 700; line-height: 1;
+}
+
+/* Accessibility ------- */
+/* the page title is the page's one heading, drawn as the bar's text */
+.pfas-topbar-h1 { font: inherit; color: inherit; margin: 0; padding: 0; display: inline; }
+/* "Skip to content": off screen until a keyboard user reaches it */
+.pfas-skip { position: absolute; left: -9999px; top: 0; z-index: 10000;
+  background: var(--s-dark); color: #fff; padding: var(--sp-2) var(--sp-3); }
+.pfas-skip:focus { left: var(--sp-2); top: var(--sp-2); }
+/* one visible focus ring everywhere: pages replaced the outline with a 1 px
+   border change below 3:1 (WCAG 1.4.11) */
+.pfas-app a:focus-visible, .pfas-app button:focus-visible, .pfas-app input:focus-visible,
+.pfas-app select:focus-visible, .pfas-app textarea:focus-visible, .pfas-app [tabindex]:not(main):focus-visible,
+#pfas-topbar a:focus-visible, #pfas-topbar button:focus-visible, #pfas-topbar input:focus-visible {
+  outline: 2px solid var(--s-dark) !important; outline-offset: 1px; }
+

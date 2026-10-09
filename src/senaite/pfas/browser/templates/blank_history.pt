@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Blank History</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Blank History</tal:t>
+
+  <metal:fill fill-slot="content"
+              tal:define="runs view/runs; cmp view/comparison; an view/analyte; picked view/selected_analytes">
+    <section class="bench-block">
+      <form method="get" class="filter-row" tal:attributes="action string:${view/portal_url}/@@pfas-blank-history">
+        <select name="method">
+          <option tal:repeat="m view/methods" tal:content="m"
+                  tal:attributes="value m; selected python:m == view.method()">EPA_537_1</option>
+        </select>
+        <select name="matrix">
+          <option value="">Every matrix</option>
+          <option tal:repeat="m view/matrices" tal:content="m"
+                  tal:attributes="value m; selected python:m == view.matrix()">Drinking Water</option>
+        </select>
+        <select name="qc_type">
+          <option tal:repeat="t view/qc_types" tal:content="t"
+                  tal:attributes="value t; selected python:t == view.qc_type()">LRB</option>
+        </select>
+        <select name="unit" tal:condition="python:len(view.units()) > 1">
+          <option tal:repeat="u view/units" tal:content="python:u or u'unit not recorded'"
+                  tal:attributes="value u; selected python:u == view.unit()">ng/L</option>
+        </select>
+        <details class="pick-list">
+          <summary class="btn-sm btn-secondary" tal:content="python:u'Analytes (%d)' % len(picked)">Analytes (1)</summary>
+          <div class="pick-list-items">
+            <label tal:repeat="a view/analytes">
+              <input type="checkbox" value="1"
+                     tal:attributes="name string:an.${a}; checked python:'checked' if a in picked else None" />
+              <span tal:replace="a">PFOA</span></label>
+          </div>
+        </details>
+        <button class="btn-sm btn-primary" type="submit">Show</button>
+      </form>
+    </section>
+
+    <section class="bench-block" tal:condition="runs">
+      <h2 class="bench-h" tal:content="python:u'%s in %s' % (u', '.join(picked), view.qc_type())">PFOA in LRB</h2>
+      <div class="chart-box"><canvas id="blank-chart"></canvas></div>
+    </section>
+
+    <section class="bench-block" tal:condition="python:len(runs) > 1">
+      <h2 class="bench-h">Compare two blanks</h2>
+      <form method="get" class="filter-row" tal:attributes="action string:${view/portal_url}/@@pfas-blank-history"
+            tal:define="pr view/pair">
+        <input type="hidden" name="method" tal:attributes="value view/method" />
+        <input type="hidden" name="matrix" tal:attributes="value view/matrix" />
+        <input type="hidden" name="qc_type" tal:attributes="value view/qc_type" />
+        <input type="hidden" name="unit" tal:attributes="value view/unit" />
+        <input type="hidden" tal:repeat="a picked" tal:attributes="name string:an.${a}" value="1" />
+        <select name="a">
+          <option tal:repeat="r runs" tal:content="string:${r/run_date} ${r/key}"
+                  tal:attributes="value r/key; selected python:pr[0] and r['key'] == pr[0]['key']">run</option>
+        </select>
+        <select name="b">
+          <option tal:repeat="r runs" tal:content="string:${r/run_date} ${r/key}"
+                  tal:attributes="value r/key; selected python:pr[1] and r['key'] == pr[1]['key']">run</option>
+        </select>
+        <button class="btn-sm btn-primary" type="submit">Compare</button>
+      </form>
+      <metal:m use-macro="context/@@pfas-blank-history-macros/macros/comparison" />
+    </section>
+
+    <script tal:attributes="src string:https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
+    <script>
+    /* points only (each blank is its own measurement, not a trend line);
+       one colour per analyte from the series tokens; a failed blank keeps a
+       coral outline; the RL (and a matrix blank's assigned level) only when
+       one analyte is shown */
+    (function () {
+      var D = <tal:x tal:replace="view/series_json">{}</tal:x>;
+      var el = document.getElementById('blank-chart');
+      if (!el || !window.Chart || !D.series || !D.series.length) return;
+      var css = getComputedStyle(document.documentElement);
+      function tok(n) { return css.getPropertyValue(n).trim(); }
+      var bad = tok('--s-danger'), info = tok('--s-info');
+      var sets = D.series.map(function (s, i) {
+        var c = tok('--series-' + ((i % 6) + 1));
+        return {label: s.analyte, data: s.values, showLine: false, pointRadius: 3.5,
+                pointHoverRadius: 5, backgroundColor: c, borderColor: c,
+                pointBackgroundColor: s.nd.map(function (n) { return n ? 'transparent' : c; }),
+                pointBorderColor: s.failed.map(function (f) { return f ? bad : c; }),
+                pointBorderWidth: s.failed.map(function (f) { return f ? 2 : 1; })};
+      });
+      var one = D.series[0];
+      if (D.series.length === 1 && one.assigned.some(function (v) { return v != null; }))
+        sets.push({label: 'Assigned', data: one.assigned, showLine: false, pointStyle: 'line',
+                   pointRadius: 8, borderColor: info, backgroundColor: info});
+      var ann = {};
+      if (D.rl != null) ann.rl = {type: 'line', yMin: D.rl, yMax: D.rl, borderColor: info, borderWidth: 1,
+                                  borderDash: [6, 4], label: {display: true, content: 'RL ' + D.rl,
+                                  position: 'end', font: {size: 10}}};
+      new Chart(el, {type: 'line', data: {labels: D.labels, datasets: sets},
+                     options: {responsive: true, maintainAspectRatio: false, animation: false,
+                               plugins: {legend: {labels: {usePointStyle: true, boxWidth: 8}},
+                                         annotation: {annotations: ann}},
+                               scales: {x: {ticks: {maxRotation: 60, minRotation: 30, font: {size: 10}}},
+                                        y: {beginAtZero: true, grace: '10%',
+                                            title: {display: !!D.units, text: D.units}}}}});
+    })();
+    </script>
+  </metal:fill>
+</body>
+</html>

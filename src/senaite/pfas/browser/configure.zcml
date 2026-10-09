@@ -1,0 +1,1097 @@
+<configure xmlns="http://namespaces.zope.org/zope"
+           xmlns:browser="http://namespaces.zope.org/browser"
+           i18n_domain="senaite.pfas">
+
+  <!-- Static JS/CSS resources served via ++resource++senaite.pfas/<file> -->
+  <browser:resourceDirectory
+      name="senaite.pfas"
+      directory="static"
+      />
+
+  <!-- @@lims-setup override on ISenaitePFASLayer (more specific than ISenaiteCore,
+       so Zope prefers our view over senaite.core's without any conflict). -->
+  <include file="overrides.zcml" />
+
+  <!-- Core UI overlay: inject pfas-core-overlay.css into the <head> of every
+       core SENAITE page (PFAS-layer requests only).  Pure CSS overlay — restyles
+       senaite.app.listing tables/buttons/alerts into the PFAS palette and adds
+       the mobile table-scroll fix.  Upgrade-safe: no core template forked. and static/pfas-core-overlay.css. -->
+  <browser:viewlet
+      name="senaite.pfas.core-overlay-css"
+      for="*"
+      manager="plone.app.layout.viewlets.interfaces.IHtmlHead"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      template="templates/core_overlay_link.pt"
+      permission="zope2.Public"
+      />
+
+  <!-- Reverse bridge add-in: on a core Method view, link to its PFAS profile
+       (QC ranges). Upgrade-safe viewlet on the PFAS layer — no core fork. -->
+  <browser:viewlet
+      name="senaite.pfas.method-profile-link"
+      for="bika.lims.interfaces.IMethod"
+      manager="plone.app.layout.viewlets.interfaces.IAboveContentBody"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      class=".method_viewlet.PFASMethodProfileViewlet"
+      permission="zope2.View"
+      />
+
+  <!-- Batch -> Project assignment: the missing link that turns a Project
+       (created at @@pfas-projects) into a live QAPP override for a batch's
+       resolved QC criteria. Shows the batch's current Project + QAPP (or
+       states plainly that none is assigned); a manager may assign/clear via
+       project_ref.set_project_uid(), which is what triggers the resolved-
+       criteria export. Upgrade-safe viewlet on the PFAS layer, mirroring
+       senaite.pfas.method-profile-link above — no core fork. -->
+  <browser:viewlet
+      name="senaite.pfas.batch-project-link"
+      for="bika.lims.interfaces.IBatch"
+      manager="plone.app.layout.viewlets.interfaces.IAboveContentBody"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      class=".batch_project_viewlet.PFASBatchProjectViewlet"
+      permission="zope2.View"
+      />
+
+  <!-- POST-only action target for the viewlet's assign/clear form. -->
+  <browser:page
+      name="pfas-batch-project-assign"
+      for="bika.lims.interfaces.IBatch"
+      class=".batch_project_viewlet.PFASBatchProjectAssignView"
+      permission="zope2.View"
+      />
+
+  <!-- LC-MS Run Builder — extraction form → instrument worklist → re-import -->
+  <browser:page
+      name="pfas-run-builder"
+      for="*"
+      class=".run_builder.PFASRunBuilderView"
+      permission="zope2.View"
+      />
+
+  <!-- Lab Settings console — every setting the lab owns, enumerated from
+       settings_registry. Gated at ManageBika for now: it ships before the
+       two-tier permissions so the enumerable list exists BEFORE authorisation is
+       tightened, which is the list that tells us what tightening would affect. -->
+  <browser:page
+      name="pfas-lab-settings"
+      for="*"
+      class=".lab_settings.PFASLabSettingsView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- Print settings — site-wide print header/footer template (Configuration) -->
+  <browser:page
+      name="pfas-print-settings"
+      for="*"
+      class=".print_settings.PFASPrintSettingsView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- Interactive system map — clickable architecture diagram under Configuration -->
+  <browser:page
+      name="pfas-system-map"
+      for="*"
+      class=".system_map.PFASSystemMapView"
+      permission="zope2.View"
+      />
+
+  <!-- Shared METAL macro provider — access via context/@@pfas-macros/macros/page -->
+  <browser:page
+      name="pfas-macros"
+      for="*"
+      class=".pfas_macros.PFASMacrosView"
+      permission="zope2.Public"
+      />
+
+  <!-- Logbook field widget macro — shared by the concise and guided renderers
+       via context/@@pfas-logbook-macros/macros/logbook_field -->
+  <browser:page
+      name="pfas-logbook-macros"
+      for="*"
+      class=".logbook_macros.PFASLogbookMacrosView"
+      permission="zope2.Public"
+      />
+
+  <!-- Declared configuration section macro (config_forms.py, R2) —
+       context/@@pfas-config-form-macros/macros/section -->
+  <browser:page
+      name="pfas-config-form-macros"
+      for="*"
+      class=".config_form_macros.PFASConfigFormMacrosView"
+      permission="zope2.Public"
+      />
+
+  <!-- The one top toolbar macro: context/@@pfas-topbar/macros/topbar,
+       filled by pfas_macros.pt and by PFASToolbarManager on core pages. -->
+  <browser:page
+      name="pfas-topbar"
+      for="*"
+      class=".topbar.PFASTopbarView"
+      permission="zope2.Public"
+      />
+
+  <!-- Unified accordion sidebar — used by PFASSidebarManager (core pages)
+       and called directly from pfas_macros.pt (PFAS workspace pages). -->
+  <browser:page
+      name="pfas-sidebar"
+      for="*"
+      class=".sidebar.PFASSidebarView"
+      permission="zope2.View"
+      />
+
+  <!-- Per-user sidebar pins (Windows-Explorer-style, under Dashboard).
+       POST path + pinned + _authenticator; stored per user on the portal. -->
+  <browser:page
+      name="pfas-sidebar-pins"
+      for="*"
+      class=".sidebar_pins.PFASSidebarPinsView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS dashboard tiles viewlet — REMOVED (Round 6).
+       PFAS tools are now integrated directly into @@lims-setup groups via
+       VirtualTile entries in lims_setup.py SETUP_GROUPS.  The dark bottom
+       panel rendered twice on the Setup page and has been retired. -->
+  <!--
+  <browser:viewlet
+      name="senaite.pfas.dashboard.tiles"
+      for="Products.CMFPlone.interfaces.IPloneSiteRoot"
+      manager="plone.app.layout.viewlets.interfaces.IBelowContent"
+      class=".pfas_nav.PFASDashboardTilesViewlet"
+      permission="zope2.View"
+      />
+  -->
+
+  <!-- PFAS Stage sub-tab on Worksheet -->
+  <browser:page
+      name="pfas-ws-stage"
+      for="bika.lims.interfaces.IWorksheet"
+      class=".pfas_nav.PFASWorksheetStageTabView"
+      permission="zope2.View"
+      />
+
+  <!-- The extraction batch (the worksheet): samples, QC, parents -->
+  <browser:page
+      name="pfas-extraction-batch"
+      for="bika.lims.interfaces.IWorksheet"
+      class=".extraction_batch_view.PFASExtractionBatchView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-extraction-labels"
+      for="bika.lims.interfaces.IWorksheet"
+      class=".extraction_batch_view.PFASExtractionLabelsView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Tracker sub-tab on AnalysisRequest (Sample) -->
+  <browser:page
+      name="pfas-ar-tracker"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      class=".pfas_nav.PFASARTrackerTabView"
+      permission="zope2.View"
+      />
+  <!-- PFAS QC Control Chart — Levey-Jennings + Westgard multi-rules -->
+  <browser:page
+      name="pfas-control-chart"
+      for="*"
+      class=".controlchart.PFASControlChartView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS QC Rules Editor — Manager only -->
+  <browser:page
+      name="pfas-qc-rules"
+      for="*"
+      class=".qcrules.PFASQCRulesView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Calibration Review — secondary sign-off for calibration curves -->
+  <browser:page
+      name="pfas-calibrations"
+      for="*"
+      class=".calibrations.PFASCalibrationsView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Reference Definition Setup — creates/updates SENAITE ReferenceDefinitions -->
+  <browser:page
+      name="pfas-setup-references"
+      for="*"
+      class=".setuprefs.PFASSetupRefsView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Guided New-Method Wizard -->
+  <browser:page
+      name="pfas-method-wizard"
+      for="*"
+      class=".method_wizard.PFASMethodWizardView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- PFAS QC Type Grid — method × QC type toggle matrix -->
+  <browser:page
+      name="pfas-qc-type-grid"
+      for="*"
+      class=".qc_grid.PFASQCTypeGridView"
+      template="templates/qc_grid.pt"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- PFAS Method Profile list — Manager/LabManager only -->
+  <browser:page
+      name="pfas-method-profiles"
+      for="*"
+      class=".method_profiles.PFASMethodProfilesView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Method Profile editor — Manager/LabManager only -->
+  <browser:page
+      name="pfas-method-profile-edit"
+      for="*"
+      class=".method_profiles.PFASMethodProfileEditView"
+      permission="zope2.View"
+      />
+
+  <!-- QC Review Report — the reviewer/auditor counterpart to the client CoA.
+       Same permission as Data Review: it shows the same information that
+       screen already shows, to the same people. -->
+  <browser:page
+      name="pfas-qc-review-report"
+      for="*"
+      class=".qc_review_report.PFASQCReviewReportView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Data Review — analyst checklist for batch release sign-off -->
+  <browser:page
+      name="pfas-data-review"
+      for="*"
+      class=".data_review.PFASDataReviewView"
+      permission="zope2.View"
+      />
+
+  <!-- Controlled CoA attestation (D65 A2): renders the 3-tier authorization
+       block (prepared/verified/authorized) from the live workflow actors.
+       Called from the PFAS Certificate of Analysis impress template. -->
+  <!-- Compact CoA sections (header / samples / footer), replacing core
+       impress's header, info, summary, results, discreeter and footer on the
+       PFAS certificate.;. -->
+  <!-- Regulatory limits (MCLs / action levels) + state program links for the
+       certificate's regulatory notes. Save gated at TIER_CONFIG. -->
+  <!-- Configuration change history (R1): who changed which setting, when,
+       before and after. Viewing needs ManageBika (like Lab Settings): it shows
+       every client's EDD settings. Revert is gated at TIER_CONFIG. -->
+  <browser:page
+      name="pfas-config-history"
+      for="*"
+      class=".config_history_view.PFASConfigHistoryView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- Settings of the whole site: its language -->
+  <browser:page
+      name="pfas-site-settings"
+      for="*"
+      class=".site_settings.PFASSiteSettingsView"
+      permission="zope2.View"
+      />
+
+  <!-- The issued DESIGNED certificate replaces impress's PDF when stored
+       (overrides senaite.impress's IPdfReportStorage on our layer). -->
+  <adapter
+      for="zope.interface.Interface
+           senaite.pfas.interfaces.ISenaitePFASLayer"
+      factory=".coa_storage.PFASPdfReportStorage"
+      provides="senaite.impress.interfaces.IPdfReportStorage"
+      permission="zope2.View"
+      />
+
+  <!-- Lab staff and each person's profile & signature -->
+  <browser:page
+      name="pfas-lab-staff"
+      for="*"
+      class=".lab_staff.PFASLabStaffView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-my-profile"
+      for="*"
+      class=".lab_staff.PFASMyProfileView"
+      permission="zope2.View"
+      />
+
+  <!-- The site icon on core pages: overrides senaite.core's
+       plone.links.favicon on the PFAS layer -->
+  <browser:viewlet
+      name="plone.links.favicon"
+      manager="plone.app.layout.viewlets.interfaces.IHtmlHead"
+      class=".pfas_macros.PFASFaviconViewlet"
+      permission="zope2.View"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
+  <!-- The sign-in page: overrides core's login view on the PFAS
+       layer (same "for" as senaite.core.browser.login); the form is Plone's -->
+  <browser:page
+      name="login"
+      for="plone.app.layout.navigation.interfaces.INavigationRoot"
+      permission="zope.Public"
+      class=".login.PFASLoginForm"
+      template="templates/login.pt"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+  <browser:page
+      name="login_form"
+      for="plone.app.layout.navigation.interfaces.INavigationRoot"
+      permission="zope.Public"
+      class=".login.PFASLoginForm"
+      template="templates/login.pt"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+
+  <!-- Badges at registered lab terminals (part C) -->
+  <browser:page
+      name="pfas-terminals"
+      for="*"
+      class=".badges.PFASTerminalsView"
+      permission="zope2.View"
+      />
+  <!-- reached signed out: the view itself refuses anything but a registered
+       terminal (badges.py) -->
+  <browser:page
+      name="pfas-badge-signin"
+      for="*"
+      class=".badges.PFASBadgeSigninView"
+      permission="zope2.Public"
+      />
+  <!-- core Specifications / Dynamic Specifications / Calculations are retired:
+       any request into them goes to Method Profiles (retired_core.py) -->
+  <subscriber
+      for="ZPublisher.interfaces.IPubAfterTraversal"
+      handler=".retired_core.redirect_retired"
+      />
+  <!-- the PFAS instrument data interfaces in core's per-instrument lists
+       (core_instrument.py): core's import / export screens go through the
+       pipeline -->
+  <adapter
+      for="*"
+      factory=".core_instrument.PFASPipelineImport"
+      provides="senaite.core.exportimport.instruments.IInstrumentImportInterface"
+      name="pfas-pipeline-import"
+      />
+  <adapter
+      for="*"
+      factory=".core_instrument.PFASSequenceExport"
+      provides="senaite.core.exportimport.instruments.IInstrumentExportInterface"
+      name="pfas-sequence-export"
+      />
+  <!-- clients are refused every PFAS staff page (perms.keep_clients_out) -->
+  <subscriber
+      for="ZPublisher.interfaces.IPubAfterTraversal"
+      handler=".perms.keep_clients_out"
+      />
+  <!-- the terminal's 10-minute idle sign-out, enforced on every request -->
+  <subscriber
+      for="ZPublisher.interfaces.IPubAfterTraversal"
+      handler=".badges.enforce_terminal_idle"
+      />
+
+  <!-- A batch logbook as a PDF from its issued design -->
+  <browser:page
+      name="pfas-logbook-pdf"
+      for="*"
+      class=".logbooks.PFASLogbookPDFView"
+      permission="zope2.View"
+      />
+
+  <!-- Document Templates: the lab draws its documents with pdfme -->
+  <browser:page
+      name="pfas-document-templates"
+      for="*"
+      class=".document_templates.PFASDocumentTemplatesView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-document-designer"
+      for="*"
+      class=".document_templates.PFASDocumentDesignerView"
+      permission="zope2.View"
+      />
+
+  <!-- One search for the whole site: the top bar's box -->
+  <browser:page
+      name="pfas-search"
+      for="*"
+      class=".site_search.PFASSiteSearchView"
+      permission="zope2.View"
+      />
+
+  <!-- Manual integration review -->
+  <browser:page
+      name="pfas-manual-integration"
+      for="bika.lims.interfaces.IWorksheet"
+      class=".manual_integration_view.PFASManualIntegrationView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-mi-report"
+      for="bika.lims.interfaces.IWorksheet"
+      class=".manual_integration_view.PFASMIReportView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-mi-reasons"
+      for="*"
+      class=".manual_integration_view.PFASMIReasonsView"
+      permission="zope2.View"
+      />
+
+  <!-- The central Help dictionary -->
+  <browser:page
+      name="pfas-help"
+      for="*"
+      class=".help.PFASHelpView"
+      permission="zope2.View"
+      />
+
+  <!-- Analysis Specifications grouped by method x QC type -->
+  <browser:page
+      name="pfas-specifications"
+      for="*"
+      class=".specifications.PFASSpecificationsView"
+      permission="zope2.View"
+      />
+
+  <browser:page
+      name="pfas-regulatory-limits"
+      for="*"
+      class=".regulatory_limits_view.PFASRegulatoryLimitsView"
+      permission="zope2.View"
+      />
+
+  <browser:page
+      name="pfas-coa-sections"
+      for="*"
+      class=".coa_sections.PFASCoASectionsView"
+      permission="zope2.View"
+      />
+
+  <browser:page
+      name="pfas-coa-attestation"
+      for="*"
+      class=".coa_attestation.PFASCoAAttestationView"
+      permission="zope2.View"
+      />
+
+  <!-- Controlled Publications register (D65 B): auditor-facing, read-only,
+       cross-client → manager/QAO permission (not client-accessible). -->
+  <browser:page
+      name="pfas-controlled-publications"
+      for="*"
+      class=".controlled_publications.PFASControlledPublicationsView"
+      permission="senaite.core.permissions.ManageBika"
+      />
+
+  <!-- The worker hands over a dilution's result (appended as a retest at
+       Data Review submission) -->
+  <browser:page
+      name="pfas-apply-display"
+      for="*"
+      class="senaite.pfas.analysis_display.PFASApplyDisplayView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-dilution-result"
+      for="*"
+      class=".dilution_retests.PFASDilutionResultView"
+      permission="zope2.View"
+      />
+
+  <!-- The certificate template as a controlled document (report_templates) -->
+  <browser:page
+      name="pfas-report-template"
+      for="*"
+      class=".report_template.PFASReportTemplateView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-report-template-preview"
+      for="*"
+      class=".report_template.PFASReportTemplatePreviewView"
+      permission="zope2.View"
+      />
+
+  <!-- Blank history: blanks over time and the lots behind a change in
+       background -->
+  <browser:page
+      name="pfas-blank-history"
+      for="*"
+      class=".blank_history.PFASBlankHistoryView"
+      permission="zope2.View"
+      />
+  <!-- method studies: MDL, MRL confirmation, precision / accuracy, DL
+        -->
+  <browser:page
+      name="pfas-method-studies"
+      for="*"
+      class=".method_studies.PFASMethodStudiesView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-method-study-macros"
+      for="*"
+      class=".method_studies.PFASMethodStudyMacrosView"
+      permission="zope2.View"
+      />
+  <!-- a blank-matrix lot's assigned levels (matrix_blank.py) -->
+  <browser:page
+      name="pfas-assigned-levels"
+      for="*"
+      class=".assigned_levels.PFASAssignedLevelsView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-blank-history-macros"
+      for="*"
+      class=".blank_history.PFASBlankHistoryMacrosView"
+      permission="zope2.Public"
+      />
+
+  <!-- Lot usage + recall search (bench phase 3, inventory_ledger) -->
+  <browser:page
+      name="pfas-lot-usage"
+      for="*"
+      class=".lot_usage.PFASLotUsageView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Analyst Batch Status — five-stage tracker driven from WS workflow -->
+  <browser:page
+      name="pfas-sample-status"
+      for="*"
+      class=".sample_status.PFASSampleStatusView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Client Tracker — public no-login sample status page -->
+  <browser:page
+      name="pfas-track"
+      for="*"
+      class=".tracker.PFASClientTrackerView"
+      permission="zope2.Public"
+      />
+
+  <!-- PFAS Sample Receipt — internal printable receipt with QR code -->
+  <browser:page
+      name="pfas-receipt"
+      for="*"
+      class=".receipt.PFASReceiptView"
+      permission="zope2.View"
+      />
+
+  <!-- Assign tracking number when a sample is received -->
+  <subscriber
+      for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".tracking.on_after_transition"
+      />
+
+  <!-- Guided Extraction Interface — stage-by-stage tablet workflow -->
+  <browser:page
+      name="pfas-extraction-guide"
+      for="*"
+      class=".extraction_guide.PFASExtractionGuideView"
+      permission="zope2.View"
+      />
+
+  <!-- Extraction Logbook PDF (ReportLab) -->
+  <browser:page
+      name="pfas-extraction-pdf"
+      for="*"
+      class=".extraction_pdf.PFASExtractionPDFView"
+      permission="zope2.View"
+      />
+
+  <!-- Reagent / Solution Label Printer -->
+  <browser:page
+      name="pfas-label"
+      for="*"
+      class=".label_print.PFASLabelPrintView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Reagent Inventory (ISO 17025 / MLAB lot tracking) -->
+  <browser:page
+      name="pfas-reagents"
+      for="*"
+      class=".reagents.PFASReagentsView"
+      permission="zope2.View"
+      />
+
+  <!-- PFAS Projects (client project carrying a QAPP, linked to batches) -->
+  <browser:page
+      name="pfas-projects"
+      for="*"
+      class=".projects.PFASProjectsView"
+      permission="zope2.View"
+      />
+
+  <!-- A project's differences from its method. Save is
+       manager only, checked in the view (403), like the QAPP criteria. -->
+  <!-- Every QC setting and how/where it is applied, as a page and a PDF.
+       Manager only, checked in the view (403). -->
+  <browser:page
+      name="pfas-settings-report"
+      for="*"
+      class=".settings_report_view.PFASSettingsReportView"
+      permission="zope2.View"
+      />
+
+  <browser:page
+      name="pfas-project-specs"
+      for="*"
+      class=".project_specs_view.PFASProjectSpecsView"
+      permission="zope2.View"
+      />
+
+  <!-- Guided Instrument Import & Mapping Studio -->
+  <browser:page
+      name="pfas-import-studio"
+      for="*"
+      class=".import_studio.PFASImportStudioView"
+      permission="zope2.View"
+      />
+
+  <!-- Import Studio profile REST bridge — used by pfas_pipeline importer
+       to fetch a saved column-mapping profile by vendor_key + version.
+       Returns JSON {map, vendor, ...} or {error: "..."} if not saved yet. -->
+  <browser:page
+      name="pfas-instrument-profile"
+      for="*"
+      class=".import_studio.PFASInstrumentProfileView"
+      permission="zope2.View"
+      />
+
+  <!-- EDD export: profiles and their settings -->
+  <browser:page
+      name="pfas-edd-config"
+      for="*"
+      class=".edd_config.PFASEDDConfigView"
+      permission="zope2.View"
+      />
+
+  <!-- A client's EDD settings: its profile and the fields the profile asks for -->
+  <browser:page
+      name="pfas-edd-client-config"
+      for="*"
+      class=".edd_config.PFASEDDClientConfigView"
+      permission="zope2.View"
+      />
+
+  <!-- EDD file export/download for a batch -->
+  <browser:page
+      name="pfas-edd-export"
+      for="*"
+      class=".edd_config.PFASEDDExportView"
+      permission="zope2.View"
+      />
+
+  <!-- Batch EDD dashboard and per-sample sample-type code override editor -->
+  <browser:page
+      name="pfas-edd-batches"
+      for="*"
+      class=".edd_config.PFASEDDBatchesView"
+      permission="zope2.View"
+      />
+
+  <!-- retired page addresses go to their replacements (retired_addresses.py) -->
+  <include file="retired_addresses.zcml" />
+
+  <!-- Report views that render the per-result QC qualifier code beside the
+       value (e.g. "12.4 [M]") on a qualified release.
+
+       Registered as THREE-way multiadapters on (context, model, request).
+       senaite.impress' PublishView.get_report_view_controller queries that form
+       first and falls back to its own two-way registration — its comment says
+       the three-way form exists "to allow 3rd party overriding with a browser
+       layer". So this is the sanctioned seam, it is scoped to
+       ISenaitePFASLayer, and no core template is forked.
+       See browser/reportview.py for why the remarks route did not work. -->
+  <adapter
+      for="zope.interface.Interface
+           zope.interface.Interface
+           senaite.pfas.interfaces.ISenaitePFASLayer"
+      name="AnalysisRequest"
+      factory=".reportview.PFASSingleReportView"
+      provides="senaite.impress.interfaces.IReportView"
+      permission="zope2.View"/>
+
+  <adapter
+      for="zope.interface.Interface
+           zope.interface.Interface
+           senaite.pfas.interfaces.ISenaitePFASLayer"
+      name="AnalysisRequest"
+      factory=".reportview.PFASMultiReportView"
+      provides="senaite.impress.interfaces.IMultiReportView"
+      permission="zope2.View"/>
+
+  <!-- Generate the batch's EDD when a sample of an exporting client is published -->
+  <subscriber
+      for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".edd_publish.on_after_transition"
+      />
+
+  <!-- A sample whose method cannot be identified is not published;
+       the certificate refuses it for the same reason. -->
+  <adapter
+      factory=".guards.SampleMethodGuard"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.sample_method"
+      />
+
+  <!-- No certificate before a reporting-template revision is issued -->
+  <adapter
+      factory=".guards.ReportTemplateGuard"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.report_template"
+      />
+
+  <!-- No certificate for a sample that was run while its surrogate /
+       internal-standard verdicts are missing -->
+  <adapter
+      factory=".guards.QCStandardsGuard"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.qc_standards"
+      />
+
+  <!-- Controlled publication register (D65 B): record an immutable issuance
+       entry on the sample each time a CoA is published (publish transition). -->
+  <subscriber
+      for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".controlled_publications.on_after_transition"
+      />
+
+  <!-- Freeze the resolved QC criteria on a Worksheet when it is VERIFIED.
+       Registered on the transition rather than called from
+       the Data Review Approve handler, so a worksheet verified from a native
+       SENAITE listing or a script is recorded too. The handler rejects every
+       other type and transition first and can never raise. -->
+  <subscriber
+      for="* Products.DCWorkflow.interfaces.IAfterTransitionEvent"
+      handler=".data_review.on_after_transition"
+      />
+
+  <!-- Role-aware workspace launcher — redirects to the user's default workspace -->
+  <browser:page
+      name="pfas-home"
+      for="*"
+      class=".workspace_home.PFASWorkspaceHomeView"
+      permission="zope2.View"
+      />
+
+  <!-- QC Management workspace landing page (LabManager/QAO default) -->
+  <browser:page
+      name="pfas-qc-management"
+      for="*"
+      class=".workspace_home.PFASQCManagementView"
+      permission="zope2.View"
+      />
+
+  <!-- Bench workspace landing page (Bench Chemist / LabClerk default) -->
+  <browser:page
+      name="pfas-bench"
+      for="*"
+      class=".workspace_home.PFASBenchHomeView"
+      permission="zope2.View"
+      />
+
+  <!-- Data Review workspace landing page (Analyst/Verifier default) — links
+       to the existing @@pfas-data-review queue plus related review surfaces.
+       Do not confuse with @@pfas-data-review itself, which is unchanged. -->
+  <browser:page
+      name="pfas-data-review-home"
+      for="*"
+      class=".workspace_home.PFASDataReviewHomeView"
+      permission="zope2.View"
+      />
+
+  <!-- Logbook definition manager (portal-level) -->
+  <browser:page
+      name="pfas-logbook-admin"
+      for="*"
+      class=".logbooks.PFASLogbookAdminView"
+      permission="zope2.View"
+      />
+
+  <!-- Generic custom logbook renderer (batch-level) -->
+  <browser:page
+      name="pfas-logbook-custom"
+      for="*"
+      class=".logbooks.PFASLogbookCustomView"
+      permission="zope2.View"
+      />
+
+  <!-- Per-batch logbooks (FM-ENV-001 through 253) — registered on Batch context -->
+  <browser:page
+      name="pfas-logbook-index"
+      for="*"
+      class=".logbooks.PFASLogbookIndexView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-logbook-250"
+      for="*"
+      class=".logbooks.PFASLogbook250View"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-logbook-251"
+      for="*"
+      class=".logbooks.PFASLogbook251View"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-logbook-252"
+      for="*"
+      class=".logbooks.PFASLogbook252View"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-logbook-253"
+      for="*"
+      class=".logbooks.PFASLogbook253View"
+      permission="zope2.View"
+      />
+
+  <!-- Dynamic logbook renderer (PrepLogbookDef field_schema_json driven) -->
+  <browser:page
+      name="pfas-logbook-dynamic"
+      for="*"
+      class=".logbooks.PFASDynamicLogbookView"
+      permission="zope2.View"
+      />
+
+  <!-- AJAX: Prepared Standard lot autocomplete (lot_ref fields) -->
+  <browser:page
+      name="pfas-retire-attachment"
+      for="*"
+      class=".logbooks.PFASRetireAttachmentView"
+      permission="zope2.View"
+      />
+
+  <browser:page
+      name="pfas-run-manifest"
+      for="*"
+      class=".logbooks.PFASRunManifestView"
+      permission="zope2.View"
+      />
+
+  <browser:page
+      name="pfas-batch-dilutions"
+      for="*"
+      class=".logbooks.PFASBatchDilutionsView"
+      permission="zope2.View"
+      />
+
+  <browser:page
+      name="pfas-lot-autocomplete"
+      for="*"
+      class=".logbooks.PFASLotAutocompleteView"
+      permission="zope2.View"
+      />
+
+  <!-- AJAX: Reagent inventory autocomplete (reagent_ref fields) -->
+  <browser:page
+      name="pfas-reagent-autocomplete"
+      for="*"
+      class=".logbooks.PFASReagentAutocompleteView"
+      permission="zope2.View"
+      />
+
+  <!-- Prep logbook definitions -->
+  <browser:page
+      name="pfas-prep-logbooks"
+      for="*"
+      class=".prep_logbooks.PFASPrepLogbooksView"
+      permission="zope2.View"
+      />
+
+  <!-- Guided-step media (GIF / photo). GET is open so analysts can see the
+       image while filling a logbook; POST is manager-gated inside the view. -->
+  <browser:page
+      name="pfas-logbook-media"
+      for="*"
+      class=".logbook_media.PFASLogbookMediaView"
+      permission="zope2.View"
+      />
+
+  <!-- Bench entry point: pick the batch whose logbooks you are filling in.
+       The per-batch list was previously unreachable from anywhere in the UI. -->
+  <browser:page
+      name="pfas-logbook-batches"
+      for="*"
+      class=".logbook_batches.PFASLogbookBatchesView"
+      permission="zope2.View"
+      />
+
+  <!-- Prepared standards inventory -->
+  <browser:page
+      name="pfas-prep-standards"
+      for="*"
+      class=".prepared_standards.PFASPrepStandardsView"
+      permission="zope2.View"
+      />
+
+  <!-- ── Facility QC (ISO 17025 daily verifications) ──────────────────── -->
+  <browser:page
+      name="pfas-facility-qc"
+      for="*"
+      class=".facility_qc.PFASFacilityDashboardView"
+      permission="zope2.View"
+      />
+  <!-- Equipment: instruments + types; the Unit Registry's old
+       address redirects to the list. -->
+  <browser:page
+      name="pfas-facility-units"
+      for="*"
+      class=".equipment.PFASFacilityUnitsRedirect"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-equipment"
+      for="*"
+      class=".equipment.PFASEquipmentView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-equipment-types"
+      for="*"
+      class=".equipment.PFASEquipmentTypesView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-coc-document"
+      for="*"
+      class=".custody_documents.PFASCoCDocumentView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-coc"
+      for="*"
+      class=".coc.PFASCoCView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-coc-receive"
+      for="*"
+      class=".coc_receive.PFASCoCReceiveView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-coc-print"
+      for="*"
+      class=".custody_documents.PFASCoCPrintView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-sop-cover"
+      for="*"
+      class=".custody_documents.PFASSOPCoverView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-homogenisation"
+      for="*"
+      class=".homogenisation_bench.PFASHomogenisationView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-homogenisation-setup"
+      for="*"
+      class=".homogenisation_setup.PFASHomogenisationSetupView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-equipment-settings"
+      for="*"
+      class=".equipment.PFASEquipmentSettingsView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-temperature-log"
+      for="*"
+      class=".facility_qc.PFASTemperatureLogView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-balance-log"
+      for="*"
+      class=".facility_qc.PFASBalanceLogView"
+      permission="zope2.View"
+      />
+  <!-- Reference weight sets: the external metrology-lab calibration a balance
+       verification traces to. -->
+  <browser:page
+      name="pfas-weight-sets"
+      for="*"
+      class=".facility_qc.PFASWeightSetsView"
+      permission="zope2.View"
+      />
+  <!-- Pipette calibration: quarterly in house, or external. -->
+  <browser:page
+      name="pfas-pipette-calibration"
+      for="*"
+      class=".facility_qc.PFASPipetteCalibrationView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-water-log"
+      for="*"
+      class=".facility_qc.PFASWaterLogView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-waste-log"
+      for="*"
+      class=".facility_qc.PFASWasteLogView"
+      permission="zope2.View"
+      />
+  <browser:page
+      name="pfas-eyewash-log"
+      for="*"
+      class=".facility_qc.PFASEyeWashLogView"
+      permission="zope2.View"
+      />
+  <!-- Unauthenticated RPi ingest endpoint — API key validated in the view -->
+  <browser:page
+      name="pfas-sensor-ingest"
+      for="*"
+      class=".facility_qc.PFASSensorIngestView"
+      permission="zope2.Public"
+      />
+
+  <!-- SOP Document Management — revision control, sign-off, PDF viewer -->
+  <browser:page
+      name="pfas-sop"
+      for="*"
+      class=".sop_documents.PFASSOPView"
+      template="templates/sop_documents.pt"
+      permission="zope2.View"
+      />
+
+  <!-- Deviation & CAR non-conformance management -->
+  <browser:page
+      name="pfas-deviations"
+      for="*"
+      class=".deviations.PFASDeviationView"
+      template="templates/deviations.pt"
+      permission="zope2.View"
+      />
+
+</configure>

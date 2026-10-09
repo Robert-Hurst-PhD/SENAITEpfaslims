@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Search</title>
+  <metal:fill fill-slot="header-title">Search</metal:fill>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="q view/query; groups view/results">
+    <form method="get" class="site-search-page-form"
+          tal:attributes="action string:${view/portal_url}/@@pfas-search">
+      <input type="search" name="q" placeholder="Samples, equipment, method settings, pages&#8230;"
+             tal:attributes="value q" autofocus="autofocus" />
+      <button class="btn btn-primary" type="submit">Search</button>
+    </form>
+
+    <p class="form-note" tal:condition="python:len(q) < 2">Type at least two characters.</p>
+    <p class="form-note" tal:condition="python:len(q) >= 2 and not groups"
+       tal:content="string:Nothing found for &#8220;${q}&#8221;.">Nothing found.</p>
+
+    <tal:g repeat="g groups">
+      <div class="section-group-hdr" tal:content="python:'%s (%d)' % (g['label'], len(g['hits']))">Records (3)</div>
+      <table class="pfas-table">
+        <tbody>
+          <tr tal:repeat="i g/hits">
+            <td><strong tal:content="i/title">FEED-0002</strong>
+                <div class="cf-hint" tal:condition="i/subtitle" tal:content="i/subtitle">DEMO Feed</div></td>
+            <td class="row-actions-cell"><a class="btn-sm btn-secondary" tal:attributes="href i/url">Open</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </tal:g>
+  </div>
+  </div>
+</html>

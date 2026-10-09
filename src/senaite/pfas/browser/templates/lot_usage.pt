@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Lot usage</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Lot usage</tal:t>
+
+  <metal:fill fill-slot="content" tal:define="it view/item; rows view/rows; q view/query">
+    <section class="bench-block">
+      <form method="get" tal:attributes="action string:${view/portal_url}/@@pfas-lot-usage">
+        <input type="text" name="q" placeholder="Lot number (or part of it)"
+               tal:attributes="value q" />
+        <button class="btn-sm btn-primary" type="submit">Find every use</button>
+      </form>
+    </section>
+
+    <section class="bench-block" tal:condition="it">
+      <h2 class="bench-h" tal:content="string:${it/name} · lot ${it/lot_number}">Methanol · lot M-1</h2>
+      <p class="bench-sub">
+        <span tal:content="it/kind_label">Reagent</span>
+        <tal:e condition="it/expiry">· expires <span tal:replace="it/expiry">2027-01-01</span></tal:e>
+        <tal:l condition="it/remaining_text">· <span tal:replace="it/remaining_text">3.5 L left</span></tal:l>
+      </p>
+    </section>
+
+    <section class="bench-block" tal:condition="python:it or q">
+      <table class="pfas-table" tal:condition="rows">
+        <thead><tr><th>Used</th><th>Batch</th><th>Stage</th><th>Item</th><th>Lot</th>
+          <th>Amount</th><th>By</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r rows">
+            <td tal:content="python:(r.get('used_at') or '')[:16].replace('T', ' ')">2026-10-02 14:00</td>
+            <td tal:content="r/batch_id">B-1</td>
+            <td tal:content="r/stage_name">Extraction</td>
+            <td tal:content="python:r.get('item_name') or r.get('role')">Methanol</td>
+            <td tal:content="r/lot">M-1</td>
+            <td tal:content="python:('%g %s' % (r['amount_value'], r.get('amount_unit') or '')) if r.get('amount_value') is not None else (r.get('amount_text') or '—')">5 mL</td>
+            <td tal:content="r/used_by">DEMO</td>
+            <td><a class="btn-sm btn-secondary" tal:attributes="href python:view.guide_url(r)">Extraction</a></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="bench-sub" tal:condition="not:rows">No recorded use.</p>
+    </section>
+  </metal:fill>
+</body>
+</html>

@@ -1,0 +1,71 @@
+/* The sign-in page: a lock screen over the in-house pixel-art lab
+   (tools/make_login_art.py). Colours from pfas-tokens.css; the translucent
+   panel is the tokens' dark over the picture. */
+html, body.pfas-login { height: 100%; margin: 0; }
+body.pfas-login {
+  font-family: var(--s-font, "Nunito", system-ui, sans-serif);
+  color: var(--s-text);
+  background: var(--s-dark) url("login/background.png") center bottom / cover no-repeat;
+  image-rendering: pixelated;
+}
+.login-shell {
+  min-height: 100%; box-sizing: border-box; padding: 24px 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+}
+.login-clock { display: flex; flex-direction: column; align-items: center; color: var(--s-light);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
+.login-time { font-size: 3.5rem; font-weight: 300; line-height: 1; letter-spacing: .02em; }
+.login-date { font-size: 1.05rem; margin-top: 6px; }
+.login-card {
+  width: 100%; max-width: 380px; box-sizing: border-box; padding: 24px;
+  background: var(--s-bg); border: 1px solid var(--s-border); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .45); image-rendering: auto;
+}
+.login-card.has-tiles { max-width: 560px; }
+.login-title { margin: 0 0 16px; font-size: 1.25rem; font-weight: 700; text-align: center; }
+.login-terminal { text-align: center; font-size: .85rem; color: var(--s-secondary); margin-bottom: 12px; }
+.login-msg { margin: 10px 0; padding: 8px 12px; border-radius: 6px; font-size: .9rem;
+  background: var(--s-info-lt); border: 1px solid var(--s-info-bd); color: var(--s-info-text); }
+.login-msg-error { background: var(--s-danger-lt); border-color: var(--s-danger-bd); color: var(--s-danger-dk); }
+
+.login-tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 16px 0; }
+.login-tiles .login-tile { width: 104px; }
+.login-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px;
+  background: var(--s-bg-alt); border: 2px solid transparent; border-radius: 10px;
+  font: inherit; font-size: .85rem; color: var(--s-text); cursor: pointer; min-height: 44px;
+}
+.login-tile img { image-rendering: pixelated; border-radius: 50%; }
+.login-tile:hover, .login-tile:focus-visible { border-color: var(--s-primary); outline: none; }
+.login-tile.is-chosen { border-color: var(--s-primary); background: var(--s-primary-lt); }
+.login-tile span { text-align: center; overflow-wrap: anywhere; }
+.login-other-icon { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 2rem; background: var(--s-bg-light); color: var(--s-secondary); }
+
+.login-chosen { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.login-chosen[hidden] { display: none; }
+.login-chosen img { image-rendering: pixelated; border-radius: 50%; }
+.login-field { margin-bottom: 12px; }
+.login-field label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: 4px; }
+.login-field input { width: 100%; box-sizing: border-box; height: 40px; padding: 6px 10px; font: inherit;
+  border: 1px solid var(--s-input-border); border-radius: 6px; color: var(--s-input-text); background: var(--s-bg); }
+.login-field input:focus { outline: none; border-color: var(--s-primary); box-shadow: 0 0 0 3px var(--s-focus-ring); }
+.login-field.has-error input { border-color: var(--s-danger); }
+.login-error { font-size: .8rem; color: var(--s-danger-dk); margin-top: 4px; }
+.has-chosen .login-field-ac_name { display: none; }
+.login-actions input[type=submit] {
+  width: 100%; height: 40px; border: 0; border-radius: 6px; font: inherit; font-weight: 700; cursor: pointer;
+  background: var(--s-primary-dk); color: var(--s-light);
+}
+.login-actions input[type=submit]:hover { background: var(--s-primary-xdk); }
+.login-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+.login-btn-secondary { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px;
+  border: 1px solid var(--s-border); border-radius: 6px; font-size: .85rem; color: var(--s-text);
+  text-decoration: none; background: var(--s-bg); }
+.login-btn-secondary:hover { border-color: var(--s-primary); }
+
+@media (max-width: 480px) {
+  .login-time { font-size: 2.5rem; }
+  .login-card { padding: 18px; }
+  .login-tiles .login-tile { width: 92px; }
+}

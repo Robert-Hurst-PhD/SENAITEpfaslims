@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<object name="PFASProject" meta_type="Dexterity FTI">
+  <property name="title">Project</property>
+  <property name="description">A client project — carries the client link and, optionally, the client-owned QAPP document that overrides the lab's quality system for that project</property>
+  <property name="icon_expr">string:${portal_url}/senaite_theme/icon/client</property>
+  <property name="factory">PFASProject</property>
+  <property name="add_view_expr">string:${folder_url}/++add++PFASProject</property>
+  <property name="schema">senaite.pfas.content.project.IPFASProject</property>
+  <property name="klass">senaite.pfas.content.project.PFASProject</property>
+  <property name="behaviors">
+    <!-- Standard Plone Dexterity behaviors -->
+    <element value="plone.dublincore"/>
+    <element value="plone.namefromtitle"/>
+    <!-- SENAITE integration: UID-based references and catalog indexing.
+         IAutoGenerateID is intentionally excluded — PFASProject uses UUID hex
+         IDs so the SENAITE sequence generator must not overwrite them on add. -->
+    <element value="plone.app.referenceablebehavior.referenceable.IReferenceable"/>
+    <element value="bika.lims.interfaces.IMultiCatalogBehavior"/>
+  </property>
+  <!-- global_allow=True required: plone.app.contenttypes ISelectableConstrainTypes
+       is not available in this SENAITE environment, so IConstrainTypes on the
+       standard Folder cannot be overridden to permit non-globally-addable types.
+       The pfas_projects folder provides logical scope only in this phase; a
+       dedicated management view (like @@pfas-reagents) is separate UI work,
+       not built here. -->
+  <property name="global_allow">True</property>
+  <property name="filter_content_types">False</property>
+</object>

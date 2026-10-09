@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Lab Staff</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Lab Staff</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@usergroup-userprefs">Users &amp; groups</a>
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-terminals">Lab terminals</a>
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-site-settings#director">Laboratory Director</a>
+  </tal:r>
+
+  <metal:fill fill-slot="content"
+              tal:define="msg view/message; token context/@@authenticator/token; rows view/rows">
+    <div class="alert alert-success" tal:condition="python: msg[0]" tal:content="python: msg[0]">ok</div>
+    <div class="alert alert-error" tal:condition="python: msg[1]" tal:content="python: msg[1]">error</div>
+
+    <p class="bench-sub">Each person&#8217;s name, title, credentials, signature and what they may sign as. <tal:h define="hid string:sign-rights"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <ul class="bench-alerts" tal:define="todo view/checklist" tal:condition="todo">
+      <li class="bench-warn" tal:repeat="t todo" tal:content="t">No director</li>
+    </ul>
+
+    <p class="bench-sub" tal:condition="not:rows">No user accounts yet: create the lab's accounts in
+      Users &amp; groups, then link each to a Lab Contact here.</p>
+    <div class="table-wrap" tal:condition="rows">
+    <table class="pfas-table">
+      <thead><tr><th>Person</th><th>Lab Contact</th><th>Title, credentials, may sign as</th>
+                 <th>Signature</th><th>Badge</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="r rows" tal:attributes="id r/userid">
+          <td>
+            <strong tal:content="r/name">AN1</strong>
+            <span class="badge badge-active" tal:condition="r/director">Director</span>
+            <div class="cf-hint" tal:content="python: u'%s · %s' % (r['userid'], u', '.join(r['roles']) or u'no role')">an1 · Analyst</div>
+            <div class="cf-hint dt-problem" tal:condition="r/issues" tal:content="python: u', '.join(r['issues'])">no signature</div>
+          </td>
+          <td>
+            <span tal:condition="r/info/has_contact" class="badge badge-active">Linked</span>
+            <form method="post" class="dt-inline" tal:condition="not:r/info/has_contact"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-lab-staff">
+              <input type="hidden" name="_authenticator" tal:attributes="value token" />
+              <input type="hidden" name="userid" tal:attributes="value r/userid" />
+              <input type="hidden" name="action" value="link" />
+              <button class="btn-sm btn-primary" type="submit">Create &amp; link Lab Contact</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" class="staff-form" tal:condition="r/info/has_contact"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-lab-staff">
+              <input type="hidden" name="_authenticator" tal:attributes="value token" />
+              <input type="hidden" name="userid" tal:attributes="value r/userid" />
+              <input type="hidden" name="action" value="save_staff" />
+              <input type="text" name="jobtitle" placeholder="Job title" aria-label="Job title"
+                     tal:attributes="value r/info/jobtitle" />
+              <input type="text" name="credentials" placeholder="Credentials (degrees, certifications)"
+                     aria-label="Credentials" tal:attributes="value r/info/credentials" />
+              <span class="staff-signas">
+                <label tal:repeat="sr view/sign_roles">
+                  <input type="checkbox" name="sign_as:list"
+                         tal:attributes="value python: sr[0];
+                                         checked python: 'checked' if sr[0] in r['info']['sign_as'] else None" />
+                  <span tal:replace="python: sr[1]">Preparer</span></label>
+              </span>
+              <button class="btn-sm btn-secondary" type="submit">Save</button>
+            </form>
+          </td>
+          <td>
+            <img class="staff-sig" alt="Signature" tal:condition="r/info/signature"
+                 tal:attributes="src r/info/signature" />
+            <form method="post" enctype="multipart/form-data" class="dt-inline" tal:condition="r/info/has_contact"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-lab-staff">
+              <input type="hidden" name="_authenticator" tal:attributes="value token" />
+              <input type="hidden" name="userid" tal:attributes="value r/userid" />
+              <input type="hidden" name="action" value="upload_signature" />
+              <input type="file" name="signature" accept="image/png,image/jpeg" aria-label="Signature picture" />
+              <button class="btn-sm btn-secondary" type="submit">Upload</button>
+            </form>
+            <form method="post" class="dt-inline" tal:condition="r/info/signature"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-lab-staff">
+              <input type="hidden" name="_authenticator" tal:attributes="value token" />
+              <input type="hidden" name="userid" tal:attributes="value r/userid" />
+              <input type="hidden" name="action" value="remove_signature" />
+              <button class="btn-sm btn-secondary" type="submit">Remove</button>
+            </form>
+          </td>
+          <td tal:define="b r/badge">
+            <tal:b condition="b">
+              <span class="badge badge-active" tal:condition="b/active" tal:content="python: u'Issued %s' % b['issued_at'][:10]">Issued</span>
+              <span class="badge badge-archived" tal:condition="not:b/active">None</span>
+              <form method="post" class="dt-inline"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-lab-staff">
+                <input type="hidden" name="_authenticator" tal:attributes="value token" />
+                <input type="hidden" name="userid" tal:attributes="value r/userid" />
+                <input type="hidden" name="action" value="issue_badge" />
+                <button class="btn-sm btn-secondary" type="submit"
+                        tal:content="python: 'Replace badge' if b['active'] else 'Issue badge'">Issue badge</button>
+              </form>
+              <form method="post" class="dt-inline" tal:condition="b/active"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-lab-staff">
+                <input type="hidden" name="_authenticator" tal:attributes="value token" />
+                <input type="hidden" name="userid" tal:attributes="value r/userid" />
+                <input type="hidden" name="action" value="revoke_badge" />
+                <button class="btn-sm btn-secondary" type="submit">Revoke</button>
+              </form>
+            </tal:b>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </metal:fill>
+</body>
+</html>

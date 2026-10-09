@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal">
+<head>
+  <meta charset="utf-8" />
+  <title>PFAS Extraction Logbook</title>
+  <!-- Print document for WeasyPrint (extraction_pdf.py). Self-contained:
+       WeasyPrint 0.42 has no CSS custom properties and fetches nothing, so the
+       palette is written out here (print documents are exempt from the screen
+       ratchet, like the certificate and the settings report). -->
+  <style>
+    @page { size: letter; margin: 19mm;
+            @bottom-left { content: "PFAS extraction logbook"; font-size: 8pt; color: #666; }
+            @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #666; } }
+    body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9pt; color: #12121f; }
+    h1 { font-size: 18pt; margin: 0 0 2pt; }
+    h2 { font-size: 13pt; color: #1a61a3; margin: 14pt 0 5pt; page-break-after: avoid; }
+    h3 { font-size: 11pt; margin: 10pt 0 4pt; page-break-after: avoid; }
+    hr { border: 0; border-top: 0.5pt solid #808080; margin: 4pt 0 8pt; }
+    table { width: 100%; border-collapse: collapse; margin: 2pt 0 8pt; }
+    th, td { border: 0.3pt solid #808080; padding: 3pt 5pt; text-align: left; vertical-align: top; }
+    thead th { background: #1a61a3; color: #fff; }
+    tbody tr:nth-child(even) td { background: #eeeeee; }
+    tr { page-break-inside: avoid; }
+    .info th { width: 28%; background: #f5f5fc; color: #12121f; }
+    .info td, .info th { border-color: #dddddd; }
+    .dev { color: #c7293a; }
+    .label { font-weight: bold; margin: 4pt 0 2pt; }
+    .newpage { page-break-before: always; }
+    .sign td { border: 0; padding: 18pt 6pt 2pt; }
+    .sign .line { border-bottom: 0.5pt solid #12121f; width: 36%; }
+    .small { font-size: 8pt; color: #808080; margin-top: 14pt; }
+  </style>
+</head>
+<body tal:define="d view/data">
+  <h1>PFAS Extraction Logbook</h1>
+  <h2 tal:content="d/method_name">Method</h2>
+  <hr />
+  <table class="info"><tbody>
+    <tr tal:repeat="kv d/header"><th tal:content="python:kv[0]">Batch ID</th><td tal:content="python:kv[1]">B-1</td></tr>
+  </tbody></table>
+
+  <tal:x condition="d/extracted">
+  <h2>Extracted in this batch</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Role</th><th>Made from</th><th>Matrix</th><th>Amount</th>
+      <th>Final volume</th><th>SPE port</th></tr></thead>
+    <tbody><tr tal:repeat="r d/extracted"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
+  </table>
+  </tal:x>
+
+  <h2>Extraction Stages</h2>
+  <table>
+    <thead><tr><th>Stage</th><th>Name</th><th>Completed</th><th>Analyst</th><th>Deviations</th></tr></thead>
+    <tbody>
+      <tr tal:repeat="s d/summary">
+        <td tal:content="s/order">1</td><td tal:content="s/name">Name</td>
+        <td tal:content="s/completed">date</td><td tal:content="s/analyst">AB</td>
+        <td tal:content="s/deviations">none</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <tal:st repeat="st d/details">
+    <h3 tal:content="st/title">Stage 1</h3>
+    <table tal:condition="st/equipment">
+      <thead><tr><th>Equipment</th><th>Serial / Verification Number</th></tr></thead>
+      <tbody><tr tal:repeat="e st/equipment"><td tal:content="python:e[0]">Balance</td><td tal:content="python:e[1]">SN</td></tr></tbody>
+    </table>
+    <tal:r condition="st/reagents">
+      <p class="label">Reagents Used</p>
+      <table>
+        <thead><tr><th>Reagent</th><th>Lot #</th><th>Supplier</th><th>Amount</th><th>Expiry</th></tr></thead>
+        <tbody><tr tal:repeat="r st/reagents"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
+      </table>
+    </tal:r>
+    <tal:c condition="st/consumables">
+      <p class="label">Consumables Used</p>
+      <table>
+        <thead><tr><th>Consumable</th><th>Lot #</th><th>Supplier</th><th>Amount</th><th>Expiry</th></tr></thead>
+        <tbody><tr tal:repeat="r st/consumables"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
+      </table>
+    </tal:c>
+    <tal:s condition="st/solutions">
+      <p class="label">Solutions Prepared</p>
+      <table>
+        <thead><tr><th>Name</th><th>Lot #</th><th>Concentration</th><th>Volume (mL)</th><th>Expiry</th></tr></thead>
+        <tbody><tr tal:repeat="r st/solutions"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
+      </table>
+    </tal:s>
+    <tal:h condition="python:st.get('homogenisation')">
+      <p class="label">Homogenisation</p>
+      <table>
+        <thead><tr><th>Sample</th><th>Requested</th><th>Done</th><th>Homogeniser</th>
+                   <th>Composite</th><th>Units combined</th><th>By</th><th>When</th></tr></thead>
+        <tbody><tr tal:repeat="r st/homogenisation"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
+      </table>
+    </tal:h>
+    <tal:c condition="python:st.get('confirmed')">
+      <p class="label">Checked</p>
+      <ul><li tal:repeat="c st/confirmed" tal:content="c">Grinder cleaned / blank passed</li></ul>
+    </tal:c>
+    <tal:v condition="python:st['deviations'] or st['warnings']">
+      <p class="label">Deviations / Observations</p>
+      <tal:w condition="st/warnings">
+        <p class="dev">Needed a note:</p>
+        <ul><li tal:repeat="w st/warnings" tal:content="w">Water: no lot recorded</li></ul>
+      </tal:w>
+      <p class="dev" tal:content="st/deviations">text</p>
+    </tal:v>
+    <hr />
+  </tal:st>
+
+  <tal:sp condition="d/spikes">
+    <div class="newpage">
+      <h1>Spike Records</h1>
+      <hr />
+      <table>
+        <thead><tr><th>QC sample</th><th>Parent sample</th><th>Spike lot</th><th>Volume (&#181;L)</th>
+          <th>Spike (ppt)</th><th>Entered by</th><th>Entered</th><th>Source</th></tr></thead>
+        <tbody><tr tal:repeat="r d/spikes"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
+      </table>
+    </div>
+  </tal:sp>
+
+  <tal:p condition="d/pedigree">
+    <div class="newpage">
+      <h1>Standard Pedigree / Traceability</h1>
+      <hr />
+      <tal:std repeat="std d/pedigree">
+        <h3 tal:content="std/name">Standard</h3>
+        <table>
+          <thead><tr><th>Level</th><th>Lot #</th><th>Conc (ng/mL)</th><th>Supplier / Prep By</th><th>Date</th><th>CoA / Notes</th></tr></thead>
+          <tbody><tr tal:repeat="r std/rows"><td tal:repeat="c r" tal:content="c">x</td></tr></tbody>
+        </table>
+      </tal:std>
+    </div>
+  </tal:p>
+
+  <div class="newpage">
+    <h1>Sign-Off and Authorisation</h1>
+    <hr />
+    <table class="info"><tbody>
+      <tr tal:repeat="kv d/signoff"><th tal:content="python:kv[0]">Analyst</th><td tal:content="python:kv[1]">AB</td></tr>
+    </tbody></table>
+    <table class="sign"><tbody>
+      <tr><td>Analyst Signature</td><td class="line"></td><td>Reviewer Signature</td><td class="line"></td></tr>
+      <tr><td>Date</td><td class="line"></td><td>Date</td><td class="line"></td></tr>
+    </tbody></table>
+    <p class="small">This document is generated by the PFAS LIMS. Retain with batch records
+      in accordance with ISO 17025 and laboratory SOP.</p>
+  </div>
+</body>
+</html>

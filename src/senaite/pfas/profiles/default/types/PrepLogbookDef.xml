@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<object name="PrepLogbookDef" meta_type="Dexterity FTI">
+  <property name="title">Prep Logbook Definition</property>
+  <property name="description">A versioned preparation logbook definition for in-house standards and reagents</property>
+  <property name="icon_expr">string:${portal_url}/senaite_theme/icon/method</property>
+  <property name="factory">PrepLogbookDef</property>
+  <property name="add_view_expr">string:${folder_url}/++add++PrepLogbookDef</property>
+  <property name="schema">senaite.pfas.content.prep_logbook_def.IPrepLogbookDef</property>
+  <property name="klass">senaite.pfas.content.prep_logbook_def.PrepLogbookDef</property>
+  <property name="behaviors">
+    <element value="plone.dublincore"/>
+    <element value="plone.namefromtitle"/>
+    <element value="plone.app.referenceablebehavior.referenceable.IReferenceable"/>
+    <element value="bika.lims.interfaces.IMultiCatalogBehavior"/>
+  </property>
+  <property name="global_allow">True</property>
+  <property name="filter_content_types">False</property>
+</object>

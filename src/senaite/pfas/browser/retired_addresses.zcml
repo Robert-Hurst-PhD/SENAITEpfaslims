@@ -1,0 +1,18 @@
+<configure
+    xmlns="http://namespaces.zope.org/zope"
+    xmlns:browser="http://namespaces.zope.org/browser">
+
+  <!-- Retired page addresses: each one only redirects to its replacement
+       (retired_addresses.RETIRED). The EDD export's pages were renamed when
+       the export became one tool with formats as profiles.
+       -->
+  <browser:page name="pfas-egad-config" for="*" permission="zope2.View"
+      class=".retired_addresses.RetiredAddressView" />
+  <browser:page name="pfas-egad-client-config" for="*" permission="zope2.View"
+      class=".retired_addresses.RetiredAddressView" />
+  <browser:page name="pfas-egad-export" for="*" permission="zope2.View"
+      class=".retired_addresses.RetiredAddressView" />
+  <browser:page name="pfas-egad-batches" for="*" permission="zope2.View"
+      class=".retired_addresses.RetiredAddressView" />
+
+</configure>

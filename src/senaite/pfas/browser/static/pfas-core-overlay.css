@@ -1,0 +1,193 @@
+/* ============================================================================
+ * pfas-core-overlay.css
+ * ----------------------------------------------------------------------------
+ * Brings core SENAITE pages (senaite.app.listing tables, buttons, alerts,
+ * status badges) into the PFAS light palette, and applies the same mobile
+ * "scroll the table sideways, don't drag the page" fix used on PFAS pages.
+ *
+ * MECHANISM: loaded site-wide via a plone.htmlhead viewlet registered on
+ * ISenaitePFASLayer (see configure.zcml).  It is a pure CSS OVERLAY — it does
+ * NOT fork any core template, so it is upgrade-safe and reversible (remove the
+ * viewlet registration and the link disappears).  It restyles existing core
+ * markup only; it never restructures the DOM.
+ *
+ * SCOPE (Round: core UI unification): Sample / Batch / Worksheet listings.
+ * Because these all render through senaite.app.listing as table.contentstable,
+ * the rules below apply to every core listing of that class — which is the
+ * intended, consistent result.
+ *
+ * Tokens are NOT defined here: pfas-tokens.css is the single definition, linked
+ * immediately before this file (see templates/core_overlay_link.pt).
+ * ========================================================================== */
+
+/* Tokens come from pfas-tokens.css, linked just before this file by the same
+   viewlet -- one definition for core and PFAS pages alike. */
+
+/* ── Listing tables: header + hover match PFAS .pfas-table pattern ────────── */
+table.contentstable > thead > tr > th,
+table.contentstable thead th {
+  background: var(--s-light);
+  color: var(--s-secondary);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  font-size: 11px;
+  border-bottom: 2px solid var(--s-border);
+}
+table.contentstable tbody tr:hover > td {
+  background: var(--s-primary-lt);
+}
+
+/* ── Primary buttons → PFAS teal (was Bootstrap blue) ────────────────────── */
+.btn-primary,
+button.btn-primary,
+input.btn-primary {
+  background-color: var(--s-primary-dk);
+  border-color: var(--s-primary-dk);
+}
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: var(--s-primary-xdk);
+  border-color: var(--s-primary-xdk);
+}
+.btn-outline-primary {
+  color: var(--s-primary-dk);
+  border-color: var(--s-primary);
+}
+.btn-outline-primary:hover {
+  background-color: var(--s-primary-dk);
+  border-color: var(--s-primary-dk);
+}
+/* Link-coloured text/anchors used as primary affordances */
+a.text-primary, .text-primary { color: var(--s-primary-dk) !important; }
+
+/* ── Alerts / portal messages → PFAS rounded palette ─────────────────────── */
+.alert { border-radius: 4px; }
+.alert-info,
+dl.portalMessage.info {
+  background: var(--s-primary-lt);
+  border-color: var(--s-info-bd);
+  color: var(--s-info-text);
+}
+
+/* ── Status badges / state labels → shared PFAS badge tokens ─────────────── */
+.contentstable .state-published,
+.contentstable .state-verified,
+.contentstable .badge-success { background: var(--s-success-lt) !important; color: var(--s-success-text) !important; }
+.contentstable .state-to_be_verified,
+.contentstable .state-received,
+.contentstable .badge-info { background: var(--s-primary-lt) !important; color: var(--s-info-text) !important; }
+.contentstable .state-invalid,
+.contentstable .state-rejected,
+.contentstable .badge-danger { background: var(--s-danger-lt) !important; color: var(--s-danger-dk) !important; }
+
+/* ── Mobile (≤768px): listing tables scroll sideways inside their own box,
+ *    instead of dragging the whole page.  Same fail-safe pattern as the PFAS
+ *    .table-wrap fix — the table becomes its own horizontal scroll container
+ *    so the page chrome (filters, toolbar, header) stays put. ────────────── */
+@media (max-width: 768px) {
+  table.contentstable {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    white-space: nowrap;
+  }
+  /* keep the generated table box intact so columns still align while scrolling */
+  table.contentstable > thead,
+  table.contentstable > tbody { display: table; width: max-content; min-width: 100%; }
+
+  /* Worksheet add toolbar (Create / Select analyst / Select template) is a
+     Bootstrap .flex-nowrap input-group that otherwise forces the page wide.
+     Let it wrap on mobile so the page chrome stops dragging. Scoped to its
+     unique container so the listing search box is unaffected. */
+  .worksheet_add_controls .input-group.flex-nowrap {
+    flex-wrap: wrap !important;
+    max-width: 100% !important;   /* the toolbar is d-inline-flex.w-auto, so it
+                                     must be width-constrained for wrap to apply */
+  }
+}
+
+/* ── Frame: the sidebar starts under the header on every page ────
+   Core's header wrapper is Bootstrap `.mb-2`, an 8px margin that PFAS pages do
+   not have, so the sidebar sat at y=60 on core pages and y=52 on PFAS pages and
+   jumped whenever you crossed between them. */
+body:not(.pfas-app) > div.mb-2 { margin-bottom: 0 !important; }  /* Bootstrap utilities are !important */
+
+/* ── Breadcrumb: the same line as PFAS pages' .pfas-crumb —
+   core drew it in a grey box at a larger size. ────────────────────────── */
+body:not(.pfas-app) ol.breadcrumb {
+  background: none;
+  padding: 0;
+  margin: var(--sp-3) 0 var(--sp-3);   /* the PFAS sub-bar's line (y = 73) */
+  font-family: var(--font-subtitle);
+  font-size: var(--fs-sm);
+  color: var(--s-secondary);
+}
+body:not(.pfas-app) .breadcrumb-item + .breadcrumb-item::before {
+  content: "\203A";
+  color: var(--s-border);
+}
+body:not(.pfas-app) .breadcrumb-item a { color: var(--s-primary-dk); }
+body:not(.pfas-app) .breadcrumb-item.active a { color: var(--s-body) !important; font-weight: 600; }
+
+
+/* ── One typeface on core pages too (pfas-tokens.css --font-sans): Samples,
+   Batches, Worksheets and Setup used Bootstrap's system stack, so text changed
+   face between a core listing and the PFAS page next to it. Form controls do
+   not inherit a font by default, so they are named. ─────────────────────── */
+body, button, input, select, textarea, .btn, .form-control, .popover, .tooltip {
+  font-family: var(--font-sans);
+}
+code, pre, kbd, samp { font-family: var(--font-mono); }
+/* the same three type roles as PFAS pages */
+h1, h2, h3, h4, .documentFirstHeading, .card-title { font-family: var(--font-heading); }
+table.contentstable th, .listing th {
+  font-family: var(--font-subtitle);
+  font-weight: var(--fw-subtitle);
+  letter-spacing: var(--ls-subtitle);
+}
+
+/* ── Mint palette on SENAITE's own pages ─────
+   Core's Bootstrap blues/greens/reds take the site's meaning-coded tokens, so
+   a link, an OK state or a failure looks the same on a core page and a PFAS
+   page. */
+body:not(.pfas-app) #content a:not(.btn):not(.nav-link):not(.dropdown-item):not(.badge),
+body:not(.pfas-app) .contentstable a { color: var(--s-primary-dk); }
+.nav-tabs .nav-link.active,
+.nav-tabs .nav-item.show .nav-link { color: var(--s-primary-dk); border-bottom-color: var(--s-primary); }
+.page-link { color: var(--s-primary-dk); }
+.page-item.active .page-link { background: var(--s-primary); border-color: var(--s-primary); }
+.form-control:focus, .custom-select:focus {
+  border-color: var(--s-primary); box-shadow: 0 0 0 .2rem var(--s-focus-ring);
+}
+.btn-outline-primary { color: var(--s-primary-dk); border-color: var(--s-primary); }
+.btn-outline-primary:hover { background: var(--s-primary-dk); border-color: var(--s-primary-dk); color: #fff; }
+.badge-primary, .bg-primary { background: var(--s-primary) !important; }
+.badge-warning { background: var(--s-warn-lt) !important; color: var(--s-warn-text) !important; }
+.text-success { color: var(--s-success-text) !important; }
+.text-warning { color: var(--s-warn-text) !important; }
+.text-danger  { color: var(--s-danger-dk) !important; }
+.alert-success { background: var(--s-success-lt); border-color: var(--s-success-bd); color: var(--s-success-text); }
+.alert-warning { background: var(--s-warn-lt); border-color: var(--s-warn-bd); color: var(--s-warn-text); }
+.alert-danger  { background: var(--s-danger-lt); border-color: var(--s-danger-bd); color: var(--s-danger-dk); }
+input[type=checkbox], input[type=radio] { accent-color: var(--s-primary); }
+
+/* SENAITE strips each listing row by workflow state with unrelated colours;
+   map them onto the meanings: waiting on someone = amber,
+   in progress = teal, OK = mint, failed = coral, closed = grey. */
+.ajax-contents-table tr.state-sample_due,
+.ajax-contents-table tr.state-to_be_verified,
+.ajax-contents-table tr.state-to_be_sampled,
+.ajax-contents-table tr.state-scheduled_sampling { border-left: 2px solid var(--s-warning) !important; }
+.ajax-contents-table tr.state-sample_received,
+.ajax-contents-table tr.state-open { border-left: 2px solid var(--s-info) !important; }
+.ajax-contents-table tr.state-verified { border-left: 2px solid var(--s-success) !important; }
+.ajax-contents-table tr.state-published,
+.ajax-contents-table tr.state-dispatched,
+.ajax-contents-table tr.state-stored { border-left: 2px solid var(--s-primary-dk) !important; }
+.ajax-contents-table tr.state-invalid,
+.ajax-contents-table tr.state-rejected { border-left: 2px solid var(--s-danger) !important; }
+.ajax-contents-table tr.state-cancelled { border-left: 2px solid var(--s-secondary) !important; }
+.ajax-contents-table tr td div.progress div.progress-bar,
+.progress-bar { background-color: var(--s-primary) !important; }

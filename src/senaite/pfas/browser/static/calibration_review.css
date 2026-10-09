@@ -1,0 +1,137 @@
+/* The calibration curve cards: the Calibrations archive and Data Review's
+   Calibration tab draw them the same way. */
+  .cal-page { max-width:1400px; }
+
+  /* Stats row */
+  .stat-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .stat-box { background:var(--s-bg); border-radius:6px; padding:10px 16px;
+              border:1px solid var(--s-border);
+              box-shadow:0 1px 3px rgba(0,0,0,.06); min-width:80px; text-align:center; }
+  .stat-box .sv { font-size:var(--fs-xl); font-weight:700; color:var(--s-dark); }
+  .stat-box .sl { font-size:var(--fs-xs); color:var(--s-secondary); text-transform:uppercase;
+                  letter-spacing:.05em; margin-top:2px; }
+  .stat-box.good .sv { color: var(--s-success-text); }
+  .stat-box.warn .sv { color: var(--s-warn-text); }
+
+  /* Filter bar */
+  .filter-bar { background:var(--s-bg); border-radius:6px;
+                border:1px solid var(--s-border);
+                padding:10px 14px; margin-bottom:14px;
+                display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+  .filter-bar label { font-size:var(--fs-xs); color:var(--s-secondary); font-weight:700;
+                      text-transform:uppercase; display:block; margin-bottom:2px; }
+  .filter-bar select, .filter-bar input[type=number] {
+    padding:5px 8px; border:1px solid var(--s-input-border); border-radius:4px;
+    font-size:var(--fs-base); background:#fafafa; color:var(--s-input-text); }
+
+  /* A run: its analytes listed on the left, the chosen one's card on the right */
+  .cal-split { display:grid; grid-template-columns:240px minmax(0, 1fr); gap:16px; align-items:start; }
+  .cal-list { display:flex; flex-direction:column; border:1px solid var(--s-border); border-radius:8px;
+              max-height:70vh; overflow-y:auto; background:var(--s-bg); }
+  .cal-list button { display:flex; justify-content:space-between; gap:8px; padding:8px 12px; border:0;
+                     border-bottom:1px solid var(--s-border); background:none; font:inherit; text-align:left;
+                     cursor:pointer; color:var(--s-body); }
+  .cal-list button.active { background:var(--s-primary-lt); font-weight:700; }
+  .cal-list button:hover { background:var(--s-bg-alt); }
+  .cal-detail .analyte-card[hidden] { display:none; }
+  @media (max-width: 900px) { .cal-split { grid-template-columns:1fr; } .cal-list { max-height:240px; } }
+
+  /* Run section */
+  .run-section { margin-bottom:28px; }
+  .run-header { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+                padding:10px 0; border-bottom:2px solid var(--s-border);
+                margin-bottom:14px; }
+  .run-header h3 { margin:0; font-size:var(--fs-md); font-weight:700; flex:1; }
+  .run-header .run-meta { font-size:var(--fs-sm); color:var(--s-secondary); }
+  .pass-badge { padding:3px 12px; border-radius:12px; font-size:var(--fs-sm); font-weight:700;
+                white-space:nowrap; }
+  .pass-ok   { background:var(--s-primary-lt); color: var(--s-primary-dk); }
+  .pass-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
+
+  .analyte-card { background:var(--s-bg); border:1px solid var(--s-border);
+                  border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,.07);
+                  overflow:hidden; }
+  .card-head { padding:10px 14px 8px; border-bottom:1px solid var(--s-border);
+               display:flex; align-items:center; gap:8px; }
+  .card-head .analyte-name { font-size:var(--fs-base); font-weight:700; flex:1; color:var(--s-dark); }
+  .r2-badge { padding:2px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:700; }
+  .r2-ok   { background:var(--s-primary-lt); color: var(--s-primary-dk); }
+  .r2-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
+  .r2-na   { background:var(--s-bg-alt); color:var(--s-secondary); }
+  /* .badge base is global; page-specific badge colours: */
+  .badge-pending  { background:var(--s-warn-lt); color:var(--s-warn-text); }
+  .badge-approved { background:var(--s-success-lt); color:var(--s-success-text); }
+  .badge-rejected { background:var(--s-danger-lt); color:var(--s-danger-dk); }
+
+  /* Controls strip */
+  .card-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+                   padding:6px 14px; background:var(--s-light);
+                   border-bottom:1px solid var(--s-border); }
+  .card-controls label { font-size:var(--fs-xs); color:var(--s-secondary); font-weight:700;
+                         text-transform:uppercase; }
+  .card-controls select { font-size:var(--fs-xs); padding:3px 6px;
+                          border:1px solid var(--s-input-border); border-radius:3px;
+                          background:#fff; color:var(--s-input-text); }
+  .save-ovr { font-size:var(--fs-xs); padding:3px 10px; border:none; border-radius:3px;
+              cursor:pointer; background:var(--s-primary-dk); color:#fff; }
+  .save-ovr:hover { opacity:.85; }
+
+  /* Plots */
+  /* plots scale with the window: tall enough to read the low levels */
+  .card-plots { padding:var(--sp-3) var(--sp-4); }
+  .plot-section { margin-bottom:var(--sp-4); }
+  .plot-label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
+                text-transform:uppercase; letter-spacing:.04em; margin-bottom:var(--sp-2);
+                display:flex; align-items:center; gap:var(--sp-2); }
+  .run-time { font-weight:400; color:var(--s-secondary); font-size:var(--fs-base); }
+  .plot-opt { margin-left:auto; font-weight:400; text-transform:none; letter-spacing:0;
+              display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
+  .plot-canvas-wrap { position:relative; height:clamp(280px, 44vh, 560px); }
+  .plot-canvas-wrap.plot-sm { height:clamp(170px, 24vh, 300px); }
+  .plot-canvas-wrap.is-empty { height:auto; }
+  .plot-empty { height:80px; display:flex; align-items:center; justify-content:center;
+                font-size:var(--fs-xs); color:var(--s-secondary); font-style:italic; }
+
+  .eq-line { font-size:var(--fs-xs); color:var(--s-secondary); font-family: var(--font-mono);
+             padding:4px 14px 8px; overflow:hidden; text-overflow:ellipsis;
+             white-space:nowrap; }
+
+  /* Response-ratio info icon */
+  .rr-info { color:var(--s-secondary); cursor:help; font-size:var(--fs-xs);
+             margin-left:3px; border:1px solid var(--s-border);
+             border-radius:50%; padding:0 3px; font-style:normal; }
+
+  /* CCB blank chips */
+  .ccb-chips { display:none; gap:6px; flex-wrap:wrap;
+               padding:3px 12px 6px; }
+  .ccb-chips.shown { display:flex; }
+  .ccb-chip { border:0; cursor:pointer; padding:2px 10px; border-radius:12px; font-size:var(--fs-xs); font-weight:600; }
+  .ccb-chip.pass { background:var(--s-success-lt); color:var(--s-success-text); }
+  .ccb-chip.fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
+
+  /* Point-detail modal */
+  .cal-detail-modal { position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,.48); z-index:9999;
+    display:none; align-items:center; justify-content:center; }
+  .cal-detail-modal.open { display:flex; }
+  .cal-detail-box { background:#fff; border-radius:10px; padding:22px 24px;
+    max-width:400px; width:92%; box-shadow:0 8px 32px rgba(0,0,0,.22); }
+  .cal-detail-box h4 { margin:0 0 14px; font-size:var(--fs-base); display:flex;
+    align-items:center; gap:8px; }
+  .cal-detail-close { margin-left:auto; background:none; border:none;
+    cursor:pointer; font-size:var(--fs-xl); color:#666; line-height:1; }
+  .cal-detail-table { width:100%; border-collapse:collapse; }
+  .cal-detail-table td { padding:4px 0; font-size:var(--fs-sm); }
+  .cal-detail-table td:first-child { font-weight:600; color:#666;
+    padding-right:14px; white-space:nowrap; width:42%; }
+
+  /* Approve bar */
+  .approve-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+                 padding:10px 14px; background:var(--s-bg);
+                 border:1px solid var(--s-border); border-radius:6px; margin-top:4px; }
+  .approve-bar .approve-label { font-size:var(--fs-sm); font-weight:600; flex:1; }
+
+  .save-banner { background:var(--s-success-lt); border:1px solid var(--s-success-bd); border-radius:4px;
+                 padding:8px 14px; margin-bottom:12px; color:var(--s-success-text); font-weight:600; }
+  .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
+  .pf-path { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:12px; }

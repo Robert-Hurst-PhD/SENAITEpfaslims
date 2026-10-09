@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Profile &amp; signature</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Profile &amp; signature</tal:t>
+
+  <metal:fill fill-slot="content"
+              tal:define="msg view/message; token context/@@authenticator/token; info view/info">
+    <div class="alert alert-success" tal:condition="python: msg[0]" tal:content="python: msg[0]">ok</div>
+    <div class="alert alert-error" tal:condition="python: msg[1]" tal:content="python: msg[1]">error</div>
+
+    <section class="bench-block">
+      <h2 class="bench-h" tal:content="info/fullname">AN1</h2>
+      <p class="rt-line">
+        <span tal:replace="python: info['jobtitle'] or u'No job title set'">Analyst</span>
+        <tal:c condition="info/credentials"> &middot; <span tal:replace="info/credentials">B.Sc.</span></tal:c>
+        <span class="badge badge-active" tal:condition="view/is_director">Laboratory Director</span>
+      </p>
+      <p class="bench-sub">Signed in as <strong tal:content="view/userid">an1</strong>; roles:
+        <span tal:replace="python: u', '.join(view.roles()) or u'none'">Analyst</span>.
+        Job title, credentials and what you may sign are set by a manager on Lab Staff.</p>
+      <p class="bench-sub">May sign documents as:
+        <strong tal:content="python: u', '.join(info['sign_as']) or u'nothing yet'">preparer</strong></p>
+    </section>
+
+    <section class="bench-block">
+      <h2 class="bench-h">Signature</h2>
+      <p class="alert alert-warning rt-line" tal:condition="not:info/has_contact">
+        Your account is not linked to a Lab Contact yet, so there is nowhere to keep a signature:
+        ask a manager (Lab Staff).</p>
+      <tal:has condition="info/has_contact">
+        <img class="staff-sig staff-sig-lg" alt="Your signature" tal:condition="info/signature"
+             tal:attributes="src info/signature" />
+        <p class="bench-sub" tal:condition="not:info/signature">No signature yet. It is printed beside your
+          name on the documents you prepare, review or authorize.</p>
+        <form method="post" enctype="multipart/form-data" class="rt-form"
+              tal:attributes="action string:${view/portal_url}/@@pfas-my-profile">
+          <input type="hidden" name="_authenticator" tal:attributes="value token" />
+          <input type="hidden" name="action" value="upload_my_signature" />
+          <input type="file" name="signature" accept="image/png,image/jpeg" aria-label="Signature picture" />
+          <button class="btn-sm btn-primary" type="submit">Upload signature</button>
+          <span class="cf-hint">PNG or JPEG, up to 512 KB; dark ink on white.</span>
+        </form>
+        <form method="post" class="rt-form" tal:condition="info/signature"
+              tal:attributes="action string:${view/portal_url}/@@pfas-my-profile">
+          <input type="hidden" name="_authenticator" tal:attributes="value token" />
+          <input type="hidden" name="action" value="remove_my_signature" />
+          <button class="btn-sm btn-secondary" type="submit">Remove signature</button>
+        </form>
+      </tal:has>
+    </section>
+
+    <section class="bench-block">
+      <h2 class="bench-h">Sign-in picture</h2>
+      <form method="post" class="avatar-pick" tal:attributes="action string:${view/portal_url}/@@pfas-my-profile">
+        <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+        <input type="hidden" name="action" value="set_avatar" />
+        <label class="avatar-choice" tal:repeat="a view/avatar_choices" tal:attributes="title a/label">
+          <input type="radio" name="avatar" tal:attributes="value a/id; checked python:'checked' if a['chosen'] else None" />
+          <img alt="" width="48" height="48" tal:attributes="src a/url" />
+          <span class="sr-only" tal:content="a/label">Flask</span>
+        </label>
+        <button class="btn-sm btn-primary" type="submit">Save picture</button>
+      </form>
+    </section>
+
+    <section class="bench-block" tal:define="b view/badge">
+      <h2 class="bench-h">Badge</h2>
+      <p class="bench-sub" tal:condition="python: b and b['active']"
+         tal:content="python: u'A badge was issued to you on %s. Scan it at a registered lab terminal to sign in.' % b['issued_at'][:10]">issued</p>
+      <p class="bench-sub" tal:condition="python: not (b and b['active'])">No badge: a manager issues badges on Lab Staff.</p>
+    </section>
+
+    <section class="bench-block">
+      <h2 class="bench-h">My permissions</h2>
+      <p class="bench-sub">What your roles let you do, from the same rules the pages apply. Bench work
+        (logbooks, extractions, inventory) is open to every signed-in user.</p>
+      <div class="table-wrap">
+      <table class="pfas-table">
+        <thead><tr><th>Page</th><th>You may</th><th>Managers only</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="p view/permissions">
+            <td tal:content="python: p[0]">Equipment</td>
+            <td tal:content="python: u', '.join(a for a, ok in p[1] if ok) or u'—'">save types</td>
+            <td tal:content="python: u', '.join(a for a, ok in p[1] if not ok) or u'—'">save api key</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+  </metal:fill>
+</body>
+</html>

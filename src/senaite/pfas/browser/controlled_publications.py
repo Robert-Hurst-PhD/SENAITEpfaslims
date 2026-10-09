@@ -1,0 +1,353 @@
+# -*- coding: utf-8 -*-
+"""
+Controlled publication register (Phase B).
+
+Every issuance of a Certificate of Analysis is a controlled documentation
+publication. The issuance event is the sample's `publish` / `publish_immediately`
+workflow transition (the confirmed authorization event, D45/D65 — NOT ARReport
+creation, which also fires on a plain "Save" draft).
+
+On each publish transition we APPEND an immutable entry to a publication log
+annotated on the sample. The log is authoritative for revision numbering and
+supersede chains; it REFERENCES the core ARReport artifact (for the live PDF /
+recipients / date) rather than duplicating it (Golden Rule 3).
+
+  revision      = position in the log (1 = original issue, 2+ = amended reissue)
+  issued_at     = ISO timestamp of the publish transition
+  authorizer    = the publishing user (= the CoA "Authorized by" actor)
+  report_uid    = the sample's most-recent ARReport at issue time (best-effort)
+  amendment_reason / reason_missing = per the best-effort policy: a reissue
+                  (revision >= 2) with no reason captured is FLAGGED, not blocked.
+  Status is COMPUTED (latest revision = current; earlier = superseded) — never
+  stored, so the historical entries are never mutated.
+
+Python 2.7 compatible.
+"""
+from __future__ import absolute_import
+
+import logging
+
+from bika.lims import api
+from DateTime import DateTime
+from Products.Five.browser import BrowserView
+from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from zope.annotation.interfaces import IAnnotations
+from senaite.pfas.browser.formutil import flatten_form
+
+logger = logging.getLogger("senaite.pfas.controlled_publications")
+
+# Publication log lives on the sample (AnalysisRequest).
+PUBLICATION_LOG_KEY = u"senaite.pfas.controlled_pub_log"
+# Transient amendment reason, set by the PFAS "Generate COA" path just before a
+# reissue and consumed (cleared) by the publish subscriber.
+PENDING_REASON_KEY = u"senaite.pfas.pending_amendment_reason"
+
+# Every transition core fires when a CoA is issued/re-issued. Core's EmailView
+# maps sample status -> transition: verified->publish, published->REPUBLISH
+# (the amended-reissue case — must be captured or the register misses every
+# revision >= 2), else prepublish/publish_immediately.
+PUBLISH_TRANSITIONS = ("publish", "publish_immediately", "republish")
+
+
+# ── event subscriber (mirrors edd_publish.on_after_transition) ─────────────
+
+def on_after_transition(instance, event):
+    """Record a controlled publication on every CoA issuance."""
+    if getattr(event, "transition", None) is None:
+        return
+    if instance.portal_type != "AnalysisRequest":
+        return
+    if event.transition.id not in PUBLISH_TRANSITIONS:
+        return
+    try:
+        record_publication(instance)
+    except Exception as exc:  # never break the publish transition
+        logger.error("controlled-pub: failed to record for %s: %s",
+                     api.get_id(instance), exc)
+
+
+def _review_state_at_issue(ar):
+    """"passed" / "qualified" / "not passed" / "unknown" for the sample's
+    worksheet checklist, evaluated at the moment of issue."""
+    try:
+        from senaite.pfas.browser.qc_review_report import _worksheet_for
+        worksheet = _worksheet_for(ar)
+        if worksheet is None:
+            return u"unknown: no worksheet"
+        review = worksheet.restrictedTraverse(str("@@pfas-data-review"))
+        if review.all_items_pass():
+            summary = review._get_qc_summary(worksheet) or {}
+            if summary.get("qualifiers"):
+                return u"qualified: {0} result(s) released with a qualifier".format(
+                    len(summary["qualifiers"]))
+            return u"passed"
+        outstanding = [i.get("key") for i in review.checklist_status()
+                       if not i.get("checked")]
+        return u"NOT PASSED: {0}".format(u", ".join(outstanding) or u"unknown")
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("could not evaluate the review state for %s: %s",
+                       getattr(ar, "getId", lambda: "?")(), exc)
+        return u"unknown"
+
+
+def _template_rev():
+    try:
+        from senaite.pfas.report_templates import issued_snapshot
+        return issued_snapshot(api.get_portal())[1]
+    except Exception as exc:                                # noqa: BLE001
+        logger.error("controlled-pub: no template revision: %s", exc)
+        return None
+
+
+def record_publication(ar):
+    """Append an immutable issuance entry to the sample's publication log."""
+    ann = IAnnotations(ar)
+    log = list(ann.get(PUBLICATION_LOG_KEY, []))
+    revision = len(log) + 1
+
+    reason = _pop_pending_reason(ar)
+    reason_missing = bool(revision >= 2 and not reason)
+
+    prev = log[-1] if log else None
+    entry = {
+        "revision": revision,
+        "report_id": u"{0}-R{1}".format(api.get_id(ar), revision),
+        "issued_at": DateTime().ISO(),
+        "authorizer": _current_userid(),
+        "report_uid": _latest_arreport_uid(ar),
+        "amendment_reason": reason or u"",
+        "reason_missing": reason_missing,
+        "supersedes": prev["report_id"] if prev else None,
+        # Whether the reviewer snapshot was actually taken. Recorded, because
+        # for weeks it never was: QCReviewReport.pt called a render_stamp that
+        # did not exist, and both this handler and snapshot_for_publication
+        # caught the failure and logged it. The certificate issued fine, the
+        # log said nothing, and an auditor would have assumed a snapshot
+        # existed. A guarantee that fails silently is not a guarantee.
+        "qc_snapshot": u"pending",
+        # Whether the §7.8.4 technical review had actually passed when this was
+        # issued. Publication is NOT blocked on it — that was a deliberate
+        # decision — but an auditor must be able to see that a certificate went
+        # out ahead of its review, rather than having to infer it.
+        "review_state": _review_state_at_issue(ar),
+        # the reporting-template revision the certificate was drawn from
+        "template_rev": _template_rev(),
+    }
+
+    # Freeze the reviewer report against this revision. Regenerating it later
+    # would show the data as it is THEN; an auditor asking about a certificate
+    # issued months ago needs what was true when it was issued.
+    try:
+        from senaite.pfas.browser.qc_review_report import (
+            snapshot_for_publication)
+        taken = snapshot_for_publication(ar, revision)
+        entry["qc_snapshot"] = u"ok" if taken else u"failed: not stored"
+    except Exception as exc:      # never break the publish transition
+        entry["qc_snapshot"] = u"failed: {0}".format(exc)
+        logger.error("controlled-pub: QC review snapshot failed for %s: %s",
+                     api.get_id(ar), exc)
+
+    log.append(entry)
+    ann[PUBLICATION_LOG_KEY] = log
+    logger.info("controlled-pub: %s issued (rev %s%s)",
+                entry["report_id"], revision,
+                ", reason not recorded" if reason_missing else "")
+    return entry
+
+
+# ── read side (register view + report header) ───────────────────────────────
+
+def get_publication_log(ar):
+    """Return the sample's issuance entries, newest first, with computed
+    status ('current' for the latest revision, else 'superseded')."""
+    ann = IAnnotations(ar)
+    log = list(ann.get(PUBLICATION_LOG_KEY, []))
+    if not log:
+        return []
+    top = len(log)
+    out = []
+    for entry in log:
+        row = dict(entry)
+        row["status"] = "current" if entry["revision"] == top else "superseded"
+        out.append(row)
+    out.reverse()
+    return out
+
+
+def get_current_publication(ar):
+    """Return the current (latest) issuance entry for the sample, or None."""
+    log = get_publication_log(ar)
+    return log[0] if log else None
+
+
+def set_pending_amendment_reason(ar, reason):
+    """Stash a reissue reason to be consumed by the next publish transition."""
+    ann = IAnnotations(ar)
+    if reason:
+        ann[PENDING_REASON_KEY] = api.safe_unicode(reason)
+    elif PENDING_REASON_KEY in ann:
+        del ann[PENDING_REASON_KEY]
+
+
+def update_amendment_reason(ar, revision, reason):
+    """Fill in (or correct) the amendment reason on an EXISTING issuance entry
+    — the QAO's fill-in-later path for a flagged reissue. Only the reason field
+    is edited; the issuance facts (revision/date/authorizer/supersede) stay
+    immutable. Clears the reason_missing flag once a reason is present."""
+    ann = IAnnotations(ar)
+    log = list(ann.get(PUBLICATION_LOG_KEY, []))
+    reason = (reason or u"").strip()
+    for i, entry in enumerate(log):
+        if entry.get("revision") == revision:
+            new = dict(entry)
+            new["amendment_reason"] = api.safe_unicode(reason)
+            new["reason_missing"] = bool(revision >= 2 and not reason)
+            log[i] = new
+            ann[PUBLICATION_LOG_KEY] = log
+            return True
+    return False
+
+
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+def _pop_pending_reason(ar):
+    ann = IAnnotations(ar)
+    reason = ann.get(PENDING_REASON_KEY)
+    if PENDING_REASON_KEY in ann:
+        del ann[PENDING_REASON_KEY]
+    return reason
+
+def _current_userid():
+    try:
+        return api.get_current_user().getId()
+    except Exception:
+        return u""
+
+def _latest_arreport_uid(ar):
+    """The sample's most-recent ARReport by creation (container traversal, not
+    a catalog query — the report may have just been created)."""
+    reports = [o for o in ar.objectValues() if o.portal_type == "ARReport"]
+    if not reports:
+        return None
+    reports.sort(key=lambda o: o.created(), reverse=True)
+    return api.get_uid(reports[0])
+
+
+# ── register view (Reporting → Controlled Publications) ─────────────────────
+
+class PFASControlledPublicationsView(BrowserView):
+    """Auditor-facing, read-only register of every issued CoA (all clients).
+
+    A view onto the §3 relational spine: each row is a controlled issuance
+    entry from a sample's publication log, with artifact facts (recipients,
+    PDF) read LIVE from the referenced core ARReport.
+    """
+    template = ViewPageTemplateFile("templates/controlled_publications.pt")
+
+    def __call__(self):
+        flatten_form(self.request)
+        if self.request.method == "POST":
+            try:
+                from plone.protect.interfaces import IDisableCSRFProtection
+                from zope.interface import alsoProvides
+                alsoProvides(self.request, IDisableCSRFProtection)
+            except ImportError:
+                pass
+            return self._handle_post()
+        return self.template()
+
+    def _handle_post(self):
+        """QAO fills in an amendment reason on a flagged issuance entry."""
+        form = self.request.form
+        if form.get("action") == "record_reason":
+            sample = api.get_object_by_uid(form.get("sample_uid", ""), default=None)
+            try:
+                revision = int(form.get("revision", "0"))
+            except (TypeError, ValueError):
+                revision = 0
+            reason = (form.get("reason") or u"").strip()
+            if sample is not None and revision and reason:
+                update_amendment_reason(sample, revision, reason)
+        self.request.response.redirect(
+            "{0}/@@pfas-controlled-publications".format(api.get_url(api.get_portal())))
+        return u""
+
+    def publications(self):
+        """All issuance rows across all samples, newest issue first."""
+        rows = []
+        for ar in self._samples_with_log():
+            client = self._client_title(ar)
+            for entry in get_publication_log(ar):  # newest revision first
+                recipients, pdf_url = self._artifact_info(entry.get("report_uid"))
+                # Fallback: the CURRENT revision with no stored CoA artifact
+                # (e.g. published without going through impress) still links to
+                # the sample's publisher so the final CoA can be viewed/printed.
+                coa_live = None
+                if not pdf_url and entry.get("status") == "current":
+                    coa_live = api.get_url(ar) + "/publish"
+                row = dict(entry)
+                row.update({
+                    "sample_id": api.get_id(ar),
+                    "sample_uid": api.get_uid(ar),
+                    "sample_url": api.get_url(ar),
+                    "client": client,
+                    "recipients": recipients,
+                    "pdf_url": pdf_url,
+                    "coa_live": coa_live,
+                })
+                rows.append(row)
+        rows.sort(key=lambda r: r.get("issued_at") or "", reverse=True)
+        return rows
+
+    def has_flags(self):
+        return any(r["reason_missing"] for r in self.publications())
+
+    # ── helpers ─────────────────────────────────────────────────────────
+
+    def _samples_with_log(self):
+        out = []
+        try:
+            brains = api.search({"portal_type": "AnalysisRequest"},
+                                catalog="senaite_catalog_sample")
+        except Exception:
+            brains = []
+        for brain in brains:
+            ar = api.get_object(brain)
+            if ar is None:
+                continue
+            if IAnnotations(ar).get(PUBLICATION_LOG_KEY):
+                out.append(ar)
+        return out
+
+    def _client_title(self, ar):
+        try:
+            client = ar.getClient()
+            return client.Title() if client else u""
+        except Exception:
+            return u""
+
+    def _artifact_info(self, report_uid):
+        """(recipients-string, coa-url) read live from the core ARReport. The
+        URL points at the printed CoA PDF (@@download_pdf) when one is stored,
+        else at the ARReport (its rendered HTML report)."""
+        if not report_uid:
+            return (u"", None)
+        report = api.get_object_by_uid(report_uid, default=None)
+        if report is None:
+            return (u"", None)
+        names = []
+        try:
+            for r in (report.getRecipients() or []):
+                nm = r.get("Fullname") or r.get("EmailAddress") or ""
+                if nm:
+                    names.append(nm)
+        except Exception:
+            pass
+        url = api.get_url(report)
+        try:
+            pdf = report.getPdf()
+            if pdf and pdf.get_size():
+                url = url + "/download_pdf"    # stream the printed CoA PDF
+        except Exception:
+            pass
+        return (u", ".join(names), url)

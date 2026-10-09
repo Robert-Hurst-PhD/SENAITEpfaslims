@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Calibration Archive</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/calibration_review.css?v=3" />
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Calibration Archive</tal:t>
+  <tal:r metal:fill-slot="header-context">
+    <span class="header-meta" tal:define="r2 view/r2_minimum; pct view/cal_pct_max">
+      <tal:m condition="view/selected_method">
+        R&sup2; min <strong tal:content="python:r2 if r2 is not None else 'not set'">0.99</strong>
+        &bull; Max dev <strong tal:content="python:('%g%%' % pct) if pct is not None else 'not set'">20%</strong>
+      </tal:m>
+      <tal:all condition="not:view/selected_method">Limits: each run&#8217;s method profile</tal:all>
+    </span>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="cal-page page-body">
+
+    <div class="save-banner" tal:condition="view/save_message">
+      <tal:sm tal:replace="python:'Run approved.' if 'approved' in view.save_message() else 'Calibration updated.'">Updated.</tal:sm>
+    </div>
+
+    <!-- Summary stats -->
+    <tal:stats tal:define="stats view/summary_stats">
+      <div class="stat-bar" tal:condition="stats">
+        <div class="stat-box">
+          <div class="sv" tal:content="stats/total">0</div>
+          <div class="sl">Total</div>
+        </div>
+        <div class="stat-box good">
+          <div class="sv" tal:content="stats/r2_pass">0</div>
+          <div class="sl">R&sup2; Pass</div>
+        </div>
+        <div class="stat-box warn">
+          <div class="sv" tal:content="stats/pending">0</div>
+          <div class="sl">Pending</div>
+        </div>
+        <div class="stat-box good">
+          <div class="sv" tal:content="stats/approved">0</div>
+          <div class="sl">Approved</div>
+        </div>
+        <div class="stat-box warn">
+          <div class="sv" tal:content="stats/rejected">0</div>
+          <div class="sl">Rejected</div>
+        </div>
+      </div>
+    </tal:stats>
+
+    <!-- Filter bar -->
+    <form method="GET" class="filter-bar"
+          tal:attributes="action string:${context/absolute_url}/@@pfas-calibrations">
+      <div>
+        <label>Method</label>
+        <select name="method" onchange="this.form.analyte.value='';this.form.submit()">
+          <option value="">&#8212; All &#8212;</option>
+          <option tal:repeat="m view/methods" tal:content="m"
+                  tal:attributes="value m; selected python:m == view.selected_method()">EPA_537_1</option>
+        </select>
+      </div>
+      <div>
+        <label>Analyte</label>
+        <select name="analyte">
+          <option value="">&#8212; All &#8212;</option>
+          <tal:opts tal:repeat="a view/analytes">
+            <option tal:content="a"
+                    tal:attributes="value a; selected python:a == view.selected_analyte()">PFOA</option>
+          </tal:opts>
+        </select>
+      </div>
+      <div>
+        <label>Status</label>
+        <select name="status">
+          <option value="">&#8212; All &#8212;</option>
+          <option value="pending"
+                  tal:attributes="selected python:view.selected_status()=='pending'">Pending</option>
+          <option value="approved"
+                  tal:attributes="selected python:view.selected_status()=='approved'">Approved</option>
+          <option value="rejected"
+                  tal:attributes="selected python:view.selected_status()=='rejected'">Rejected</option>
+        </select>
+      </div>
+      <div>
+        <label>Runs listed</label>
+        <input type="number" name="limit" min="1" max="300"
+               tal:attributes="value view/selected_limit"
+               style="width:72px" />
+      </div>
+      <button type="submit" class="btn btn-primary">Apply</button>
+    </form>
+
+    <!-- One tab per run, newest first -->
+    <tal:rdates tal:define="runs view/runs; sel view/selected_run">
+    <div class="filter-bar" tal:condition="runs">
+      <div>
+        <label>Run</label>
+        <select onchange="var o=this.options[this.selectedIndex];filterRun(o.value, o.getAttribute('data-date'))">
+          <option tal:repeat="r runs" tal:content="python:u'%s  %s  (%s, %d curves)' % (r['run_date'], r['batch_id'], r['method'], r['n'])"
+                  tal:attributes="value r/batch_id; data-date r/run_date; selected python:'selected' if r == sel else None">run</option>
+        </select>
+      </div>
+    </div>
+    </tal:rdates>
+
+    <!-- Card area: populated from embedded JSON by JS -->
+    <div id="cal-runs-area"></div>
+
+
+  </div>
+
+  <!-- Embed run data as JSON -->
+  <tal:rjson tal:define="runs_json view/calibration_runs_json">
+  <script>
+  var CAL_RUNS  = <tal:x tal:replace="runs_json">[]</tal:x>;
+  var CAL_URL   = '<tal:u tal:replace="context/absolute_url">.</tal:u>/@@pfas-calibrations';
+  /* Limits come from each analyte's own run method profile (cal.limits,
+     cal.r2_min); null = the method sets none -> not judged, no limit line. */
+  var CAL_BY_UID = {};
+  function limFor(uid) {
+    var c = CAL_BY_UID[uid] || {};
+    var L = c.limits || {};
+    return {CAL: L.CAL || {}, ICV: L.ICV || {}, CCV: L.CCV || {}, r2: c.r2_min};
+  }
+  /* the archive is read-only: fits and approval are on Data Review */
+  var IS_MGR    = false;
+  </script>
+  </tal:rjson>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/ml-matrix-6.12.1.umd.js"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=1"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=3"></script>
+  <script>
+  //<![CDATA[
+  var CAL_APPROVE = null;      /* the archive: approval is in Data Review */
+  renderAll(CAL_RUNS);
+  //]]>
+  </script>
+
+  <!-- Point-detail modal (shared, populated by JS) -->
+  <div id="pfas-cal-modal" class="cal-detail-modal"
+       onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="cal-detail-box">
+      <h4 id="pfas-modal-title">Point Detail
+        <button class="cal-detail-close"
+                onclick="document.getElementById('pfas-cal-modal').classList.remove('open')">&times;</button>
+      </h4>
+      <table class="cal-detail-table" id="pfas-modal-table"><tbody></tbody></table>
+    </div>
+  </div>
+
+  </div><!-- /content slot -->
+</body>
+</html>

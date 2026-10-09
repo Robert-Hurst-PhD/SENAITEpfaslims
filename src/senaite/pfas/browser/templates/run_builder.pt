@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">LC-MS Run Builder</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .rb-grid { display:grid; grid-template-columns: 1fr 1fr; gap:22px; }
+    @media (max-width:900px){ .rb-grid { grid-template-columns:1fr; } }
+    .rb-card { border:1px solid var(--s-border); border-radius:10px;
+               background:var(--s-bg); padding:16px 18px; min-width:0; }
+    .rb-card h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 12px; }
+    .rb-row { display:flex; flex-direction:column; gap:3px; margin-bottom:12px; }
+    .rb-row label { font-size:var(--fs-sm); font-weight:700; }
+    .rb-row .hint { font-size:var(--fs-xs); color:var(--s-secondary); }
+    .rb-row input, .rb-row select, .rb-row textarea {
+      width:100%; max-width:100%; box-sizing:border-box;
+      padding:7px 10px; border:1px solid var(--s-border); border-radius:4px;
+      font-size:var(--fs-base); }
+    .rb-ctx { display:flex; gap:10px 22px; flex-wrap:wrap; font-size:var(--fs-sm);
+              background:var(--s-light); border-radius:8px; padding:10px 14px;
+              margin-bottom:12px; }
+    .rb-ctx b { color:var(--s-body); }
+    .rb-seq { font-size:var(--fs-sm); width:100%; border-collapse:collapse; }
+    .rb-seq th { background:var(--s-light); color:var(--s-secondary);
+                 text-transform:uppercase; font-size:var(--fs-xs); padding:5px 10px;
+                 text-align:left; }
+    .rb-seq td { padding:4px 10px; border-bottom:1px solid var(--s-border); }
+    .rb-type-Blank    { color:var(--s-secondary); }
+    .rb-type-Standard { color:var(--s-primary-dk); font-weight:600; }
+    .rb-type-QC       { color:var(--s-warn-text); font-weight:600; }
+    .rb-type-Sample   { color:var(--s-success-text); }
+    /* run-template editor */
+    .rb-tpl-block { margin-bottom:14px; }
+    .rb-tpl-block > label { font-size:var(--fs-sm); font-weight:700; display:block;
+                            margin-bottom:6px; }
+    .rb-chips { display:flex; flex-wrap:wrap; gap:6px; min-height:34px;
+                padding:6px; border:1px dashed var(--s-border); border-radius:6px;
+                background:var(--s-light); }
+    .rb-chips:empty::before { content:"none"; color:var(--s-secondary);
+                              font-size:var(--fs-sm); padding:2px 4px; }
+    .rb-chip { display:inline-flex; align-items:center; gap:4px;
+               background:var(--s-bg); border:1px solid var(--s-border);
+               border-radius:14px; padding:3px 4px 3px 10px; font-size:var(--fs-sm); }
+    .rb-chip .lbl { font-weight:600; }
+    .rb-chip .code { color:var(--s-secondary); font-size:var(--fs-xs); }
+    .rb-chip button { border:none; background:transparent; cursor:pointer;
+                      font-size:var(--fs-sm); line-height:1; padding:2px 3px;
+                      color:var(--s-secondary); border-radius:3px; }
+    .rb-chip button:hover { background:var(--s-primary-lt); color:var(--s-body); }
+    .rb-add { display:flex; gap:6px; margin-top:6px; align-items:center; }
+    .rb-add select { max-width:280px; }
+    .rb-ro .rb-chip button, .rb-ro .rb-add { display:none; }
+    /* single drag-and-drop run sequence */
+    .rb-seqlist { display:flex; flex-direction:column; gap:5px; padding:8px;
+                  border:1px dashed var(--s-border); border-radius:8px;
+                  background:var(--s-light); max-width:540px; }
+    .rb-seqrow { display:flex; align-items:center; gap:9px; background:var(--s-bg);
+                 border:1px solid var(--s-border); border-radius:6px;
+                 padding:7px 9px; font-size:var(--fs-sm); cursor:grab; }
+    .rb-seqrow.dragging { opacity:.35; }
+    .rb-seqrow .grip { color:var(--s-secondary); font-size:var(--fs-md); line-height:1;
+                       cursor:grab; user-select:none; }
+    .rb-seqrow .lbl { font-weight:600; flex:1; }
+    .rb-seqrow .code { color:var(--s-secondary); font-size:var(--fs-xs); }
+    .rb-seqrow.samples { background:#eef7ee; border-color:#bcdcbc; }
+    .rb-seqrow.cal     { background:#eef4f8; border-color:#bcd3e0; }
+    .rb-seqrow.blank   { background:#f6f6f7; }
+    .rb-seqrow .del { border:none; background:transparent; cursor:pointer;
+                      color:var(--s-secondary); font-size:var(--fs-base); line-height:1;
+                      padding:2px 5px; border-radius:3px; }
+    .rb-seqrow .del:hover { background:var(--s-primary-lt); color:var(--s-body); }
+    .rb-ro .rb-seqrow { cursor:default; }
+    .rb-ro .rb-seqrow .grip, .rb-ro .rb-seqrow .del { display:none; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">LC-MS Run Builder</tal:t>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/ok_msg"
+         tal:content="view/ok_msg">ok</div>
+    <div class="alert alert-error" tal:condition="view/error_msg"
+         tal:content="view/error_msg">err</div>
+    <ul class="bench-alerts" tal:define="ips view/import_problems" tal:condition="ips">
+      <li tal:repeat="ip ips"
+          tal:attributes="class python:'bench-bad' if ip['status'] == 'failed' else 'bench-warn'">
+        <strong tal:content="python:u'Import failed:' if ip['status'] == 'failed' else u'Import retrying:'">Import</strong>
+        <span tal:content="python:u'%s, attempt %s (%s). %s' % (ip['file'], ip['attempts'], ip['error'], u'Upload the run again.' if ip['status'] == 'failed' else u'The worker tries again shortly.')">x</span></li>
+    </ul>
+    <div class="alert alert-success" tal:condition="view/built">
+      Run built and saved to the batch manifest — download the worklist below.
+    </div>
+
+    <p style="font-size:var(--fs-base);color:var(--s-secondary);max-width:860px;">The run follows the batch: its method&#8217;s extraction log supplies the samples. Choose the analyst and confirm them. <tal:h define="hid string:guided-extraction"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+    <form method="get" style="max-width:520px;margin-bottom:14px;">
+      <div class="rb-row">
+        <label>Extraction batch</label>
+        <select name="batch_id" onchange="this.form.submit()">
+          <option value="">— select worksheet —</option>
+          <option tal:repeat="b view/batches"
+                  tal:attributes="value b/id;
+                                  selected python:b['id'] == view.selected_batch()"
+                  tal:content="b/title">B-1</option>
+        </select>
+      </div>
+    </form>
+
+    <tal:ctx tal:define="ctx view/run_context" tal:condition="ctx">
+      <div class="rb-ctx">
+        <span>Method: <b tal:content="ctx/method_id">FDA</b></span>
+        <span>Extraction logbook: <b tal:content="string:FM-ENV-${ctx/extraction_slug}">252</b>
+              <span style="color:var(--s-secondary);">(set by method)</span></span>
+        <span>CCV every <b tal:content="ctx/ccv_interval">6</b> samples
+              <span style="color:var(--s-secondary);">(method parameter)</span></span>
+        <span>Samples found: <b tal:content="ctx/n_samples">3</b></span>
+      </div>
+
+      <div class="rb-grid">
+        <!-- ── 1. Build ─────────────────────────────────────────────────── -->
+        <div class="rb-card">
+          <h3>1 · Build the run</h3>
+
+          <div class="table-wrap" tal:condition="ctx/rows">
+            <table class="rb-seq">
+              <thead><tr><th>Sample</th><th>Matrix (per sample)</th><th>Spike</th></tr></thead>
+              <tbody>
+                <tr tal:repeat="r ctx/rows">
+                  <td tal:content="r/sample_id">DW-1</td>
+                  <td tal:content="python:r['matrix'] or '—'">Eggs</td>
+                  <td tal:content="python:r['spike'] or '—'">80</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p tal:condition="not:ctx/rows"
+             style="font-size:var(--fs-sm);color:var(--s-warn-text);background:var(--s-warn-lt);border-radius:6px;padding:8px 12px;">
+            No samples found in the method's extraction logbook or linked to
+            this batch — complete the extraction log, or add sample names below.
+          </p>
+
+          <form method="post"
+                tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
+            <input type="hidden" name="action" value="build"/>
+            <input type="hidden" name="batch_id"
+                   tal:attributes="value view/selected_batch"/>
+            <div class="rb-row" tal:define="staff view/staff_pool">
+              <label>Analyst (laboratory staff pool) *</label>
+              <select name="initials" required="required" tal:condition="staff">
+                <option value="">— select analyst —</option>
+                <option tal:repeat="p staff"
+                        tal:attributes="value p/initials"
+                        tal:content="string:${p/fullname} (${p/initials})">A (AB)</option>
+              </select>
+              <tal:empty tal:condition="not:staff">
+                <input type="text" name="initials" maxlength="4"
+                       placeholder="Initials" style="text-transform:uppercase;"/>
+                <span class="hint">Staff pool is empty — add Lab Contacts in
+                  <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/bika_setup/bika_labcontacts">SENAITE setup</a>
+                  so analysts are selectable instead of typed.</span>
+              </tal:empty>
+            </div>
+            <div class="rb-row">
+              <label>Additional sample names (optional, one per line)</label>
+              <textarea name="extra_samples" rows="3"></textarea>
+            </div>
+            <div class="rb-row" tal:condition="view/made_requests">
+              <label>Run</label>
+              <label><input type="radio" name="run_kind" value="full" checked="checked" /> The whole batch</label>
+              <label><input type="radio" name="run_kind" value="supplementary" />
+                <span tal:replace="python:'Only what review asked for (%d made)' % len(view.made_requests())">Only requests</span></label>
+            </div>
+            <!-- a new calibration curve: the method profile's rule, else the
+                 bench chemist answers (run_plan.curve_decision) -->
+            <div class="rb-row" tal:define="cd view/curve_decision" tal:condition="cd">
+              <label>Is a new calibration curve needed?</label>
+              <tal:f condition="cd/forced">
+                <strong>Yes</strong> &#8212; <span tal:replace="cd/reason">reason</span>
+                <input type="hidden" name="new_curve" value="yes" />
+              </tal:f>
+              <tal:a condition="not:cd/forced">
+                <span class="hint" tal:content="string:${cd/reason}."></span>
+                <label><input type="radio" name="new_curve" value="yes" required="required" /> Yes, run a new curve</label>
+                <label><input type="radio" name="new_curve" value="no"
+                              tal:attributes="checked python:'checked' if cd.get('default') == 'reuse' else None" /> No, use the last curve</label>
+              </tal:a>
+            </div>
+            <button class="btn btn-primary" type="submit">Build Run Sequence</button>
+          </form>
+        </div>
+
+        <!-- ── 2. Import instrument data ────────────────────────────────── -->
+        <div class="rb-card">
+          <h3>2 · Import instrument data</h3>
+          <p style="font-size:var(--fs-sm);color:var(--s-secondary);">Upload the instrument&#8217;s finished export; it is imported only with an active Import Studio mapping. <tal:h define="hid string:import-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <form method="post" enctype="multipart/form-data"
+                tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
+            <input type="hidden" name="action" value="upload_export"/>
+            <input type="hidden" name="batch_id"
+                   tal:attributes="value view/selected_batch"/>
+            <div class="rb-row">
+              <input type="file" name="export_file" accept=".csv,.txt,.tsv"/>
+            </div>
+            <button class="btn btn-primary" type="submit">Upload to pipeline</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ── Run template (per-method, editable) ───────────────────────── -->
+      <tal:tpl tal:define="tpl view/current_template;
+                           vocab view/add_vocabulary;
+                           editable view/can_edit_template"
+               tal:condition="tpl">
+      <div class="rb-card" style="margin-top:22px;"
+           tal:attributes="class python:'rb-card' + ('' if editable else ' rb-ro')">
+        <h3>Run template — how this method builds its worklist
+          <span style="font-weight:400;font-size:var(--fs-sm);color:var(--s-secondary);"
+                tal:content="ctx/method_id">FDA</span>
+        </h3>
+        <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-top:-4px;">One run sequence; drag to reorder. <tal:h define="hid string:ccv-bracketing"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+        <div class="alert alert-success" tal:condition="view/template_saved">
+          Run template saved to the method profile.
+        </div>
+
+        <form method="post" id="rb-tpl-form"
+              tal:attributes="action string:${view/portal_url}/@@pfas-run-builder">
+          <input type="hidden" name="action" value="save_template"/>
+          <input type="hidden" name="batch_id"
+                 tal:attributes="value view/selected_batch"/>
+          <input type="hidden" name="method_id" tal:attributes="value ctx/method_id"/>
+          <input type="hidden" name="sequence_codes" id="sequence_codes"/>
+
+          <div class="rb-tpl-block">
+            <label>Run sequence — drag to reorder</label>
+            <div class="rb-seqlist" id="seq-chips">
+              <div tal:repeat="c tpl/sequence_labelled"
+                   tal:attributes="data-code c/code; data-kind c/kind;
+                                   class python:'rb-seqrow ' + c['kind']">
+                <span class="grip" title="Drag to reorder">&#8942;</span>
+                <span class="lbl" tal:content="c/label">Method Blank</span>
+                <span class="code"
+                      tal:condition="python:c['code'] != 'SAMPLES'"
+                      tal:content="string:(${c/code})">(MB)</span>
+                <button type="button" class="del" title="Remove"
+                        tal:condition="c/removable">&#215;</button>
+              </div>
+            </div>
+            <div class="rb-add">
+              <select id="seq-add">
+                <option value="">&#8212; add QC / calibrators &#8212;</option>
+                <option tal:repeat="v vocab" tal:attributes="value v/code"
+                        tal:content="python:(('Calibrator list') if v['code']=='CAL' else (v['label']+' ('+v['code']+')'))">MB</option>
+              </select>
+              <button type="button" class="btn-sm btn-secondary"
+                      id="seq-add-btn">+ add</button>
+            </div>
+          </div>
+
+          <p style="font-size:var(--fs-sm);color:var(--s-secondary);">
+            Bracketing: a <b>CCV</b> is inserted automatically every
+            <span tal:content="ctx/ccv_interval">6</span> injections
+            (interval from the method profile) — you don't add or position it.
+          </p>
+
+          <p style="font-size:var(--fs-xs);color:var(--s-secondary);">Calibrator list expands to the calibration standards when the curve is included; Field samples can be moved, not removed.</p>
+          <button class="btn btn-primary" type="submit"
+                  tal:condition="editable">Save run template</button>
+          <p style="font-size:var(--fs-sm);color:var(--s-secondary);"
+             tal:condition="not:editable">
+            Read-only — a Manager can edit this run template.
+          </p>
+        </form>
+      </div>
+
+      <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/Sortable-1.15.6.min.js"></script>
+      <script>
+      /* Pure DOM (no innerHTML / no literal markup); and NO bare "less-than",
+         "ampersand" or "and-and" operators, so the Chameleon template parser
+         never mistakes JS for markup. SortableJS reorders the rows (touch
+         screens included;. */
+      (function () {
+        var form = document.getElementById("rb-tpl-form");
+        if (!form) return;
+        var list = document.getElementById("seq-chips");
+
+        function makeRow(code, label, kind) {
+          var row = document.createElement("div");
+          row.className = "rb-seqrow " + kind;
+          row.setAttribute("data-code", code);
+          row.setAttribute("data-kind", kind);
+          var g = document.createElement("span");
+          g.className = "grip"; g.title = "Drag to reorder";
+          g.textContent = "⋮"; row.appendChild(g);
+          var l = document.createElement("span");
+          l.className = "lbl"; l.textContent = label; row.appendChild(l);
+          var c = document.createElement("span");
+          c.className = "code"; c.textContent = "(" + code + ")";
+          row.appendChild(c);
+          var d = document.createElement("button");
+          d.type = "button"; d.className = "del"; d.title = "Remove";
+          d.textContent = "×"; row.appendChild(d);
+          return row;
+        }
+        function serialize() {
+          var codes = [];
+          list.querySelectorAll(".rb-seqrow").forEach(function (r) {
+            codes.push(r.getAttribute("data-code")); });
+          document.getElementById("sequence_codes").value = codes.join(",");
+        }
+        // add
+        var addBtn = document.getElementById("seq-add-btn");
+        if (addBtn) {
+          addBtn.addEventListener("click", function () {
+            var sel = document.getElementById("seq-add");
+            if (!sel.value) return;
+            if (sel.value === "SAMPLES") return;
+            var label = sel.options[sel.selectedIndex].text
+                           .replace(/\s*\([^)]*\)\s*$/, "");
+            var kind = (sel.value === "CAL") ? "cal" : "qc";
+            list.appendChild(makeRow(sel.value, label, kind));
+          });
+        }
+        // delete
+        list.addEventListener("click", function (e) {
+          var b = e.target.closest ? e.target.closest("button.del") : null;
+          if (!b) return;
+          var row = b.parentNode;
+          if (row.getAttribute("data-kind") === "samples") return;
+          row.remove();
+        });
+        // drag reorder: SortableJS (mouse and touch); read-only templates stay put
+        Sortable.create(list, {
+          draggable: ".rb-seqrow", filter: "button.del", preventOnFilter: false,
+          animation: 150, ghostClass: "dragging",
+          disabled: !!list.closest(".rb-ro"),
+          onEnd: serialize
+        });
+        form.addEventListener("submit", serialize);
+      })();
+      </script>
+      </tal:tpl>
+    </tal:ctx>
+
+    <!-- ── Built sequence + download ──────────────────────────────────── -->
+    <tal:man tal:define="m view/manifest" tal:condition="m">
+      <div class="rb-card" style="margin-top:22px;">
+        <h3 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <span>Built run — <span tal:content="m/batch_id">B</span></span>
+          <span style="font-weight:400;font-size:var(--fs-sm);color:var(--s-secondary);">
+            <span tal:content="m/built_at">ts</span> by
+            <span tal:content="m/built_by">INI</span> ·
+            <span tal:content="m/method_id">FDA</span> ·
+            CCV/<span tal:content="m/ccv_interval">6</span>
+          </span>
+          <a class="btn btn-primary" style="margin-left:auto;font-size:var(--fs-sm)"
+             tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?action=download_csv&batch_id=${m/batch_id}">
+            Download worklist CSV
+          </a>
+          <a class="btn btn-secondary"
+             tal:attributes="href string:${view/portal_url}/@@pfas-run-builder?action=download_masslynx&batch_id=${m/batch_id};
+                             title view/export_source">
+            Instrument sample list
+          </a>
+        </h3>
+        <div class="table-wrap">
+          <table class="rb-seq">
+            <thead><tr><th>Vial</th><th>Injection name (lot)</th>
+                       <th>Description</th><th>Type</th></tr></thead>
+            <tbody>
+              <tr tal:repeat="r m/rows">
+                <td tal:content="r/vial">1</td>
+                <td style="font-family: var(--font-mono);" tal:content="r/name">name</td>
+                <td style="color:var(--s-secondary);"
+                    tal:content="python:r.get('description','')">desc</td>
+                <td><span tal:attributes="class string:rb-type-${r/type}"
+                          tal:content="r/type">QC</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </tal:man>
+
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

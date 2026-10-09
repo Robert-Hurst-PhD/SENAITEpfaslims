@@ -1,0 +1,1419 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Extraction Guide</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    /* Buttons use the shared set (.btn, .btn-sm, .btn-lg + variants); only
+       layout that is specific to this page stays here. */
+    .btn-start   { width:100%; }
+    .btn-add-sol { margin-top:8px; }
+    /* ── Touch-friendly tablet layout ─────────────────────── */
+    body { touch-action: manipulation; }
+    .eg-layout { display:flex; min-height:80vh; gap:0; }
+
+    /* ── Stage sidebar ──────────────────────────────────────── */
+    .eg-sidebar { width:220px; flex-shrink:0; background:#1a1a2e;
+                  padding:16px 0; overflow-y:auto; }
+    .eg-sidebar .method-badge { font-size:var(--fs-xs); color:#888; text-transform:uppercase;
+                                letter-spacing:.5px; padding:0 16px 12px;
+                                border-bottom:1px solid #2a2a4a; margin-bottom:8px; }
+    .eg-sidebar .method-name { font-size:var(--fs-base); font-weight:700; color:#eee; }
+    .stage-item { display:flex; align-items:center; gap:10px; padding:12px 16px;
+                  cursor:pointer; transition:background .15s; }
+    .stage-item:hover { background:#2a2a4a; }
+    .stage-item.active { background:#0d3d6b; border-left:3px solid #4a9eff; }
+    .stage-item.done   { opacity:.7; }
+    .stage-num { width:26px; height:26px; border-radius:50%; display:flex;
+                 align-items:center; justify-content:center;
+                 font-size:var(--fs-xs); font-weight:700; flex-shrink:0; }
+    .stage-num.done    { background:var(--s-success); color:#fff; }
+    .stage-num.active  { background:#4a9eff; color:#fff; }
+    .stage-num.pending { background:#2a2a4a; color:#888; }
+    .stage-name { font-size:var(--fs-sm); color:#ccc; line-height:1.3; }
+    a.stage-item { text-decoration:none; }
+    a.stage-item:not([href]) { cursor:default; }
+    .stage-item.viewing { background:#2a2a4a; border-left:3px solid var(--s-success); }
+
+    /* ── Narrow screens: the stage list becomes a stepper on top ── */
+    @media (max-width: 1100px) {
+      .eg-layout { flex-direction:column; }
+      .eg-sidebar { width:auto; padding:10px 0 0; }
+      .eg-sidebar .method-badge { border-bottom:0; margin-bottom:0; padding-bottom:6px; }
+      .stage-list { display:flex; overflow-x:auto; gap:4px; padding:4px 10px 10px; }
+      .stage-list .stage-item { flex:0 0 auto; padding:8px 10px; border-radius:8px; max-width:150px; }
+      .stage-list .stage-item.active, .stage-list .stage-item.viewing { border-left:0; }
+      .stage-list .stage-name { font-size:var(--fs-xs); }
+      .eg-main { max-width:none; padding:16px; }
+      .sample-table { display:block; overflow-x:auto; }
+    }
+    .stage-item.active .stage-name { color:#fff; font-weight:600; }
+
+    /* ── Progress bar ────────────────────────────────────────── */
+    .progress-bar-wrap { padding:0 16px 12px; border-bottom:1px solid #2a2a4a; }
+    .progress-bar { height:4px; background:#2a2a4a; border-radius:2px; margin-top:6px; }
+    .progress-fill { height:4px; background:var(--s-success); border-radius:2px;
+                     transition:width .4s; }
+    .progress-label { font-size:var(--fs-xs); color:#888; }
+
+    /* ── Main content area ───────────────────────────────────── */
+    .eg-main { flex:1; padding:24px; overflow-y:auto; min-width:0; }   /* fills the page */
+    .eg-stage-header { margin-bottom:20px; padding-bottom:12px;
+                       border-bottom:2px solid var(--s-border); }
+    .eg-stage-header .stage-title { font-size:var(--fs-xl); font-weight:800; color:var(--s-dark); }
+    .eg-stage-header .stage-desc  { font-size:var(--fs-base); color:var(--s-secondary); margin-top:4px; }
+    .eg-stage-header .stage-badge { display:inline-block; font-size:var(--fs-xs);
+                                    padding:3px 10px; border-radius:10px;
+                                    background:#e8f4fd; color:#0277bd;
+                                    font-weight:700; margin-bottom:8px; }
+
+    /* ── Cards / sections ────────────────────────────────────── */
+    .eg-media-card { text-align:center; }
+    .eg-stage-img { image-rendering:pixelated; image-rendering:crisp-edges; max-width:100%; max-height:52vh; object-fit:contain;
+                    display:block; margin:0 auto; border-radius:6px; }
+    .eg-card { background:#fff; border:1px solid var(--s-border); border-radius:10px;
+               padding:18px; margin-bottom:16px; }
+    .eg-card h3 { font-size:var(--fs-base); font-weight:700; color:var(--s-dark);
+                  margin:0 0 14px; padding-bottom:6px;
+                  border-bottom:1px solid var(--s-border); }
+
+    /* ── Reagent confirmation rows ───────────────────────────── */
+    .reagent-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+                   padding:10px 0; border-bottom:1px solid #f0f0f0; }
+    .reagent-row:last-child { border-bottom:0; }
+    .reagent-role { font-weight:600; font-size:var(--fs-base); min-width:200px; flex:1; }
+    .reagent-lot-sel, .reagent-role-field { font-size:var(--fs-base); padding:7px 10px;
+                         border:1px solid var(--s-input-border); border-radius:6px; }
+    .reagent-lot-sel { flex:2 1 320px; max-width:100%; }
+    .reagent-role-field { min-width:200px; flex:1; }
+    .reagent-remove { background:none; border:none; color:var(--s-danger, var(--s-danger)); cursor:pointer;
+                      font-size:var(--fs-base); }
+    .reagent-miss { flex-basis:100%; font-size:var(--fs-sm); color:var(--s-danger, var(--s-danger)); }
+    .reagent-hint { font-size:var(--fs-sm); color:var(--s-muted, var(--s-secondary)); margin:-6px 0 8px; }
+    .reagent-add { margin-top:6px; }
+    .eg-alert { margin:12px 16px; }
+    .eg-lead { color:var(--s-secondary); margin-bottom:24px; }
+    .batch-line { margin-top:3px; }
+    .sol-actions { margin-top:10px; display:flex; gap:8px; }
+    .scan-box { background:#111; border-radius:12px; padding:20px; width:90%; max-width:420px; color:#fff; }
+    .scan-title { margin:0 0 12px; font-size:var(--fs-md); }
+    .scan-video { width:100%; border-radius:8px; background:#000; max-height:240px; object-fit:cover; }
+    .scan-result { margin-top:10px; font-size:var(--fs-base); min-height:30px; background:#1a1a2e;
+                   padding:8px; border-radius:6px; }
+    .scan-buttons { display:flex; gap:8px; margin-top:12px; }
+    .scan-use, .scan-cancel { flex:1; padding:9px; border:none; border-radius:6px; cursor:pointer; }
+    .scan-use { background:#00ff88; color:#000; font-weight:700; }
+    .scan-cancel { background:#444; color:#fff; }
+    .scan-hit { color:#00ff88; }
+    .stage-analyst-field { font-size:var(--fs-base); padding:9px 12px; border:1px solid var(--s-input-border);
+                           border-radius:6px; width:300px; max-width:100%; }
+    .receive-box { flex-basis:100%; border:1px dashed var(--s-input-border); border-radius:6px;
+                   padding:10px 12px; font-size:var(--fs-sm); }
+    .receive-grid { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
+    .receive-grid input, .receive-grid select { flex:1 1 160px; padding:6px 8px;
+                   border:1px solid var(--s-input-border); border-radius:6px; font-size:var(--fs-sm); }
+    .sample-table { width:100%; }
+    .sample-table input, .sample-table select { padding:5px 8px; border:1px solid var(--s-input-border);
+                   border-radius:6px; width:100%; min-width:80px; box-sizing:border-box; }
+    .dilution-form { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .dilution-form input, .dilution-form select { padding:6px 8px; border:1px solid var(--s-input-border);
+                   border-radius:6px; flex:1 1 180px; }
+    .dilution-card { margin-top:16px; }
+    .needs-note { border-left:4px solid var(--s-warning, var(--s-warning)); background:var(--s-warning-bg, var(--s-warn-lt));
+                  padding:8px 12px; margin-bottom:10px; font-size:var(--fs-sm); border-radius:4px; }
+    .needs-note ul { margin:4px 0 0 18px; padding:0; }
+    .reagent-qty-field { font-size:var(--fs-base); padding:7px 10px; border:1px solid var(--s-input-border);
+                         border-radius:6px; width:90px; }
+    .reagent-status-sel { font-size:var(--fs-sm); padding:6px 8px; border:1px solid var(--s-input-border);
+                          border-radius:6px; }
+    .reagent-status-sel.flagged { border-color:var(--s-danger); background:#fff5f5; }
+    .exp-warn { color:var(--s-warn-text); font-size:var(--fs-xs); font-weight:700; }
+    .exp-expired { color: var(--s-danger-dk); font-size:var(--fs-xs); font-weight:700; }
+    .inv-match { font-size:var(--fs-xs); color: var(--s-primary-dk); cursor:pointer; }
+
+    /* ── Equipment S/N grid ──────────────────────────────────── */
+    .eq-grid { display:flex; flex-wrap:wrap; gap:12px; }
+    .eq-field { display:flex; flex-direction:column; flex:1 1 160px; }
+    .eq-field label { font-size:var(--fs-sm); font-weight:600; margin-bottom:3px; color:var(--s-dark); }
+    .eq-field input, .eq-field select { padding:7px 10px; font-size:var(--fs-base);
+                      border:1px solid var(--s-input-border); border-radius:6px; margin-bottom:4px; }
+    .eq-hint { font-size:var(--fs-xs); color:var(--s-muted, var(--s-secondary)); }
+
+    /* ── Solutions prepared ──────────────────────────────────── */
+    .sol-card { background:#f0fff4; border:1px solid var(--s-success-bd); border-radius:8px;
+                padding:14px; margin-bottom:10px; }
+    .sol-card h4 { font-size:var(--fs-sm); font-weight:700; color:var(--s-success-text); margin:0 0 10px; }
+    .sol-fields { display:flex; gap:10px; flex-wrap:wrap; }
+    .sol-field { display:flex; flex-direction:column; flex:1 1 120px; }
+    .sol-field label { font-size:var(--fs-xs); font-weight:600; margin-bottom:3px; }
+    .sol-field input { padding:6px 8px; font-size:var(--fs-sm);
+                       border:1px solid var(--s-input-border); border-radius:5px; }
+    .btn-del-sol  { background:none; border:none; color: var(--s-danger-dk);
+                    cursor:pointer; font-size:var(--fs-base); float:right; }
+
+    /* ── Pedigree section ────────────────────────────────────── */
+    .ped-standard { background:var(--s-light); border:1px solid var(--s-border);
+                    border-radius:8px; padding:14px; margin-bottom:12px; }
+    .ped-standard h4 { font-size:var(--fs-base); font-weight:700; margin:0 0 10px; color:var(--s-dark); }
+    .ped-level { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;
+                 padding:8px; background:#fff; border-radius:6px;
+                 border:1px solid #eee; }
+    .ped-level-badge { font-size:var(--fs-xs); font-weight:700; padding:2px 8px;
+                       border-radius:8px; background:var(--s-info-lt); color: var(--s-primary-dk);
+                       white-space:nowrap; align-self:center; min-width:80px;
+                       text-align:center; }
+    .ped-field { display:flex; flex-direction:column; flex:1 1 120px; }
+    .ped-field label { font-size:var(--fs-xs); font-weight:600; margin-bottom:3px; }
+    .ped-field input { padding:5px 8px; font-size:var(--fs-sm);
+                       border:1px solid var(--s-input-border); border-radius:5px; }
+    .btn-del-ped-lvl { background:none; border:none; color: var(--s-danger-dk);
+                       font-size:var(--fs-base); cursor:pointer; }
+
+    /* ── Deviations ──────────────────────────────────────────── */
+    .deviation-field { width:100%; min-height:80px; padding:10px; font-size:var(--fs-base);
+                       border:1px solid var(--s-input-border); border-radius:6px;
+                       resize:vertical; box-sizing:border-box; }
+
+    /* ── Action buttons ──────────────────────────────────────── */
+    .stage-actions { display:flex; gap:12px; margin-top:20px; flex-wrap:wrap;
+                     padding-top:16px; border-top:2px solid var(--s-border); }
+    /* the stage's primary action stays in reach (6B pinned action bar) */
+    #stage-form > .stage-actions { position:sticky; bottom:0; z-index:5; padding:12px 0;
+                     background:var(--s-bg, #fff); }
+    .recorded-by { margin:-8px 0 14px; font-size:var(--fs-sm); color:var(--s-secondary);
+                   display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .summary-card h3 { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .summary-meta { font-weight:400; font-size:var(--fs-sm); color:var(--s-secondary); }
+    .summary-line { font-size:var(--fs-sm); margin:6px 0; }
+    .summary-warn { margin:2px 0 6px 18px; font-size:var(--fs-sm); }
+
+    /* ── Start screen ────────────────────────────────────────── */
+    .eg-start { margin:40px 24px; text-align:center; }   /* the batch table fills the page */
+    .eg-batch-table { width:100%; text-align:left; }
+    .eg-start .start-form { max-width:500px; margin:0 auto; }
+    .eg-start h2 { font-size:var(--fs-2xl); font-weight:800; margin-bottom:8px; }
+    .eg-start p { color:var(--s-secondary); margin-bottom:24px; }
+    .start-form { text-align:left; }
+    .start-form label { font-size:var(--fs-base); font-weight:600; display:block; margin-bottom:4px; }
+    .start-form select, .start-form input { width:100%; padding:10px 12px; font-size:var(--fs-base);
+      border:1px solid var(--s-input-border); border-radius:8px; margin-bottom:14px; box-sizing:border-box; }
+
+    /* ── Done screen ─────────────────────────────────────────── */
+    .eg-done { text-align:center; padding:40px 20px; }
+    .eg-done .check { font-size:64px; margin-bottom:16px; }
+    .eg-done h2 { font-size:var(--fs-2xl); font-weight:800; margin-bottom:8px; color: var(--s-success-text); }
+
+    /* ── Alerts ─────────────────────────────────────────────── */
+    .alert-ok    { background:var(--s-success-lt); border:1px solid var(--s-success-bd); color:var(--s-success-text);
+                   padding:10px 16px; border-radius:8px; margin-bottom:14px; font-size:var(--fs-base); }
+    .alert-error { background:var(--s-danger-lt); border:1px solid var(--s-danger-bd); color:var(--s-danger-dk);
+                   padding:10px 16px; border-radius:8px; margin-bottom:14px; font-size:var(--fs-base); }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Guided Extraction</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary btn-back" tal:attributes="href view/batch_url">Batch</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+
+    <div tal:condition="view/ok_msg"    class="alert-ok eg-alert"    tal:content="view/ok_msg"></div>
+    <div tal:condition="view/error_msg" class="alert-error eg-alert" tal:content="view/error_msg"></div>
+
+    <!-- ─── JS data ──────────────────────────────────────────── -->
+    <script>
+    var SESSION     = <tal:d tal:replace="structure view/session_json" />;
+    var STAGE_LOTS  = <tal:d tal:replace="structure view/stage_lots_json" />;
+    var DRAFT       = <tal:d tal:replace="structure view/stage_draft_json" />;
+    var EQUIPMENT   = <tal:d tal:replace="structure view/stage_equipment_json" />;
+    var CATEGORIES  = <tal:d tal:replace="structure view/categories_json" />;
+    var SUPPLIERS   = <tal:d tal:replace="structure view/suppliers_json" />;
+    var SAMPLE_CARD = <tal:d tal:replace="structure view/sample_card_json" />;
+    var PEDIGREE    = <tal:d tal:replace="structure view/pedigree_json" />;
+    var PORTAL_URL  = "<tal:p tal:replace="view/portal_url" />";
+    var BATCH_UID   = "<tal:b tal:replace="view/batch_uid" />";
+    var SELF_URL    = PORTAL_URL + "/@@pfas-extraction-guide";
+    var LABEL_URL   = PORTAL_URL + "/@@pfas-label";
+    </script>
+
+    <!-- ════════════════════════════════════════════════════════════
+         START SCREEN — no session yet
+         ════════════════════════════════════════════════════════════ -->
+    <tal:pick tal:condition="not:view/batch_uid">
+    <div class="eg-start">
+      <h2>Choose a batch</h2>
+      <p>Open batches, the ones in progress first.</p>
+      <table class="pfas-table eg-batch-table">
+        <thead><tr><th>Batch</th><th>Method</th><th>Extraction</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r view/batch_choices">
+            <td><strong tal:content="r/id">B-1</strong> <span tal:content="r/title">title</span></td>
+            <td tal:content="r/method_label">FDA</td>
+            <td tal:content="r/label">Not started</td>
+            <td><a class="btn-sm btn-primary"
+                   tal:attributes="href string:${view/portal_url}/@@pfas-extraction-guide?batch_uid=${r/uid}"
+                   tal:content="python:{'not_started': 'Start', 'in_progress': 'Continue'}.get(r['state'], 'Open')">Start</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    </tal:pick>
+
+    <tal:start tal:condition="python:view.batch_uid() and not view.session()">
+    <div class="eg-start">
+      <h2>Start Extraction</h2>
+      <p tal:content="string:Batch: ${view/batch_title}"></p>
+      <form method="post" class="start-form"
+            tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
+        <input type="hidden" name="action"    value="start" />
+        <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
+
+        <label>Method</label>
+        <select name="method_id" tal:define="bm view/batch_method_id">
+          <tal:opts tal:repeat="pair view/available_methods">
+            <option tal:attributes="value python:pair[0]; selected python:pair[0] == bm"
+                    tal:content="python:pair[1]"></option>
+          </tal:opts>
+        </select>
+
+        <label>Lead Analyst</label>
+        <input type="text" name="analyst" placeholder="Your name" required="required"
+               tal:attributes="value view/current_user_name" />
+
+        <button class="btn-lg btn-primary btn-start" type="submit">Begin Extraction &#8594;</button>
+      </form>
+    </div>
+    </tal:start>
+
+    <!-- ════════════════════════════════════════════════════════════
+         FINALIZED — show completion and PDF link
+         ════════════════════════════════════════════════════════════ -->
+    <tal:done tal:condition="python: view.session() and view.is_finalized()">
+    <div class="eg-done">
+      <div class="check">&#10003;</div>
+      <h2>Extraction Complete</h2>
+      <p class="eg-lead">
+        All stages recorded. Generate the traceability PDF below.
+      </p>
+      <a class="btn-lg btn-pdf" tal:attributes="href view/pdf_url" target="_blank">&#128196; Download Extraction Logbook PDF</a>
+      <br/><br/>
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
+        >View Reagent Inventory</a>
+    </div>
+    </tal:done>
+
+    <!-- ════════════════════════════════════════════════════════════
+         ACTIVE SESSION — stage-by-stage UI
+         ════════════════════════════════════════════════════════════ -->
+    <tal:active tal:condition="python: view.session() and not view.is_finalized()">
+    <div class="eg-layout">
+
+      <!-- ── Sidebar ─────────────────────────────────────────────── -->
+      <div class="eg-sidebar">
+        <div class="method-badge">
+          <div class="method-name" tal:content="python:view.method_profile().get('display_name','')"></div>
+          <div class="batch-line" tal:content="python:'Batch: ' + view.batch_title()"></div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-label"
+               tal:content="python:'{0}% complete'.format(view.progress_pct())"></div>
+          <div class="progress-bar">
+            <div class="progress-fill"
+                 tal:attributes="style python:'width:{0}%'.format(view.progress_pct())"></div>
+          </div>
+        </div>
+        <div class="stage-list">
+        <tal:stages tal:repeat="stage view/extraction_stages">
+          <tal:define tal:define="status python:view.stage_status(stage);
+                                  viewing python:view.view_order() == stage.get('order');
+                                  href python:view.stage_url(stage.get('order')) if status == 'done' else (view.stage_url() if status == 'active' else None)">
+          <a tal:attributes="class python:'stage-item ' + status + (' viewing' if viewing else '');
+                             href href;
+                             title python:'Open this stage' if href else 'Not reached yet'">
+            <span tal:attributes="class python:'stage-num ' + status">
+              <tal:done tal:condition="python:status=='done'">&#10003;</tal:done>
+              <tal:other tal:condition="python:status!='done'"
+                         tal:content="python:stage.get('order','')"></tal:other>
+            </span>
+            <span class="stage-name" tal:content="python:stage.get('name','')"></span>
+          </a>
+          </tal:define>
+        </tal:stages>
+        </div>
+      </div>
+
+      <!-- ── Main content ────────────────────────────────────────── -->
+      <div class="eg-main">
+        <!-- sources that name another method than the batch's (batch_method.py) -->
+        <ul class="bench-alerts" tal:define="mc view/method_conflicts" tal:condition="mc">
+          <li class="bench-warn" tal:repeat="c mc">
+            <strong>Method disagrees:</strong>
+            <span tal:content="python:u'%s says %s; this batch is %s.' % (c[0], c[1], view._method_id())">x</span></li>
+        </ul>
+
+        <!-- ── A completed stage read-only (?stage=N), or the Review &amp; finalize
+             screen once every stage is done: one summary per stage. ── -->
+        <tal:summary tal:define="mode view/mode"
+                     tal:condition="python: mode in ('view', 'review')">
+        <tal:d tal:define="rv python: view.review_data() if mode == 'review' else None;
+                           stages python: rv['stages'] if rv else [view.viewed_stage()]">
+        <div class="eg-stage-header" tal:condition="rv">
+          <div class="stage-badge">All stages recorded</div>
+          <div class="stage-title">Review &amp; finalize</div>
+          <div class="stage-desc">Check everything recorded below, then finalize. A stage can
+            still be corrected (open it from the list); after finalizing, a correction is a
+            deviation.</div>
+        </div>
+        <div class="needs-note" tal:condition="python: rv and rv['unnoted']">
+          <strong>Needs a note</strong> &#8212; stage(s)
+          <span tal:replace="python: ', '.join('%s' % o for o in rv['unnoted'])">2</span>
+          have warnings without a deviation note.</div>
+        <div class="eg-card summary-card" tal:repeat="st stages">
+          <h3>
+            <span tal:replace="python: 'Stage %s: %s' % (st['order'], st['name'])">Stage 1</span>
+            <span class="summary-meta" tal:condition="st/completed_at"
+                  tal:content="python: u'%s \u00b7 %s' % (st['analyst'] or u'\u2014', st['completed_at'][:16].replace('T', ' '))">AN1</span>
+            <a class="btn-sm btn-secondary" tal:condition="python: rv is not None"
+               tal:attributes="href python: view.stage_url(st['order'])">Open</a>
+          </h3>
+          <table class="pfas-table" tal:condition="python: st['reagents'] or st['consumables']">
+            <thead><tr><th>Item</th><th>Lot</th><th>Qty</th></tr></thead>
+            <tbody><tr tal:repeat="r python: st['reagents'] + st['consumables']">
+              <td tal:content="python: r['name'] or r['role']">Methanol</td>
+              <td><span tal:replace="python: r['lot'] or u'\u2014'">L1</span>
+                  <span class="exp-warn" tal:condition="python: r['lot'] and not r['from_inventory']">typed</span></td>
+              <td tal:content="python: r['qty'] or u'\u2014'">5 mL</td>
+            </tr></tbody>
+          </table>
+          <p class="summary-line" tal:condition="st/equipment">
+            <strong>Equipment:</strong>
+            <span tal:replace="python: ', '.join('%s %s' % (k, v or '(no serial)') for k, v in st['equipment'])">Balance</span></p>
+          <p class="summary-line" tal:condition="st/samples">
+            <strong>Per sample:</strong>
+            <span tal:replace="python: ', '.join('%s %s %s' % (x['sample_id'], x['value'] or u'\u2014', x['unit']) for x in st['samples'])">S-1 1 g</span></p>
+          <tal:w tal:condition="st/warnings">
+            <p class="summary-line"><strong>Needed a note:</strong></p>
+            <ul class="summary-warn"><li tal:repeat="w st/warnings" tal:content="w">x</li></ul>
+          </tal:w>
+          <p class="summary-line" tal:condition="st/homogenisation"><strong>Homogenised:</strong>
+            <span tal:replace="python: u'; '.join(u'%s %s' % (h['sample_id'], h['method'] or u'\u2014') for h in st['homogenisation'])">x</span></p>
+          <p class="summary-line" tal:condition="st/confirmed"><strong>Checked:</strong>
+            <span tal:replace="python: u'; '.join(st['confirmed'])">x</span></p>
+          <p class="summary-line" tal:condition="st/deviations"><strong>Note:</strong>
+            <span tal:replace="st/deviations">text</span></p>
+          <p class="summary-line" tal:repeat="c st/corrections"><strong>Corrected</strong>
+            <span tal:replace="python: '%s by %s: %s' % (c['at'][:16].replace('T', ' '), c['by'], c['reason'])">x</span></p>
+          <p class="summary-line" tal:condition="python: not st.get('completed_at')"><em>Not recorded.</em></p>
+        </div>
+
+        <!-- viewing one completed stage: correct it, or go back -->
+        <tal:v tal:condition="python: mode == 'view'">
+        <form method="post" class="eg-card correct-form"
+              tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
+          <h3>Correct this stage</h3>
+          <input type="hidden" name="action" value="reopen_stage" />
+          <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
+          <input type="hidden" name="stage_order" tal:attributes="value view/view_order" />
+          <textarea class="deviation-field" name="reason" required="required"
+                    placeholder="Why does this stage need correcting? The current record is kept."></textarea>
+          <div class="stage-actions">
+            <button class="btn-sm btn-primary" type="submit">Reopen for correction</button>
+            <a class="btn-sm btn-secondary" tal:attributes="href python: view.stage_url()">Back to the current stage</a>
+          </div>
+        </form>
+        </tal:v>
+
+        <!-- review: sign off -->
+        <form method="post" class="eg-card" tal:condition="rv"
+              tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
+          <h3>Finalize</h3>
+          <input type="hidden" name="action" value="finalize" />
+          <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
+          <input type="hidden" name="analyst" tal:attributes="value view/current_user_name" />
+          <p class="summary-line">Signed off by <strong tal:content="view/current_user_name">name</strong>.
+            Creates the extraction logbook PDF.</p>
+          <div class="stage-actions">
+            <button type="submit" class="btn-lg btn-success">Finalize &amp; create PDF</button>
+          </div>
+        </form>
+        </tal:d>
+        </tal:summary>
+
+        <tal:current tal:define="stage view/current_stage"
+                     tal:condition="python: view.mode() == 'edit'">
+        <div class="eg-stage-header">
+          <div class="stage-badge"
+               tal:content="python:'Stage {0} of {1}'.format(stage.get('order',''), view.total_stages())"></div>
+          <div class="stage-title" tal:content="python:stage.get('name','')"></div>
+          <div class="stage-desc"  tal:content="python:stage.get('description','')"></div>
+          <div class="stage-desc" tal:condition="python:view.is_processing_stage(stage)">
+            This stage is the Sample Processing Log (<tal:f replace="view/processing_form_code"/>).</div>
+        </div>
+
+        <!-- Action image for this stage (uploaded on the method profile's
+             Lab Workflow tab). Same media store as guided logbook steps. -->
+        <tal:media tal:define="murl python:view.stage_media_url(stage)"
+                   tal:condition="murl">
+          <div class="eg-card eg-media-card">
+            <img class="eg-stage-img" id="eg-stage-img"
+                 tal:attributes="src murl;
+                                 alt python:stage.get('media_alt','') or stage.get('name','')" />
+            <div>
+              <button type="button" class="btn-sm btn-add-sol" id="eg-replay-btn">&#8635; Replay</button>
+            </div>
+          </div>
+        </tal:media>
+
+        <form method="post"
+              tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide"
+              id="stage-form">
+          <input type="hidden" name="action"       value="complete_stage" />
+          <input type="hidden" name="batch_uid"    tal:attributes="value view/batch_uid" />
+          <input type="hidden" name="stage_order"  tal:attributes="value python:str(stage.get('order',''))" />
+          <input type="hidden" name="reagents_json"        id="reagents_json_field"        value="[]" />
+          <input type="hidden" name="equipment_sns_json"   id="equipment_sns_json_field"   value="{}" />
+          <input type="hidden" name="solutions_prepared_json" id="solutions_json_field"    value="[]" />
+
+          <!-- ── Who recorded this stage: the login, changeable once ── -->
+          <div class="recorded-by" tal:define="who python:view.stage_draft().get('analyst') or view.session().get('analyst','')">
+            Recorded by <strong id="recorded-by-name" tal:content="who">name</strong>
+            <button type="button" class="btn-sm btn-secondary"
+                    onclick="var f=document.getElementById('stage-analyst-field');f.hidden=false;f.focus();this.hidden=true;">Change</button>
+            <input type="text" name="stage_analyst" id="stage-analyst-field" class="stage-analyst-field" hidden="hidden"
+                   tal:attributes="value who" placeholder="Analyst name" />
+          </div>
+
+          <!-- ── Per-sample table: written to FM-ENV-003's samples rows ── -->
+          <tal:smp tal:define="card python:__import__('json').loads(view.sample_card_json())"
+                   tal:condition="card/column">
+          <div class="eg-card" id="sample-card">
+            <h3 tal:content="python:{'amount': 'Sample amounts', 'spe_port': 'SPE ports'}.get(card['column'], 'Final extract volumes')">Sample amounts</h3>
+            <p class="reagent-hint" tal:condition="python:card['column'] == 'amount'">Grams for a solid, mL for a water.</p>
+            <p class="reagent-hint" tal:condition="python:card['column'] == 'final_volume_ml'">Each extract's final volume.</p>
+            <table class="pfas-table sample-table">
+              <thead><tr><th>Sample</th>
+                <th tal:content="python:'Role' if card['column'] == 'spe_port' else 'Matrix'">Matrix</th>
+                <th tal:content="python:{'amount': 'Amount', 'spe_port': 'SPE port'}.get(card['column'], 'Final volume (mL)')">Amount</th>
+                <th tal:condition="python:card['column'] == 'amount'">Unit</th></tr></thead>
+              <tbody id="sample-rows"></tbody>
+            </table>
+            <button type="button" class="btn-sm btn-add-sol reagent-add" onclick="addSampleRow()"
+                    tal:condition="python:card['column'] != 'spe_port'">+ Add a sample</button>
+            <input type="hidden" name="samples_json" id="samples_json_field" value="[]" />
+          </div>
+          </tal:smp>
+
+          <!-- ── Reagent confirmation ── -->
+          <tal:rgs tal:condition="python:stage.get('reagent_roles')">
+          <div class="eg-card" id="reagent-card">
+            <h3>Reagents and standards used</h3>
+            <p class="reagent-hint">Pick the lot you used, or scan its label. Only lots that
+              are in date and not quarantined are listed.</p>
+            <div id="reagent-rows"></div>
+            <button type="button" class="btn-sm btn-add-sol reagent-add"
+                    onclick="addReagentRow('reagent')">+ Add another item</button>
+          </div>
+          </tal:rgs>
+
+          <!-- ── Consumables, by lot ── -->
+          <tal:cons tal:condition="python:stage.get('consumables')">
+          <div class="eg-card" id="consumable-card">
+            <h3>Consumables used</h3>
+            <p class="reagent-hint">Tubes, vials, syringes and filters are recorded by lot, like reagents.</p>
+            <div id="consumable-rows"></div>
+            <button type="button" class="btn-sm btn-add-sol reagent-add"
+                    onclick="addReagentRow('consumable')">+ Add another consumable</button>
+          </div>
+          </tal:cons>
+
+          <!-- ── Equipment S/Ns ── -->
+          <tal:eqs tal:condition="python:stage.get('equipment')">
+          <div class="eg-card">
+            <h3>Equipment used</h3>
+            <div class="eq-grid" id="eq-grid"></div>
+          </div>
+          </tal:eqs>
+
+          <!-- ── Each sample's homogenisation (processing stage, H-P4) ── -->
+          <tal:hg tal:define="hrows view/homogenisation_rows" tal:condition="hrows">
+          <div class="eg-card" id="homogenisation-card">
+            <h3>Homogenisation</h3>
+            <table class="pfas-table">
+              <thead><tr><th>Sample</th><th>Requested</th><th>Done</th><th>Homogeniser</th>
+                         <th>Composite</th><th>By</th><th>When</th></tr></thead>
+              <tbody>
+                <tr tal:repeat="h hrows">
+                  <td tal:content="h/sample_id">EGG-0001</td>
+                  <td tal:content="h/requested">IKA mill</td>
+                  <td><span tal:replace="h/method">IKA mill</span>
+                      <div class="cf-hint" tal:condition="h/warning" tal:content="h/warning">x</div></td>
+                  <td tal:content="h/unit">Mill 1</td>
+                  <td><span tal:replace="h/composite">Composite of 12 units</span>
+                      <tal:u condition="h/units_combined">(<span tal:replace="h/units_combined">12</span> combined)</tal:u></td>
+                  <td tal:content="h/by">AN1</td>
+                  <td tal:content="h/at">2026-10-06 10:00</td>
+                </tr>
+              </tbody>
+            </table>
+            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-homogenisation">Homogenisation</a>
+          </div>
+          </tal:hg>
+
+          <!-- ── Checks the method asks to be ticked (stage editor) ── -->
+          <tal:chk tal:define="checks python:[c for c in stage.get('confirmations') or [] if c.strip()]"
+                   tal:condition="checks">
+          <div class="eg-card" id="checks-card" tal:define="ticked view/stage_confirmed">
+            <h3>Checks</h3>
+            <div tal:repeat="c checks"><label>
+              <input type="checkbox"
+                     tal:attributes="name string:confirmed_${repeat/c/index}; value c;
+                                     checked python:c in ticked or None" />
+              <span tal:replace="c">Homogeniser cleaned</span></label></div>
+          </div>
+          </tal:chk>
+
+          <!-- ── Solutions prepared (if applicable) ── -->
+          <tal:sol tal:condition="python:stage.get('creates_solution', False)">
+          <div class="eg-card" id="solutions-card">
+            <h3>Solutions Prepared at This Stage</h3>
+            <div id="sol-rows"></div>
+            <button type="button" class="btn-sm btn-add-sol" onclick="addSolutionRow()">
+              + Prepare a New Solution / Label
+            </button>
+          </div>
+          </tal:sol>
+
+          <!-- ── Pedigree (spike stages) ── -->
+          <tal:ped tal:condition="python:stage.get('capture_pedigree', False)">
+          <div class="eg-card" id="pedigree-card">
+            <h3>Standard / IS Pedigree</h3>
+            <p class="reagent-hint">
+              Record the full chain: CRM &rarr; Stock &rarr; Working standard.
+              This becomes the parentage record in the final PDF.
+            </p>
+            <div id="ped-rows"></div>
+            <button type="button" class="btn-sm btn-add-sol"
+                    onclick="addPedigreeStandard()">+ Add Standard</button>
+            <input type="hidden" name="pedigree_json_stage" id="pedigree_hidden" value="{}" />
+          </div>
+          </tal:ped>
+
+          <!-- ── Deviations / observations ── -->
+          <div class="eg-card" id="deviation-card">
+            <h3>Deviations / Observations</h3>
+            <div class="alert alert-danger" id="cannot-complete"
+                 tal:define="blocks python:view.stage_draft().get('blocks') or []"
+                 tal:attributes="hidden python:not blocks or None">
+              <strong>Cannot complete</strong> &#8212; a note does not change this:
+              <ul id="cannot-complete-list">
+                <li tal:repeat="w blocks" tal:content="w">Analytical Balance: no balance chosen</li>
+              </ul>
+            </div>
+            <div class="needs-note" id="needs-note"
+                 tal:define="warns python:view.stage_draft().get('warnings') or []"
+                 tal:attributes="hidden python:not warns or None">
+              <strong>Needs a note</strong> &#8212; say what happened and what you did about it:
+              <ul id="needs-note-list">
+                <li tal:repeat="w warns" tal:content="w">Methanol: no lot recorded</li>
+              </ul>
+            </div>
+            <textarea class="deviation-field" name="deviations" id="deviations-field"
+                      placeholder="Document any deviations from SOP, unusual observations, or corrective actions taken..."
+                      tal:content="python:view.stage_draft().get('deviations') or ''"></textarea>
+          </div>
+
+          <!-- ── Stage actions ── -->
+          <div class="stage-actions">
+            <button class="btn-lg btn-success btn-complete" type="submit"
+                    onclick="return prepStageSubmit()">
+              &#10003; Complete Stage
+              <tal:next tal:condition="python:(stage.get('order',0) or 0) &lt; view.total_stages()">
+                &amp; Next Stage
+              </tal:next>
+            </button>
+          </div>
+
+        </form>
+
+
+        </tal:current>
+
+      </div><!-- /eg-main -->
+    </div><!-- /eg-layout -->
+    </tal:active>
+
+    <!-- ════════════════════════════════════════════════════════════
+         BATCH QC: the extraction batch's QC and each one's parent and
+         level, set before labels on the batch page (extraction_batch.py); shown here, never re-entered.
+         ════════════════════════════════════════════════════════════ -->
+    <tal:spk tal:condition="python: view.session()">
+    <div class="eg-card dilution-card" id="spike-card">
+      <h3>Batch QC</h3>
+      <p class="reagent-hint"><a class="btn-sm" tal:attributes="href view/members_url">Batch QC &amp; parents</a></p>
+      <table class="pfas-table" tal:define="rows view/qc_members" tal:condition="rows">
+        <thead><tr><th>Injection name</th><th>QC</th><th>Made from</th><th>Level</th><th>Added</th></tr></thead>
+        <tbody><tr tal:repeat="r rows">
+          <td tal:content="r/injection">WS-1-LFSM1</td><td tal:content="r/role">LFSM</td>
+          <td tal:content="python:r.get('parent_injection') or '—'">DW-0001</td>
+          <td tal:content="python:r.get('level') or '—'">Mid</td>
+          <td tal:content="python:('%s %s' % (r['amount'], r.get('unit') or '')) if r.get('amount') else 'method level'">100 ng/g</td>
+        </tr></tbody>
+      </table>
+    </div>
+    </tal:spk>
+
+    <!-- ════════════════════════════════════════════════════════════
+         DILUTIONS: logged whenever they are made, also after the
+         extraction is finalized (a dilution follows the run). Appended to
+         FM-ENV-003, never edited.
+         ════════════════════════════════════════════════════════════ -->
+    <tal:dil tal:condition="python: view.session() and view.mode() in ('review', 'done')">
+    <div class="eg-card dilution-card" id="dilution-card">
+      <h3>Dilutions</h3>
+      <p class="reagent-hint">Re-injected diluted after reading above the calibration range; the diluted result is added with its own analysis time. <tal:h define="hid string:dilution"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <table class="pfas-table" tal:define="rows view/dilution_rows" tal:condition="rows">
+        <thead><tr><th>Diluted from</th><th>Injection name</th><th>Fold</th><th>Logged by</th><th>Logged</th></tr></thead>
+        <tbody><tr tal:repeat="r rows">
+          <td tal:content="r/dilution_of">S-1</td><td tal:content="r/sample_id">S-1 1:10</td>
+          <td tal:content="r/dilution_factor">10</td><td tal:content="python:r.get('logged_by') or '—'">DEMO</td>
+          <td tal:content="python:(r.get('logged_at') or '—')[:16].replace('T', ' ')">2026-10-02 14:00</td>
+        </tr></tbody>
+      </table>
+      <form method="post" class="dilution-form"
+            tal:attributes="action string:${view/portal_url}/@@pfas-extraction-guide">
+        <input type="hidden" name="action" value="log_dilution" />
+        <input type="hidden" name="batch_uid" tal:attributes="value view/batch_uid" />
+        <select name="dilution_of">
+          <option value="">Diluted from&#8230;</option>
+          <option tal:repeat="sid view/dilution_parents" tal:attributes="value sid" tal:content="sid">S-1</option>
+        </select>
+        <input type="text" name="dilution_injection" placeholder="Injection name in the run" />
+        <input type="number" name="dilution_factor" min="1.01" step="any" placeholder="Fold, e.g. 2 or 10" />
+        <button class="btn-sm btn-primary" type="submit">Log dilution</button>
+      </form>
+    </div>
+    </tal:dil>
+
+
+  <script>
+  /* ── Utilities ────────────────────────────────────────────────────── */
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;').replace(/\u003e/g,'&gt;');
+  }
+  function todayISO() { return new Date().toISOString().slice(0,10); }
+  function isExpired(d) { return d && new Date(d) < new Date(); }
+  function expClass(d) {
+    if (!d) return '';
+    var exp = new Date(d);
+    var now = new Date();
+    if (exp < now) return 'exp-expired';
+    if ((exp-now) < 30*24*3600*1000) return 'exp-warn';
+    return '';
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     REAGENT ROWS -- every lot is picked from the inventory ("Bench phase 2"): usable lots only, suggestions first, the
+     lab's last pick for the role preselected. Name, lot and expiry come from
+     the inventory record; the server re-reads them on completion.
+     ═══════════════════════════════════════════════════════════════════ */
+  var LOTS = (STAGE_LOTS && STAGE_LOTS.lots) || [];
+  var LOT_BY_KEY = {};
+  LOTS.forEach(function(l) { LOT_BY_KEY[l.key] = l; });
+  var reagentData = [];
+
+  function lotRow(role, key, group) {
+    var l = LOT_BY_KEY[key] || null;
+    return { group: group || 'reagent',
+             role: role || '', key: l ? l.key : '', kind: l ? l.kind : '',
+             inventory_uid: l ? l.uid : '', name: l ? l.name : (role || ''),
+             lot: l ? l.lot : '', expiry: l ? l.expiry : '',
+             qty_used: '', status: 'ok', new_status: '' };
+  }
+
+  var ROLE_INFO = (STAGE_LOTS && STAGE_LOTS.roles) || {};
+  if (DRAFT && DRAFT.reagents) {
+    /* A completion refused for want of a deviation note: reopen on exactly
+       what was entered. */
+    DRAFT.reagents.forEach(function(d) {
+      var row = lotRow(d.role, d.from_inventory ? (d.kind + ':' + d.inventory_uid) : '', d.group);
+      if (!d.from_inventory) { row.name = d.name || row.name; row.lot = d.lot || ''; }
+      row.qty_used = d.qty_used || '';
+      row.new_status = d.new_status || '';
+      reagentData.push(row);
+    });
+  } else {
+    /* In the stage's own order (a JSON object's key order is not kept). */
+    ((STAGE_LOTS && STAGE_LOTS.role_order) || []).forEach(function(role) {
+      reagentData.push(lotRow(role, (ROLE_INFO[role] || {}).default));
+    });
+    ((STAGE_LOTS && STAGE_LOTS.consumable_order) || []).forEach(function(role) {
+      reagentData.push(lotRow(role, (ROLE_INFO[role] || {}).default, 'consumable'));
+    });
+  }
+
+  function addReagentRow(group) {
+    reagentData.push(lotRow('', '', group));
+    renderReagents();
+  }
+
+  function pickLot(i, key) {
+    var keep = reagentData[i];
+    var row = lotRow(keep.role, key, keep.group);
+    row.qty_used = keep.qty_used;
+    reagentData[i] = row;
+    renderReagents();
+  }
+
+  function lotLabel(l) {
+    return l.name + ' \u00b7 lot ' + l.lot + (l.expiry ? ' \u00b7 exp ' + l.expiry : '') +
+           (l.left ? ' \u00b7 ' + l.left : '') +
+           (l.kind === 'prepared_standard' ? ' \u00b7 prepared' : '');
+  }
+
+  function lotOptions(r) {
+    var info = ROLE_INFO[r.role] || {suggested: []};
+    var sugg = {}, html = '\u003coption value="">\u2014 choose a lot \u2014\u003c/option>';
+    var opt = function(l) {
+      return '\u003coption value="' + esc(l.key) + '"' + (l.key === r.key ? ' selected' : '') + '>' +
+             esc(lotLabel(l)) + '\u003c/option>';
+    };
+    if (info.suggested.length) {
+      html += '\u003coptgroup label="Suggested">';
+      info.suggested.forEach(function(k) { sugg[k] = 1; if (LOT_BY_KEY[k]) html += opt(LOT_BY_KEY[k]); });
+      html += '\u003c/optgroup>';
+    }
+    html += '\u003coptgroup label="All usable lots">';
+    LOTS.forEach(function(l) { if (!sugg[l.key]) html += opt(l); });
+    return html + '\u003c/optgroup>';
+  }
+
+  function renderReagents() {
+    var boxes = {reagent: document.getElementById('reagent-rows'),
+                 consumable: document.getElementById('consumable-rows')};
+    Object.keys(boxes).forEach(function(g) { if (boxes[g]) boxes[g].innerHTML = ''; });
+    reagentData.forEach(function(r, i) {
+      var el = boxes[r.group] || boxes.reagent;
+      if (!el) return;
+      var ec = expClass(r.expiry);
+      var div = document.createElement('div');
+      div.className = 'reagent-row';
+      div.innerHTML =
+        (r.role ? '\u003cspan class="reagent-role">' + esc(r.role) + '\u003c/span>'
+                : '\u003cinput class="reagent-role-field" type="text" placeholder="What is it for?"' +
+                  ' value="' + esc(r.role) + '" oninput="reagentData[' + i + '].role=this.value;syncReagents()"/>') +
+        '\u003cselect class="reagent-lot-sel" onchange="pickLot(' + i + ',this.value)">' + lotOptions(r) + '\u003c/select>' +
+        '\u003cbutton type="button" class="btn btn-scan-sm" title="Scan the label" onclick="scanReagentLot(' + i + ')">&#128247;\u003c/button>' +
+        '\u003cbutton type="button" class="btn-sm btn-secondary" title="A lot that is not in the inventory yet" onclick="openReceive(' + i + ')">New lot\u003c/button>' +
+        (ec ? '\u003cspan class="' + ec + '">' + (ec === 'exp-expired' ? 'EXPIRED' : 'Expires ' + esc(r.expiry)) + '\u003c/span>' : '') +
+        '\u003cinput class="reagent-qty-field" type="text" title="Amount used, e.g. 5 mL"' +
+               ' placeholder="Qty used' + ((LOT_BY_KEY[r.key] || {}).unit ? ' (' + esc(LOT_BY_KEY[r.key].unit) + ')' : '') + '"' +
+               ' value="' + esc(r.qty_used) + '"' +
+               ' oninput="reagentData[' + i + '].qty_used=this.value;syncReagents()"/>' +
+        (r.kind === 'reagent' ?
+          '\u003cselect class="reagent-status-sel' + (r.new_status ? ' flagged' : '') + '"' +
+                  ' onchange="flagReagent(' + i + ',this.value)">' +
+            '\u003coption value="">Lot OK\u003c/option>' +
+            '\u003coption value="exhausted"' + (r.new_status === 'exhausted' ? ' selected' : '') + '>Lot used up\u003c/option>' +
+            '\u003coption value="quarantine"' + (r.new_status === 'quarantine' ? ' selected' : '') + '>Quarantine this lot\u003c/option>' +
+          '\u003c/select>' : '') +
+        '\u003cbutton type="button" class="reagent-remove" title="Remove this row" onclick="reagentData.splice(' + i + ',1);renderReagents()">&#215;\u003c/button>' +
+        (r.receiving ? receiveForm(i, r.receiving) : '');
+      el.appendChild(div);
+    });
+    syncReagents();
+  }
+
+  function flagReagent(i, val) {
+    reagentData[i].new_status = val;
+    renderReagents();
+  }
+
+  /* A GS1 label (GTIN, lot, expiry) is read by the vendored parser; any
+     other code is matched as it is. */
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function readLabel(code) {
+    var out = {raw: (code || '').trim(), lot: '', expiry: '', gtin: ''};
+    try {
+      (parseBarcode(out.raw).parsedCodeItems || []).forEach(function(it) {
+        if (it.ai === '10') out.lot = String(it.data);
+        if (it.ai === '01') out.gtin = String(it.data);
+        if ((it.ai === '17' || it.ai === '15') && it.data instanceof Date && !out.expiry)
+          out.expiry = it.data.getFullYear() + '-' + pad2(it.data.getMonth() + 1) + '-' + pad2(it.data.getDate());
+      });
+    } catch (e) { /* not GS1: matched as typed */ }
+    return out;
+  }
+
+  /* The lot a label names: its GS1 lot number, else the stored barcode,
+     else a lot number the code contains. */
+  function findLot(label) {
+    var c = label.raw.toLowerCase(), lot = label.lot.toLowerCase(), hit = null;
+    LOTS.forEach(function(l) { if (!hit && lot && (l.lot || '').toLowerCase() === lot) hit = l; });
+    LOTS.forEach(function(l) { if (!hit && c && (l.barcode || '').toLowerCase() === c) hit = l; });
+    LOTS.forEach(function(l) {
+      var v = (l.lot || '').toLowerCase();
+      if (!hit && !lot && v && c.indexOf(v) !== -1) hit = l;
+    });
+    return hit;
+  }
+
+  function scanReagentLot(i) {
+    openScanModal(function(result) {
+      var label = readLabel(result), l = findLot(label);
+      if (l) { pickLot(i, l.key); return; }
+      openReceive(i, label);
+    });
+  }
+
+  /* DB2: a lot not in the inventory is received here, in the stage. */
+  function openReceive(i, label) {
+    var r = reagentData[i];
+    label = label || {raw: '', lot: '', expiry: '', gtin: ''};
+    r.receiving = {name: r.role || '', lot: label.lot || (label.raw && !label.gtin ? label.raw : ''),
+                   expiry: label.expiry, barcode: label.raw,
+                   category: r.group === 'consumable' ? 'Consumable' : '', supplier: '', cat_number: '',
+                   error: ''};
+    renderReagents();
+  }
+
+  function receiveForm(i, rc) {
+    var f = function(k, ph, type) {
+      return '\u003cinput type="' + (type || 'text') + '" placeholder="' + ph + '" value="' + esc(rc[k] || '') + '"' +
+             ' oninput="reagentData[' + i + '].receiving.' + k + '=this.value"/>';
+    };
+    return '\u003cdiv class="receive-box">\u003cstrong>Receive a new lot into the inventory\u003c/strong>' +
+      '\u003cdiv class="receive-grid">' + f('name', 'Item name') + f('lot', 'Lot number') +
+      f('expiry', 'Expiry', 'date') +
+      // a core Supplier (core_lists.py)
+      '\u003cselect onchange="reagentData[' + i + '].receiving.supplier=this.value">\u003coption value="">Supplier\u003c/option>' +
+      SUPPLIERS.map(function(s) { return '\u003coption' + (s === rc.supplier ? ' selected' : '') + '>' + esc(s) + '\u003c/option>'; }).join('') +
+      '\u003c/select>' + f('cat_number', 'Catalogue #') +
+      '\u003cselect onchange="reagentData[' + i + '].receiving.category=this.value">\u003coption value="">Category\u003c/option>' +
+      CATEGORIES.map(function(c) { return '\u003coption' + (c === rc.category ? ' selected' : '') + '>' + esc(c) + '\u003c/option>'; }).join('') +
+      '\u003c/select>\u003c/div>' +
+      (rc.error ? '\u003cdiv class="reagent-miss">' + esc(rc.error) + '\u003c/div>' : '') +
+      '\u003cbutton type="button" class="btn-sm btn-primary" onclick="submitReceive(' + i + ')">Receive and use this lot\u003c/button> ' +
+      '\u003cbutton type="button" class="btn-sm btn-secondary" onclick="reagentData[' + i + '].receiving=null;renderReagents()">Cancel\u003c/button>' +
+      '\u003c/div>';
+  }
+
+  function submitReceive(i) {
+    var rc = reagentData[i].receiving, body = new URLSearchParams();
+    body.append('action', 'receive_lot'); body.append('batch_uid', BATCH_UID);
+    body.append('name', rc.name || ''); body.append('lot_number', rc.lot || '');
+    body.append('expiry', rc.expiry || ''); body.append('supplier', rc.supplier || '');
+    body.append('cat_number', rc.cat_number || ''); body.append('category', rc.category || '');
+    body.append('barcode', rc.barcode || '');
+    var tok = document.querySelector('input[name=_authenticator]');
+    if (tok) body.append('_authenticator', tok.value);
+    fetch(SELF_URL, {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function(resp) { return resp.json(); })
+      .then(function(res) {
+        if (!res.ok) { rc.error = res.error || 'Not received.'; renderReagents(); return; }
+        LOTS.push(res.lot); LOT_BY_KEY[res.lot.key] = res.lot;
+        reagentData[i].receiving = null;
+        pickLot(i, res.lot.key);
+      })
+      .catch(function() { rc.error = 'Not received: the server did not answer.'; renderReagents(); });
+  }
+
+  function syncReagents() {
+    var el = document.getElementById('reagents_json_field');
+    if (el) el.value = JSON.stringify(reagentData.map(function(r) {
+      return {group: r.group, role: r.role, kind: r.kind, inventory_uid: r.inventory_uid, name: r.name,
+              lot: r.lot, expiry: r.expiry, qty_used: r.qty_used, status: r.status,
+              new_status: r.new_status};
+    }));
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     EQUIPMENT S/N GRID
+     ═══════════════════════════════════════════════════════════════════ */
+  var equipmentSNs = (DRAFT && DRAFT.equipment_sns) || {};
+
+  /* A balance or pipette is chosen from the units registered in Facility QC,
+     with today's verification / calibration shown; anything else (or a unit
+     not registered yet) keeps a serial number field. */
+  function renderEquipment() {
+    var el = document.getElementById('eq-grid');
+    if (!el) return;
+    el.innerHTML = '';
+    (EQUIPMENT || []).forEach(function(eq, i) {
+      var label = eq.label, cur = equipmentSNs[label] || '';
+      equipmentSNs[label] = cur;
+      var known = eq.units.some(function(u) { return u.serial === cur; });
+      var div = document.createElement('div');
+      div.className = 'eq-field';
+      var html = '\u003clabel>' + esc(label) + '\u003c/label>';
+      if (eq.units.length) {
+        html += '\u003cselect onchange="pickUnit(' + i + ',this.value)">' +
+          '\u003coption value="">\u2014 choose the ' + esc(eq.family) + ' \u2014\u003c/option>' +
+          eq.units.map(function(u) {
+            return '\u003coption value="' + esc(u.serial) + '"' + (u.serial === cur ? ' selected' : '') + '>' +
+                   esc(u.name + ' \u00b7 S/N ' + u.serial + ' \u00b7 ' + u.note +
+                       (!u.ok && eq.family === 'balance' ? ' \u00b7 cannot be used' : '')) + '\u003c/option>';
+          }).join('') +
+          '\u003coption value="__other__"' + (cur && !known ? ' selected' : '') + '>Not listed (type the serial)\u003c/option>' +
+          '\u003c/select>';
+        if (cur && known) {
+          var u = eq.units.filter(function(x) { return x.serial === cur; })[0];
+          if (!u.ok) html += '\u003cspan class="exp-expired">' + esc(u.note) + '\u003c/span>';
+        }
+      } else if (eq.family) {
+        html += '\u003cspan class="eq-hint">No ' + esc(eq.family) + ' registered under Equipment\u003c/span>';
+      }
+      if (!eq.units.length || (cur && !known) || eq.other) {
+        html += '\u003cinput type="text" placeholder="Serial number" value="' + esc(known ? '' : cur) + '"' +
+                ' oninput="equipmentSNs[EQUIPMENT[' + i + '].label]=this.value;syncEquipment()"/>';
+      }
+      div.innerHTML = html;
+      el.appendChild(div);
+    });
+    syncEquipment();
+  }
+
+  function pickUnit(i, serial) {
+    var eq = EQUIPMENT[i];
+    eq.other = (serial === '__other__');
+    equipmentSNs[eq.label] = eq.other ? '' : serial;
+    renderEquipment();
+  }
+
+  function syncEquipment() {
+    var el = document.getElementById('equipment_sns_json_field');
+    if (el) el.value = JSON.stringify(equipmentSNs);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     SOLUTIONS PREPARED
+     ═══════════════════════════════════════════════════════════════════ */
+  var solutionsData = [];
+
+  function addSolutionRow() {
+    solutionsData.push({name:'', lot:'', conc:'', volume_ml:'', expiry:'', analyst:''});
+    renderSolutions();
+  }
+
+  function renderSolutions() {
+    var el = document.getElementById('sol-rows');
+    if (!el) return;
+    el.innerHTML = '';
+    solutionsData.forEach(function(s, i) {
+      var div = document.createElement('div');
+      div.className = 'sol-card';
+      div.innerHTML =
+        '\u003cbutton type="button" class="btn-del-sol" onclick="solutionsData.splice('+i+',1);renderSolutions()">&#215;\u003c/button>'+
+        '\u003ch4>Solution ' + (i+1) + '\u003c/h4>'+
+        '\u003cdiv class="sol-fields">'+
+          '\u003cdiv class="sol-field">\u003clabel>Name\u003c/label>'+
+            '\u003cinput type="text" value="'+esc(s.name)+'"'+
+                   ' oninput="solutionsData['+i+'].name=this.value;autoSolLot('+i+')"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Lot #\u003c/label>'+
+            '\u003cinput type="text" value="'+esc(s.lot)+'" id="sol-lot-'+i+'"'+
+                   ' oninput="solutionsData['+i+'].lot=this.value;syncSolutions()"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Concentration\u003c/label>'+
+            '\u003cinput type="text" value="'+esc(s.conc)+'" placeholder="e.g. 100 ng/mL"'+
+                   ' oninput="solutionsData['+i+'].conc=this.value;syncSolutions()"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Volume (mL)\u003c/label>'+
+            '\u003cinput type="number" step="0.1" value="'+esc(s.volume_ml)+'"'+
+                   ' oninput="solutionsData['+i+'].volume_ml=this.value;syncSolutions()"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Expiry\u003c/label>'+
+            '\u003cinput type="date" value="'+esc(s.expiry)+'" id="sol-exp-'+i+'"'+
+                   ' oninput="solutionsData['+i+'].expiry=this.value;syncSolutions()"/>\u003c/div>'+
+          '\u003cdiv class="sol-field">\u003clabel>Storage\u003c/label>'+
+            '\u003cinput type="text" value="'+esc(s.storage||'')+'" placeholder="-20°C"'+
+                   ' oninput="solutionsData['+i+'].storage=this.value;syncSolutions()"/>\u003c/div>'+
+        '\u003c/div>'+
+        '\u003cdiv class="sol-actions">'+
+          '\u003cbutton type="button" class="btn btn-label" onclick="printLabel('+i+')">&#127991; Print Label\u003c/button>'+
+          '\u003cbutton type="button" class="btn btn-scan-sm" onclick="saveSolutionToInventory('+i+')">+ Add to Inventory\u003c/button>'+
+        '\u003c/div>';
+      el.appendChild(div);
+    });
+    syncSolutions();
+  }
+
+  var MOBILE_PHASE_RE = /methanol|meoh|acetonitrile|acn|water|h2o|mobile.?phase|mph|formic/i;
+  function autoSolLot(i) {
+    var s = solutionsData[i];
+    var d = new Date();
+    var yy = String(d.getFullYear()).slice(-2);
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var dd = String(d.getDate()).padStart(2,'0');
+    var lot = (s.name||'SOL').toUpperCase().replace(/\W+/g,'_') + '-' + yy+mm+dd;
+    solutionsData[i].lot = lot;
+    document.getElementById('sol-lot-'+i).value = lot;
+    var exp = new Date();
+    if (MOBILE_PHASE_RE.test(s.name||'')) {
+      exp.setDate(exp.getDate()+7);
+    } else {
+      exp.setFullYear(exp.getFullYear()+1);
+    }
+    solutionsData[i].expiry = exp.toISOString().slice(0,10);
+    var expEl = document.getElementById('sol-exp-'+i);
+    if (expEl) expEl.value = solutionsData[i].expiry;
+    syncSolutions();
+  }
+
+  function syncSolutions() {
+    var el = document.getElementById('solutions_json_field');
+    if (el) el.value = JSON.stringify(solutionsData);
+  }
+
+  function printLabel(i) {
+    var s = solutionsData[i];
+    var params = '?name='+encodeURIComponent(s.name||'')
+               + '&lot='+encodeURIComponent(s.lot||'')
+               + '&conc='+encodeURIComponent(s.conc||'')
+               + '&vol='+encodeURIComponent(s.volume_ml||'')
+               + '&exp='+encodeURIComponent(s.expiry||'')
+               + '&date='+encodeURIComponent(todayISO())
+               + '&back='+encodeURIComponent(window.location.href);
+    window.open(LABEL_URL + params, '_blank', 'width=600,height=500');
+  }
+
+  function saveSolutionToInventory(i) {
+    var s = solutionsData[i];
+    /* PARENTAGE. A solution prepared at the bench is a PreparedStandard whose
+       parents are this stage's reagent lots -- the
+       three-level ISO 17025 6.6 chain. Before this the solution was filed as a
+       manufacturer Reagent with no parentage at all.
+
+       inventory_uid is carried through deliberately: it is a real Reagent UID,
+       so the link survives a lot-number correction or a rename, which a
+       lot-string link does not. Supplier is NOT copied -- the resolved Reagent
+       owns it, and duplicating it is what made the old records drift. */
+    var parents = [];
+    reagentData.forEach(function(r) {
+      if (!r.lot && !r.inventory_uid) return;
+      parents.push({uid: r.inventory_uid || '', name: r.name || r.role || '',
+                    lot: r.lot || '', qty: r.qty_used || '', unit: ''});
+    });
+    if (!parents.length) {
+      alert('Record the reagent lots this solution was made from first.\n\n' +
+            'A prepared standard with no parentage cannot be traced back to the ' +
+            'manufacturer, and the data-review traceability gate will reject it.');
+      return;
+    }
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = SELF_URL;
+    var fields = {action:'prepare_solution', batch_uid:BATCH_UID,
+                  sol_name:s.name, sol_lot:s.lot, sol_conc:s.conc,
+                  sol_volume:s.volume_ml, sol_storage:s.storage||'',
+                  sol_expiry:s.expiry||'', sol_analyst:s.analyst||'',
+                  parent_reagents_json:JSON.stringify(parents),
+                  /* The stage's equipment serials, so the solution records what it
+                     was MADE WITH without asking the analyst a second time — the
+                     information is already on this page. The handler resolves each
+                     serial against the Facility QC registry. */
+                  equipment_posted:'1',
+                  equipment_sns_json:JSON.stringify(equipmentSNs || {})};
+    Object.keys(fields).forEach(function(k) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = k; inp.value = fields[k]||'';
+      form.appendChild(inp);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     PEDIGREE
+     ═══════════════════════════════════════════════════════════════════ */
+  var pedData = PEDIGREE || {};  /* {standard_name: [{level, lot, conc, ...}, ...]} */
+
+  var PED_LEVELS = ['CRM / Reference Material', 'Primary Stock', 'Secondary Stock', 'Working Standard'];
+
+  function addPedigreeStandard() {
+    var name = prompt('Standard / IS name:');
+    if (!name) return;
+    pedData[name] = pedData[name] || [];
+    if (!pedData[name].length) {
+      pedData[name].push({level:'CRM / Reference Material', supplier:'', lot:'', cert_conc:'', cert_date:'', coa:''});
+      pedData[name].push({level:'Primary Stock', lot:'', conc:'', volume_ml:'', prepared_by:'', prepared_date:''});
+      pedData[name].push({level:'Working Standard', lot:'', conc:'', volume_ml:'', prepared_by:'', prepared_date:''});
+    }
+    renderPedigree();
+  }
+
+  function renderPedigree() {
+    var el = document.getElementById('ped-rows');
+    if (!el) return;
+    el.innerHTML = '';
+    Object.keys(pedData).forEach(function(stdName) {
+      var levels = pedData[stdName];
+      var div = document.createElement('div');
+      div.className = 'ped-standard';
+      var html = '\u003ch4>' + esc(stdName) +
+                 ' \u003cbutton type="button" onclick="deletePedStd(\''+stdName.replace(/'/g,"\\'")+'\')" '+
+                 'class="reagent-remove">&#215; Remove\u003c/button>\u003c/h4>';
+      levels.forEach(function(lvl, li) {
+        var isCRM = lvl.level.indexOf('CRM') !== -1 || lvl.level.indexOf('Reference') !== -1;
+        html += '\u003cdiv class="ped-level">'+
+                '\u003cspan class="ped-level-badge">'+esc(lvl.level)+'\u003c/span>';
+        if (isCRM) {
+          html += pedField('Supplier', stdName, li, 'supplier', lvl.supplier, 150) +
+                  pedField('Lot #', stdName, li, 'lot', lvl.lot, 120) +
+                  pedField('Cert. Conc (ng/mL)', stdName, li, 'cert_conc', lvl.cert_conc, 120) +
+                  pedField('Cert. Date', stdName, li, 'cert_date', lvl.cert_date, 120, 'date') +
+                  pedField('CoA #', stdName, li, 'coa', lvl.coa, 100);
+        } else {
+          html += pedField('Lot #', stdName, li, 'lot', lvl.lot, 130) +
+                  pedField('Conc (ng/mL)', stdName, li, 'conc', lvl.conc, 110) +
+                  pedField('Volume (mL)', stdName, li, 'volume_ml', lvl.volume_ml, 90) +
+                  pedField('Prep By', stdName, li, 'prepared_by', lvl.prepared_by, 120) +
+                  pedField('Prep Date', stdName, li, 'prepared_date', lvl.prepared_date, 120, 'date');
+        }
+        html += '\u003cbutton type="button" class="btn-del-ped-lvl" '+
+                'onclick="deletePedLevel(\''+stdName.replace(/'/g,"\\'")+'\',' + li + ')">&#215;\u003c/button>';
+        html += '\u003c/div>';
+      });
+      html += '\u003cbutton type="button" class="btn-sm btn-add-ped-lvl" onclick="addPedLevel(\''+stdName.replace(/'/g,"\\'")+'\')">' +
+              '+ Add Dilution Level\u003c/button>';
+      div.innerHTML = html;
+      el.appendChild(div);
+    });
+    syncPedigree();
+  }
+
+  function pedField(label, stdName, li, key, val, w, type) {
+    type = type || 'text';
+    return '\u003cdiv class="ped-field" style="max-width:'+w+'px;">' +
+           '\u003clabel>'+esc(label)+'\u003c/label>' +
+           '\u003cinput type="'+type+'" value="'+esc(val||'')+'" ' +
+           'oninput="updatePed(\''+stdName.replace(/'/g,"\\'")+'\',' + li + ',\''+key+'\',this.value)"/>' +
+           '\u003c/div>';
+  }
+
+  function updatePed(stdName, li, key, val) {
+    if (pedData[stdName] && pedData[stdName][li]) {
+      pedData[stdName][li][key] = val;
+    }
+    syncPedigree();
+  }
+
+  function addPedLevel(stdName) {
+    if (!pedData[stdName]) return;
+    pedData[stdName].push({level:'Secondary Stock', lot:'', conc:'', volume_ml:'', prepared_by:'', prepared_date:''});
+    renderPedigree();
+  }
+
+  function deletePedLevel(stdName, li) {
+    if (pedData[stdName]) { pedData[stdName].splice(li,1); renderPedigree(); }
+  }
+
+  function deletePedStd(stdName) {
+    delete pedData[stdName];
+    renderPedigree();
+  }
+
+  function syncPedigree() {
+    var el = document.getElementById('pedigree_hidden');
+    if (el) el.value = JSON.stringify(pedData);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     BARCODE SCANNER MINI-MODAL
+     ═══════════════════════════════════════════════════════════════════ */
+  var _scanCallback = null;
+  var _scanReader   = null;
+
+  function openScanModal(cb) {
+    _scanCallback = cb;
+    var overlay = document.getElementById('scan-mini-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'scan-mini-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML =
+        '\u003cdiv class="scan-box">'+
+        '\u003ch3 class="scan-title">Scan Barcode\u003c/h3>'+
+        '\u003cvideo id="scan-mini-video" autoplay playsinline muted class="scan-video">\u003c/video>'+
+        '\u003cdiv id="scan-mini-result" class="scan-result">\u003c/div>'+
+        '\u003cdiv class="scan-buttons">'+
+          '\u003cbutton id="scan-mini-use" class="scan-use" disabled onclick="useScanMini()">Use\u003c/button>'+
+          '\u003cbutton class="scan-cancel" onclick="closeScanMini()">Cancel\u003c/button>'+
+        '\u003c/div>'+
+        '\u003c/div>';
+      document.body.appendChild(overlay);
+    } else {
+      overlay.style.display = 'flex';
+    }
+    _scanMiniResult = null;
+    document.getElementById('scan-mini-result').textContent = 'Point camera at barcode...';
+    document.getElementById('scan-mini-use').disabled = true;
+    if (typeof ZXingBrowser !== 'undefined') {
+      /* @zxing/browser (R11): the returned controls stop the camera. */
+      _scanReader = new ZXingBrowser.BrowserMultiFormatReader();
+      _scanReader.decodeFromVideoDevice(undefined, 'scan-mini-video', function(res, err) {
+        if (res) {
+          _scanMiniResult = res.getText();
+          document.getElementById('scan-mini-result').innerHTML = '\u003cstrong class="scan-hit">' + esc(_scanMiniResult) + '\u003c/strong>';
+          document.getElementById('scan-mini-use').disabled = false;
+        }
+      }).then(function(c) { _scanMiniControls = c; });
+    } else {
+      document.getElementById('scan-mini-result').textContent = 'ZXing not loaded. Enter lot manually.';
+    }
+  }
+
+  var _scanMiniResult = null, _scanMiniControls = null;
+  function useScanMini() {
+    closeScanMini();
+    if (_scanCallback && _scanMiniResult) _scanCallback(_scanMiniResult);
+  }
+  function closeScanMini() {
+    if (_scanMiniControls) { try { _scanMiniControls.stop(); } catch(e){} _scanMiniControls = null; }
+    _scanReader = null;
+    var overlay = document.getElementById('scan-mini-overlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     FORM SUBMISSION
+     ═══════════════════════════════════════════════════════════════════ */
+  function prepStageSubmit() {
+    syncReagents();
+    syncEquipment();
+    syncSolutions();
+    /* Also save pedigree via separate POST if pedigree exists */
+    if (Object.keys(pedData).length) {
+      syncPedigree();
+      /* pedigree_hidden is submitted as part of the stage form */
+    }
+    return true;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════
+     INIT
+     ═══════════════════════════════════════════════════════════════════ */
+  /* Per-sample table (FM-ENV-003 samples rows): this stage records one
+     column; the server merges it by sample id. */
+  var sampleRows = ((SAMPLE_CARD && SAMPLE_CARD.rows) || []).map(function(r) {
+    return {sample_id: r.sample_id, matrix_type: r.matrix_type || '',
+            value: (r[SAMPLE_CARD.column] || ''), unit: r.amount_unit || 'g'};
+  });
+
+  function renderSamples() {
+    var tb = document.getElementById('sample-rows');
+    if (!tb) return;
+    var amount = SAMPLE_CARD.column === 'amount';
+    tb.innerHTML = sampleRows.map(function(r, i) {
+      return '\u003ctr>\u003ctd>' + (r.isNew ?
+          '\u003cinput type="text" value="' + esc(r.sample_id) + '" oninput="sampleRows[' + i + '].sample_id=this.value;syncSamples()"/>' :
+          esc(r.sample_id)) + '\u003c/td>\u003ctd>' + esc(r.matrix_type) + '\u003c/td>' +
+        '\u003ctd>\u003cinput ' + (SAMPLE_CARD.column === 'spe_port' ? 'type="text" size="6"' : 'type="number" step="any" min="0"') + ' value="' + esc(r.value) + '"' +
+        ' oninput="sampleRows[' + i + '].value=this.value;syncSamples()"/>\u003c/td>' +
+        (amount ? '\u003ctd>\u003cselect onchange="sampleRows[' + i + '].unit=this.value;syncSamples()">' +
+          ['g', 'mL'].map(function(u) { return '\u003coption' + (u === r.unit ? ' selected' : '') + '>' + u + '\u003c/option>'; }).join('') +
+          '\u003c/select>\u003c/td>' : '') + '\u003c/tr>';
+    }).join('');
+    syncSamples();
+  }
+
+  function addSampleRow() {
+    sampleRows.push({sample_id: '', matrix_type: '', value: '', unit: 'g', isNew: true});
+    renderSamples();
+  }
+
+  function syncSamples() {
+    var el = document.getElementById('samples_json_field');
+    if (el) el.value = JSON.stringify(sampleRows.filter(function(r) { return r.sample_id; })
+      .map(function(r) { return {sample_id: r.sample_id, value: r.value, unit: r.unit, matrix_type: r.matrix_type}; }));
+  }
+
+  /* A balance without a passed verification today blocks the stage; no
+     note unlocks it. The server judges again -- a
+     correction on the day the stage was first done -- and keeps a draft. */
+  function stageBlocks() {
+    var out = [];
+    (EQUIPMENT || []).forEach(function(eq) {
+      if (eq.family !== 'balance') return;
+      var cur = (equipmentSNs[eq.label] || '').trim();
+      var u = eq.units.filter(function(x) { return x.serial === cur; })[0];
+      if (!cur) out.push(eq.label + ': no balance chosen');
+      else if (!u) out.push(eq.label + ': no registered balance has serial ' + cur + ' (register it under Equipment)');
+      else if (!u.ok) out.push(eq.label + ' (' + u.name + '): ' + u.note);
+    });
+    return out;
+  }
+
+  /* DB4 in the browser: what the chemist can see is missing is asked for
+     before the form goes; the server checks again, keeping the entries as a
+     draft if it refuses. */
+  function stageWarnings() {
+    var out = [];
+    reagentData.forEach(function(r) {
+      var what = r.role || r.name || 'Item';
+      if (!r.lot) out.push(what + ': no lot recorded');
+      else if (expClass(r.expiry) === 'exp-expired') out.push(what + ': lot ' + r.lot + ' is expired');
+    });
+    document.querySelectorAll('#homogenisation-card .cf-hint').forEach(function(h) {
+      out.push(h.textContent.trim());
+    });
+    document.querySelectorAll('#checks-card input[type=checkbox]').forEach(function(c) {
+      if (!c.checked) out.push('Not confirmed: ' + c.value);
+    });
+    if (SAMPLE_CARD && SAMPLE_CARD.column) sampleRows.forEach(function(r) {
+      if (r.sample_id && !String(r.value).trim())
+        out.push(r.sample_id + ': no ' + (SAMPLE_CARD.column === 'amount' ? 'sample amount' : 'final extract volume') + ' recorded');
+    });
+    return out;
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var form = document.getElementById('stage-form');
+    if (form) form.addEventListener('submit', function(ev) {
+      var dev = document.getElementById('deviations-field');
+      var blocks = stageBlocks();
+      if (blocks.length) {
+        ev.preventDefault();
+        document.getElementById('cannot-complete-list').innerHTML =
+          blocks.map(function(w) { return '\u003cli>' + esc(w) + '\u003c/li>'; }).join('');
+        document.getElementById('cannot-complete').hidden = false;
+        document.getElementById('deviation-card').scrollIntoView({behavior: 'smooth', block: 'center'});
+        return;
+      }
+      var warns = stageWarnings();
+      if (!warns.length || (dev && dev.value.trim())) return;
+      ev.preventDefault();
+      var box = document.getElementById('needs-note'), list = document.getElementById('needs-note-list');
+      list.innerHTML = warns.map(function(w) { return '\u003cli>' + esc(w) + '\u003c/li>'; }).join('');
+      box.hidden = false;
+      document.getElementById('deviation-card').scrollIntoView({behavior: 'smooth', block: 'center'});
+      if (dev) dev.focus();
+    });
+    renderReagents();
+    renderEquipment();
+    renderSamples();
+    renderSolutions();
+    renderPedigree();
+    /* Replay the stage action GIF — animated GIFs do not restart on their
+       own once they have played through. */
+    var rb = document.getElementById('eg-replay-btn');
+    var im = document.getElementById('eg-stage-img');
+    if (rb && im) {
+      rb.addEventListener('click', function() {
+        var src = im.getAttribute('src').split('#')[0];
+        im.setAttribute('src', src + '#r=' + Date.now());
+      });
+    }
+  });
+  </script>
+
+  <!-- ZXing for inline barcode scanning -->
+  <!-- @zxing/library is Apache-2.0: CDN only, never vendored (R11) -->
+  <script src="https://unpkg.com/@zxing/library@0.23.0/umd/index.min.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+  <!-- GS1 label parsing (GTIN, lot, expiry): MIT, vendored (LICENSE beside it) -->
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/gs1-barcode-parser-mod-1.2.1.js"></script>
+  </div><!-- /content slot -->
+</body>
+</html>

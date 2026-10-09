@@ -1,0 +1,20 @@
+# senaite.pfas document renderer. Built from this folder's
+# lockfile through build.mjs's licence gate (PDFME_TARGET=node), so the
+# server renders with the same pdfme as the browser designer.
+FROM node:24-alpine AS build
+WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci --legacy-peer-deps --ignore-scripts --no-audit --no-fund
+COPY build.mjs entry-node.js ./
+COPY shim ./shim
+COPY licences ./licences
+RUN PDFME_TARGET=node node build.mjs
+
+FROM node:24-alpine
+WORKDIR /app
+COPY --from=build /build/dist ./dist
+COPY server.mjs ./
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:3000/health || exit 1
+CMD ["node", "server.mjs"]

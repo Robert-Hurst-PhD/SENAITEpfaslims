@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Assigned Levels</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Assigned Levels</tal:t>
+  <tal:t metal:fill-slot="header-context"><span class="header-badge" tal:content="view/label">lot</span></tal:t>
+
+  <metal:fill fill-slot="content"
+              tal:define="cur view/current; edit view/can_configure; probs view/problems">
+    <ul class="bench-alerts" tal:condition="probs">
+      <li tal:repeat="p probs" tal:content="p">problem</li>
+    </ul>
+    <div class="bench-sub" tal:condition="view/saved">Saved.</div>
+
+    <section class="bench-block" tal:condition="view/lot">
+      <form method="get" tal:attributes="action string:${view/portal_url}/@@pfas-assigned-levels">
+        <input type="hidden" name="uid" tal:attributes="value view/uid" />
+        <select name="method">
+          <option tal:repeat="m view/methods" tal:content="m"
+                  tal:attributes="value m; selected python:'selected' if m == view.method() else None">EPA_537_1</option>
+        </select>
+        <button class="btn-sm btn-secondary" type="submit">Show</button>
+      </form>
+      <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-assigned-levels">
+        <input type="hidden" name="uid" tal:attributes="value view/uid" />
+        <input type="hidden" name="method" tal:attributes="value view/method" />
+        <input tal:replace="structure context/@@authenticator/authenticator" />
+        <select name="source" tal:attributes="disabled python:None if edit else 'disabled'">
+          <option tal:repeat="s view/sources" tal:content="python:s[1]"
+                  tal:attributes="value python:s[0]; selected python:'selected' if s[0] == view.form_value('source') else None">Certificate</option>
+        </select>
+        <input type="text" name="unit" placeholder="Unit"
+               tal:attributes="value python:view.form_value('unit'); disabled python:None if edit else 'disabled'" />
+        <input type="text" name="note" placeholder="Certificate or study"
+               tal:attributes="value python:view.form_value('note'); disabled python:None if edit else 'disabled'" />
+
+        <h2 class="bench-h" tal:condition="view/mxb_runs">Runs quantified in</h2>
+        <tal:r tal:repeat="r view/mxb_runs">
+          <label><input type="checkbox" value="1"
+                        tal:attributes="name string:run.${r/batch_id}; checked python:'checked' if r['batch_id'] in view.chosen_runs() else None; disabled python:None if edit else 'disabled'" />
+            <span tal:replace="string:${r/run_date} ${r/batch_id}">run</span></label>
+        </tal:r>
+        <button class="btn-sm btn-secondary" type="submit" name="action" value="compute"
+                tal:condition="python:edit and view.mxb_runs()">Compute</button>
+
+        <table class="pfas-table">
+          <thead><tr><th>Analyte</th><th>Level</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="a view/analytes">
+              <td tal:content="a">PFOA</td>
+              <td><input type="number" min="0" step="any"
+                         tal:attributes="name string:level.${a}; value python:view.value_for(a); disabled python:None if edit else 'disabled'" /></td>
+            </tr>
+            <tal:x tal:condition="edit">
+              <tr tal:repeat="i view/extra_rows">
+                <td><input type="text" placeholder="Analyte" tal:attributes="name string:new_name.${i}" /></td>
+                <td><input type="number" min="0" step="any" tal:attributes="name string:new_level.${i}" /></td>
+              </tr>
+            </tal:x>
+          </tbody>
+        </table>
+        <button class="btn-sm btn-primary" type="submit" name="action" value="save" tal:condition="edit">Save</button>
+      </form>
+    </section>
+
+    <section class="bench-block" tal:condition="python:len(view.records()) > 0">
+      <h2 class="bench-h">Record</h2>
+      <table class="pfas-table">
+        <thead><tr><th>Saved</th><th>By</th><th>Source</th><th>Unit</th><th>Runs</th><th>Analytes</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="h view/records">
+            <td tal:content="h/at">2026-10-08</td><td tal:content="h/by">demo_labmanager</td>
+            <td tal:content="python:dict(view.sources()).get(h['source'], h['source'])">Certificate</td>
+            <td tal:content="h/unit">ng/g</td>
+            <td tal:content="python:', '.join(h.get('runs') or [])">WS-1</td>
+            <td tal:content="python:len(h.get('levels') or {})">12</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </metal:fill>
+</body>
+</html>

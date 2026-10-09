@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Manual integration</title>
+  <metal:fill fill-slot="header-title">Manual integration</metal:fill>
+  <metal:fill fill-slot="header-context"><span tal:replace="context/getId">WS-0001</span></metal:fill>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary"
+       tal:attributes="href string:${view/portal_url}/@@pfas-mi-reasons">Reasons</a>
+    <a class="btn-sm btn-secondary btn-back"
+       tal:attributes="href string:${context/absolute_url}/@@pfas-data-review?tab=instrument_report">Data Review</a>
+  </tal:r>
+
+  <div metal:fill-slot="content" tal:define="d view/data; recs view/records; work view/can_work;
+                                            wsurl context/absolute_url">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/ok" tal:content="view/ok">Saved.</div>
+    <div class="alert alert-danger" tal:condition="view/error" tal:content="view/error">error</div>
+
+    <p class="form-note">Justify, sign, then stamp each manual integration. <tal:h define="hid string:manual-integration"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+    <ul class="bench-alerts">
+      <li tal:attributes="class python:'bench-ok' if d['ok'] else 'bench-bad'">
+        <strong tal:content="python:'Ready for release' if d['ok'] else 'Not ready'">Not ready</strong>
+        <span tal:condition="not:d/ok" tal:content="python:'; '.join(d['missing'])">what is missing</span></li>
+      <li tal:attributes="class python:'bench-ok' if d['captured'] else 'bench-warn'">
+        <strong tal:content="python:'Captured by the export' if d['captured'] else 'Not captured by the export'">Captured</strong>
+        <span tal:condition="not:d/captured">: add them, or confirm none.</span></li>
+      <li tal:condition="d/none" tal:attributes="class python:'bench-ok' if d['none'].get('reviewer') else 'bench-warn'">
+        <strong>None in the report</strong>
+        <span tal:content="python:'confirmed by %s' % d['none']['name'] + ('; countersigned by %s' % d['none']['reviewer']['name'] if d['none'].get('reviewer') else '')">confirmed</span>
+        <form method="post" class="mi-inline" tal:condition="python:work and not d['none'].get('reviewer')"
+              tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+          <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+          <input type="hidden" name="action" value="countersign" />
+          <input type="hidden" name="kind" value="none" />
+          <button type="submit" class="btn-sm btn-secondary">Countersign</button>
+        </form></li>
+      <li tal:attributes="class python:'bench-ok' if d['file'] else 'bench-warn'">
+        <strong>Report</strong>
+        <span tal:content="python:d['file'] or ('choose the report under review' if d['choose'] else 'no PDF uploaded (Data Review, Instrument Report)')">report.pdf</span>
+        <a class="btn-sm btn-secondary" tal:condition="d/file" target="_blank"
+           tal:attributes="href string:${wsurl}/@@pfas-mi-report">Original</a>
+        <a class="btn-sm btn-secondary" tal:condition="d/stamped" target="_blank"
+           tal:attributes="href string:${wsurl}/@@pfas-mi-report?which=stamped">Stamped copy</a></li>
+      <li tal:condition="d/file" tal:attributes="class python:'bench-ok' if d['scan_status'] == 'scanned' else 'bench-warn'">
+        <strong>Server scan</strong>
+        <span tal:content="python:{'scanned': 'heading on pages %s' % (', '.join('%d' % p for p in d['server'] or []) or 'none'),
+                                   'no text': 'no text in the report: record the heading pages by hand',
+                                   'not scanned': 'not scanned yet'}.get(d['scan_status'], '')">pages</span>
+        <form method="post" class="mi-inline" tal:condition="work"
+              tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+          <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+          <input type="hidden" name="action" value="scan" />
+          <button type="submit" class="btn-sm btn-secondary"
+                  tal:content="python:'Scan the report' if d['scan_status'] == 'not scanned' else 'Scan again'">Scan</button>
+        </form></li>
+    </ul>
+
+    <form method="post" class="mi-add" tal:condition="python:work and d['choose']"
+          tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <input type="hidden" name="action" value="use_report" />
+      <select name="report">
+        <option tal:repeat="n d/files" tal:content="n"
+                tal:attributes="value n; selected python:'selected' if n == d['file'] else None">report.pdf</option>
+      </select>
+      <button type="submit" class="btn-sm btn-secondary">Review this report</button>
+    </form>
+
+    <form method="post" tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <table class="pfas-table pfas-table-form mi-table" tal:condition="recs">
+        <thead><tr><th></th><th>Injection</th><th>Analyte</th><th>Reason</th>
+                   <th class="num">Before page</th><th class="num">After page</th>
+                   <th>Analyst</th><th>Reviewer</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r recs" tal:attributes="class python:'mi-qc' if r['qc_flag'] else None; data-mi r/id">
+            <td><input type="checkbox" value="1" tal:attributes="name string:sel.${r/id}" /></td>
+            <td><strong tal:content="r/injection">S-1</strong>
+                <span class="badge badge-warning" tal:condition="r/qc_flag"
+                      tal:content="string:QC ${r/qc_type}" title="Never to make QC pass">QC</span>
+                <div class="cf-hint" tal:content="python:'from the export' if r['source'] == 'export' else 'added from the report'">source</div></td>
+            <td class="mi-analyte" tal:content="r/analyte">PFOA</td>
+            <td><select tal:attributes="name string:${r/id}.reason_id">
+                  <option value="">Choose a reason</option>
+                  <option tal:repeat="o d/reasons" tal:content="o/text"
+                          tal:attributes="value o/id; selected python:'selected' if o['id'] == r.get('reason_id') else None">reason</option>
+                </select>
+                <input type="text" placeholder="Detail (optional)"
+                       tal:attributes="name string:${r/id}.detail; value r/detail" /></td>
+            <td class="num"><input type="number" min="1" class="mi-page" data-which="before"
+                       tal:attributes="name string:${r/id}.before_page; value r/before_page" /></td>
+            <td class="num"><input type="number" min="1" class="mi-page" data-which="after"
+                       tal:attributes="name string:${r/id}.after_page; value r/after_page" /></td>
+            <td tal:define="s r/analyst"><tal:s condition="s"><span tal:content="s/name">AN1</span>
+                <div class="cf-hint" tal:content="python:s['at'][:16].replace('T', ' ')">date</div></tal:s>
+                <span class="cf-hint" tal:condition="not:s">not signed</span></td>
+            <td tal:define="s r/reviewer"><tal:s condition="s"><span tal:content="s/name">AN2</span>
+                <div class="cf-hint" tal:content="python:s['at'][:16].replace('T', ' ')">date</div></tal:s>
+                <span class="cf-hint" tal:condition="not:s">not signed</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="form-note" tal:condition="not:recs">None listed.</p>
+
+      <div class="field-row" tal:condition="d/file">
+        <label for="mi-heading-pages" tal:content="string:Pages headed &quot;${d/heading}&quot;">Pages headed</label>
+        <input type="text" id="mi-heading-pages" name="heading_pages" placeholder="e.g. 2, 3, 5, or none"
+               tal:attributes="value d/scan_text;
+                               readonly python:None if work else 'readonly'" />
+        <input type="hidden" name="scan_fp" tal:attributes="value d/fp" />
+        <input type="hidden" name="scan_found" id="mi-scan-found" value="" />
+        <span class="cf-hint" tal:content="python:('recorded by %s' % d['scan']['by'] + ('; countersigned by %s' % d['scan']['reviewer']['name'] if d['scan'].get('reviewer') else '')) if d['scan'] else 'not recorded'"></span>
+        <button type="submit" name="action" value="countersign" class="btn-sm btn-secondary"
+                tal:condition="python:work and d['scan'] and not d['scan'].get('reviewer')"
+                onclick="this.form.kind.value='scan'">Countersign</button>
+        <input type="hidden" name="kind" value="" />
+      </div>
+
+      <div class="pfas-action-bar" tal:condition="work">
+        <button type="submit" name="action" value="save" class="btn btn-primary" tal:condition="python:recs or d['file']">Save</button>
+        <button type="submit" name="action" value="sign_analyst" class="btn btn-secondary" tal:condition="recs">Sign ticked as analyst</button>
+        <button type="submit" name="action" value="sign_reviewer" class="btn btn-secondary" tal:condition="recs">Sign ticked as reviewer</button>
+        <button type="submit" name="action" value="stamp" class="btn btn-secondary" tal:condition="recs">Stamp report</button>
+        <button type="submit" name="action" value="confirm_none" class="btn btn-secondary"
+                tal:condition="python:not recs and not d['captured']">Confirm: none in the report</button>
+      </div>
+    </form>
+
+    <form method="post" class="mi-add" tal:condition="work" tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+      <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+      <input type="hidden" name="action" value="add" />
+      <input type="text" name="injection" placeholder="Injection" />
+      <input type="text" name="analyte" placeholder="Analyte (any compound)" />
+      <input type="text" name="qc_type" placeholder="QC type (if QC)" />
+      <button type="submit" class="btn-sm btn-secondary">+ Add from the report</button>
+    </form>
+
+    <section class="bench-block" tal:condition="python:d['uncovered'] or d['dismissed']">
+      <h2 class="bench-h">Unlisted heading pages</h2>
+      <form method="post" class="mi-add" tal:repeat="p d/uncovered"
+            tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+        <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+        <input type="hidden" name="action" value="dismiss" />
+        <input type="hidden" name="page" tal:attributes="value p" />
+        <strong tal:content="string:Page ${p}">Page 4</strong>
+        <tal:w condition="work">
+          <input type="text" name="dismiss_reason" size="50" placeholder="Why it is not one" />
+          <button type="submit" class="btn-sm btn-secondary">Dismiss</button>
+        </tal:w>
+      </form>
+      <ul class="bench-alerts" tal:condition="d/dismissed">
+        <li class="bench-ok" tal:repeat="x d/dismissed">
+          <strong tal:content="python:'Page %d' % x[0]">Page 4</strong>:
+          <span tal:content="python:'%s (%s%s)' % (x[1]['reason'], x[1]['by'], ('; countersigned by %s' % x[1]['reviewer']['name']) if x[1].get('reviewer') else '')">index page</span>
+          <form method="post" class="mi-inline" tal:condition="python:work and not x[1].get('reviewer')"
+                tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
+            <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
+            <input type="hidden" name="action" value="countersign" />
+            <input type="hidden" name="kind" value="dismissal" />
+            <input type="hidden" name="page" tal:attributes="value python:x[0]" />
+            <button type="submit" class="btn-sm btn-secondary">Countersign</button>
+          </form></li>
+      </ul>
+    </section>
+
+    <section class="bench-block" tal:condition="d/file">
+      <h2 class="bench-h">Report pages</h2>
+      <p class="form-note">Click a page field, then a thumbnail.</p>
+      <div id="mi-viewer" class="mi-viewer"
+           tal:attributes="data-url string:${wsurl}/@@pfas-mi-report;
+                           data-heading d/heading">
+        <p class="cf-hint" id="mi-viewer-status">Loading the report&#8230;</p>
+        <div class="mi-thumbs" id="mi-thumbs"></div>
+      </div>
+    </section>
+
+    <details class="mi-history" tal:define="hist view/history" tal:condition="hist">
+      <summary class="btn-sm btn-secondary">Change history</summary>
+      <table class="pfas-table">
+        <thead><tr><th>When</th><th>Who</th><th>Record</th><th>What</th><th>Changes</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="h hist">
+            <td tal:content="python:h['at'][:16].replace('T', ' ')">2026-10-05</td>
+            <td tal:content="h/by">AN1</td>
+            <td tal:content="h/id">mi-1</td>
+            <td tal:content="h/action">edited</td>
+            <td><div tal:repeat="c python:sorted((h.get('changes') or {}).items())"
+                     tal:content="python:'%s: %s -> %s' % (c[0], c[1][0], c[1][1])">reason</div></td>
+          </tr>
+        </tbody>
+      </table>
+    </details>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+            tal:condition="d/file"></script>
+    <script tal:condition="d/file"
+            tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/manual_integration.js"></script>
+  </div>
+  </div>
+</html>

@@ -1,0 +1,215 @@
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<body>
+<!--
+  The settings report body (settings_report.py), drawn by the page and by the
+  PDF print document from the same macro. Caller defines `report`.
+-->
+<metal:body define-macro="body">
+<div class="sr">
+  <p class="sr-revision" tal:condition="report/revision_label" tal:content="report/revision_label">Revision 3</p>
+  <div class="sr-stamp">
+    <span>Generated <strong tal:content="report/generated">2026-10-01 12:00</strong></span>
+    <span>by <strong tal:content="report/user">admin</strong></span>
+    <span>configuration <code tal:content="report/fingerprint">abc123</code></span>
+  </div>
+  <p class="sr-intro">Every quality-control setting, and whether the pipeline judges it. <tal:h define="hid string:settings-report"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+  <tal:m repeat="m report/methods">
+  <section class="sr-method">
+    <h2><span tal:replace="m/name">FDA 32-PFAS</span> <code tal:content="m/method_id">FDA_32PFAS</code></h2>
+    <p class="sr-meta" tal:define="rv m/revision">
+      <tal:i condition="rv/rev">Revision <strong tal:content="rv/rev">3</strong>, issued
+        <span tal:replace="rv/issued_at">2026-10-02</span> by <span tal:replace="rv/issued_by">admin</span>.</tal:i>
+      <tal:n condition="not:rv/rev">No revision issued yet.</tal:n>
+      <span class="sr-warn" tal:condition="python:rv['rev'] and rv['unissued']">Settings changed since this revision.</span>
+    </p>
+    <p class="sr-meta">
+      Matrices: <span tal:replace="python:', '.join(m['matrices']) or 'none'">Eggs</span>
+      &#183; analytes in the panel: <span tal:replace="m/panel">32</span>
+    </p>
+
+    <h3>How QC criteria are applied</h3>
+    <table class="sr-table">
+      <thead><tr><th>QC type</th><th>Criterion</th><th>On for this method</th>
+                 <th>Judged by the pipeline</th><th>Tiers (criterion &#183; applies to &#183; source)</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="q m/qc">
+          <td><strong tal:content="q/code">LFSM</strong></td>
+          <td tal:content="q/criterion">Recovery window</td>
+          <td tal:content="python:'Yes' if q['enabled'] else 'No'">Yes</td>
+          <td><span tal:attributes="class python:'sr-yes' if q['evaluated'] else 'sr-no'"
+                    tal:content="python:'Yes' if q['evaluated'] else 'No'">Yes</span>
+              <div class="sr-how" tal:content="q/how">how</div></td>
+          <td>
+            <div tal:repeat="t q/tiers"><strong tal:content="t/name">tier</strong>:
+              <span tal:replace="t/criterion">70&#8211;130%</span> &#183;
+              <span tal:replace="t/applies">All analytes</span> &#183;
+              <em tal:content="t/source">method profile</em></div>
+            <span tal:condition="not:q/tiers" class="sr-how">window from the method text</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Instrument checks</h3>
+    <table class="sr-table">
+      <thead><tr><th>Check</th><th>Criterion</th><th>Rule switch</th><th>Judged by the pipeline</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="c m/instrument">
+          <td><strong tal:content="c/check">Calibration</strong></td>
+          <td tal:content="c/criterion">r2</td>
+          <td><span tal:content="c/switch_label|c/switch">Calibration r2</span> <span tal:replace="python:'on' if c['on'] else 'off'">on</span></td>
+          <td><span tal:attributes="class python:'sr-yes' if c['evaluated'] else 'sr-no'"
+                    tal:content="python:'Yes' if c['evaluated'] else 'No'">Yes</span>
+              <div class="sr-how" tal:content="c/how">how</div></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="sr-warn" tal:define="unread python:[s.get('label') or s['key'] for s in m['switches'] if not s['read']]"
+       tal:condition="unread">
+      Rule switches stored for this method that the pipeline does not read (changing them
+      changes nothing): <span tal:replace="python:', '.join(unread)">Method Blank</span>.
+    </p>
+
+    <h3>Recovery window applied (LFSM)</h3>
+    <table class="sr-table" tal:condition="m/grid/rows">
+      <thead><tr><th>Analytes</th><th tal:repeat="x m/grid/matrices" tal:content="x">Eggs</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="row m/grid/rows">
+          <td><strong tal:content="row/title">Key analytes</strong>
+              <div class="sr-how" tal:content="python:', '.join([x for x in row['members'] if x])">PFOA</div></td>
+          <td tal:repeat="c row/cells"><span tal:replace="c/text">70&#8211;130%</span>
+            <div class="sr-how" tal:condition="python:c.get('tier')" tal:content="c/tier">tier</div>
+            <div class="sr-how" tal:condition="python:c.get('low')" tal:content="python:'low level ' + c['low']">low</div></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <tal:h condition="m/revisions">
+      <h3>Issued revisions</h3>
+      <table class="sr-table">
+        <thead><tr><th>Revision</th><th>Issued</th><th>By</th><th>Reason</th></tr></thead>
+        <tbody><tr tal:repeat="r m/revisions">
+          <td tal:content="r/rev">3</td><td tal:content="r/issued_at">date</td>
+          <td tal:content="r/issued_by">who</td><td tal:content="r/reason">why</td></tr></tbody>
+      </table>
+    </tal:h>
+
+    <tal:s repeat="sec m/sections">
+      <h3 tal:content="sec/title">Calibration &amp; CCV</h3>
+      <table class="sr-table">
+        <thead><tr><th tal:repeat="col sec/columns" tal:content="col">Setting</th></tr></thead>
+        <tbody><tr tal:repeat="row sec/rows"><td tal:repeat="v row" tal:content="v">value</td></tr></tbody>
+      </table>
+    </tal:s>
+  </section>
+  </tal:m>
+
+  <section class="sr-method">
+    <h2>Regulatory limits</h2>
+    <p class="sr-meta">A limit reaches a certificate only when it is marked verified, and only for
+      the methods and matrices whose Reporting tab evaluates it.</p>
+    <table class="sr-table">
+      <thead><tr><th>Program</th><th>Limit</th><th>Analytes</th><th>Matrices</th><th>Value</th>
+                 <th>Kind</th><th>Verified</th><th>Citation</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="l report/limits">
+          <td tal:content="python:(report['programs'].get(l.get('program')) or {}).get('name') or l.get('program')">US EPA</td>
+          <td tal:content="l/label">PFOA</td>
+          <td tal:content="python:', '.join(l.get('analytes') or [])">PFOA</td>
+          <td tal:content="python:', '.join(l.get('matrices') or []) or 'none assigned'">Drinking Water</td>
+          <td tal:content="python:'%s %s' % (l.get('value'), l.get('unit'))">4 ng/L</td>
+          <td tal:content="l/kind">MCL</td>
+          <td><span tal:attributes="class python:'sr-yes' if l.get('verified') else 'sr-no'"
+                    tal:content="python:'Yes' if l.get('verified') else 'No'">No</span></td>
+          <td tal:content="python:l.get('citation') or ''">40 CFR</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sr-method">
+    <h2>Projects</h2>
+    <p class="sr-meta" tal:condition="not:report/projects">No projects: every batch runs to its method profile.</p>
+    <tal:p repeat="pj report/projects">
+      <h3><span tal:replace="pj/code">ACME</span> &#8212; <span tal:replace="pj/title">Project</span></h3>
+      <p class="sr-meta">Client: <span tal:replace="pj/client">Client</span> &#183;
+        QAPP: <span tal:replace="python:pj['qapp'] or 'none (internal quality system)'">QAPP</span> &#183;
+        <span tal:replace="pj/status">active</span></p>
+      <p class="sr-meta" tal:condition="not:pj/methods">No specs: linked batches run to the method.</p>
+      <tal:pm repeat="pm pj/methods">
+        <p class="sr-meta"><strong tal:content="pm/method_id">FDA</strong> specs for:
+          <span tal:replace="python:', '.join(pm['scopes'])">All matrices</span></p>
+        <table class="sr-table" tal:condition="pm/departures">
+          <thead><tr><th>Looser than the method</th><th>Method</th><th>Project</th><th>Where</th><th>Published method</th></tr></thead>
+          <tbody><tr tal:repeat="d pm/departures">
+            <td tal:content="d/what">x</td><td tal:content="d/method">x</td><td tal:content="d/project">x</td>
+            <td tal:content="d/where">x</td><td tal:content="d/published">x</td></tr></tbody>
+        </table>
+        <p class="sr-warn" tal:repeat="s pm/stale" tal:content="s">stale</p>
+      </tal:pm>
+    </tal:p>
+  </section>
+
+  <!-- Equipment: ISO/IEC 17025 §6.4 record. The statements are
+       built from the constants the code applies (equipment_report.py). -->
+  <section class="sr-method" tal:define="eq report/equipment">
+    <h2>Equipment</h2>
+    <p class="sr-meta">Every piece of equipment is a SENAITE instrument with a type; the type
+      sets what is owed. Status is as of this report.</p>
+    <h3>How equipment obligations are applied</h3>
+    <table class="sr-table">
+      <tbody><tr tal:repeat="a eq/application"><th tal:content="python:a[0]">Balance</th>
+                                               <td tal:content="python:a[1]">rule</td></tr></tbody>
+    </table>
+    <h3>Equipment types</h3>
+    <p class="sr-meta" tal:condition="not:eq/types">No instrument types.</p>
+    <table class="sr-table" tal:condition="eq/types">
+      <thead><tr><th>Type</th><th>Kind</th><th>Check every</th><th>Correction factor</th>
+                 <th>External certificate</th><th>Unit</th><th>Tolerance</th><th>In worksheets</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="t eq/types">
+          <td><span tal:replace="t/title">Balance</span>
+              <div class="sr-how" tal:condition="not:t/configured">not set up</div></td>
+          <td tal:content="t/kind">Balance</td><td tal:content="t/every">90 days</td>
+          <td tal:content="t/correction">Yes</td><td tal:content="t/external">No</td>
+          <td tal:content="t/unit">g</td><td tal:content="t/tolerance">0.2 %</td>
+          <td tal:content="t/worksheets">No</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Instruments</h3>
+    <p class="sr-meta" tal:condition="not:eq/instruments">No instruments.</p>
+    <table class="sr-table" tal:condition="eq/instruments">
+      <thead><tr><th>Instrument</th><th>Type</th><th>Location</th><th>Internal check</th>
+                 <th>External certificate</th><th>Correction factor</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr tal:repeat="i eq/instruments">
+          <td><span tal:replace="i/name">Fridge 1</span>
+              <div class="sr-how" tal:condition="i/serial" tal:content="string:SN ${i/serial}">SN 1</div>
+              <div class="sr-how" tal:condition="not:i/active">inactive</div></td>
+          <td tal:content="i/type">Fridge</td><td tal:content="i/location">Lab</td>
+          <td tal:content="i/internal">last</td><td tal:content="i/external">not required</td>
+          <td tal:content="i/correction">+0.350</td><td tal:content="i/status">OK</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Facility defaults</h3>
+    <table class="sr-table">
+      <tbody><tr tal:repeat="kv eq/defaults"><th tal:content="python:kv[0]">Setting</th>
+                                             <td tal:content="python:kv[1]">value</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="sr-method">
+    <h2>Laboratory-wide settings</h2>
+    <table class="sr-table">
+      <tbody><tr tal:repeat="kv report/lab"><th tal:content="python:kv[0]">Setting</th><td tal:content="python:kv[1]">value</td></tr></tbody>
+    </table>
+  </section>
+</div>
+</metal:body>
+</body>
+</html>

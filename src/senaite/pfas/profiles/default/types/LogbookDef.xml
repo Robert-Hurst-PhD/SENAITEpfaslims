@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<object name="LogbookDef" meta_type="Dexterity FTI">
+  <property name="title">Logbook Definition</property>
+  <property name="description">A PFAS logbook definition (form number, title, active state)</property>
+  <property name="icon_expr">string:${portal_url}/senaite_theme/icon/sampletype</property>
+  <property name="factory">LogbookDef</property>
+  <property name="add_view_expr">string:${folder_url}/++add++LogbookDef</property>
+  <property name="schema">senaite.pfas.content.logbook_def.ILogbookDef</property>
+  <property name="klass">senaite.pfas.content.logbook_def.LogbookDef</property>
+  <property name="behaviors">
+    <!-- Standard Plone Dexterity behaviors -->
+    <element value="plone.dublincore"/>
+    <element value="plone.namefromtitle"/>
+    <!-- SENAITE integration: UID-based references and catalog indexing. -->
+    <element value="plone.app.referenceablebehavior.referenceable.IReferenceable"/>
+    <element value="bika.lims.interfaces.IMultiCatalogBehavior"/>
+  </property>
+  <!-- global_allow=True mirrors Reagent.xml — same environment constraint applies. -->
+  <property name="global_allow">True</property>
+  <property name="filter_content_types">False</property>
+</object>

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Reference Definition Setup</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    /* ── Setup refs page-specific ─────────────────────────────────────── */
+    .info-card { background: var(--s-bg); border-radius: 6px;
+                 border: 1px solid var(--s-border);
+                 box-shadow: 0 1px 3px rgba(0,0,0,.06);
+                 padding: 16px 20px; margin-bottom: 18px; }
+    .info-card h2 { font-size: var(--fs-base); font-weight: 700; margin-bottom: 10px;
+                    color: var(--s-primary-dk); }
+    .info-card p  { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.6; margin-bottom: 6px; }
+
+
+    /* .badge base is global (pfas_macros) — page-specific colours: */
+    .badge-blank    { background: var(--s-primary-lt); color: var(--s-primary-dk); }
+    .badge-control  { background: #f3e5f5; color: #6a1b9a; }
+    .badge-recovery { background: var(--s-success-lt); color: var(--s-success-text); }
+    .badge-cal      { background: var(--s-warn-lt); color: var(--s-warn-text); }
+    .badge-rpd      { background: var(--s-danger-lt); color: var(--s-danger-dk); }
+
+    .existing-list { background: var(--s-bg); border-radius: 6px;
+                     border: 1px solid var(--s-border);
+                     box-shadow: 0 1px 3px rgba(0,0,0,.06);
+                     padding: 14px 18px; margin-bottom: 18px; }
+    .existing-list h2 { font-size: var(--fs-base); font-weight: 700; margin-bottom: 8px; color: var(--s-body); }
+    .existing-list ul { list-style: none; margin: 0; }
+    .existing-list li { font-size: var(--fs-sm); color: var(--s-success-text); padding: 2px 0; }
+    .existing-list li::before { content: "\2713  "; }
+
+    .action-bar { background: var(--s-bg); border-radius: 6px;
+                  border: 1px solid var(--s-border);
+                  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+                  padding: 16px 18px; margin-top: 20px;
+                  display: flex; gap: 12px; align-items: center; }
+    .btn-run { background: var(--s-primary-dk); color: #fff; border: none; border-radius: 4px;
+               padding: 12px 32px; cursor: pointer; font-size: var(--fs-base); font-weight: 700; }
+    .btn-run:hover { background: var(--s-primary-xdk); }
+    .btn-run:disabled { background: var(--s-secondary); cursor: not-allowed; }
+    .action-note { font-size: var(--fs-xs); color: var(--s-secondary); line-height: 1.5; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Reference Definition Setup</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    
+  </tal:r>
+
+  <div metal:fill-slot="content">
+    <!-- Which method's acceptance limits the global Reference Definitions use -->
+    <div style="border:1px solid var(--s-border,#ddd);padding:12px;margin:14px 0;">
+      <h3 style="font-size:var(--fs-base);margin:0 0 6px;">Reference range source</h3>
+      <p class="form-note" style="max-width:64em;">Which method&#8217;s limits each Reference Definition&#8217;s ranges and control charts are built from. <tal:h define="hid string:method-profile"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <form method="POST" action=""
+            tal:attributes="action string:${view/portal_url}/@@pfas-setup-references">
+        <input type="hidden" name="action" value="save_ref_method" />
+        <select name="ref_method" style="min-width:220px;">
+          <option value="">&#8212; QC rules store (default) &#8212;</option>
+          <option tal:repeat="m view/method_options"
+                  tal:attributes="value m;
+                                  selected python:m == view.reference_method()"
+                  tal:content="m">FDA_32PFAS</option>
+        </select>
+        <button class="btn btn-primary" type="submit" style="margin-left:8px">
+          Save
+        </button>
+      </form>
+    </div>
+
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/save_message">
+      Reference definitions updated:
+      <strong tal:content="python:view.save_message().replace('_', ' ')">&#8212;</strong>
+    </div>
+
+    <div class="alert alert-error" tal:condition="not:view/is_manager">
+      You do not have the Manager or LabManager role. The setup button is disabled.
+    </div>
+
+    <div class="info-card">
+      <h2>What this does</h2>
+      <p>Creates one SENAITE Reference Definition per QC type, with per-analyte expected values and ranges.</p>
+      <p>
+        This operation is <strong>idempotent</strong> &#8212; running it again after changing
+        a rule simply updates the existing definitions without creating duplicates.
+      </p>
+      <p>
+        <strong>Prerequisite:</strong> the GenericSetup profile must have been
+        installed first to create the AnalysisService objects.
+        This view reports how many services it found.
+      </p>
+      <p>
+        Analyte services found: <strong tal:content="view/analyte_count">0</strong>
+      </p>
+    </div>
+
+    <div class="existing-list">
+      <h2>Existing Reference Definitions</h2>
+      <tal:ex tal:define="existing view/existing_ref_defs">
+        <ul tal:condition="existing">
+          <tal:it tal:repeat="t existing">
+            <li tal:content="t">PFAS CCV</li>
+          </tal:it>
+        </ul>
+        <p tal:condition="not:existing" style="font-size:var(--fs-sm);color:var(--s-secondary)">
+          None found yet &#8212; run the setup below to create them.
+        </p>
+      </tal:ex>
+    </div>
+
+    <div class="table-wrap">
+    <table class="pfas-table ref-table">
+      <thead>
+        <tr>
+          <th>QC Type</th>
+          <th>Reference Definition Title</th>
+          <th>Type</th>
+          <th>Acceptance Criteria</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tal:rows tal:repeat="row view/qc_type_specs">
+          <tr>
+            <td><strong tal:content="row/code">CCV</strong></td>
+            <td tal:content="row/title">PFAS CCV</td>
+            <td>
+              <span tal:condition="row/is_blank">Blank</span>
+              <span tal:condition="not:row/is_blank">
+                <span tal:condition="python:row['strategy'] in ('recovery','recovery_dup')">Recovery</span>
+                <span tal:condition="python:row['strategy'] in ('cal_dev','cal_dev_tight')">Cal Check</span>
+                <span tal:condition="python:row['strategy'] == 'rpd'">RPD</span>
+              </span>
+            </td>
+            <td tal:content="row/spec">&#8212;</td>
+          </tr>
+        </tal:rows>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="action-bar">
+      <form method="POST" action=""
+            tal:attributes="action string:${context/absolute_url}/@@pfas-setup-references"
+            onsubmit="return confirm('Create/update all Reference Definitions now?')">
+        <button type="submit" class="btn-run"
+                tal:attributes="disabled python:not view.is_manager()">
+          Create / Update Reference Definitions
+        </button>
+      </form>
+      <span class="action-note">
+        Safe to run repeatedly. Analyte values come from the reference
+        method&#8217;s profile each time. To change acceptance criteria, edit that
+        method&#8217;s profile
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${context/absolute_url}/@@pfas-method-profiles">Method Profiles</a>
+        first, then run this setup again.
+      </span>
+    </div>
+
+  <div class="pane-footer">
+    <span>Creates/updates SENAITE ReferenceDefinitions from the reference method&#8217;s profile</span>
+  </div>
+  </div>
+  </div><!-- /content slot -->
+</body>
+</html>

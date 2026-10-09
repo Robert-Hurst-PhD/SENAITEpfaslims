@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Balance Verification Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .bal-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+    .bal-nav a { padding:5px 14px; border-radius:16px; font-size:var(--fs-sm); font-weight:600;
+                 text-decoration:none; background:var(--s-light);
+                 border:1px solid var(--s-border); color:var(--s-body); }
+    .bal-nav a.active { background:var(--s-primary-dk); color:#fff; border-color:var(--s-primary-dk); }
+    .form-card { background:var(--s-bg); border:1px solid var(--s-border);
+                 border-radius:8px; padding:16px; margin-bottom:18px; }
+    .form-card h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 12px; color:var(--s-body); }
+    .wp-table { width:100%; border-collapse:collapse; font-size:var(--fs-base); }
+    .wp-table th { background:var(--s-light); padding:7px 10px; text-align:left;
+                   font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
+                   border-bottom:2px solid var(--s-border); }
+    .wp-table td { padding:8px 10px; border-bottom:1px solid var(--s-border);
+                   vertical-align:middle; }
+    .wp-table input[type=number] { width:120px; padding:5px 7px;
+                                    border:1px solid var(--s-input-border);
+                                    border-radius:4px; font-size:var(--fs-base); }
+    .dev-cell { font-weight:600; }
+    .dev-pass { color: var(--s-success-text); }
+    .dev-fail { color: var(--s-danger-dk); }
+    .p-ok { background:var(--s-success-lt); color:var(--s-success-text); padding:2px 9px;
+             border-radius:8px; font-size:var(--fs-xs); font-weight:700; }
+    .p-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); padding:2px 9px;
+               border-radius:8px; font-size:var(--fs-xs); font-weight:700; }
+    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
+    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
+    .fld input, .fld select { padding:6px 8px; font-size:var(--fs-base);
+                 border:1px solid var(--s-input-border); border-radius:4px;
+                 color:var(--s-input-text); }
+    .hint { font-size:var(--fs-xs); color:var(--s-secondary); margin:0 0 10px; }
+    .hint-bad { color:var(--s-danger-dk); font-weight:600; }
+    .traced { font-size:var(--fs-xs); color:var(--s-secondary); }
+    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
+    .fld-row .fld { flex:1; min-width:120px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">Balance Verification Log</tal:t>
+<metal:content metal:fill-slot="content">
+  <tal:def tal:define="
+    unit     view/unit;
+    purl     view/portal_url;
+    bal_units view/balance_units;
+  ">
+
+  <div class="bal-nav">
+    <tal:each tal:repeat="u bal_units">
+      <a tal:attributes="
+           href string:${purl}/@@pfas-balance-log?unit_id=${u/id};
+           class python:'active' if unit and unit['id']==u['id'] else ''"
+         tal:content="u/name">Balance</a>
+    </tal:each>
+  </div>
+
+  <tal:no-unit tal:condition="python:not unit">
+    <div style="padding:24px;text-align:center;color:var(--s-secondary);
+                border:1px dashed var(--s-border);border-radius:8px;">
+      Select a balance above or
+      <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment"
+        >Equipment</a>.
+    </div>
+  </tal:no-unit>
+
+  <tal:has-unit tal:condition="unit">
+    <!-- Entry form -->
+    <div class="form-card">
+      <h3>New Verification — <tal:n tal:replace="unit/name"/></h3>
+      <form method="POST" id="balForm"
+            tal:attributes="action string:${purl}/@@pfas-balance-log">
+        <input type="hidden" name="unit_id" tal:attributes="value unit/id"/>
+        <div class="fld-row">
+          <div class="fld"><label>Date *</label>
+            <input type="date" name="verified_date" id="vDate" required/></div>
+          <div class="fld"><label>Operator Initials *</label>
+            <input type="text" name="operator" maxlength="10" required/></div>
+          <div class="fld" style="flex:2"><label>Reference weight set *</label>
+            <select name="weight_set_id" required="required">
+              <option value="">&#8212; select the set used &#8212;</option>
+              <option tal:repeat="w view/weight_sets"
+                      tal:attributes="value w/id"
+                      tal:content="string:${w/set_id} (${w/weight_class})">WS</option>
+            </select></div>
+        </div>
+        <!-- Required, not optional. A verification is a MEASUREMENT, and a
+             measurement with no reference standard establishes nothing: the
+             release gate already treats a missing weight set as blocking
+             (facility_qc.equipment_provenance._weight_set_chain). Making the
+             field optional would have built it and left the defect in place.
+             With no set registered the form cannot be submitted — which is the
+             correct outcome, and the hint below says where to go. -->
+        <p class="hint hint-bad" tal:condition="not:view/weight_sets">No reference weight set is registered: register the set and its certificate first.
+          <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-weight-sets">Weight Sets</a></p>
+        <div class="fld"><label>Notes</label>
+          <input type="text" name="notes"/></div>
+
+        <table class="wp-table">
+          <tr>
+            <th>Nominal</th>
+            <th>Tolerance (g)</th>
+            <th>Actual Reading (g)</th>
+            <th>Deviation</th>
+            <th>Pass?</th>
+          </tr>
+          <!-- `i` is defined on the <tr>, NOT on the repeat element. TAL executes
+               tal:define BEFORE tal:repeat on the same tag, so `repeat/wp` does
+               not exist yet there and the page raises
+                   LocationError: (RepeatDictWrapper, 'wp')
+               This 500'd the Balance Verification Log for every selected balance
+               from the day it was written. It was invisible because the whole
+               form sits inside `tal:condition="unit"` and `facility_units` held
+               zero rows, so no balance could be selected — the same latency as
+               the §40 CoA link. Found by registering the first balance. -->
+          <tal:each tal:repeat="wp view/weight_points">
+            <tr tal:define="i repeat/wp/index">
+              <td><strong tal:content="python:wp[1]">10 mg</strong></td>
+              <td style="color:var(--s-secondary)">
+                ±<tal:t tal:replace="python:wp[2]"/>g
+              </td>
+              <td>
+                <input type="number" step="any"
+                       tal:attributes="name string:actual_${i};
+                                       id string:act_${i};
+                                       onchange string:calcDev(this,${i})"/>
+              </td>
+              <td class="dev-cell" tal:attributes="id string:dev_${i}">—</td>
+              <td tal:attributes="id string:pass_${i}">—</td>
+            </tr>
+          </tal:each>
+        </table>
+
+        <div style="margin-top:14px;">
+          <button type="submit" class="btn btn-primary">
+            Save Verification
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- History -->
+    <div class="form-card">
+      <h3>Verification History</h3>
+      <tal:no-hist tal:condition="python:not view.history()">
+        <p style="color:var(--s-secondary);font-size:var(--fs-sm)">No verifications recorded yet.</p>
+      </tal:no-hist>
+      <tal:each tal:repeat="v view/history" tal:condition="python:bool(view.history())">
+        <div style="margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <strong style="font-size:var(--fs-sm)" tal:content="v/verified_date"></strong>
+            <span style="font-size:var(--fs-sm);color:var(--s-secondary)"
+                  tal:content="string:by ${v/operator}"></span>
+            <span tal:attributes="class python:'p-ok' if v['passed'] else 'p-fail'"
+                  tal:content="python:'PASS' if v['passed'] else 'FAIL'"></span>
+            <span style="font-size:var(--fs-xs);color:var(--s-secondary)"
+                  tal:content="python:v.get('notes','')"></span>
+          </div>
+          <div class="traced" style="margin-bottom:6px">
+            <tal:with tal:condition="v/weight_set_label">
+              Performed with weight set
+              <strong tal:content="v/weight_set_label">WS-001</strong>
+            </tal:with>
+            <span tal:condition="not:v/weight_set_label" class="hint-bad">
+              No reference weight set recorded &mdash; this verification traces to
+              nothing and blocks release for any work it supports.
+            </span>
+          </div>
+          <table class="pfas-table history-table">
+            <tr><th>Nominal</th><th>Actual (g)</th><th>Deviation (g)</th><th>Tol (g)</th><th>Result</th></tr>
+            <tal:each tal:repeat="pt python:v.get('points',[])">
+              <tr>
+                <td tal:content="pt/label"></td>
+                <td tal:content="python:'{:.6g}'.format(pt['actual_g']) if pt.get('actual_g') is not None else '—'"></td>
+                <td tal:attributes="style python:'color: var(--s-danger-dk)' if pt.get('passed')==0 else 'color: var(--s-success-text)'"
+                    tal:content="python:('+' if pt['deviation_g']>=0 else '')+'{:.6g}'.format(pt['deviation_g']) if pt.get('deviation_g') is not None else '—'"></td>
+                <td tal:content="python:'±{}'.format(pt['tolerance_g']) if pt.get('tolerance_g') is not None else '—'"></td>
+                <td><span tal:attributes="class python:'p-ok' if pt.get('passed') else 'p-fail'"
+                          tal:content="python:'Pass' if pt.get('passed') else 'Fail'"></span></td>
+              </tr>
+            </tal:each>
+          </table>
+        </div>
+      </tal:each>
+    </div>
+
+  </tal:has-unit>
+  </tal:def>
+</metal:content>
+
+<tal:scripts metal:fill-slot="scripts">
+<script tal:condition="view/unit"
+        tal:define="wps_json python:__import__('json').dumps(view.weight_points()).replace('&amp;','\\u0026').replace('<','\\u003c').replace('>','\\u003e')">
+  <tal:v tal:replace="structure string:var _WP = ${wps_json};"/>
+</script>
+<script tal:condition="view/unit">
+//<![CDATA[
+// Set today's date
+document.getElementById('vDate').valueAsDate = new Date();
+
+function calcDev(input, idx) {
+  var wp = _WP[idx];
+  if (!wp) return;
+  var nominal = wp[0], tol = wp[2];
+  var actual = parseFloat(input.value);
+  if (isNaN(actual)) {
+    document.getElementById('dev_'+idx).textContent = '—';
+    document.getElementById('pass_'+idx).textContent = '—';
+    return;
+  }
+  var dev = actual - nominal;
+  var pass = Math.abs(dev) <= tol;
+  var devCell = document.getElementById('dev_'+idx);
+  var passCell = document.getElementById('pass_'+idx);
+  devCell.textContent = (dev >= 0 ? '+' : '') + dev.toFixed(6) + ' g';
+  devCell.className = 'dev-cell ' + (pass ? 'dev-pass' : 'dev-fail');
+  passCell.innerHTML = pass
+    ? '<span class="p-ok">Pass</span>'
+    : '<span class="p-fail">Fail</span>';
+}
+//]]>
+</script>
+</tal:scripts>
+</body>
+</html>

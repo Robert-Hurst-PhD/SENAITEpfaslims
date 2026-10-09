@@ -1,0 +1,219 @@
+<tal:coa define="sec view/section; s view/settings; lab view/lab"
+         i18n:domain="senaite.pfas">
+<!-- Compact CoA sections (coa_sections.py). Rendered inside the impress report,
+     so styling is inline here: the PFAS macro stylesheet is not loaded on
+     published reports. Section wrappers keep impress's "row section-*" classes
+     so its paginator places and repeats them as it does core's. -->
+
+<tal:header condition="python:sec == 'header'">
+  <style type="text/css">
+    .pfas-coa { font-size: 10px; color: #222; }
+    .pfas-coa-head { display: flex; justify-content: space-between; align-items: flex-end;
+      border-bottom: 2px solid #222; padding-bottom: 6px; margin-bottom: 8px; }
+    .pfas-coa-head .lab { font-size: 15px; font-weight: 700; }
+    .pfas-coa-head .sub { font-size: 9px; color: #444; margin-top: 2px; }
+    .pfas-coa-head .doc { text-align: right; }
+    .pfas-coa-head .doc .t { font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+    .pfas-coa-head img { max-height: 42px; max-width: 160px; margin-right: 10px; }
+    .pfas-coa-info { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+    .pfas-coa-info th { text-align: left; font-weight: 600; color: #555; width: 16%;
+      padding: 2px 6px 2px 0; white-space: nowrap; }
+    .pfas-coa-info td { padding: 2px 10px 2px 0; width: 34%; }
+    .pfas-coa-res { width: 100%; border-collapse: collapse; }
+    .pfas-coa-res caption { caption-side: top; text-align: left; font-weight: 700;
+      font-size: 10.5px; padding: 4px 0; }
+    .pfas-coa-res th { font-size: 9px; text-transform: uppercase; letter-spacing: .03em;
+      color: #444; border-top: 1px solid #222; border-bottom: 1px solid #222;
+      padding: 3px 5px; text-align: left; }
+    .pfas-coa-res td { padding: 2px 5px; border-bottom: 1px solid #e3e3e3; }
+    .pfas-coa-res .num { text-align: right; white-space: nowrap; }
+    .pfas-coa-res tr.det td.res { font-weight: 700; }
+    .pfas-coa-qcstd { margin-top: 8px; }
+    .pfas-coa-res tr.out td.st { font-weight: 700; }
+    .pfas-coa-legend { font-size: 8.5px; color: #555; margin-top: 4px; }
+    .pfas-coa-sample { margin-bottom: 12px; page-break-inside: auto; }
+    .pfas-coa-foot { font-size: 8.5px; color: #555; }
+    .pfas-coa-reg { margin-top: 8px; padding: 6px 8px; border: 1px solid #999; page-break-inside: avoid; }
+    .pfas-coa-reg .h { font-weight: 700; font-size: 10.5px; margin-bottom: 3px; }
+    .pfas-coa-reg .finding { margin: 2px 0; }
+    .pfas-coa-reg .finding.exceeds { border-left: 3px solid #a00; padding-left: 5px; }
+    .pfas-coa-reg .finding.undetermined { border-left: 3px solid #b8860b; padding-left: 5px; }
+    .pfas-coa-reg .cite { color: #555; }
+    .pfas-coa-reg .links { margin-top: 4px; color: #333; }
+    .pfas-coa-reg a { color: #1a4f7a; }
+  </style>
+  <div class="row section-header no-gutters pfas-coa">
+    <div class="pfas-coa-head" style="width:100%">
+      <div style="display:flex;align-items:flex-end">
+        <img tal:condition="lab/logo" tal:attributes="src lab/logo" alt="" />
+        <div>
+          <div class="lab" tal:content="lab/name">Laboratory</div>
+          <div class="sub" tal:condition="lab/contact" tal:content="lab/contact">address</div>
+          <div class="sub" tal:condition="lab/accreditation" tal:content="lab/accreditation">ISO/IEC 17025</div>
+        </div>
+      </div>
+      <div class="doc" tal:define="meta view/doc_meta">
+        <div class="t" i18n:translate="">Certificate of Analysis</div>
+        <div class="sub" tal:condition="meta/template_rev">
+          <span i18n:translate="">Template revision</span> <strong tal:content="meta/template_rev">3</strong>
+        </div>
+        <div class="sub" tal:condition="meta/report_id">
+          <span i18n:translate="">Report</span> <strong tal:content="meta/report_id">FEED-0002-R2</strong>
+        </div>
+        <div class="sub"><span i18n:translate="">Issued</span> <span tal:content="meta/issued">2026-09-30</span></div>
+      </div>
+    </div>
+  </div>
+</tal:header>
+
+<tal:samples condition="python:sec == 'samples'">
+  <div class="row section-results no-gutters pfas-coa" tal:repeat="smp view/samples">
+    <div class="pfas-coa-sample" style="width:100%">
+      <div tal:condition="smp/error|nothing" style="color:#a00;font-weight:700">
+        <tal:i replace="smp/id"/>: this sample could not be rendered (<tal:e replace="smp/error"/>).
+      </div>
+      <tal:ok condition="not:smp/error|nothing">
+      <table class="pfas-coa-info">
+        <tr><th i18n:translate="">Client</th><td tal:content="smp/client"></td>
+            <th i18n:translate="">Lab sample ID</th><td><strong tal:content="smp/id"></strong></td></tr>
+        <tr><th i18n:translate="">Contact</th><td tal:content="smp/contact"></td>
+            <th i18n:translate="">Client sample ID</th><td tal:content="smp/client_sid"></td></tr>
+        <tr><th i18n:translate="">Matrix</th><td tal:content="smp/matrix"></td>
+            <th i18n:translate="">Batch</th><td tal:content="smp/batch"></td></tr>
+        <tr><th i18n:translate="">Sampled</th><td tal:content="smp/sampled"></td>
+            <th i18n:translate="">Received</th><td tal:content="smp/received"></td></tr>
+        <tr><th i18n:translate="">Method</th><td tal:content="smp/method"></td>
+            <th i18n:translate="">Analysed</th><td tal:content="smp/analysed"></td></tr>
+        <tr tal:condition="smp/composite|nothing"><th i18n:translate="">Composite</th>
+            <td colspan="3" tal:content="smp/composite"></td></tr>
+        <tr tal:condition="smp/receipt|nothing"><th i18n:translate="">Receipt</th>
+            <td colspan="3" tal:content="smp/receipt"></td></tr>
+        <tr tal:condition="smp/blank_subtracted|nothing"><th i18n:translate="">Method blank</th>
+            <td colspan="3" i18n:translate="">Results are corrected for the batch's method blank.</td></tr>
+      </table>
+
+      <table class="pfas-coa-res">
+        <thead>
+          <tr>
+            <th i18n:translate="">Analyte</th>
+            <th tal:condition="python:smp['fmt'].get('coa_show_cas')" i18n:translate="">CAS No.</th>
+            <th class="num" i18n:translate="">Result</th>
+            <th i18n:translate="">Qual</th>
+            <th class="num" i18n:translate="">RL</th>
+            <th class="num" tal:condition="python:smp['fmt'].get('coa_show_mdl')" i18n:translate="">MDL</th>
+            <th i18n:translate="">Units</th>
+            <th class="num" tal:condition="python:smp['fmt'].get('coa_show_dilution')" i18n:translate="">Dil.</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr tal:repeat="r smp/rows" tal:attributes="class python:'det' if r['detected'] else ''">
+            <td tal:content="r/title">PFOA</td>
+            <td tal:condition="python:smp['fmt'].get('coa_show_cas')" tal:content="r/cas">335-67-1</td>
+            <td class="num res" tal:content="r/result">4.2</td>
+            <td tal:content="r/qualifiers"></td>
+            <td class="num" tal:content="r/rl"></td>
+            <td class="num" tal:condition="python:smp['fmt'].get('coa_show_mdl')" tal:content="r/mdl"></td>
+            <td tal:content="r/unit"></td>
+            <td class="num" tal:condition="python:smp['fmt'].get('coa_show_dilution')" tal:content="r/dilution"></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pfas-coa-note" tal:condition="smp/fmt/coa_note" tal:content="smp/fmt/coa_note">Standard note</div>
+      <div class="pfas-coa-legend">
+        <span i18n:translate="">Detected results in bold.</span>
+        <span i18n:translate="">U = not detected at or above the reporting limit (RL).</span>
+        <span i18n:translate="">MDL = method detection limit.</span>
+        <span tal:condition="smp/codes" i18n:translate="">Other codes: see Quality control qualifications.</span>
+        <span tal:condition="not:smp/any_rl" style="color:#a00" i18n:translate="">
+          No reporting limits are configured for this method and matrix.</span>
+      </div>
+
+      <!-- Surrogates and internal standards: the worker's own verdicts,
+           neat injection only (coa_qc_standards.py). -->
+      <table class="pfas-coa-res pfas-coa-qcstd" tal:define="qs smp/qc_standards">
+        <caption i18n:translate="">Surrogate and internal-standard quality control</caption>
+        <thead tal:condition="qs/rows">
+          <tr>
+            <th tal:condition="python:qs['injections'] &gt; 1" i18n:translate="">Injection</th>
+            <th i18n:translate="">Labelled standard</th>
+            <th i18n:translate="">Role</th>
+            <th i18n:translate="">Measured as</th>
+            <th class="num" i18n:translate="">Value (%)</th>
+            <th class="num" i18n:translate="">Window (%)</th>
+            <th i18n:translate="">Status</th>
+          </tr>
+        </thead>
+        <tbody tal:condition="qs/rows">
+          <tr tal:repeat="q qs/rows" tal:attributes="class python:'out' if q['flag'] else ''">
+            <td tal:condition="python:qs['injections'] &gt; 1" tal:content="q/injection">DEMO-0001</td>
+            <td tal:content="q/standard">13C2-PFDA</td>
+            <td tal:content="q/role">Surrogate (SUR)</td>
+            <td tal:content="q/measure">% recovery</td>
+            <td class="num" tal:content="q/value">98.4</td>
+            <td class="num" tal:content="q/window">70-130</td>
+            <td class="st" tal:content="q/status">Within</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pfas-coa-note" tal:content="smp/qc_note">Quality control data specific to this sample</div>
+      <div class="pfas-coa-note" tal:condition="smp/qc_error"><strong i18n:translate="">
+        The surrogate and internal-standard results could not be read.</strong></div>
+
+      <div class="pfas-coa-note pfas-coa-qs" tal:condition="smp/qs" tal:content="smp/qs">Quality system statement</div>
+      <div class="pfas-coa-note pfas-coa-dep" tal:condition="smp/departures|nothing">
+        <span i18n:translate="">Quality control criteria for project</span>
+        <tal:p replace="smp/project_label">ACME</tal:p>
+        <span i18n:translate="">less stringent than the laboratory method:</span>
+        <tal:d repeat="d smp/departures"><span tal:replace="d/what">LFSM recovery max %</span>
+          <span tal:replace="d/project">140</span> (<span i18n:translate="">method</span>
+          <span tal:replace="d/method">135</span>; <span tal:replace="d/where">PFOA in Eggs</span>)<tal:s condition="not:repeat/d/end">; </tal:s></tal:d>.
+      </div>
+
+      <!-- Regulatory comparison (verified limits only; regulatory_limits.py). -->
+      <div class="pfas-coa-reg" tal:define="reg smp/regulatory" tal:condition="reg">
+        <div class="h" i18n:translate="">Regulatory comparison</div>
+        <tal:f repeat="f reg/findings">
+          <div class="finding" tal:attributes="class python:'finding ' + f['status']">
+            <strong tal:content="f/label">PFOA</strong>:
+            <tal:e condition="python:f['status'] == 'exceeds'">
+              <span tal:content="f/total">5.2 ng/L</span><tal:s condition="f/sum"> (sum of detected values)</tal:s>
+              <strong i18n:translate="">meets or exceeds</strong> the
+            </tal:e>
+            <tal:u condition="python:f['status'] == 'undetermined'">
+              <span i18n:translate="">not all contributing analytes were detected at a reporting limit below the</span>
+            </tal:u>
+            <tal:x condition="python:f['status'] == 'no_unit'">
+              <span i18n:translate="">not compared: the result unit cannot be converted to that of the</span>
+            </tal:x>
+            <span tal:content="string:${f/program} ${f/kind}">US EPA MCL</span>
+            of <span tal:content="f/limit">4 ng/L</span><tal:u condition="python:f['status'] == 'undetermined'">;
+              <span i18n:translate="">compliance cannot be determined</span></tal:u>.
+            <span class="cite" tal:condition="f/citation" tal:content="string:(${f/citation})"></span>
+            <em class="cite" tal:condition="f/note" tal:content="f/note"></em>
+          </div>
+        </tal:f>
+        <div tal:condition="python:reg['below'] and reg['findings']" i18n:translate="">
+          All other results compared are below the applicable limits.</div>
+        <div tal:condition="python:reg['below'] and not reg['findings']" i18n:translate="">
+          All results compared are below the applicable limits.</div>
+        <div class="links" tal:condition="reg/links">
+          <span i18n:translate="">For more information:</span>
+          <tal:l repeat="l reg/links"><a tal:attributes="href l/url" tal:content="l/label">EPA</a><tal:c condition="not:repeat/l/end"> &middot; </tal:c></tal:l>
+        </div>
+      </div>
+      </tal:ok>
+    </div>
+  </div>
+</tal:samples>
+
+<tal:footer condition="python:sec == 'footer'">
+  <div class="row section-footer no-gutters pfas-coa-foot">
+    <div id="footer-line"></div>
+    <div>
+      <strong tal:content="lab/name">Laboratory</strong>
+      <tal:c condition="lab/contact"> &middot; <span tal:content="lab/contact"></span></tal:c>
+    </div>
+    <div tal:condition="python:s.get('footer_text')" tal:content="python:s.get('footer_text')"></div>
+  </div>
+</tal:footer>
+</tal:coa>

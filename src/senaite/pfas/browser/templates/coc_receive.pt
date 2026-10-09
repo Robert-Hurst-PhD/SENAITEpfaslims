@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Receive CoC</title>
+  <metal:fill fill-slot="header-title">Receive CoC</metal:fill>
+  <tal:r metal:fill-slot="header-right" tal:define="rec view/record">
+    <a class="btn-sm btn-secondary" tal:condition="rec"
+       tal:attributes="href string:${view/portal_url}/@@pfas-coc?coc=${rec/number}">CoC</a>
+    <a class="btn-sm btn-secondary" tal:condition="rec" target="_blank"
+       tal:attributes="href string:${view/portal_url}/@@pfas-coc-print?coc=${rec/number}">Print</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="purl view/portal_url; rec view/record">
+
+    <div class="alert alert-success" tal:condition="view/done" tal:content="view/done">Received.</div>
+    <div class="alert alert-danger" tal:condition="view/errors">
+      <tal:e repeat="e view/errors"><div tal:content="e">error</div></tal:e></div>
+    <div class="alert alert-danger" tal:condition="not:rec">No such CoC.</div>
+
+    <tal:one condition="rec">
+    <p class="form-note">
+      <strong tal:content="rec/number">COC-2026-0001</strong> &#183;
+      <span tal:replace="rec/client">Client</span> &#183;
+      <span tal:replace="python:rec['status'].capitalize()">Submitted</span>
+      <tal:h define="hid string:coc"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+    </p>
+
+    <!-- paper CoC: the scan of the returned copy -->
+    <tal:paper condition="python:rec['origin'] == 'paper'">
+      <div class="section-group-hdr">Paper CoC</div>
+      <div tal:condition="rec/scan/path|nothing">
+        Scan: <span tal:replace="rec/scan/filename">scan.pdf</span>,
+        <span tal:replace="rec/scan/by">AN1</span>
+        <span tal:replace="python:(rec['scan'].get('at') or '')[:16].replace('T', ' ')">x</span></div>
+      <form method="post" enctype="multipart/form-data"
+            tal:attributes="action string:${purl}/@@pfas-coc-receive?coc=${rec/number}">
+        <input type="hidden" name="action" value="scan" />
+        <input type="file" name="scan" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff" />
+        <button class="btn btn-secondary" type="submit">Attach scan</button>
+      </form>
+    </tal:paper>
+
+    <div class="section-group-hdr">Samples</div>
+    <form method="post" tal:attributes="action string:${purl}/@@pfas-coc-receive?coc=${rec/number}">
+      <input type="hidden" name="action" value="receive" />
+      <fieldset class="pfas-ro" tal:attributes="disabled python:'disabled' if rec['status'] == 'received' else None">
+      <table class="pfas-table">
+        <thead><tr><th>Sample</th><th>Client sample ID</th><th>Matrix</th><th>Collected</th>
+                   <th>State</th><th>Allowed (method)</th><th>Temperature (°C)</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="s view/samples">
+            <td tal:content="s/id">DW-0001</td><td tal:content="s/csid">C-1</td>
+            <td tal:content="s/matrix">Drinking Water</td><td tal:content="s/sampled">x</td>
+            <td tal:content="s/state">sample_due</td>
+            <td tal:content="s/range_text">2 to 6</td>
+            <td><input type="number" step="0.1" tal:attributes="name string:t__${s/uid};
+                       value python:view.value('t__' + s['uid'])" /></td>
+          </tr>
+          <tr tal:condition="not:view/samples"><td colspan="7">No samples on this CoC yet.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="field-row">
+        <label>Received at
+          <input type="datetime-local" name="received_at"
+                 tal:attributes="value python:view.value('received_at', view.now_local())" /></label>
+        <label>Receipt thermometer
+          <select name="thermometer" tal:define="ts view/thermometers">
+            <option value="" tal:content="python:'Choose' if ts else 'None registered under Equipment'">Choose</option>
+            <option tal:repeat="t ts" tal:attributes="value t/id;
+                    selected python:'selected' if t['id'] == view.value('thermometer') else None"
+                    tal:content="python:u'%s \u00b7 S/N %s' % (t.get('name'), t.get('serial_number'))">IR gun</option>
+          </select></label>
+        <label><input type="checkbox" name="on_ice" value="on"
+                      tal:attributes="checked python:'checked' if view.value('on_ice') else None" />
+          Received on ice</label>
+        <label>Temperature blank (°C)
+          <input type="number" step="0.1" name="temp_blank" tal:attributes="value python:view.value('temp_blank')" /></label>
+      </div>
+      <div class="field-row">
+        <tal:q repeat="q python:[('seals_intact', 'Custody seals intact'), ('labels_legible', 'Labels legible'), ('holding_time_ok', 'Within holding time'), ('compliant', 'Compliant overall')]">
+          <label><span tal:replace="python:q[1]">Seals</span>
+            <select tal:attributes="name python:q[0]">
+              <option value=""></option>
+              <option value="yes" tal:attributes="selected python:'selected' if view.value(q[0]) == 'yes' else None">Yes</option>
+              <option value="no" tal:attributes="selected python:'selected' if view.value(q[0]) == 'no' else None">No</option>
+            </select></label>
+        </tal:q>
+      </div>
+      <label>Note (needed for any No)
+        <textarea name="note" rows="2" tal:content="python:view.value('note')"></textarea></label>
+      </fieldset>
+      <button class="btn btn-primary" type="submit" tal:condition="python:rec['status'] != 'received'">Receive</button>
+    </form>
+
+    <tal:done condition="python:rec['status'] == 'received'" tal:define="rc rec/receipt">
+      <div class="section-group-hdr">Receipt</div>
+      <table class="pfas-table">
+        <tbody>
+          <tr><th>Received</th><td tal:content="python:'%s by %s' % (rc.get('received_at'), rc.get('received_by'))">x</td></tr>
+          <tr><th>Thermometer</th><td tal:content="python:(rc.get('thermometer') or {}).get('name') or ''">x</td></tr>
+          <tr><th>Temperatures</th><td tal:content="python:u'; '.join(u'%s %s \u00b0C (corrected %s)' % (t['sample_id'], t['observed'], t['corrected'] if t['corrected'] is not None else u'\u2014') for t in rc.get('readings') or [])">x</td></tr>
+          <tr><th>Flags</th><td tal:content="python:u'; '.join(rc.get('flags') or []) or u'Compliant'">x</td></tr>
+          <tr><th>Note</th><td tal:content="rc/note|nothing">x</td></tr>
+          <tr tal:condition="rc/not_judged|nothing"><th>Not judged</th>
+              <td tal:content="python:u'; '.join(rc['not_judged'])">x</td></tr>
+        </tbody>
+      </table>
+    </tal:done>
+    </tal:one>
+
+  </div>
+  </div>
+</html>

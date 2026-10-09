@@ -1,0 +1,205 @@
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<body>
+<!--
+  Draws one declared configuration section (config_forms.render).
+
+  Caller defines, ON A WRAPPING ELEMENT:
+      cf_groups   config_forms.render(section, stored)
+      cf_form     id of the form element the inputs belong to (HTML form=
+                  attribute, so a section can sit inside another form's markup)
+
+  A default is a placeholder, never a value: an empty input saves as unset.
+-->
+<metal:section define-macro="section">
+  <details tal:repeat="g cf_groups" open="open">
+    <summary tal:content="g/title">Calibration</summary>
+    <div class="section-body">
+      <div class="field-grid">
+        <div tal:repeat="fld g/fields"
+             tal:attributes="class python:'field-row field-row-wide' if fld['kind'] in ('text', 'textarea', 'multi') else 'field-row'">
+          <tal:multi condition="python:fld['kind'] == 'multi'">
+            <div class="cf-label" tal:content="fld/label">Tier 1 matrices</div>
+            <div class="cf-chips">
+              <label class="cf-chip" tal:repeat="o fld/options">
+                <input type="checkbox" value="on"
+                       tal:attributes="name o/name; form cf_form;
+                                       checked python:'checked' if o['checked'] else None" />
+                <span tal:content="o/label">Eggs</span>
+              </label>
+            </div>
+          </tal:multi>
+          <tal:bool condition="python:fld['kind'] == 'bool'">
+            <div class="check-row">
+              <input type="checkbox" value="on"
+                     tal:attributes="id fld/name; name fld/name; form cf_form;
+                                     checked python:'checked' if fld['checked'] else None" />
+              <label tal:attributes="for fld/name" tal:content="fld/label">Label</label>
+            </div>
+          </tal:bool>
+          <tal:other condition="python:fld['kind'] not in ('bool', 'multi')">
+            <label tal:attributes="for fld/name">
+              <span tal:replace="fld/label">Label</span><span tal:condition="fld/unit"
+                    tal:replace="string: (${fld/unit})" /><span tal:condition="fld/required"
+                    class="req" title="required"> *</span>
+            </label>
+            <input tal:condition="python:fld['kind'] in ('number', 'int')" type="number"
+                   tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
+                                   placeholder fld/placeholder;
+                                   step python:'1' if fld['kind'] == 'int' else 'any';
+                                   min fld/min; max fld/max;
+                                   required python:'required' if fld['required'] else None" />
+            <input tal:condition="python:fld['kind'] == 'text'" type="text"
+                   tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
+                                   placeholder fld/placeholder;
+                                   required python:'required' if fld['required'] else None" />
+            <textarea tal:condition="python:fld['kind'] == 'textarea'" rows="3"
+                      tal:attributes="id fld/name; name fld/name; form cf_form;
+                                      placeholder fld/placeholder"
+                      tal:content="fld/value"></textarea>
+            <select tal:condition="python:fld['kind'] == 'choice'"
+                    tal:attributes="id fld/name; name fld/name; form cf_form">
+              <option value="" tal:condition="not:fld/required"
+                      tal:content="python:fld.get('placeholder') or u'(unset)'">(unset)</option>
+              <option tal:repeat="c fld/choices"
+                      tal:attributes="value python:c[0]; selected python:'selected' if c[0] == fld['value'] else None"
+                      tal:content="python:c[1]">option</option>
+            </select>
+          </tal:other>
+          <span class="hint" tal:condition="fld/help" tal:content="fld/help">hint</span>
+        </div>
+      </div>
+    </div>
+  </details>
+</metal:section>
+
+<!--
+  Draws one declared TABLE (config_forms.render_table): a sub-tab per group
+  (e.g. matrix) with its set/total count, the group's unit in the column
+  headings, one row per key. Same caller contract: cf_groups, cf_form.
+-->
+<metal:table define-macro="table">
+  <div class="pfas-tabs" data-tabs="" tal:condition="python:len(cf_groups) > 1">
+    <a tal:repeat="grp cf_groups"
+       tal:attributes="class python:'pfas-tab active' if repeat['grp'].index == 0 else 'pfas-tab';
+                       data-pane string:${cf_form}-g${grp/index};
+                       href string:#${cf_form}-g${grp/index}"><tal:m tal:replace="grp/label">Matrix</tal:m><span
+       class="pfas-tab-count" tal:content="string:(${grp/set}/${grp/total})">(0/0)</span></a>
+  </div>
+  <div tal:repeat="grp cf_groups" class="pfas-pane"
+       tal:attributes="id string:${cf_form}-g${grp/index}">
+    <table class="factor-table cf-table">
+      <thead>
+        <tr>
+          <th class="rl-name" tal:content="grp/row_heading">Analyte</th>
+          <th tal:repeat="col grp/columns"><span tal:replace="col/label">RL</span><span
+              class="rl-unit" tal:condition="col/unit" tal:content="string: (${col/unit})"> (ng/L)</span></th>
+          <th tal:repeat="lbl grp/info_labels|nothing" tal:content="lbl">Action level / MCL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr tal:repeat="row grp/rows">
+          <td><span tal:content="row/label">PFOA</span>
+              <code class="rl-kw" tal:condition="python:row['sublabel'] and row['sublabel'] != row['label']"
+                    tal:content="row/sublabel">PFOA</code>
+              <!-- a tag only for something to act on;
+                   any other note is plain text -->
+              <span tal:condition="python:row['note'] and row['warn']" class="sur-tag sur-nocore"
+                    tal:content="row/note">unlinked</span>
+              <span tal:condition="python:row['note'] and not row['warn']" class="cf-hint"
+                    tal:content="row/note">quantifies PFOA</span>
+              <tal:s condition="row/suggest">
+                <span class="sur-tag sur-override" title="suggested; not saved until you use it"
+                      tal:content="string:suggested: ${row/suggest/label}">suggested: 13C8-PFOA</span>
+                <button type="button" class="btn-sm"
+                        tal:attributes="data-cf-use row/suggest/target;
+                                        data-cf-value row/suggest/value">Use</button>
+              </tal:s></td>
+          <td tal:repeat="cell row/cells">
+            <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
+                   tal:attributes="name cell/name; form cf_form; value cell/value;
+                                   step python:'1' if cell['kind'] == 'int' else 'any';
+                                   min cell/min; max cell/max; placeholder cell/placeholder;
+                                   aria-label python:'%s %s' % (row['label'], cell['label'])" />
+            <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
+                   tal:attributes="name cell/name; form cf_form; value cell/value;
+                                   aria-label python:'%s %s' % (row['label'], cell['label'])" />
+            <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
+                   tal:attributes="name cell/name; form cf_form;
+                                   checked python:'checked' if cell['checked'] else None" />
+            <select tal:condition="python:cell['kind'] == 'choice'" class="rl-in"
+                    tal:attributes="name cell/name; form cf_form;
+                                    aria-label python:'%s %s' % (row['label'], cell['label'])">
+              <option value="" tal:content="python:cell.get('placeholder') or u'\u2014 none \u2014'">&#8212; none &#8212;</option>
+              <option tal:repeat="c cell/choices"
+                      tal:attributes="value python:c[0]; selected python:'selected' if c[0] == cell['value'] else None"
+                      tal:content="python:c[1]">Std &#8212; lot 123</option>
+            </select>
+          </td>
+          <!-- read-only: what another owner holds (config_forms.Table info) -->
+          <td tal:repeat="entries row/info|nothing" class="cf-info">
+            <div tal:repeat="e entries"
+                 tal:attributes="class python:'cf-info-off' if e.get('off') else ('cf-info-warn' if e.get('warn') else None)"
+                 tal:content="e/text">4 ng/L MCL &#183; US EPA</div>
+            <span tal:condition="not:entries" class="cf-hint">&#8212;</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</metal:table>
+
+<!--
+  Draws one declared COLLECTION (config_forms.render_collection): a row per
+  stored item and a "+ Add" button that clones the template row (the last
+  entry of cf_rows) with the next index; clearing a row's name removes it.
+  The header comes from the first entry's cell labels. Caller: cf_rows, cf_form.
+-->
+<metal:collection define-macro="collection">
+  <div class="cf-coll-wrap" tal:define="tpl python:cf_rows[-1]">
+  <table class="factor-table cf-coll">
+    <thead>
+      <tr><th tal:repeat="cell python:cf_rows[0]['cells']" tal:content="cell/label">Matrix</th></tr>
+    </thead>
+    <tbody>
+      <tal:r repeat="row python:cf_rows[:-1]">
+      <tr>
+        <td tal:repeat="cell row/cells">
+          <metal:cell define-macro="coll-cell">
+          <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
+                 tal:attributes="name cell/name; form cf_form; value cell/value;
+                                 placeholder cell/placeholder; aria-label cell/label" />
+          <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
+                 tal:attributes="name cell/name; form cf_form; value cell/value;
+                                 step python:'1' if cell['kind'] == 'int' else 'any';
+                                 min cell/min; max cell/max;
+                                 placeholder cell/placeholder; aria-label cell/label" />
+          <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
+                 tal:attributes="name cell/name; form cf_form; aria-label cell/label;
+                                 checked python:'checked' if cell['checked'] else None" />
+          <select tal:condition="python:cell['kind'] == 'choice'" class="rl-in"
+                  tal:attributes="name cell/name; form cf_form; aria-label cell/label">
+            <option value="">&#8212; none &#8212;</option>
+            <option tal:repeat="c cell/choices"
+                    tal:attributes="value python:c[0]; selected python:'selected' if c[0] == cell['value'] else None"
+                    tal:content="python:c[1]">ng/kg</option>
+          </select>
+          </metal:cell>
+        </td>
+      </tr>
+      </tal:r>
+    </tbody>
+  </table>
+  <template class="cf-row-template">
+    <tr class="cf-new-row">
+      <td tal:repeat="cell tpl/cells"><metal:c use-macro="context/@@pfas-config-form-macros/macros/coll-cell" /></td>
+    </tr>
+  </template>
+  <button type="button" class="btn btn-sm btn-secondary cf-add-row"
+          tal:attributes="data-next tpl/next"
+          tal:content="string:+ Add ${tpl/noun}">+ Add matrix</button>
+  </div>
+</metal:collection>
+</body>
+</html>

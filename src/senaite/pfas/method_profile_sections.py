@@ -1,0 +1,1684 @@
+# -*- coding: utf-8 -*-
+"""Method Profile editor sections declared for config_forms (R2).
+
+Each section is saved on its own from its own tab. Only fields that have an
+input on that tab are declared: a declared field with no input would be
+cleared by every save of the tab. So instrument_verification.sequence (no
+input anywhere; the Run Builder reads ccv.frequency) is deliberately absent.
+
+Required fields: calibration r², CCV frequency and
+the CCV recovery window. Before R2 a blank in these kept the old value silently; now a blank is
+refused with the field named. Every other number is optional and blank means
+"no limit" (None), as before.
+Python 2.7 compatible.
+"""
+from __future__ import absolute_import
+
+try:
+    from senaite.pfas import config_forms as cf
+except Exception:          # tests: loaded without the package
+    import config_forms as cf
+
+PCT = u"%"
+
+CALIBRATION_CCV = cf.Section(
+    id=u"cal", title=u"Calibration & CCV", base=("instrument_verification",),
+    groups=[
+        (u"Calibration", [
+            cf.Field("calibration.r2_min", u"R² Minimum", required=True,
+                     minimum=0.9, maximum=1.0, placeholder=u"0.990",
+                     help=u"e.g. 0.990 (FDA) or 0.995 (generic)"),
+            cf.Field("calibration.point_pct_dev_max", u"Point % Deviation Max",
+                     unit=PCT, minimum=0,
+                     help=u"Each cal point must be within ±N% of curve. Leave blank for no limit."),
+            cf.Field("calibration.low_point_pct_dev_max", u"Low-Level Point % Dev Max",
+                     unit=PCT, minimum=0,
+                     help=u"Wider limit for lowest calibration level (e.g. 50 for EPA 537.1)."),
+            cf.Field("calibration.force_origin", u"Force through origin", kind=cf.BOOL,
+                     help=u"Required by EPA 537.1 IS calibration technique"),
+            cf.Field("calibration.level_unit", u"Calibration levels are in", kind=cf.CHOICE,
+                     choices=lambda profile, env=None: [
+                         (u"ng/mL", u"ng/mL in the extract (x matrix factor)"),
+                         (u"ppt", u"ppt in the sample (ng/L, ng/kg)")],
+                     help=u"ng/mL: the derived RL is the lowest level \u00d7 the matrix factor "
+                          u"(Sample Corrections); without a factor there is none."),
+        ]),
+        (u"Chromatographic Confirmation & Signal Quality", [
+            cf.Field("confirmation.ion_ratio_tol_pct", u"Ion Ratio Tolerance ±",
+                     unit=PCT, minimum=0,
+                     help=u"30 for FDA; 50 for EPA 1633A; blank for 537.1 (no criterion)"),
+            cf.Field("confirmation.rrt_tol_pct", u"Relative RT Tolerance",
+                     unit=PCT, minimum=0,
+                     help=u"1.0 for FDA (RRT ±1% of standard RT)."),
+            cf.Field("confirmation.rt_tol_abs_min", u"Absolute RT Tolerance",
+                     unit=u"min", minimum=0,
+                     help=u"The lab's window: EPA 537.1 section 11.7.2 sets none (3 x SD of the "
+                          u"analyst's own retention times)."),
+            cf.Field("confirmation.sn_quan_min", u"S/N Min — Quantitation Ion", minimum=0),
+            cf.Field("confirmation.sn_confirm_min", u"S/N Min — Confirm Ion (optional)",
+                     minimum=0, help=u"1.0 for EPA 1633A."),
+            cf.Field("confirmation.require_confirm_ion_check",
+                     u"Require qualifier ion check for all analytes", kind=cf.BOOL,
+                     help=u"ON for FDA 32-PFAS and EPA 1633A; OFF for EPA 537.1."),
+            cf.Field("confirmation.single_transition_analytes",
+                     u"Single-transition analytes (confirmed by a second technique)",
+                     kind=cf.TEXT, blank=u"remove", placeholder=u"none",
+                     help=u"Comma-separated; a positive needs a second technique."),
+            cf.Field("confirmation.confirm_pct_diff_max", u"Largest difference between the two techniques",
+                     unit=PCT, minimum=0),
+            cf.Field("surrogate_window.recovery_min", u"Surrogate recovery min", unit=PCT, minimum=0),
+            cf.Field("surrogate_window.recovery_max", u"Surrogate recovery max", unit=PCT, minimum=0,
+                     help=u"Blank: the method text's window."),
+            cf.Field("confirmation.confirm_technique",
+                     u"Confirmation technique for single-transition analytes",
+                     kind=cf.TEXT, blank=u"remove", placeholder=u"LC-HRMS",
+                     help=u"The second technique this lab confirms PFBA / PFPeA positives with; "
+                          u"the review prompt quotes it (Help: Identity confirmation)."),
+        ]),
+        (u"Continuing Calibration Verification (CCV)", [
+            cf.Field("ccv.frequency", u"CCV Frequency (every N samples)", kind=cf.INT,
+                     required=True, minimum=1,
+                     help=u"6 for FDA 32-PFAS; 10 for EPA 537.1 / 1633A"),
+            cf.Field("ccv.recovery_min", u"Recovery Min", unit=PCT, required=True, minimum=0),
+            cf.Field("ccv.recovery_max", u"Recovery Max", unit=PCT, required=True, minimum=0),
+            cf.Field("ccv.low_level_min", u"Low-Level Min (optional)", unit=PCT, minimum=0,
+                     help=u"Wider window for the lowest CCC/CCV level."),
+            cf.Field("ccv.low_level_max", u"Low-Level Max (optional)", unit=PCT, minimum=0),
+            cf.Field("ccv.opens_run", u"A CCV opens the run", kind=cf.CHOICE,
+                     blank=u"remove", choices=[(u"", u"No"), (u"yes", u"Yes")],
+                     help=u"EPA 537.1 section 10.3: samples before the first CCC are not bracketed."),
+            cf.Field("ccv.counts_extracted_qc", u"Extracted QC counts toward the interval",
+                     kind=cf.CHOICE, blank=u"remove",
+                     choices=[(u"", u"Yes: field samples and extracted QC"),
+                              (u"no", u"No: field samples only")],
+                     help=u"EPA 537.1 section 10.3: LRBs, LFBs, LFSMs, LFSMDs, FDs and FRBs are not counted."),
+            cf.Field("ccv.surrogate_recovery", u"Surrogate recovery judged in CCVs", kind=cf.CHOICE,
+                     blank=u"remove", choices=[(u"", u"No"), (u"yes", u"Yes")],
+                     help=u"EPA 537.1 \u00a79.3.5.1: the CCC carries the surrogates."),
+            cf.Field("ccv.pct_dev_warn", u"CCV warning line (± %)", unit=PCT, minimum=0,
+                     help=u"Drawn on the Calibrations page's ICV/CCV plot; not a pass/fail limit."),
+            cf.Field("icv.criteria", u"ICV criteria", kind=cf.CHOICE, blank=u"remove",
+                     choices=[(u"", u"Its own % deviation (below)"),
+                              (u"ccv", u"The same as the CCV")],
+                     help=u"EPA 537.1 \u00a79.3.10: the QCS is judged like the CCC."),
+            cf.Field("icv.pct_dev_max", u"ICV % Deviation Max", unit=PCT, minimum=0,
+                     help=u"Initial calibration verification, judged on the Calibrations page."),
+        ]),
+        # When the run carries a new curve, and what verifies a reused one
+        # ("the need for a new calibration should ask the
+        # bench chemist"). The Run Builder applies these and asks.
+        (u"New calibration curve", [
+            cf.Field("calibration.new_curve", u"A new curve is run", kind=cf.CHOICE,
+                     blank=u"remove",
+                     choices=[(u"", u"When the bench chemist says so (asked each run)"),
+                              (u"every_run", u"In every run"),
+                              (u"when_due", u"When the last curve is too old or not approved")],
+                     help=u"The Run Builder asks the bench chemist unless every run needs one "
+                          u"or the last curve is due."),
+            cf.Field("calibration.max_age_days", u"A curve may be reused for", kind=cf.INT,
+                     unit=u"days", minimum=1, placeholder=u"no limit"),
+            cf.Field("icv.after_new_curve", u"ICV after a new curve", kind=cf.CHOICE,
+                     blank=u"remove", choices=[(u"", u"Yes"), (u"no", u"No")]),
+            cf.Field("icv.when_reused", u"A run on a reused curve opens with", kind=cf.CHOICE,
+                     blank=u"remove", choices=[(u"", u"A CCV"), (u"ICV", u"An ICV")]),
+        ]),
+        (u"IS / Surrogate Response", [
+            cf.Field("is_response.vs_ical_avg_min", u"vs. ICAL Average Min", unit=PCT, minimum=0),
+            cf.Field("is_response.vs_ical_avg_max", u"vs. ICAL Average Max", unit=PCT, minimum=0),
+            cf.Field("is_response.vs_last_ccv_min", u"vs. Last CCV Min (optional)",
+                     unit=PCT, minimum=0,
+                     help=u"EPA 537.1 §9.3.4 requires this second condition."),
+            cf.Field("is_response.vs_last_ccv_max", u"vs. Last CCV Max (optional)",
+                     unit=PCT, minimum=0),
+            cf.Field("is_response.notes", u"Notes", kind=cf.TEXT),
+        ]),
+    ])
+
+def _global_titles():
+    try:
+        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+    except Exception:          # tests: loaded without the package
+        from analyte_reference import NATIVE_ANALYTES
+    return dict((row[0], row[1]) for row in NATIVE_ANALYTES)
+
+
+try:
+    from senaite.pfas import isomers as _iso
+except Exception:              # tests: loaded without the package
+    import isomers as _iso
+
+
+class _Labels(dict):
+    """{keyword: label} for ONE method: a summed analyte shows its reported
+    name (the Isomers tab), every other analyte its display name. Every tab
+    labels analytes through this, so an isomer change reaches all of them --
+    the global table alone named a summed PFOS "lr-PFOS"."""
+
+    def __init__(self, profile):
+        dict.__init__(self)
+        self.profile, self.titles = profile, _global_titles()
+
+    def get(self, kw, default=None):
+        return _iso.label(self.profile, kw, self.titles)
+
+
+def _analyte_titles(profile):
+    return _Labels(profile)
+
+
+def _limits_for(profile, env):
+    """{(matrix, keyword): [info entry]}: every regulatory limit naming one of
+    the method's matrices, on each analyte it covers (2026-10-03: the
+    action level / MCL beside the RL). Values stay on Regulatory Limits; this
+    only shows them, marked when not verified (never printed) or switched off
+    for this method x matrix (the list under the table)."""
+    store = (env or {}).get("regulatory") or {}
+    names = store.get("programs") or {}
+    out = {}
+    for lim in store.get("limits") or []:
+        if not lim.get("id"):
+            continue
+        prog = (names.get(lim.get("program")) or {}).get("name") or lim.get("program") or u""
+        analytes = lim.get("analytes") or []
+        text = u"%s %s %s · %s" % (_sig(lim.get("value")) if lim.get("value") is not None
+                                       else u"?", lim.get("unit") or u"", lim.get("kind") or u"", prog)
+        if len(analytes) > 1:
+            text += u" · %s" % (lim.get("label") or lim["id"])
+        for m in _limit_matrices(profile, lim):
+            off = lim["id"] in _rf.limits_off(profile, m)
+            entry = {"text": text + (u" · not evaluated" if off else u"")
+                             + (u" · not verified" if not lim.get("verified") else u""),
+                     "warn": not lim.get("verified"), "off": off}
+            for kw in analytes:
+                out.setdefault((m, kw), []).append(entry)
+    return out
+
+
+def reporting_limit_rows(profile, env=None):
+    """One group per supported matrix, one row per analyte that matrix REPORTS
+    (the analyte x matrix inclusion grid decides -- PFODA is not listed under
+    FDA x Eggs, rule 2). The group's unit is the matrix's unit_map
+    entry: a limit is entered in, and printed with, the unit the method
+    reports that matrix in. Beside it, the regulatory limits for the analyte
+    in that matrix (read-only, from env)."""
+    titles = _analyte_titles(profile)
+    limits = _limits_for(profile, env)
+    inclusion = profile.get("analyte_matrix_inclusion") or {}
+    units = profile.get("unit_map") or {}
+    groups, rows = [], []
+    for matrix in profile.get("supported_matrices") or []:
+        groups.append({"key": matrix, "label": matrix, "unit": units.get(matrix, u"")})
+        for kw in profile.get("master_analyte_set") or []:
+            if (inclusion.get(kw) or {}).get(matrix, True) is False:
+                continue
+            row = {"key": (matrix, kw), "group": matrix,
+                   "label": titles.get(kw, kw), "sublabel": kw,
+                   "info": {"al": limits.get((matrix, kw)) or []}}
+            rl = _cal.derived_rl(profile, matrix, kw)
+            if rl is not None:
+                # blank = the analyte's lowest calibrator; a typed RL overrides it
+                row["placeholders"] = {"rl": u"%s (lowest cal.)" % _sig(rl)}
+                row["derived_rl"] = rl
+            rows.append(row)
+    return groups, rows
+
+
+def _mdl_not_above_rl(row, values):
+    rl, mdl = values.get(u"f__rl"), values.get(u"f__mdl")
+    if rl is None:
+        rl = row.get("derived_rl")                 # the lowest calibrator
+    if rl is not None and mdl is not None and mdl > rl:
+        return u"%s in %s: the MDL (%s) is above the RL (%s)." % (
+            row["sublabel"], row["group"], mdl, rl)
+    return None
+
+
+# Calibration levels: sample-equivalent ppt, lowest
+# first. The lowest is every analyte's default RL; the curve suggests the
+# spike levels.
+try:
+    from senaite.pfas import calibration_levels as _cal
+except Exception:          # tests: loaded without the package
+    import calibration_levels as _cal
+
+
+def _sig(v):
+    return _cal.fmt(v)
+
+
+def read_cal_levels(profile):
+    return [{"name": r.get("name") or u"CAL-%d" % (i + 1), "conc": r.get("conc")}
+            for i, r in enumerate(_cal.rows(profile))]
+
+
+def write_cal_levels(profile, rows):
+    calib = profile.setdefault("instrument_verification", {}).setdefault("calibration", {})
+    calib["levels"] = sorted(({"name": r["name"], "conc": r.get("conc")} for r in rows),
+                             key=lambda r: (r["conc"] is None, r["conc"]))
+    return profile
+
+
+def check_cal_levels(profile, rows):
+    errors = [u"%s: enter its concentration." % r["name"] for r in rows if r.get("conc") is None]
+    vals = [r["conc"] for r in rows if r.get("conc") is not None]
+    if len(vals) != len(set(vals)):
+        errors.append(u"Two calibration levels have the same concentration.")
+    return errors
+
+
+CAL_LEVELS = cf.Collection(
+    id=u"cal_levels", title=u"Calibration levels", noun=u"level", allow_empty=True,
+    columns=[cf.Field("name", u"Level", kind=cf.TEXT, placeholder=u"CAL-n"),
+             cf.Field("conc", u"Concentration", greater_than=0,
+                      placeholder=u"in the level unit")],
+    read=read_cal_levels, write=write_cal_levels, check=check_cal_levels)
+
+
+def _levels_text(lv):
+    if not lv:
+        return u"no levels"
+    return u"%s to %s (%d points)" % (_sig(lv[0]), _sig(lv[-1]), len(lv))
+
+
+def analyte_scale_rows(profile):
+    """One row per analyte in the method: its multiple of the base ladder and
+    its highest standard; the note shows the ladder that results."""
+    titles = _analyte_titles(profile)
+    rows = [{"key": (kw,), "group": u"cal_scale", "label": titles.get(kw, kw), "sublabel": kw,
+             "note": _levels_text(_cal.levels(profile, kw)), "warn": False}
+            for kw in profile.get("master_analyte_set") or []]
+    return _one_group(u"cal_scale", u"Per-analyte range"), rows
+
+
+ANALYTE_SCALE = cf.Table(
+    id=u"cal_scale", title=u"Per-analyte calibration range",
+    base=("instrument_verification", "calibration", "analyte_scale"),
+    columns=[cf.Field("factor", u"x base ladder", greater_than=0, placeholder=u"1"),
+             cf.Field("max", u"Highest standard", greater_than=0, placeholder=u"no cap")],
+    rows=analyte_scale_rows)
+
+
+# QC composition: what a run must contain beyond
+# the run template, read by the Run Builder (ruleset composition keys).
+# Blank = the method does not require it. A project can override both.
+# The QC an extraction batch can hold, in batch order: its one list.
+try:
+    from senaite.pfas.extraction_batch import QC_ROLES as EXTRACTION_QC_TYPES
+except ImportError:                                          # loaded by path (tests)
+    from extraction_batch import QC_ROLES as EXTRACTION_QC_TYPES
+
+QC_COMPOSITION = cf.Section(
+    id=u"qc_comp", title=u"QC composition", base=("qc_acceptance",),
+    groups=[(u"QC composition", [
+        cf.Field("LFSM.frequency", u"LFSM every N field samples", kind=cf.INT, minimum=1,
+                 placeholder=u"not required",
+                 help=u"The Run Builder adds one LFSM after every Nth field sample; "
+                      u"blank = only what the run template holds."),
+        cf.Field("Dup.duplicate_all_samples", u"Duplicate every field sample",
+                 kind=cf.CHOICE, blank=u"remove",
+                 choices=[(u"", u"No (not required)"), (u"yes", u"Yes")],
+                 help=u"The Run Builder injects a duplicate straight after each field sample."),
+    ]), (u"Per extraction batch", [
+        # how many of each QC an extraction batch is given when its QC is
+        # populated ("the necessary qc is populated per
+        # extraction batch following the method profile or project plan")
+        cf.Field("%s.per_batch" % qc, u"%s per extraction batch" % qc, kind=cf.INT, minimum=0,
+                 placeholder=(u"0" if qc == u"Dup" else u"1 if switched on"),
+                 help=u"Blank: one for a QC type the method switches on (none for the "
+                      u"sample duplicate, which stands in for the LFSMD)." if qc in (u"MB", u"Dup") else u"")
+        for qc in EXTRACTION_QC_TYPES
+    ])])
+
+
+# How many an extraction batch may hold ("An extraction
+# batch should be set by method profile so X samples total including QC or
+# excluding qc"). Blank = no limit. A batch over it is held: its labels are
+# not issued (extraction_batch.problems).
+EXTRACTION_BATCH = cf.Section(
+    id=u"xbatch", title=u"Extraction batch size", base=("extraction_batch",),
+    groups=[(u"Extraction batch size", [
+        cf.Field("max_size", u"Most per extraction batch", kind=cf.INT, minimum=1,
+                 placeholder=u"no limit"),
+        cf.Field("count_qc", u"QC members count towards it", kind=cf.BOOL),
+    ])])
+
+
+# The labels an extraction batch issues ("3-4 labels for the
+# vial, the sample bottle, the centrifuge tubes"): each container, how many
+# of it, and whether it is labelled for every member or for samples only (a
+# blank has no sample bottle). Read by the batch page's labels step.
+LABEL_FOR = [(u"all", u"Every member"), (u"samples", u"Samples only")]
+
+
+def _labels_read(profile):
+    return [dict(r) for r in profile.get("extraction_labels") or [] if isinstance(r, dict)]
+
+
+def _labels_write(profile, rows):
+    out = []
+    for r in rows:
+        name = (r.get("container") or u"").strip()
+        if not name:
+            continue
+        out.append({"container": name, "count": int(r.get("count") or 1),
+                    "for": r.get("for") or u"all"})
+    _set(profile, "extraction_labels", out)
+    return profile
+
+
+EXTRACTION_LABELS = cf.Collection(
+    id=u"lbl", title=u"Extraction labels", noun=u"container", allow_empty=True,
+    columns=[cf.Field("container", u"Container", kind=cf.TEXT, placeholder=u"e.g. Centrifuge tube"),
+             cf.Field("count", u"Labels each", kind=cf.INT, minimum=1, placeholder=u"1"),
+             cf.Field("for", u"For", kind=cf.CHOICE, choices=LABEL_FOR)],
+    read=_labels_read, write=_labels_write)
+
+
+REPORTING_LIMITS = cf.Table(
+    id=u"rl", title=u"Reporting Limits", base=("reporting_limits",),
+    columns=[cf.Field("rl", u"RL", minimum=0), cf.Field("mdl", u"MDL", minimum=0)],
+    rows=reporting_limit_rows, rows_take_env=True, check=_mdl_not_above_rl,
+    info=[(u"al", u"Action level / MCL")])
+
+# ── Matrices & Units: one row per matrix, five stored keys ───────────────────
+
+COMMON_UNITS = [u"ng/kg", u"ug/kg", u"ng/L", u"ng/mL", u"ug/L", u"mg/kg", u"pg/g"]
+
+
+def unit_choices(profile, env=None):
+    """Every common unit plus every unit already in use, so an existing choice
+    is never silently dropped from the list it was chosen from."""
+    used = sorted(set(u for u in (profile.get("unit_map") or {}).values()
+                      if u and u not in COMMON_UNITS))
+    return [(u, u) for u in COMMON_UNITS + used]
+
+
+def core_sample_types():
+    """Titles of the core Sample Types: a method's matrices are picked from
+    them (core owns the name). [] outside Plone."""
+    try:
+        from bika.lims import api
+        cat = api.get_tool("senaite_catalog_setup")
+        return sorted(set(b.getObject().Title() for b in cat(portal_type="SampleType", is_active=True)))
+    except Exception:                                       # noqa: BLE001
+        return []
+
+
+def matrix_choices(profile, env=None):
+    """The core Sample Types; a matrix already on the method that core does
+    not have is kept and marked, never silently dropped."""
+    core = core_sample_types()
+    out = [(t, t) for t in core]
+    for m in profile.get("supported_matrices") or []:
+        if m not in core:
+            out.append((m, u"%s (not a core Sample Type)" % m))
+    return out
+
+
+def read_matrices(profile):
+    aliases = profile.get("matrix_aliases") or {}
+    units = profile.get("unit_map") or {}
+    holding = profile.get("holding_times") or {}
+    extract = profile.get("extract_holding_times") or {}
+    return [{"name": m,
+             "aliases": u", ".join(aliases.get(m) or []),
+             "unit": units.get(m) or None,
+             "holding_days": holding.get(m),
+             "extract_holding_days": extract.get(m)}
+            for m in profile.get("supported_matrices") or []]
+
+
+def _set(profile, key, value):
+    """Write a key, but leave a MISSING key missing when the new value is
+    empty: an unchanged save must not turn "absent" into "[]" (EPA 537.1 has
+    no tight_matrices or matrix_aliases key at all)."""
+    if value or key in profile:
+        profile[key] = value
+
+
+def write_matrices(profile, rows):
+    names = [r["name"] for r in rows]
+    aliases, units, holding, extract = {}, {}, {}, {}
+    for r in rows:
+        parts = [a.strip() for a in (r.get("aliases") or u"").split(u",") if a.strip()]
+        if parts:
+            aliases[r["name"]] = parts
+        if r.get("unit"):
+            units[r["name"]] = r["unit"]
+        days = r.get("holding_days")
+        if days is not None and days == int(days):
+            days = int(days)
+        # Kept as an explicit None: the matrix is listed as deliberately unset,
+        # and the review refuses to judge rather than passing it.
+        holding[r["name"]] = days
+        ext = r.get("extract_holding_days")
+        if ext is not None and ext == int(ext):
+            ext = int(ext)
+        if ext is not None:
+            extract[r["name"]] = ext
+    profile["supported_matrices"] = names
+    _set(profile, "extract_holding_times", extract)
+    _set(profile, "matrix_aliases", aliases)
+    _set(profile, "unit_map", units)
+    _set(profile, "holding_times", holding)
+    if "matrix_uid_map" in profile:
+        profile["matrix_uid_map"] = dict((k, v) for k, v in
+                                         (profile.get("matrix_uid_map") or {}).items()
+                                         if k in names)
+    return profile
+
+
+def matrix_references(profile, removed):
+    """What still points at a matrix title that is going away. Reported as a
+    refusal rather than cleaned up: a matrix factor, spike level or reporting
+    limit is lab data, and deciding it is disposable because a title changed
+    is not this form's call (rule 4)."""
+    removed = set(removed)
+    found = []
+    factors = [e.get("matrix") for e in (profile.get("matrix_factors") or [])
+               if isinstance(e, dict)]
+    hit = sorted(set(f for f in factors if f in removed))
+    if hit:
+        found.append(u"matrix factors for %s" % u", ".join(hit))
+    hit = sorted(m for m in (profile.get("spike_levels") or {}) if m in removed)
+    if hit:
+        found.append(u"spike levels for %s" % u", ".join(hit))
+    included = set()
+    for per_matrix in (profile.get("analyte_matrix_inclusion") or {}).values():
+        if isinstance(per_matrix, dict):
+            included.update(m for m in per_matrix if m in removed)
+    if included:
+        found.append(u"analyte x matrix inclusion for %s" % u", ".join(sorted(included)))
+    hit = sorted(m for m, v in (profile.get("reporting_limits") or {}).items()
+                 if m in removed and v)
+    if hit:
+        found.append(u"reporting limits for %s" % u", ".join(hit))
+    hit = sorted(m for m in (profile.get("tight_matrices") or []) if m in removed)
+    if hit:
+        found.append(u"the Tier 1 matrix list (Recovery Tiers) for %s" % u", ".join(hit))
+    hit = sorted(m for m in ((profile.get("report_format") or {})) if m in removed)
+    if hit:
+        found.append(u"the certificate format (Reporting) for %s" % u", ".join(hit))
+    return found
+
+
+def check_matrices(profile, rows):
+    names = set(r["name"] for r in rows)
+    removed = [m for m in (profile.get("supported_matrices") or []) if m not in names]
+    orphans = matrix_references(profile, removed) if removed else []
+    if orphans:
+        return [u"Removing or renaming %s would orphan %s. Move or clear that data "
+                u"first, or restore the matrix name." % (
+                    u", ".join(sorted(removed)), u"; ".join(orphans))]
+    return []
+
+
+MATRICES = cf.Collection(
+    id=u"mtx", title=u"Matrices & Units", noun=u"matrix",
+    columns=[
+        # a core Sample Type: core owns matrix names
+        cf.Field("name", u"Matrix (Sample Type)", kind=cf.CHOICE, choices=matrix_choices),
+        cf.Field("aliases", u"Aliases (comma-separated)", kind=cf.TEXT,
+                 placeholder=u"deer muscle, venison, beef"),
+        cf.Field("unit", u"Reporting Unit", kind=cf.CHOICE, choices=unit_choices),
+        cf.Field("holding_days", u"Holding Time (days)", greater_than=0,
+                 placeholder=u"not set"),
+        cf.Field("extract_holding_days", u"Extract Holding Time (days)", greater_than=0,
+                 placeholder=u"not set"),
+    ],
+    read=read_matrices, write=write_matrices, check=check_matrices)
+
+# ── Sample Corrections: salt factors and matrix factors ──────────────────────
+# Both are stored as LISTS holding only rows that change something; the
+# default factor 1.0 is a placeholder, never written as a value.
+
+
+def _one_group(key, label):
+    return [{"key": key, "label": label, "unit": u""}]
+
+
+def salt_rows(profile):
+    titles = _analyte_titles(profile)
+    rows = [{"key": (kw,), "group": u"salt", "label": titles.get(kw, kw), "sublabel": kw}
+            for kw in profile.get("master_analyte_set") or []]
+    return _one_group(u"salt", u"Salt adjustment"), rows
+
+
+def read_salt(profile):
+    out = {}
+    for r in profile.get("salt_adjustment_factors") or []:
+        if isinstance(r, dict) and r.get("analyte"):
+            out[(r["analyte"],)] = {"factor": r.get("factor"),
+                                    "lot_uid": r.get("lot_uid") or r.get("source") or None}
+    return out
+
+
+def lot_choices(profile, env=None):
+    """Standard / reference-material lots from the reagent inventory (the page
+    supplies them in env; their labels already say EXPIRED where it applies,
+    and an expired lot stays pickable)."""
+    return [(o["uid"], o["label"]) for o in ((env or {}).get("standard_lots") or [])]
+
+
+def _merge_rows(existing, key_field, updates, order, build):
+    """Existing rows in their stored ORDER, each updated (or dropped when
+    build() returns None); then new rows in panel order. A row the page did
+    not list is kept as it was -- e.g. an analyte no longer in the panel."""
+    out, done = [], set()
+    for row in existing:
+        key = (row.get(key_field),)
+        if key in updates:
+            new = build(key[0], updates[key], row)
+            if new is not None:
+                out.append(new)
+            done.add(key)
+        else:
+            out.append(row)
+    for key in order:
+        if key in updates and key not in done:
+            new = build(key[0], updates[key], {})
+            if new is not None:
+                out.append(new)
+    return out
+
+
+def write_salt(profile, updates, env=None):
+    lot_numbers = dict((o["uid"], o.get("lot_number", u""))
+                       for o in ((env or {}).get("standard_lots") or []))
+
+    def build(kw, vals, old):
+        factor, lot = vals.get(("factor",)), vals.get(("lot_uid",)) or u""
+        if (factor is None or factor == 1.0) and not lot:
+            return None                     # no correction and no lot: no row
+        same_lot = lot == (old.get("lot_uid") or old.get("source"))
+        return {"analyte": kw, "factor": 1.0 if factor is None else factor,
+                "lot_uid": lot,
+                # a stored lot number survives a lot that has since left the
+                # inventory; a new pick takes the inventory's number
+                "lot_number": old.get("lot_number", u"") if same_lot else lot_numbers.get(lot, u"")}
+
+    existing = [r for r in (profile.get("salt_adjustment_factors") or []) if isinstance(r, dict)]
+    ordered = [(kw,) for kw in profile.get("master_analyte_set") or [] if (kw,) in updates]
+    out = _merge_rows(existing, "analyte", updates, ordered, build)
+    if out or "salt_adjustment_factors" in profile:
+        profile["salt_adjustment_factors"] = out
+    return profile
+
+
+SALT = cf.Table(
+    id=u"salt", title=u"Salt Adjustment Factors", base=("salt_adjustment_factors",),
+    columns=[cf.Field("factor", u"Factor", greater_than=0, maximum=1, placeholder=u"1.0"),
+             cf.Field("lot_uid", u"CoA Lot", kind=cf.CHOICE, choices=lot_choices)],
+    rows=salt_rows, read=read_salt, write=write_salt)
+
+
+def matrix_factor_rows(profile):
+    uid_map = profile.get("matrix_uid_map") or {}
+    rows = []
+    for m in profile.get("supported_matrices") or []:
+        linked = bool(uid_map.get(m))
+        rows.append({"key": (m,), "group": u"mf", "label": m,
+                     "note": None if linked else u"not a core sample type",
+                     "warn": not linked})
+    return _one_group(u"mf", u"Matrix adjustment"), rows
+
+
+def read_matrix_factors(profile):
+    out = {}
+    for e in profile.get("matrix_factors") or []:
+        if isinstance(e, dict) and e.get("matrix"):
+            out[(e["matrix"],)] = {"factor": e.get("factor")}
+    return out
+
+
+def write_matrix_factors(profile, updates, env=None):
+    uid_map = profile.get("matrix_uid_map") or {}
+
+    def build(m, vals, old):
+        factor = vals.get(("factor",))
+        if factor is None or factor == 1.0:
+            return None                     # 1.0 is no correction: no row
+        return {"matrix": m, "factor": factor,
+                "sampletype_uid": uid_map.get(m) or old.get("sampletype_uid", u"")}
+
+    existing = [e for e in (profile.get("matrix_factors") or []) if isinstance(e, dict)]
+    ordered = [(m,) for m in profile.get("supported_matrices") or [] if (m,) in updates]
+    out = _merge_rows(existing, "matrix", updates, ordered, build)
+    if out or "matrix_factors" in profile:
+        profile["matrix_factors"] = out
+    return profile
+
+
+SAMPLE_CORRECTION = cf.Section(
+    id=u"scorr", title=u"Sample correction", base=(),
+    groups=[(u"Where results are put on the sample basis", [
+        cf.Field("sample_correction", u"Per-sample correction", kind=cf.CHOICE, blank=u"remove",
+                 placeholder=u"Nominal matrix factor per sample type (below)",
+                 choices=[(u"instrument", u"In the MS software: results arrive per sample, no factor applied"),
+                          (u"lims", u"Back-calculated in the LIMS: final volume / sample amount, per sample")],
+                 help=u"Uses each sample's logged amount and extract volume; without both, "
+                      u"the nominal factor applies and the sample is flagged."),
+    ]), (u"Method blank", [
+        # a per-method switch, off by default (EPA 537.1 does
+        # not subtract); off, a result at or below the blank reads "< LOD"
+        cf.Field("blank_subtraction", u"Subtract the batch's method blank from each result",
+                 kind=cf.BOOL,
+                 help=u"Off: a result at or below the blank reads < LOD. On: subtracted, "
+                      u"stated on the certificate."),
+    ])])
+
+
+# What the method calls its check standards in LIMS-issued injection names
+# : EPA 537.1 says CCC (continuing calibration check, the
+# CCV role) and QCS (quality control sample, the ICV role). The ROLE is what
+# the pipeline judges -- read from the Run Builder's record, never the name.
+QC_NAME_CODES = cf.Section(
+    id=u"qcnames", title=u"Check standard names", base=("qc_name_codes",),
+    groups=[(u"In injection names (blank: CCV / ICV / CCB)", [
+        cf.Field("CCV", u"Continuing check", kind=cf.TEXT, placeholder=u"CCV", blank=u"remove"),
+        cf.Field("ICV", u"Initial / second-source check", kind=cf.TEXT, placeholder=u"ICV", blank=u"remove"),
+        cf.Field("CCB", u"Solvent blank", kind=cf.TEXT, placeholder=u"CCB", blank=u"remove"),
+    ])])
+
+
+def name_code(profile, code):
+    """The method's name for a check role in injection names, else the role."""
+    v = ((profile or {}).get("qc_name_codes") or {}).get((code or u"").upper())
+    v = (u"%s" % v).strip() if v else u""
+    return v.upper().replace(u" ", u"") if v else (code or u"").upper()
+
+
+# The allowed temperature on receipt, one range per method: the receipt judges each sample's CORRECTED temperature against
+# its method's range (coc_records.judge_temperatures). Blank = not judged;
+# nothing is seeded -- the lab enters its method's values.
+SAMPLE_RECEIPT = cf.Section(
+    id=u"rtemp", title=u"Sample receipt", base=("receipt_temperature",),
+    groups=[(u"Allowed temperature on receipt (corrected)", [
+        cf.Field("min_c", u"Minimum", unit=u"\u00b0C", placeholder=u"not judged"),
+        cf.Field("max_c", u"Maximum", unit=u"\u00b0C", placeholder=u"not judged"),
+        cf.Field("same_day_on_ice", u"Same-day samples received on ice are not flagged above the maximum",
+                 kind=cf.BOOL),
+    ])])
+
+
+# What a surrogate failure qualifies: the analytes
+# linked to it, or -- EPA 537.1 §9.3.5.3, "report all data for that sample as
+# suspect" -- every result on the sample.
+SURROGATE_SCOPE = cf.Section(
+    id=u"surscope", title=u"Surrogate failure", base=(),
+    groups=[(u"A surrogate outside its window qualifies", [
+        cf.Field("surrogate_failure_scope", u"Results qualified", kind=cf.CHOICE,
+                 blank=u"remove",
+                 choices=[(u"", u"The analytes linked to the surrogate"),
+                          (u"sample", u"Every result on that sample")]),
+    ])])
+
+
+# What the LFSM/LFSMD RPD is computed from: EPA
+# 537.1 §9.3.7.3 the two measured concentrations; otherwise their recoveries.
+RPD_BASIS = cf.Section(
+    id=u"rpdbasis", title=u"LFSMD RPD basis", base=(),
+    groups=[(u"The LFSM / LFSMD RPD is computed from", [
+        cf.Field("lfsmd_rpd_basis", u"RPD of", kind=cf.CHOICE, blank=u"remove",
+                 choices=[(u"", u"Their recoveries"),
+                          (u"concentration", u"The two measured concentrations")],
+                 help=u"EPA 537.1 \u00a79.3.7.3: the measured concentrations."),
+    ])])
+
+
+MATRIX_FACTORS = cf.Table(
+    id=u"mf", title=u"Matrix Adjustment Factors", base=("matrix_factors",),
+    columns=[cf.Field("factor", u"Factor", greater_than=0, placeholder=u"1.0")],
+    rows=matrix_factor_rows, read=read_matrix_factors, write=write_matrix_factors,
+    row_heading=u"Sample Type (core)")
+
+# ── Blank limits: the most each blank may hold, x RL ─────
+# The method blank's limit was a seeded value no page could change. A
+# solvent blank (CCB) is reviewed on its chromatogram; with a limit entered
+# here it is also judged (against the export's own, extract-basis RL). Each
+# value is the default tier (all analytes, all matrices) the worker reads.
+BLANK_TYPES = [(u"MB", u"Method blank"), (u"LRB", u"Laboratory reagent blank"),
+               (u"MxB", u"Matrix blank"), (u"CCB", u"Solvent blank (reviewed on its chromatogram)")]
+
+
+def _default_tier(cfg):
+    for t in (cfg or {}).get("tiers") or []:
+        if isinstance(t, dict) and (t.get("analyte_group") or u"all") == u"all" \
+                and (t.get("matrix_scope") or u"all") == u"all":
+            return t
+    return None
+
+
+def blank_limit_rows(profile):
+    qca = profile.get("qc_acceptance") or {}
+    rows = []
+    for code, label in BLANK_TYPES:
+        off = code in qca and not (qca.get(code) or {}).get("enabled", True)
+        rows.append({"key": (code,), "group": u"blk", "label": label,
+                     "note": u"switched off on QC Types" if off else None, "warn": False})
+    return _one_group(u"blk", u"Most a blank may hold"), rows
+
+
+def read_blank_limits(profile):
+    qca = profile.get("qc_acceptance") or {}
+    out = {}
+    for code, _label in BLANK_TYPES:
+        t = _default_tier(qca.get(code))
+        if t is not None and t.get("max_conc_x_rl") is not None:
+            out[(code,)] = {"max_conc_x_rl": t.get("max_conc_x_rl"),
+                            "fails_at_limit": bool(t.get("fails_at_limit"))}
+    return out
+
+
+def write_blank_limits(profile, updates, env=None):
+    qca = profile.setdefault("qc_acceptance", {})
+    for (code,), vals in updates.items():
+        value = vals.get(("max_conc_x_rl",))
+        at_limit = bool(vals.get(("fails_at_limit",)))
+        cfg = qca.get(code)
+        if cfg is None:
+            if value is None:
+                continue                 # nothing entered for a type the method lacks
+            cfg = qca[code] = {"enabled": True, "tiers": []}
+        tier = _default_tier(cfg)
+        if tier is None:
+            if value is None:
+                continue
+            tier = {"name": u"default", "analyte_group": u"all", "matrix_scope": u"all"}
+            cfg.setdefault("tiers", []).append(tier)
+        if value is None:
+            tier.pop("max_conc_x_rl", None)     # blank: not judged on a limit
+            tier.pop("fails_at_limit", None)
+        else:
+            tier["max_conc_x_rl"] = value
+            # EPA 537.1 §9.3.1: an LRB AT 1/3 MRL already invalidates the
+            # batch; other methods fail only above
+            if at_limit:
+                tier["fails_at_limit"] = True
+            else:
+                tier.pop("fails_at_limit", None)
+    return profile
+
+
+BLANK_LIMITS = cf.Table(
+    id=u"blk", title=u"Blank limits", base=("qc_acceptance",),
+    columns=[cf.Field("max_conc_x_rl", u"x RL", greater_than=0, placeholder=u"not judged"),
+             cf.Field("fails_at_limit", u"Fails at the limit", kind=cf.BOOL)],
+    rows=blank_limit_rows, read=read_blank_limits, write=write_blank_limits,
+    row_heading=u"Blank")
+
+# ── EIS limits (EPA 1633A only) ──────────────────────────────────────────────
+# eis_overrides: [{"analyte", "recovery_min", "recovery_max"}], keyed by EPA's
+# Table 6 designation (the engine joins the lab's compound to it through the
+# native, eis_criteria_name). eis_matrix_overrides: {class: {designation:
+# {...}}} -- a class limit overrides the per-analyte one, looked up under the
+# SAME designation, so a class row may only name a designation that exists.
+
+
+EIS_MATRIX_CLASSES = [(u"solid", u"Solid (soil, sediment)"), (u"biosolid", u"Biosolid"),
+                      (u"leachate", u"Landfill leachate"), (u"tissue", u"Tissue")]
+_EIS_COLS = [(u"aq", u"Aqueous")] + [(k, l.split(" (")[0]) for k, l in EIS_MATRIX_CLASSES]
+
+
+def eis_designations(profile, env=None):
+    names = [r.get("analyte") for r in (profile.get("eis_overrides") or [])
+             if isinstance(r, dict) and r.get("analyte")]
+    return [(n, n) for n in names]
+
+
+def read_eis_grid(profile):
+    """One row per SUR designation: aqueous limits (eis_overrides) and each
+    matrix class's (eis_matrix_overrides), side by side."""
+    classes = profile.get("eis_matrix_overrides") or {}
+    rows = []
+    for r in profile.get("eis_overrides") or []:
+        if not isinstance(r, dict) or not r.get("analyte"):
+            continue
+        row = {"analyte": r["analyte"], "aq_min": r.get("recovery_min"),
+               "aq_max": r.get("recovery_max")}
+        for key, _l in EIS_MATRIX_CLASSES:
+            lim = (classes.get(key) or {}).get(r["analyte"]) or {}
+            row[key + "_min"], row[key + "_max"] = lim.get("recovery_min"), lim.get("recovery_max")
+        rows.append(row)
+    return rows
+
+
+def write_eis_grid(profile, rows):
+    old = dict((r.get("analyte"), r) for r in (profile.get("eis_overrides") or [])
+               if isinstance(r, dict))
+    out = []
+    for r in rows:
+        entry = dict(old.get(r["analyte"]) or {})     # keep any other keys a row had
+        entry.update({"analyte": r["analyte"], "recovery_min": r.get("aq_min"),
+                      "recovery_max": r.get("aq_max")})
+        out.append(entry)
+    _set(profile, "eis_overrides", out)
+    allc = dict(profile.get("eis_matrix_overrides") or {})
+    for key, _l in EIS_MATRIX_CLASSES:
+        # a class limit for a designation the grid never showed is kept
+        entries = dict((a, lim) for a, lim in (allc.get(key) or {}).items() if a not in old)
+        for r in rows:
+            lim = {}
+            for f, col in (("recovery_min", key + "_min"), ("recovery_max", key + "_max")):
+                if r.get(col) is not None:
+                    lim[f] = r[col]
+            if lim:
+                entries[r["analyte"]] = lim
+        if entries:
+            allc[key] = entries
+        else:
+            allc.pop(key, None)
+    _set(profile, "eis_matrix_overrides", allc)
+    return profile
+
+
+def _eis_grid_check(profile, rows):
+    out = []
+    for r in rows:
+        for key, label in _EIS_COLS:
+            lo, hi = r.get(key + "_min"), r.get(key + "_max")
+            if lo is not None and hi is not None and lo > hi:
+                out.append(u"%s %s: recovery min (%s) is above max (%s)." % (
+                    r["analyte"], label, lo, hi))
+    return out
+
+
+# One grid for every SUR limit (consolidation P4): designations down the side,
+# aqueous and each 1633A matrix class across. A class limit overrides the
+# aqueous one for that class; a blank class cell uses the aqueous limit.
+EIS_GRID = cf.Collection(
+    id=u"eis_grid", title=u"SUR recovery limits", noun=u"SUR row",
+    allow_empty=True,
+    columns=[cf.Field("analyte", u"Surrogate (SUR)", kind=cf.TEXT, placeholder=u"new designation")] +
+            [cf.Field(key + "_" + end, u"%s %s %%" % (label, end), minimum=0)
+             for key, label in _EIS_COLS for end in ("min", "max")],
+    read=read_eis_grid, write=write_eis_grid, check=_eis_grid_check)
+
+
+# ── Surrogate Map: injection IS, native -> surrogate, surrogate -> injection IS
+# Each method owns its map. The page supplies the core
+# services in env["services"] = {keyword: {"role", "name", "quant_surrogate"}}.
+
+def _map_rows(profile):
+    return [r for r in (profile.get("surrogate_map") or [])
+            if isinstance(r, dict) and r.get("analyte")]
+
+
+def surrogate_choices(profile, env=None):
+    """Every labelled standard, this method's extracted standards first -- a
+    method may pick any (the save then requires it ticked Used with the
+    extracted role in the Internal Standards grid)."""
+    svcs = dict((k, v) for k, v in ((env or {}).get("services") or {}).items()
+                if v.get("role") in ("surrogate", "injection_is"))
+    grid = (profile.get("labelled_standards") or {})
+    own = []
+    for r in _map_rows(profile):
+        s = r.get("surrogate_is")
+        if s in svcs and s not in own:
+            own.append(s)
+    own += sorted(k for k, v in grid.items()
+                  if k in svcs and k not in own and (v or {}).get("role") == "surrogate")
+    rest = sorted(k for k in svcs if k not in own)
+    return [(k, svcs[k].get("name") or k) for k in own + rest]
+
+
+def surrogate_map_rows(profile, env=None):
+    titles = _analyte_titles(profile)
+    linked = set(r["analyte"] for r in _map_rows(profile) if r.get("surrogate_is"))
+    svcs = (env or {}).get("services") or {}
+    rows = []
+    for kw in profile.get("master_analyte_set") or []:
+        row = {"key": (kw,), "group": u"sur", "label": titles.get(kw, kw), "sublabel": kw}
+        hint = (svcs.get(kw) or {}).get("quant_surrogate")
+        if kw not in linked and hint:
+            row["suggest"] = (hint, (svcs.get(hint) or {}).get("name") or hint)
+        rows.append(row)
+    return _one_group(u"sur", u"Surrogate map"), rows
+
+
+def read_surrogate_map(profile):
+    return dict(((r["analyte"],), {"surrogate_is": r.get("surrogate_is") or None})
+                for r in _map_rows(profile))
+
+
+def write_surrogate_map(profile, updates, env=None):
+    def build(kw, vals, old):
+        sur = vals.get(("surrogate_is",))
+        if not sur:
+            return None                     # none chosen: no row
+        entry = dict(old)
+        entry.update({"analyte": kw, "surrogate_is": sur})
+        return entry
+    existing = _map_rows(profile)
+    order = [(kw,) for kw in profile.get("master_analyte_set") or [] if (kw,) in updates]
+    out = _merge_rows(existing, "analyte", updates, order, build)
+    _set(profile, "surrogate_map", out)
+    return profile
+
+
+SURROGATE_MAP = cf.Table(
+    id=u"sur", title=u"Surrogate Map", base=("surrogate_map",),
+    columns=[cf.Field("surrogate_is", u"Quantifying Surrogate", kind=cf.CHOICE,
+                      choices=surrogate_choices)],
+    rows=surrogate_map_rows, rows_take_env=True,
+    read=read_surrogate_map, write=write_surrogate_map, row_heading=u"Native Analyte")
+
+
+# ── Labelled standards grid (MS Quan style) ────────────
+
+try:
+    from senaite.pfas import labelled_standards as _ls
+except Exception:          # tests: loaded without the package
+    import labelled_standards as _ls
+
+
+def _labelled_services(env):
+    return dict((k, v) for k, v in ((env or {}).get("services") or {}).items()
+                if v.get("role") in _ls.ROLES)
+
+
+def role_choices(profile, env=None):
+    return list(_ls.ROLE_LABELS)
+
+
+def standard_choices(profile, env=None):
+    """Link targets: every labelled standard (the save refuses one the method
+    does not use), this method's own first."""
+    svcs = _labelled_services(env)
+    own = sorted(k for k in _ls.grid(profile) if k in svcs)
+    rest = sorted(k for k in svcs if k not in own)
+    return [(k, svcs[k].get("name") or k) for k in own + rest]
+
+
+def labelled_rows(profile, env=None):
+    """Every isotopically labelled standard in core plus any the grid already
+    names: used ones first (injection standards, then extracted), then the
+    rest -- each noting which natives it quantifies in this method."""
+    svcs = _labelled_services(env)
+    g = _ls.grid(profile)
+    quantifies = {}
+    for r in _map_rows(profile):
+        quantifies.setdefault(r.get("surrogate_is"), []).append(r["analyte"])
+
+    def order(kw):
+        role = (g.get(kw) or {}).get("role")
+        return (0 if role == "injection_is" else 1 if kw in g else 2,
+                (svcs.get(kw) or {}).get("name") or kw)
+
+    rows = []
+    for kw in sorted(set(svcs) | set(g), key=order):
+        natives = quantifies.get(kw) or []
+        rows.append({"key": (kw,), "group": u"ls", "label": (svcs.get(kw) or {}).get("name") or kw,
+                     "sublabel": kw,
+                     "note": (u"quantifies " + u", ".join(natives[:4]) +
+                              (u" +%d" % (len(natives) - 4) if len(natives) > 4 else u""))
+                             if natives else None})
+    return _one_group(u"ls", u"Labelled standards"), rows
+
+
+def read_labelled(profile):
+    return dict(((kw,), {"used": True, "role": v.get("role") or None,
+                         "reference": v.get("reference") or None})
+                for kw, v in _ls.grid(profile).items())
+
+
+def write_labelled(profile, updates, env=None):
+    grid = dict(_ls.grid(profile))
+    for (kw,), vals in updates.items():
+        if vals.get(("used",)):
+            grid[kw] = {"role": vals.get(("role",)) or u"",
+                        "reference": vals.get(("reference",)) or u""}
+        else:
+            grid.pop(kw, None)
+    profile[_ls.KEY] = grid
+    profile.pop("surrogate_is", None)           # retired: the grid replaces them
+    profile.pop("surrogate_is_chain", None)
+    return profile
+
+
+def _row_consistent(row, values):
+    used = values.get(u"f__used")
+    if not used and (values.get(u"f__role") or values.get(u"f__reference")):
+        return u"%s: tick Used, or clear its role and link." % row["sublabel"]
+    return None
+
+
+LABELLED_STANDARDS = cf.Table(
+    id=u"ls", title=u"Internal Standards", base=(_ls.KEY,),
+    columns=[cf.Field("used", u"Used", kind=cf.BOOL),
+             cf.Field("role", u"Role in this method", kind=cf.CHOICE, choices=role_choices),
+             cf.Field("reference", u"Linked to", kind=cf.CHOICE, choices=standard_choices)],
+    rows=labelled_rows, rows_take_env=True, read=read_labelled, write=write_labelled,
+    check=_row_consistent, row_heading=u"Labelled Standard")
+
+
+def check_profile(profile):
+    """Checks on the WHOLE profile after a tab's sections are applied: the
+    grid's links and loops, and its agreement with the surrogate map."""
+    return _ls.check(profile)
+
+# ── Isomers ───────────────────────────────────────────
+
+def isomer_rows(profile):
+    """Every panel analyte, those with isomers first."""
+    titles = _global_titles()
+    groups = _iso.entries(profile)
+    panel = list(profile.get("master_analyte_set") or [])
+    rows = []
+    for kw in [k for k in panel if k in groups] + [k for k in panel if k not in groups]:
+        rows.append({"key": (kw,), "group": u"iso", "label": _iso.label(profile, kw, titles),
+                     "sublabel": kw})
+    return _one_group(u"iso", u"Isomers"), rows
+
+
+def read_isomers(profile):
+    out = {}
+    for kw, e in _iso.entries(profile).items():
+        out[(kw,)] = {"linear": e.get("linear") or None,
+                      "branched": u", ".join(e.get("branched") or []) or None,
+                      "reported": e.get("reported") or None}
+    return out
+
+
+def write_isomers(profile, updates, env=None):
+    groups = dict(_iso.entries(profile))
+    for (kw,), vals in updates.items():
+        linear = (vals.get(("linear",)) or u"").strip()
+        branched = [b.strip() for b in (vals.get(("branched",)) or u"").split(u",") if b.strip()]
+        if not linear and not branched:
+            groups.pop(kw, None)            # no peaks: the analyte has no isomers here
+            continue
+        old = groups.get(kw) or {}
+        groups[kw] = dict(old, linear=linear, branched=branched,
+                          reported=(vals.get(("reported",)) or u"").strip())
+        groups[kw].pop("summed", None)
+    profile[_iso.KEY] = groups
+    profile.pop(_iso.LEGACY, None)
+    return profile
+
+
+ISOMERS = cf.Table(
+    id=u"iso", title=u"Isomers", base=(_iso.KEY,),
+    columns=[cf.Field("linear", u"Linear peak", kind=cf.TEXT, placeholder=u"e.g. lr-PFOS"),
+             cf.Field("branched", u"Branched peak(s), comma-separated", kind=cf.TEXT,
+                      placeholder=u"e.g. br-PFOS"),
+             cf.Field("reported", u"Reported as", kind=cf.TEXT,
+                      placeholder=u"plain name (e.g. PFOS)")],
+    rows=isomer_rows, read=read_isomers, write=write_isomers, row_heading=u"Analyte")
+
+
+def check_isomers(profile):
+    return _iso.check(profile, _global_titles())
+
+
+# ── Recovery Tiers tab: spike levels, recovery tiers, Dup RPD ──
+# Lab: "the recovery LFSM information ... is visually cluttered ... optimise
+# this into a grid for all matrices." Spike levels become one grid per spiked
+# QC type (levels x matrices); recovery tiers a compact table holding ONLY what
+# the engine reads; a read-only grid shows the window applied per analyte group
+# x matrix, computed the way the engine computes it (cross-checked in tests).
+
+SPIKE_QC_TYPES = (u"LFSM", u"LFB", u"LCS")
+SPIKE_LABELS = {u"LFSM": u"LFSM / LFSMD", u"LFB": u"LFB", u"LCS": u"LCS"}
+
+
+def _cl():
+    try:
+        from senaite.pfas import calibration_levels
+    except ImportError:                                     # tests, outside Plone
+        import calibration_levels
+    return calibration_levels
+
+
+def _spike_levels(profile, qc):
+    """Level labels used for `qc`, in first-seen order across matrices."""
+    labels = []
+    for m in profile.get("supported_matrices") or []:
+        for r in ((profile.get("spike_levels") or {}).get(m) or {}).get(qc) or []:
+            if isinstance(r, dict) and r.get("label") and r["label"] not in labels:
+                labels.append(r["label"])
+    return labels
+
+
+def _spike_collection(qc):
+    def columns(profile):
+        return ([cf.Field("label", u"Level", kind=cf.TEXT, placeholder=u"new level")] +
+                # each matrix in its own reporting unit (soil
+                # in ng/g, water in ng/L -- one "ppt" column misled solids)
+                [cf.Field((m,), m, unit=_cl().matrix_unit(profile, m) or u"?", minimum=0,
+                          placeholder=_cl().matrix_unit(profile, m) or u"set the unit")
+                 for m in profile.get("supported_matrices") or []])
+
+    def read(profile):
+        sl = profile.get("spike_levels") or {}
+        rows = []
+        for label in _spike_levels(profile, qc):
+            row = {"label": label}
+            for m in profile.get("supported_matrices") or []:
+                for r in (sl.get(m) or {}).get(qc) or []:
+                    if isinstance(r, dict) and r.get("label") == label:
+                        row[m] = _cl().level_value(r, _cl().matrix_unit(profile, m))
+            rows.append(row)
+        return rows
+
+    def write(profile, rows):
+        sl = dict(profile.get("spike_levels") or {})
+        for m in profile.get("supported_matrices") or []:
+            per = dict(sl.get(m) or {})
+            had = qc in per
+            unit = _cl().matrix_unit(profile, m)
+            stored = dict((e.get("label"), e) for e in per.get(qc) or [] if isinstance(e, dict))
+            levels = []
+            for r in rows:
+                old = stored.get(r["label"])
+                if old is not None and _cl().level_value(old, unit) == r.get(m):
+                    levels.append(old)              # unchanged: kept as stored
+                else:
+                    levels.append({"label": r["label"], "value": r.get(m)})
+            if not had and all(_cl().level_value(l, unit) is None for l in levels):
+                continue                     # nothing entered: nothing created
+            per[qc] = levels
+            sl[m] = per
+        _set(profile, "spike_levels", sl)
+        return profile
+
+    return cf.Collection(id=u"spk_" + qc, title=u"Spike levels: %s" % SPIKE_LABELS[qc],
+                         columns=columns, read=read, write=write, noun=u"level", allow_empty=True)
+
+
+SPIKE_LEVELS = dict((qc, _spike_collection(qc)) for qc in SPIKE_QC_TYPES)
+
+RECOVERY_QC = u"LFSM"
+GROUP_CHOICES = [(u"all", u"All analytes"), (u"key", u"Key analytes"),
+                 (u"linked", u"Other analytes"), (u"no_std", u"No labelled standard")]
+SCOPE_CHOICES = [(u"all", u"All matrices"), (u"tight", u"Tier 1 matrices only")]
+# How each method's engine picks a tier (pfas_pipeline.method_profiles): FDA
+# resolves by analyte group and Tier 1 matrices; the EPA methods apply their
+# FIRST tier to every analyte and matrix.
+GROUPED_TIER_METHODS = (u"FDA_32PFAS",)
+
+
+def _tiers(profile, qc=RECOVERY_QC):
+    return [t for t in (((profile.get("qc_acceptance") or {}).get(qc) or {})
+                        .get("tiers") or []) if isinstance(t, dict)]
+
+
+LOW_LEVEL_KEY = u"low_level_x_rl"     # the engine's name (pfas_pipeline)
+
+
+def _tier_reader(qc, fields):
+    def read(profile):
+        out = []
+        for i, t in enumerate(_tiers(profile, qc)):
+            row = {"name": t.get("name") or u"tier %d" % (i + 1),
+                   "analyte_group": t.get("analyte_group") or u"all",
+                   "matrix_scope": t.get("matrix_scope") or u"all"}
+            for key in fields:
+                row[key] = t.get(key)
+            out.append(row)
+        return out
+    return read
+
+
+def _tier_writer(qc, fields):
+    def write(profile, rows):
+        if not rows and qc not in (profile.get("qc_acceptance") or {}):
+            return profile                            # not run here: nothing created
+        old = dict(((t.get("name") or u"tier %d" % (i + 1)), t)
+                   for i, t in enumerate(_tiers(profile, qc)))
+        tiers = []
+        for r in rows:
+            t = dict(old.get(r["name"]) or {})        # keep e.g. verify_against_method, citation
+            t.update({"name": r["name"], "analyte_group": r.get("analyte_group") or u"all",
+                      "matrix_scope": r.get("matrix_scope") or u"all"})
+            for key in fields:
+                if r.get(key) is not None or key in t:  # absent stays absent
+                    t[key] = r.get(key)
+            if t.get(LOW_LEVEL_KEY) is None:
+                t.pop(LOW_LEVEL_KEY, None)            # an ordinary tier carries no condition
+            tiers.append(t)
+        entry = profile.setdefault("qc_acceptance", {}).setdefault(qc, {"enabled": True})
+        entry["tiers"] = tiers
+        return profile
+    return write
+
+
+def _tier_checker(qc, window):
+    def check(profile, rows):
+        errors = []
+        for r in rows:
+            if window:
+                lo, hi = r.get("recovery_min"), r.get("recovery_max")
+                if (lo is None) != (hi is None):
+                    errors.append(u"%s: set both ends of the recovery window, or neither." % r["name"])
+                elif lo is not None and lo > hi:
+                    errors.append(u"%s: min (%s) is above max (%s)." % (r["name"], lo, hi))
+                if r.get(LOW_LEVEL_KEY) is not None and lo is None:
+                    errors.append(u"%s: a low-level tier needs its recovery window." % r["name"])
+            elif r.get(LOW_LEVEL_KEY) is not None and r.get("rpd_max") is None:
+                errors.append(u"%s: a low-level tier needs its RPD limit." % r["name"])
+        ordinary = [r for r in rows if r.get(LOW_LEVEL_KEY) is None]
+        if profile.get("method_id") not in GROUPED_TIER_METHODS and len(ordinary) > 1:
+            errors.append(u"This method's QC engine applies its FIRST ordinary tier to every "
+                          u"analyte and matrix; a second would never be used. Keep one, plus "
+                          u"any low-level tiers (Low level \u2264 \u00d7 RL).")
+        if not ordinary and rows:
+            errors.append(u"Keep one ordinary tier (Low level blank): it applies above the "
+                          u"low level.")
+        return errors
+    return check
+
+
+_LOW_LEVEL_FIELD = cf.Field(LOW_LEVEL_KEY, u"Low level \u2264 \u00d7 RL", greater_than=0,
+                            placeholder=u"\u2014",
+                            help=u"Blank: the ordinary tier. N: applies instead to spikes at "
+                                 u"or below N \u00d7 RL (EPA 537.1 \u00a79.3.6.3: N = 2).")
+_TIER_HEAD = [cf.Field("name", u"Tier", kind=cf.TEXT, placeholder=u"new tier"),
+              cf.Field("analyte_group", u"Applies to", kind=cf.CHOICE, choices=GROUP_CHOICES),
+              cf.Field("matrix_scope", u"Matrices", kind=cf.CHOICE, choices=SCOPE_CHOICES),
+              _LOW_LEVEL_FIELD]
+_RECOVERY_FIELDS = ("recovery_min", "recovery_max", "rsd_max", LOW_LEVEL_KEY)
+
+
+def _recovery_collection(qc, id_):
+    return cf.Collection(
+        id=id_, title=u"%s recovery tiers" % qc if qc != RECOVERY_QC else u"Recovery tiers",
+        noun=u"tier", allow_empty=(qc != RECOVERY_QC),
+        columns=_TIER_HEAD + [cf.Field("recovery_min", u"Min %", minimum=0),
+                              cf.Field("recovery_max", u"Max %", minimum=0),
+                              cf.Field("rsd_max", u"RSD \u2264 %", minimum=0)],
+        read=_tier_reader(qc, _RECOVERY_FIELDS), write=_tier_writer(qc, _RECOVERY_FIELDS),
+        check=_tier_checker(qc, True))
+
+
+RECOVERY_TIERS = _recovery_collection(RECOVERY_QC, u"tiers")
+# LFB (537.1 \u00a79.3.3: low level <= 2 x MRL 50-150%, medium/high 70-130%) and
+# LCS carry tiers too; their tab section shows only where the method runs them.
+LFB_TIERS = _recovery_collection(u"LFB", u"tiers_lfb")
+read_tiers = RECOVERY_TIERS.read
+write_tiers = RECOVERY_TIERS.write
+check_tiers = RECOVERY_TIERS.check
+
+
+
+
+
+# LFSMD RPD tiers. Stored since the seeds and read by the engine
+# (qc_rules(..., "LFSMD").rpd_max), but no tab edited them; a low-level tier
+# carries 537.1 §9.3.7.4 (<= 50% within 2 x MRL).
+_RPD_FIELDS = ("rpd_max", LOW_LEVEL_KEY)
+
+# Sample duplicate RPD tiers (2026-10-02: a tier list like LFSMD, so a
+# low-level tier -- EPA 537.1 §9.3.7.2, <= 50% within 2 x MRL -- is editable).
+DUP_RPD = cf.Collection(
+    id=u"dup", title=u"Sample Duplicate RPD", noun=u"tier", allow_empty=True,
+    columns=_TIER_HEAD + [cf.Field("rpd_max", u"Max RPD %", minimum=0)],
+    read=_tier_reader(u"Dup", _RPD_FIELDS), write=_tier_writer(u"Dup", _RPD_FIELDS),
+    check=_tier_checker(u"Dup", False))
+
+LFSMD_RPD = cf.Collection(
+    id=u"lfsmd", title=u"LFSMD RPD", noun=u"tier", allow_empty=True,
+    columns=_TIER_HEAD + [cf.Field("rpd_max", u"Max RPD %", minimum=0)],
+    read=_tier_reader(u"LFSMD", _RPD_FIELDS), write=_tier_writer(u"LFSMD", _RPD_FIELDS),
+    check=_tier_checker(u"LFSMD", False))
+
+
+# Additional analytes -- PROJECT specs only: a defined
+# core service (pfas_role "analyte") that is not in the method panel joins the
+# project's panel. The effective profile lists them under EXTRAS_KEY so the
+# editor can tell them from the method's own analytes (never removable here).
+EXTRAS_KEY = "project_extra_analytes"
+
+
+def extra_rows(profile, env=None):
+    svcs = (env or {}).get("services") or {}
+    extras = list(profile.get(EXTRAS_KEY) or [])
+    method_panel = set(k for k in profile.get("master_analyte_set") or [] if k not in extras)
+    peaks = set()                      # isomer peaks are reviewed, never reported alone
+    for e in _iso.entries(profile).values():
+        peaks.update([e.get("linear")] + list(e.get("branched") or []))
+    kws = set(k for k, v in svcs.items() if v.get("role") == u"analyte" and k not in method_panel
+              and not _iso.is_peak_name(k) and k not in peaks)
+    kws |= set(extras)
+    rows = []
+    for kw in sorted(kws, key=lambda k: ((svcs.get(k) or {}).get("name") or k).lower()):
+        gone = kw not in svcs
+        rows.append({"key": (kw,), "group": u"px", "label": (svcs.get(kw) or {}).get("name") or kw,
+                     "sublabel": kw, "note": u"no longer a defined service" if gone else None,
+                     "warn": gone})
+    return _one_group(u"px", u"Additional analytes"), rows
+
+
+def read_extras(profile):
+    return dict(((kw,), {"include": True}) for kw in profile.get(EXTRAS_KEY) or [])
+
+
+def write_extras(profile, updates, env=None):
+    extras = list(profile.get(EXTRAS_KEY) or [])
+    panel = list(profile.get("master_analyte_set") or [])
+    inclusion = profile.setdefault("analyte_matrix_inclusion", {})
+    for (kw,), vals in sorted(updates.items()):
+        if vals.get(("include",)):
+            if kw not in panel:
+                extras.append(kw)
+                panel.append(kw)
+                inclusion[kw] = dict((m, True) for m in profile.get("supported_matrices") or [])
+        elif kw in extras:                              # never a method analyte
+            extras.remove(kw)
+            panel.remove(kw)
+            inclusion.pop(kw, None)
+    profile["master_analyte_set"] = panel
+    if extras:
+        profile[EXTRAS_KEY] = extras
+    else:
+        profile.pop(EXTRAS_KEY, None)
+    return profile
+
+
+PANEL_EXTRAS = cf.Table(
+    id=u"px", title=u"Additional analytes", base=(),
+    columns=[cf.Field("include", u"Add to this project", kind=cf.BOOL)],
+    rows=extra_rows, rows_take_env=True, read=read_extras, write=write_extras,
+    row_heading=u"Defined service")
+
+
+def _matrix_choices(profile, env=None):
+    return [(m, m) for m in profile.get("supported_matrices") or []]
+
+
+def _panel_choices(profile, env=None):
+    labels = _analyte_titles(profile)
+    return [(kw, labels.get(kw)) for kw in profile.get("master_analyte_set") or []]
+
+
+GROUPS = cf.Section(
+    id=u"groups", title=u"Groups", base=(),
+    groups=[(u"Who the tiers apply to", [
+        cf.Field("tight_matrices", u"Tier 1 matrices", kind=cf.MULTI, choices=_matrix_choices,
+                 help=u"Matrices where \u201cTier 1 matrices only\u201d tiers apply (FDA: eggs, "
+                      u"meat, seafood); others use the \u201cAll matrices\u201d tiers."),
+        cf.Field("key_analytes", u"Key analytes", kind=cf.MULTI, choices=_panel_choices,
+                 help=u"Analytes a \u201cKey analytes\u201d tier applies to; other analytes "
+                      u"with a labelled standard are \u201cOther analytes\u201d."),
+    ])])
+
+
+def key_analytes(profile):
+    """The method's key analytes (its own list), or the global flag where a
+    profile predates the list."""
+    if isinstance(profile.get("key_analytes"), list):
+        return set(profile["key_analytes"])
+    try:
+        from senaite.pfas.analyte_reference import get_key_analyte_keywords
+    except Exception:
+        from analyte_reference import get_key_analyte_keywords
+    return set(get_key_analyte_keywords())
+
+
+def resolve_tier(profile, is_key, is_no_std, matrix, qc=RECOVERY_QC):
+    """The ORDINARY tier the engine applies above the low level (None = it
+    refuses: unconfigured). Mirrors pfas_pipeline's resolution."""
+    tiers = [t for t in _tiers(profile, qc) if t.get(LOW_LEVEL_KEY) is None]
+    if not tiers:
+        return None
+    if profile.get("method_id") not in GROUPED_TIER_METHODS:
+        return tiers[0]
+    tight = set((profile.get("tight_matrices") or []))
+    for t in tiers:
+        ag, ms = t.get("analyte_group", "all"), t.get("matrix_scope", "all")
+        if ag == "no_std" and is_no_std:
+            return t
+        if ag == "key" and ms == "tight" and is_key and matrix in tight:
+            return t
+    for t in tiers:
+        if t.get("analyte_group", "all") in ("linked", "all"):
+            return t
+    return None
+
+
+def low_level_tier(profile, base, matrix, qc=RECOVERY_QC):
+    """The low-level tiers that may replace `base` at a low spike, smallest
+    N first -- the engine's _low_level_tier with the spike not yet known."""
+    if base is None:
+        return []
+    grouped = profile.get("method_id") in GROUPED_TIER_METHODS
+    tight = matrix in set(profile.get("tight_matrices") or [])
+    group = base.get("analyte_group", "all")
+    out = [t for t in _tiers(profile, qc) if t.get(LOW_LEVEL_KEY) is not None and
+           (not grouped or (t.get("analyte_group", "all") in ("all", group) and
+                            (t.get("matrix_scope", "all") != "tight" or tight)))]
+    return sorted(out, key=lambda t: float(t[LOW_LEVEL_KEY]))
+
+
+def no_std_set(profile):
+    """Keywords with no labelled standard of their own in THIS method,
+    derived from its surrogate links (senaite.pfas.labelled_coverage;
+    consolidation P4)."""
+    try:
+        from senaite.pfas import labelled_coverage as lc
+        from senaite.pfas.analyte_reference import get_labeled_analog_map
+    except Exception:                        # tests: loaded without the package
+        import labelled_coverage as lc
+        from analyte_reference import get_labeled_analog_map
+    return lc.no_labelled_standard(profile, get_labeled_analog_map())
+
+
+def recovery_grid(profile):
+    """Read-only grid: analyte group rows x matrix columns, each cell the
+    window the engine applies there."""
+    try:
+        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+    except Exception:
+        from analyte_reference import NATIVE_ANALYTES
+    keys = key_analytes(profile)
+    no_std = no_std_set(profile)
+    flags = dict((r[0], (r[0] in keys, r[0] in no_std)) for r in NATIVE_ANALYTES)   # (key, no_std)
+    labels = _analyte_titles(profile)
+    panel = profile.get("master_analyte_set") or []
+    groups = [(u"Key analytes", lambda k, n: k and not n),
+              (u"Other analytes", lambda k, n: not k and not n),
+              (u"No labelled standard", lambda k, n: n)]
+    matrices = profile.get("supported_matrices") or []
+    rows = []
+    for title, member in groups:
+        names = [kw for kw in panel if member(*flags.get(kw, (False, False)))]
+        if not names:
+            continue
+        k, n = flags.get(names[0], (False, False))
+        cells = []
+        tiers = _tiers(profile)
+        for m in matrices:
+            t = resolve_tier(profile, k, n, m)
+            if t is None or t.get("recovery_min") is None:
+                cells.append({"text": u"not set", "warn": True, "tier": None, "swatch": None})
+            else:
+                text = u"%g–%g%%" % (t["recovery_min"], t["recovery_max"])
+                if t.get("rsd_max") is not None:
+                    text += u" · RSD ≤ %g" % t["rsd_max"]
+                low = u"; ".join(u"\u2264 %g\u00d7RL: %g\u2013%g%%" % (
+                    float(x[LOW_LEVEL_KEY]), x["recovery_min"], x["recovery_max"])
+                    for x in low_level_tier(profile, t, m) if x.get("recovery_min") is not None)
+                cells.append({"text": text, "warn": False, "tier": t.get("name"),
+                              "low": low, "swatch": u"tier-c%d" % (tiers.index(t) % 6)})
+        rows.append({"title": title, "members": [labels.get(kw) for kw in names],
+                     "cells": cells})
+    return {"matrices": matrices, "rows": rows}
+
+
+# ── Reporting tab: certificate format per method x matrix ─────
+
+try:
+    from senaite.pfas import report_format as _rf
+except Exception:          # tests: loaded without the package
+    import report_format as _rf
+
+
+def report_rows(profile):
+    rows = [{"key": (_rf.ALL,), "group": u"rf", "label": u"All matrices (method default)"}]
+    rows += [{"key": (m,), "group": u"rf", "label": m}
+             for m in profile.get("supported_matrices") or []]
+    return _one_group(u"rf", u"Certificate format"), rows
+
+
+def read_report_format(profile):
+    fmt = profile.get(_rf.KEY) or {}
+    return dict(((scope,), dict((k, v) for k, v in (vals or {}).items()))
+                for scope, vals in fmt.items() if isinstance(vals, dict))
+
+
+def write_report_format(profile, updates, env=None):
+    fmt = dict(profile.get(_rf.KEY) or {})
+    for (scope,), vals in updates.items():
+        row = dict(fmt.get(scope) or {})
+        for (key,), value in vals.items():
+            if value in (None, u""):
+                row.pop(key, None)          # blank = inherit
+            else:
+                row[key] = value
+        if row or scope == _rf.ALL:
+            fmt[scope] = row
+        else:
+            fmt.pop(scope, None)
+    profile[_rf.KEY] = fmt
+    return profile
+
+
+REPORT_FORMAT = cf.Table(
+    id=u"rf", title=u"Certificate format", base=(_rf.KEY,),
+    # a text setting with a built-in default shows that default as its
+    # placeholder (the QC note's drafted wording), "(default)" otherwise
+    columns=[cf.Field(key, label, kind=cf.CHOICE if choices else cf.TEXT,
+                      choices=choices, placeholder=(d if (d and not choices) else u"(default)"))
+             for key, label, choices, d in _rf.SETTINGS],
+    rows=report_rows, read=read_report_format, write=write_report_format,
+    row_heading=u"Matrix")
+
+
+# Action levels / MCLs on the Reporting tab: the values
+# stay on Regulatory Limits; per method x matrix the lab picks which of the
+# limits naming that matrix the certificate evaluates. env carries the
+# regulatory store ({"limits": [...], "programs": {...}}).
+
+def _limit_matrices(profile, limit):
+    named = set((m or u"").strip().lower() for m in (limit.get("matrices") or []))
+    return [m for m in profile.get("supported_matrices") or [] if m.strip().lower() in named]
+
+
+def action_level_rows(profile, env=None):
+    store = (env or {}).get("regulatory") or {}
+    names = store.get("programs") or {}
+    rows = []
+    for m in profile.get("supported_matrices") or []:
+        for lim in store.get("limits") or []:
+            if not lim.get("id") or m not in _limit_matrices(profile, lim):
+                continue
+            prog = (names.get(lim.get("program")) or {}).get("name") or lim.get("program") or u""
+            note = u"%s %s \u00b7 %s %s" % (prog, lim.get("kind") or u"", lim.get("value"), lim.get("unit") or u"")
+            if not lim.get("verified"):
+                note += u" \u00b7 not verified: never printed"
+            rows.append({"key": (lim["id"], m), "group": u"al", "label": lim.get("label") or lim["id"],
+                         "sublabel": m, "note": note, "warn": not lim.get("verified")})
+    return _one_group(u"al", u"Action levels & MCLs"), rows
+
+
+def read_action_levels(profile):
+    out = {}
+    for m, row in ((profile.get(_rf.KEY) or {}).items()):
+        if isinstance(row, dict):
+            for lid in row.get(_rf.LIMITS_OFF) or []:
+                out[(lid, m)] = {"applies": u"off"}
+    return out
+
+
+def write_action_levels(profile, updates, env=None):
+    for (lid, m), vals in updates.items():
+        _rf.set_limit(profile, m, lid, vals.get((u"applies",)) != u"off")
+    return profile
+
+
+ACTION_LEVELS = cf.Table(
+    id=u"al", title=u"Action levels & MCLs", base=(_rf.KEY,),
+    columns=[cf.Field("applies", u"On this method\u2019s certificates", kind=cf.CHOICE,
+                      choices=[(u"off", u"Not evaluated")], placeholder=u"Evaluated")],
+    rows=action_level_rows, rows_take_env=True, read=read_action_levels,
+    write=write_action_levels, row_heading=u"Limit")
+
+
+# ── QC Types tab: every QC type the lab defines ────────────────
+# The lab's QC types are the TAGGED core Reference Definitions ([QC:CODE] in the
+# description, editable in Setup). The tab used to list only the types already
+# in the method's qc_acceptance, so a type the lab defines but a method had
+# never had could not be switched on at all.
+
+QC_KIND = {"MB": "blank", "LRB": "blank", "MXB": "blank",
+           "LFB": "recovery", "LCS": "recovery", "LFSM": "recovery",   # LCS: its own type
+           "LFSMD": "rpd", "DUP": "rpd",
+           "CAL": "instrument", "ICV": "instrument", "CCV": "instrument", "CCB": "instrument",
+           "SUR": "surrogate"}
+# qc_acceptance keys keep the spellings the pipeline matches on.
+PROFILE_KEY = {"DUP": "Dup", "MXB": "MxB"}
+CONFIGURED_ON = {"instrument": ("pane-cal", u"Calibration & CCV"),
+                 "surrogate": ("pane-sur", u"Internal Standards")}
+
+
+def qc_type_rows(profile, label_map):
+    """One row per QC type: every tagged type (label_map = {CODE: name}) plus
+    any the method already carries. Batch QC types toggle here; instrument and
+    surrogate types are shown with where they are configured."""
+    qca = profile.get("qc_acceptance") or {}
+    by_code = dict((k.upper(), k) for k in qca)
+    codes = sorted(set(label_map) | set(by_code), key=lambda c: (
+        ["blank", "recovery", "rpd", "instrument", "surrogate"].index(QC_KIND.get(c, "rpd")), c))
+    rows = []
+    for code in codes:
+        kind = QC_KIND.get(code, "other")
+        key = by_code.get(code) or PROFILE_KEY.get(code, code)
+        cfg = qca.get(key) or {}
+        tiers = cfg.get("tiers") or []
+        rows.append({
+            "code": code, "key": key, "label": label_map.get(code) or code, "kind": kind,
+            "toggle": kind in ("blank", "recovery", "rpd", "other"),
+            "enabled": bool(cfg.get("enabled")),
+            "present": key in qca,
+            "has_criteria": any(any(t.get(f) is not None for f in (
+                "recovery_min", "recovery_max", "rpd_max", "max_conc_x_rl")) for t in tiers),
+            "configured_on": CONFIGURED_ON.get(kind),
+        })
+    return rows
+
+
+def apply_qc_toggles(profile, offered, enabled):
+    """Write the tab's toggles. `offered` = the keys the page showed with a
+    toggle; a type switched on that the method never had is created ENABLED
+    with NO limits -- the engine then refuses to judge it until criteria are
+    set, rather than this tab inventing a recovery window."""
+    qca = profile.setdefault("qc_acceptance", {})
+    for key in offered:
+        on = key in enabled
+        if key in qca:
+            qca[key]["enabled"] = on
+        elif on:
+            qca[key] = {"enabled": True, "tiers": []}
+    return profile
+
+
+# Whole-profile checks, run after a tab's sections are applied, keyed by the
+# sections whose save must pass them.
+PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
+
+SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, QC_COMPOSITION, REPORTING_LIMITS, MATRICES,
+                                    SALT, SAMPLE_CORRECTION, SAMPLE_RECEIPT, QC_NAME_CODES, MATRIX_FACTORS, EIS_GRID, SURROGATE_MAP,
+                                    SURROGATE_SCOPE, RPD_BASIS,
+                                    LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
+                                    REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS,
+                                    EXTRACTION_LABELS, EXTRACTION_BATCH, BLANK_LIMITS] +
+                list(SPIKE_LEVELS.values()))
+
+
+# What a Project may override, in the order a project's differences are
+# applied: added analytes first (the other tables list them), then the groups
+# and tiers, then standards, links and limits.
+PROJECT_SECTIONS = ([PANEL_EXTRAS, GROUPS, RECOVERY_TIERS, LFB_TIERS, DUP_RPD, LFSMD_RPD,
+                     LABELLED_STANDARDS, SURROGATE_MAP, REPORTING_LIMITS,
+                     # P3: everything the retired Projects-page editor could override
+                     CALIBRATION_CCV, QC_COMPOSITION, EIS_GRID])

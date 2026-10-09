@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# buildout
+.installed.cfg
+.mr.developer.cfg
+parts/
+var/
+
+# runtime data (mounted volumes): keep the folders, never their contents
+data/*/*
+!data/*/.gitkeep
+
+# document renderer build
+tools/pdfme/node_modules/

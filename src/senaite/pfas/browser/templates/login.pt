@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:i18n="http://xml.zope.org/namespaces/i18n"
+      i18n:domain="plone">
+<!-- The sign-in page: standalone, like badge sign-in and the
+     Client Tracker, because it is reached signed out. The form inside is
+     Plone's login form (login.py), rendered field by field. -->
+<head tal:define="purl view/portal_url">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title tal:content="python:view.lab_name or 'Sign in'">Sign in</title>
+  <link rel="icon" type="image/x-icon" tal:attributes="href string:${purl}/++resource++senaite.pfas/favicon.ico" />
+  <link rel="apple-touch-icon" tal:attributes="href string:${purl}/++resource++senaite.pfas/favicon-180.png" />
+  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/pfas-tokens.css" />
+  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/login.css" />
+</head>
+<body class="pfas-login" tal:define="purl view/portal_url; tiles view/tiles; term view/terminal">
+  <main class="login-shell">
+    <div class="login-clock" aria-hidden="true">
+      <span class="login-time" id="login-time"></span>
+      <span class="login-date" id="login-date"></span>
+    </div>
+
+    <section class="login-card" tal:attributes="class python:'login-card has-tiles' if tiles else 'login-card'">
+      <h1 class="login-title" tal:content="python:view.lab_name or 'Sign in'">Lab</h1>
+      <div class="login-terminal" tal:condition="term" tal:content="string:Lab terminal: ${term/name}">Lab terminal</div>
+
+      <div class="login-msg" tal:repeat="m view/messages"
+           tal:attributes="class python:'login-msg login-msg-' + (m.type or 'info')"
+           tal:content="m/message">Login failed.</div>
+
+      <div class="login-tiles" tal:condition="tiles" role="group" aria-label="Accounts on this terminal">
+        <button type="button" class="login-tile" tal:repeat="t tiles"
+                tal:attributes="data-login t/login; data-name t/name">
+          <img alt="" width="64" height="64" tal:attributes="src t/avatar" />
+          <span tal:content="t/name">AN1</span>
+        </button>
+        <button type="button" class="login-tile login-tile-other" data-login="">
+          <span class="login-other-icon" aria-hidden="true">+</span>
+          <span>Other user</span>
+        </button>
+      </div>
+
+      <form method="post" class="login-form" autocomplete="on"
+            tal:attributes="action view/action; enctype view/enctype">
+        <div class="login-chosen" id="login-chosen" hidden="hidden">
+          <img alt="" width="48" height="48" id="login-chosen-img" />
+          <strong id="login-chosen-name"></strong>
+        </div>
+        <div tal:repeat="widget view/field_widgets"
+             tal:attributes="class python:'login-field login-field-' + widget.name.strip('_') + (' has-error' if widget.error else '')">
+          <label tal:attributes="for widget/id" tal:content="widget/label">Login Name</label>
+          <input type="text" tal:replace="structure widget/render" />
+          <div class="login-error" tal:condition="widget/error" tal:content="structure widget/error/render">error</div>
+        </div>
+        <tal:h repeat="widget view/hidden_widgets"><input type="hidden" tal:replace="structure widget/render" /></tal:h>
+        <span tal:replace="structure context/@@authenticator/authenticator" />
+        <div class="login-actions">
+          <tal:a repeat="action view/actions/values|nothing"><input type="submit" tal:replace="structure action/render" /></tal:a>
+        </div>
+      </form>
+
+      <div class="login-foot">
+        <a class="login-btn-secondary" tal:condition="term"
+           tal:attributes="href string:${purl}/@@pfas-badge-signin">Scan badge</a>
+        <a class="login-btn-secondary" tal:attributes="href string:${purl}/@@login-help">Trouble signing in?</a>
+      </div>
+    </section>
+  </main>
+  <script tal:attributes="src string:${purl}/++resource++senaite.pfas/login.js"></script>
+</body>
+</html>

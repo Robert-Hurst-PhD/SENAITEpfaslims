@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Document Templates</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Document Templates</tal:t>
+
+  <metal:fill fill-slot="content"
+              tal:define="msg view/message; can view/can_configure;
+                          token context/@@authenticator/token">
+    <div class="alert alert-success" tal:condition="python: msg[0]" tal:content="python: msg[0]">ok</div>
+    <div class="alert alert-error" tal:condition="python: msg[1]" tal:content="python: msg[1]">error</div>
+
+    <p class="bench-sub">Draw a document and issue it; until then it prints with its standard layout. <tal:h define="hid string:document-designs"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+    <tal:k repeat="k view/kinds">
+    <section class="bench-block" tal:define="rows python: view.rows(k['id'])">
+      <h2 class="bench-h" tal:content="k/title">Labels</h2>
+
+      <p class="bench-sub" tal:condition="python: not rows and k['id'] == 'label'">No template yet: labels print with the built-in layout.</p>
+      <p class="bench-sub" tal:condition="python: k['id'] == 'coa'">Issued together with the Reporting Template.</p>
+
+      <div class="table-wrap" tal:condition="rows">
+      <table class="pfas-table">
+        <thead><tr><th>Template</th><th>Size</th><th>Status</th><th>Draft</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r rows" tal:attributes="class python: 'dt-archived' if r['archived'] else None">
+            <td><strong tal:content="r/title">Vial label</strong></td>
+            <td tal:content="r/size">2" x 1"</td>
+            <td tal:define="st r/status">
+              <span class="badge badge-archived" tal:condition="r/archived">Archived</span>
+              <tal:live condition="not:r/archived">
+                <span class="badge badge-quarantine" tal:condition="st/none_issued">Not issued</span>
+                <tal:i condition="not:st/none_issued">
+                  <span class="badge badge-active" tal:content="string:Issued rev ${st/rev}">Issued rev 1</span>
+                  <span class="badge badge-opened" tal:condition="st/unissued">Unissued changes</span>
+                </tal:i>
+              </tal:live>
+            </td>
+            <td>
+              <span tal:content="python: '%s %s' % (r['draft_at'][:16].replace('T', ' '), r['draft_by'])">2026-10-04 AN1</span>
+              <div class="cf-hint dt-problem" tal:repeat="p r/problems" tal:content="p">lot (2) is not a label data field</div>
+              <div class="cf-hint dt-problem" tal:condition="r/issued_problems">
+                The issued revision no longer fits (it will not print):
+                <tal:p repeat="p r/issued_problems"><span tal:replace="p">x</span> </tal:p></div>
+            </td>
+            <td class="row-actions-cell">
+              <a class="btn-sm btn-secondary"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-document-designer?id=${r/id}"
+                 tal:content="python: 'Design' if can else 'View'">Design</a>
+              <a class="btn-sm btn-secondary" tal:condition="k/issued_with"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-report-template"
+                 title="The certificate design is issued with the Reporting Template">Issue on Reporting Template</a>
+              <tal:can condition="view/can_configure">
+              <form method="post" class="dt-inline" tal:condition="python: not r['archived'] and not k['issued_with']"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
+                <input type="hidden" name="_authenticator" tal:attributes="value token" />
+                <input type="hidden" name="id" tal:attributes="value r/id" />
+                <input type="hidden" name="action" value="issue" />
+                <input type="text" name="note" required="required" class="dt-note"
+                       placeholder="What this revision changes" />
+                <button class="btn-sm btn-primary" type="submit"
+                        tal:attributes="disabled python: None if (r['status']['unissued'] and not r['problems']) else 'disabled'">Issue</button>
+              </form>
+              <form method="post" class="dt-inline"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
+                <input type="hidden" name="_authenticator" tal:attributes="value token" />
+                <input type="hidden" name="id" tal:attributes="value r/id" />
+                <input type="hidden" name="action" tal:attributes="value python: 'restore' if r['archived'] else 'archive'" />
+                <button class="btn-sm btn-secondary" type="submit"
+                        tal:content="python: 'Restore' if r['archived'] else 'Archive'">Archive</button>
+              </form>
+              </tal:can>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <details class="dt-revisions" tal:define="hist python: [(r, h) for r in rows for h in r['history']]"
+               tal:condition="hist">
+        <summary>Issued revisions</summary>
+        <table class="pfas-table">
+          <thead><tr><th>Template</th><th>Revision</th><th>Issued</th><th>By</th><th>Note</th></tr></thead>
+          <tbody><tr tal:repeat="rh hist">
+            <td tal:content="python: rh[0]['title']">Vial label</td>
+            <td tal:content="python: rh[1]['rev']">1</td>
+            <td tal:content="python: (rh[1].get('issued_at') or u'')[:16].replace('T', ' ')">2026-10-04 12:00</td>
+            <td tal:content="python: rh[1].get('issued_by')">admin</td>
+            <td tal:content="python: rh[1].get('note')">first issue</td>
+          </tr></tbody>
+        </table>
+      </details>
+
+      <tal:can condition="view/can_configure">
+      <form method="post" class="rt-form" tal:condition="k/can_add"
+            tal:attributes="action string:${view/portal_url}/@@pfas-document-templates">
+        <input type="hidden" name="_authenticator" tal:attributes="value token" />
+        <input type="hidden" name="action" value="new" />
+        <input type="hidden" name="kind" tal:attributes="value k/id" />
+        <input type="text" name="title" required="required" class="dt-note"
+               placeholder="New template name" tal:condition="not:k/single" />
+        <input type="hidden" name="title" tal:condition="k/single" tal:attributes="value k/title" />
+        <select name="size" aria-label="Size">
+          <option tal:repeat="s k/sizes" tal:attributes="value s/id" tal:content="s/title">2x1</option>
+        </select>
+        <button class="btn-sm btn-primary" type="submit"
+                tal:content="python: ('+ Design the certificate' if k['issued_with'] else
+                                      u'+ Design the %s' % k['title']) if k['single'] else '+ New template'">+ New template</button>
+      </form>
+      </tal:can>
+    </section>
+    </tal:k>
+  </metal:fill>
+</body>
+</html>

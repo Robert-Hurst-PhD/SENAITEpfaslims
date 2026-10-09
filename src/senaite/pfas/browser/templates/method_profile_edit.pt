@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title"
+         tal:content="view/display_name">Method Profile</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .rl-name { width: 50%; }
+    .rl-unit { text-transform: none; }
+    .rl-in { width: 100%; }
+    .rl-kw { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--s-secondary); margin-left: 6px; }
+    /* ── Method profile editor ────────────────────────────────────────── */
+    .tab-pane         { display: none; }
+    .tab-pane.active  { display: block; }
+
+    /* width: the shared .page-body-narrow (--form-width), not a local cap */
+
+    .json-area { width: 100%; min-height: 160px; font-family: var(--font-mono);
+                 font-size: var(--fs-sm); padding: 8px; border: 1px solid var(--s-input-border);
+                 border-radius: 4px; background: #fafafa; resize: vertical; }
+    .json-area:focus { outline: none; border-color: var(--s-primary);
+                       box-shadow: 0 0 0 3px var(--s-focus-ring); }
+    /* Descriptive hint text uses the SYSTEM font (was monospace — the source
+       of the cross-page font inconsistency). Inline field names use <code>. */
+    .json-hint { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: 4px;
+                 line-height: 1.5; }
+    .json-hint code { font-family: var(--font-mono); }
+    /* Prose intro/description text — system sans-serif, NOT monospace.
+       Use for tab descriptions (json-hint is for JSON-field hints only). */
+    .pane-intro { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.5;
+                  max-width: 760px; margin: 0 0 14px; }
+    .pane-intro code { font-family: var(--font-mono); font-size: var(--fs-xs); }
+
+    /* Pill toggle switch (ported from the original QC Rules page) */
+    .toggle-switch { position: relative; display: inline-block;
+                     width: 38px; height: 22px; cursor: pointer; margin: 0; vertical-align: middle; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                    background: var(--s-input-border); border-radius: 22px; transition: background .15s; }
+    .toggle-track::before { content: ""; position: absolute; width: 16px; height: 16px;
+                             left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+                             transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+    .toggle-switch input:checked + .toggle-track { background: var(--s-primary); }
+    .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
+    .toggle-switch input:focus + .toggle-track { box-shadow: 0 0 0 3px var(--s-focus-ring); }
+    /* Param inputs grey out when their rule is toggled off */
+    .rule-params.rule-off input { background: var(--s-light); color: var(--s-secondary);
+                                  opacity: .55; }
+    .rule-params.rule-off label { color: var(--s-secondary); opacity: .7; }
+
+    .factor-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); margin-bottom: 10px; }
+    .factor-table th { background: var(--s-light); color: var(--s-secondary);
+                       font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
+                       letter-spacing: .04em; padding: 7px 10px;
+                       border-bottom: 2px solid var(--s-border); text-align: left; }
+    .factor-table td { padding: 5px 6px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    .factor-table tr:last-child td { border-bottom: none; }
+    .factor-table input[type=text],
+    .factor-table input[type=number] { padding: 5px 8px; border: 1px solid var(--s-input-border);
+                                        border-radius: 4px; font-size: var(--fs-base); background: #fafafa;
+                                        color: var(--s-input-text); width: 100%; }
+    .factor-table input:focus { outline: none; border-color: var(--s-primary);
+                                 box-shadow: 0 0 0 2px var(--s-focus-ring); }
+    .factor-table .del-btn { background: none; border: none; cursor: pointer; color: var(--s-danger-dk);
+                              font-size: var(--fs-lg); padding: 2px 6px; line-height: 1; }
+    .factor-table .del-btn:hover { opacity: .75; }
+
+    .stage-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px;
+                  background: #fff; }
+    .stage-card.dragging { opacity: .4; }
+    .stage-card-hdr { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+                      background: var(--s-light); border-radius: 6px 6px 0 0;
+                      border-bottom: 1px solid var(--s-border); }
+    .stage-card-hdr .drag-handle { cursor: grab; color: var(--s-secondary); font-size: var(--fs-lg);
+                                    user-select: none; flex-shrink: 0; }
+    .stage-card-hdr .stage-card-title { flex: 1; font-size: var(--fs-base); font-weight: 600;
+                                         color: var(--s-primary-dk); }
+    .stage-card-hdr .del-btn { background: none; border: none; cursor: pointer;
+                                color: var(--s-danger-dk); font-size: var(--fs-lg); line-height: 1; padding: 0 4px; }
+    .stage-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .stage-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .stage-row label.grow { flex: 1; }
+    .stage-row label { display: flex; flex-direction: column; gap: 3px;
+                       font-size: var(--fs-xs); font-weight: 600; color: var(--s-secondary); }
+    .stage-row label input[type=text],
+    .stage-row label input[type=number] { padding: 5px 8px; border: 1px solid var(--s-input-border);
+                                           border-radius: 4px; font-size: var(--fs-base);
+                                           font-family: inherit; background: #fff; }
+    .stage-row label input:focus { outline: none; border-color: var(--s-primary); }
+    .cb-label { flex-direction: row !important; align-items: center !important; gap: 6px !important;
+                font-size: var(--fs-base) !important; font-weight: 500 !important; color: var(--s-text) !important;
+                cursor: pointer; }
+    .cb-label input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
+
+    .pa-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+    .pa-table th { background: var(--s-light); padding: 6px 8px; text-align: left;
+                   border-bottom: 2px solid var(--s-border); font-size: var(--fs-xs); font-weight: 700;
+                   text-transform: uppercase; letter-spacing: .04em; color: var(--s-secondary);
+                   white-space: nowrap; }
+    .pa-table td { padding: 4px 6px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
+    .pa-table tr:hover td { background: var(--s-light); }
+    .pa-table .pa-name { font-family: var(--font-mono); font-size: var(--fs-sm); white-space: nowrap; }
+    .pa-table input[type=text] { width: 100%; box-sizing: border-box; padding: 3px 5px;
+                                  border: 1px solid var(--s-border); border-radius: 3px;
+                                  font-size: var(--fs-xs); font-family: inherit; }
+    .pa-table input[type=text].pa-mono { font-family: var(--font-mono); }
+    .pa-table select { padding: 3px 5px; border: 1px solid var(--s-border); border-radius: 3px;
+                       font-size: var(--fs-xs); background: #fff; }
+    .pa-table input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
+    .pa-tier-1 { color: var(--s-primary-dk); font-weight: 600; }
+    .pa-tier-3 { color: var(--s-secondary); font-style: italic; }
+
+    .inclusion-wrap { overflow-x: auto; margin-bottom: 8px; }
+    /* Mobile: wide data tables scroll inside their section instead of
+       bleeding past the card border (consistent with .table-wrap). */
+    .section-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab-pane .factor-table { max-width: 100%; }
+    .inclusion-grid { border-collapse: collapse; font-size: var(--fs-sm); }
+    .inclusion-grid th { background: var(--s-light); padding: 5px 10px;
+                         border-bottom: 2px solid var(--s-border); text-align: center;
+                         font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
+                         letter-spacing: .04em; color: var(--s-secondary); white-space: nowrap; }
+    .inclusion-grid th.analyte-col { text-align: left; min-width: 130px; padding-left: 6px; }
+    .inclusion-grid td { padding: 3px 8px; border-bottom: 1px solid var(--s-border); }
+    .inclusion-grid td.analyte-name { font-size: var(--fs-sm); font-family: var(--font-mono);
+                                       color: var(--s-text); white-space: nowrap; }
+    .inclusion-grid td.check-cell { text-align: center; min-width: 90px; }
+    .inclusion-grid input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+    .inclusion-grid tr:last-child td { border-bottom: none; }
+    .inclusion-grid tr:hover td { background: var(--s-primary-lt, var(--s-info-lt)); }
+    .ami-bulk-btn { background: none; border: 1px solid var(--s-border); border-radius: 3px;
+                    cursor: pointer; font-size: var(--fs-xs); padding: 1px 5px; margin: 0 2px;
+                    color: var(--s-secondary); line-height: 1.4; }
+    .ami-bulk-btn:hover { border-color: var(--s-primary); color: var(--s-primary-dk); }
+    .ami-col-ctrl { display: block; margin-top: 4px; }
+    .ami-row-btn { background: none; border: none; cursor: pointer; padding: 0;
+                   color: var(--s-text); font-family: var(--font-mono); font-size: var(--fs-sm);
+                   text-align: left; width: 100%; }
+    .ami-row-btn:hover { color: var(--s-primary-dk); text-decoration: underline; }
+    .ami-excluded { color: var(--s-danger, #c0392b); font-size: var(--fs-xs); display: block; }
+
+    .section-group-hdr { padding: 7px 14px; background: var(--s-light);
+                         border: 1px solid var(--s-border); border-radius: 4px;
+                         font-size: var(--fs-xs); font-weight: 700; letter-spacing: .1em;
+                         text-transform: uppercase; color: var(--s-secondary);
+                         margin: 22px 0 8px 0; }
+
+    .factor-table select, .sur-map-sel { padding: 4px 6px; border: 1px solid var(--s-input-border);
+                                          border-radius: 4px; font-size: var(--fs-sm); background: #fafafa;
+                                          color: var(--s-input-text); width: 100%; }
+
+    .spike-matrix-section { border: 1px solid var(--s-border); border-radius: 6px;
+                             margin-bottom: 12px; background: #fff; overflow: hidden; }
+    .spike-matrix-hdr { padding: 7px 12px; background: var(--s-light);
+                        border-bottom: 1px solid var(--s-border);
+                        font-size: var(--fs-sm); font-weight: 700; color: var(--s-primary-dk); }
+
+    .tier-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px; background: #fff; }
+    .tier-card-hdr { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+                     background: var(--s-light); border-radius: 6px 6px 0 0;
+                     border-bottom: 1px solid var(--s-border); }
+    .tier-badge { flex-shrink: 0; background: var(--s-primary-dk); color: #fff; border-radius: 10px;
+                  padding: 1px 8px; font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
+    .tier-desc { flex: 1; border: 1px solid transparent; border-radius: 4px; padding: 3px 6px;
+                 font-size: var(--fs-base); font-family: inherit; background: transparent; color: var(--s-text); }
+    .tier-desc:focus { outline: none; border-color: var(--s-primary); background: #fff;
+                       box-shadow: 0 0 0 2px var(--s-focus-ring); }
+    .tier-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .tier-limits { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: var(--fs-base); }
+    .tier-limits label { display: flex; align-items: center; gap: 5px; font-weight: 600;
+                         font-size: var(--fs-xs); color: var(--s-secondary); }
+    .tier-limits input[type=number] { width: 70px; padding: 4px 6px; border: 1px solid var(--s-input-border);
+                                       border-radius: 4px; font-size: var(--fs-base); background: #fafafa;
+                                       color: var(--s-text); }
+    .tier-limits input:focus { outline: none; border-color: var(--s-primary); }
+    .tier-chipfield { border-top: 1px dashed var(--s-border); padding-top: 7px; }
+    .tier-chipfield > label { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
+                               letter-spacing: .04em; color: var(--s-secondary); display: block;
+                               margin-bottom: 5px; }
+    .tier-chip-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .tier-chip { display: inline-flex; align-items: center; gap: 3px; border-radius: 10px;
+                 padding: 2px 7px; font-size: var(--fs-xs); font-family: var(--font-mono);
+                 background: var(--s-success-lt); border: 1px solid #81c784; color: var(--s-success-text);
+                 user-select: none; }
+    .tier-chip.mat-chip { background: var(--s-warn-lt); border-color: var(--s-warn-bd); color: var(--s-warn-text); }
+    .tier-chip.nostd-chip { background: var(--s-danger-lt); border-color: var(--s-danger-bd); color: var(--s-danger-dk); }
+    .tier-chip-rm { background: none; border: none; cursor: pointer; padding: 0 0 0 2px;
+                    color: inherit; font-size: var(--fs-base); line-height: 1; opacity: .7; }
+    .tier-chip-rm:hover { opacity: 1; }
+    .tier-add-sel { font-size: var(--fs-xs); padding: 3px 5px; border: 1px dashed var(--s-border);
+                    border-radius: 10px; color: var(--s-secondary); background: #fafafa;
+                    cursor: pointer; max-width: 200px; }
+    .tier-add-sel:focus { outline: none; border-color: var(--s-primary); }
+  </style>
+  </tal:styles>
+</head>
+<body>
+
+  <tal:t metal:fill-slot="header-title"
+         tal:content="view/display_name">Method Profile</tal:t>
+
+  <tal:c metal:fill-slot="header-context"><span class="header-badge" tal:content="view/method_id">FDA_32PFAS</span></tal:c>
+  <tal:r metal:fill-slot="header-right">
+    
+    <a href="@@pfas-method-profiles" class="btn-sm btn-secondary btn-back">All Methods</a>
+  </tal:r>
+
+  <tal:tabs metal:fill-slot="tabs">
+    <div class="pfas-tabs" id="method-profile-tabs">
+      <a class="pfas-tab" data-pane="pane-toggles" href="#pane-toggles"
+         onclick="pfasTabSwitch('pane-toggles'); return false;">Rule Toggles &amp; QC Run</a>
+      <a class="pfas-tab" data-pane="pane-qct" href="#pane-qct"
+         onclick="pfasTabSwitch('pane-qct'); return false;">QC Types</a>
+      <a class="pfas-tab" data-pane="pane-rt" href="#pane-rt"
+         onclick="pfasTabSwitch('pane-rt'); return false;">Recovery Tiers</a>
+      <a class="pfas-tab" data-pane="pane-mtx" href="#pane-mtx"
+         onclick="pfasTabSwitch('pane-mtx'); return false;">Matrices &amp; Units</a>
+      <a class="pfas-tab" data-pane="pane-corr" href="#pane-corr"
+         onclick="pfasTabSwitch('pane-corr'); return false;">Sample Corrections</a>
+      <a class="pfas-tab" data-pane="pane-ami" href="#pane-ami"
+         onclick="pfasTabSwitch('pane-ami'); return false;">Analyte &#215; Matrix</a>
+      <a class="pfas-tab" data-pane="pane-iso" href="#pane-iso"
+         onclick="pfasTabSwitch('pane-iso'); return false;">Isomers</a>
+      <a class="pfas-tab" data-pane="pane-sur" href="#pane-sur"
+         onclick="pfasTabSwitch('pane-sur'); return false;">Internal Standards</a>
+      <a class="pfas-tab" data-pane="pane-eis" href="#pane-eis"
+         onclick="pfasTabSwitch('pane-eis'); return false;"
+         tal:attributes="style python:'' if view.show_eis_overrides() else 'display:none'">SUR Limits</a>
+      <a class="pfas-tab" data-pane="pane-rl" href="#pane-rl"
+         onclick="pfasTabSwitch('pane-rl'); return false;">Reporting Limits</a>
+      <a class="pfas-tab" data-pane="pane-rf" href="#pane-rf"
+         onclick="pfasTabSwitch('pane-rf'); return false;">Reporting</a>
+      <a class="pfas-tab" data-pane="pane-cal" href="#pane-cal"
+         onclick="pfasTabSwitch('pane-cal'); return false;">Calibration &amp; CCV</a>
+      <a class="pfas-tab" data-pane="pane-lwf" href="#pane-lwf"
+         onclick="pfasTabSwitch('pane-lwf'); return false;">Lab Workflow</a>
+    </div>
+  </tal:tabs>
+
+  <tal:ab metal:fill-slot="action-bar">
+    <div class="pfas-action-bar">
+      <button type="submit" form="profile-form" id="profile-save" class="btn btn-primary">Save &amp; Export</button>
+      <a class="btn btn-secondary" href="@@pfas-method-profiles">Cancel</a>
+      <span id="profile-unsaved" class="form-note" role="status"></span>
+    </div>
+  </tal:ab>
+
+  <div metal:fill-slot="content">
+
+    <div class="alert alert-success" tal:condition="view/saved">
+      Profile saved and exported to <code>/data/qc/method_profiles.json</code>.
+      The pipeline worker will use the new values on the next batch run.
+    </div>
+    <p class="form-note" tal:define="lc view/last_change" tal:condition="lc">
+      Last changed by <strong tal:content="lc/who">user</strong>
+      on <span tal:content="string:${lc/at} UTC">date</span>
+      (<span tal:content="python:len(lc['changes'])">1</span> setting(s))
+      &middot; <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-config-history?store=method_profile&amp;key=${view/method_id}">History</a>
+    </p>
+    <div class="alert alert-error" tal:condition="view/error">
+      <span tal:content="view/error">Error message</span>
+    </div>
+
+    <form id="profile-form" method="POST"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="config_stamp" tal:attributes="value view/config_stamp" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <!-- marker: the Rule Toggles tab was submitted, so its switches are
+           written into the profile (QC consolidation P2); the
+           qc_toggles_present marker lives in the QC Types pane below -->
+      <input type="hidden" name="qc_rules_present" value="1" />
+
+      <!-- ── Tab: Rule Toggles & QC Run (saved on the method profile) ─────── -->
+      <div class="tab-pane" id="pane-toggles">
+        <div class="page-body-narrow">
+          <p class="pane-intro">Which checks the pipeline runs for this method; their limits are on Calibration &amp; CCV. <tal:h define="hid string:rule-switches"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <div class="table-wrap">
+          <table class="factor-table" style="max-width:820px;">
+            <thead>
+              <tr><th style="width:52px;">On</th><th>Rule</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr tal:repeat="row view/rule_toggle_rows">
+                <td style="text-align:center;">
+                  <label class="toggle-switch">
+                    <input type="checkbox" class="rule-toggle-cb"
+                           tal:attributes="name string:ruletoggle.${row/key};
+                                           data-rule row/key;
+                                           checked python:row['enabled']" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </td>
+                <td><strong tal:content="row/label">CCV Recovery</strong></td>
+                <td class="rule-params"
+                    tal:attributes="data-rule row/key;
+                                    class python:'rule-params rule-off' if not row['enabled'] else 'rule-params'">
+                  <span tal:condition="not:row/has_params"
+                        style="color:var(--s-secondary);font-size:var(--fs-sm);"
+                        tal:content="python:row.get('note') or u'\u2014'">&#8212;</span>
+                </td>
+              </tr>
+              <tr tal:condition="view/rule_qc_type_rows">
+                <th colspan="3">Extraction &amp; matrix QC &#8212; the same switch as the QC Types tab</th>
+              </tr>
+              <tr tal:repeat="q view/rule_qc_type_rows">
+                <td class="cf-center">
+                  <label class="toggle-switch">
+                    <input type="checkbox" class="qc-type-mirror"
+                           tal:attributes="name string:qc_enabled_${q/key};
+                                           checked python:'checked' if q['enabled'] else None" />
+                    <span class="toggle-track"></span>
+                  </label>
+                </td>
+                <td><strong tal:content="q/rule_label">LFSM Recovery</strong></td>
+                <td class="form-note">Limits on Recovery Tiers / the QC Type Grid.
+                  <button type="button" class="btn-sm btn-secondary"
+                          onclick="return (pfasTabSwitch('pane-qct'), false)">QC Types</button></td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div><!-- /pane-toggles -->
+
+      <!-- ── Tab: Analyte × Matrix ─────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-ami">
+        <div class="page-body-narrow">
+
+          <details open="open">
+            <summary>Method Information</summary>
+            <div class="section-body">
+              <div class="field-grid">
+                <div class="field-row field-row-wide">
+                  <label for="display_name">Display Name</label>
+                  <input type="text" id="display_name" name="display_name"
+                         tal:attributes="value view/display_name" />
+                </div>
+                <div class="field-row field-row-wide">
+                  <label for="description">Description</label>
+                  <input type="text" id="description" name="description"
+                         tal:attributes="value view/description" />
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="section-group-hdr">Analyte Configuration</div>
+
+          <details>
+            <summary>Analyte &#215; Matrix Inclusion</summary>
+            <div class="section-body">
+              <div class="alert alert-warn"
+                   tal:condition="view/analyte_matrix_needs_verification"
+                   style="margin-bottom:12px">
+                &#9888; <strong>Lab verification required.</strong>
+                Check this method&#8217;s analyte set against the published method&#8217;s
+                target list, and decide which analytes are reportable in each matrix,
+                before production use.
+              </div>
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">Ticked: the analyte is reported in that matrix. Unticked analytes are left out for that matrix everywhere. <tal:h define="hid string:analyte-matrix"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <div class="inclusion-wrap">
+                <div id="amiGridContainer">
+                  <em style="color:var(--s-secondary);font-size:var(--fs-sm)">Loading&#8230;</em>
+                </div>
+              </div>
+              <input type="hidden" id="ami_grid_data"
+                     tal:attributes="value view/analyte_matrix_grid_data" />
+              <input type="hidden" name="analyte_matrix_inclusion_json"
+                     id="analyte_matrix_inclusion_json"
+                     tal:attributes="value view/analyte_matrix_json" />
+            </div>
+          </details>
+
+          <details>
+            <summary>Per-Analyte Assignments</summary>
+            <div class="section-body">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:10px">An analyte has its own labelled standard when it is linked to its labelled analogue on Internal Standards. <strong>Confirm Ion</strong> is the qualifier transition. <tal:h define="hid string:labelled-standards"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <div style="overflow-x:auto">
+                <table class="pa-table">
+                  <thead>
+                    <tr>
+                      <th style="min-width:120px">Analyte</th>
+                      <th style="min-width:150px">Confirm Ion (m/z)</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="perAnalyteBody"></tbody>
+                </table>
+              </div>
+              <input type="hidden" name="per_analyte_json" id="per_analyte_json"
+                     tal:attributes="value view/per_analyte_json" />
+              <input type="hidden" id="per_analyte_labels"
+                     tal:attributes="value view/per_analyte_labels_json" />
+            </div>
+          </details>
+
+
+        </div>
+      </div><!-- /pane-ami -->
+
+      <!-- ── Tab: Surrogate Map ─────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-rf">
+        <div class="page-body">
+          <p class="pane-intro">The certificate format per matrix; a blank cell inherits the &#8220;All matrices&#8221; row. <tal:h define="hid string:reporting-format"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <!-- Saved ON ITS OWN (R2): form#section-rf. -->
+          <div tal:define="cf_groups python:view.section_groups('rf'); cf_form string:section-rf">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+        </div>
+      </div><!-- /pane-rf -->
+
+      <div class="tab-pane" id="pane-iso">
+        <div class="page-body">
+          <p class="pane-intro">Analytes measured as linear and branched peaks, and the name their summed result is reported under. <tal:h define="hid string:isomers"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <!-- Saved ON ITS OWN (R2): form#section-iso. -->
+          <div tal:define="cf_groups python:view.section_groups('iso'); cf_form string:section-iso">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+        </div>
+      </div><!-- /pane-iso -->
+
+      <div class="tab-pane" id="pane-sur">
+        <div class="page-body-narrow">
+          <!-- Saved ON ITS OWN (R2): the internal-standards grid and the
+               surrogate map belong to form#section-sur and are checked
+               together (a map surrogate must be a used, extracted standard). -->
+          <details open="open">
+            <summary>Internal Standards (isotopically labelled)</summary>
+            <div class="section-body">
+              <p class="pane-intro">Tick the labelled standards this method uses, set each one&#8217;s role and link it to the standard it is quantified against. <tal:h define="hid string:labelled-standards"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <div tal:define="cf_groups python:view.section_groups('ls'); cf_form string:section-sur">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
+            </div>
+          </details>
+
+          <details open="open">
+            <summary>Surrogate Map (native analyte &#8594; quantifying surrogate)</summary>
+            <div class="section-body">
+              <p class="pane-intro">The labelled surrogate that quantifies each native in this method; a suggestion is saved only when you click Use. <tal:h define="hid string:labelled-standards"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <div tal:define="cf_groups python:view.section_groups('sur'); cf_form string:section-sur">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
+            </div>
+          </details>
+
+          <details open="open">
+            <summary>Surrogate failure</summary>
+            <div class="section-body">
+              <div tal:define="cf_groups python:view.section_groups('surscope'); cf_form string:section-sur">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/section" />
+              </div>
+            </div>
+          </details>
+
+        </div>
+      </div><!-- /pane-sur -->
+
+      <!-- ── Tab: Recovery Tiers ────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-rt">
+        <div class="page-body">
+          <!-- Saved ON ITS OWN (R2): spike levels, recovery tiers and the Dup
+               RPD belong to form#section-rt. -->
+          <div class="section-group-hdr">Spike levels</div>
+          <p class="pane-intro">Per level, in each matrix&#8217;s reporting unit. <tal:h define="hid string:spike-levels"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <div class="pane-intro" tal:define="rec view/recommended_spikes" tal:condition="rec">
+            Recommended from the calibration curve (lowest, nearest the
+            midpoint, highest calibrator):
+            Low <strong tal:content="rec/low">2</strong>,
+            Mid <strong tal:content="rec/mid">80</strong>,
+            High <strong tal:content="rec/high">160</strong>
+            <span tal:replace="rec/unit">ppt</span>.
+            <tal:x condition="python:rec['any']">In the sample:
+              <tal:m repeat="m rec/matrices"><tal:ok condition="m/ok">
+                <span tal:replace="m/matrix">Eggs</span>
+                <span tal:replace="string:${m/low} / ${m/mid} / ${m/high} ${m/unit}">19.5 / 5000 / 10000 ng/kg</span><tal:s condition="not:repeat/m/end">; </tal:s></tal:ok></tal:m>.
+            </tal:x>
+            <span class="cf-hint" tal:condition="rec/missing">
+              No matrix factor for <span tal:replace="python:', '.join(rec['missing'])">Milk</span>,
+              so no suggestion there (Sample Corrections).
+            </span>
+            <button type="button" class="btn-sm btn-secondary" id="spk-use-rec"
+                    tal:condition="rec/any" tal:attributes="data-rec rec/json">Fill blank Low / Mid / High</button>
+          </div>
+          <tal:spk repeat="spk view/spike_sections">
+            <h4 class="cf-grid-title" tal:content="python:spk[1]">LFSM / LFSMD</h4>
+            <div tal:define="cf_rows python:view.section_groups(spk[0]); cf_form string:section-rt">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+            </div>
+          </tal:spk>
+
+          <div class="section-group-hdr">Recovery window applied (LFSM)</div>
+          <p class="pane-intro" tal:condition="view/grouped_tiers">The window each analyte group gets in each matrix, from the tiers below; it redraws as you edit. <tal:h define="hid string:recovery-tiers"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <p class="pane-intro" tal:condition="not:view/grouped_tiers">
+            The first ordinary tier applies to every analyte and matrix; a low level tier replaces it for spikes at or below N &#215; RL. <tal:h define="hid string:recovery-tiers"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+          </p>
+          <div tal:replace="structure view/rt_grid_html"></div>
+
+          <div tal:define="cf_groups python:view.section_groups('groups'); cf_form string:section-rt">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
+
+          <div class="section-group-hdr">Recovery tiers (LFSM)</div>
+          <p class="pane-intro">Each tier&#8217;s analytes, matrices and window; the first matching tier applies. Clear a tier&#8217;s name to remove it. <tal:h define="hid string:recovery-tiers"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <div id="rt-tiers" tal:define="cf_rows python:view.section_groups('tiers'); cf_form string:section-rt">
+            <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+          </div>
+
+          <tal:dup condition="view/has_dup">
+            <div class="section-group-hdr">Sample Duplicate (Dup)</div>
+            <p class="pane-intro">Maximum RPD between a sample and its duplicate: |A &#8722; B| &#247; mean &#215; 100. <tal:h define="hid string:qc-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+            <div tal:define="cf_rows python:view.section_groups('dup'); cf_form string:section-rt">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+            </div>
+          </tal:dup>
+
+          <tal:lfb condition="view/has_lfb">
+            <div class="section-group-hdr">LFB recovery tiers</div>
+            <p class="pane-intro">The laboratory fortified blank&#8217;s windows; a Low level tier applies to spikes at or below N &#215; RL. <tal:h define="hid string:recovery-tiers"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+            <div tal:define="cf_rows python:view.section_groups('tiers_lfb'); cf_form string:section-rt">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+            </div>
+          </tal:lfb>
+
+          <tal:lfsmd condition="view/has_lfsmd">
+            <div class="section-group-hdr">LFSMD RPD</div>
+            <p class="pane-intro">Maximum RPD between a fortified sample and its duplicate, per tier; a Low level tier applies at or below N &#215; RL. <tal:h define="hid string:recovery-tiers"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+            <div tal:define="cf_rows python:view.section_groups('lfsmd'); cf_form string:section-rt">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+            </div>
+            <div tal:define="cf_groups python:view.section_groups('rpdbasis'); cf_form string:section-rt">
+              <metal:t use-macro="context/@@pfas-config-form-macros/macros/section" />
+            </div>
+          </tal:lfsmd>
+        </div>
+      </div><!-- /pane-rt -->
+
+      <!-- ── Tab: Sample Corrections (per-method, applied to ALL samples) ── -->
+      <div class="tab-pane" id="pane-mtx">
+        <div class="page-body-narrow">
+          <p class="pane-intro">The matrices this method supports and what the pipeline decides from each. <tal:h define="hid string:analyte-matrix"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+          <details open="open">
+            <summary>Matrices, Recovery Tier, Aliases and Reporting Units</summary>
+            <div class="section-body">
+              <p class="json-hint"><strong>Unit</strong> is the reporting unit for each matrix; Tier&#160;1 matrices are chosen on Recovery Tiers. <tal:h define="hid string:recovery-tiers"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <!-- Saved ON ITS OWN (R2, config_forms collection): inputs
+                   belong to form#section-mtx through the form= attribute. -->
+              <div tal:define="cf_rows python:view.section_groups('mtx'); cf_form string:section-mtx">
+                <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+              </div>
+            </div>
+          </details>
+
+          <details open="open">
+            <summary>Sample receipt</summary>
+            <div class="section-body">
+              <div tal:define="cf_groups python:view.section_groups('rtemp'); cf_form string:section-mtx">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/section" />
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="pane-corr">
+        <div class="page-body-narrow">
+          <p class="pane-intro">Corrections applied to every sample of this method, QC included. <tal:h define="hid string:matrix-factor"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+          <details open="open">
+            <summary>Salt Adjustment Factors (per analyte, from CoA)</summary>
+            <div class="section-body">
+              <p class="json-hint">Factor = molar mass of the free acid &#247; that of the salt (1.0 = none); pick each standard&#8217;s CoA lot. <tal:h define="hid string:salt-factor"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <!-- Saved ON ITS OWN (R2): both tables on this tab belong to
+                   form#section-corr, which saves them together. -->
+              <div tal:define="cf_groups python:view.section_groups('salt'); cf_form string:section-corr">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
+              <p tal:condition="not:view/standard_lot_options"
+                 style="font-size:var(--fs-xs);color:var(--s-warn-text);margin-top:8px;">No reference-standard lots are in the Reagent Inventory yet, so there are no CoA lots to pick.</p>
+            </div>
+          </details>
+
+          <details open="open">
+            <summary>Per-sample correction</summary>
+            <div class="section-body">
+              <div tal:define="cf_groups python:view.section_groups('scorr'); cf_form string:section-corr">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/section" />
+              </div>
+            </div>
+          </details>
+
+          <details open="open">
+            <summary>Matrix Adjustment Factors (per sample type)</summary>
+            <div class="section-body">
+              <p class="json-hint">C<sub>reported</sub> = C<sub>instrument</sub> &#215; factor, one per matrix (1.0 = none), applied to every sample of that type. <tal:h define="hid string:matrix-factor"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <div tal:define="cf_groups python:view.section_groups('mf'); cf_form string:section-corr">
+                <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+              </div>
+            </div>
+          </details>
+
+        </div>
+      </div><!-- /pane-corr -->
+
+      <!-- ── Tab: EIS Limits ────────────────────────────────────────────── -->
+      <div class="tab-pane" id="pane-eis">
+        <div><!-- a wide grid: the full content width (6C) -->
+          <tal:eis tal:condition="view/show_eis_overrides">
+            <div class="alert alert-warn">
+              &#9888; <strong>Lab verification required.</strong>
+              Per-analyte SUR/OPR recovery limits (EPA 1633A calls these surrogates extracted internal standards, EIS)
+              from EPA 1633A Tables 6 and 8
+              (EPA 820-R-24-007, December 2024). Verify each value against your
+              purchased method copy before production use.
+            </div>
+            <p class="pane-intro">Window per surrogate designation: aqueous, then per matrix class; a blank class cell uses the aqueous limit. Saved on its own. <tal:h define="hid string:eis-limits"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+            <div class="table-wrap"
+                 tal:define="cf_rows python:view.section_groups('eis_grid'); cf_form string:section-eis">
+              <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+            </div>
+          </tal:eis>
+        </div>
+      </div><!-- /pane-eis -->
+
+      <!-- ── Tab: Calibration ───────────────────────────────────────────── -->
+      <!-- Reporting limits: RL / MDL per analyte x matrix, printed on the
+           certificate with the matrix unit (report_limits.py). -->
+      <div class="tab-pane" id="pane-rl">
+        <div class="page-body">
+          <p class="json-hint">RL and MDL per analyte and matrix, in the matrix&#8217;s reporting unit; MCLs and action levels come from Regulatory Limits. <tal:h define="hid string:rl"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <!-- Saved ON ITS OWN (R2, config_forms table): cells belong to
+               form#section-rl through the form= attribute. -->
+          <div tal:define="cf_groups python:view.section_groups('rl'); cf_form string:section-rl">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+
+          <div class="section-group-hdr">Action levels &amp; MCLs</div>
+          <p class="pane-intro">
+            The limits naming this method&#8217;s matrices; set one to <em>Not evaluated</em> to leave it off this method&#8217;s certificates. <tal:h define="hid string:action-level"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+            <a class="btn-sm btn-secondary"
+               tal:attributes="href string:${view/portal_url}/@@pfas-regulatory-limits">Open Regulatory Limits</a>
+          </p>
+          <div tal:define="cf_groups python:view.section_groups('al'); cf_form string:section-rl">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane" id="pane-cal">
+        <div class="page-body-narrow">
+          <div style="background:var(--s-primary-lt);border:1px solid var(--s-info-bd);border-radius:8px;
+                      padding:9px 14px;font-size:var(--fs-sm);color:var(--s-info-text);margin-bottom:14px;">
+            These tabs (Calibration / CCV / IS Response) hold THIS METHOD&#8217;s
+            instrument-verification <strong>acceptance parameters</strong>
+            (exported with the profile). Whether each engine <em>rule</em> is
+            switched on per method is governed globally in
+            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-qc-rules">QC Rules</a>.
+          </div>
+
+          <div class="section-group-hdr">Instrument QC Criteria</div>
+          <div class="alert alert-info" style="font-size:var(--fs-sm);margin-bottom:10px;">
+            &#8505; QC types (MB, LFB, LFSMD, etc.) must be <strong>enabled</strong> in
+            the <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-qc-type-grid"
+                  >QC Type Grid</a>
+            before the criteria below take effect for this method.
+          </div>
+
+          <!-- Saved ON ITS OWN (R2, config_forms): these inputs belong to
+               form#section-cal (below profile-form) through the form=
+               attribute, and the main Save & Export no longer carries or
+               parses them. The action-bar button submits this tab's form
+               while this tab is open. -->
+          <div tal:define="cf_groups python:view.section_groups('cal'); cf_form string:section-cal">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
+
+          <div tal:define="cf_groups python:view.section_groups('qcnames'); cf_form string:section-cal">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
+
+          <div class="section-group-hdr">Calibration levels
+            (<span tal:replace="view/calibration_level_unit">ng/mL</span>)</div>
+          <p class="pane-intro">The calibration ladder; its lowest level is each analyte&#8217;s RL unless one is typed. <tal:h define="hid string:calibration-levels"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <p class="cf-hint" tal:condition="view/calibration_levels_source"
+             tal:content="view/calibration_levels_source">Source</p>
+          <div tal:define="cf_rows python:view.section_groups('cal_levels'); cf_form string:section-cal">
+            <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+          </div>
+
+          <div class="section-group-hdr">Per-analyte calibration range</div>
+          <p class="pane-intro">Analytes calibrated over another range: the ladder &#215; the multiple, up to the highest standard. Blank = the ladder. <tal:h define="hid string:calibration-levels"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <div tal:define="cf_groups python:view.section_groups('cal_scale'); cf_form string:section-cal">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+
+        </div>
+      </div><!-- /pane-cal -->
+
+
+      <!-- ── Tab: Lab Workflow (guided extraction stages) ───────────────── -->
+      <div class="tab-pane" id="pane-lwf">
+        <div class="page-body-narrow">
+          <p class="json-hint" style="max-width:760px;">These stages become each batch&#8217;s Guided Extraction; every batch&#8217;s extraction log follows them. <tal:h define="hid string:guided-extraction"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+          <div style="background:var(--s-light);border:1px solid var(--s-border);
+                      border-radius:8px;padding:10px 14px;font-size:var(--fs-sm);
+                      color:var(--s-secondary);max-width:760px;margin-bottom:14px;">
+            <strong style="color:var(--s-body);">Stage flags explained</strong><br/>
+            <strong>Creates Solution</strong> — completing this stage records a new
+            in-house <em>Prepared Standard</em> lot (it appears in Prepared
+            Standards with this stage&#8217;s reagents as its parent lots, and its
+            expiry inherits the tightest parent expiry).<br/>
+            <strong>Capture Standard Pedigree</strong> — this stage shows the
+            Standard/IS pedigree table in the Guided Extraction: the analyst
+            records WHICH prepared-standard lots were spiked, completing the
+            3-level traceability chain (reagent lot &#8594; prepared standard &#8594;
+            result) that Data Review&#8217;s traceability gate checks.
+          </div>
+
+
+          
+
+          <details>
+            <summary>Extraction Stages</summary>
+            <div class="section-body">
+              <p class="json-hint">Drag rows to reorder the stages.</p>
+              <div id="stage-list"></div>
+              <button type="button" class="btn-sm btn-add-row" onclick="addStageCard()">+ Add stage</button>
+              <input type="hidden" name="extraction_stages_json" id="extraction_stages_json"
+                     tal:attributes="value view/extraction_stages_json" />
+            </div>
+          </details>
+
+        </div>
+      </div><!-- /pane-lwf -->
+      <!-- ── Tab: QC Types (per-method enable toggles) ─────────────────── -->
+      <div class="tab-pane" id="pane-qct">
+        <div class="page-body-narrow">
+          <details open="open">
+            <summary>Associated QC Types</summary>
+            <div class="section-body">
+              <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:640px;">Turn on the QC types this method runs. A newly enabled type has no limits and is not judged until they are set. <tal:h define="hid string:qc-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <input type="hidden" name="qc_toggles_present" value="1"/>
+              <input type="hidden" name="qc_offered"
+                     tal:attributes="value python:','.join(q['key'] for q in view.qc_type_toggles() if q['toggle'])"/>
+              <table class="pfas-table">
+                <thead><tr><th>Enabled</th><th>QC Type</th><th>Name</th><th>Criteria</th></tr></thead>
+                <tbody>
+                  <tr tal:repeat="q view/qc_type_toggles">
+                    <td>
+                      <input tal:condition="q/toggle" type="checkbox"
+                             tal:attributes="name string:qc_enabled_${q/key};
+                                             checked python:'checked' if q['enabled'] else None"/>
+                    </td>
+                    <td><code tal:content="q/code">LFB</code></td>
+                    <td tal:content="q/label">Laboratory Fortified Blank</td>
+                    <td>
+                      <tal:t condition="q/toggle">
+                        <span tal:condition="python:q['enabled'] and not q['has_criteria']"
+                              class="sur-tag sur-nocore"
+                              title="Enabled with no limits: the QC engine refuses to judge it until criteria are set (QC Type Grid / Recovery Tiers).">limits not set</span>
+                        <span tal:condition="not:q/enabled" class="form-note">not run</span>
+                      </tal:t>
+                      <a class="btn-sm btn-secondary" tal:condition="q/configured_on" href="#"
+                         tal:attributes="href python:'#' + q['configured_on'][0];
+                                         onclick python:&quot;return (pfasTabSwitch('%s'), false)&quot; % q['configured_on'][0]"
+                         tal:content="python:'Open ' + q['configured_on'][1]">Open Calibration &amp; CCV</a>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+        <div class="page-body-narrow">
+          <div class="section-group-hdr">QC composition</div>
+          <p class="pane-intro">What a run must contain beyond the run template. Saved on
+            its own (the button below); a project can override it in Project Specs.</p>
+          <div tal:define="cf_groups python:view.section_groups('qc_comp'); cf_form string:section-qcc">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
+          <div tal:define="cf_groups python:view.section_groups('xbatch'); cf_form string:section-qcc">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
+          <div tal:define="cf_groups python:view.section_groups('blk'); cf_form string:section-qcc">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+          <div class="section-group-hdr">Extraction labels <tal:h define="hid string:extraction-batch"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></div>
+          <div tal:define="cf_rows python:view.section_groups('lbl'); cf_form string:section-qcc">
+            <metal:c use-macro="context/@@pfas-config-form-macros/macros/collection" />
+          </div>
+          <button type="submit" form="section-qcc" class="btn-sm btn-secondary">Save QC composition</button>
+        </div>
+      </div><!-- /pane-qct -->
+
+
+    </form>
+    <!-- Per-tab section forms (R2): each saves only its own section, with its
+         own stale-save stamp. -->
+    <form id="section-rf" method="POST" class="pfas-section-form"
+          data-tab-label="Reporting"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="rf" />
+      <input type="hidden" name="_pane" value="pane-rf" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__rf" tal:attributes="value python:view.section_stamp('rf')" />
+    </form>
+    <form id="section-rt" method="POST" class="pfas-section-form"
+          data-tab-label="Recovery Tiers"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" tal:attributes="value python:','.join(view.rt_section_ids())" />
+      <input type="hidden" name="_pane" value="pane-rt" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <tal:st repeat="sid view/rt_section_ids">
+        <input type="hidden" tal:attributes="name python:'section_stamp__' + sid;
+                                             value python:view.section_stamp(sid)" />
+      </tal:st>
+    </form>
+    <form id="section-iso" method="POST" class="pfas-section-form"
+          data-tab-label="Isomers"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="iso" />
+      <input type="hidden" name="_pane" value="pane-iso" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__iso" tal:attributes="value python:view.section_stamp('iso')" />
+    </form>
+    <form id="section-sur" method="POST" class="pfas-section-form"
+          data-tab-label="Internal Standards"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="ls,sur,surscope" />
+      <input type="hidden" name="_pane" value="pane-sur" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__ls" tal:attributes="value python:view.section_stamp('ls')" />
+      <input type="hidden" name="section_stamp__sur" tal:attributes="value python:view.section_stamp('sur')" />
+      <input type="hidden" name="section_stamp__surscope" tal:attributes="value python:view.section_stamp('surscope')" />
+    </form>
+    <form id="section-eis" method="POST" class="pfas-section-form"
+          tal:condition="view/show_eis_overrides"
+          data-tab-label="SUR Limits"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="eis_grid" />
+      <input type="hidden" name="_pane" value="pane-eis" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__eis_grid" tal:attributes="value python:view.section_stamp('eis_grid')" />
+    </form>
+    <form id="section-corr" method="POST" class="pfas-section-form"
+          data-tab-label="Sample Corrections"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="salt,scorr,mf" />
+      <input type="hidden" name="_pane" value="pane-corr" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__salt" tal:attributes="value python:view.section_stamp('salt')" />
+      <input type="hidden" name="section_stamp__mf" tal:attributes="value python:view.section_stamp('mf')" />
+      <input type="hidden" name="section_stamp__scorr" tal:attributes="value python:view.section_stamp('scorr')" />
+    </form>
+    <form id="section-mtx" method="POST" class="pfas-section-form"
+          data-tab-label="Matrices &amp; Units"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="mtx,rtemp" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__mtx" tal:attributes="value python:view.section_stamp('mtx')" />
+      <input type="hidden" name="section_stamp__rtemp" tal:attributes="value python:view.section_stamp('rtemp')" />
+    </form>
+    <form id="section-rl" method="POST" class="pfas-section-form"
+          data-tab-label="Reporting Limits"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="rl,al" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__rl" tal:attributes="value python:view.section_stamp('rl')" />
+      <input type="hidden" name="section_stamp__al" tal:attributes="value python:view.section_stamp('al')" />
+    </form>
+    <form id="section-qcc" method="POST" class="pfas-section-form"
+          data-tab-label="QC composition"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="qc_comp,lbl,xbatch,blk" />
+      <input type="hidden" name="_pane" value="pane-qct" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__qc_comp" tal:attributes="value python:view.section_stamp('qc_comp')" />
+      <input type="hidden" name="section_stamp__lbl" tal:attributes="value python:view.section_stamp('lbl')" />
+      <input type="hidden" name="section_stamp__xbatch" tal:attributes="value python:view.section_stamp('xbatch')" />
+      <input type="hidden" name="section_stamp__blk" tal:attributes="value python:view.section_stamp('blk')" />
+    </form>
+    <form id="section-cal" method="POST" class="pfas-section-form"
+          data-tab-label="Calibration &amp; CCV"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="cal,cal_levels,cal_scale,qcnames" />
+      <input type="hidden" name="_pane" value="pane-cal" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__cal" tal:attributes="value python:view.section_stamp('cal')" />
+      <input type="hidden" name="section_stamp__cal_levels" tal:attributes="value python:view.section_stamp('cal_levels')" />
+      <input type="hidden" name="section_stamp__cal_scale" tal:attributes="value python:view.section_stamp('cal_scale')" />
+      <input type="hidden" name="section_stamp__qcnames" tal:attributes="value python:view.section_stamp('qcnames')" />
+    </form>
+
+    <script>
+    (function () {
+      function pfasTabSwitch(paneId) {
+        document.querySelectorAll('.tab-pane').forEach(function (p) {
+          p.classList.remove('active');
+        });
+        document.querySelectorAll('#method-profile-tabs .pfas-tab').forEach(function (t) {
+          t.classList.remove('active');
+        });
+        var pane = document.getElementById(paneId);
+        if (pane) pane.classList.add('active');
+        var tab = document.querySelector('#method-profile-tabs [data-pane="' + paneId + '"]');
+        if (tab) tab.classList.add('active');
+        /* R2: a tab with its own section form saves only that form; every
+           other tab saves the main profile form. */
+        var own = document.getElementById('section-' + paneId.replace('pane-', ''));
+        var save = document.getElementById('profile-save');
+        if (save) save.setAttribute('form', own ? own.id : 'profile-form');
+        if (window.pfasUnsavedNote) window.pfasUnsavedNote();
+        try {
+          history.replaceState(null, '', location.pathname + location.search + '#' + paneId);
+        } catch (e) {}
+      }
+      window.pfasTabSwitch = pfasTabSwitch;
+
+      /* Recovery Tiers: redraw the applied-window grid as the tiers / groups
+         below are edited (server-side preview: the same parse and resolver a
+         save uses; nothing is written). */
+      (function () {
+        var timer = null;
+        function preview() {
+          var form = document.getElementById('section-rt');
+          var grid = document.getElementById('rt-grid');
+          if (!form || !grid) return;
+          var data = new FormData(form);
+          data.append('_preview', 'rt');
+          fetch(form.getAttribute('action'), {method: 'POST', body: data, credentials: 'same-origin'})
+            .then(function (r) { return r.text(); })
+            .then(function (html) {
+              var box = document.createElement('div');
+              box.innerHTML = html;
+              var fresh = box.querySelector('#rt-grid');
+              var now = document.getElementById('rt-grid');
+              if (fresh ? now : false) now.parentNode.replaceChild(fresh, now);
+            });
+        }
+        function onEdit(e) {
+          var el = e.target;
+          if (!el || !el.form || el.form.id !== 'section-rt') return;
+          if (el.name.indexOf('spk') !== -1 || el.name.indexOf('rpd_max') !== -1) return;
+          clearTimeout(timer);
+          timer = setTimeout(preview, 350);
+        }
+        document.addEventListener('input', onEdit);
+        document.addEventListener('change', onEdit);
+      })();
+
+      /* Unsaved changes on a form the Save button does not submit are lost on
+         the redirect after saving -- one Save used to cover every tab. Name
+         them in the action bar, and refuse the first submit that would drop
+         them (a second click saves anyway and discards them). */
+      (function () {
+        var dirty = {};
+        var warned = false;
+        function label(id) {
+          var f = document.getElementById(id);
+          return (f ? f.getAttribute('data-tab-label') : '') || 'the other tabs';
+        }
+        function others() {
+          var save = document.getElementById('profile-save');
+          var target = save ? save.getAttribute('form') : '';
+          return Object.keys(dirty).filter(function (id) { return id !== target ? dirty[id] : false; });
+        }
+        window.pfasUnsavedNote = function () {
+          var note = document.getElementById('profile-unsaved');
+          if (!note) return;
+          var o = others();
+          note.textContent = o.length ? ('Unsaved changes on ' + o.map(label).join(', ') +
+                                         ' \u2014 saved separately; save that tab first.') : '';
+        };
+        document.addEventListener('input', track, true);
+        document.addEventListener('change', track, true);
+        function track(e) {
+          var f = e.target ? e.target.form : null;
+          if (!f || !f.id) return;
+          dirty[f.id] = true;
+          warned = false;
+          window.pfasUnsavedNote();
+        }
+        document.addEventListener('submit', function (e) {
+          var o = others().filter(function (id) { return id !== e.target.id; });
+          if (o.length ? !warned : false) {
+            e.preventDefault();
+            warned = true;
+            var note = document.getElementById('profile-unsaved');
+            if (note) note.textContent = 'Not saved yet: ' + o.map(label).join(', ') +
+              ' has unsaved changes that this save would discard. Save that tab first, or click Save again to discard them.';
+          }
+        }, true);
+      })();
+
+      /* Rule Toggles: grey out a rule's param inputs when it is toggled off */
+      (function () {
+        function sync(cb) {
+          var cell = document.querySelector('.rule-params[data-rule="' + cb.getAttribute('data-rule') + '"]');
+          if (!cell) return;
+          /* grey visually but keep inputs submittable so values persist
+             across an off/on toggle (a disabled input would not POST) */
+          cell.classList.toggle('rule-off', !cb.checked);
+        }
+        document.querySelectorAll('.rule-toggle-cb').forEach(function (cb) {
+          sync(cb);
+          cb.addEventListener('change', function () { sync(cb); });
+        });
+        /* Recommended spike levels: fill only BLANK cells of rows named Low,
+           Mid or High in the spike grids. A suggestion; saved only on Save. */
+        var rec = document.getElementById('spk-use-rec');
+        if (rec) rec.addEventListener('click', function () {
+          /* one [low, mid, high] per matrix column, in column order */
+          var per = JSON.parse(rec.getAttribute('data-rec') || '[]');
+          var at = {low: 0, mid: 1, high: 2};
+          document.querySelectorAll('input[name^="c__spk_"]').forEach(function (lab) {
+            if (!/__label$/.test(lab.name)) return;
+            var i = at[(lab.value || '').trim().toLowerCase()];
+            if (i === undefined) return;
+            lab.closest('tr').querySelectorAll('input[type=number]').forEach(function (cell, col) {
+              var v = per[col] && per[col][i];
+              if (v && !cell.value) {
+                cell.value = v;
+                cell.dispatchEvent(new Event('input', {bubbles: true}));
+              }
+            });
+          });
+        });
+        /* A QC type's switch appears on QC Types AND Rule Toggles as the same
+           form field: keep every copy in step so the form posts one answer. */
+        document.querySelectorAll('input[type=checkbox][name^="qc_enabled_"]').forEach(function (cb) {
+          cb.addEventListener('change', function () {
+            document.querySelectorAll('input[type=checkbox][name="' + cb.name + '"]').forEach(function (o) {
+              o.checked = cb.checked;
+            });
+          });
+        });
+      })();
+
+      (function () {
+        var hash = location.hash.replace('#', '');
+        /* Any tab pane on the page is valid. A hand-kept list here omitted
+           pane-rl and pane-mtx, so a reload -- or the redirect after saving --
+           on those tabs opened Rule Toggles instead. */
+        var target = hash ? document.getElementById(hash) : null;
+        var first = (target ? target.classList.contains('tab-pane') : false) ? hash : 'pane-toggles';
+        pfasTabSwitch(first);
+        /* The pinned action bar is drawn AFTER this script, so the Save
+           button does not exist yet on the first switch: retarget it again
+           once the page is parsed. */
+        document.addEventListener('DOMContentLoaded', function () { pfasTabSwitch(first); });
+      })();
+    })();
+    </script>
+
+    <script>
+    /* Endpoint for stage action GIFs — shared with the logbook step builder. */
+    var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
+    </script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/Sortable-1.15.6.min.js"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=11"></script>
+
+  </div><!-- /content slot -->
+
+</body>
+</html>

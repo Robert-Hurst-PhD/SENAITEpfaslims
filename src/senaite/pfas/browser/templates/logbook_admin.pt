@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Logbooks: method sequence</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .admin-tab-panel { display:none; }
+    .admin-tab-panel.active { display:block; }
+
+    /* Method sequence list ------------------------------------------------- */
+    .seq-list { list-style:none; padding:0; margin:0 0 16px; }
+    .seq-item { display:flex; align-items:center; gap:10px;
+                padding:10px 14px; border:1px solid var(--s-border);
+                border-radius:6px; margin-bottom:6px; background:var(--s-bg);
+                font-size:var(--fs-base); }
+    .seq-item:hover { background:var(--s-light); }
+    .seq-num { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
+               background:#e9ecef; padding:2px 8px; border-radius:6px;
+               white-space:nowrap; min-width:80px; text-align:center; }
+    .seq-title { flex:1; }
+    .seq-move-btns { display:flex; gap:3px; }
+
+    /* Add-from-pool row ---------------------------------------------------- */
+    .add-from-pool { display:flex; gap:8px; align-items:center;
+                     padding:10px 14px; border:1px dashed var(--s-border);
+                     border-radius:6px; margin-bottom:20px; background:#fafafa; }
+    .add-from-pool select { flex:1; padding:6px 10px; font-size:var(--fs-base);
+                            border:1px solid var(--s-input-border); border-radius:4px; }
+    .seq-empty { color:var(--s-secondary); font-size:var(--fs-base); font-style:italic;
+                 padding:12px 0; }
+
+    /* Pool table ----------------------------------------------------------- */
+    .badge-builtin { background:#e3f2fd; color:var(--s-primary-dk); font-size:var(--fs-xs);
+                     padding:2px 8px; border-radius:3px; font-weight:600; }
+    .badge-custom  { background:#f3e5f5; color:#6a1b9a; font-size:var(--fs-xs);
+                     padding:2px 8px; border-radius:3px; font-weight:600; }
+    .badge-scoped  { background:var(--s-warn-lt); color:#92400e; font-size:var(--fs-xs);
+                     padding:2px 8px; border-radius:3px; font-weight:600; }
+    .badge-off     { background:#f5f5f5; color:#9e9e9e; font-size:var(--fs-xs);
+                     padding:2px 8px; border-radius:3px; }
+    .inline-form  { display:flex; gap:6px; align-items:center; }
+    .inline-input { padding:4px 8px; font-size:var(--fs-sm);
+                    border:1px solid var(--s-input-border); border-radius:3px; }
+    .add-card { background:var(--s-bg); border:1px solid var(--s-border);
+                border-radius:6px; padding:20px; margin-top:24px; }
+    .add-card h3 { font-size:var(--fs-base); font-weight:700; color: var(--s-primary-dk);
+                   margin:0 0 16px; padding-bottom:8px;
+                   border-bottom:1px solid var(--s-border); }
+    .form-row   { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .form-group { display:flex; flex-direction:column; gap:4px; }
+    .form-group label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
+                        text-transform:uppercase; letter-spacing:.04em; }
+    .form-group input, .form-group select {
+      padding:7px 10px; font-size:var(--fs-base);
+      border:1px solid var(--s-input-border); border-radius:4px; }
+    .form-group input.wide, .form-group select.wide { min-width:280px; }
+    .hint { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:2px; }
+    .alert-saved  { background:var(--s-success-lt); border:1px solid var(--s-success-bd); color:var(--s-success-text);
+                    padding:10px 14px; border-radius:4px; margin-bottom:14px;
+                    font-size:var(--fs-base); font-weight:600; }
+    .move-btns { display:flex; gap:3px; }
+    .toggle-off { opacity:.5; }
+    .section-divider { margin-top:28px; padding-top:20px;
+                       border-top:1px solid var(--s-border); }
+    .section-h3 { font-size:var(--fs-base); font-weight:700; margin-bottom:8px; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
+  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-tabs" /></tal:tabs>
+
+  <div metal:fill-slot="content">
+  <div class="page-body-narrow">
+
+    <!-- Save confirmation -->
+    <tal:saved tal:condition="view/saved">
+      <div class="alert-saved"
+           tal:content="python:
+             'Sequence updated.' if view.saved() == 'method'
+             else ('Form codes reset to FM-ENV-001 through FM-ENV-004.' if view.saved() == 'reseed'
+             else 'Changes saved.')">
+        Changes saved.
+      </div>
+    </tal:saved>
+
+    <div class="alert-error" tal:condition="view/admin_error"
+         tal:content="view/admin_error">Form number FM-ENV-001 is already used by another logbook.</div>
+
+    <!-- Tab buttons  -->
+    <div class="pfas-tabs admin-tabs" id="admin-tabs">
+      <tal:m tal:repeat="m view/available_methods">
+        <button class="pfas-tab admin-tab-btn"
+                tal:attributes="data-tab m/method_id"
+                tal:content="m/display_name">Method</button>
+      </tal:m>
+      <button class="pfas-tab admin-tab-btn" data-tab="__pool__">Logbook Pool</button>
+    </div>
+
+    <!-- Per-method sequence panels  -->
+    <tal:m tal:repeat="m view/available_methods">
+    <div class="admin-tab-panel"
+         tal:attributes="id m/method_id">
+
+      <p style="font-size:var(--fs-base);color:var(--s-secondary);margin-bottom:16px;">
+        Configure which logbooks are required for
+        <strong tal:content="m/display_name">Method</strong>
+        and the order analysts must complete them.
+      </p>
+
+      <form method="POST"
+            tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin"
+            tal:define="mid m/method_id">
+        <input type="hidden" name="action" value="save_method_config"/>
+        <input type="hidden" name="method_id" tal:attributes="value mid"/>
+        <input type="hidden" name="required_logbooks_json"
+               tal:attributes="id string:seq-json-${mid}; value python:view.required_json(mid)"/>
+
+        <!-- Ordered list (rendered by JS from method_config_json) -->
+        <ol class="seq-list" tal:attributes="id string:seq-list-${mid}">
+          <li class="seq-empty">Loading&#8230;</li>
+        </ol>
+
+        <!-- Add from pool -->
+        <div class="add-from-pool">
+          <select tal:attributes="id string:pool-sel-${mid}">
+            <option value="">&#8212; add logbook from pool &#8212;</option>
+          </select>
+          <button type="button" class="btn btn-primary btn-add-pool"
+                  tal:attributes="onclick string:addFromPool('${mid}')">
+            Add &#8594;
+          </button>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-save-seq">Save sequence</button>
+      </form>
+
+    </div>
+    </tal:m>
+
+    <!-- Logbook Pool panel  -->
+    <div class="admin-tab-panel" id="__pool__">
+
+      <p style="font-size:var(--fs-base);color:var(--s-secondary);margin-bottom:16px;">
+        All logbook definitions available across the system.
+        Rename, reorder, or hide any entry.
+        New logbooks added here can be scoped to a specific method.
+      </p>
+
+      <div class="table-wrap">
+      <table class="pfas-table lb-table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Form #</th>
+            <th>Title</th>
+            <th>Scope</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr tal:repeat="lb view/logbook_defs">
+
+            <!-- No move buttons: the pool is listed in form-number order
+                 ("Form numbers"). -->
+            <td></td>
+
+            <!-- Inline rename: form# -->
+            <td>
+              <form class="inline-form" method="POST"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                <input type="hidden" name="action" value="rename"/>
+                <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                <input class="inline-input" style="width:90px" type="text"
+                       name="form_num" tal:attributes="value lb/form_num"/>
+              </form>
+            </td>
+
+            <!-- Inline rename: title -->
+            <td>
+              <form class="inline-form" method="POST"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin; id string:rename-form-${lb/slug}">
+                <input type="hidden" name="action" value="rename"/>
+                <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                <input class="inline-input" style="min-width:220px;" type="text"
+                       name="title" tal:attributes="value lb/title"/>
+                <button type="submit" class="btn-sm btn-primary">Save</button>
+              </form>
+            </td>
+
+            <!-- Method scope badge -->
+            <td>
+              <tal:sc tal:define="ms python:lb.get('method_slug','')">
+                <span tal:condition="ms" tal:content="ms">Method</span>
+                <span style="color:var(--s-secondary);font-size:var(--fs-xs);"
+                      tal:condition="not:ms">All methods</span>
+              </tal:sc>
+            </td>
+
+            <td>
+              <span tal:condition="lb/active">Active</span>
+              <span tal:condition="not:lb/active" class="cf-hint">Hidden</span>
+            </td>
+
+            <td>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <form method="POST"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                  <input type="hidden" name="action" value="toggle"/>
+                  <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                  <button type="submit" class="btn-sm btn-secondary"
+                          tal:content="python:'Hide' if lb.get('active') else 'Show'">
+                    Hide
+                  </button>
+                </form>
+                <form method="POST"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin"
+                      onsubmit="return confirm('Delete this logbook? It moves to Archived; its FM-ENV number is not reused. PDF revisions and batch data are preserved.')">
+                  <input type="hidden" name="action" value="archive_logbook"/>
+                  <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                  <button type="submit" class="btn-sm btn-danger">Delete</button>
+                </form>
+              </div>
+            </td>
+
+          </tr>
+        </tbody>
+      </table>
+      </div>
+
+      <!-- Add new logbook -->
+      <div class="add-card">
+        <h3>Add New Logbook</h3>
+        <form method="POST"
+              tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+          <input type="hidden" name="action" value="add"/>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Form Number</label>
+              <input class="inline-input" type="text" name="new_form_num"
+                     placeholder="e.g. FM-ENV-260"/>
+            </div>
+            <div class="form-group">
+              <label>Logbook Title</label>
+              <input class="inline-input wide" type="text" name="new_title"
+                     placeholder="e.g. SPE Cartridge Log" required="required"/>
+            </div>
+            <div class="form-group">
+              <label>Method Scope</label>
+              <select name="new_method_scope" class="wide">
+                <option value="">All methods</option>
+                <tal:m tal:repeat="m view/available_methods">
+                  <option tal:attributes="value m/method_id"
+                          tal:content="m/display_name">Method</option>
+                </tal:m>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:14px;">
+            <label>Table Columns <span style="font-weight:400;">(comma-separated, optional)</span></label>
+            <input class="inline-input" style="min-width:420px;" type="text"
+                   name="new_columns"
+                   placeholder="e.g. Lot Number, Expiry Date, Count Used, Analyst Initials"/>
+            <span class="hint">
+              Defines columns in the data table.  Leave blank for a notes-only logbook.
+            </span>
+          </div>
+          <button type="submit" class="btn btn-primary">Add Logbook</button>
+        </form>
+      </div>
+
+      <!-- Reseed built-in codes -->
+      <div class="section-divider">
+        <h3 class="section-h3">Reset Core Form Codes</h3>
+        <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:12px">
+          Re-applies the standard form codes FM-ENV-001 through FM-ENV-004
+          to the four core logbooks if they were changed.
+        </p>
+        <form method="post"
+              tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+          <input type="hidden" name="action" value="reseed_builtins"/>
+          <button type="submit" class="btn btn-secondary" style="font-size:var(--fs-sm)">
+            Apply FM-ENV-001/002/003/004 codes
+          </button>
+        </form>
+      </div>
+
+      <!-- ── Controlled Documents (PDF per logbook) ──────────────────────── -->
+      <div class="section-divider">
+        <h3 class="section-h3">Controlled Documents (PDF)</h3>
+        <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:12px">Upload each logbook&#8217;s controlled PDF; each user acknowledges the active revision before use, as for SOPs.</p>
+        <tal:each tal:repeat="lb view/logbook_defs">
+          <details style="border:1px solid var(--s-border,#ddd);border-radius:6px;padding:10px 14px;margin-bottom:10px"
+                   tal:define="di python:view.logbook_doc_info(lb['slug'])"
+                   tal:attributes="id string:lb-${lb/slug}">
+            <summary style="cursor:pointer;font-weight:600">
+              <span tal:content="lb/form_num">FM-ENV-001</span> —
+              <span tal:content="lb/title">Title</span>
+              <tal:has tal:condition="di/active_rev">
+                <span style="background:var(--s-success-lt);color:var(--s-success-text);padding:2px 8px;border-radius:10px;font-size:var(--fs-xs);margin-left:6px">
+                  Rev <tal:n tal:replace="python:di['active_rev']['rev_num']">1</tal:n> active</span>
+                <span tal:condition="di/user_signed"
+                      style="background:var(--s-success-lt);color:var(--s-success-text);padding:2px 8px;border-radius:10px;font-size:var(--fs-xs);margin-left:4px">Signed &#10003;</span>
+                <span tal:condition="not:di/user_signed"
+                      style="background:var(--s-warn-lt);color:var(--s-warn-text);padding:2px 8px;border-radius:10px;font-size:var(--fs-xs);margin-left:4px">You must sign</span>
+              </tal:has>
+              <span tal:condition="not:di/active_rev"
+                    style="color:var(--s-secondary);font-size:var(--fs-xs);margin-left:6px">no active document</span>
+            </summary>
+
+            <div style="margin-top:10px" tal:condition="di/active_rev">
+              <a class="btn-sm btn-secondary" target="_blank"
+                 tal:attributes="href python:view.portal_url()+'/@@pfas-logbook-admin?action=download_logbook_doc&slug='+lb['slug']+'&rev_num='+str(di['active_rev']['rev_num'])+'&view=1'">View active PDF</a>
+              <form method="POST" style="display:inline"
+                    tal:condition="not:di/user_signed"
+                    tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                <input type="hidden" name="action" value="sign_logbook_doc"/>
+                <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                <button type="submit" class="btn-sm btn-primary">Sign / acknowledge active revision</button>
+              </form>
+            </div>
+
+            <div style="margin-top:10px" tal:condition="di/draft_revs">
+              <tal:d tal:repeat="dr di/draft_revs">
+                <form method="POST" style="display:inline;margin-right:5px"
+                      tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                  <input type="hidden" name="action" value="activate_logbook_doc"/>
+                  <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                  <input type="hidden" name="rev_num" tal:attributes="value dr/rev_num"/>
+                  <button type="submit" class="btn-sm btn-success">
+                    Activate Rev <tal:n tal:replace="dr/rev_num">1</tal:n></button>
+                </form>
+              </tal:d>
+            </div>
+
+            <table style="margin-top:10px;border-collapse:collapse;font-size:var(--fs-sm)"
+                   tal:condition="di/all_revs">
+              <thead><tr>
+                <th style="text-align:left;padding:4px 10px;border-bottom:1px solid #ccc">Rev</th>
+                <th style="text-align:left;padding:4px 10px;border-bottom:1px solid #ccc">Status</th>
+                <th style="text-align:left;padding:4px 10px;border-bottom:1px solid #ccc">Uploaded</th>
+                <th style="text-align:left;padding:4px 10px;border-bottom:1px solid #ccc">File</th>
+              </tr></thead>
+              <tbody>
+                <tr tal:repeat="r di/all_revs">
+                  <td style="padding:4px 10px" tal:content="r/rev_num">1</td>
+                  <td style="padding:4px 10px" tal:content="r/status">draft</td>
+                  <td style="padding:4px 10px" tal:content="python:(r.get('uploaded_at') or '')[:10]">—</td>
+                  <td style="padding:4px 10px">
+                    <a class="btn-sm btn-secondary" target="_blank"
+                       tal:attributes="href string:${view/portal_url}/@@pfas-logbook-admin?action=download_logbook_doc&amp;slug=${lb/slug}&amp;rev_num=${r/rev_num}&amp;view=0">Download</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <form method="POST" enctype="multipart/form-data" style="margin-top:12px"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+              <input type="hidden" name="action" value="upload_logbook_doc"/>
+              <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+              <label style="font-size:var(--fs-sm);font-weight:600;display:block;margin-bottom:4px">Upload new PDF revision</label>
+              <input type="file" name="doc_file" accept=".pdf,application/pdf" required="required"/>
+              <input type="text" name="release_notes" placeholder="What changed in this revision"
+                     style="min-width:220px;margin:0 6px"/>
+              <button type="submit" class="btn-sm btn-primary">Upload (draft)</button>
+            </form>
+          </details>
+        </tal:each>
+      </div>
+
+      <!-- ── Archived Logbooks ───────────────────────────────────────────── -->
+      <tal:arch tal:condition="view/archived_logbooks"
+                tal:define="arch view/archived_logbooks">
+        <div class="section-divider">
+          <h3 class="section-h3">Archived Logbooks</h3>
+          <table style="border-collapse:collapse;font-size:var(--fs-base);opacity:.85">
+            <thead><tr>
+              <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ccc">Form #</th>
+              <th style="text-align:left;padding:6px 12px;border-bottom:2px solid #ccc">Title</th>
+              <th style="border-bottom:2px solid #ccc"></th>
+            </tr></thead>
+            <tbody>
+              <tr tal:repeat="lb arch">
+                <td style="padding:6px 12px" tal:content="lb/form_num">FM-ENV-xxx</td>
+                <td style="padding:6px 12px" tal:content="lb/title">Title</td>
+                <td style="padding:6px 12px">
+                  <form method="POST" style="display:inline"
+                        tal:attributes="action string:${view/portal_url}/@@pfas-logbook-admin">
+                    <input type="hidden" name="action" value="restore_logbook"/>
+                    <input type="hidden" name="slug" tal:attributes="value lb/slug"/>
+                    <button type="submit" class="btn-sm btn-secondary">Restore</button>
+                  </form>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="font-size:var(--fs-xs);color:var(--s-secondary);margin-top:6px">
+            Deleted logbooks are retained and their FM-ENV numbers are never reused.
+          </p>
+        </div>
+      </tal:arch>
+
+    </div><!-- /__pool__ -->
+
+  </div><!-- /inner container -->
+
+  <script>
+  /* Method config data from Python */
+  var _METHOD_CFG = <tal:d tal:replace="structure view/method_config_json"/>;
+
+  /* Which tab to restore after save */
+  var _savedTab = (new URLSearchParams(window.location.search)).get('tab') || '';
+
+  /* Tab switching ------------------------------------------------------- */
+  function showTab(id) {
+    document.querySelectorAll('.admin-tab-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.tab === id);
+    });
+    document.querySelectorAll('.admin-tab-panel').forEach(function(p) {
+      p.classList.toggle('active', p.id === id);
+    });
+    if (id !== '__pool__') renderMethod(id);
+  }
+
+  document.querySelectorAll('.admin-tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() { showTab(this.dataset.tab); });
+  });
+
+  /* Per-method sequence rendering -------------------------------------- */
+  function getMethodState(mid) {
+    return window._methodState && window._methodState[mid]
+      ? window._methodState[mid]
+      : JSON.parse(JSON.stringify(_METHOD_CFG[mid] || {required:[], available:[]}));
+  }
+
+  window._methodState = {};
+
+  function initMethodState(mid) {
+    if (!window._methodState[mid]) {
+      window._methodState[mid] = JSON.parse(JSON.stringify(
+        _METHOD_CFG[mid] || {required:[], available:[]}
+      ));
+    }
+  }
+
+  function renderMethod(mid) {
+    initMethodState(mid);
+    var state = window._methodState[mid];
+    var list  = document.getElementById('seq-list-' + mid);
+    var sel   = document.getElementById('pool-sel-' + mid);
+    var json  = document.getElementById('seq-json-' + mid);
+    if (!list) return;
+
+    /* Render ordered list */
+    list.innerHTML = '';
+    if (state.required.length === 0) {
+      var li = document.createElement('li');
+      li.className = 'seq-empty';
+      li.textContent = 'No logbooks assigned to this method yet. Add from pool below.';
+      list.appendChild(li);
+    } else {
+      state.required.forEach(function(lb, i) {
+        var li = document.createElement('li');
+        li.className = 'seq-item';
+
+        var numSpan = document.createElement('span');
+        numSpan.className = 'seq-num';
+        numSpan.textContent = lb.form_num || lb.slug;
+
+        var titleSpan = document.createElement('span');
+        titleSpan.className = 'seq-title';
+        titleSpan.textContent = lb.title;
+
+        var moveBtns = document.createElement('div');
+        moveBtns.className = 'seq-move-btns';
+        if (i > 0) {
+          var upBtn = document.createElement('button');
+          upBtn.type = 'button';
+          upBtn.className = 'btn-sm btn-move';
+          upBtn.textContent = String.fromCharCode(8593);
+          upBtn.onclick = (function(m, idx) { return function() { moveSeq(m, idx, -1); }; })(mid, i);
+          moveBtns.appendChild(upBtn);
+        }
+        if (i < state.required.length - 1) {
+          var downBtn = document.createElement('button');
+          downBtn.type = 'button';
+          downBtn.className = 'btn-sm btn-move';
+          downBtn.textContent = String.fromCharCode(8595);
+          downBtn.onclick = (function(m, idx) { return function() { moveSeq(m, idx, 1); }; })(mid, i);
+          moveBtns.appendChild(downBtn);
+        }
+
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn-sm btn-danger btn-remove';
+        removeBtn.textContent = 'Remove';
+        if (lb.builtin) removeBtn.style.display = 'none';
+        removeBtn.onclick = (function(m, idx) { return function() { removeFromSeq(m, idx); }; })(mid, i);
+
+        li.appendChild(numSpan);
+        li.appendChild(titleSpan);
+        li.appendChild(moveBtns);
+        li.appendChild(removeBtn);
+        list.appendChild(li);
+      });
+    }
+
+    /* Sync hidden JSON field */
+    json.value = JSON.stringify(state.required.map(function(lb) { return lb.slug; }));
+
+    /* Render pool dropdown: only items NOT already in required */
+    var reqSlugs = state.required.map(function(lb) { return lb.slug; });
+    sel.innerHTML = '';
+    var defOpt = document.createElement('option');
+    defOpt.value = '';
+    var _em = String.fromCharCode(8212);
+    defOpt.textContent = _em + ' add logbook from pool ' + _em;
+    sel.appendChild(defOpt);
+    state.available.forEach(function(lb) {
+      if (reqSlugs.indexOf(lb.slug) === -1) {
+        var opt = document.createElement('option');
+        opt.value = lb.slug;
+        opt.textContent = (lb.form_num || lb.slug) + ': ' + lb.title;
+        sel.appendChild(opt);
+      }
+    });
+  }
+
+  function moveSeq(mid, idx, dir) {
+    initMethodState(mid);
+    var req = window._methodState[mid].required;
+    var newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= req.length) return;
+    var tmp = req[idx]; req[idx] = req[newIdx]; req[newIdx] = tmp;
+    renderMethod(mid);
+  }
+
+  function removeFromSeq(mid, idx) {
+    initMethodState(mid);
+    var state = window._methodState[mid];
+    var removed = state.required.splice(idx, 1)[0];
+    /* Put it back in available if not already there */
+    var inAvail = state.available.some(function(a) { return a.slug === removed.slug; });
+    if (!inAvail) state.available.push(removed);
+    renderMethod(mid);
+  }
+
+  function addFromPool(mid) {
+    initMethodState(mid);
+    var sel = document.getElementById('pool-sel-' + mid);
+    var slug = sel ? sel.value : '';
+    if (!slug) return;
+    var state = window._methodState[mid];
+    /* Find in available */
+    var lb = null;
+    state.available.forEach(function(a) { if (a.slug === slug) lb = a; });
+    /* Fallback: look in _METHOD_CFG */
+    if (!lb) {
+      (_METHOD_CFG[mid] ? _METHOD_CFG[mid].available : []).forEach(function(a) {
+        if (a.slug === slug) lb = a;
+      });
+    }
+    if (!lb) lb = {slug: slug, form_num: slug, title: slug, builtin: false};
+    state.required.push(lb);
+    renderMethod(mid);
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/\u003c/g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /* Initial render ------------------------------------------------------ */
+  document.addEventListener('DOMContentLoaded', function() {
+    var firstTab = document.querySelector('.admin-tab-btn');
+    var startTab = _savedTab || (firstTab ? firstTab.dataset.tab : '__pool__');
+    showTab(startTab);
+  });
+  </script>
+  </div><!-- /content slot -->
+</body>
+</html>

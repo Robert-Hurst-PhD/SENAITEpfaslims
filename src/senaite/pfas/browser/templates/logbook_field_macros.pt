@@ -1,0 +1,266 @@
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<body>
+<!--
+  Shared renderer for ONE logbook field.
+
+  Extracted from logbook_dynamic.pt so the concise form and the guided
+  step-by-step view draw fields identically (6C: define UI once).
+  Both templates loop over their own field list and call this macro.
+
+  Caller must define, ON A WRAPPING ELEMENT (Chameleon does not pass
+  tal:define from the metal:use-macro element itself into the macro):
+
+      field   the field dict from field_schema_json
+      view    the logbook view (for view.data())
+
+  Everything else is derived here.
+-->
+<metal:field define-macro="logbook_field">
+      <tal:fdef define="fname python:field.get('name','');
+                         ftype python:field.get('type','text');
+                         flabel python:field.get('label', field.get('name',''));
+                         fvalue python:view.data().get(field.get('name',''), '');
+                         fcorr python:bool(field.get('correctable', False));
+                         freq python:bool(field.get('required', False));
+                         fwidth python:field.get('width', 'md')">
+
+        <!-- ── TABLE ── -->
+        <tal:table condition="python:ftype == 'table'">
+          <div class="lb-section">
+            <h3 tal:content="flabel">Table</h3>
+            <table class="dyn-table" tal:attributes="id string:tbl-${fname}">
+              <thead>
+                <tr>
+                  <tal:cols repeat="col python:field.get('columns', [])">
+                    <th tal:content="col/label">Col</th>
+                  </tal:cols>
+                  <th style="width:36px"></th>
+                </tr>
+              </thead>
+              <tbody tal:attributes="id string:tbody-${fname}"></tbody>
+            </table>
+            <button type="button" class="btn-add-row"
+                    tal:attributes="onclick string:dynAddRow('${fname}')">+ Add Row</button>
+            <!-- The saved rows, server-rendered: a submit before the script
+                 serialises the table must not post "[]" over them. -->
+            <input type="hidden"
+                   tal:attributes="id string:${fname}_json;
+                                   name string:${fname}_json;
+                                   value python:view.stored_json(fname)" />
+          </div>
+        </tal:table>
+
+        <!-- ── CHECKBOX ── -->
+        <tal:checkbox condition="python:ftype == 'checkbox'">
+          <div class="lb-section">
+            <div class="lb-fields-row">
+              <div class="lb-field">
+                <div class="check-row">
+                  <input type="checkbox" value="yes"
+                         tal:attributes="name fname;
+                                         id fname;
+                                         checked python:'checked' if fvalue else None" />
+                  <label tal:attributes="for fname" tal:content="flabel">Label</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </tal:checkbox>
+
+        <!-- ── TEXTAREA ── -->
+        <tal:textarea condition="python:ftype == 'textarea'">
+          <div class="lb-section lb-field-wide">
+            <div tal:attributes="class python:'corr-field lb-field-wide' if fcorr else 'lb-field-wide';
+                                 data-field python:fname if fcorr else None">
+              <label>
+                <tal:l tal:replace="flabel" />
+                <tal:corrbtn condition="fcorr">
+                  <button class="btn-correct" type="button"
+                          tal:attributes="onclick string:toggleCorrect('${fname}')">correct</button>
+                </tal:corrbtn>
+              </label>
+              <textarea class="lb-textarea"
+                        tal:attributes="name fname"
+                        tal:content="python:fvalue or u''"></textarea>
+              <tal:corrpanel condition="fcorr">
+                <div class="corr-panel" tal:attributes="id string:cp-${fname}">
+                  <label>Original:
+                    <span tal:attributes="id string:co-${fname}"
+                          style="text-decoration:line-through;color:#999;font-weight:normal;max-width:300px;display:inline-block;"></span>
+                  </label>
+                  <label>Correction:
+                    <input type="text"
+                           tal:attributes="id string:cn-${fname};
+                                           name string:_newval_${fname}"
+                           style="width:220px;" />
+                  </label>
+                  <label>Initials:
+                    <input type="text"
+                           tal:attributes="id string:cb-${fname};
+                                           name string:_corr_by_${fname}"
+                           class="corr-initials" placeholder="JS" />
+                  </label>
+                  <button type="button" class="corr-cancel"
+                          tal:attributes="onclick string:toggleCorrect('${fname}')">&#215;</button>
+                </div>
+              </tal:corrpanel>
+            </div>
+          </div>
+        </tal:textarea>
+
+        <!-- ── THERMOMETER (receipt thermometer) ── -->
+        <tal:thermo condition="python:ftype == 'thermometer'"
+                    define="lm python:context.restrictedTraverse('@@pfas-logbook-macros');
+                            rec python:view.data().get(fname + '_record') or {}">
+          <div class="lb-section">
+            <div class="lb-field">
+              <label tal:content="flabel">Receipt thermometer</label>
+              <select class="lb-input lb-input-lg"
+                      tal:attributes="name fname; required python:'required' if freq else None">
+                <option value="">&#8212; choose the instrument used &#8212;</option>
+                <option tal:repeat="u lm/receipt_thermometers"
+                        tal:attributes="value u/id; selected python:'selected' if u['id'] == fvalue else None"
+                        tal:content="python:'%s (SN %s)' % (u['name'], u['serial_number'] or '?')">IR gun 1</option>
+              </select>
+              <span class="hint">IR guns and thermometers registered on Equipment. On save the
+                correction factor in force on the receipt date is recorded and applied.</span>
+            </div>
+            <tal:rec condition="rec">
+              <p class="form-note" tal:condition="python:rec.get('status') == 'corrected'"
+                 tal:content="python:u'Recorded: %s (SN %s), correction %+.3f \u00b0C from the study of %s, applied to the receipt temperatures.' % (rec.get('name'), rec.get('serial') or '?', rec.get('correction'), rec.get('study_date'))">Recorded</p>
+              <p class="alert alert-error" tal:condition="python:rec.get('status') == 'uncorrected'"
+                 tal:content="python:u'%s requires a correction factor but had no passed temperature study on %s: receipt temperatures are recorded UNCORRECTED.' % (rec.get('name'), rec.get('as_of'))">uncorrected</p>
+              <table class="pfas-table" tal:define="rows python:lm.corrected_rows(view.data(), view.field_schema(), fname)"
+                     tal:condition="rows">
+                <thead><tr><th>Sample</th><th>Observed (&#176;C)</th><th>Corrected (&#176;C)</th></tr></thead>
+                <tbody><tr tal:repeat="r rows">
+                  <td tal:content="python:r[0]">S1</td><td tal:content="python:r[1]">4.2</td>
+                  <td tal:content="python:'' if r[2] is None else r[2]">4.55</td></tr></tbody>
+              </table>
+            </tal:rec>
+          </div>
+        </tal:thermo>
+
+        <!-- ── TEXT / DATE / NUMBER / LOT_REF / REAGENT_REF ── -->
+        <tal:scalar condition="python:ftype in ('text','date','number','lot_ref','reagent_ref')">
+          <div class="lb-fields-row">
+            <div tal:attributes="class python:'lb-field corr-field' if fcorr else 'lb-field';
+                                 data-field python:fname if fcorr else None">
+              <label>
+                <tal:l tal:replace="flabel" />
+                <tal:corrbtn condition="fcorr">
+                  <button class="btn-correct" type="button"
+                          tal:attributes="onclick string:toggleCorrect('${fname}')">correct</button>
+                </tal:corrbtn>
+              </label>
+
+              <!-- lot_ref: autocomplete -->
+              <tal:lotref condition="python:ftype == 'lot_ref'">
+                <div class="lot-ac-wrap">
+                  <input class="lb-input lb-input-lg"
+                         type="text" autocomplete="off"
+                         tal:attributes="name fname;
+                                         id fname;
+                                         value python:fvalue if fvalue not in (None, False) else u'';
+                                         data-ac-type python:field.get('lot_type','');
+                                         data-ac string:${view/portal_url}/@@pfas-lot-autocomplete" />
+                  <!-- Absolute portal URL, not '/@@...': the site is not at the
+                       server root. Zope serves it at /senaite and nginx roots
+                       VirtualHostMonster there, so a root-relative path hit the Zope
+                       root, where there is no portal_url tool — 500 direct, 404 via
+                       nginx. The lot picker had therefore NEVER opened in this
+                       deployment, which is also why nobody noticed it offering lots
+                       the release gate rejects. -->
+                  <div class="lot-ac-dropdown"
+                       tal:attributes="id string:ac-${fname}"></div>
+                </div>
+              </tal:lotref>
+
+              <!-- reagent_ref: autocomplete -->
+              <tal:reagentref condition="python:ftype == 'reagent_ref'">
+                <div class="lot-ac-wrap">
+                  <input class="lb-input lb-input-lg"
+                         type="text" autocomplete="off"
+                         tal:attributes="name fname;
+                                         id fname;
+                                         value python:fvalue if fvalue not in (None, False) else u'';
+                                         data-ac string:${view/portal_url}/@@pfas-reagent-autocomplete" />
+                  <div class="lot-ac-dropdown"
+                       tal:attributes="id string:ac-${fname}"></div>
+                </div>
+              </tal:reagentref>
+
+              <!-- plain text / date / number -->
+              <tal:plain condition="python:ftype in ('text','date','number')">
+                <input tal:condition="not:field/core_owned|nothing"
+                       tal:attributes="type ftype;
+                                       step python:'any' if ftype == 'number' else None;
+                                       class string:lb-input lb-input-${fwidth};
+                                       name fname;
+                                       value python:fvalue if fvalue not in (None, False) else u'';
+                                       required python:'required' if freq else None" />
+                <!-- shown from the samples' own field, edited on the sample
+                     (core_fields.py) -->
+                <input tal:condition="field/core_owned|nothing" type="text" readonly="readonly"
+                       title="Each sample's Date Sampled: change it on the sample"
+                       tal:attributes="class string:lb-input lb-input-lg; id fname;
+                                       value python:fvalue or u''" />
+              </tal:plain>
+
+              <!-- Correction panel -->
+              <tal:corrpanel condition="fcorr">
+                <div class="corr-panel" tal:attributes="id string:cp-${fname}">
+                  <label>Original:
+                    <span tal:attributes="id string:co-${fname}"
+                          style="text-decoration:line-through;color:#999;font-weight:normal;"></span>
+                  </label>
+                  <label>Correction:
+                    <input tal:attributes="type python:'date' if ftype == 'date' else 'text';
+                                           id string:cn-${fname};
+                                           name string:_newval_${fname}"
+                           style="width:160px;" />
+                  </label>
+                  <label>Initials:
+                    <input type="text"
+                           tal:attributes="id string:cb-${fname};
+                                           name string:_corr_by_${fname}"
+                           class="corr-initials" placeholder="JS" />
+                  </label>
+                  <button type="button" class="corr-cancel"
+                          tal:attributes="onclick string:toggleCorrect('${fname}')">&#215;</button>
+                </div>
+              </tal:corrpanel>
+            </div>
+          </div>
+        </tal:scalar>
+
+      </tal:fdef>
+</metal:field>
+
+<!--
+  The three logbook pages as ONE page with tabs ("We have 3
+  tabs all called logbooks and I am unsure ... how they build into each
+  other";). Templates and Method sequence are manager pages (their
+  views refuse anyone else), so bench staff see only By batch.
+-->
+<metal:tabs define-macro="logbook-tabs"
+     tal:define="purl python:context.portal_url();
+                 here python:request.get('ACTUAL_URL', '');
+                 mgr python:context.restrictedTraverse('@@pfas-macros').is_manager_role()">
+  <div class="pfas-tabs">
+    <a tal:condition="mgr" tal:attributes="href string:${purl}/@@pfas-prep-logbooks;
+         class python:'pfas-tab active' if '@@pfas-prep-logbooks' in here else 'pfas-tab'">1 &#183; Templates</a>
+    <a tal:condition="mgr" tal:attributes="href string:${purl}/@@pfas-logbook-admin;
+         class python:'pfas-tab active' if '@@pfas-logbook-admin' in here else 'pfas-tab'">2 &#183; Method sequence</a>
+    <a tal:attributes="href string:${purl}/@@pfas-logbook-batches;
+         class python:'pfas-tab' if ('@@pfas-prep-logbooks' in here or '@@pfas-logbook-admin' in here) else 'pfas-tab active'"
+       tal:content="python:mgr and u'3 \u00b7 By batch' or u'By batch'">3 &#183; By batch</a>
+  </div>
+  <p class="lb-flow" tal:condition="mgr">
+    <strong>Templates</strong> &#8594; a method&#8217;s <strong>sequence</strong> &#8594; filled in <strong>by batch</strong>. <tal:h define="hid string:logbooks"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+  </p>
+</metal:tabs>
+</body>
+</html>

@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Logbooks: templates</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+
+    .rev-list { list-style:none; margin:0; padding:0; }
+    .rev-list li { display:flex; align-items:center; gap:10px; padding:4px 0;
+                   border-bottom:1px solid var(--s-border); }
+    .rev-list li:last-child { border-bottom:none; }
+
+    /* .badge base and common badge-* colors are now global (pfas_macros) */
+
+    .expiry-chip { font-size:var(--fs-xs); color:var(--s-secondary); background:var(--s-light);
+                   padding:2px 8px; border-radius:10px; white-space:nowrap; }
+
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
+                     z-index:1000; align-items:center; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal-box { background:#fff; border-radius:10px; padding:24px; width:90%;
+                 max-width:680px; max-height:92vh; overflow-y:auto;
+                 box-shadow:0 8px 32px rgba(0,0,0,.25); }
+    .modal-box h2 { font-size:var(--fs-lg); font-weight:700; margin:0 0 18px;
+                    padding-bottom:8px; border-bottom:2px solid var(--s-border); }
+    .form-row  { display:flex; gap:14px; margin-bottom:14px; flex-wrap:wrap; }
+    .form-field { display:flex; flex-direction:column; flex:1 1 200px; }
+    .form-field.full { flex:1 1 100%; }
+    .form-field label { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
+                        text-transform:uppercase; margin-bottom:3px; }
+    .form-field input, .form-field select, .form-field textarea {
+      padding:7px 10px; border:1px solid var(--s-input-border); border-radius:5px;
+      font-size:var(--fs-base); color:var(--s-body); }
+    .form-field textarea { min-height:80px; resize:vertical; }
+    .analyte-editor { width:100%; border-collapse:collapse; font-size:var(--fs-sm); margin-top:6px; }
+    .analyte-editor th { background:var(--s-light); padding:5px 8px; text-align:left;
+                         font-size:var(--fs-xs); text-transform:uppercase; font-weight:700; }
+    .analyte-editor td { padding:3px 4px; border-bottom:1px solid var(--s-border); }
+    .analyte-editor input { width:100%; padding:4px 6px; border:1px solid var(--s-input-border);
+                            border-radius:3px; font-size:var(--fs-sm); }
+
+    .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
+    /* Flash messages use global .alert .alert-success / .alert-error */
+
+    .revision-panel { margin-top:6px; padding:8px 12px; background:var(--s-light);
+                      border-radius:6px; font-size:var(--fs-sm); }
+    .revision-panel summary { cursor:pointer; font-weight:700; font-size:var(--fs-sm);
+                               color: var(--s-primary-dk); }
+    /* ── Form builder ─────────────────────────────────────────────── */
+    .fb-region { border:1px solid var(--s-border); border-radius:8px; padding:0; }
+    .fb-tabs { display:flex; align-items:center; gap:2px; border-bottom:1px solid var(--s-border);
+               background:var(--s-light); padding:6px 8px 0; border-radius:8px 8px 0 0; }
+    .fb-tab { border:1px solid transparent; border-bottom:none; background:transparent;
+              padding:6px 14px; font-size:var(--fs-sm); font-weight:600; cursor:pointer;
+              border-radius:6px 6px 0 0; color:var(--s-secondary); }
+    .fb-tab.is-active { background:var(--s-bg); border-color:var(--s-border);
+                        color:var(--s-body); margin-bottom:-1px; }
+    .fb-tabs-note { margin-left:auto; font-size:var(--fs-xs); color:var(--s-secondary); padding-right:4px; }
+    .fb-pane { display:none; padding:12px; }
+    .fb-pane.is-active { display:block; }
+    .fb-list { display:flex; flex-direction:column; gap:8px; }
+    .fb-empty { font-size:var(--fs-sm); color:var(--s-secondary); font-style:italic; padding:8px 2px; }
+    .fb-hint { font-size:var(--fs-xs); color:var(--s-secondary); margin:0 0 8px; }
+    .fb-row, .fb-step { border:1px solid var(--s-border); border-radius:6px;
+                        padding:8px 10px; background:var(--s-bg); }
+    .fb-row-head { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .fb-idx { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
+              min-width:18px; text-align:center; }
+    .fb-in { padding:5px 8px; border:1px solid var(--s-border); border-radius:4px;
+             font-size:var(--fs-sm); background:var(--s-bg); color:var(--s-body); }
+    .fb-in-name { width:150px; font-family: var(--font-mono); }
+    .fb-in-label { flex:1 1 180px; min-width:120px; }
+    .fb-in-type { width:170px; }
+    .fb-in-sm { width:90px; }
+    .fb-rowbtns { margin-left:auto; display:flex; gap:2px; }
+    .fb-iconbtn { border:1px solid var(--s-border); background:var(--s-bg); cursor:pointer;
+                  border-radius:4px; font-size:var(--fs-sm); line-height:1; padding:4px 7px;
+                  color:var(--s-secondary); }
+    .fb-iconbtn:hover { background:var(--s-primary-lt); color:var(--s-body); }
+    .fb-row-sub { display:flex; gap:14px; flex-wrap:wrap; margin-top:7px;
+                  padding-top:7px; border-top:1px dashed var(--s-border); }
+    .fb-sublabel { font-size:var(--fs-xs); color:var(--s-secondary); display:flex;
+                   align-items:center; gap:4px; }
+    .fb-cols { margin-top:8px; padding:8px; background:var(--s-light); border-radius:5px; }
+    .fb-cols-title { font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
+                     color:var(--s-secondary); margin-bottom:6px; }
+    .fb-colrow { display:flex; gap:6px; margin-bottom:5px; align-items:center; }
+    .fb-addbar { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+    .fb-errors { margin-top:10px; padding:8px 10px; border-radius:5px;
+                 background:var(--s-danger-lt); border:1px solid var(--s-danger-bd); color:var(--s-danger-dk); font-size:var(--fs-xs); }
+    .fb-errors-inline { font-size:var(--fs-xs); color:var(--s-danger-dk); }
+    .fb-json { width:100%; box-sizing:border-box; font-family: var(--font-mono); font-size:var(--fs-xs);
+               padding:8px; border:1px solid var(--s-border); border-radius:4px; }
+    .fb-jsonlabel { font-size:var(--fs-xs); font-weight:700; color:var(--s-secondary);
+                    display:block; margin:8px 0 3px; }
+    .fb-banner { font-size:var(--fs-xs); background:var(--s-warn-lt); border:1px solid var(--s-warn-bd);
+                 color:var(--s-warn-text); border-radius:5px; padding:8px 10px; margin-bottom:10px; }
+    .fb-step-body { display:flex; gap:12px; margin-top:8px; flex-wrap:wrap; }
+    .fb-step-instr { flex:1 1 280px; display:flex; flex-direction:column; }
+    .fb-step-media { flex:0 0 190px; display:flex; flex-direction:column; gap:5px; }
+    .fb-instr { width:100%; box-sizing:border-box; font-size:var(--fs-sm); }
+    .fb-thumb { border:1px dashed var(--s-border); border-radius:5px; min-height:96px;
+                display:flex; align-items:center; justify-content:center;
+                background:var(--s-light); overflow:hidden; }
+    .fb-thumb img { max-width:100%; max-height:150px; display:block; }
+    .fb-thumb-empty { font-size:var(--fs-xs); color:var(--s-secondary); }
+    .fb-file { font-size:var(--fs-xs); }
+    .fb-assign { margin-top:9px; padding-top:8px; border-top:1px dashed var(--s-border);
+                 display:flex; flex-wrap:wrap; gap:6px 14px; }
+    .fb-assign-item { font-size:var(--fs-xs); display:flex; align-items:center; gap:4px; }
+    .fb-assign-item.is-taken { opacity:.55; }
+    .fb-tybadge { font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.03em;
+                  background:var(--s-light); border:1px solid var(--s-border);
+                  border-radius:3px; padding:1px 4px; color:var(--s-secondary); }
+    .fb-taken { font-size:var(--fs-xs); color:var(--s-secondary); font-style:italic; }
+    .fb-unassigned { font-size:var(--fs-xs); color:var(--s-secondary); }
+    .fld-help { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:3px;
+                display:block; line-height:1.35; }
+    /* derived storage key, kept quiet */
+    .fb-keybar { display:flex; align-items:center; gap:6px; margin-top:7px;
+                 padding-top:6px; border-top:1px dashed var(--s-border); }
+    .fb-keylabel { font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.05em;
+                   color:var(--s-secondary); }
+    .fb-keytext { font-family: var(--font-mono); font-size:var(--fs-xs); color:var(--s-secondary);
+                  background:var(--s-light); border:1px solid var(--s-border);
+                  border-radius:3px; padding:1px 5px; }
+    .fb-keyedit { border:none; background:transparent; font-size:var(--fs-xs);
+                  color: var(--s-primary-dk); cursor:pointer; text-decoration:underline; }
+    .fb-uplabel { font-size:var(--fs-xs); color:var(--s-secondary);
+                  display:flex; flex-direction:column; gap:3px; }
+    /* animation gallery */
+    .fb-gal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45);
+                       z-index:9000; display:flex; align-items:center;
+                       justify-content:center; padding:20px; }
+    .fb-gal { background:var(--s-bg); border-radius:12px; padding:18px;
+              max-width:760px; width:100%; max-height:86vh; overflow:auto;
+              box-shadow:0 10px 40px rgba(0,0,0,.3); }
+    .fb-gal-title { font-size:var(--fs-md); font-weight:700; margin-bottom:12px; }
+    .fb-gal-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+                   gap:10px; }
+    .fb-gal-cell { border:1px solid var(--s-border); border-radius:8px;
+                   background:var(--s-light); padding:8px; cursor:pointer;
+                   display:flex; flex-direction:column; align-items:center; gap:5px; }
+    .fb-gal-cell:hover { border-color:var(--s-primary); background:var(--s-primary-lt); }
+    .fb-gal-cell.is-on { border-color:var(--s-primary); box-shadow:0 0 0 2px rgba(26,115,232,.25); }
+    .fb-gal-cell img { width:96px; height:96px; image-rendering:pixelated;
+                       image-rendering:crisp-edges; border-radius:5px; }
+    .fb-gal-cap { font-size:var(--fs-xs); color:var(--s-secondary); text-align:center;
+                  line-height:1.25; }
+    .fb-gal-bar { display:flex; justify-content:flex-end; margin-top:14px; }
+    /* step thumbnails keep the pixel look */
+    .fb-thumb img { image-rendering:pixelated; image-rendering:crisp-edges; }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
+  <tal:tabs metal:fill-slot="tabs"><metal:m use-macro="context/@@pfas-logbook-macros/macros/logbook-tabs" /></tal:tabs>
+  <tal:r metal:fill-slot="header-right">
+    
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <p style="color:var(--s-secondary);font-size:var(--fs-base);margin:0">
+        Each logbook describes a preparation procedure with versioned revisions.
+        A prepared standard links to one revision. Issuing a new revision creates a draft copy.
+      </p>
+      <button class="btn btn-primary" onclick="openModal()">+ New Logbook</button>
+    </div>
+
+    <tal:fams tal:define="fams view/logbook_families">
+
+      <div class="empty-state" tal:condition="not:fams">
+        <p style="font-size:var(--fs-2xl)">&#128209;</p>
+        <p>No preparation logbooks defined yet.</p>
+        <button class="btn btn-primary" onclick="openModal()" style="margin-top:12px">
+          Create First Logbook
+        </button>
+      </div>
+
+      <div class="table-wrap" tal:condition="fams">
+        <table class="pfas-table lb-table">
+          <thead>
+            <tr>
+              <th>Logbook Name</th>
+              <th>Type</th>
+              <th style="text-align:center">Current Rev</th>
+              <th>Default Expiry</th>
+              <th>Status</th>
+              <th>Revisions</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tal:rows tal:repeat="fam fams">
+              <tr>
+                <td style="font-weight:700" tal:content="fam/title">Logbook Name</td>
+                <td style="font-size:var(--fs-sm);color:var(--s-secondary)" tal:content="fam/standard_type">—</td>
+                <td style="text-align:center">
+                  <strong tal:content="fam/revision">1</strong>
+                </td>
+                <td>
+                  <span class="expiry-chip"
+                        tal:content="python:'{} days'.format(fam['default_expiry_days'])">365 days</span>
+                </td>
+                <td>
+                  <span tal:attributes="class python:'badge badge-' + fam['status']"
+                        tal:content="fam/status">draft</span>
+                </td>
+                <td>
+                  <details class="revision-panel">
+                    <summary tal:content="python:'Rev {} history'.format(fam['revision'])">History</summary>
+                    <ul class="rev-list" style="margin-top:8px">
+                      <tal:revs tal:repeat="rev python:view.all_revisions(fam['logbook_slug'])">
+                        <li>
+                          <span>Rev <strong tal:content="rev/revision">1</strong></span>
+                          <span tal:attributes="class python:'badge badge-' + rev['status']"
+                                tal:content="rev/status">draft</span>
+                          <span style="font-size:var(--fs-xs);color:var(--s-secondary)"
+                                tal:content="python:rev['archived_date'] or ''">—</span>
+                          <form method="POST" style="display:inline"
+                                tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                            <input type="hidden" name="action" value="activate" />
+                            <input type="hidden" name="uid" tal:attributes="value rev/uid" />
+                            <button type="submit" class="btn-sm"
+                                    tal:condition="python:rev['status'] != 'active'">Activate</button>
+                          </form>
+                          <!-- Archive: shown for non-archived revisions -->
+                          <form method="POST" style="display:inline"
+                                tal:condition="python:rev['status'] != 'archived'"
+                                tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                            <input type="hidden" name="action" value="archive" />
+                            <input type="hidden" name="uid" tal:attributes="value rev/uid" />
+                            <button type="submit" class="btn-sm btn-warn"
+                                    onclick="return confirm('Archive this revision? It will no longer be active.')">Archive</button>
+                          </form>
+                          <!-- Delete: only for draft revisions that are not builtin -->
+                          <form method="POST" style="display:inline"
+                                tal:condition="python:rev['status'] == 'draft' and not rev.get('builtin', False)"
+                                tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                            <input type="hidden" name="action" value="delete" />
+                            <input type="hidden" name="uid" tal:attributes="value rev/uid" />
+                            <button type="submit" class="btn-sm btn-danger"
+                                    onclick="return confirm('Permanently delete this draft revision? This cannot be undone.')">Delete</button>
+                          </form>
+                          <button class="btn-sm" data-edit-uid=""
+                                  tal:attributes="data-edit-uid rev/uid"
+                                  >Edit</button>
+                        </li>
+                      </tal:revs>
+                    </ul>
+                  </details>
+                </td>
+                <td>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button class="btn-sm" data-edit-uid=""
+                            tal:attributes="data-edit-uid fam/uid"
+                            >Edit</button>
+                    <form method="POST" style="display:inline"
+                          tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+                      <input type="hidden" name="action" value="new_revision" />
+                      <input type="hidden" name="uid" tal:attributes="value fam/uid" />
+                      <button type="submit" class="btn-sm">New Revision</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            </tal:rows>
+          </tbody>
+        </table>
+      </div>
+
+    </tal:fams>
+
+    <!-- ── Add/Edit modal ─────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="lbModal">
+      <div class="modal-box">
+        <h2 id="modalTitle">New Preparation Logbook</h2>
+        <!-- onsubmit (not the Save button's onclick) so that submitting with
+             Enter from a text input also serialises the builder + analytes;
+             returning false blocks the POST when validation fails. -->
+        <form method="POST" onsubmit="return serializeForm();"
+              tal:attributes="action string:${view/portal_url}/@@pfas-prep-logbooks">
+          <input type="hidden" name="action" value="add" id="formAction" />
+          <input type="hidden" name="uid" id="editUid" value="" />
+          <input type="hidden" name="logbook_slug" id="lbSlug" value="" />
+          <input type="hidden" name="revision" id="lbRevision" value="1" />
+          <input type="hidden" name="active" id="activeHidden" value="on" />
+
+          <div class="form-row">
+            <div class="form-field" style="flex:2 1 300px">
+              <label>Logbook Name *</label>
+              <input type="text" name="title" id="lbTitle" required placeholder="e.g. Native Stock Standard Preparation" />
+            </div>
+            <div class="form-field">
+              <label>Standard Type</label>
+              <select name="standard_type" id="lbType">
+                <option value="">— Select —</option>
+                <tal:opts tal:repeat="t view/standard_types">
+                  <option tal:content="t" tal:attributes="value t">type</option>
+                </tal:opts>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Only offer for method</label>
+              <select name="method_slug" id="lbMethodSlug">
+                <option value="">Any method</option>
+                <option tal:repeat="m view/method_choices"
+                        tal:attributes="value m/id" tal:content="m/label">FDA</option>
+              </select>
+              <span class="fld-help">Which methods may add this logbook to a
+                batch. <b>Any method</b> offers it everywhere.</span>
+            </div>
+            <div class="form-field">
+              <label>Form number</label>
+              <input type="text" name="logbook_code" id="lbCode"
+                     placeholder="e.g. FM-ENV-005" />
+              <span class="fld-help">Printed on the record and shown in the
+                batch list.</span>
+            </div>
+            <div class="form-field" style="flex:0 0 120px">
+              <label>List position</label>
+              <input type="number" name="sort_order" id="lbSortOrder"
+                     value="100" min="0" max="999" />
+              <span class="fld-help">Lower shows first.</span>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field">
+              <label>Default Expiry (days)</label>
+              <input type="number" name="default_expiry_days" id="lbExpiry"
+                     value="365" min="1" max="3650" />
+            </div>
+            <div class="form-field">
+              <label>Status</label>
+              <select name="status" id="lbStatus">
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <div class="form-field" style="flex:0 0 auto; justify-content:flex-end; padding-top:20px">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                <!-- no name= here; activeHidden is synced by serializeForm() -->
+                <input type="checkbox" id="lbActive" />
+                Show in Batch Index
+              </label>
+            </div>
+          </div>
+
+          <!-- ── Form builder ────────────────────────────────────────── -->
+          <div class="form-field full fb-region" style="margin-bottom:14px">
+            <div class="fb-tabs">
+              <button type="button" class="fb-tab is-active" data-fbtab="fields">Fields</button>
+              <button type="button" class="fb-tab" data-fbtab="steps">Instructions</button>
+              <button type="button" class="fb-tab" data-fbtab="json">JSON</button>
+              <span class="fb-tabs-note">These fields are what the analyst fills in.</span>
+            </div>
+
+            <!-- Fields -->
+            <div class="fb-pane is-active" data-fbpane="fields">
+              <div id="fbFieldList" class="fb-list"></div>
+              <div class="fb-addbar">
+                <select id="fbNewType"></select>
+                <button type="button" class="btn-sm btn-add-row" id="fbAddField">+ Add Field</button>
+              </div>
+              <div class="fb-errors" id="fbErrors" style="display:none"></div>
+            </div>
+
+            <!-- Steps -->
+            <div class="fb-pane" data-fbpane="steps">
+              <p class="fb-hint" id="fbStepsIntro">Split the logbook into guided steps, each with a picture and the fields it fills. Empty: one plain form.</p>
+              <div class="fb-banner" id="fbStep252" style="display:none"></div>
+              <div id="fbStepList" class="fb-list"></div>
+              <div class="fb-addbar">
+                <button type="button" class="btn-sm btn-add-row" id="fbAddStep">+ Add Step</button>
+                <button type="button" class="btn-sm" id="fbSeedSteps"
+                        title="Create one step per line of the Procedure text">
+                  Seed steps from Procedure</button>
+                <span class="fb-unassigned" id="fbUnassigned"></span>
+              </div>
+            </div>
+
+            <!-- Raw JSON escape hatch -->
+            <div class="fb-pane" data-fbpane="json">
+              <p class="fb-hint">
+                Advanced. Edit the stored JSON directly, then Apply to load it
+                back into the builder. Legal field types:
+                <b tal:content="view/field_types_hint">text, date, ...</b>
+              </p>
+              <label class="fb-jsonlabel">Field schema</label>
+              <textarea id="fbFieldsJsonRaw" rows="8" class="fb-json"></textarea>
+              <label class="fb-jsonlabel">Guided steps</label>
+              <textarea id="fbStepsJsonRaw" rows="6" class="fb-json"></textarea>
+              <div class="fb-addbar">
+                <button type="button" class="btn-sm" id="fbApplyJson">Apply JSON &#8594; Builder</button>
+                <span class="fb-errors-inline" id="fbJsonErr"></span>
+              </div>
+            </div>
+
+            <!-- Serialized on submit by serializeForm() -->
+            <input type="hidden" name="field_schema_json" id="lbFieldSchema" value="[]" />
+            <input type="hidden" name="steps_json" id="lbStepsJson" value="[]" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Description</label>
+              <textarea name="description" id="lbDesc" rows="2"
+                        placeholder="What this logbook prepares..."></textarea>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Procedure (step-by-step)</label>
+              <textarea name="procedure" id="lbProc" rows="5"
+                        placeholder="1. Weigh ...&#10;2. Dissolve in ..."></textarea>
+            </div>
+          </div>
+
+          <div class="form-field full" style="margin-bottom:14px">
+            <label>Analyte Template (default concentrations for this logbook)</label>
+            <table class="analyte-editor" id="analyteTable">
+              <thead>
+                <tr><th>Analyte</th><th>Concentration</th><th>Unit</th><th></th></tr>
+              </thead>
+              <tbody id="analyteBody"></tbody>
+            </table>
+            <button type="button" class="btn-sm btn-add-row" onclick="addAnalyteRow()">+ Add Analyte</button>
+            <input type="hidden" name="analyte_template_json" id="analyteJson" value="[]" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-field full">
+              <label>Notes</label>
+              <textarea name="notes" id="lbNotes" rows="2"></textarea>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+            <button type="button" class="btn-sm" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="pane-footer">
+      <span>Versioned preparation procedures linked to prepared standards and internal certificates</span>
+    </div>
+
+  </div>
+
+  <script>
+  /* All logbook records, keyed by uid. Edit buttons carry only a uid, so no
+     record data is ever interpolated into an attribute (quotes in a title or
+     in step instructions would break that). */
+  var LB_RECORDS = <tal:r tal:replace="structure view/records_json" />;
+
+  /* Canonical field-type vocabulary — generated from
+     senaite.pfas.logbook_schema.FIELD_TYPES so the builder can never offer a
+     type the renderer does not honour. */
+  var LB_FIELD_TYPES = <tal:t tal:replace="structure view/field_types_json" />;
+  var LB_LOT_TYPES   = <tal:l tal:replace="structure view/lot_types_json" />;
+  var LB_MEDIA_URL   = "<tal:m tal:replace="view/media_url" />";
+
+  /* Built-in pixel-art lab animations shipped with the add-on. */
+  var LB_LIBRARY      = <tal:g tal:replace="structure view/media_library_json" />;
+  var LB_LIBRARY_BASE = "<tal:b tal:replace="string:${view/portal_url}/++resource++senaite.pfas/labgifs/" />";
+  </script>
+
+  <!-- Builder lives in a static resource: Chameleon parses inline <script>
+       bodies and chokes on bare "<", "&" and "&&". Bump ?v= when editing. -->
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_builder.js?v=2"></script>
+
+  <script>
+
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest ? ev.target.closest('[data-edit-uid]') : null;
+    if (!btn) return;
+    var rec = LB_RECORDS[btn.getAttribute('data-edit-uid')];
+    if (rec) { editLogbook(rec); }
+  });
+
+  function openModal(data) {
+    var modal = document.getElementById('lbModal');
+    if (!data) {
+      document.getElementById('modalTitle').textContent = 'New Preparation Logbook';
+      document.getElementById('formAction').value = 'add';
+      document.getElementById('editUid').value = '';
+      document.getElementById('lbSlug').value = '';
+      document.getElementById('lbRevision').value = '1';
+      document.getElementById('lbTitle').value = '';
+      document.getElementById('lbType').value = '';
+      document.getElementById('lbExpiry').value = '365';
+      document.getElementById('lbStatus').value = 'draft';
+      document.getElementById('lbDesc').value = '';
+      document.getElementById('lbProc').value = '';
+      document.getElementById('lbNotes').value = '';
+      document.getElementById('lbMethodSlug').value = '';
+      document.getElementById('lbCode').value = '';
+      document.getElementById('lbSortOrder').value = '100';
+      document.getElementById('lbActive').checked = true;
+      clearAnalyteRows();
+      lbLoadBuilder('[]', '[]', '');
+    }
+    modal.classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('lbModal').classList.remove('open');
+  }
+  function editLogbook(data) {
+    if (typeof data === 'string') { try { data = JSON.parse(data); } catch(e) { return; } }
+    document.getElementById('modalTitle').textContent = 'Edit Logbook';
+    document.getElementById('formAction').value = 'edit';
+    document.getElementById('editUid').value = data.uid || '';
+    document.getElementById('lbSlug').value = data.logbook_slug || '';
+    document.getElementById('lbRevision').value = data.revision || 1;
+    document.getElementById('lbTitle').value = data.title || '';
+    document.getElementById('lbType').value = data.standard_type || '';
+    document.getElementById('lbExpiry').value = data.default_expiry_days || 365;
+    document.getElementById('lbStatus').value = data.status || 'draft';
+    document.getElementById('lbDesc').value = data.description || '';
+    document.getElementById('lbProc').value = data.procedure || '';
+    document.getElementById('lbNotes').value = data.notes || '';
+    /* A stored reference may be a slug ("fda-32-pfas") while the options are
+       method IDs: select the option it names, or the save clears the link. */
+    (function (sel, want) {
+      var norm = function (v) { return (v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
+      sel.value = want;
+      if (want) {
+        if (sel.value !== want) {
+          for (var i = 0; sel.options[i]; i++) {
+            if (norm(sel.options[i].value) === norm(want)) { sel.value = sel.options[i].value; break; }
+          }
+        }
+      }
+    })(document.getElementById('lbMethodSlug'), data.method_slug || '');
+    document.getElementById('lbCode').value = data.logbook_code || '';
+    document.getElementById('lbSortOrder').value = data.sort_order != null ? data.sort_order : 100;
+    lbLoadBuilder(data.field_schema_json || '[]',
+                  data.steps_json || '[]',
+                  data.procedure || '');
+    document.getElementById('lbActive').checked = data.active !== false;
+    var tmpl = [];
+    try { tmpl = JSON.parse(data.analyte_template_json || '[]'); } catch(e) {}
+    clearAnalyteRows();
+    tmpl.forEach(function(row) { addAnalyteRow(row.analyte, row.concentration, row.unit); });
+    document.getElementById('lbModal').classList.add('open');
+  }
+  function clearAnalyteRows() {
+    document.getElementById('analyteBody').innerHTML = '';
+  }
+  function addAnalyteRow(analyte, conc, unit) {
+    var tbody = document.getElementById('analyteBody');
+    var tr = document.createElement('tr');
+    var T='\x3ctd\x3e', ET='\x3c/td\x3e', I='\x3cinput type="text" ';
+    tr.innerHTML = T+I+'class="a-name" value="'+(analyte||'')+'" placeholder="PFOA" /\x3e'+ET
+      + T+I+'class="a-conc" value="'+(conc||'')+'" placeholder="100" /\x3e'+ET
+      + T+I+'class="a-unit" value="'+(unit||'')+'" placeholder="ng/mL" /\x3e'+ET
+      + T+'\x3cbutton type="button" onclick="this.closest(\'tr\').remove()" style="color: var(--s-danger-dk);background:none;border:none;cursor:pointer"\x3e×\x3c/button\x3e'+ET;
+    tbody.appendChild(tr);
+  }
+  function serializeForm() {
+    serializeAnalytes();
+    document.getElementById('activeHidden').value =
+      document.getElementById('lbActive').checked ? 'on' : 'off';
+    /* Writes #lbFieldSchema and #lbStepsJson; returns false (blocking submit)
+       if the builder found validation errors. */
+    return lbSerializeBuilder();
+  }
+
+  function serializeAnalytes() {
+    var rows = document.querySelectorAll('#analyteBody tr');
+    var data = [];
+    rows.forEach(function(tr) {
+      var a = tr.querySelector('.a-name').value.trim();
+      var c = tr.querySelector('.a-conc').value.trim();
+      var u = tr.querySelector('.a-unit').value.trim();
+      if (a) data.push({analyte: a, concentration: c, unit: u});
+    });
+    document.getElementById('analyteJson').value = JSON.stringify(data);
+  }
+  document.getElementById('lbModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+  </script>
+
+  </div><!-- /content slot -->
+</body>
+</html>

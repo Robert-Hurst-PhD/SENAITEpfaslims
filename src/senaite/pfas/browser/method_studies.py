@@ -1,0 +1,430 @@
+# -*- coding: utf-8 -*-
+"""Method studies (@@pfas-method-studies). Python 2.7.
+
+The list of studies and one study at a time (?id=MS-0001): its replicates,
+drawn from the QC database (study_data), the calculation per analyte
+(method_studies), documented exclusions, and QA approval. Approval freezes
+the results, writes the study's MDL / RL to the method profile (recorded in
+configuration history with the study as its source) and freezes the packet
+PDF under /data/qc/studies/.
+
+Staff create studies and exclude results with a reason; approval is
+manager tier (perms.TIER_CONFIG).
+"""
+from __future__ import absolute_import, unicode_literals
+
+import logging
+import os
+import sqlite3
+from datetime import date, datetime, timedelta
+
+from Products.CMFCore.utils import getToolByName
+from Products.Five.browser import BrowserView
+from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+from senaite.pfas import study_data as sd
+from senaite.pfas import study_records as sr
+from senaite.pfas.browser.formutil import flatten_form
+from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action, is_staff, refuse
+
+logger = logging.getLogger("senaite.pfas.browser.method_studies")
+
+GATES = {"approve": TIER_CONFIG}
+QC_DB = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
+PDF_DIR = os.path.join(os.path.dirname(QC_DB), "studies")
+
+
+def _now():
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _user():
+    from plone import api as papi
+    try:
+        u = papi.user.get_current()
+        return u.getProperty("fullname") or u.getId()
+    except Exception:                                       # noqa: BLE001
+        return u""
+
+
+class PFASMethodStudiesView(BrowserView, GateMixin):
+
+    template = ViewPageTemplateFile("templates/method_studies.pt")
+    print_template = ViewPageTemplateFile("templates/method_study_pdf.pt")
+
+    def __call__(self):
+        flatten_form(self.request)
+        if not is_staff(self.portal()):
+            return refuse(self.request)
+        f = self.request.form
+        self.message, self.error = u"", u""
+        if f.get("pdf") and self.record() is not None:
+            return self._serve_pdf()
+        if f.get("certificate") and self.record() is not None:
+            return self._serve_certificate()
+        if self.request.get("REQUEST_METHOD") == "POST":
+            action = f.get("action") or u""
+            denied = deny_gated_action(self.context, self.request, action, GATES)
+            if denied is not None:
+                return denied
+            try:
+                from plone.protect import CheckAuthenticator
+                CheckAuthenticator(self.request)
+            except ImportError:
+                pass
+            if action == "create":
+                return self._create()
+            if action == "exclude":
+                self._exclude()
+            elif action == "save_pt":
+                self._save_pt()
+            elif action == "approve":
+                self._approve()
+        return self.template()
+
+    # ── identity ───────────────────────────────────────────────────────────
+    def portal(self):
+        return getToolByName(self.context, "portal_url").getPortalObject()
+
+    def portal_url(self):
+        return self.portal().absolute_url()
+
+    def records(self):
+        if not hasattr(self, "_records"):
+            self._records = sr.load(self.portal())
+        return self._records
+
+    def listed(self):
+        return list(reversed(self.records()))
+
+    def record(self):
+        return sr.find(self.records(), (self.request.form.get("id") or u"").strip())
+
+    def kinds(self):
+        return sd.KINDS
+
+    def kind_label(self, kind):
+        return sd.KIND_LABELS.get(kind, kind)
+
+    def methods(self):
+        from senaite.pfas.method_profile_store import list_method_ids
+        return list_method_ids(self.portal())
+
+    def profile(self, method_id=None):
+        from senaite.pfas.method_profile_store import raw_profile
+        rec = self.record()
+        return raw_profile(self.portal(), method_id or (rec or {}).get("method")) or {}
+
+    def matrices(self):
+        out = []
+        for m in self.methods():
+            for x in self.profile(m).get("supported_matrices") or []:
+                if x not in out:
+                    out.append(x)
+        return out
+
+    def default_since(self):
+        return (date.today() - timedelta(days=365 * sd.MDL_MONTHS // 12)).isoformat()
+
+    # ── the data ───────────────────────────────────────────────────────────
+    def _levels(self, batch_ids):
+        """{(worksheet, injection): spike level label} from the extraction
+        batches' members."""
+        from senaite.pfas import extraction_batch as eb
+        from bika.lims import api
+        out = {}
+        cat = api.get_tool("senaite_catalog_worksheet")
+        for bid in batch_ids:
+            for b in cat(portal_type="Worksheet", id=bid):
+                for m in eb.load(b.getObject()):
+                    if m.get("injection"):
+                        out[(bid, m["injection"])] = m.get("level") or u""
+        return out
+
+    left_out = ()
+    REVIEWED_STATES = ("verified", "published")
+
+    def _reviewed(self, batch_ids):
+        """The worksheets among `batch_ids` that passed technical review."""
+        from bika.lims import api
+        cat = api.get_tool("senaite_catalog_worksheet")
+        return set(b.getId for b in cat(portal_type="Worksheet", id=sorted(batch_ids),
+                                        review_state=list(self.REVIEWED_STATES))) if batch_ids else set()
+
+    def data(self):
+        """(spikes, blanks) for the open study."""
+        if hasattr(self, "_data"):
+            return self._data
+        rec = self.record()
+        spikes, blanks = [], []
+        if rec is not None and os.path.exists(QC_DB):
+            conn = sqlite3.connect(QC_DB)          # read only: nothing is written here
+            try:
+                if rec["kind"] == "mdl":
+                    spikes = sd.injections(conn, rec["method"], ["LFB"], since=rec.get("since") or None,
+                                           until=rec.get("until") or None, matrix=rec["matrix"])
+                    blanks = sd.injections(conn, rec["method"], [sd.blank_role(rec["method"])],
+                                           since=rec.get("since") or None, until=rec.get("until") or None,
+                                           matrix=rec["matrix"])
+                else:
+                    spikes = sd.injections(conn, rec["method"], ["LFB"],
+                                           batches=rec.get("worksheets") or [u"-"])
+            finally:
+                conn.close()
+            # runs that passed technical review only: an
+            # open run is listed as left out, never pooled
+            reviewed = self._reviewed(set(r["batch"] for r in spikes + blanks))
+            self.left_out = sorted(set(r["batch"] for r in spikes + blanks) - reviewed)
+            spikes = [r for r in spikes if r["batch"] in reviewed]
+            blanks = [r for r in blanks if r["batch"] in reviewed]
+            levels = self._levels(sorted(set(r["batch"] for r in spikes)))
+            spikes = [dict(r, level=levels.get((r["batch"], r["injection"])) or u"") for r in spikes]
+            if rec.get("levels"):
+                spikes = [r for r in spikes if r["level"] in rec["levels"]]
+        self._data = (spikes, blanks)
+        return self._data
+
+    def fortified(self, level):
+        """The fortified concentration of one level: typed on the study (one
+        level), else the method's LFB spike level in the matrix's unit."""
+        rec = self.record() or {}
+        if rec.get("fortified") not in (None, u"") and len(rec.get("levels") or []) <= 1:
+            return float(rec["fortified"])
+        from senaite.pfas.calibration_levels import level_value, matrix_unit
+        prof = self.profile()
+        unit = matrix_unit(prof, rec.get("matrix"))
+        levels = ((prof.get("spike_levels") or {}).get(rec.get("matrix")) or {}).get("LFB") or []
+        for e in levels:
+            if e.get("label") == level:
+                return level_value(e, unit)
+        return None
+
+    def fortified_by_level(self):
+        spikes, _blanks = self.data()
+        return dict((lv, self.fortified(lv)) for lv in set(r.get("level") or u"" for r in spikes))
+
+    def level_labels(self):
+        """Every LFB spike level label the methods define (the form's choices)."""
+        out = []
+        for m in self.methods():
+            for per in (self.profile(m).get("spike_levels") or {}).values():
+                for e in (per or {}).get("LFB") or []:
+                    if e.get("label") and e["label"] not in out:
+                        out.append(e["label"])
+        return out
+
+    def reference_lots(self):
+        """Usable reference-material lots (the inventory's own category)."""
+        if not hasattr(self, "_rm_lots"):
+            from senaite.pfas.browser.bench_inventory import REAGENT, usable_lots
+            from senaite.pfas.content.reagent import CATEGORY_REFERENCE
+            try:
+                lots = usable_lots(self.portal(), date.today().isoformat())
+            except Exception:                                # noqa: BLE001
+                lots = []
+            self._rm_lots = [l for l in lots if l.get("kind") == REAGENT
+                             and l.get("category") == CATEGORY_REFERENCE]
+        return self._rm_lots
+
+    def pt_analytes(self):
+        rec = self.record() or {}
+        prof = self.profile()
+        return list(prof.get("display_analyte_set") or prof.get("master_analyte_set") or [])
+
+    def pt_verdicts(self):
+        return sd.PT_VERDICTS
+
+    def pt_problems(self):
+        rec = self.record() or {}
+        return sd.pt_problems(rec.get("pt"), self._certificate_present(rec))
+
+    def existing(self):
+        rec = self.record() or {}
+        rls = (self.profile().get("reporting_limits") or {}).get(rec.get("matrix")) or {}
+        return dict((kw, v.get("mdl")) for kw, v in rls.items() if isinstance(v, dict) and v.get("mdl"))
+
+    def results(self):
+        """{level: {keyword: result}}; a PT study's {"": its per-analyte rows}."""
+        rec = self.record()
+        if rec is None:
+            return {}
+        if rec.get("status") != sr.DRAFT:
+            return rec.get("results") or {}
+        if rec["kind"] == "pt":
+            rows = (rec.get("pt") or {}).get("results") or {}
+            return {u"": dict((kw, dict(r, verdict=r.get("verdict") or u"not evaluated"))
+                              for kw, r in rows.items())}
+        spikes, blanks = self.data()
+        return sd.calculate_levels(rec["kind"], spikes, blanks, self.fortified_by_level(),
+                                   rec.get("exclusions"), self.existing())
+
+    def level_rows(self):
+        """[(level, [(keyword, result)])] for the results macro."""
+        return [(lv, sorted(res.items())) for lv, res in sorted(self.results().items())]
+
+    def applied(self):
+        rec = self.record() or {}
+        if rec.get("status") != sr.DRAFT:
+            return rec.get("applied") or {}
+        return sd.applied_by_level(rec.get("kind"), self.results(), self.fortified_by_level())
+
+    def replicate_rows(self):
+        spikes, blanks = self.data()
+        return [dict(r, role=u"spike") for r in spikes] + [dict(r, role=u"blank") for r in blanks]
+
+    def fmt(self, v):
+        if v is None or v == u"":
+            return u"—"
+        if isinstance(v, float):
+            return u"%.4g" % v
+        return u"%s" % v
+
+    # ── actions ────────────────────────────────────────────────────────────
+    def _create(self):
+        f = self.request.form
+        kind, method, matrix = f.get("kind") or u"", f.get("method") or u"", f.get("matrix") or u""
+        if kind not in sd.KIND_LABELS or not method or not matrix:
+            self.error = u"Choose the kind, method and matrix."
+            return self.template()
+        if matrix not in (self.profile(method).get("supported_matrices") or []):
+            self.error = u"%s is not a matrix of %s." % (matrix, method)    # rule 2
+            return self.template()
+        recs = self.records()
+        ws = [w.strip() for w in (f.get("worksheets") or u"").replace(u",", u" ").split() if w.strip()]
+        levels = [l for l in self.level_labels() if f.get(u"level.%s" % l)]
+        lots = dict((l.get("uid"), l) for l in self.reference_lots())
+        rms = [{"uid": uid, "name": lots[uid].get("name") or u"", "lot_number": lots[uid].get("lot_number") or u""}
+               for uid in sorted(lots) if f.get(u"rm.%s" % uid)]
+        rec = sr.new(recs, kind, method, matrix, _user(), _now(), levels=levels, reference_materials=rms,
+                     worksheets=ws, since=(f.get("since") or u"").strip(),
+                     until=(f.get("until") or u"").strip(), title=(f.get("title") or u"").strip(),
+                     fortified=(f.get("fortified") or u"").strip() or None)
+        recs.append(rec)
+        sr.save(self.portal(), recs)
+        self.request.response.redirect("%s/@@pfas-method-studies?id=%s" % (self.portal_url(), rec["id"]))
+        return u""
+
+    def _exclude(self):
+        f = self.request.form
+        rec = self.record()
+        if rec is None:
+            self.error = u"No such study."
+            return
+        self.error = sr.exclude(rec, f.get("injection") or u"", f.get("analyte") or u"*",
+                                f.get("reason") or u"", _user(), _now())
+        if not self.error:
+            sr.save(self.portal(), self.records())
+            self.message = u"Excluded."
+
+    def _save_pt(self):
+        """The PT round, its analytes and the provider's certificate."""
+        f = self.request.form
+        rec = self.record()
+        if rec is None or rec.get("kind") != "pt" or rec.get("status") != sr.DRAFT:
+            self.error = u"Only a draft proficiency test is edited here."
+            return
+        pt = dict(rec.get("pt") or {})
+        for k in ("provider", "scheme", "round", "sample", "received"):
+            pt[k] = (f.get(u"pt_%s" % k) or u"").strip()
+        entries = dict((kw, {"reported": f.get(u"rep.%s" % kw), "assigned": f.get(u"asg.%s" % kw),
+                             "verdict": f.get(u"ver.%s" % kw)}) for kw in self.pt_analytes())
+        pt["results"] = sd.pt_results(entries)
+        upload = self.request.form.get("certificate_file")
+        if upload is not None and getattr(upload, "filename", u""):
+            data = upload.read()
+            if not data.startswith(b"%PDF"):
+                self.error = u"The certificate must be a PDF."
+                return
+            path = self._certificate_path(rec)
+            if not os.path.isdir(os.path.dirname(path)):
+                os.makedirs(os.path.dirname(path))
+            with open(path, "wb") as fh:
+                fh.write(data)
+            pt["certificate"] = {"file": os.path.basename(path), "name": upload.filename,
+                                 "by": _user(), "at": _now()}
+        rec["pt"] = pt
+        sr.save(self.portal(), self.records())
+        self.message = u"Saved."
+
+    def _certificate_path(self, rec):
+        return os.path.join(PDF_DIR, rec["id"], u"certificate.pdf")
+
+    def _certificate_present(self, rec):
+        return bool((rec.get("pt") or {}).get("certificate")) and os.path.exists(self._certificate_path(rec))
+
+    def _serve_certificate(self):
+        rec = self.record()
+        path = self._certificate_path(rec)
+        if not os.path.exists(path):
+            self.request.response.setStatus(404)
+            return u"No certificate."
+        with open(path, "rb") as fh:
+            body = fh.read()
+        self.request.response.setHeader("Content-Type", "application/pdf")
+        self.request.response.setHeader("Content-Disposition", 'inline; filename="%s-certificate.pdf"' % rec["id"])
+        return body
+
+    def _approve(self):
+        rec = self.record()
+        if rec is None:
+            self.error = u"No such study."
+            return
+        if rec.get("kind") == "pt":
+            problems = self.pt_problems()
+            if problems:
+                self.error = problems[0]
+                return
+        results, applied = self.results(), self.applied()
+        recs = self.records()
+        self.error = sr.approve(recs, rec, results, applied, _user(), _now(),
+                                self.request.form.get("statement") or u"",
+                                file_name=u"%s.pdf" % rec["id"])
+        if self.error:
+            return
+        if applied:
+            from senaite.pfas.config_history import set_actor, set_note
+            from senaite.pfas.method_profile_store import save_profile
+            set_actor(_user())
+            set_note(u"method study %s" % rec["id"])
+            save_profile(self.portal(), rec["method"],
+                         sr.apply_to_profile(self.profile(rec["method"]), rec["matrix"], applied))
+        sr.save(self.portal(), recs)
+        self._freeze_pdf(rec)
+        self.message = u"Approved."
+
+    # ── the packet ─────────────────────────────────────────────────────────
+    def _pdf_path(self, rec):
+        return os.path.join(PDF_DIR, rec.get("file") or u"%s.pdf" % rec["id"])
+
+    def _freeze_pdf(self, rec):
+        try:
+            from weasyprint import HTML
+            if not os.path.isdir(PDF_DIR):
+                os.makedirs(PDF_DIR)
+            HTML(string=self.print_template()).write_pdf(self._pdf_path(rec))
+        except Exception as exc:                            # noqa: BLE001
+            logger.exception("study packet %s not frozen", rec.get("id"))
+            self.error = u"Approved, but the packet PDF was not written: %s" % exc
+
+    def _serve_pdf(self):
+        rec = self.record()
+        path = self._pdf_path(rec)
+        if rec.get("status") == sr.DRAFT or not os.path.exists(path):
+            from weasyprint import HTML
+            body = HTML(string=self.print_template()).write_pdf()
+        else:
+            with open(path, "rb") as fh:
+                body = fh.read()
+        resp = self.request.response
+        resp.setHeader("Content-Type", "application/pdf")
+        resp.setHeader("Content-Disposition", 'inline; filename="%s.pdf"' % rec["id"])
+        return body
+
+
+class PFASMethodStudyMacrosView(BrowserView):
+    """The results macro, shared by the page and its packet PDF."""
+
+    _template = ViewPageTemplateFile("templates/method_study_macros.pt")
+
+    @property
+    def macros(self):
+        return self._template.macros

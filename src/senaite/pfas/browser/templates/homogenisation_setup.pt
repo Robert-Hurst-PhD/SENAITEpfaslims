@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Homogenisation Methods</title>
+  <metal:fill fill-slot="header-title">Homogenisation Methods</metal:fill>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-equipment-types">Equipment Types</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="purl view/portal_url">
+
+    <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
+    <div class="alert alert-danger" tal:repeat="e view/errors|nothing" tal:content="e">error</div>
+
+    <p class="form-note">Methods, and each matrix's default. <tal:h define="hid string:homogenisation"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+    <form method="post" tal:attributes="action string:${purl}/@@pfas-homogenisation-setup"
+          tal:define="methods view/methods; starter view/starter">
+      <fieldset class="pfas-ro" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
+      <div class="section-group-hdr">Methods</div>
+      <div class="cf-coll-wrap">
+        <table class="pfas-table pfas-table-form cf-coll">
+          <thead><tr><th>Method</th><th>Homogeniser unit recorded</th><th>In use</th></tr></thead>
+          <tbody>
+            <tr><td>Not homogenised</td><td></td><td>&#10003;</td></tr>
+            <tr tal:repeat="m methods">
+              <td><input type="hidden" tal:attributes="name string:m__${repeat/m/index}__id; value m/id" />
+                  <input type="text" tal:attributes="name string:m__${repeat/m/index}__title; value m/title" /></td>
+              <td><input type="checkbox" value="on"
+                         tal:attributes="name string:m__${repeat/m/index}__unit_required;
+                                         checked python:'checked' if m.get('unit_required') else None" /></td>
+              <td><input type="checkbox" value="on"
+                         tal:attributes="name string:m__${repeat/m/index}__active;
+                                         checked python:'checked' if m.get('active', True) else None" /></td>
+            </tr>
+            <tr tal:repeat="t starter">
+              <td><input type="text" tal:attributes="name python:'m__%d__title' % (len(methods) + repeat['t'].index); placeholder t" /></td>
+              <td><input type="checkbox" value="on" checked="checked"
+                         tal:attributes="name python:'m__%d__unit_required' % (len(methods) + repeat['t'].index)" /></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        <template class="cf-row-template">
+          <tr>
+            <td><input type="text" name="m__NEW__title" /></td>
+            <td><input type="checkbox" name="m__NEW__unit_required" value="on" checked="checked" /></td>
+            <td></td>
+          </tr>
+        </template>
+        <button type="button" class="btn-sm btn-secondary cf-add-row" tal:condition="view/can_configure"
+                tal:attributes="data-next python:len(methods) + len(starter)">+ Add method</button>
+      </div>
+
+      <div class="section-group-hdr">Default per matrix</div>
+      <table class="pfas-table pfas-table-form">
+        <thead><tr><th>Matrix</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="x view/matrices">
+            <td tal:content="x/title">Eggs</td>
+            <td><select tal:attributes="name string:default__${x/uid}">
+                  <option tal:repeat="c x/choices"
+                          tal:attributes="value python:c[0]; selected python:'selected' if c[0] == x['current'] else None"
+                          tal:content="python:c[1]">IKA mill</option>
+                </select></td>
+          </tr>
+        </tbody>
+      </table>
+      </fieldset>
+      <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
+    </form>
+
+  </div>
+  </div>
+</html>

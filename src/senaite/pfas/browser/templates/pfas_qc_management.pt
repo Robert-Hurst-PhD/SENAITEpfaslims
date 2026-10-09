@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">QC Management</title>
+
+  <metal:fill fill-slot="header-title">QC Management</metal:fill>
+
+  <metal:fill fill-slot="content">
+    <section class="bench-block" tal:define="items view/attention">
+      <h2 class="bench-h">Needs attention</h2>
+      <ul class="bench-alerts">
+        <li tal:repeat="it items" tal:attributes="class python:'bench-bad' if it['level'] == 'bad' else 'bench-warn'">
+          <strong tal:content="it/title">No reporting template issued</strong>
+          <span tal:content="it/detail">Nothing can be published.</span>
+          <a tal:repeat="a it/actions" class="btn-sm btn-secondary"
+             tal:attributes="href a/url" tal:content="a/label">Reporting Template</a>
+          <tal:h define="hid it/help"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+        </li>
+        <li class="bench-ok" tal:condition="not:items">Nothing needs attention.</li>
+      </ul>
+    </section>
+
+    <div class="pfas-ws-grid" tal:define="sections view/sections">
+      <a class="pfas-ws-card"
+         tal:repeat="s sections"
+         tal:attributes="href s/url">
+        <span class="pfas-ws-card-icon" tal:content="s/icon">i</span>
+        <span class="pfas-ws-card-title" tal:content="s/title">Title</span>
+        <span class="pfas-ws-card-desc"  tal:content="s/desc">Description</span>
+      </a>
+    </div>
+  </metal:fill>
+
+</html>

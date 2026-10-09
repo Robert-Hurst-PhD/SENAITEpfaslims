@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title"><tal:f replace="python:view.form_code('250')"/>: Solvent / Reagent Prep Log</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <style>
+    .btn-add-row { margin-top: 8px; }   /* look: shared .btn-sm */
+    .lb-form { max-width: 900px; }
+    .lb-section { margin-bottom: 28px; }
+    .lb-section h3 { font-size: var(--fs-base); font-weight: 700; color: var(--s-dark);
+                     margin-bottom: 12px; padding-bottom: 6px;
+                     border-bottom: 2px solid var(--s-border); }
+    .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .lb-field { display: flex; flex-direction: column; }
+    .lb-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-input, .lb-select, .lb-textarea {
+      padding: 7px 10px; font-size: var(--fs-base); border: 1px solid var(--s-input-border);
+      border-radius: 6px; color: var(--s-body);
+    }
+    .lb-input:focus, .lb-select:focus { outline: none; border-color: var(--s-primary); }
+    .lb-input-sm { width: 110px; }
+    .lb-input-md { width: 180px; }
+    .lb-input-lg { width: 260px; }
+    /* Dynamic table */
+    .dyn-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+    .dyn-table th { background: var(--s-light); padding: 6px 10px; text-align: left;
+                    border-bottom: 2px solid var(--s-border); font-weight: 700; }
+    .dyn-table td { padding: 4px 6px; border-bottom: 1px solid var(--s-border); }
+    .dyn-table td input { width: 100%; padding: 5px 8px; font-size: var(--fs-sm);
+                          border: 1px solid var(--s-input-border); border-radius: 4px; }
+    .dyn-table td input:focus { outline: none; border-color: var(--s-primary); }
+    .btn-del-row { background: none; border: none; cursor: pointer;
+                   color: var(--s-danger-dk); font-size: var(--fs-base); padding: 2px 6px; }
+    .expiry-rule { font-size: var(--fs-xs); color: var(--s-warn-text); margin-left: 8px; }
+    /* Signature block */
+    .sig-block { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 16px; }
+    .sig-field { display: flex; flex-direction: column; }
+    .sig-field label { font-size: var(--fs-sm); font-weight: 600; margin-bottom: 3px; }
+    /* Submit */
+    .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border); }
+    .alert-ok    { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text);
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
+    .alert-error { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk);
+                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title"><tal:f replace="python:view.form_code('250')"/>: Solvent / Reagent Prep Log</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary btn-back"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <!-- Breadcrumb -->
+    <div class="lb-breadcrumb">
+      <span>Lab</span>
+      <span class="lb-bc-sep">›</span>
+      <tal:m tal:condition="view/batch_method">
+        <span tal:content="view/batch_method">Method</span>
+        <span class="lb-bc-sep">›</span>
+      </tal:m>
+      <span tal:content="view/batch_title">Batch</span>
+      <span class="lb-bc-sep">›</span>
+      <strong tal:content="python:view.form_code('250')">FM-ENV-00x</strong>
+    </div>
+
+    <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+
+    <form class="lb-form" method="post"
+          tal:attributes="action string:${view/batch_url}/@@pfas-logbook-250">
+
+      <!-- Hidden JSON fields (populated/updated by JS) -->
+      <input type="hidden" id="solutions_json"  name="solutions_json" tal:attributes="value python:view.stored_json('solutions')" />
+      <input type="hidden" id="chemicals_json"  name="chemicals_json" tal:attributes="value python:view.stored_json('chemicals')" />
+
+      <!-- ── Header fields ── -->
+      <div class="lb-section">
+        <h3>Preparation Details</h3>
+        <div class="lb-row">
+          <div class="lb-field corr-field" data-field="prepared_by">
+            <label>Prepared By <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_by')">correct</button></label>
+            <input class="lb-input lb-input-lg" type="text" name="prepared_by"
+                   tal:attributes="value python:view.data().get('prepared_by','')" />
+            <div class="corr-panel" id="cp-prepared_by">
+              <label>Original: <span id="co-prepared_by" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="text" id="cn-prepared_by" name="_newval_prepared_by" style="width:160px;" /></label>
+              <label>Initials: <input type="text" id="cb-prepared_by" name="_corr_by_prepared_by" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('prepared_by')">&#215;</button>
+            </div>
+          </div>
+          <div class="lb-field corr-field" data-field="prepared_date">
+            <label>Date Prepared <button class="btn-correct" type="button" onclick="toggleCorrect('prepared_date')">correct</button></label>
+            <input class="lb-input lb-input-md" type="date" name="prepared_date"
+                   tal:attributes="value python:view.data().get('prepared_date','')" />
+            <div class="corr-panel" id="cp-prepared_date">
+              <label>Original: <span id="co-prepared_date" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="date" id="cn-prepared_date" name="_newval_prepared_date" /></label>
+              <label>Initials: <input type="text" id="cb-prepared_date" name="_corr_by_prepared_date" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('prepared_date')">&#215;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Solutions table ── -->
+      <div class="lb-section">
+        <h3>Solutions Prepared</h3>
+        <p style="font-size:var(--fs-sm); color:var(--s-secondary); margin-bottom:8px;">
+          Lot numbers are auto-generated as <strong>NAME-YYMMDD</strong>.
+          Mobile phases expire in <strong>1 week</strong>; all others in 1 year.
+        </p>
+        <table class="dyn-table" id="solutions-table">
+          <thead>
+            <tr>
+              <th>Solution Name</th>
+              <th>Volume (mL)</th>
+              <th>Lot Number</th>
+              <th>Expiry Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="solutions-body"></tbody>
+        </table>
+        <button type="button" class="btn-sm btn-add-row" onclick="addSolutionRow()">
+          + Add Solution
+        </button>
+      </div>
+
+      <!-- ── Chemicals table ── -->
+      <div class="lb-section">
+        <h3>Chemicals Used</h3>
+        <table class="dyn-table" id="chemicals-table">
+          <thead>
+            <tr>
+              <th>Material</th>
+              <th>Vendor</th>
+              <th>Part #</th>
+              <th>Lot #</th>
+              <th>Expiry</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="chemicals-body"></tbody>
+        </table>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button type="button" class="btn-sm btn-add-row" onclick="addChemicalRow()">
+            + Add Chemical (manual)
+          </button>
+          <button type="button" class="btn-sm btn-add-row"
+                  style="border-color:var(--s-primary);color: var(--s-primary-dk);"
+                  onclick="openInvLookup()">
+            &#128196; From Inventory
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Inventory lookup modal (reagent_inventory) ── -->
+      <div id="inv-overlay" style="display:none;position:fixed;inset:0;
+           background:rgba(0,0,0,.45);z-index:1000;
+           align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:22px;
+                    width:90%;max-width:540px;box-shadow:0 8px 32px rgba(0,0,0,.25);">
+          <div style="display:flex;justify-content:space-between;align-items:center;
+                      margin-bottom:14px;">
+            <strong style="font-size:var(--fs-md);">&#128196; Reagent Inventory Lookup</strong>
+            <button type="button" onclick="closeInvLookup()"
+                    style="background:none;border:none;font-size:var(--fs-xl);cursor:pointer;">&#215;</button>
+          </div>
+          <input id="inv-search" type="text" placeholder="Search name, cat#, lot#..."
+                 style="width:100%;padding:8px 10px;font-size:var(--fs-base);
+                        border:1px solid #ccc;border-radius:6px;box-sizing:border-box;"
+                 oninput="invSearch(this.value)" />
+          <div id="inv-results"
+               style="margin-top:10px;max-height:280px;overflow-y:auto;"></div>
+        </div>
+      </div>
+
+      <!-- ── Ammonium acetate ── -->
+      <div class="lb-section">
+        <h3>Ammonium Acetate</h3>
+        <div class="lb-row">
+          <div class="lb-field corr-field" data-field="ammonium_acetate_weight_g">
+            <label>Weight (g) <button class="btn-correct" type="button" onclick="toggleCorrect('ammonium_acetate_weight_g')">correct</button></label>
+            <input class="lb-input lb-input-sm" type="number" step="0.0001"
+                   name="ammonium_acetate_weight_g"
+                   tal:attributes="value python:view.data().get('ammonium_acetate_weight_g','')" />
+            <div class="corr-panel" id="cp-ammonium_acetate_weight_g">
+              <label>Original: <span id="co-ammonium_acetate_weight_g" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="text" id="cn-ammonium_acetate_weight_g" name="_newval_ammonium_acetate_weight_g" style="width:90px;" /></label>
+              <label>Initials: <input type="text" id="cb-ammonium_acetate_weight_g" name="_corr_by_ammonium_acetate_weight_g" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('ammonium_acetate_weight_g')">&#215;</button>
+            </div>
+          </div>
+          <div class="lb-field corr-field" data-field="balance_sn">
+            <label>Balance S/N <button class="btn-correct" type="button" onclick="toggleCorrect('balance_sn')">correct</button></label>
+            <input class="lb-input lb-input-md" type="text" name="balance_sn"
+                   tal:attributes="value python:view.data().get('balance_sn','')" />
+            <div class="corr-panel" id="cp-balance_sn">
+              <label>Original: <span id="co-balance_sn" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="text" id="cn-balance_sn" name="_newval_balance_sn" style="width:140px;" /></label>
+              <label>Initials: <input type="text" id="cb-balance_sn" name="_corr_by_balance_sn" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('balance_sn')">&#215;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Notes ── -->
+      <div class="lb-section">
+        <h3>Notes</h3>
+        <div class="corr-field" data-field="notes">
+          <textarea class="lb-textarea" name="notes" style="width:100%; min-height:60px;"
+                    tal:content="python:view.data().get('notes','')"></textarea>
+          <div style="margin-top:4px;">
+            <button class="btn-correct" type="button" onclick="toggleCorrect('notes')">correct notes</button>
+          </div>
+          <div class="corr-panel" id="cp-notes">
+            <label>Original: <span id="co-notes" style="text-decoration:line-through;color:#999;font-weight:normal;max-width:300px;display:inline-block;"></span></label>
+            <label>Correction: <input type="text" id="cn-notes" name="_newval_notes" style="width:220px;" /></label>
+            <label>Initials: <input type="text" id="cb-notes" name="_corr_by_notes" class="corr-initials" placeholder="JS" /></label>
+            <button type="button" class="corr-cancel" onclick="toggleCorrect('notes')">&#215;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Signature block ── -->
+      <div class="lb-section">
+        <h3>Sign-off</h3>
+        <div class="sig-block">
+          <div class="sig-field corr-field" data-field="reviewed_by">
+            <label>Reviewed By <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_by')">correct</button></label>
+            <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
+                   tal:attributes="value python:view.data().get('reviewed_by','')" />
+            <div class="corr-panel" id="cp-reviewed_by">
+              <label>Original: <span id="co-reviewed_by" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="text" id="cn-reviewed_by" name="_newval_reviewed_by" style="width:160px;" /></label>
+              <label>Initials: <input type="text" id="cb-reviewed_by" name="_corr_by_reviewed_by" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('reviewed_by')">&#215;</button>
+            </div>
+          </div>
+          <div class="sig-field corr-field" data-field="reviewed_date">
+            <label>Date Reviewed <button class="btn-correct" type="button" onclick="toggleCorrect('reviewed_date')">correct</button></label>
+            <input class="lb-input lb-input-md" type="date" name="reviewed_date"
+                   tal:attributes="value python:view.data().get('reviewed_date','')" />
+            <div class="corr-panel" id="cp-reviewed_date">
+              <label>Original: <span id="co-reviewed_date" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Correction: <input type="date" id="cn-reviewed_date" name="_newval_reviewed_date" /></label>
+              <label>Initials: <input type="text" id="cb-reviewed_date" name="_corr_by_reviewed_date" class="corr-initials" placeholder="JS" /></label>
+              <button type="button" class="corr-cancel" onclick="toggleCorrect('reviewed_date')">&#215;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <tal:signoff tal:define="signoff_noun string:reagent;
+                    signoff_prepared_name python:view.data().get('prepared_by','');
+                    signoff_prepared_date python:view.data().get('prepared_date','');
+                    signoff_prepared_initials python:view.data().get('prepared_by','')">
+        <tal:m metal:use-macro="context/@@pfas-macros/macros/signoff"/>
+      </tal:signoff>
+
+      <div class="form-actions">
+        <button class="btn-save" type="submit">Save Logbook</button>
+        <button type="button" class="btn-print-preview" onclick="window.print()">
+          &#128438; Print Preview
+        </button>
+      </div>
+    </form>
+
+  </div>
+
+  <script>
+  /* ── Data from server ── */
+  var SAVED_DATA = <tal:d tal:replace="structure view/data_json" />;
+
+  /* ── Date helper ── */
+  function todayYYMMDD() {
+    var d = new Date();
+    var yy = String(d.getFullYear()).slice(-2);
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var dd = String(d.getDate()).padStart(2,'0');
+    return yy + mm + dd;
+  }
+  function addDays(dateStr, days) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0,10);
+  }
+  function addYears(dateStr, yrs) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr);
+    d.setFullYear(d.getFullYear() + yrs);
+    return d.toISOString().slice(0,10);
+  }
+  function autoLot(name) {
+    return (name || 'SOL').toUpperCase().replace(/\s+/g,'_') + '-' + todayYYMMDD();
+  }
+  function autoExpiry(name, prepDate) {
+    var mobile = /mph|methoh|meoh|meph/i.test(name || '');
+    return mobile ? addDays(prepDate, 7) : addYears(prepDate, 1);
+  }
+
+  /* ── Solutions table ── */
+  var solutionsData = SAVED_DATA.solutions || [];
+  function renderSolutions() {
+    var tbody = document.getElementById('solutions-body');
+    tbody.innerHTML = '';
+    solutionsData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.name||'') + '" oninput="solutionsData[' + i + '].name=this.value; autoFillLot(' + i + ')"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="number" step="1" min="0" style="width:80px" value="' + esc(row.volume_ml||'') + '" oninput="solutionsData[' + i + '].volume_ml=this.value"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.lot_number||'') + '" id="s-lot-' + i + '" oninput="solutionsData[' + i + '].lot_number=this.value"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="date" value="' + esc(row.expiry||'') + '" id="s-exp-' + i + '" oninput="solutionsData[' + i + '].expiry=this.value"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="delSolution(' + i + ')">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncSolutions();
+  }
+  function autoFillLot(i) {
+    var prepDate = document.querySelector('[name="prepared_date"]').value;
+    var name = solutionsData[i].name;
+    document.getElementById('s-lot-' + i).value = autoLot(name);
+    document.getElementById('s-exp-' + i).value = autoExpiry(name, prepDate);
+    solutionsData[i].lot_number = autoLot(name);
+    solutionsData[i].expiry = autoExpiry(name, prepDate);
+    syncSolutions();
+  }
+  function addSolutionRow() {
+    solutionsData.push({name:'', volume_ml:'', lot_number:'', expiry:''});
+    renderSolutions();
+  }
+  function delSolution(i) {
+    solutionsData.splice(i,1);
+    renderSolutions();
+  }
+  function syncSolutions() {
+    document.getElementById('solutions_json').value = JSON.stringify(solutionsData);
+  }
+
+  /* ── Chemicals table ── */
+  var chemicalsData = SAVED_DATA.chemicals || [];
+  function renderChemicals() {
+    var tbody = document.getElementById('chemicals-body');
+    tbody.innerHTML = '';
+    chemicalsData.forEach(function(row, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.material||'') + '" oninput="chemicalsData['+i+'].material=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.vendor||'') + '" oninput="chemicalsData['+i+'].vendor=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.part_num||'') + '" style="width:90px" oninput="chemicalsData['+i+'].part_num=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="text" value="' + esc(row.lot_num||'') + '" oninput="chemicalsData['+i+'].lot_num=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cinput type="date" value="' + esc(row.expiry||'') + '" oninput="chemicalsData['+i+'].expiry=this.value;syncChemicals()"/>\u003c/td>' +
+        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="delChemical('+i+')">&#215;\u003c/button>\u003c/td>';
+      tbody.appendChild(tr);
+    });
+    syncChemicals();
+  }
+  function addChemicalRow() {
+    chemicalsData.push({material:'', vendor:'', part_num:'', lot_num:'', expiry:''});
+    renderChemicals();
+  }
+  function delChemical(i) {
+    chemicalsData.splice(i,1);
+    renderChemicals();
+  }
+  function syncChemicals() {
+    document.getElementById('chemicals_json').value = JSON.stringify(chemicalsData);
+  }
+
+  /* ── Utility ── */
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\u003c/g,'&lt;');
+  }
+
+  /* ── Inventory lookup ── */
+  /* Absolute portal URL — a root-relative '/@@...' resolves against the Zope
+     root, not the Plone site, so this lookup never answered. */
+  var INV_URL = '<tal:u replace="view/portal_url">/senaite</tal:u>'
+              + '/@@pfas-reagents?action=lookup_json&q=';
+
+  function openInvLookup() {
+    document.getElementById('inv-overlay').style.display = 'flex';
+    invSearch('');
+  }
+  function closeInvLookup() {
+    document.getElementById('inv-overlay').style.display = 'none';
+  }
+  function invSearch(q) {
+    fetch(INV_URL + encodeURIComponent(q))
+      .then(function(r){ return r.json(); })
+      .then(function(data) { renderInvResults(data.items || []); })
+      .catch(function(){ renderInvResults([]); });
+  }
+  function renderInvResults(items) {
+    var el = document.getElementById('inv-results');
+    if (!items.length) {
+      el.innerHTML = '\u003cp style="font-size:var(--fs-sm);color:#888;padding:10px 0;">No reagents found.\u003c/p>';
+      return;
+    }
+    el.innerHTML = items.map(function(r) {
+      var expired = r.expiry_date && new Date(r.expiry_date) < new Date();
+      var expColor = expired ? '#dc3545' : '#155724';
+      return '\u003cdiv style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:var(--fs-sm);"' +
+             ' onmouseover="this.style.background=\'#f0f4ff\'"' +
+             ' onmouseout="this.style.background=\'\'"' +
+             ' onclick=\'addChemicalFromInventory(' + JSON.stringify(r) + ')\'>' +
+             '\u003cstrong>' + esc(r.name) + '\u003c/strong>' +
+             (expired ? ' \u003cspan style="color: var(--s-danger-dk);font-size:var(--fs-xs);">EXPIRED\u003c/span>' : '') +
+             '\u003cbr>' +
+             'Cat: \u003ccode>' + esc(r.cat_number) + '\u003c/code>' +
+             ' &nbsp; Lot: \u003ccode>' + esc(r.lot_number) + '\u003c/code>' +
+             (r.expiry_date ? ' &nbsp; Exp: \u003cspan style="color:'+expColor+';">' + esc(r.expiry_date) + '\u003c/span>' : '') +
+             ' &nbsp; Supplier: ' + esc(r.supplier) +
+             '\u003c/div>';
+    }).join('');
+  }
+  function addChemicalFromInventory(r) {
+    chemicalsData.push({
+      material: r.name,
+      vendor:   r.supplier,
+      part_num: r.cat_number,
+      lot_num:  r.lot_number,
+      expiry:   r.expiry_date || ''
+    });
+    renderChemicals();
+    closeInvLookup();
+  }
+  document.getElementById('inv-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeInvLookup();
+  });
+
+  /* ── Init ── */
+  document.addEventListener('DOMContentLoaded', function() {
+    if (!solutionsData.length) {
+      solutionsData = [
+        {name:'FDA-MPH2O',    volume_ml:500, lot_number:'', expiry:''},
+        {name:'FDA-MPMeOH',   volume_ml:500, lot_number:'', expiry:''},
+        {name:'FDA-Pre-Ex-I', volume_ml:100, lot_number:'', expiry:''},
+        {name:'FDA-Pre-Ex-II',volume_ml:100, lot_number:'', expiry:''}
+      ];
+    }
+    renderSolutions();
+    renderChemicals();
+    initCorrections(SAVED_DATA);
+  });
+  </script>
+  </div><!-- /content slot -->
+</body>
+</html>

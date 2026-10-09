@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<import-steps>
+  <import-step id="senaite.pfas.install"
+      version="1000"
+      handler="senaite.pfas.setuphandlers.setup_handler"
+      title="senaite.pfas install">
+    Installs PFAS analytes, internal standards, methods, sample types,
+    containers, storage locations, and preservations from setupdata CSVs.
+  </import-step>
+</import-steps>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title" tal:content="view/logbook_title">Logbook</title>
+  <tal:styles metal:fill-slot="head-extra">
+  <!-- Field widget styles are shared with the guided view; see the comment in
+       logbook_fields.css for why they are not inlined here or in the macro. -->
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=3" />
+  <style>
+    /* concise-form chrome only — everything field-level lives in the shared sheet */
+    .lb-form { max-width: 900px; }
+    .form-actions { margin-top: 28px; padding-top: 16px;
+                    border-top: 1px solid var(--s-border);
+                    display: flex; gap: 12px; align-items: center; }
+    .empty-schema { color: var(--s-secondary); font-style: italic;
+                    padding: 24px; text-align: center; }
+    @media print { .form-actions { display: none !important; } }
+  </style>
+  </tal:styles>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title" tal:content="view/logbook_title">Logbook</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary btn-back"
+       tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body">
+
+    <!-- Breadcrumb -->
+    <div class="lb-breadcrumb">
+      <span>Lab</span>
+      <span class="lb-bc-sep">&#8250;</span>
+      <span tal:content="view/batch_title">Batch</span>
+      <span class="lb-bc-sep">&#8250;</span>
+      <strong tal:content="view/logbook_code">Logbook</strong>
+    </div>
+
+    <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+
+    <!-- Empty schema notice -->
+    <tal:noschema condition="not:view/field_schema">
+      <div class="empty-schema">
+        No field schema defined for this logbook.
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-prep-logbooks">Configure in Logbooks: Templates</a>
+      </div>
+    </tal:noschema>
+
+    <!-- Main form (only when schema is defined) -->
+    <tal:hasschema condition="view/field_schema">
+    <form class="lb-form" method="post"
+          tal:attributes="action string:${view/batch_url}/@@pfas-logbook-dynamic?slug=${view/slug}">
+
+      <!-- Render each field in the schema -->
+      <!-- `field` (from the repeat) and `view` are what the macro reads;
+           both are in scope here, on the element wrapping the use-macro. -->
+      <tal:fields repeat="field python:view.field_schema()">
+        <tal:m metal:use-macro="context/@@pfas-logbook-macros/macros/logbook_field" />
+      </tal:fields>
+
+      <!-- QA attestation. The schema-driven path never invoked this, so
+           250/251/253 (which all route here) printed without it. -->
+      <tal:signoff tal:define="signoff_noun view/signoff_noun;
+                               signoff_prepared_name view/signoff_name;
+                               signoff_prepared_date view/signoff_date;
+                               signoff_prepared_initials view/signoff_name">
+        <tal:m metal:use-macro="context/@@pfas-macros/macros/signoff" />
+      </tal:signoff>
+
+      <div class="form-actions">
+        <button class="btn-save" type="submit">Save Logbook</button>
+        <button type="button" class="btn-print-preview" onclick="window.print()">&#128438; Print Preview</button>
+        <a class="btn-sm btn-secondary" target="_blank" tal:condition="view/has_designed_pdf"
+           tal:attributes="href string:${view/batch_url}/@@pfas-logbook-pdf?slug=${view/slug}"
+           title="This logbook as a PDF, from its issued design (Document Templates)">PDF</a>
+      </div>
+
+    </form>
+    </tal:hasschema>
+
+  </div><!-- /page-body -->
+
+  <script>
+  /* Server data only; the widget code lives in a static resource so
+     Chameleon never has to parse it as markup. */
+  var SAVED_DATA    = <tal:sd tal:replace="structure view/data_json" />;
+  var FIELD_SCHEMA  = <tal:fs tal:replace="structure view/field_schema_json" />;
+  /* {lot_type: most recent usable lot} — applied only to EMPTY boxes */
+  var LOT_DEFAULTS = <tal:ld tal:replace="structure view/lot_defaults_json" />;
+  </script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=3"></script>
+
+  </div><!-- /content slot -->
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">Lab Terminals</title>
+</head>
+<body>
+  <tal:t metal:fill-slot="header-title">Lab Terminals</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-lab-staff">&#8592; Lab Staff</a>
+  </tal:r>
+  <metal:fill fill-slot="content"
+              tal:define="msg view/message; token context/@@authenticator/token; d view/data; here view/this_terminal">
+    <div class="alert alert-success" tal:condition="python: msg[0]" tal:content="python: msg[0]">ok</div>
+    <div class="alert alert-error" tal:condition="python: msg[1]" tal:content="python: msg[1]">error</div>
+    <p class="bench-sub">A badge signs its holder in only at a registered lab terminal; register each bench computer from that computer. <tal:h define="hid string:badges"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <section class="bench-block">
+      <h2 class="bench-h">This computer</h2>
+      <p class="rt-line" tal:condition="here" tal:content="string:This computer is the lab terminal ${here/name}.">here</p>
+      <form method="post" class="rt-form" tal:condition="python: not here and view.can_configure()"
+            tal:attributes="action string:${view/portal_url}/@@pfas-terminals">
+        <input type="hidden" name="_authenticator" tal:attributes="value token" />
+        <input type="hidden" name="action" value="register_terminal" />
+        <input type="text" name="name" class="dt-note" required="required" placeholder="Terminal name, e.g. Bench 2 PC" />
+        <button class="btn-sm btn-primary" type="submit">Register this computer</button>
+      </form>
+    </section>
+    <section class="bench-block">
+      <h2 class="bench-h">Terminals</h2>
+      <p class="bench-sub" tal:condition="not:d/terminals">None registered.</p>
+      <table class="pfas-table" tal:condition="d/terminals">
+        <thead><tr><th>Terminal</th><th>Registered</th><th>Status</th><th></th></tr></thead>
+        <tbody><tr tal:repeat="t d/terminals">
+          <td tal:content="t/name">Bench 2</td>
+          <td tal:content="python: u'%s by %s' % ((t['registered_at'] or u'')[:16].replace('T', ' '), t['registered_by'])">x</td>
+          <td><span class="badge badge-active" tal:condition="not:t/revoked_at">Active</span>
+              <span class="badge badge-archived" tal:condition="t/revoked_at"
+                    tal:content="python: u'Revoked %s' % t['revoked_at'][:10]">Revoked</span></td>
+          <td class="row-actions-cell">
+            <form method="post" class="dt-inline" tal:condition="python: not t['revoked_at'] and view.can_configure()"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-terminals">
+              <input type="hidden" name="_authenticator" tal:attributes="value token" />
+              <input type="hidden" name="action" value="revoke_terminal" />
+              <input type="hidden" name="terminal_id" tal:attributes="value t/id" />
+              <button class="btn-sm btn-secondary" type="submit">Revoke</button>
+            </form>
+          </td>
+        </tr></tbody>
+      </table>
+    </section>
+    <section class="bench-block" tal:define="shown view/tile_rows" tal:condition="shown">
+      <h2 class="bench-h">Sign-in tiles</h2>
+      <table class="pfas-table">
+        <thead><tr><th>Terminal</th><th>Account</th><th></th></tr></thead>
+        <tbody><tr tal:repeat="r shown">
+          <td tal:content="r/terminal">Bench 2</td>
+          <td tal:content="r/name">AN1</td>
+          <td class="row-actions-cell">
+            <form method="post" class="dt-inline" tal:condition="view/can_configure"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-terminals">
+              <input type="hidden" name="_authenticator" tal:attributes="value token" />
+              <input type="hidden" name="action" value="forget_tile" />
+              <input type="hidden" name="terminal_id" tal:attributes="value r/terminal_id" />
+              <input type="hidden" name="userid" tal:attributes="value r/userid" />
+              <button class="btn-sm btn-secondary" type="submit">Forget</button>
+            </form>
+          </td>
+        </tr></tbody>
+      </table>
+    </section>
+    <section class="bench-block">
+      <h2 class="bench-h">Badge sign-ins</h2>
+      <p class="bench-sub" tal:condition="not:d/signins">None yet.</p>
+      <table class="pfas-table" tal:condition="d/signins">
+        <thead><tr><th>When (UTC)</th><th>Terminal</th><th>Account</th><th>Result</th></tr></thead>
+        <tbody><tr tal:repeat="s d/signins">
+          <td tal:content="python: (s['at'] or u'')[:19].replace('T', ' ')">x</td>
+          <td tal:content="s/terminal">Bench 2</td>
+          <td tal:content="python: s['userid'] or u'—'">an1</td>
+          <td tal:content="python: u'Signed in' if s['ok'] else u'Refused: %s' % s['reason']">ok</td>
+        </tr></tbody>
+      </table>
+    </section>
+    <section class="bench-block">
+      <h2 class="bench-h">Badge log</h2>
+      <p class="bench-sub" tal:condition="not:d/events">No badges issued yet (Lab Staff).</p>
+      <table class="pfas-table" tal:condition="d/events">
+        <thead><tr><th>When (UTC)</th><th>Account</th><th>What</th><th>By</th></tr></thead>
+        <tbody><tr tal:repeat="e d/events">
+          <td tal:content="python: (e['at'] or u'')[:19].replace('T', ' ')">x</td>
+          <td tal:content="e/userid">an1</td><td tal:content="e/action">issued</td><td tal:content="e/by">admin</td>
+        </tr></tbody>
+      </table>
+    </section>
+  </metal:fill>
+</body>
+</html>

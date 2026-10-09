@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Equipment settings</title>
+  <metal:fill fill-slot="header-title">Equipment settings</metal:fill>
+  <tal:c metal:fill-slot="header-context"><span class="header-badge" tal:content="view/unit/name">Balance 1</span></tal:c>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-equipment">&#8592; Equipment</a>
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/unit/url}/base_edit">Edit in SENAITE</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body-narrow" tal:define="u view/unit; kind u/unit_type">
+
+    <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
+    <p class="form-note">
+      <strong tal:content="u/name">Balance 1</strong>
+      &#183; type <span tal:replace="u/type_title">Balance</span>
+      <tal:s condition="u/serial_number">&#183; SN <span tal:replace="u/serial_number">123</span></tal:s>.
+      Identity and certificates live in SENAITE; the PFAS check settings live here. <tal:h define="hid string:equipment-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+    </p>
+
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-equipment-settings?uid=${u/id}">
+      <input type="hidden" name="action" value="save" tal:condition="view/can_configure" />
+
+      <tal:study condition="python:kind in ('thermometer', 'ir_gun', 'nitrogen_evaporator')">
+        <div class="section-group-hdr">Temperature study</div>
+        <p class="form-note">Corrected to the NIST reference by its quarterly study; the factor in force applies wherever its readings are used. <tal:h define="hid string:temperature-study"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+        <div class="field-row"><label>Study tolerance per reading pair (&#176;C)</label>
+          <input type="number" step="0.1" name="study_tolerance" tal:attributes="value u/study_tolerance" /></div>
+      </tal:study>
+      <p class="form-note" tal:condition="python:kind == 'reference_thermometer'">
+        Verified externally: record its certificate in SENAITE; the certificate&#8217;s valid-to date is its due date. <tal:h define="hid string:temperature-study"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+      <tal:temp condition="python:kind in ('refrigerator', 'freezer', 'room_sensor')">
+        <div class="section-group-hdr">Temperature monitoring</div>
+        <div class="field-row"><label>Sensor id</label>
+          <input type="text" name="sensor_id" tal:attributes="value u/sensor_id" /></div>
+        <div class="field-row"><label>Temperature range (&#176;C)</label>
+          <input type="number" step="0.1" name="temp_min" tal:attributes="value u/temp_min" /> to
+          <input type="number" step="0.1" name="temp_max" tal:attributes="value u/temp_max" /></div>
+        <div class="field-row"><label>Humidity range (%)</label>
+          <input type="number" step="0.1" name="humidity_min" tal:attributes="value u/humidity_min" /> to
+          <input type="number" step="0.1" name="humidity_max" tal:attributes="value u/humidity_max" /></div>
+        <div class="field-row"><label>Mapping study tolerance (&#176;C)</label>
+          <input type="number" step="0.1" name="study_tolerance" tal:attributes="value u/study_tolerance" /></div>
+      </tal:temp>
+
+      <tal:bal condition="python:kind in ('balance_analytical', 'balance_prep')">
+        <div class="section-group-hdr">Weight points (g)</div>
+        <p class="form-note">
+          Acceptance is the type&#8217;s tolerance:
+          <strong tal:content="python:'%g %% of nominal' % u['tolerance_pct'] if u['tolerance_pct'] else 'not set'">0.2 % of nominal</strong>.
+        </p>
+        <table class="pfas-table pfas-table-form">
+          <thead><tr><th>Nominal (g)</th><th>Label</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="wp python:list(view.weight_points()) + [[None, u''], [None, u'']]">
+              <td><input type="number" step="any"
+                         tal:attributes="name string:wp_nominal_${repeat/wp/index};
+                                         value python:'' if wp[0] is None else wp[0]" /></td>
+              <td><input type="text" tal:attributes="name string:wp_label_${repeat/wp/index}; value python:wp[1]" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </tal:bal>
+
+      <tal:water condition="python:kind == 'water_system'">
+        <div class="section-group-hdr">Water limits</div>
+        <div class="field-row"><label>Maximum conductivity (&#181;S/cm)</label>
+          <input type="number" step="0.01" name="conductivity_max" tal:attributes="value view/extra/conductivity_max|nothing" /></div>
+        <div class="field-row"><label>Maximum TOC (ppb)</label>
+          <input type="number" step="1" name="toc_max" tal:attributes="value view/extra/toc_max|nothing" /></div>
+      </tal:water>
+
+      <p class="form-note" tal:condition="python:kind in ('analytical', 'pipette', 'eyewash', 'other')">
+        Nothing to set here for this kind; its type and certificates are in SENAITE.
+      </p>
+
+      <button class="btn btn-primary" type="submit" tal:condition="view/can_configure">Save</button>
+    </form>
+  </div>
+  </div>
+</html>

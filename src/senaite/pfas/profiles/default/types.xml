@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<object name="portal_types">
+  <object name="Reagent" meta_type="Dexterity FTI"/>
+  <object name="LogbookDef" meta_type="Dexterity FTI"/>
+  <object name="MethodProfile" meta_type="Dexterity FTI"/>
+  <object name="PrepLogbookDef" meta_type="Dexterity FTI"/>
+  <object name="PreparedStandard" meta_type="Dexterity FTI"/>
+  <object name="PFASProject" meta_type="Dexterity FTI"/>
+</object>

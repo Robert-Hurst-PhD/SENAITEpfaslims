@@ -1,0 +1,6 @@
+# Pinned; licences checked at build (licence_check.py).
+pdfminer.six==20260107
+charset-normalizer==3.5.2
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.0

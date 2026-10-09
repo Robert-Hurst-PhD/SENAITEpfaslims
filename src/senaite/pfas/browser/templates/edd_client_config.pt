@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">EDD Settings</title>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">EDD Settings</tal:t>
+<tal:r metal:fill-slot="header-right">
+  <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-edd-config">EDD Export</a>
+</tal:r>
+<div metal:fill-slot="content" tal:define="cfg view/settings">
+  <!-- a client's EDD settings: on/off, its profile, and the fields that
+       profile asks for (edd_store) -->
+  <ul class="bench-alerts" tal:condition="view/saved"><li class="bench-ok">Saved.</li></ul>
+  <form method="post" class="bench-block">
+    <div class="field-grid">
+      <label>
+        <span><input type="checkbox" name="edd_enabled" value="1"
+                     tal:attributes="checked python:'checked' if cfg.get('edd_enabled') else None" />
+          Deliver an EDD with this client's reports</span>
+      </label>
+      <label>
+        <span><input type="checkbox" name="per_report_override_default" value="1"
+                     tal:attributes="checked python:'checked' if cfg.get('per_report_override_default', True) else None" />
+          Generate it by default when publishing</span>
+      </label>
+      <label>Profile
+        <select name="edd_profile">
+          <option tal:repeat="p view/profile_options" tal:content="p/name"
+                  tal:attributes="value p/id; selected python:'selected' if p['id'] == cfg.get('edd_profile') else None">profile</option>
+        </select>
+      </label>
+    </div>
+    <h2 class="bench-h" tal:condition="view/client_fields" tal:content="python:view.profile().get('name', u'')">Profile</h2>
+    <div class="field-grid">
+      <label tal:repeat="f view/client_fields">
+        <span tal:replace="f/label">Label</span>
+        <select tal:condition="f/options" tal:attributes="name f/name">
+          <option value="">&#8212;</option>
+          <option tal:repeat="o f/options" tal:content="o"
+                  tal:attributes="value o; selected python:'selected' if o == f['value'] else None">o</option>
+        </select>
+        <input type="text" tal:condition="not:f/options" tal:attributes="name f/name; value f/value" />
+        <span class="field-hint" tal:condition="f/hint" tal:content="f/hint">hint</span>
+      </label>
+    </div>
+    <button type="submit" class="btn-sm btn-primary">Save</button>
+  </form>
+</div>
+</body>
+</html>

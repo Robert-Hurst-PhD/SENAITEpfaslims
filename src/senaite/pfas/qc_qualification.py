@@ -1,0 +1,578 @@
+# -*- coding: utf-8 -*-
+"""
+Qualified release — publishing a result that failed a QC criterion.
+
+ISO 17025 §7.8.4 permits releasing non-conforming work when the deviation is
+authorised, justified and recorded. Until 2026-08-04 this system implemented
+only half of's rule: a failing QC result blocked release
+absolutely, with no way for anyone to authorise an exception. That is stricter
+than the standard and, in practice, unusable — a matrix that suppresses a
+surrogate is a property of the sample, not a laboratory error, and the client is
+still entitled to the result with an honest caveat.
+
+What this module owns:
+
+  * the LIBRARY of approved wordings, lab-wide and QAO-editable, keyed by
+    (failure type, cause). No certificate wording is hardcoded (§1.1), and it
+    stays under QA control rather than being retyped per case.
+  * the CAUSE taxonomy — LABORATORY vs MATRIX — and a proposal for each failure
+    type, which the QAO confirms or overrides.
+  * SCOPING: which analytes on which samples a given failure actually touches.
+
+Scope is deliberately narrow. A surrogate failure qualifies only the analytes
+that surrogate quantifies, on the sample it failed in — a blanket qualification
+devalues the warning it exists to make.
+
+Python 2.7 (in-Plone add-on).
+"""
+from __future__ import absolute_import
+
+import json
+import logging
+
+from zope.annotation.interfaces import IAnnotations
+
+logger = logging.getLogger("senaite.pfas.qc_qualification")
+
+LIBRARY_KEY = "senaite.pfas.qc_qualification.library"
+
+# Shown when a QC failure has no qualifier configured. Deliberately names the
+# page to fix it: an unexplained hold wastes the QAO's time working out what
+# the system wanted.
+UNMAPPED_PROMPT = (
+    u"This batch failed a quality control check ({failure}) for which no "
+    u"certificate qualifier has been configured. The certificate cannot be "
+    u"issued until the QAO defines the wording for this failure type under "
+    u"Configuration \u2192 Print Settings \u2192 QC Qualifiers, or records a "
+    u"decision to hold the batch."
+)
+
+# ── Disposition ──────────────────────────────────────────────────────────────
+# What the system DOES with a failure, decided without a human in the loop.
+#
+# QUALIFY  the failure is attributable to the sample, so the result is released
+#          with a qualifier and standard wording. Repeating the analysis would
+#          give the same answer.
+# BLOCK    the failure occurred on material the LABORATORY prepared and
+#          controls — a blank, a calibration standard, a CCV. Those are known
+#          inputs that should always pass, so a failure is a laboratory problem.
+#          It is not excusable as a matrix effect and must not be caveated onto
+#          a client certificate; the batch is held and the lab resolves it.
+QUALIFY = "qualify"
+BLOCK = "block"
+
+# ── The per-analysis qualifier stamp ─────────────────────────────────────────
+# When a qualified release is approved, each affected analysis is stamped with
+# the codes that apply to it, so the code travels with the value rather than
+# living only in a summary the reader has to cross-reference.
+#
+# The format is defined HERE, once, with its writer and its reader beside each
+# other. It was previously formatted inline in `data_review` and read nowhere at
+# all: the certificate's results table is rendered by SENAITE core, which prints
+# no per-analysis remarks anywhere, so 45 stamped analyses were invisible. The
+# reader now lives in `browser/reportview.py`. Keeping both ends against this
+# one definition is what stops a stamp being written in a shape nothing parses.
+REMARK_PREFIX = u"QC: "
+
+
+def format_remark_codes(codes):
+    """Render qualifier codes as the remark line stamped onto an analysis."""
+    clean = sorted({(c or u"").strip() for c in (codes or ()) if (c or u"").strip()})
+    if not clean:
+        return u""
+    return u"{0}{1}".format(REMARK_PREFIX, u", ".join(clean))
+
+
+def remarks_text(remarks):
+    """An analysis' remarks as text. SENAITE hands them back as UTF-8 bytes,
+    and the worker's own notes carry non-ASCII (\u00b1): joined to text, or
+    read line by line, they raised UnicodeDecodeError -- the qualifier stamp
+    was dropped with a warning and the certificate printed the result with no
+    code (synthetic runs)."""
+    if remarks is None:
+        return u""
+    if isinstance(remarks, bytes):
+        return remarks.decode("utf-8", "replace")
+    return u"%s" % remarks
+
+
+# A failing per-injection flag on a field sample -> the QC Summary column it
+# qualifies under (: these qualify, they do not hold).
+# Tags are the pipeline's own issue prefixes (pfas_pipeline/qc_engine.py).
+# Below the MDL is not a qualifier: the result is reported as < RL, so "(MDL)" maps to nothing.
+INJECTION_FLAG_TAGS = (
+    (u"(RT)", u"RT"),
+    (u"RT dev", u"RT"),
+    (u"(QQ)", u"Ion ratio"),
+    (u"(J)", u"S/N"),
+    (u"(N.C.)", u"S/N"),
+    (u"(SUR)", u"Surrogate"),
+)
+LABELLED_ROLES = (u"internal standard", u"surrogate")
+
+
+def injection_flag_qc_types(flag, role=u"", std_role=u""):
+    """The QC Summary types a field sample's injection flag qualifies under,
+    in order, each once. A recovery tag on a labelled standard is its
+    surrogate recovery. An INJECTION standard's flag is never a surrogate
+    one: the engine tags an IS response failure "(SUR)" too, and reading it
+    as a surrogate qualified a sample whose IS failed instead of holding it
+     -- that failure is the QC Summary's IS row, which holds."""
+    text = flag or u""
+    if std_role == u"injection_is":
+        return []
+    out = []
+    for tag, qc_type in INJECTION_FLAG_TAGS:
+        if tag in text and qc_type not in out:
+            out.append(qc_type)
+    if u"(REC)" in text and role in LABELLED_ROLES and u"Surrogate" not in out:
+        out.append(u"Surrogate")
+    return out
+
+
+def reported_keyword(analyte, keyword_of):
+    """The reported analyte a QC row is about: an isomer component (lr-/br-)
+    qualifies its summed analyte; an instrument name maps to the keyword the
+    worker pushed it to (`keyword_of`: {instrument analyte: keyword})."""
+    name = analyte or u""
+    for prefix in (u"lr-", u"br-"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    return (keyword_of or {}).get(name) or (keyword_of or {}).get(analyte) or name
+
+
+def applies_to_coc(frb_uids, frb_cocs, sample_uid, sample_coc):
+    """Whether a field reagent blank's qualifier belongs on this sample: the
+    other samples of the FRB's CoC. An FRB whose CoC
+    is not known qualifies every sample of the run -- the conservative
+    reading -- and never itself (its detection is the finding)."""
+    if sample_uid in (frb_uids or ()):
+        return False
+    cocs = set(c for c in (frb_cocs or ()) if c)
+    if not cocs:
+        return True
+    return sample_coc in cocs
+
+
+def applies_to_sample(applies_to, sample_uid, sample_ids, pushed):
+    """Whether a qualifier belongs on this sample.
+
+    applies_to  the injection whose sample the failure qualifies (a
+                surrogate's own injection, a matrix spike's parent); empty =
+                the whole run, as every run before the column existed
+    sample_uid  the sample's UID
+    sample_ids  names the sample answers to (its id, its Client Sample ID)
+    pushed      {injection: set(sample UIDs)} -- where the worker wrote that
+                injection's results, the one link that holds for runs whose
+                injections are named by Client Sample ID
+
+    Stamping every code on every sample of the worksheet put one sample's
+    surrogate failure on all of them (synthetic runs)."""
+    if not applies_to:
+        return True
+    uids = (pushed or {}).get(applies_to)
+    if uids:
+        return sample_uid in uids
+    return applies_to in [i for i in (sample_ids or ()) if i]
+
+
+def parse_remark_codes(remarks):
+    """Recover the qualifier codes from an analysis' remarks.
+
+    Remarks are free text and carry other things (`SUR`, `N.C.`, instrument
+    notes), so only a line beginning with the prefix is read. Returns [] for
+    anything else — an unrecognised remark must never become a qualifier on a
+    certificate.
+    """
+    found = []
+    for line in remarks_text(remarks).splitlines():
+        line = line.strip()
+        if not line.startswith(REMARK_PREFIX):
+            continue
+        for code in line[len(REMARK_PREFIX):].split(u","):
+            code = code.strip()
+            if code and code not in found:
+                found.append(code)
+    return found
+
+DISPOSITIONS = (
+    (QUALIFY, u"Qualify and release",
+     u"Attributable to the sample. Released with a qualifier and standard "
+     u"wording; re-analysis would not change the outcome."),
+    (BLOCK, u"Hold for laboratory resolution",
+     u"Occurred on laboratory control material that should always pass. Held "
+     u"for investigation or re-analysis; never qualified onto a certificate."),
+)
+
+# Injection roles that are LABORATORY control material. A failure on any of
+# these blocks regardless of failure type: the lab made the sample, so the lab
+# owns the failure. Client material — samples, and the spikes and duplicates
+# prepared FROM them — can carry a matrix qualifier.
+CONTROL_ROLES = frozenset([
+    "MB", "MxB", "LRB", "LFB", "LCS", "CCB", "CAL", "CCV", "ICV", "Standard",
+    "Blank", "Quality Control",
+])
+
+# ── Failure taxonomy ─────────────────────────────────────────────────────────
+# Keyed to what the QC engine actually emits. `default_cause` is a PROPOSAL the
+# QAO confirms or overrides — never a verdict, because a surrogate failure that
+# really is a lab error is exactly the case where a retest should be offered.
+# (key, label, default disposition, qualifier code)
+#
+# Codes extend the set the EDD already emits (U, J, B, NC, EMPC) rather than
+# starting a second vocabulary. They are DRAFTS for the QAO to confirm — the
+# library editor owns them, and nothing here is authoritative until approved.
+FAILURE_TYPES = [
+    ("calibration",  u"Calibration curve",                   BLOCK,   u""),
+    ("ccv",          u"Continuing calibration verification", BLOCK,   u""),
+    ("blank",        u"Blank contamination",                 BLOCK,   u"B"),
+    ("is_response",  u"Internal standard response",          BLOCK,   u""),
+    ("surrogate",    u"Surrogate recovery",                  QUALIFY, u"M"),
+    ("lfsm",         u"Matrix spike recovery",               QUALIFY, u"M"),
+    ("lfsmd",        u"Matrix spike duplicate (RPD)",        QUALIFY, u"P"),
+    ("duplicate",    u"Sample duplicate (RPD)",              QUALIFY, u"P"),
+    ("ion_ratio",    u"Ion ratio / confirmation",            QUALIFY, u"NC"),
+    ("sn",           u"Signal to noise",                     QUALIFY, u"J"),
+    ("rt",           u"Retention time",                      QUALIFY, u"NC"),
+    # a client sample (Field QC on the CoC), so it qualifies rather than
+    # blocks: the samples of its CoC. "B" is the
+    # code the EDD already emits for blank contamination.
+    ("field_blank",  u"Field reagent blank detection",       QUALIFY, u"B"),
+]
+
+FAILURE_LABELS = dict((k, label) for k, label, _d, _c in FAILURE_TYPES)
+DEFAULT_DISPOSITION = dict((k, d) for k, _l, d, _c in FAILURE_TYPES)
+DEFAULT_CODE = dict((k, code) for k, _l, _d, code in FAILURE_TYPES)
+
+
+def disposition_for(failure_type, injection_role=u"", library=None):
+    """QUALIFY or BLOCK for a failure, given where it happened.
+
+    Two rules, in order:
+
+    1. A failure on LABORATORY CONTROL MATERIAL always blocks. A method blank,
+       a calibration standard and a CCV are inputs the laboratory prepared and
+       controls; they are supposed to pass every time, so a failure means
+       something is wrong here, not in the client's sample. Excusing it as a
+       matrix effect would be false — there is no client matrix in a blank.
+    2. Otherwise the failure type's configured disposition applies.
+    """
+    if injection_role and injection_role in CONTROL_ROLES:
+        return BLOCK
+    if library and failure_type in library:
+        configured = (library[failure_type] or {}).get("disposition")
+        if configured in (QUALIFY, BLOCK):
+            return configured
+    return DEFAULT_DISPOSITION.get(failure_type, BLOCK)
+
+
+# Draft wordings, in the style commercial certificates use: what failed, which
+# results it affects, and what the reader should conclude. Written from
+# convention rather than transcribed from a standard — the QAO edits and
+# approves them in the library editor, and that approval is what makes them
+# authoritative. No clause is cited because none has been verified here.
+#
+# BLOCK entries carry an INTERNAL note instead of client wording: they never
+# reach a certificate, so what matters is telling the analyst what to do.
+DEFAULT_LIBRARY = {
+    "field_blank": {
+        "statement": u"The affected analytes were detected in the field "
+                     u"reagent blank shipped with these samples above the "
+                     u"blank limit. Contamination during sampling or "
+                     u"transport cannot be excluded, and the affected "
+                     u"results may be biased high.",
+    },
+    "surrogate": {
+        "statement": u"Surrogate recovery for the affected analytes fell "
+                     u"outside the method acceptance window. This is "
+                     u"attributable to the sample matrix rather than to the "
+                     u"analysis; re-analysis would be expected to give the "
+                     u"same outcome. The accuracy of the affected results "
+                     u"cannot be guaranteed and they should be treated as "
+                     u"indicative.",
+    },
+    "lfsm": {
+        "statement": u"Matrix spike recovery for the affected analytes fell "
+                     u"outside the method acceptance window, indicating that "
+                     u"the sample matrix suppresses or enhances the response "
+                     u"of these analytes. The accuracy of the affected results "
+                     u"cannot be guaranteed and they should be treated as "
+                     u"indicative.",
+    },
+    "lfsmd": {
+        "statement": u"Agreement between the matrix spike and its duplicate "
+                     u"exceeded the method precision limit, consistent with "
+                     u"sample heterogeneity. The precision of the affected "
+                     u"results cannot be guaranteed.",
+    },
+    "duplicate": {
+        "statement": u"Agreement between duplicate analyses exceeded the "
+                     u"method precision limit, consistent with sample "
+                     u"heterogeneity. The precision of the affected results "
+                     u"cannot be guaranteed.",
+    },
+    "ion_ratio": {
+        "statement": u"The qualifier-to-quantifier ion ratio for the affected "
+                     u"analytes fell outside the method tolerance, most "
+                     u"commonly caused by co-eluting sample matrix. "
+                     u"Identification could not be confirmed and the affected "
+                     u"results should be treated as presumptive.",
+    },
+    "sn": {
+        "statement": u"Sample matrix raised the baseline for the affected "
+                     u"analytes, reducing the signal-to-noise ratio below the "
+                     u"method minimum. The affected results are estimated and "
+                     u"their accuracy near the reporting limit cannot be "
+                     u"guaranteed.",
+    },
+    "rt": {
+        "statement": u"Retention time for the affected analytes fell outside "
+                     u"the method tolerance, consistent with matrix effects on "
+                     u"the chromatography. Identification could not be "
+                     u"confirmed and the affected results should be treated as "
+                     u"presumptive.",
+    },
+    # Held, never issued. The text is for the analyst.
+    "calibration": {
+        "statement": u"Calibration did not meet method criteria. Held for "
+                     u"laboratory resolution: review the curve, recalibrate "
+                     u"and re-analyse the affected sequence.",
+    },
+    "ccv": {
+        "statement": u"Continuing calibration verification fell outside the "
+                     u"method window. Held for laboratory resolution: "
+                     u"recalibrate and re-analyse the samples bracketed by "
+                     u"this CCV.",
+    },
+    "blank": {
+        "statement": u"Analytes were detected in a laboratory blank above the "
+                     u"reporting limit. Held for laboratory resolution: "
+                     u"identify the contamination source and re-extract the "
+                     u"affected batch.",
+    },
+    "is_response": {
+        "statement": u"Injection internal standard response fell outside the "
+                     u"method window, indicating an instrument or injection "
+                     u"problem. Held for laboratory resolution: re-inject and "
+                     u"investigate before release.",
+    },
+}
+
+
+# ── Library storage (lab-wide, QAO-editable) ─────────────────────────────────
+
+def get_library(portal):
+    """The lab's qualifier library, seeded where it has not been customised.
+
+    One entry per failure type: its disposition, its certificate code and its
+    wording. Saved edits win field by field, so a seed improvement still
+    reaches anything the QAO has not overridden.
+    """
+    saved = {}
+    raw = IAnnotations(portal).get(LIBRARY_KEY)
+    if raw:
+        try:
+            saved = json.loads(raw)
+        except (ValueError, TypeError):
+            logger.warning("QC qualifier library unreadable; using defaults")
+    out = {}
+    for key, label, disposition, code in FAILURE_TYPES:
+        entry = saved.get(key) or {}
+        seed = DEFAULT_LIBRARY.get(key) or {}
+        out[key] = {
+            "key": key,
+            "label": label,
+            "disposition": entry.get("disposition") or disposition,
+            "code": entry.get("code", code),
+            "statement": entry.get("statement") or seed.get("statement", u""),
+            "customised": bool(entry),
+        }
+    return out
+
+
+def save_library(portal, data):
+    """Store only what differs from the seed."""
+    try:   # change history (R1)
+        from senaite.pfas import config_history
+        config_history.track(portal, 'qc_qualifiers', "library", lambda: get_library(portal), label=u"QC qualifier wording")
+    except Exception:
+        pass
+    trimmed = {}
+    for key, _label, disposition, code in FAILURE_TYPES:
+        entry = (data or {}).get(key) or {}
+        seed_text = (DEFAULT_LIBRARY.get(key) or {}).get("statement", u"")
+        diff = {}
+        if (entry.get("disposition") or disposition) != disposition:
+            diff["disposition"] = entry["disposition"]
+        if entry.get("code", code) != code:
+            diff["code"] = entry.get("code", code)
+        if (entry.get("statement") or u"").strip() != seed_text.strip():
+            diff["statement"] = entry.get("statement") or u""
+        if diff:
+            trimmed[key] = diff
+    IAnnotations(portal)[LIBRARY_KEY] = json.dumps(trimmed)
+    return trimmed
+
+
+# ── Classifying a failure ────────────────────────────────────────────────────
+
+# Matched against the QC flag's source and issue text, most specific first.
+_SOURCE_HINTS = [
+    ("ccv", ("ccv",)),
+    ("calibration", ("calibration",)),
+    # "surrogate" BEFORE "is_response": the engine emits one source,
+    # "SUR-IS Response Table", for both roles, and it contains the substring
+    # "IS Response". Matching that first classified every surrogate failure as
+    # an instrument problem and proposed LABORATORY -- the opposite of the
+    # intended default, and the one case where the wording must say the matrix
+    # is responsible. The compound's ROLE settles it below; this ordering is
+    # the fallback when the role cannot be resolved.
+    ("surrogate", ("sur-is", "surrogate", "(sur)")),
+    ("is_response", ("is response", "is raw")),
+    ("ion_ratio", ("qual-quan", "ion ratio", "(iq)")),
+    ("sn", ("signal-to-noise", "signal to noise")),
+    ("rt", ("rrt", "retention", "rt deviation")),
+    ("lfsmd", ("lfsmd",)),
+    ("lfsm", ("lfsm",)),
+    ("duplicate", ("dup",)),
+    ("blank", ("blank", "mb", "lrb", "mxb")),
+]
+
+
+def classify_failure(source, issue=u"", qc_type=u"", analyte=u"",
+                     method_id=u""):
+    """Canonical failure type for a QC flag, or "" when unrecognised.
+
+    Deliberately returns empty rather than guessing: an unrecognised failure
+    must not be qualified under someone else's wording.
+
+    When the flag came from the combined surrogate/IS table, the COMPOUND'S
+    ROLE decides which it is. A surrogate is added before extraction and travels
+    with the sample, so its recovery reflects the matrix; the injection standard
+    is added at reconstitution, so its response reflects the instrument. They
+    need opposite default causes and opposite wordings, and the source string
+    cannot tell them apart.
+    """
+    haystack = u" ".join([source or u"", issue or u"", qc_type or u""]).lower()
+    for key, needles in _SOURCE_HINTS:
+        for needle in needles:
+            if needle in haystack:
+                if key in ("surrogate", "is_response") and analyte:
+                    return _labelled_role(analyte, method_id) or key
+                return key
+    return u""
+
+
+def _labelled_role(analyte, method_id):
+    """"surrogate" or "is_response" for a labelled compound, per the METHOD's
+    labelled-standards grid."""
+    try:
+        from bika.lims import api
+        from senaite.pfas import labelled_standards
+        from senaite.pfas.method_profile_store import get_profile
+        roles = labelled_standards.roles(get_profile(api.get_portal(), method_id) or {})
+    except Exception:
+        return u""
+    for name, role in roles.items():
+        if _same_compound(name, analyte):
+            return {"injection_is": "is_response", "surrogate": "surrogate"}.get(role, u"")
+    return u""
+
+
+def qualifier_for(portal, failure_type, injection_role=u""):
+    """The qualifier to apply, or None when the failure must be held.
+
+    No human in the loop: the QAO's control is the library, not a per-result
+    approval. Returns the code, the wording and why it was chosen, so the
+    certificate and the audit trail say the same thing.
+    """
+    library = get_library(portal)
+    entry = library.get(failure_type)
+
+    # A failure nobody has mapped, or one mapped with no wording. It must not
+    # pass silently in either direction: releasing it under a qualifier chosen
+    # by nobody is the silent-substitution shape removed elsewhere, and holding
+    # it with no explanation leaves the QAO guessing why a batch will not go
+    # out. Say what is missing and where to fix it.
+    if not entry or (entry.get("disposition") == QUALIFY
+                     and not (entry.get("statement") or u"").strip()):
+        return {
+            "failure_type": failure_type or u"(unrecognised)",
+            "label": (entry or {}).get("label")
+                     or FAILURE_LABELS.get(failure_type, u"Unmapped QC failure"),
+            "code": u"",
+            "statement": u"",
+            "needs_config": True,
+            "prompt": UNMAPPED_PROMPT.format(
+                failure=(entry or {}).get("label")
+                        or failure_type or u"an unrecognised check"),
+        }
+
+    disposition = disposition_for(failure_type, injection_role, library)
+    if disposition == BLOCK:
+        return None
+    return {
+        "failure_type": failure_type,
+        "label": entry["label"],
+        "code": entry["code"],
+        "statement": entry["statement"],
+        "needs_config": False,
+    }
+
+
+# ── Scoping ──────────────────────────────────────────────────────────────────
+
+def analytes_for_failure(failure_type, analyte, method_id=""):
+    """Which reported analytes a failure on `analyte` actually affects.
+
+    An IS or surrogate failure is recorded against the LABELLED compound, but
+    what the client reads is the natives that compound quantifies — so the
+    method's surrogate map is reversed to find them. Everything else affects
+    the analyte it was raised on.
+    """
+    if failure_type not in ("surrogate", "is_response"):
+        return [analyte] if analyte else []
+    try:
+        from senaite.pfas.method_bridge import get_method_surrogate_map
+        mapping = get_method_surrogate_map(method_id) or {}
+    except Exception:
+        mapping = {}
+    if not mapping:
+        mapping = _surrogate_map_fallback(method_id)
+    natives = sorted(set(
+        native for native, surrogate in mapping.items()
+        if surrogate and _same_compound(surrogate, analyte)))
+    return natives or ([analyte] if analyte else [])
+
+
+def _same_compound(a, b):
+    """Compare labelled-compound names across spellings (13C3-HFPO-DA /
+    13C3-GenX (HFPO-DA); the retired supplier codes, LABELLED_KEYWORD_RENAMES)."""
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    try:
+        from senaite.pfas.analyte_reference import COMPOUND_NAME_TO_KEYWORD
+        return (COMPOUND_NAME_TO_KEYWORD.get(a, a)
+                == COMPOUND_NAME_TO_KEYWORD.get(b, b))
+    except Exception:
+        return False
+
+
+def _surrogate_map_fallback(method_id):
+    """native -> surrogate, straight from the stored method profile."""
+    try:
+        from bika.lims import api
+        from senaite.pfas.method_profile_store import get_profile
+        profile = get_profile(api.get_portal(), method_id) or {}
+    except Exception:
+        return {}
+    out = {}
+    for row in (profile.get("surrogate_map") or []):
+        analyte = (row.get("analyte") or "").strip()
+        surrogate = (row.get("surrogate_is") or "").strip()
+        if analyte and surrogate:
+            out[analyte] = surrogate
+    return out

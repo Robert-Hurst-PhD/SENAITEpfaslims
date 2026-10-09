@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Homogenisation</title>
+  <metal:fill fill-slot="header-title">Homogenisation</metal:fill>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:condition="view/can_configure"
+       tal:attributes="href string:${view/portal_url}/@@pfas-homogenisation-setup">Methods</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="purl view/portal_url; sel view/selected">
+
+    <div class="alert alert-success" tal:condition="view/done">
+      Recorded: <span tal:replace="python:', '.join(view.done)">EGG-0001</span></div>
+    <div class="alert alert-danger" tal:condition="view/errors">
+      <tal:e repeat="e view/errors"><div tal:content="e">error</div></tal:e></div>
+
+    <p class="form-note">Select the samples homogenised together, then record how. <tal:h define="hid string:homogenisation"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+
+    <form method="post" tal:attributes="action string:${purl}/@@pfas-homogenisation">
+      <input type="hidden" name="action" value="record" />
+
+      <div class="section-group-hdr">Awaiting homogenisation</div>
+      <table class="pfas-table" tal:define="rows view/awaiting">
+        <thead><tr><th></th><th>Sample</th><th>Matrix</th><th>Requested</th>
+                   <th>Composite</th><th>Units combined</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r rows">
+            <td><input type="checkbox" value="on"
+                       tal:attributes="name string:sel__${r/uid};
+                                       checked python:'checked' if r['uid'] in sel else None" /></td>
+            <td><a class="btn-sm btn-secondary" tal:attributes="href r/url" tal:content="r/id">EGG-0001</a>
+                <span tal:replace="r/csid">CSID</span></td>
+            <td tal:content="r/matrix">Eggs</td>
+            <td tal:content="r/method_title">IKA mill</td>
+            <td><tal:c condition="r/composite">
+                  <span tal:replace="python:'%s units' % (r['units'] or '?')">12 units</span>:
+                  <span tal:replace="r/description">whole egg</span>
+                  <div class="cf-hint" tal:repeat="p r/problems" tal:content="p">problem</div>
+                </tal:c></td>
+            <td><input type="number" min="1" step="1" tal:condition="r/composite"
+                       tal:attributes="name string:units__${r/uid};
+                                       value python:view.form_value('units__' + r['uid'])" /></td>
+          </tr>
+          <tr tal:condition="not:rows"><td colspan="6">Nothing awaiting.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="section-group-hdr">How</div>
+      <div class="field-row">
+        <label>Method used
+          <select name="method">
+            <option value="">Choose</option>
+            <option tal:repeat="c view/method_choices"
+                    tal:attributes="value python:c[0];
+                                    selected python:'selected' if c[0] == view.form_value('method') else None"
+                    tal:content="python:c[1]">IKA mill</option>
+          </select></label>
+        <label>Homogeniser
+          <select name="unit_serial" tal:define="units view/units">
+            <option value="" tal:content="python:'Choose' if units else 'None registered under Equipment'">Choose</option>
+            <option tal:repeat="u units"
+                    tal:attributes="value u/serial;
+                                    selected python:'selected' if u['serial'] == view.form_value('unit_serial') else None"
+                    tal:content="python:u'%s \u00b7 S/N %s' % (u['name'], u['serial'])">Mill 1</option>
+          </select></label>
+        <label><input type="checkbox" name="cleaned" value="on"
+                      tal:attributes="checked python:'checked' if view.form_value('cleaned') else None" />
+          Cleaned before use</label>
+      </div>
+      <label>Note
+        <textarea name="note" rows="2" tal:content="python:view.form_value('note')"></textarea></label>
+      <button class="btn btn-primary" type="submit">Record</button>
+
+      <div class="section-group-hdr">Recorded</div>
+      <table class="pfas-table" tal:define="rows view/recorded">
+        <thead><tr><th></th><th>Sample</th><th>Method</th><th>Homogeniser</th>
+                   <th>Units combined</th><th>By</th><th>When</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r rows">
+            <td><input type="checkbox" value="on"
+                       tal:attributes="name string:sel__${r/uid};
+                                       checked python:'checked' if r['uid'] in sel else None" /></td>
+            <td><a class="btn-sm btn-secondary" tal:attributes="href r/url" tal:content="r/id">EGG-0001</a></td>
+            <td tal:content="r/last_title">IKA mill</td>
+            <td tal:content="python:r['last'].get('unit_name') or ''">Mill 1</td>
+            <td tal:content="python:r['last'].get('units_combined') or ''">12</td>
+            <td tal:content="python:r['last'].get('by')">AN1</td>
+            <td tal:content="python:(r['last'].get('at') or '')[:16].replace('T', ' ')">2026-10-06 10:00</td>
+            <td tal:content="python:r['last'].get('note')">note</td>
+          </tr>
+          <tr tal:condition="not:rows"><td colspan="8">Nothing recorded yet.</td></tr>
+        </tbody>
+      </table>
+    </form>
+
+  </div>
+  </div>
+</html>

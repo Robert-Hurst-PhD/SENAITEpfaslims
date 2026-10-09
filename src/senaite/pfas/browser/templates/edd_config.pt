@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+<head>
+  <title metal:fill-slot="title">EDD Export</title>
+</head>
+<body>
+<tal:t metal:fill-slot="header-title">EDD Export</tal:t>
+<div metal:fill-slot="content"
+     tal:define="pid view/profile_id; prof view/profile; tab view/active_tab; msg view/message;
+                 base string:${view/portal_url}/@@pfas-edd-config?profile=${pid}">
+  <!-- the export is one tool; each delivery format is a profile, and every
+       setting below is the selected profile's -->
+  <form method="get" class="filter-row" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+    <input type="hidden" name="tab" tal:attributes="value tab" />
+    <select name="profile" onchange="this.form.submit()">
+      <option tal:repeat="p view/profile_options" tal:content="p/name"
+              tal:attributes="value p/id; selected python:'selected' if p['id'] == pid else None">profile</option>
+    </select>
+    <tal:h define="hid string:edd-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-edd-batches">Batch EDDs</a>
+  </form>
+
+  <ul class="bench-alerts" tal:condition="python:msg['ok'] or msg['error']">
+    <li tal:condition="msg/ok" class="bench-ok" tal:content="msg/ok">Saved.</li>
+    <li tal:condition="msg/error" class="bench-bad" tal:content="msg/error">error</li>
+  </ul>
+
+  <nav class="pfas-tabs" aria-label="Profile settings">
+    <a tal:repeat="t python:[('defaults','Defaults'),('methods','Methods'),('analytes','Analytes'),('qualifiers','Qualifiers'),('qc_types','QC types'),('value_lists','Value lists'),('test','Test export'),('profiles','Profiles')]"
+       tal:attributes="href python:'%s&tab=%s' % (base, t[0]);
+                       class python:'pfas-tab active' if tab == t[0] else 'pfas-tab'"
+       tal:content="python:t[1] + ((' (%d to code)' % view.blocking_count()) if t[0] == 'analytes' and view.blocking_count() else '')">Defaults</a>
+  </nav>
+
+  <!-- defaults: the lab's identity and default values in this format -->
+  <section class="bench-block" tal:condition="python:tab == 'defaults'">
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="defaults" />
+      <div class="field-grid" tal:define="fields view/default_fields"><metal:m use-macro="template/macros/field" /></div>
+      <button class="btn-sm btn-primary" type="submit">Save defaults</button>
+    </form>
+  </section>
+
+  <!-- methods: each method's codes in this format -->
+  <section class="bench-block" tal:condition="python:tab == 'methods'">
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="methods" />
+      <tal:m tal:repeat="m view/method_rows">
+        <h2 class="bench-h" tal:content="m/method_id">EPA_537_1</h2>
+        <div class="field-grid" tal:define="fields m/fields"><metal:x use-macro="template/macros/field" /></div>
+      </tal:m>
+      <button class="btn-sm btn-primary" type="submit">Save method codes</button>
+    </form>
+  </section>
+
+  <!-- analytes: the format's name and, where it has its own, its code -->
+  <section class="bench-block" tal:condition="python:tab == 'analytes'" tal:define="lab view/analyte_labels">
+    <ul class="bench-alerts">
+      <li class="bench-warn" tal:repeat="r python:[r for r in view.analyte_rows() if r['guidance']]"
+          tal:content="r/guidance">guidance</li>
+    </ul>
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="analytes" />
+      <div class="table-wrap">
+      <table class="pfas-table">
+        <thead><tr><th>Analyte</th><th tal:content="lab/code">Code</th><th>Code override</th>
+          <th tal:content="lab/name">Name</th><th>Note</th><th>Tentatively identified</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r view/analyte_rows">
+            <td tal:content="r/keyword">PFOA</td>
+            <td tal:content="r/code">335671</td>
+            <td><input type="text" tal:attributes="name string:code_${r/safe}; value r/override" /></td>
+            <td><input type="text" tal:attributes="name string:name_${r/safe}; value r/name" /></td>
+            <td><input type="text" tal:attributes="name string:note_${r/safe}; value r/note" /></td>
+            <td><input type="checkbox" value="1"
+                       tal:attributes="name string:tic_${r/safe}; checked python:'checked' if r['tic'] else None;
+                                       aria-label string:${r/keyword} is reported as tentatively identified" /></td>
+            <td><span class="badge badge-expired" tal:condition="r/blocking">no code</span></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <button class="btn-sm btn-primary" type="submit">Save analytes</button>
+    </form>
+  </section>
+
+  <!-- qualifiers / QC types: our code to the format's -->
+  <tal:maps tal:repeat="mp python:[('qualifiers', 'our_qualifier', 'Our qualifier', view.qualifier_rows(), view.qualifier_codes()), ('qc_types', 'our_qc_type', 'Our QC type', view.qc_type_rows(), view.qc_type_codes())]">
+  <section class="bench-block" tal:condition="python:tab == mp[0]">
+    <form method="post" class="code-map" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config; data-our python:mp[1]">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" tal:attributes="value python:mp[0]" />
+      <input type="hidden" name="rows_json" value="[]" />
+      <table class="pfas-table">
+        <thead><tr><th tal:content="python:mp[2]">Ours</th><th>Code</th><th>Description</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="r python:mp[3] + [{}]">
+            <td><input type="text" class="cm-our" tal:attributes="value python:r.get(mp[1], '')" /></td>
+            <td><select class="cm-code">
+              <option value="">&#8212;</option>
+              <option tal:repeat="c python:mp[4] if (r.get('code') or '') in mp[4] or not r.get('code') else [r['code']] + mp[4]"
+                      tal:content="c" tal:attributes="value c; selected python:'selected' if c == r.get('code') else None">U</option>
+            </select></td>
+            <td><input type="text" class="cm-desc" tal:attributes="value python:r.get('description', '')" /></td>
+            <td><button class="btn-sm btn-secondary" type="button" onclick="this.closest('tr').remove()">Remove</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn-sm btn-secondary" type="button" onclick="eddAddRow(this)">+ Add row</button>
+      <button class="btn-sm btn-primary" type="submit">Save</button>
+    </form>
+  </section>
+  </tal:maps>
+
+  <!-- value lists: the format's valid codes, refreshed from the state's file -->
+  <section class="bench-block" tal:condition="python:tab == 'value_lists'" tal:define="src view/value_list_source">
+    <table class="pfas-table">
+      <thead><tr><th>List</th><th>Codes</th></tr></thead>
+      <tbody><tr tal:repeat="v view/value_list_counts"><td tal:content="v/name">tests</td><td tal:content="v/n">10</td></tr></tbody>
+    </table>
+    <div class="bench-sub section-gap" tal:content="python:u'Last refreshed: %s' % (view.value_list_refreshed() or u'never (seeded)')">Last refreshed</div>
+    <form method="post" enctype="multipart/form-data" class="filter-row section-gap" tal:condition="src"
+          tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="value_lists" />
+      <input type="file" name="upload" accept=".xlsx,.xls" />
+      <button class="btn-sm btn-primary" type="submit" tal:content="string:Refresh from ${src/file}">Refresh</button>
+      <a class="btn-sm btn-secondary" target="_blank" rel="noopener" tal:condition="src/url"
+         tal:attributes="href src/url" tal:content="src/label">Source</a>
+    </form>
+  </section>
+
+  <!-- test export: a batch's checks without the file -->
+  <section class="bench-block" tal:condition="python:tab == 'test'">
+    <form class="filter-row" onsubmit="eddPreview(this); return false;">
+      <input type="text" name="batch_id" placeholder="Batch ID" />
+      <button class="btn-sm btn-primary" type="submit">Check</button>
+    </form>
+    <pre id="edd-preview" class="mono-area"></pre>
+  </section>
+
+  <!-- profiles: clone, name, columns, headings, sample-type codes -->
+  <section class="bench-block" tal:condition="python:tab == 'profiles'">
+    <form method="post" class="filter-row" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="section" value="profiles" />
+      <input type="hidden" name="edd_action" value="clone" />
+      <select name="source_id">
+        <option tal:repeat="p view/profile_options" tal:attributes="value p/id" tal:content="p/name">p</option>
+      </select>
+      <input type="text" name="new_name" placeholder="New profile name" />
+      <button class="btn-sm btn-primary" type="submit">Clone profile</button>
+    </form>
+    <details tal:repeat="p view/profile_rows" class="section-gap">
+      <summary tal:content="python:u'%s · %s · %d columns' % (p['name'], p['state'] or u'-', p['n_columns'])">profile</summary>
+      <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+        <input type="hidden" name="section" value="profiles" />
+        <input type="hidden" name="edd_action" value="save" />
+        <input type="hidden" name="profile_id" tal:attributes="value p/id" />
+        <div class="field-grid">
+          <label>Display name <input type="text" name="name" tal:attributes="value p/name" /></label>
+          <label>State <input type="text" name="state" tal:attributes="value p/state" /></label>
+          <label>Columns (one per line, output order)
+            <textarea name="columns" rows="10" class="mono-area" tal:content="p/columns_text"></textarea></label>
+          <label>Sample type to code (JSON)
+            <textarea name="matrix_map_json" rows="10" class="mono-area" tal:content="p/matrix_map_json"></textarea></label>
+          <label>Column headings (JSON)
+            <textarea name="aliases_json" rows="5" class="mono-area" tal:content="p/aliases_json"></textarea></label>
+        </div>
+        <button class="btn-sm btn-primary" type="submit">Save profile</button>
+      </form>
+    </details>
+  </section>
+
+  <!-- one labelled field per entry of `fields` ({name, label, hint, value,
+       options}): a list when the format gives one, else free text -->
+  <tal:defs tal:condition="nothing">
+    <metal:f define-macro="field">
+      <label tal:repeat="f fields">
+        <span tal:replace="f/label">Label</span>
+        <select tal:condition="f/options" tal:attributes="name f/name">
+          <option value="">&#8212;</option>
+          <option tal:repeat="o f/options" tal:content="o"
+                  tal:attributes="value o; selected python:'selected' if o == f['value'] else None">o</option>
+        </select>
+        <input type="text" tal:condition="not:f/options" tal:attributes="name f/name; value f/value" />
+        <span class="field-hint" tal:condition="f/hint" tal:content="f/hint">hint</span>
+      </label>
+    </metal:f>
+  </tal:defs>
+
+  <script>
+  /* a code map's rows are sent as one list */
+  document.querySelectorAll('form.code-map').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      var our = f.getAttribute('data-our'), rows = [];
+      f.querySelectorAll('tbody tr').forEach(function (tr) {
+        var r = {description: tr.querySelector('.cm-desc').value, code: tr.querySelector('.cm-code').value};
+        r[our] = tr.querySelector('.cm-our').value;
+        rows.push(r);
+      });
+      f.querySelector('input[name=rows_json]').value = JSON.stringify(rows);
+    });
+  });
+  function eddAddRow(btn) {
+    var tbody = btn.closest('form').querySelector('tbody');
+    var last = tbody.querySelector('tr:last-child');
+    var tr = last.cloneNode(true);
+    tr.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+    tr.querySelector('select').selectedIndex = 0;
+    tbody.appendChild(tr);
+  }
+  function eddPreview(form) {
+    var out = document.getElementById('edd-preview');
+    var url = '<tal:u tal:replace="view/portal_url"/>/@@pfas-edd-export?preview=1&batch_id=' +
+              encodeURIComponent(form.batch_id.value.trim());
+    out.textContent = 'Checking...';
+    fetch(url, {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (d) {
+      out.textContent = d.error ? d.error :
+        (d.filename + '\n' + d.row_count + ' rows, ' + d.blocking_count + ' blocking, ' +
+         d.error_count + ' errors\n\n' + (d.validation_report || ''));
+    }).catch(function (e) { out.textContent = 'Request failed: ' + e; });
+  }
+  </script>
+</div>
+</body>
+</html>
