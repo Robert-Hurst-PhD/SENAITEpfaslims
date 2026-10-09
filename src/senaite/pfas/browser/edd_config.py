@@ -61,6 +61,27 @@ def _methods(portal, codes):
 
 # ── Profiles and their settings ──────────────────────────────────────────────
 
+def weight_rows(profile):
+    """[{matrix, code, basis}] for every matrix the profile maps: the basis
+    the lab reports it on ("" until chosen)."""
+    wb = profile.get("weight_basis_map") or {}
+    return [{"matrix": m, "code": c, "basis": wb.get(m, u"")}
+            for m, c in sorted((profile.get("matrix_map") or {}).items())]
+
+
+def read_weight_basis(form, allowed):
+    """{matrix: basis} from the posted wb_matrix / wb_basis pairs (in
+    order), keeping only the format's codes; None when the form had none."""
+    def _list(v):
+        if v is None:
+            return None
+        return list(v) if isinstance(v, (list, tuple)) else [v]
+    keys, vals = _list(form.get("wb_matrix")), _list(form.get("wb_basis"))
+    if keys is None or vals is None or len(keys) != len(vals):
+        return None
+    return dict((k, v) for k, v in zip(keys, vals) if k and v in allowed)
+
+
 class PFASEDDConfigView(BrowserView):
     """The selected profile's tabs: Defaults, Methods, Analytes, Qualifiers,
     QC types, Value lists, Test export, Profiles."""
@@ -184,8 +205,12 @@ class PFASEDDConfigView(BrowserView):
                 "columns_text": "\n".join(v.get("columns") or []),
                 "matrix_map_json": json.dumps(v.get("matrix_map") or {}, indent=1, sort_keys=True),
                 "aliases_json": json.dumps(v.get("aliases") or {}, indent=1, sort_keys=True),
+                "weight_rows": weight_rows(v),
             })
         return out
+
+    def weight_bases(self):
+        return list(getattr(self.fmt(), "WEIGHT_BASES", ()))
 
     # saving: every section is the selected profile's
     def _handle_post(self):
@@ -212,6 +237,9 @@ class PFASEDDConfigView(BrowserView):
                     cols = [c.strip() for c in (form.get("columns") or "").splitlines() if c.strip()]
                     if cols:
                         p["columns"] = cols
+                    wb = read_weight_basis(form, self.weight_bases())
+                    if wb is not None:
+                        p["weight_basis_map"] = wb
                     for field, key in (("matrix_map_json", "matrix_map"), ("aliases_json", "aliases")):
                         raw = form.get(field)
                         if raw and raw.strip():

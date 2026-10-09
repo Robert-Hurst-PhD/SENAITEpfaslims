@@ -45,6 +45,14 @@ _LAB_REQUIRED, _QC_REQUIRED = _FMT._LAB_REQUIRED, _FMT._QC_REQUIRED
 _SOLID_SAMPLE_TYPES = _FMT._SOLID_SAMPLE_TYPES
 _fmt_date, _fmt_time, _get_units = _FMT._fmt_date, _FMT._fmt_time, _FMT._get_units
 _row_to_list, _validate_row = _FMT._row_to_list, _FMT._validate_row
+WEIGHT_BASES = _FMT.WEIGHT_BASES
+
+
+def weight_basis_for(weight_basis_map, matrix_title):
+    """The format's WEIGHT_BASIS code the lab set for this matrix, or None
+    when none is set or the value is not one of the format's codes."""
+    code = ((weight_basis_map or {}).get(matrix_title or u"") or u"").strip().upper()
+    return code if code in WEIGHT_BASES else None
 
 
 class EDDBuilder(object):
@@ -225,6 +233,7 @@ class EDDBuilder(object):
         )
         default_sample_type = client_field(client_cfg, "default_sample_type", "GW")
         self._unmapped_matrices = set()
+        self._unset_weight_basis = set()
         self._rounding_errors = []
         self._qualifier_errors = []
         self._tz_warned = False
@@ -298,6 +307,16 @@ class EDDBuilder(object):
                     "No sample-type code configured for matrix {0!r} — "
                     "set it in the EDD profile's matrix map. Exporting "
                     "without it would state the wrong matrix.".format(matrix)),
+                "type": "Lab",
+            })
+
+        for matrix in sorted(getattr(self, "_unset_weight_basis", set())):
+            all_errors.append({
+                "row": 0,
+                "field": "WEIGHT_BASIS",
+                "message": (
+                    "No weight basis set for matrix {0!r} -- choose WET, DRY, "
+                    "LIP or NA in the EDD profile.".format(matrix)),
                 "type": "Lab",
             })
 
@@ -482,6 +501,7 @@ class EDDBuilder(object):
         # Units: the profile's UNIT MAP (method × matrix — §3 single source)
         # wins; the profile's method unit codes otherwise.
         units = ""
+        matrix_title = ""
         try:
             st = ar.getSampleType()
             matrix_title = st.Title() if st else ""
@@ -491,16 +511,22 @@ class EDDBuilder(object):
                     "unit_map") or {}
                 u = umap.get(matrix_title, "")
                 if u:
-                    units = u.upper().replace("NG/G", "NG/KG")
+                    # the value is in this unit; relabelling it (ng/g as
+                    # NG/KG) would report it 1000x off
+                    units = u.upper()
         except Exception:
             pass
         if not units:
             units = _get_units(method_id, edd_sample_type, method_cfg)
 
-        weight_basis = "NA"
-        if edd_sample_type in _SOLID_SAMPLE_TYPES:
-            # Dry weight by default for food/solid matrices — configurable
-            weight_basis = "DW"
+        # the basis the lab reports this matrix on (profile, per matrix);
+        # none set, or not one of the format's codes: the export refuses
+        weight_basis = weight_basis_for(
+            (getattr(self, "_edd_profile", {}) or {}).get("weight_basis_map"),
+            matrix_title)
+        if weight_basis is None:
+            self._unset_weight_basis.add(matrix_title or "(no sample type)")
+            weight_basis = ""
 
         treatment_status = lab.get("default_treatment_status", "N")
         sampled_by = lab.get("sampled_by", "")

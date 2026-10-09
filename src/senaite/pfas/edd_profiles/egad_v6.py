@@ -58,6 +58,12 @@ _QC_REQUIRED = frozenset([
     "SAMPLE_DELIVERY_GROUP", "ANALYSIS_DATE", "ANALYSIS_TIME",
 ])
 
+# WEIGHT_BASIS valid values: EDD v6 Appendix 1, data element dictionary
+# ("WET for wet-weight basis, DRY for dry-weight basis, LIP for lipid-weight
+# basis, or NA"). Which one a matrix is reported on is the lab's choice, per
+# matrix, in the profile's weight_basis_map; there is no default.
+WEIGHT_BASES = ("WET", "DRY", "LIP", "NA")
+
 _SOLID_SAMPLE_TYPES = frozenset([
     "SL", "SD", "SU", "SUL", "SUU", "AS", "BA", "FA",
     "MEA", "MLK", "EG", "FE", "MU", "SF", "SOF", "FI",
@@ -469,6 +475,7 @@ def seed_profile():
         "name": NAME, "base": PROFILE_ID, "format": PROFILE_ID, "state": STATE,
         "columns": list(EDD_COLUMNS), "aliases": {},
         "matrix_map": dict(MATRIX_MAP),
+        "weight_basis_map": {},
         "qualifier_map": copy.deepcopy(QUALIFIER_MAP),
         "qc_type_map": copy.deepcopy(QC_TYPE_MAP),
         "analyte_naming": analyte_naming(),

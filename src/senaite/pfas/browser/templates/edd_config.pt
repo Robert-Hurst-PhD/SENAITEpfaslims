@@ -172,6 +172,21 @@
           <label>Column headings (JSON)
             <textarea name="aliases_json" rows="5" class="mono-area" tal:content="p/aliases_json"></textarea></label>
         </div>
+        <table class="pfas-table pfas-table-form" tal:condition="p/weight_rows">
+          <thead><tr><th>Matrix</th><th>Sample type code</th><th>Weight basis</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="w p/weight_rows">
+              <td tal:content="w/matrix">Eggs</td>
+              <td tal:content="w/code">EG</td>
+              <td><input type="hidden" name="wb_matrix" tal:attributes="value w/matrix" />
+                <select name="wb_basis" tal:attributes="aria-label string:Weight basis for ${w/matrix}">
+                  <option value="">Choose</option>
+                  <option tal:repeat="b view/weight_bases" tal:content="b"
+                          tal:attributes="value b; selected python:'selected' if b == w['basis'] else None">DRY</option>
+                </select></td>
+            </tr>
+          </tbody>
+        </table>
         <button class="btn-sm btn-primary" type="submit">Save profile</button>
       </form>
     </details>
