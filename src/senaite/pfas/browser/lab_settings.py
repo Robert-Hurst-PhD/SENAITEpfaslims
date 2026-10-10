@@ -75,7 +75,7 @@ class PFASLabSettingsView(BrowserView):
         # against running twice.
         try:
             from senaite.pfas import settings_adapters
-            settings_adapters.declare_all()
+            settings_adapters.declare_all(self._portal())
         except Exception as exc:                            # noqa: BLE001
             logger.error("settings declarations failed: %s", exc)
         return self.template()

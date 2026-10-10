@@ -1244,8 +1244,10 @@ class PFASDataReviewView(BrowserView):
             if study is not None:
                 from senaite.pfas.qc.qc_types import enabled_qc_types
                 from senaite.pfas.study_runs import gate_scope
+                from senaite.pfas.study_data import blank_role
                 study_required, study_judged = gate_scope(
-                    study, enabled_qc_types(self._method_profile() or {}))
+                    study, enabled_qc_types(self._method_profile() or {}),
+                    blank_role(self._method_profile() or {}))
             for row in (summary.get("rows") or []):
                 for qc_type, cell in (row.get("cells") or {}).items():
                     if not cell or qc_type in study_judged:

@@ -147,17 +147,25 @@ def _build_criteria_from_profile(profile):
     return crit
 
 
-def reload_criteria(profiles_path=None, method_id="FDA_32PFAS"):
+def reload_criteria(profiles_path=None, method_id=None):
     """
     Reload CRITERIA in-place from the exported method profile JSON.
     Called at the top of run_pipeline() so each batch picks up the latest
     values without a worker restart.
 
+    With no method_id this is a RESET (no method's values: run_pipeline then
+    sets the run's own method with set_criteria_from_profile and refuses a
+    run without one); it never stands one method in for another.
     Falls back to _DEFAULT_CRITERIA if the file is absent or unreadable.
     The MDL constants (mdl_min_replicates, t_values) are never overridden.
     """
     if profiles_path is None:
         profiles_path = PROFILES_PATH
+    if not method_id:
+        CRITERIA.clear()
+        CRITERIA.update(_DEFAULT_CRITERIA)
+        CRITERIA_METHOD[:] = [None]
+        return
 
     if not os.path.exists(profiles_path):
         return  # keep current values (defaults on first run)

@@ -236,6 +236,8 @@
          onclick="pfasTabSwitch('pane-cal'); return false;">Calibration &amp; CCV</a>
       <a class="pfas-tab" data-pane="pane-lwf" href="#pane-lwf"
          onclick="pfasTabSwitch('pane-lwf'); return false;">Lab Workflow</a>
+      <a class="pfas-tab" data-pane="pane-engine" href="#pane-engine"
+         onclick="pfasTabSwitch('pane-engine'); return false;">Engine</a>
     </div>
   </tal:tabs>
 
@@ -702,6 +704,31 @@
         </div>
       </div><!-- /pane-cal -->
 
+      <!-- Tab: Engine, how the QC engine judges this method; saved on its
+           own (form#section-engine) -->
+      <div class="tab-pane" id="pane-engine">
+        <div class="page-body-narrow">
+          <div tal:define="cf_groups python:view.section_groups('engine'); cf_form string:section-engine">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
+          <div class="section-group-hdr">Surrogate window the method text states</div>
+          <div tal:define="cf_groups python:view.section_groups('engine_fallback'); cf_form string:section-engine">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+          <div class="section-group-hdr">Names and required criteria</div>
+          <div tal:define="cf_groups python:view.section_groups('engine_text'); cf_form string:section-engine">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+          <div class="section-group-hdr">Notes on the flags</div>
+          <div tal:define="cf_groups python:view.section_groups('engine_notes'); cf_form string:section-engine">
+            <metal:t use-macro="context/@@pfas-config-form-macros/macros/table" />
+          </div>
+          <div tal:define="cf_groups python:view.section_groups('engine_studies'); cf_form string:section-engine">
+            <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
+          </div>
+        </div>
+      </div><!-- /pane-engine -->
+
 
       <!-- ── Tab: Lab Workflow (guided extraction stages) ───────────────── -->
       <div class="tab-pane" id="pane-lwf">
@@ -900,6 +927,18 @@
       <input type="hidden" name="section_stamp__cal_levels" tal:attributes="value python:view.section_stamp('cal_levels')" />
       <input type="hidden" name="section_stamp__cal_scale" tal:attributes="value python:view.section_stamp('cal_scale')" />
       <input type="hidden" name="section_stamp__qcnames" tal:attributes="value python:view.section_stamp('qcnames')" />
+    </form>
+    <form id="section-engine" method="POST" class="pfas-section-form"
+          data-tab-label="Engine"
+          tal:attributes="action string:@@pfas-method-profile-edit">
+      <input type="hidden" name="_section" value="engine,engine_fallback,engine_text,engine_notes,engine_studies" />
+      <input type="hidden" name="_pane" value="pane-engine" />
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="section_stamp__engine" tal:attributes="value python:view.section_stamp('engine')" />
+      <input type="hidden" name="section_stamp__engine_fallback" tal:attributes="value python:view.section_stamp('engine_fallback')" />
+      <input type="hidden" name="section_stamp__engine_text" tal:attributes="value python:view.section_stamp('engine_text')" />
+      <input type="hidden" name="section_stamp__engine_notes" tal:attributes="value python:view.section_stamp('engine_notes')" />
+      <input type="hidden" name="section_stamp__engine_studies" tal:attributes="value python:view.section_stamp('engine_studies')" />
     </form>
 
     <script>

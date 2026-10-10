@@ -420,12 +420,14 @@ def read_matrices(profile):
     units = profile.get("unit_map") or {}
     holding = profile.get("holding_times") or {}
     extract = profile.get("extract_holding_times") or {}
+    classes = profile.get("matrix_classes") or {}
     return [{"name": m,
              "aliases": u", ".join(aliases.get(m) or []),
              "unit": units.get(m) or None,
              "holding_days": None if _none_set(holding.get(m)) else holding.get(m),
              "holding_none": _none_set(holding.get(m)),
-             "extract_holding_days": extract.get(m)}
+             "extract_holding_days": extract.get(m),
+             "matrix_class": classes.get(m) or None}
             for m in profile.get("supported_matrices") or []]
 
 
@@ -444,8 +446,10 @@ def _set(profile, key, value):
 
 def write_matrices(profile, rows):
     names = [r["name"] for r in rows]
-    aliases, units, holding, extract = {}, {}, {}, {}
+    aliases, units, holding, extract, classes = {}, {}, {}, {}, {}
     for r in rows:
+        if r.get("matrix_class"):
+            classes[r["name"]] = r["matrix_class"]
         parts = [a.strip() for a in (r.get("aliases") or u"").split(u",") if a.strip()]
         if parts:
             aliases[r["name"]] = parts
@@ -469,6 +473,7 @@ def write_matrices(profile, rows):
     _set(profile, "matrix_aliases", aliases)
     _set(profile, "unit_map", units)
     _set(profile, "holding_times", holding)
+    _set(profile, "matrix_classes", classes)
     if "matrix_uid_map" in profile:
         profile["matrix_uid_map"] = dict((k, v) for k, v in
                                          (profile.get("matrix_uid_map") or {}).items()
@@ -534,6 +539,10 @@ MATRICES = cf.Collection(
         cf.Field("holding_none", u"Method sets no holding time", kind=cf.BOOL),
         cf.Field("extract_holding_days", u"Extract Holding Time (days)", greater_than=0,
                  placeholder=u"not set"),
+        # the class an extracted standard's matrix limits are taken from
+        # (SUR Limits), used when the Engine judges them per matrix class
+        cf.Field("matrix_class", u"Matrix class (SUR limits)", kind=cf.CHOICE,
+                 blank=u"remove", choices=lambda profile, env=None: matrix_class_choices()),
     ],
     read=read_matrices, write=write_matrices, check=check_matrices)
 
@@ -766,6 +775,242 @@ RPD_BASIS = cf.Section(
     ])])
 
 
+# ── Engine: how this method is judged (method_engine) ────────────────────────
+# The worker has one rule interpreter for every method; these settings are
+# what differs between methods. Blank / unticked = the feature is off.
+
+def _engine_module():
+    try:
+        from senaite.pfas import method_engine
+    except Exception:      # tests: loaded without the package
+        import method_engine
+    return method_engine
+
+
+ENGINE = cf.Section(
+    id=u"engine", title=u"Engine", base=("engine",),
+    groups=[
+        (u"Recovery tiers", [
+            cf.Field("grouped_recovery_tiers", u"Tiers by analyte group and Tier 1 matrices",
+                     kind=cf.BOOL,
+                     help=u"Off: the first ordinary tier applies to every analyte and matrix."),
+        ]),
+        (u"Surrogates and extracted internal standards", [
+            cf.Field("surrogate_guidance_only", u"Surrogate recovery is guidance only",
+                     kind=cf.BOOL, help=u"A miss is reported, not failed."),
+            cf.Field("eis_recovery_limits",
+                     u"Extracted standards judged per analyte and matrix class",
+                     kind=cf.BOOL,
+                     help=u"Isotope dilution: shows the SUR Limits tab; the matrix class "
+                          u"is set per matrix on Matrices & Units."),
+            cf.Field("eis_default_window", u"An extracted standard's window starts from",
+                     kind=cf.CHOICE, blank=u"remove",
+                     choices=[(u"", u"Not chosen"),
+                              (u"lfsm_tier", u"The first LFSM tier"),
+                              (u"surrogate_window", u"The surrogate window (Calibration & CCV)")]),
+            cf.Field("eis_verify_flag", u"Mark those limits to be verified against the method",
+                     kind=cf.BOOL),
+        ]),
+        (u"Calibration", [
+            cf.Field("labelled_compound_fit", u"Labelled compounds are calibrated by",
+                     kind=cf.CHOICE, blank=u"remove",
+                     choices=[(u"", u"The same fit as the analytes"),
+                              (u"mean_response_factor", u"Their mean response factor")]),
+        ]),
+        (u"Analyte × matrix", [
+            cf.Field("inclusion_needs_verification",
+                     u"Inclusion is to be confirmed against the published method",
+                     kind=cf.BOOL),
+        ]),
+    ])
+
+STUDY_KIND_CHOICES = [(u"mdl", u"Method detection limit"), (u"pt", u"Proficiency test"),
+                      (u"pa", u"Precision and accuracy"), (u"mrl", u"MRL confirmation"),
+                      (u"dl", u"Detection limit"), (u"idc", u"Initial demonstration of capability")]
+
+ENGINE_STUDIES = cf.Section(
+    id=u"engine_studies", title=u"Studies", base=(),
+    groups=[(u"Studies", [
+        cf.Field("blank_role_name", u"The method's name for its method blank", kind=cf.TEXT,
+                 blank=u"remove", placeholder=u"not set",
+                 help=u"The QC type a study's blanks are taken from, e.g. MB or LRB."),
+        cf.Field("study_kinds", u"Studies this method offers", kind=cf.MULTI,
+                 choices=STUDY_KIND_CHOICES),
+    ])])
+
+
+def _fallback_rows(profile):
+    return (_one_group(u"fb", u"Surrogate window the method text states"),
+            [{"key": (u"surrogate_fallback",), "group": u"fb",
+              "label": u"Used when Calibration & CCV sets none"}])
+
+
+def read_fallback(profile):
+    fb = ((profile.get("engine") or {}).get("surrogate_fallback")) or {}
+    return {(u"surrogate_fallback",): {"min": fb.get("min"), "max": fb.get("max"),
+                                       "citation": fb.get("citation")}}
+
+
+def write_fallback(profile, updates, env=None):
+    vals = updates.get((u"surrogate_fallback",))
+    if vals is None:
+        return profile
+    lo, hi = vals.get(("min",)), vals.get(("max",))
+    cite = vals.get(("citation",))
+    eng = profile.get("engine")
+    if lo is None and hi is None and not cite:
+        if isinstance(eng, dict) and "surrogate_fallback" in eng:
+            eng["surrogate_fallback"] = None
+        return profile
+    if not isinstance(eng, dict):
+        eng = profile["engine"] = {}
+    eng["surrogate_fallback"] = {"min": lo, "max": hi, "citation": cite or u""}
+    return profile
+
+
+def _check_fallback(row, values):
+    lo, hi = values.get(u"f__min"), values.get(u"f__max")
+    if (lo is None) != (hi is None):
+        return u"Set both ends of the method text's surrogate window, or neither."
+    if lo is not None and lo > hi:
+        return u"The method text's surrogate window: min is above max."
+    return None
+
+
+ENGINE_FALLBACK = cf.Table(
+    id=u"engine_fallback", title=u"Surrogate window the method text states", base=(),
+    columns=[cf.Field("min", u"Min", unit=PCT, minimum=0, placeholder=u"none"),
+             cf.Field("max", u"Max", unit=PCT, minimum=0, placeholder=u"none"),
+             cf.Field("citation", u"Citation", kind=cf.TEXT, placeholder=u"section of the method")],
+    rows=_fallback_rows, read=read_fallback, write=write_fallback, check=_check_fallback,
+    row_heading=u"Window")
+
+# Lists and maps, typed as text: "OPR=LFB, IPR=LFB"; "r2_min, point_pct_dev_max"
+ENGINE_TEXT_ROWS = [
+    ((u"aliases",), u"Other names of this method", u"comma-separated"),
+    ((u"qc_type_aliases",), u"QC types judged as another", u"OPR=LFB, IPR=LFB"),
+    ((u"required_keys", u"calibration"), u"Calibration criteria that must be set", u"r2_min, ..."),
+    ((u"required_keys", u"is_response"), u"IS response criteria that must be set", u"vs_ical_avg_min, ..."),
+    ((u"required_keys", u"confirmation"), u"Confirmation criteria that must be set", u"sn_quan_min, ..."),
+]
+
+
+def _text_rows(profile):
+    return (_one_group(u"txt", u"Names and required criteria"),
+            [{"key": key, "group": u"txt", "label": label,
+              "placeholders": {"value": hint}} for key, label, hint in ENGINE_TEXT_ROWS])
+
+
+def _as_text(value):
+    if isinstance(value, dict):
+        return u", ".join(u"%s=%s" % (k, v) for k, v in sorted(value.items()))
+    if isinstance(value, (list, tuple)):
+        return u", ".join(u"%s" % v for v in value)
+    return value
+
+
+def read_engine_text(profile):
+    eng = profile.get("engine") or {}
+    out = {}
+    for key, _l, _h in ENGINE_TEXT_ROWS:
+        v = eng.get(key[0])
+        if len(key) == 2:
+            v = (v or {}).get(key[1]) if isinstance(v, dict) else None
+        out[key] = {"value": _as_text(v) if v not in (None, [], {}) else None}
+    return out
+
+
+def write_engine_text(profile, updates, env=None):
+    me = _engine_module()
+    eng = profile.get("engine")
+    eng = eng if isinstance(eng, dict) else {}
+    for key, vals in updates.items():
+        text = vals.get(("value",))
+        text = u"" if text is None else text
+        if key == (u"aliases",):
+            new = me._names(text)
+        elif key == (u"qc_type_aliases",):
+            new = me._pairs(text)
+        else:
+            new = me._names(text)
+            req = dict(eng.get("required_keys") or {})
+            if new:
+                req[key[1]] = new
+            else:
+                req.pop(key[1], None)
+            if req or "required_keys" in eng:
+                eng["required_keys"] = req
+            continue
+        if new or key[0] in eng:
+            eng[key[0]] = new
+    if eng or "engine" in profile:
+        profile["engine"] = eng
+    return profile
+
+
+def _check_engine_text(row, values):
+    text = values.get(u"f__value") or u""
+    if tuple(row["key"]) == (u"qc_type_aliases",):
+        bad = [p for p in _engine_module()._names(text) if u"=" not in p]
+        if bad:
+            return u"QC types judged as another: write each as FROM=TO (%s)." % u", ".join(bad)
+    return None
+
+
+ENGINE_TEXT = cf.Table(
+    id=u"engine_text", title=u"Names and required criteria", base=(),
+    columns=[cf.Field("value", u"Value", kind=cf.TEXT)],
+    rows=_text_rows, read=read_engine_text, write=write_engine_text,
+    check=_check_engine_text, row_heading=u"Setting")
+
+# The notes each rule carries onto its flags; the tier notes replace a
+# tier's description for grouped tiers.
+ENGINE_NOTE_ROWS = [
+    (u"tier", u"Any tier without a description"),
+    (u"tier_default", u"Grouped: other analytes and matrices"),
+    (u"tier_key_tight", u"Grouped: key analytes in Tier 1 matrices"),
+    (u"tier_no_std", u"Grouped: analytes with no labelled standard"),
+    (u"tier_low_level", u"Low-level tier without a description ({0:g} = N)"),
+    (u"eis", u"Extracted standards"),
+    (u"is_rule", u"IS response"),
+    (u"confirmation_rule", u"Confirmation"),
+]
+
+
+def _note_rows(profile):
+    return (_one_group(u"notes", u"Notes on the flags"),
+            [{"key": (k,), "group": u"notes", "label": label} for k, label in ENGINE_NOTE_ROWS])
+
+
+def read_engine_notes(profile):
+    notes = (profile.get("engine") or {}).get("rule_notes") or {}
+    return dict(((k,), {"note": notes.get(k)}) for k, _l in ENGINE_NOTE_ROWS)
+
+
+def write_engine_notes(profile, updates, env=None):
+    eng = profile.get("engine")
+    eng = eng if isinstance(eng, dict) else {}
+    notes = dict(eng.get("rule_notes") or {})
+    for (k,), vals in updates.items():
+        text = vals.get(("note",))
+        if text:
+            notes[k] = text
+        else:
+            notes.pop(k, None)
+    if notes or "rule_notes" in eng:
+        eng["rule_notes"] = notes
+    if eng or "engine" in profile:
+        profile["engine"] = eng
+    return profile
+
+
+ENGINE_NOTES = cf.Table(
+    id=u"engine_notes", title=u"Notes on the flags", base=(),
+    columns=[cf.Field("note", u"Note", kind=cf.TEXT, placeholder=u"none")],
+    rows=_note_rows, read=read_engine_notes, write=write_engine_notes,
+    row_heading=u"Rule")
+
+
 MATRIX_FACTORS = cf.Table(
     id=u"mf", title=u"Matrix Adjustment Factors", base=("matrix_factors",),
     columns=[cf.Field("factor", u"Factor", greater_than=0, placeholder=u"1.0")],
@@ -881,6 +1126,12 @@ MATRIX_BLANKS = cf.Section(
 
 EIS_MATRIX_CLASSES = [(u"solid", u"Solid (soil, sediment)"), (u"biosolid", u"Biosolid"),
                       (u"leachate", u"Landfill leachate"), (u"tissue", u"Tissue")]
+
+
+def matrix_class_choices():
+    return [(u"", u"None")] + [(u"aqueous", u"Aqueous")] + list(EIS_MATRIX_CLASSES)
+
+
 _EIS_COLS = [(u"aq", u"Aqueous")] + [(k, l.split(" (")[0]) for k, l in EIS_MATRIX_CLASSES]
 
 
@@ -1256,10 +1507,12 @@ RECOVERY_QC = u"LFSM"
 GROUP_CHOICES = [(u"all", u"All analytes"), (u"key", u"Key analytes"),
                  (u"linked", u"Other analytes"), (u"no_std", u"No labelled standard")]
 SCOPE_CHOICES = [(u"all", u"All matrices"), (u"tight", u"Tier 1 matrices only")]
-# How each method's engine picks a tier (pfas_pipeline.method_profiles): FDA
-# resolves by analyte group and Tier 1 matrices; the EPA methods apply their
-# FIRST tier to every analyte and matrix.
-GROUPED_TIER_METHODS = (u"FDA_32PFAS",)
+
+
+def grouped_tiers(profile):
+    """Does this method pick a tier by analyte group and Tier 1 matrices
+    (Engine), or apply its FIRST ordinary tier to every analyte and matrix?"""
+    return _engine_module().engine(profile)["grouped_recovery_tiers"]
 
 
 def _tiers(profile, qc=RECOVERY_QC):
@@ -1322,7 +1575,7 @@ def _tier_checker(qc, window):
             elif r.get(LOW_LEVEL_KEY) is not None and r.get("rpd_max") is None:
                 errors.append(u"%s: a low-level tier needs its RPD limit." % r["name"])
         ordinary = [r for r in rows if r.get(LOW_LEVEL_KEY) is None]
-        if profile.get("method_id") not in GROUPED_TIER_METHODS and len(ordinary) > 1:
+        if not grouped_tiers(profile) and len(ordinary) > 1:
             errors.append(u"This method's QC engine applies its FIRST ordinary tier to every "
                           u"analyte and matrix; a second would never be used. Keep one, plus "
                           u"any low-level tiers (Low level \u2264 \u00d7 RL).")
@@ -1722,7 +1975,8 @@ PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, QC_COMPOSITION, REPORTING_LIMITS, MATRICES,
                                     SALT, SAMPLE_CORRECTION, NOMINAL_AMOUNTS, SAMPLE_RECEIPT, QC_NAME_CODES, MATRIX_FACTORS, EIS_GRID, SURROGATE_MAP,
-                                    SURROGATE_SCOPE, RPD_BASIS,
+                                    SURROGATE_SCOPE, RPD_BASIS, ENGINE, ENGINE_STUDIES,
+                                    ENGINE_FALLBACK, ENGINE_TEXT, ENGINE_NOTES,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
                                     REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS,
                                     EXTRACTION_LABELS, EXTRACTION_BATCH, BLANK_LIMITS, MATRIX_BLANKS] +

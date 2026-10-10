@@ -164,10 +164,11 @@ def profile_analyte_cas(profile):
 
 
 def method_codes(profile, method_id):
-    """The profile's codes for a method (the format's fallback when the
-    profile has none for it)."""
+    """The profile's codes for a method, or None when it has none for it
+    (the export then refuses the method; another method's codes would
+    report the results under the wrong test)."""
     codes = section(profile, "method_codes") or {}
-    return codes.get(method_id) or dict(edd_profiles.format_of(profile).METHOD_FALLBACK)
+    return codes.get(method_id) or None
 
 
 def refresh_value_lists(portal, profile_id, upload_bytes):

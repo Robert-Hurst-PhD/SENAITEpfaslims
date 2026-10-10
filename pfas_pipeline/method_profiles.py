@@ -7,23 +7,14 @@ Replaces the flat CRITERIA dict.  Every QC check resolves its limits through:
     rule = profile.qc_rules(analyte="PFOA", matrix="meat", qc_type="LFSM")
     rule.recovery_min, rule.recovery_max   # → 80.0, 120.0
 
-Three shipped profiles:
-
-  FDA_32PFAS — USDA/FDA 32-PFAS in Food (v10, 5/5/26) + AOAC SMPR 2023.003.
-               Criteria transcribed directly from the method document
-               (Sections 2024.10.1–10.3, Table 10-1, Table 9-1, 2024.8.4).
-
-  EPA_537_1  — EPA 537.1 drinking water (EPA/600/R-20/006).
-               IS areas 70–140% of most recent CCC and ±50% of ICAL average;
-               surrogates 70–130%; low-level LFB 50–150%, mid/high 70–130%;
-               lowest CCC 50–150%, others 70–130%; CCV every 10 samples.
-
-  EPA_1633A  — EPA 1633A (aqueous/solid/biosolid/tissue, 40 analytes).
-               EIS recovery limits vary per analyte AND per matrix
-               (method Tables 6 & 8).  Defaults here are the common
-               20–150% screen with per-analyte overrides; **VERIFY** against
-               your purchased copy of the method before production use —
-               flagged in each rule with verify_against_method=True.
+Every method is ONE ConfiguredProfile(method_id) for each id in the exported
+profiles. What differs between methods -- grouped recovery tiers, QC types
+judged as another, the surrogate window the method text states, isotope-
+dilution (EIS) limits per analyte and matrix class, which instrument
+criteria must be configured, the notes each rule carries -- is the profile's
+"Engine" section, read through senaite.pfas.method_engine (the add-on's own
+module, loaded by path). A profile with no Engine settings has every feature
+off.
 
 Decision C: All rule logic reads from the stored profile JSON
 loaded at batch start via reload_from_profiles(). Python classes are
@@ -33,12 +24,12 @@ _FDA_BIG4, _FDA_NO_LABELED_STD, _FDA_TIGHT_MATRICES have been removed.
 
 from __future__ import annotations
 
-import copy
+import dataclasses
 import json
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -112,17 +103,16 @@ class ConfirmationRule:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FDA display-name lists (instrument export format, MassLynx compound names).
-# Moved here from constants.py so they are owned by the method layer.
+# Keyword <-> display name (instrument export format, MassLynx compound names).
 #
 # The ZODB store's analyte_matrix_inclusion uses KEYWORDS as dict keys
-# while these lists use DISPLAY NAMES (e.g. "GenX (HFPO-DA)") to match
+# while the exported panel uses DISPLAY NAMES (e.g. "GenX (HFPO-DA)") to match
 # instrument export.  The map below bridges them. PFOS/PFHxS are reported
 # under their plain names since 2026-10-01; "lr-" names only their linear peak.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Analyte keyword → instrument display name (only entries that differ)
-_FDA_KW_TO_DISPLAY: dict = {
+_KW_TO_DISPLAY: dict = {
     "GenX":        "GenX (HFPO-DA)",
     "4:2FTS":      "4:2 FTS",
     "8:2FTS":      "8:2 FTS",
@@ -131,25 +121,7 @@ _FDA_KW_TO_DISPLAY: dict = {
     "11ClPF3OUdS": "11Cl-PF3OUdS",
 }
 # Reverse: display name → keyword (for inclusion-matrix lookup)
-_FDA_DISPLAY_TO_KW: dict = {v: k for k, v in _FDA_KW_TO_DISPLAY.items()}
-
-_FDA_DISPLAY_ANALYTES = [
-    "10:2 FTS", "11Cl-PF3OUdS", "4:2 FTS", "6:2FTS", "8:2 FTS",
-    "9Cl-PF3ONS", "DONA", "FOSA", "GenX (HFPO-DA)", "PFBA", "PFBS",
-    "PFDA", "PFDoA", "PFDoS", "PFDS", "PFHpA", "PFHpS", "PFHxA",
-    "PFHxDA", "PFHxS", "PFNA", "PFNS", "PFOA", "PFODA", "PFOS",
-    "PFPeA", "PFPeS", "PFTeDA", "PFTrDA", "PFTrDS", "PFUDA", "PFUnDS",
-    "br-PFOS", "br-PFHxS",
-]
-
-_FDA_IS_DISPLAY_NAMES = [
-    "13C4-PFOA",
-    "13C2,D4-10:2FTS", "13C2,D4-4:2FTS", "13C2,D4-6:2FTS", "13C2,D4-8:2FTS",
-    "13C2-PFDA", "13C2-PFDoA", "13C2-PFHxDA", "13C2-PFTeDA", "13C2-PFUDA",
-    "13C3-GenX (HFPO-DA)", "13C3-PFBA", "13C3-PFBS", "13C3-PFHxS", "13C3-PFPeA",
-    "13C4-PFHpA", "13C5-PFHxA", "13C5-PFNA",
-    "13C8-FOSA", "13C8-PFOA", "13C8-PFOS",
-]
+_DISPLAY_TO_KW: dict = {v: k for k, v in _KW_TO_DISPLAY.items()}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Profile data cache — populated ONLY from the exported method profiles
@@ -161,9 +133,16 @@ _FDA_IS_DISPLAY_NAMES = [
 # FTS EIS limits and a retired QC-type list that no live profile had).
 # ─────────────────────────────────────────────────────────────────────────────
 
-_METHOD_IDS = ("FDA_32PFAS", "EPA_537_1", "EPA_1633A")
-_DEFAULT_PROFILE_CACHE = dict((m, {}) for m in _METHOD_IDS)
 _LOADED = set()          # methods whose data came from the export
+# {method_id: the loaded data} exported before the Engine settings: refused
+# while that data is what the cache holds
+_STALE = {}
+
+
+def profile_stale(method_id):
+    """True when `method_id`'s loaded export predates the Engine settings."""
+    data = _STALE.get(method_id)
+    return data is not None and data is _profile_data_cache.get(method_id)
 
 
 def profile_configured(method_id):
@@ -171,7 +150,8 @@ def profile_configured(method_id):
     return method_id in _LOADED
 
 
-_profile_data_cache = copy.deepcopy(_DEFAULT_PROFILE_CACHE)
+# {method_id: profile data}: every method in the export, no built-in one
+_profile_data_cache = {}
 
 
 def reload_from_profiles(profiles_path=None, batch_id=None):
@@ -218,33 +198,53 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
         _LOADED.clear()
         return
 
+    if not isinstance(all_profiles, dict):
+        logger.error("reload_from_profiles: %s is not a JSON object", profiles_path)
+        _LOADED.clear()
+        return
+    # every method in the export, whatever its id; a method no longer in it
+    # is no longer configured
+    exported = [m for m, d in all_profiles.items() if isinstance(d, dict)]
     for method_id in list(_profile_data_cache.keys()):
-        if method_id in all_profiles:
-            data = all_profiles[method_id]
-            # Phase B: normalize eis_overrides from store list format to dict.
-            # Store saves [{analyte, recovery_min, recovery_max}, ...] (UI-friendly);
-            # profile classes use {analyte: {recovery_min, recovery_max}} for fast lookup.
-            eis = data.get("eis_overrides")
-            if isinstance(eis, list):
-                data = dict(data)
-                data["eis_overrides"] = {
-                    e["analyte"]: {
-                        "recovery_min": e.get("recovery_min"),
-                        "recovery_max": e.get("recovery_max"),
-                    }
-                    for e in eis if "analyte" in e
+        if method_id not in all_profiles:
+            _profile_data_cache.pop(method_id, None)
+            _STALE.pop(method_id, None)
+            if method_id in _LOADED:
+                _LOADED.discard(method_id)
+                logger.error(
+                    "reload_from_profiles: %r not in %s; that method is not "
+                    "configured", method_id, profiles_path)
+    for method_id in exported:
+        data = all_profiles[method_id]
+        # Phase B: normalize eis_overrides from store list format to dict.
+        # Store saves [{analyte, recovery_min, recovery_max}, ...] (UI-friendly);
+        # the engine uses {analyte: {recovery_min, recovery_max}} for fast lookup.
+        eis = data.get("eis_overrides")
+        if isinstance(eis, list):
+            data = dict(data)
+            data["eis_overrides"] = {
+                e["analyte"]: {
+                    "recovery_min": e.get("recovery_min"),
+                    "recovery_max": e.get("recovery_max"),
                 }
-            _profile_data_cache[method_id] = data
-            _LOADED.add(method_id)
-            logger.info("Loaded profile data for %s from %s",
-                        method_id, profiles_path)
-        else:
-            _profile_data_cache[method_id] = {}
+                for e in eis if "analyte" in e
+            }
+        _profile_data_cache[method_id] = data
+        # SENAITE exports every profile with its Engine section (empty =
+        # every feature off). A profile without one was exported before the
+        # Engine settings existed: it is not judged with its features
+        # silently off, it is refused until SENAITE re-exports it.
+        if "engine" not in data:
+            _STALE[method_id] = data
             _LOADED.discard(method_id)
-            logger.error(
-                "reload_from_profiles: %r not in %s; that method is not "
-                "configured", method_id, profiles_path,
-            )
+            logger.error("reload_from_profiles: %s in %s predates the Engine "
+                         "settings; it is not configured until SENAITE is "
+                         "restarted and exports it again", method_id, profiles_path)
+            continue
+        _STALE.pop(method_id, None)
+        _LOADED.add(method_id)
+        logger.info("Loaded profile data for %s from %s",
+                    method_id, profiles_path)
 
     if batch_id:
         _apply_resolved_overlay(batch_id, profiles_path)
@@ -515,41 +515,6 @@ def _apply_resolved_overlay(batch_id, profiles_path):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helper: resolve recovery tier from profile data
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM",
-                      method_id="FDA_32PFAS", conc=None, rl=None):
-    """
-    Resolve recovery tier for an FDA analyte × matrix combination.
-
-    Reads from qc_acceptance.{qc_type}.tiers (new structure).
-    Falls back to legacy recovery_tiers list for profiles not yet migrated.
-
-    Tier resolution (new structure):
-      analyte_group="no_std"  → tier3 window
-      analyte_group="key" + matrix_scope="tight" → tier1 window if matrix matches
-      analyte_group="linked"  → tier2 window (default)
-    """
-    where = "{0} / {1} / {2} / {3}".format(method_id, analyte, matrix or "(no matrix)", qc_type)
-    is_key, is_no_std = _analyte_groups(analyte, profile_data)
-    chosen = _select_tier(profile_data, qc_type, analyte, matrix, conc, rl,
-                          is_key, is_no_std, where)
-    if chosen is None:
-        return None
-    tier, branch = chosen
-    if tier.get(LOW_LEVEL_KEY):
-        notes = tier.get("description") or "low-level window (<= {0:g} x RL)".format(
-            float(tier[LOW_LEVEL_KEY]))
-    else:
-        notes = {"no_std": "No matched labeled standard (Table 10-1 footnote a)",
-                 "key_tight": "PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood "
-                              "(Table 10-1 tier 1)"}.get(
-            branch, "Table 10-1 tier 2 (other matrices / other analytes)")
-    return _tier_rule(tier, notes, method_id, analyte, matrix, qc_type)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Profile base
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -766,163 +731,7 @@ class MethodProfile:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FDA 32-PFAS in Food  (from the uploaded method document)
-# ─────────────────────────────────────────────────────────────────────────────
-
-class FDA32PFASProfile(MethodProfile):
-    method_id = "FDA_32PFAS"
-    description = ("USDA/FDA 32-PFAS in Food v10 (5/5/26) + AOAC SMPR "
-                   "2023.003; LC-MS/MS isotope dilution")
-
-    def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
-        if qc_type in ("SUR", "surrogate"):
-            return _method_text_rule(
-                self._profile_data(), self.method_id,
-                "Surrogate recovery is guidance only (FDA §2024.10.1(5))",
-                50.0, 150.0, is_guidance_only=True)
-        if qc_type in ("Dup", "duplicate"):
-            return _resolve_fda_tier(analyte, matrix,
-                                     self._profile_data(), qc_type="Dup",
-                                     method_id=self.method_id, conc=conc, rl=rl)
-        return _resolve_fda_tier(analyte, matrix,
-                                 self._profile_data(), qc_type=qc_type,
-                                 method_id=self.method_id, conc=conc, rl=rl)
-
-    def calibration_rule(self, analyte=""):
-        cal = _calibration(self._profile_data(), self.method_id)
-        fit = ("mean_response_factor"
-               if analyte.startswith(("M", "13C")) else "linear")
-        return CalibrationRule(
-            r2_min=float(_required(cal, "r2_min", self.method_id,
-                                   "calibration", " -> Calibration & CCV")),
-            point_pct_dev_max=cal.get("point_pct_dev_max"),
-            low_point_pct_dev_max=cal.get("low_point_pct_dev_max"),
-            force_origin=bool(cal.get("force_origin", False)),
-            default_fit=fit,
-            default_weighting="none" if fit != "linear" else "1/x",
-        )
-
-    def ccv_rule(self):
-        return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
-
-
-    def is_rule(self):
-        is_ = _is_section(self._profile_data(), self.method_id)
-        req = lambda k: _required(is_, k, self.method_id, "is_response",
-                                  " -> Calibration & CCV -> IS Response")
-        return ISRule(
-            vs_ical_avg_min=req("vs_ical_avg_min"),
-            vs_ical_avg_max=req("vs_ical_avg_max"),
-            vs_last_ccv_min=is_.get("vs_last_ccv_min"),
-            vs_last_ccv_max=is_.get("vs_last_ccv_max"),
-            notes="Lab SOP screen; the FDA method sets no numeric IS-area limit",
-        )
-
-    def confirmation_rule(self):
-        conf = _confirmation(self._profile_data(), self.method_id)
-        # single_transition_analytes and confirm_pct_diff_max are the lab's
-        # C-010.04 settings, on the profile (Calibration & CCV); the
-        # code no longer supplies them
-        return ConfirmationRule(
-            ion_ratio_tol_pct=_conf_value(conf, "ion_ratio_tol_pct", self.method_id),
-            rrt_tol_pct=_conf_value(conf, "rrt_tol_pct", self.method_id),
-            rt_tol_abs_min=conf.get("rt_tol_abs_min"),
-            sn_min_quant=_conf_value(conf, "sn_quan_min", self.method_id),
-            sn_min_confirm=_conf_value(conf, "sn_confirm_min", self.method_id),
-            single_transition_analytes=_name_list(conf.get("single_transition_analytes")),
-            confirm_pct_diff_max=conf.get("confirm_pct_diff_max"),
-            confirm_technique=(conf.get("confirm_technique")
-                               or "LC-HRMS").strip(),
-            notes="PFBA/PFPeA positives require LC-HRMS confirmation; "
-                  "cholic acid (TDCA/TCDCA/TUDCA) interference transitions "
-                  "monitored for PFOS (§2024.8.5)",
-        )
-
-    def sample_factor(self, matrix):
-        # Matrix factors are keyed by the core SampleType title. Match the
-        # sample's matrix EXACTLY first; fall back to legacy substring matching
-        # for any old-format entries that predate the core-type tie.
-        m = (matrix or "").lower().strip()
-        factors = self._profile_data().get("matrix_factors", [])
-        for entry in factors:
-            if (entry.get("matrix", "") or "").lower().strip() == m:
-                return float(entry["factor"])
-        for entry in factors:
-            key = (entry.get("matrix", "") or "").lower().strip()
-            if key and key in m:
-                return float(entry["factor"])
-        return None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# EPA 537.1  (drinking water)
-# ─────────────────────────────────────────────────────────────────────────────
-
-class EPA537Profile(MethodProfile):
-    method_id = "EPA_537_1"
-    description = "EPA 537.1 PFAS in drinking water (EPA/600/R-20/006)"
-
-    def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
-        if qc_type in ("SUR", "surrogate"):
-            return _method_text_rule(
-                self._profile_data(), self.method_id,
-                "§9.3.5 surrogates 70–130%", 70.0, 130.0)
-        chosen = _select_tier(
-            self._profile_data(), qc_type, analyte, matrix, conc, rl, False, False,
-            "{0} / {1} / {2} / {3}".format(self.method_id, analyte, matrix, qc_type))
-        if chosen is None:
-            return None
-        t = chosen[0]
-        rule = _tier_rule(t, t.get("description", ""), self.method_id,
-                          analyte, matrix, qc_type)
-        return QCRule(
-            recovery_min=rule.recovery_min,
-            recovery_max=rule.recovery_max,
-            rsd_max=rule.rsd_max,
-            rpd_max=rule.rpd_max,
-            notes=rule.notes,
-            max_conc_x_rl=rule.max_conc_x_rl,
-            fails_at_limit=rule.fails_at_limit,
-        )
-
-    def calibration_rule(self, analyte=""):
-        cal = _calibration(self._profile_data(), self.method_id)
-        req = lambda k: _required(cal, k, self.method_id, "calibration",
-                                  " -> Calibration & CCV")
-        return CalibrationRule(
-            r2_min=float(req("r2_min")),
-            point_pct_dev_max=req("point_pct_dev_max"),
-            low_point_pct_dev_max=req("low_point_pct_dev_max"),
-            force_origin=bool(cal.get("force_origin", True)),
-        )
-
-    def ccv_rule(self):
-        return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
-
-    def is_rule(self):
-        is_ = _is_section(self._profile_data(), self.method_id)
-        req = lambda k: _required(is_, k, self.method_id, "is_response",
-                                  " -> Calibration & CCV -> IS Response")
-        return ISRule(
-            vs_ical_avg_min=req("vs_ical_avg_min"),
-            vs_ical_avg_max=req("vs_ical_avg_max"),
-            vs_last_ccv_min=req("vs_last_ccv_min"),
-            vs_last_ccv_max=req("vs_last_ccv_max"),
-            notes="Both conditions must hold (§9.3.4); on failure "
-                  "re-inject a second aliquot in a fresh vial",
-        )
-
-    def confirmation_rule(self):
-        conf = _confirmation(self._profile_data(), self.method_id)
-        return ConfirmationRule(
-            rt_tol_abs_min=_conf_value(conf, "rt_tol_abs_min", self.method_id),
-            sn_min_quant=conf.get("sn_quan_min"),
-            notes="RT within ±0.05 min of expected; "
-                  "no qual-ion ratio criterion in 537.1",
-        )
-
-# ─────────────────────────────────────────────────────────────────────────────
-# EPA 1633A  (aqueous / solid / biosolid / tissue)
+# Refusal, and the rule helpers every method shares
 # ─────────────────────────────────────────────────────────────────────────────
 
 class UnconfiguredCriterion(Exception):
@@ -1071,26 +880,6 @@ def _name_list(value):
     return tuple(v.strip() for v in (value or "").replace(";", ",").split(",") if v.strip())
 
 
-def _method_text_rule(profile_data, method_id, citation, low, high, **kw):
-    """A limit the METHOD TEXT states, overridable by the profile.
-
-    Distinct from the substituted defaults this session removed. Those were
-    invented when configuration was silent; these are published values with a
-    citation, and §8 says never to fabricate a regulatory value -- so refusing
-    would be wrong here. What was wrong was that they could not be overridden
-    at all: a lab whose SOP is tighter than the method floor had nowhere to say
-    so. The profile's surrogate window (Calibration & CCV) wins when it is set;
-    it is the one home (the old `qc_acceptance.SUR` read had no writer and
-    made two).
-    """
-    win = (profile_data.get("instrument_verification") or {}).get("surrogate_window") or {}
-    if win.get("recovery_min") is not None and win.get("recovery_max") is not None:
-        # the window on the profile (Calibration & CCV), the lab's
-        return QCRule(float(win["recovery_min"]), float(win["recovery_max"]),
-                      notes="Surrogate recovery (method profile)", **kw)
-    return QCRule(low, high, notes=citation, **kw)
-
-
 def _ccv_rule(ccv, method_id):
     """CCV limits from the profile, or refuse.
 
@@ -1186,192 +975,309 @@ def _is_section(profile_data, method_id):
                        where=" -> Calibration & CCV -> IS Response")
 
 
-def _1633a_matrix_class(matrix: str) -> str:
-    """Map a 1633A matrix name to the EIS table class used in eis_matrix_overrides."""
-    m = matrix.lower().strip()
-    if "leachate" in m:
-        return "leachate"
-    if "tissue" in m:
-        return "tissue"
-    if "biosolid" in m:
-        return "biosolid"
-    if any(x in m for x in ("solid", "sediment", "soil")):
-        return "solid"
-    return "aqueous"
+def _engine_module():
+    """senaite.pfas.method_engine: a method's Engine settings, read the same
+    way here and in the add-on."""
+    from .addon import load
+    return load("method_engine")
 
-
-class EPA1633AProfile(MethodProfile):
-    method_id = "EPA_1633A"
-    description = ("EPA 1633A — 40 PFAS in aqueous, solid, biosolid, "
-                   "tissue (Jan 2024 / 2024 update)")
-
-    def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
-        profile = self._profile_data()
-        eis_overrides = profile.get("eis_overrides", {})
-        eis_matrix = profile.get("eis_matrix_overrides", {})
-
-        # EIS/NIS surrogate recovery — still per-analyte × matrix
-        if qc_type in ("EIS", "SUR", "surrogate"):
-            qa = profile.get("qc_acceptance", {})
-            lfsm_entry = qa.get("LFSM", {})
-            tiers = lfsm_entry.get("tiers") or []
-            if not tiers:
-                raise UnconfiguredCriterion(
-                    "{0} has no qc_acceptance.LFSM.tiers to base EIS recovery "
-                    "on. Configure it in Method Profiles -> QC Types -> "
-                    "LFSM.".format(self.method_id))
-            # Refuse rather than substituting 40/130. This is the method whose
-            # limits are explicitly placeholders pending a purchased-method
-            # check, so it is the last place a silent default belongs.
-            base = _tier_rule(tiers[0], "", self.method_id, analyte, matrix,
-                              "EIS")
-            if base.recovery_min is None:
-                raise UnconfiguredCriterion(
-                    "{0} / {1}: EIS recovery needs a recovery window on "
-                    "qc_acceptance.LFSM, which specifies none.".format(
-                        self.method_id, analyte))
-            default_lo = float(base.recovery_min)
-            default_hi = float(base.recovery_max)
-            # `analyte` is the compound as the INSTRUMENT names it, which is
-            # the compound the lab actually spiked. Tables 6/8 designate the
-            # same position by EPA's own labelled form, and ten of the
-            # twenty-four differ (13C4-PFBA vs the catalogue's 13C3-PFBA), so a
-            # direct lookup missed ten compounds and silently applied the
-            # generic window. Join through the native instead; see
-            # eis_criteria_name. The flag keeps `analyte` unchanged, so a
-            # certificate names the compound the lab has rather than EPA's.
-            criteria_name = eis_criteria_name(self.method_id, analyte)
-            override = eis_overrides.get(criteria_name, {})
-            # A limit stored as null is UNSET: it falls back, never float(None)
-            # (the editor now saves a blank as null, not 0 --).
-            lo = _limit_or(override.get("recovery_min"), default_lo)
-            hi = _limit_or(override.get("recovery_max"), default_hi)
-            if matrix:
-                mat_class = _1633a_matrix_class(matrix)
-                if mat_class != "aqueous":
-                    mat_override = eis_matrix.get(mat_class, {}).get(
-                        criteria_name)
-                    if mat_override:
-                        lo = _limit_or(mat_override.get("recovery_min"), lo)
-                        hi = _limit_or(mat_override.get("recovery_max"), hi)
-            return QCRule(lo, hi,
-                          verify_against_method=True,
-                          notes="EIS limits per-analyte x matrix class "
-                                "(1633A Tables 6/8, EPA 820-R-24-007) — VERIFY "
-                                "against purchased method copy")
-
-        # OPR (ongoing precision & recovery) maps to LFB code in the pool
-        mapped = "LFB" if qc_type in ("OPR", "IPR") else qc_type
-        chosen = _select_tier(
-            profile, mapped, analyte, matrix, conc, rl, False, False,
-            "{0} / {1} / {2} / {3}".format(self.method_id, analyte, matrix, mapped))
-        if chosen is None:
-            return None
-        t = chosen[0]
-        rule = _tier_rule(
-            t, t.get("description",
-                     "1633A per-analyte (verify against method)"),
-            self.method_id, analyte, matrix, mapped)
-        return QCRule(
-            recovery_min=rule.recovery_min,
-            recovery_max=rule.recovery_max,
-            rsd_max=rule.rsd_max,
-            rpd_max=rule.rpd_max,
-            verify_against_method=bool(t.get("verify_against_method", False)),
-            notes=rule.notes,
-            max_conc_x_rl=rule.max_conc_x_rl,
-            fails_at_limit=rule.fails_at_limit,
-        )
-
-    def calibration_rule(self, analyte=""):
-        cal = _calibration(self._profile_data(), self.method_id)
-        req = lambda k: _required(cal, k, self.method_id, "calibration",
-                                  " -> Calibration & CCV")
-        return CalibrationRule(
-            r2_min=float(req("r2_min")),
-            point_pct_dev_max=req("point_pct_dev_max"),
-            low_point_pct_dev_max=req("low_point_pct_dev_max"),
-            default_fit="linear",
-            default_weighting="1/x",
-        )
-
-    def ccv_rule(self):
-        return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
-
-    def is_rule(self):
-        is_ = _is_section(self._profile_data(), self.method_id)
-        req = lambda k: _required(is_, k, self.method_id, "is_response",
-                                  " -> Calibration & CCV -> IS Response")
-        return ISRule(
-            vs_ical_avg_min=req("vs_ical_avg_min"),
-            vs_ical_avg_max=req("vs_ical_avg_max"),
-            notes="NIS screen; EIS uses per-analyte limits",
-        )
-
-    def confirmation_rule(self):
-        conf = _confirmation(self._profile_data(), self.method_id)
-        return ConfirmationRule(
-            ion_ratio_tol_pct=_conf_value(conf, "ion_ratio_tol_pct", self.method_id),
-            sn_min_quant=_conf_value(conf, "sn_quan_min", self.method_id),
-            sn_min_confirm=_conf_value(conf, "sn_confirm_min", self.method_id),
-            notes="Ion-ratio window wider in 1633A (50–150% of expected typical)",
-        )
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Registry
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _limit_or(value, fallback):
     """A stored limit as float, or the fallback when it is unset (None)."""
     return fallback if value is None else float(value)
 
 
-_PROFILES = {
-    "FDA_32PFAS": FDA32PFASProfile(),
-    "EPA_537_1":  EPA537Profile(),
-    "EPA_1633A":  EPA1633AProfile(),
-}
+_SURROGATE_WINDOW_NOTE = "Surrogate recovery (method profile)"
+_LABELLED_PREFIXES = ("M", "13C")
 
-# Aliases accepted from batch metadata / injection names
-_ALIASES = {
-    "FDA": "FDA_32PFAS", "FDA32": "FDA_32PFAS", "C-010.04": "FDA_32PFAS",
-    "537": "EPA_537_1", "537.1": "EPA_537_1", "EPA537": "EPA_537_1",
-    "1633": "EPA_1633A", "1633A": "EPA_1633A", "EPA1633": "EPA_1633A",
-}
+
+class ConfiguredProfile(MethodProfile):
+    """Every method's rules, from its exported profile. What differs between
+    methods is the profile's Engine section (senaite.pfas.method_engine);
+    with none, every feature is off and nothing is borrowed from another
+    method."""
+
+    def __init__(self, method_id):
+        self.method_id = method_id
+
+    @property
+    def description(self):
+        data = self._profile_data()
+        return (data.get("description") or data.get("display_name")
+                or data.get("title") or self.method_id)
+
+    def engine(self):
+        return _engine_module().engine(self._profile_data())
+
+    # ── recovery / blank / duplicate QC ─────────────────────────
+    def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
+        data = self._profile_data()
+        eng = _engine_module().engine(data)
+        if eng["eis_recovery_limits"] and qc_type in ("EIS", "SUR", "surrogate"):
+            return self._eis_rule(data, eng, analyte, matrix)
+        if qc_type in ("SUR", "surrogate"):
+            return self._surrogate_rule(data, eng)
+        mapped = eng["qc_type_aliases"].get(qc_type, qc_type)
+        grouped = eng["grouped_recovery_tiers"]
+        if grouped:
+            is_key, is_no_std = _analyte_groups(analyte, data)
+            shown = matrix or "(no matrix)"
+        else:
+            is_key, is_no_std = False, False
+            shown = matrix
+        where = "{0} / {1} / {2} / {3}".format(self.method_id, analyte, shown, mapped)
+        chosen = _select_tier(data, mapped, analyte, matrix, conc, rl,
+                              is_key, is_no_std, where)
+        if chosen is None:
+            return None
+        tier, branch = chosen
+        rule = _tier_rule(tier, self._tier_notes(eng, tier, branch), self.method_id,
+                          analyte, matrix, mapped)
+        if tier.get("verify_against_method"):
+            rule = dataclasses.replace(rule, verify_against_method=True)
+        return rule
+
+    @staticmethod
+    def _tier_notes(eng, tier, branch):
+        """The note a tier's rule carries: the Engine's note for the tier's
+        branch when it sets one (grouped tiers), else the tier's own
+        description, else the Engine's general tier note."""
+        notes = eng["rule_notes"]
+        if tier.get(LOW_LEVEL_KEY):
+            if "tier_low_level" in notes:
+                text = notes["tier_low_level"]
+                try:
+                    text = text.format(float(tier[LOW_LEVEL_KEY]))
+                except (IndexError, KeyError, ValueError):
+                    pass
+                return tier.get("description") or text
+        elif "tier_" + branch in notes:
+            return notes["tier_" + branch]
+        return tier.get("description", notes.get("tier", ""))
+
+    def _surrogate_rule(self, data, eng):
+        """The profile's surrogate window (Calibration & CCV), else the window
+        the method text states (Engine), else a refusal."""
+        kw = {"is_guidance_only": True} if eng["surrogate_guidance_only"] else {}
+        win = (data.get("instrument_verification") or {}).get("surrogate_window") or {}
+        if win.get("recovery_min") is not None and win.get("recovery_max") is not None:
+            return QCRule(float(win["recovery_min"]), float(win["recovery_max"]),
+                          notes=_SURROGATE_WINDOW_NOTE, **kw)
+        fallback = eng["surrogate_fallback"]
+        if fallback is None:
+            raise UnconfiguredCriterion(
+                "{0} has no surrogate recovery window. Set it in Method Profiles "
+                "-> Calibration & CCV (Surrogate recovery min / max), or the "
+                "method text's window in Method Profiles -> Engine.".format(self.method_id))
+        return QCRule(fallback["min"], fallback["max"], notes=fallback["citation"], **kw)
+
+    def _eis_window(self, data, eng, analyte, matrix):
+        """(low, high) every extracted standard starts from, before its own
+        and its matrix class's limits."""
+        window = eng["eis_default_window"]
+        if window == "lfsm_tier":
+            qa = data.get("qc_acceptance") or {}
+            tiers = (qa.get("LFSM") or {}).get("tiers") or []
+            if not tiers:
+                raise UnconfiguredCriterion(
+                    "{0} has no qc_acceptance.LFSM.tiers to base EIS recovery "
+                    "on. Configure it in Method Profiles -> QC Types -> "
+                    "LFSM.".format(self.method_id))
+            # Refuse rather than substituting a window: the method's own LFSM
+            # tier is the base, or nothing is
+            base = _tier_rule(tiers[0], "", self.method_id, analyte, matrix, "EIS")
+            if base.recovery_min is None:
+                raise UnconfiguredCriterion(
+                    "{0} / {1}: EIS recovery needs a recovery window on "
+                    "qc_acceptance.LFSM, which specifies none.".format(
+                        self.method_id, analyte))
+            return float(base.recovery_min), float(base.recovery_max)
+        if window == "surrogate_window":
+            win = (data.get("instrument_verification") or {}).get("surrogate_window") or {}
+            if win.get("recovery_min") is None or win.get("recovery_max") is None:
+                raise UnconfiguredCriterion(
+                    "{0} / {1}: EIS recovery starts from the surrogate window, "
+                    "which is not set. Set it in Method Profiles -> Calibration "
+                    "& CCV (Surrogate recovery min / max).".format(self.method_id, analyte))
+            return float(win["recovery_min"]), float(win["recovery_max"])
+        raise UnconfiguredCriterion(
+            "{0}: isotope-dilution (EIS) limits are on, but no default EIS window "
+            "is chosen. Choose one in Method Profiles -> Engine.".format(self.method_id))
+
+    def _eis_rule(self, data, eng, analyte, matrix):
+        """EIS / surrogate recovery per analyte x matrix class."""
+        default_lo, default_hi = self._eis_window(data, eng, analyte, matrix)
+        eis_overrides = data.get("eis_overrides", {})
+        eis_matrix = data.get("eis_matrix_overrides", {})
+        # `analyte` is the compound as the INSTRUMENT names it, which is the
+        # compound the lab actually spiked. A published method may designate
+        # the same position by its own labelled form, so the lookup joins
+        # through the native (eis_criteria_name). The rule keeps `analyte`
+        # unchanged, so a certificate names the compound the lab has.
+        criteria_name = eis_criteria_name(self.method_id, analyte)
+        override = eis_overrides.get(criteria_name, {})
+        # A limit stored as null is UNSET: it falls back, never float(None).
+        lo = _limit_or(override.get("recovery_min"), default_lo)
+        hi = _limit_or(override.get("recovery_max"), default_hi)
+        if matrix:
+            mat_class = _engine_module().matrix_class(data, matrix)
+            if mat_class:
+                mat_override = (eis_matrix.get(mat_class) or {}).get(criteria_name)
+                if mat_override:
+                    lo = _limit_or(mat_override.get("recovery_min"), lo)
+                    hi = _limit_or(mat_override.get("recovery_max"), hi)
+        return QCRule(lo, hi, verify_against_method=eng["eis_verify_flag"],
+                      notes=eng["rule_notes"].get("eis", ""))
+
+    # ── instrument criteria ─────────────────────────────────────
+    def _criterion(self, eng, rule, section, key, where):
+        """One instrument criterion: refused when the Engine requires it and
+        it is absent, else as stored (absent = None)."""
+        if key in (eng["required_keys"].get(rule) or ()):
+            return _required(section, key, self.method_id, rule, where)
+        return section.get(key)
+
+    def calibration_rule(self, analyte=""):
+        data = self._profile_data()
+        eng = _engine_module().engine(data)
+        cal = _calibration(data, self.method_id)
+        where = " -> Calibration & CCV"
+        # r2_min decides whether a curve is acceptable at all: a rule cannot
+        # be built without it, whatever the Engine lists
+        r2 = _required(cal, "r2_min", self.method_id, "calibration", where)
+        point = self._criterion(eng, "calibration", cal, "point_pct_dev_max", where)
+        low_point = self._criterion(eng, "calibration", cal, "low_point_pct_dev_max", where)
+        fit = "linear"
+        if (eng["labelled_compound_fit"] == "mean_response_factor"
+                and (analyte or "").startswith(_LABELLED_PREFIXES)):
+            fit = "mean_response_factor"
+        return CalibrationRule(
+            r2_min=float(r2),
+            point_pct_dev_max=point,
+            low_point_pct_dev_max=low_point,
+            force_origin=bool(cal.get("force_origin", False)),
+            default_fit=fit,
+            default_weighting="none" if fit != "linear" else "1/x",
+        )
+
+    def ccv_rule(self):
+        return _ccv_rule(self._iv().get("ccv", {}), self.method_id)
+
+    def is_rule(self):
+        data = self._profile_data()
+        eng = _engine_module().engine(data)
+        is_ = _is_section(data, self.method_id)
+        where = " -> Calibration & CCV -> IS Response"
+        get = lambda k: self._criterion(eng, "is_response", is_, k, where)  # noqa: E731
+        return ISRule(
+            vs_ical_avg_min=get("vs_ical_avg_min"),
+            vs_ical_avg_max=get("vs_ical_avg_max"),
+            vs_last_ccv_min=get("vs_last_ccv_min"),
+            vs_last_ccv_max=get("vs_last_ccv_max"),
+            notes=eng["rule_notes"].get("is_rule", ""),
+        )
+
+    def confirmation_rule(self):
+        data = self._profile_data()
+        eng = _engine_module().engine(data)
+        conf = _confirmation(data, self.method_id)
+        where = " -> Calibration & CCV"
+        get = lambda k: self._criterion(eng, "confirmation", conf, k, where)  # noqa: E731
+        # evaluated in this order: the first missing criterion is the one named
+        ion_ratio = get("ion_ratio_tol_pct")
+        rrt = get("rrt_tol_pct")
+        rt_abs = get("rt_tol_abs_min")
+        sn_quant = get("sn_quan_min")
+        sn_confirm = get("sn_confirm_min")
+        # single_transition_analytes, confirm_pct_diff_max and the technique
+        # are the lab's settings, on the profile (Calibration & CCV)
+        return ConfirmationRule(
+            ion_ratio_tol_pct=ion_ratio,
+            rrt_tol_pct=rrt,
+            rt_tol_abs_min=rt_abs,
+            sn_min_quant=sn_quant,
+            sn_min_confirm=sn_confirm,
+            single_transition_analytes=_name_list(conf.get("single_transition_analytes")),
+            confirm_pct_diff_max=conf.get("confirm_pct_diff_max"),
+            confirm_technique=(conf.get("confirm_technique") or "LC-HRMS").strip(),
+            notes=eng["rule_notes"].get("confirmation_rule", ""),
+        )
+
+    def sample_factor(self, matrix):
+        # Matrix factors are keyed by the core SampleType title. Match the
+        # sample's matrix EXACTLY first; fall back to legacy substring matching
+        # for any old-format entries that predate the core-type tie.
+        m = (matrix or "").lower().strip()
+        factors = self._profile_data().get("matrix_factors", []) or []
+        for entry in factors:
+            if (entry.get("matrix", "") or "").lower().strip() == m:
+                return float(entry["factor"])
+        for entry in factors:
+            key = (entry.get("matrix", "") or "").lower().strip()
+            if key and key in m:
+                return float(entry["factor"])
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Registry: every method in the export, by its id or one of its aliases
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _id_key(name):
+    return (name or "").strip().upper().replace(" ", "")
+
+
+def resolve_method_id(method):
+    """The exported method id `method` names (its id, any case, or one of its
+    Engine aliases), or None."""
+    key = _id_key(method)
+    if not key:
+        return None
+    for pid in _profile_data_cache:
+        if _id_key(pid) == key:
+            return pid
+    eng = _engine_module()
+    for pid, data in _profile_data_cache.items():
+        if key in [_id_key(a) for a in eng.engine(data)["aliases"]]:
+            return pid
+    return None
 
 
 def get_profile(method):
-    key = method.strip().upper().replace(" ", "")
-    key = _ALIASES.get(key, key)
-    for pid, prof in _PROFILES.items():
-        if pid.upper() == key:
-            return prof
-    raise KeyError(
-        "Unknown method profile {!r}; available: {} (aliases: {})".format(
-            method, sorted(_PROFILES), sorted(_ALIASES)))
+    pid = resolve_method_id(method)
+    if pid is None:
+        raise KeyError(
+            "No method profile {!r} among the exported method profiles ({}). "
+            "Save the method's profile in SENAITE (Method Profiles) so it is "
+            "exported, or give the run its method's id.".format(
+                method, ", ".join(sorted(_profile_data_cache)) or "none"))
+    if profile_stale(pid):
+        raise KeyError(
+            "The exported method profile {0} predates the Engine settings; it is "
+            "not used until SENAITE is restarted and exports it again.".format(pid))
+    return ConfiguredProfile(pid)
 
 
 def available_profiles():
-    return {pid: p.description for pid, p in _PROFILES.items()}
+    return dict((pid, ConfiguredProfile(pid).description) for pid in _profile_data_cache)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Analyte / IS list helpers — replace constants.ANALYTES / INTERNAL_STANDARDS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_analyte_list(method_id: str = "FDA_32PFAS") -> list:
-    """Display-name ordered analyte list for method_id.
-
-    After a JSON profile load the cache may carry a ``display_analyte_set``
-    field exported by the store; otherwise falls back to the inline defaults.
-    """
+def get_analyte_list(method_id: str) -> list:
+    """Display-name ordered analyte list for method_id: the reported panel
+    the export writes (``display_analyte_set``). Refuses when the export
+    carries none -- no other method's panel stands in for it."""
     data = _profile_data_cache.get(method_id, {})
     explicit = data.get("display_analyte_set")
     if explicit is not None:
         return list(explicit)
-    if method_id == "FDA_32PFAS":
-        return list(_FDA_DISPLAY_ANALYTES)
-    return []
+    raise UnconfiguredCriterion(
+        "{0} has no reported analyte panel (display_analyte_set) in the exported "
+        "method profiles. Save the method's profile in SENAITE (Method Profiles) "
+        "so it is exported with its analytes.".format(method_id or "(no method)"))
 
 
 def get_sample_correction(method_id: str) -> str:
@@ -1460,11 +1366,10 @@ def get_matrix_factor(method_id: str, matrix: str) -> "float | None":
         return None
 
 
-def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
+def get_non_iso_set(method_id: str) -> frozenset:
     """Return the frozenset of analyte display names that have no labeled std.
 
-    Reads ``no_std_analytes`` from tier 3 of the method's recovery_tiers.
-    Falls back to tier 3 of the inline FDA default if the profile isn't loaded.
+    Derived from the method's surrogate links, limited to its reported panel.
     """
     # Derived from THIS method's surrogate links (consolidation P4), not a
     # global column: a link changed in one method moves the analyte there.
@@ -1476,8 +1381,12 @@ def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
     names = no_labelled_names_for(data)
     if not names:
         return frozenset()
-    # Scope to the method's own panel so 1633A-only analytes do not leak in.
-    panel = set(get_analyte_list(method_id) or [])
+    # Scope to the method's own panel so another method's analytes do not
+    # leak in (no exported panel: the names as derived)
+    try:
+        panel = set(get_analyte_list(method_id) or [])
+    except UnconfiguredCriterion:
+        panel = set()
     return frozenset(names & panel) if panel else frozenset(names)
 
 
@@ -1488,7 +1397,7 @@ def get_non_iso_set(method_id: str = "FDA_32PFAS") -> frozenset:
 _ISOTOPE_LABEL = re.compile(r"^(?:13C\d+|D\d+)(?:,\s*D\d+)?-")
 
 
-def get_is_list(method_id: str = "FDA_32PFAS") -> list:
+def get_is_list(method_id: str) -> list:
     """Display names of the labelled compounds this METHOD monitors.
 
     DERIVED, not stored. This used to read a profile key `internal_standards`
@@ -1511,7 +1420,8 @@ def get_is_list(method_id: str = "FDA_32PFAS") -> list:
     them from the same table -- which a list taken from a published method's own
     designations would NOT (see eis_criteria_name).
 
-    Falls back to the inline FDA names only when no profile is loaded at all.
+    Refuses when the method names no labelled standard at all: an empty list
+    would check no surrogate or internal standard and say nothing.
     """
     from .analyte_alias import injection_is_names, labelled_display_name
 
@@ -1547,9 +1457,10 @@ def get_is_list(method_id: str = "FDA_32PFAS") -> list:
             names.append(name)
     if names:
         return names
-    if method_id == "FDA_32PFAS":
-        return list(_FDA_IS_DISPLAY_NAMES)
-    return []
+    raise UnconfiguredCriterion(
+        "{0} names no labelled standard (surrogate or internal standard). Set "
+        "them in Method Profiles -> Labelled Standards / Surrogate Map.".format(
+            method_id or "(no method)"))
 
 
 def eis_criteria_name(method_id: str, compound: str) -> str:
@@ -1620,7 +1531,7 @@ def get_included_display_analytes(method_id: str, matrix: str) -> list:
     the pipeline continues to work before first configuration.
 
     Keyword keys that differ from display names are handled via
-    _FDA_DISPLAY_TO_KW / _FDA_KW_TO_DISPLAY.  Default: included (True) when a
+    _DISPLAY_TO_KW / _KW_TO_DISPLAY.  Default: included (True) when a
     keyword is not found in the inclusion dict (conservative — never silently
     drop an analyte due to missing config data).
     """
@@ -1632,14 +1543,14 @@ def get_included_display_analytes(method_id: str, matrix: str) -> list:
 
     result = []
     for display_name in full_list:
-        keyword = _FDA_DISPLAY_TO_KW.get(display_name, display_name)
+        keyword = _DISPLAY_TO_KW.get(display_name, display_name)
         matrix_map = inclusion.get(keyword, {})
         if matrix_map.get(matrix, True):
             result.append(display_name)
     return result
 
 
-def get_isomer_summation(method_id: str = "FDA_32PFAS") -> list:
+def get_isomer_summation(method_id: str) -> list:
     """Return the active (summed) isomer groups for method_id.
 
     Each is ``{"linear", "branched", "branched_list", "reported", "enabled"}``:
@@ -1674,7 +1585,7 @@ def get_isomer_summation(method_id: str = "FDA_32PFAS") -> list:
     return out
 
 
-def get_surrogate_map(method_id: str = "FDA_32PFAS") -> dict:
+def get_surrogate_map(method_id: str) -> dict:
     """Which labeled surrogate quantifies each native analyte, per METHOD.
 
     §3 makes this the method's own relation ("SURROGATE MAP native ->
@@ -1715,7 +1626,7 @@ def get_surrogate_map(method_id: str = "FDA_32PFAS") -> dict:
     return out
 
 
-def get_labelled_roles(method_id: str = "FDA_32PFAS") -> dict:
+def get_labelled_roles(method_id: str) -> dict:
     """{keyword: "surrogate" | "injection_is"} from the method's labelled-
     standards grid, or {} for a profile without one --
     callers then fall back to the global roles, as before the grid existed."""
@@ -1725,7 +1636,7 @@ def get_labelled_roles(method_id: str = "FDA_32PFAS") -> dict:
     return dict((k, (v or {}).get("role")) for k, v in grid.items())
 
 
-def get_injection_standards(method_id: str = "FDA_32PFAS") -> set:
+def get_injection_standards(method_id: str) -> set:
     """Display names of this METHOD's injection standards (added after any
     dilution, so never dilution-corrected and not recovery-checked). The
     global roles are the fallback for a profile without a grid."""
@@ -1736,7 +1647,7 @@ def get_injection_standards(method_id: str = "FDA_32PFAS") -> set:
     return set(labelled_display_name(k) for k, r in roles.items() if r == "injection_is")
 
 
-def get_surrogate_is_chain(method_id: str = "FDA_32PFAS") -> dict:
+def get_surrogate_is_chain(method_id: str) -> dict:
     """Which standard each labelled standard is itself quantified against --
     its LINK in the method's grid (MS Quan style: any used standard may
     reference any other). Under FDA every surrogate links to 13C4-PFOA.
@@ -1751,7 +1662,7 @@ def get_surrogate_is_chain(method_id: str = "FDA_32PFAS") -> dict:
     return dict(data.get("surrogate_is_chain", {}) or {})
 
 
-def get_salt_factors(method_id: str = "FDA_32PFAS") -> dict:
+def get_salt_factors(method_id: str) -> dict:
     """Per-analyte salt (counter-ion) correction, keyed by analyte.
 
     §3 lists SALT FACTOR as a core method relation: "per analyte x method

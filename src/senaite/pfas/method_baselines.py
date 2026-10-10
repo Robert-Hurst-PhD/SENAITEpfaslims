@@ -219,27 +219,33 @@ _EIS_MATRIX_OVERRIDES = {
 MATRIX_CLASSES = ("aqueous", "leachate", "solid", "tissue", "biosolid")
 
 
-def matrix_class(matrix_title):
-    """Map a full matrix / SampleType title (e.g. "Landfill Leachate") to the
-    EIS table class used by _EIS_MATRIX_OVERRIDES ("leachate"). Mirrors
-    pfas_pipeline/method_profiles.py's `_1633a_matrix_class` substring rules
-    so the add-on and the worker classify matrices identically; kept as a
-    separate copy because the worker module is Python-3-only pipeline code
-    and this module must stay dependency-free.
+def _method_engine():
+    try:
+        from senaite.pfas import method_engine
+    except ImportError:          # standalone (tests): no Zope for the package
+        import os as _os
+        import sys as _sys
+        _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+        import method_engine     # noqa: E402
+    return method_engine
 
-    Falls through to "aqueous" for any name that matches nothing else -- the
-    Table 6 aqueous column is EPA 1633A's default class.
+
+def matrix_class(matrix_title, profile=None):
+    """The EIS table class ("leachate", "solid", ... or "aqueous") of a
+    matrix / SampleType title.
+
+    With a profile that classifies its matrices (matrix_classes, Matrices &
+    Units), the profile's class -- exactly what the worker's engine applies;
+    a matrix it does not classify takes no class override ("aqueous").
+    Without one, EPA 1633A's table classes from the title
+    (method_engine.default_matrix_class: the rule the Engine migration writes
+    into the profile).
     """
-    m = (matrix_title or "").lower().strip()
-    if "leachate" in m:
-        return "leachate"
-    if "tissue" in m:
-        return "tissue"
-    if "biosolid" in m:
-        return "biosolid"
-    if "solid" in m or "sediment" in m or "soil" in m:
-        return "solid"
-    return "aqueous"
+    me = _method_engine()
+    classes = (profile or {}).get("matrix_classes")
+    if isinstance(classes, dict) and classes:
+        return me.matrix_class(profile, matrix_title) or "aqueous"
+    return me.default_matrix_class(matrix_title)
 
 
 def _eis_baseline(analyte, matrix):

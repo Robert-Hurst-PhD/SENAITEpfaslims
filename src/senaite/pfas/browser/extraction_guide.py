@@ -284,7 +284,9 @@ class PFASExtractionGuideView(BrowserView):
         conflict, shown (method_conflicts), never silently followed."""
         b = self._get_batch()
         mid = batch_method_id(b, self.request) if b is not None else u""
-        return mid or self.session().get("method_id") or self.request.form.get("method_id", "FDA_32PFAS")
+        # no stand-in method: with none resolved the page shows no stages and
+        # the start form asks for one
+        return mid or self.session().get("method_id") or self.request.form.get("method_id") or u""
 
     def method_conflicts(self):
         """[(source, method)] that disagree with the batch's method."""
@@ -295,7 +297,8 @@ class PFASExtractionGuideView(BrowserView):
         return bm.resolve(b)[1]
 
     def method_profile(self):
-        return get_profile(self._portal(), self._method_id())
+        mid = self._method_id()
+        return get_profile(self._portal(), mid) if mid else {}
 
     def extraction_stages(self):
         profile = self.method_profile()
@@ -459,9 +462,12 @@ class PFASExtractionGuideView(BrowserView):
             return self._redirect(url)
         method_id = (self.request.form.get("method_id", "").strip()
                      or batch_method_id(b, self.request))
-        if not method_id:
-            return self._redirect("{0}?batch_uid={1}&error=Choose+the+method".format(
-                self._self_url(), b.UID()))
+        from senaite.pfas import configured_methods as cm
+        try:
+            cm.resolve(method_id, cm.ids(self._portal()), u"the extraction")
+        except cm.MethodUnresolved as exc:
+            return self._redirect("{0}?batch_uid={1}&error={2}".format(
+                self._self_url(), b.UID(), quote_plus(u"{0}".format(exc).encode("utf-8"))))
         analyst = self.request.form.get("analyst", "").strip() or self.current_user_name()
         data = {
             "method_id":     method_id,

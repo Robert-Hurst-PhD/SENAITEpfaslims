@@ -20,9 +20,11 @@ from __future__ import absolute_import, unicode_literals
 
 try:
     from senaite.pfas import method_studies as ms
+    from senaite.pfas import method_engine as me
     from senaite.pfas.analyte_reference import native_keyword_for
 except ImportError:                    # tests: loaded by path
     import method_studies as ms
+    import method_engine as me
     from analyte_reference import native_keyword_for
 
 KINDS = [
@@ -36,32 +38,32 @@ KINDS = [
 # what a PT provider says of each reported analyte
 PT_VERDICTS = [(u"acceptable", u"Acceptable"), (u"not_acceptable", u"Not acceptable")]
 KIND_LABELS = dict(KINDS)
-# kinds defined by one method's text: EPA 537.1 §9.2 is built on LFBs
-# (reagent water fortified), which only a drinking-water method has. Every
-# other kind is open to every method.
-KIND_METHODS = {"mrl": ("EPA_537_1",), "pa": ("EPA_537_1",), "dl": ("EPA_537_1",),
-                "idc": ("EPA_537_1",)}
+# kinds built on LFBs (reagent water fortified, EPA 537.1 §9.2): their
+# spiked replicates are LFBs. Which methods run them is the method profile's
+# study kinds (method_engine.study_kinds).
+LFB_KINDS = ("mrl", "pa", "dl", "idc")
 LFB = "LFB"
 
 
-def kind_allowed(kind, method_id):
-    return method_id in KIND_METHODS.get(kind, (method_id,))
+def kind_allowed(kind, profile):
+    """True if the method (its profile) runs this kind of study."""
+    return kind in me.study_kinds(profile)
 
 
 def spike_role(rec):
     """The role of a study's spiked replicates: chosen on an MDL (from the
     method's QC types: LFSM for a food or environmental matrix), LFB for
-    the EPA 537.1 kinds."""
+    the LFB kinds."""
     if rec.get("spike_role"):
         return rec["spike_role"]
-    return LFB if rec.get("kind") in KIND_METHODS else u""
-# the method blank by the method's name for it (EPA 537.1 calls it LRB)
-BLANK_ROLE = {"EPA_537_1": "LRB"}
+    return LFB if rec.get("kind") in LFB_KINDS else u""
 MDL_MONTHS = 24          # App. B Rev. 2 §4(b), §4(e)
 
 
-def blank_role(method_id):
-    return BLANK_ROLE.get(method_id, "MB")
+def blank_role(profile):
+    """The method blank by the method's name for it (its profile's), or None
+    when the profile names none."""
+    return me.blank_role(profile)
 
 
 def injections(conn, method, roles, batches=None, since=None, until=None, matrix=None):

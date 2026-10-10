@@ -485,15 +485,8 @@ class PFASPrepLogbooksView(BrowserView):
         """
         out = []
         try:
-            from senaite.pfas.method_profile_store import DEFAULT_PROFILES
-            portal = self._portal()
-            from senaite.pfas.method_profile_store import (
-                get_profile, list_method_ids)
-            ids = set(DEFAULT_PROFILES.keys()) | set(list_method_ids(portal))
-            for mid in sorted(ids):
-                label = (get_profile(portal, mid) or {}).get(
-                    "display_name") or mid
-                out.append({"id": mid, "label": label})
+            from senaite.pfas import configured_methods
+            out = configured_methods.choices(self._portal())
         except Exception as exc:
             logger.warning("method_choices: %s", exc)
         return out

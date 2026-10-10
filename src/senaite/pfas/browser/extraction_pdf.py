@@ -54,7 +54,15 @@ class PFASExtractionPDFView(BrowserView):
             self.request.response.setStatus(404)
             return "No extraction session found for this batch"
         portal = getToolByName(self.context, "portal_url").getPortalObject()
-        profile = get_profile(portal, session.get("method_id", "FDA_32PFAS"))
+        # the batch's method (the one resolver), else the session's; never a
+        # stand-in: an extraction record printed under another method's
+        # stages would misstate what was done
+        from senaite.pfas.browser.extraction_guide import batch_method_id
+        method_id = batch_method_id(batch, self.request) or session.get("method_id") or u""
+        if not method_id:
+            self.request.response.setStatus(409)
+            return u"No method is set for this extraction: set the batch's method first."
+        profile = get_profile(portal, method_id)
         batch_id = batch.getId() if hasattr(batch, "getId") else u"extraction"
         from senaite.pfas import extraction_batch
         from senaite.pfas.browser.logbooks import _get_logbook

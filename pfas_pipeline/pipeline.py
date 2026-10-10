@@ -302,7 +302,11 @@ def build_summary(batch: Batch) -> list[SummaryResult]:
         dil_meta[parent] = {"injection": r.injection_name,
                             "factor": entry.get("factor")}
 
-    _method = getattr(batch, "method_id", "") or "FDA_32PFAS"
+    _method = getattr(batch, "method_id", "") or ""
+    if not _method:
+        # never another method's panel and criteria: refuse
+        raise ValueError("The batch names no method, so its results cannot be "
+                         "summarised against one. Give the run its method.")
     _matrix = getattr(batch, "matrix", "") or ""
     _analytes = _get_included_analytes(_method, _matrix) if _matrix else _get_analytes(_method)
     _non_iso = _get_non_iso_set(_method)
@@ -772,7 +776,7 @@ def run_pipeline(
             "%s. Results will stay on the extract basis with no salt or matrix "
             "correction, and LFSM/LFSMD cannot be evaluated. Provide a "
             "<stem>_extraction.json sidecar, or call run_pipeline with the "
-            "arguments.", csv_path.name)
+            "arguments.", Path(csv_path).name)
 
     # Reload QC criteria and full profile data from the exported JSON so
     # manager changes in the SENAITE UI take effect without a worker restart.
@@ -797,19 +801,38 @@ def run_pipeline(
     # drives this exact two-call sequence to catch a future reordering.
     reload_criteria()
     reload_from_profiles(batch_id=senaite_batch_id or None)
+    # a run is judged by ITS method or not at all: refuse, never fall back
+    # to another method's criteria
+    if not method_id:
+        raise RuntimeError(
+            "No method for %s: neither the call nor the extraction sidecar names "
+            "one, so the run cannot be judged. Build the run in the Run Builder "
+            "(its sidecar carries the method) or pass method_id." % Path(csv_path).name)
+    from .method_profiles import _profile_data_cache, resolve_method_id
+    resolved = resolve_method_id(method_id)
+    if resolved is not None:
+        method_id = resolved                 # an alias ("537.1") -> the method's id
     if method_id and profile_configured(method_id):
         # the engine's flat CRITERIA = THIS run's method, project changes
         # included (QC consolidation P2; it was FDA's for every method)
         from .constants import set_criteria_from_profile
-        from .method_profiles import _profile_data_cache
         set_criteria_from_profile(_profile_data_cache.get(method_id), method_id)
-    if method_id and not profile_configured(method_id):
+    from .method_profiles import profile_stale
+    if profile_stale(method_id):
+        raise RuntimeError(
+            "The exported method profile for %s predates the Engine settings, so "
+            "the run is not judged with them silently off. Restart SENAITE (it "
+            "migrates and re-exports the profiles), then run the batch again."
+            % method_id)
+    if not profile_configured(method_id):
         # QC consolidation P1: never judge with criteria the lab did not set
         raise RuntimeError(
-            "No exported method profile for %s (%s). Save the method profile in "
-            "SENAITE so it is exported, then run the batch again."
+            "No exported method profile for %s: the export (%s) holds %s. Save "
+            "the method's profile in SENAITE (Method Profiles) so it is exported, "
+            "then run the batch again."
             % (method_id, os.environ.get("PFAS_PROFILES_PATH",
-                                         "/data/qc/method_profiles.json")))
+                                         "/data/qc/method_profiles.json"),
+               ", ".join(sorted(_profile_data_cache)) or "no method"))
 
     csv_path = Path(csv_path)
     from .importer import set_member_roles

@@ -127,7 +127,10 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     def kinds(self):
         """The study kinds, and every template designed in the Study Designer."""
         from senaite.pfas import study_templates as st
-        return list(sd.KINDS) + [(u"tpl:%s" % t["id"], t["name"]) for t in st.load(self.portal())]
+        from senaite.pfas import method_engine
+        run = set(k for m in self.methods() for k in method_engine.study_kinds(self.profile(m)))
+        return ([(k, l) for k, l in sd.KINDS if k in run]
+                + [(u"tpl:%s" % t["id"], t["name"]) for t in st.load(self.portal())])
 
     def kind_label(self, kind, rec=None):
         if kind == "designed":
@@ -137,6 +140,11 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     def methods(self):
         from senaite.pfas.method_profile_store import list_method_ids
         return list_method_ids(self.portal())
+
+    def method_choices(self):
+        """[{"id", "label"}] of the configured methods."""
+        from senaite.pfas import configured_methods
+        return configured_methods.choices(self.portal())
 
     def profile(self, method_id=None):
         from senaite.pfas.method_profile_store import raw_profile
@@ -163,7 +171,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         return sd.spike_role(rec)
 
     def blank_role(self, rec):
-        return sd.blank_role(rec.get("method"))
+        return sd.blank_role(self.profile(rec.get("method"))) or u""
 
     def default_since(self):
         return (date.today() - timedelta(days=365 * sd.MDL_MONTHS // 12)).isoformat()
@@ -217,7 +225,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 if rec["kind"] == "mdl":
                     spikes = sd.injections(conn, rec["method"], [sd.spike_role(rec) or u"-"], since=rec.get("since") or None,
                                            until=rec.get("until") or None, matrix=rec["matrix"])
-                    blanks = sd.injections(conn, rec["method"], [sd.blank_role(rec["method"])],
+                    blanks = sd.injections(conn, rec["method"], [self.blank_role(rec) or u"-"],
                                            since=rec.get("since") or None, until=rec.get("until") or None,
                                            matrix=rec["matrix"])
                 else:
@@ -352,17 +360,23 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             return {}
         if rec.get("status") != sr.DRAFT:
             return (rec.get("results") or {}).get("idc") or {}
+        keys = [k for k, _l in idc.spec_elements(self.idc_spec())]
+        if not keys:
+            return {}
         every = sorted(set(w for p in rec.get("parts") or [] for w in p.get("worksheets") or []))
-        return {
+        judged = {
             "isomers": idc.isomers(self.profile()),
-            "lsb": idc.judged_rows(self._qc_rows(sd.blank_role(rec["method"]),
+            "lsb": idc.judged_rows(self._qc_rows(self.blank_role(rec) or u"-",
                                                  self._part_worksheets("lsb"))),
             "pa": idc.per_analyte(self._part_results("pa", "pa")),
             "qcs": idc.judged_rows(self._qc_rows("ICV", sorted(self._reviewed(set(every))))),
             "asymmetry": idc.asymmetry((rec.get("idc") or {}).get("asymmetry"),
-                                       self._asymmetry_present(rec)),
+                                       self._asymmetry_present(rec),
+                                       idc.spec_asymmetry(self.idc_spec())),
             "mrl": idc.per_analyte(self._part_results("mrl", "mrl")),
         }
+        # the spec's elements only; one this module cannot judge stays open
+        return dict((k, judged.get(k) or idc.not_evaluated(k)) for k in keys)
 
     # ── a designed study (study_templates) ───────────────────────────────
     def _design_injections(self, element_key_prefix, role):
@@ -517,19 +531,37 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         self.request.response.setHeader("Content-Type", ctype)
         return body
 
-    def idc_rows(self):
+    def idc_spec(self, method_id=None):
+        """The IDC spec of the method's profile (method_engine.idc_spec)."""
+        from senaite.pfas import method_engine
+        return method_engine.idc_spec(self.profile(method_id))
+
+    def _idc_keys(self):
+        """[(key, label)] of the record's IDC: the elements an approved record
+        froze, else its method's spec."""
         from senaite.pfas import idc
+        rec = self.record() or {}
+        spec = idc.spec_elements(self.idc_spec())
+        if rec.get("status") != sr.DRAFT:
+            frozen = (rec.get("results") or {}).get("idc") or {}
+            labels = dict(spec)
+            return [(k, labels.get(k, k)) for k in frozen]
+        return spec
+
+    def idc_rows(self):
         el = self.idc_elements()
-        return [(k, label, el.get(k) or {}) for k, label in idc.ELEMENTS]
+        return [(k, label, el.get(k) or {}) for k, label in self._idc_keys()]
 
     def idc_overall(self):
         from senaite.pfas import idc
-        return idc.overall(self.idc_elements())
+        return idc.overall(self.idc_elements(), [k for k, _l in self._idc_keys()])
 
     def idc_due(self):
-        """Analysts with no approved IDC for each method that has one."""
+        """Analysts with no approved IDC for each method whose profile
+        defines one."""
         from senaite.pfas import idc
-        return [(m, idc.due(self.analysts(), self.records(), m)) for m in idc.METHODS]
+        return [(m, idc.due(self.analysts(), self.records(), m)) for m in self.methods()
+                if self.idc_spec(m)]
 
     def _asymmetry_path(self, rec):
         return os.path.join(PDF_DIR, rec["id"], u"asymmetry.pdf")
@@ -682,7 +714,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             if lot is not None:
                 source.update(uid=uid, name=lot.get("name") or u"", lot_number=lot.get("lot_number") or u"")
         part, self.error = sru.new_part(rec, f.get("element") or u"", analyst, names.get(analyst),
-                                        f.get("level"), f.get("replicates"), source, _user(), _now())
+                                        f.get("level"), f.get("replicates"), source, _user(), _now(),
+                                        blank=self.blank_role(rec))
         if self.error:
             return
         ws = self._make_worksheet(rec, part)
@@ -704,7 +737,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         if method is not None:
             ws.setMethod(method)
         sru.save_run(ws, sru.run_record(rec, part))
-        members = eb.populate([], sru.plan(part, rec["method"]), ws.getId(), _user(), _now())
+        members = eb.populate([], sru.plan(part, self.blank_role(rec)), ws.getId(), _user(), _now())
         eb.save(ws, sru.set_levels(members, part))
         ws.reindexObject()
         return ws
@@ -787,11 +820,18 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         if kind not in sd.KIND_LABELS and kind != u"designed" or not method or not matrix:
             self.error = u"Choose the kind, method and matrix."
             return self.template()
-        if not sd.kind_allowed(kind, method):
-            self.error = u"%s is defined for %s only." % (sd.KIND_LABELS[kind], u", ".join(sd.KIND_METHODS[kind]))
+        if kind != u"designed" and not sd.kind_allowed(kind, self.profile(method)):
+            from senaite.pfas import method_engine
+            self.error = u"%s is not a study kind of %s (its method profile runs: %s)." % (
+                sd.KIND_LABELS[kind], method, u", ".join(
+                    sd.KIND_LABELS.get(k, k) for k in method_engine.study_kinds(self.profile(method))))
             return self.template()
         spike = u""
         if kind == "mdl":
+            if not sd.blank_role(self.profile(method)):
+                self.error = (u"%s's method profile names no method blank (MB or LRB among "
+                              u"its QC types), so an MDL has no blanks to read." % method)
+                return self.template()
             spike = f.get("spike_role") or u""
             if spike not in (self.profile(method).get("qc_acceptance") or {}):
                 self.error = (u"Choose the spiked replicates' role from %s's QC types (%s)."
@@ -802,10 +842,10 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             return self.template()
         analyst = u""
         if kind == "idc":
-            from senaite.pfas import idc
-            analyst = (f.get("idc_analyst") or u"").strip()
-            if method not in idc.METHODS:
-                self.error = u"An IDC is defined for %s only so far." % u", ".join(idc.METHODS)
+            analyst =(f.get("idc_analyst") or u"").strip()
+            if not self.idc_spec(method):
+                self.error = (u"%s's method profile defines no IDC (its elements and "
+                              u"limits), so none can be started." % method)
                 return self.template()
             if analyst not in dict(self.analysts()):
                 self.error = u"Choose the analyst whose capability this demonstrates."
@@ -916,7 +956,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         if rec.get("kind") == "idc":
             from senaite.pfas import idc
             elements = self.idc_elements()
-            if idc.overall(elements) != idc.PASS:
+            if idc.overall(elements, [k for k, _l in self._idc_keys()]) != idc.PASS:
                 self.error = u"Every element of the IDC must pass before it is approved."
                 return
             results, applied = {"idc": elements}, {}

@@ -219,7 +219,7 @@ def _lab_eis_recovery(profile, matrix, analyte):
             if lo is not None or hi is not None:
                 value = {"min": lo, "max": hi}
             break
-    mclass = method_baselines.matrix_class(matrix) if matrix else "aqueous"
+    mclass = method_baselines.matrix_class(matrix, profile) if matrix else "aqueous"
     if mclass != "aqueous":
         override = (profile.get("eis_matrix_overrides") or {}).get(mclass, {}).get(analyte)
         if override:

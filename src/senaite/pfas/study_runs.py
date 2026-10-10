@@ -35,11 +35,6 @@ from __future__ import absolute_import, unicode_literals
 
 import json
 
-try:
-    from senaite.pfas.study_data import blank_role
-except ImportError:                    # tests: loaded by path
-    from study_data import blank_role
-
 STUDY_RUN_KEY = "senaite.pfas.study_run"
 RECEIPT_KEY = "senaite.pfas.reagent.receipt"
 # the Data Review checklist's annotation key (browser/data_review imports it
@@ -90,9 +85,11 @@ def elements_for(kind, rec=None):
     return [ELEMENT[e] for e in KIND_ELEMENTS.get(kind, ())]
 
 
-def role_for(element, method_id):
+def role_for(element, blank):
+    """The extraction-batch role of an element's replicates; `blank` is the
+    method's blank role (study_data.blank_role of its profile)."""
     role = ELEMENT[element][2]
-    return blank_role(method_id) if role is BLANK else role
+    return (blank or u"") if role is BLANK else role
 
 
 def next_part_id(parts):
@@ -100,8 +97,10 @@ def next_part_id(parts):
     return u"P%d" % (max(nums or [0]) + 1)
 
 
-def new_part(rec, element, analyst, analyst_name, level, replicates, source, by, at):
-    """(part, problem). The caller appends the part to rec["parts"]."""
+def new_part(rec, element, analyst, analyst_name, level, replicates, source, by, at,
+             blank=None):
+    """(part, problem). The caller appends the part to rec["parts"]. `blank`
+    = the method's blank role (study_data.blank_role of its profile)."""
     if rec.get("status") != u"draft":
         return None, u"An approved study is not changed."
     cells = dict((c["key"], c) for c in _cells(rec))
@@ -136,9 +135,12 @@ def new_part(rec, element, analyst, analyst_name, level, replicates, source, by,
             return None, u"The study runs %s, not %s." % (u", ".join(rec["levels"]), level)
     else:
         level = u""
+    if ELEMENT[element][2] is BLANK and not blank:
+        return None, (u"The method profile of %s names no method blank (MB or LRB "
+                      u"among its QC types)." % (rec.get("method") or u"this study"))
     part = {"id": next_part_id(rec.get("parts")), "element": element, "analyst": analyst,
             "analyst_name": analyst_name or analyst, "level": level, "replicates": n,
-            "role": role_for(element, rec.get("method")),
+            "role": role_for(element, blank),
             "source": dict(source), "worksheets": [], "by": by, "at": at}
     return part, u""
 
@@ -181,9 +183,10 @@ def add_reference(rec, source):
                     "lot_number": source.get("lot_number") or u""})
 
 
-def plan(part, method_id):
-    """{extraction-batch role: count} for one assignment of the part."""
-    return {part.get("role") or role_for(part["element"], method_id): part["replicates"]}
+def plan(part, blank=None):
+    """{extraction-batch role: count} for one assignment of the part (its
+    own role; `blank` = the method's blank role, for a part without one)."""
+    return {part.get("role") or role_for(part["element"], blank): part["replicates"]}
 
 
 def set_levels(members, part):
@@ -208,13 +211,13 @@ def study_worksheets(rec):
     return out
 
 
-def gate_scope(run, enabled_types):
+def gate_scope(run, enabled_types, blank=None):
     """(required, judged_by_study) for a study run's QC Summary gate (lab,
     2026-10-09): the run must carry its part's own role, and the CCVs where the
     method runs them; calibration is gated as for any run. The part's
     replicates are judged by the study, not by the routine recovery or blank
     limits, so their routine verdicts do not hold the run."""
-    role = run.get("role") or role_for(run["element"], run["method_id"])
+    role = run.get("role") or role_for(run["element"], blank)
     required = set([role]) | (set(enabled_types or ()) & set(["CCV"]))
     return required, set([role])
 

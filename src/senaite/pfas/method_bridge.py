@@ -80,18 +80,31 @@ def _get_by_uid(portal, uid):
 
 
 def _method_label(method_id, profile=None):
-    """Canonical (long) label from the single-source registry; falls back to the
-    profile display_name."""
+    """A method's label in messages: its profile's display name, else its id
+    (configured_methods.method_label, the one labelling rule)."""
+    from senaite.pfas.configured_methods import method_label
+    return method_label(profile, method_id)
+
+
+def _core_titles(portal, method_id):
+    """Titles a core Method of this profile may carry: the profile's display
+    name, and the title the install gave the methods it created
+    (analyte_reference.METHODS), so a site linked before either changes still
+    matches."""
+    titles = []
     try:
-        from senaite.pfas.analyte_reference import METHODS as _M
-        for mid, lbl, _desc in _M:
-            if mid == method_id:
-                return lbl
+        from senaite.pfas.method_profile_store import raw_profile
+        name = (raw_profile(portal, method_id) or {}).get("display_name")
+        if name:
+            titles.append(name)
     except Exception:
         pass
-    if profile:
-        return profile.get("display_name") or method_id
-    return method_id
+    try:
+        from senaite.pfas.analyte_reference import METHODS as _seeded
+        titles.extend(lbl for mid, lbl, _desc in _seeded if mid == method_id)
+    except Exception:
+        pass
+    return titles
 
 
 # ── Read side ─────────────────────────────────────────────────────────────────
@@ -114,18 +127,21 @@ def get_core_method(portal, method_id):
     obj = _get_by_uid(portal, uid) if uid else None
     if obj is not None:
         return obj
-    # Match by exact Title in Python — the Title index is a ZCTextIndex and some
-    # method titles contain parentheses (e.g. "…(aqueous/solid/…)") that break a
-    # Title= fulltext query.
-    label = _method_label(method_id)
+    # The core Method whose MethodID is the profile id; else one titled as the
+    # profile (matched in Python -- the Title index is a ZCTextIndex and some
+    # method titles contain parentheses that break a Title= fulltext query).
+    titles = _core_titles(portal, method_id)
+    by_title = None
     for b in _catalog(portal)(portal_type="Method"):
         try:
             o = b.getObject()
-            if o.Title() == label:
+            if method_id and getattr(o, "getMethodID", lambda: None)() == method_id:
                 return o
+            if by_title is None and o.Title() in titles:
+                by_title = o
         except Exception:
             continue
-    return None
+    return by_title
 
 
 def get_method_cal_code(portal, method_id):

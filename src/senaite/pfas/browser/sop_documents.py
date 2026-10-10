@@ -28,38 +28,43 @@ RISK_COLOURS = {
     "red":    range(15, 26),  # 15-25
 }
 
-# Legacy SOP method slugs (what existing SOP records are stored under) mapped to
-# the canonical method id. The slug VALUES stay stable for backward compat, but
-# the option LIST is derived from the single-source method registry
-# (analyte_reference.get_method_ids) so a newly-added method appears
-# automatically instead of being frozen here.
-_METHOD_ID_TO_SLUG = {
-    "FDA_32PFAS": "fda",
-    "EPA_537_1":  "epa5371",
-    "EPA_1633A":  "epa1633",
+# A document's method is stored as the method id and offered from the
+# configured methods (configured_methods.choices). Records made before that
+# carry one of these slugs: read-only, each resolves to its method id.
+_LEGACY_SLUG_METHOD = {
+    "fda":     "FDA_32PFAS",
+    "epa5371": "EPA_537_1",
+    "epa1633": "EPA_1633A",
 }
-_METHOD_SHORT_LABELS = {
-    "FDA_32PFAS": "FDA 32-PFAS",
-    "EPA_537_1":  "EPA 537.1",
-    "EPA_1633A":  "EPA 1633A",
-}
+GENERAL_LAB = "General Lab"
 
 
-def _method_slug_label_pairs():
-    """[(slug, label)] derived from the live method registry (single source)."""
-    from senaite.pfas.analyte_reference import get_method_ids
-    pairs = []
-    for mid in get_method_ids():
-        pairs.append((_METHOD_ID_TO_SLUG.get(mid, mid.lower()),
-                      _METHOD_SHORT_LABELS.get(mid, mid)))
-    return pairs
+def method_key(slug):
+    """The method id a stored slug names ("" for a lab-wide document)."""
+    if not slug:
+        return ""
+    return _LEGACY_SLUG_METHOD.get(slug, slug)
 
 
-# slug → label, derived (kept as a module constant for the display helpers that
-# resolve a stored slug back to a label). "General Lab" covers the empty slug.
-METHOD_LABELS = dict(_method_slug_label_pairs())
-METHOD_LABELS[None] = "General Lab"
-METHOD_LABELS[""] = "General Lab"
+def _method_choices():
+    try:
+        from bika.lims import api
+        from senaite.pfas import configured_methods
+        return configured_methods.choices(api.get_portal())
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("SOP method choices: %s", exc)
+        return []
+
+
+def method_label(slug, choices=None):
+    """The label of a stored slug: the method's profile label, the id itself
+    for a method no longer configured, "General Lab" for none."""
+    key = method_key(slug)
+    if not key:
+        return GENERAL_LAB
+    labels = dict((c["id"], c["label"]) for c in (
+        _method_choices() if choices is None else choices))
+    return labels.get(key, key)
 
 
 # ── Document type taxonomy ──────────────────────────────────────────────────
@@ -242,6 +247,7 @@ class PFASSOPView(BrowserView):
         registry = _get_registry(portal)
         result = []
         uid = self._current_user_id()
+        choices = _method_choices()
         for entry in registry:
             if entry.get("status") == "archived":
                 continue                      # archived SOPs live under Archived
@@ -269,8 +275,8 @@ class PFASSOPView(BrowserView):
                 "title":         entry.get("title", ""),
                 "doc_type":      _entry_doc_type(entry),
                 "doc_type_label": _doc_type_label(_entry_doc_type(entry)),
-                "method_slug":  entry.get("method_slug") or "",
-                "method_label": METHOD_LABELS.get(entry.get("method_slug"), "General Lab"),
+                "method_slug":  method_key(entry.get("method_slug")),
+                "method_label": method_label(entry.get("method_slug"), choices),
                 "category":     entry.get("category", ""),
                 "description":  entry.get("description", ""),
                 "status":       entry.get("status", "active"),
@@ -299,8 +305,8 @@ class PFASSOPView(BrowserView):
             "title":       entry.get("title", ""),
             "doc_type":       _entry_doc_type(entry),
             "doc_type_label": _doc_type_label(_entry_doc_type(entry)),
-            "method_slug": entry.get("method_slug") or "",
-            "method_label": METHOD_LABELS.get(entry.get("method_slug"), "General Lab"),
+            "method_slug": method_key(entry.get("method_slug")),
+            "method_label": method_label(entry.get("method_slug")),
             "category":    entry.get("category", ""),
             "description": entry.get("description", ""),
             "status":      entry.get("status", "active"),
@@ -326,6 +332,7 @@ class PFASSOPView(BrowserView):
         keep SOP-NNN numbering iterating (their numbers are never reused)."""
         portal = self._portal()
         result = []
+        choices = _method_choices()
         for entry in _get_registry(portal):
             if entry.get("status") != "archived":
                 continue
@@ -333,7 +340,7 @@ class PFASSOPView(BrowserView):
                 "sop_id":       entry["sop_id"],
                 "title":        entry.get("title", ""),
                 "doc_type_label": _doc_type_label(_entry_doc_type(entry)),
-                "method_label": METHOD_LABELS.get(entry.get("method_slug"), "General Lab"),
+                "method_label": method_label(entry.get("method_slug"), choices),
                 "category":     entry.get("category", ""),
                 "archived_by":  entry.get("archived_by", ""),
                 "archived_at":  (entry.get("archived_at", "") or "")[:10],
@@ -341,23 +348,23 @@ class PFASSOPView(BrowserView):
         return result
 
     def method_options(self):
-        """Method choices for the SOP form — derived from the single-source
-        method registry so new methods appear automatically."""
-        opts = [{"slug": "", "label": "General Lab"}]
-        for slug, label in _method_slug_label_pairs():
-            opts.append({"slug": slug, "label": label})
+        """Method choices for the SOP form: the configured methods."""
+        opts = [{"slug": "", "label": GENERAL_LAB}]
+        for m in _method_choices():
+            opts.append({"slug": m["id"], "label": m["label"]})
         return opts
 
     def filter_tabs(self):
-        """Tabs for filtering SOP list — derived from the method registry."""
+        """Tabs for filtering the SOP list: one per configured method."""
         tabs = [{"key": "", "label": "All"}]
-        for slug, label in _method_slug_label_pairs():
-            tabs.append({"key": slug, "label": label})
-        tabs.append({"key": "general", "label": "General Lab"})
+        for m in _method_choices():
+            tabs.append({"key": m["id"], "label": m["label"]})
+        tabs.append({"key": "general", "label": GENERAL_LAB})
         return tabs
 
     def active_tab(self):
-        return self.request.form.get("method", "")
+        tab = self.request.form.get("method", "")
+        return tab if tab == "general" else method_key(tab)
 
     def doc_type_options(self):
         """Document-type choices for the create/upload form — derived from

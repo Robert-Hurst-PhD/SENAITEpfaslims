@@ -199,9 +199,35 @@ def _link(key, label, group, kind, hook, owner_view, **kw):
                     owner_view=owner_view, **kw)
 
 
-def declare_all():
-    """Register every already-owned setting. Idempotent per process: calling it
-    twice would hit `register`'s duplicate refusal, so it guards itself."""
+def declare_methods(portal):
+    """The per-method settings, for every configured method: its holding time
+    (Matrices & Units), read for its first supported matrix. A method created
+    since the last call is added; one already declared is left alone."""
+    from senaite.pfas import configured_methods
+    from senaite.pfas.method_profile_store import raw_profile
+    from senaite.pfas.settings_registry import get_setting
+    for m in configured_methods.choices(portal):
+        key = "holding_time.%s" % m["id"].lower()
+        if get_setting(key) is not None:
+            continue
+        matrices = (raw_profile(portal, m["id"]) or {}).get("supported_matrices") or []
+        matrix = matrices[0] if matrices else u""
+        label = u"Holding time — %s%s" % (m["label"], u", %s" % matrix if matrix else u"")
+        _link(key, label, GROUP_QC_LIMITS, KIND_INT, _holding_time(m["id"], matrix),
+              "pfas-method-profile-edit", unit=u"days", judging=True,
+              anchor="matrices",
+              reader="senaite.pfas.holding_time.limit_for")
+
+
+def declare_all(portal=None):
+    """Register every already-owned setting, and with a portal the per-method
+    ones (declare_methods). Idempotent per process: calling it twice would hit
+    `register`'s duplicate refusal, so it guards itself."""
+    if portal is not None:
+        try:
+            declare_methods(portal)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("per-method settings not declared: %s", exc)
     if getattr(declare_all, "_done", False):
         return
     declare_all._done = True
@@ -248,23 +274,6 @@ def declare_all():
         _link("expiry." + field, label, GROUP_THRESHOLDS, KIND_INT,
               _expiry(field), "pfas-reagents", unit=unit, anchor="expiry",
               reader="senaite.pfas.browser.reagents.get_expiry_defaults")
-
-    # ── QC limits & acceptance criteria ──────────────────────────────────────
-    # Holding time per method, from the method profile. EPA 537.1 is the only one
-    # seeded (14 days); the other two report UNCONFIGURED, which is the honest
-    # state and blocks their batches.
-    for method_id, matrix, label in (
-            ("EPA_537_1", "Drinking Water",
-             u"Holding time — EPA 537.1, drinking water"),
-            ("FDA_32PFAS", "",
-             u"Holding time — FDA 32-PFAS"),
-            ("EPA_1633A", "",
-             u"Holding time — EPA 1633A")):
-        _link("holding_time.%s" % method_id.lower(), label,
-              GROUP_QC_LIMITS, KIND_INT, _holding_time(method_id, matrix),
-              "pfas-method-profile-edit", unit=u"days", judging=True,
-              anchor="matrices",
-              reader="senaite.pfas.holding_time.limit_for")
 
     # ── Lists the lab edits (vocab_store) ───────────────────────────────────
     try:

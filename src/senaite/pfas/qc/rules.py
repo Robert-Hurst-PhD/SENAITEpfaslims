@@ -31,19 +31,8 @@ DEFAULT_RULES_PATH = os.environ.get(
 CHART_LJ       = "levey_jennings"   # Levey-Jennings + Westgard
 CHART_THRESHOLD = "threshold"       # flat threshold line only (blanks)
 
-# ── Method identifiers ────────────────────────────────────────────────────────
-# The METHOD ID LIST is single-sourced from analyte_reference.get_method_ids();
-# the short labels below are presentation only. Adding a method to the master
-# adds a QC-rules toggle-grid column here automatically (falls back to the id).
-from senaite.pfas.analyte_reference import get_method_ids as _get_method_ids
-
-_METHOD_SHORT_LABELS = {
-    "FDA_32PFAS": "FDA 32-PFAS",
-    "EPA_537_1":  "EPA 537.1",
-    "EPA_1633A":  "EPA 1633A",
-}
-METHODS = [{"id": mid, "label": _METHOD_SHORT_LABELS.get(mid, mid)}
-           for mid in _get_method_ids()]
+# Which methods exist is the configured method profiles
+# (configured_methods.choices); this module keeps no list of its own.
 
 # ── Instrument Verification rule library ─────────────────────────────────────
 # Only instrument-level rules live here.  Extraction/matrix QC acceptance

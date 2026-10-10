@@ -228,8 +228,8 @@ METHOD_CODES = {
     "FDA_32PFAS": {"method_id": "FDA_32PFAS", "test_code": "USFDA-PFAS", "prep_method": "SW3535",
                    "units_water": "NG/L", "units_solid": "NG/KG"},
 }
-METHOD_FALLBACK = {"test_code": "E537.1", "prep_method": "SW3535",
-                   "units_water": "NG/L", "units_solid": "NG/KG"}
+# A method with no codes in the profile has none: the export refuses it
+# (edd_store.method_codes, edd_builder), never borrowing another method's.
 
 # Analyte naming: EGAD PARAMETER_NAME and, where the state uses its own code, a
 # DEP##### code in place of the CAS. The CAS itself stays single-sourced in

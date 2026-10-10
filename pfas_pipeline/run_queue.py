@@ -417,7 +417,11 @@ class RunQueue:
         flags_by_injection: dict[str, list[QCFlag]] = {}
         toggles = _load_rule_toggles(self.method_id)
 
-        _method = self.method_id or "FDA_32PFAS"
+        if not self.method_id:
+            # never another method's panel and criteria
+            raise ValueError("This run names no method, so its QC cannot be "
+                             "judged. Give the run its method.")
+        _method = self.method_id
         _matrix = self.batch.matrix or ""
         _analytes = (_get_included_analytes(_method, _matrix)
                      if _matrix else _get_analytes(_method))
@@ -497,9 +501,18 @@ class RunQueue:
             return _guard("IS Response", is_cmp, is_raw_check,
                           rows_, is_cmp, dils, method, _matrix)
 
+        def _monitored(qc_type):
+            """The method's labelled standards; a method naming none is a gap
+            recorded against `qc_type`, never an empty, silent check."""
+            try:
+                return _get_is_list(_method)
+            except UnconfiguredCriterion as exc:
+                _record_gap(qc_type, "", exc)
+                return []
+
         # 1. IS Raw (is_response rule)
         if _rule_enabled(toggles, "is_response"):
-            for is_cmp in _get_is_list(_method):
+            for is_cmp in _monitored("IS Response"):
                 # unfiltered: dilutions ARE checked for IS consistency
                 for res in _guard_is(all_rows, is_cmp, dilutions, _method):
                     if res.flag:
@@ -518,14 +531,13 @@ class RunQueue:
         # profile, which is why it went unseen -- but EPA 537.1 §9.3.4 requires
         # the IS to hold against BOTH the ICAL average and the last CCV, and the
         # second condition was never evaluated.
-        profile = None
-        if self.method_id:
-            try:
-                profile = _get_method_profile(self.method_id)
-            except KeyError:
-                logger.warning("no method profile for %s — per-analyte checks "
-                               "fall back to the legacy criteria table",
-                               self.method_id)
+        # A method with no exported profile is refused, never judged with the
+        # legacy criteria table (which skipped the per-analyte checks).
+        try:
+            profile = _get_method_profile(self.method_id)
+        except KeyError as exc:
+            raise RuntimeError("%s The run's QC is not judged without it." % (
+                exc.args[0] if exc.args else exc))
 
         # 2. RT Deviation (rrt_deviation rule)
         rt_enabled  = _rule_enabled(toggles, "rrt_deviation")
@@ -628,7 +640,7 @@ class RunQueue:
             # a method whose CCCs carry the surrogates judges them there too
             # (EPA 537.1 §9.3.5.1: "a sample, blank, or CCC"; F4)
             sur_in_ccv = bool(getattr(profile, "surrogate_recovery_in_ccv", lambda: False)())
-            for compound in _get_is_list(_method):
+            for compound in _monitored("SUR"):
                 # The injection standard goes in at reconstitution, AFTER
                 # extraction, so it has no recovery to measure -- what its area
                 # tests is instrument response, which is KIND_IS_RESPONSE's job.

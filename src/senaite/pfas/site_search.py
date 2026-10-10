@@ -39,14 +39,17 @@ SECTION_PANE = {"rf": "pane-rf", "iso": "pane-iso", "ls": "pane-sur", "sur": "pa
                 "mf": "pane-corr", "mtx": "pane-mtx", "rl": "pane-rl", "al": "pane-rl",
                 "qc_comp": "pane-qct", "lbl": "pane-qct", "xbatch": "pane-qct", "blk": "pane-qct", "mxb": "pane-qct", "nom": "pane-corr", "cal": "pane-cal", "cal_levels": "pane-cal",
                 "cal_scale": "pane-cal", "groups": "pane-rt", "tiers": "pane-rt",
-                "tiers_lfb": "pane-rt", "dup": "pane-rt", "lfsmd": "pane-rt"}
+                "tiers_lfb": "pane-rt", "dup": "pane-rt", "lfsmd": "pane-rt",
+                "engine": "pane-engine", "engine_fallback": "pane-engine",
+                "engine_text": "pane-engine", "engine_notes": "pane-engine",
+                "engine_studies": "pane-engine"}
 PANE_LABEL = {"pane-toggles": u"Rule Toggles & QC Run", "pane-qct": u"QC Types",
               "pane-rt": u"Recovery Tiers", "pane-mtx": u"Matrices & Units",
               "pane-corr": u"Sample Corrections", "pane-ami": u"Analyte × Matrix",
               "pane-iso": u"Isomers", "pane-sur": u"Internal Standards",
               "pane-eis": u"SUR Limits", "pane-rl": u"Reporting Limits",
               "pane-rf": u"Reporting", "pane-cal": u"Calibration & CCV",
-              "pane-lwf": u"Lab Workflow"}
+              "pane-lwf": u"Lab Workflow", "pane-engine": u"Engine"}
 
 
 def pane_for(section_id):

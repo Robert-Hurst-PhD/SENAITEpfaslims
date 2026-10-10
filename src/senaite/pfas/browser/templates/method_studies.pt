@@ -75,7 +75,7 @@
               </select></label>
             <label>Method
               <select name="method">
-                <option tal:repeat="m view/methods" tal:attributes="value m" tal:content="m">EPA_537_1</option>
+                <option tal:repeat="m view/method_choices" tal:attributes="value m/id" tal:content="m/label">EPA 537.1</option>
               </select></label>
             <label>Analyst (an IDC only)
               <select name="idc_analyst">

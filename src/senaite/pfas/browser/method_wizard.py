@@ -656,6 +656,9 @@ class PFASMethodWizardView(BrowserView):
                     get_profile, save_profile)
                 portal = self._portal()
                 profile = get_profile(portal, mid) or {}
+                # the label every method picker shows (configured_methods)
+                if not profile.get("display_name"):
+                    profile["display_name"] = (sess.get("step1") or {}).get("title") or mid
                 # the enabled flags are the one source of which QC types a
                 # method runs; a new type starts with NO limits
                 qca = profile.setdefault("qc_acceptance", {})

@@ -87,10 +87,12 @@
         <div class="lb-row">
           <div class="lb-field">
             <label>Method</label>
-            <select name="method" class="lb-select lb-input-lg">
-              <tal:opts tal:repeat="mid python:['FDA_32PFAS', 'EPA_537_1', 'EPA_1633A']">
-                <option tal:attributes="value mid; selected python:view.data().get('method','FDA_32PFAS') == mid"
-                        tal:content="mid">Method</option>
+            <select name="method" class="lb-select lb-input-lg"
+                    tal:define="sel view/selected_method; choices view/method_choices">
+              <option value="" tal:condition="python:sel not in [m['id'] for m in choices]">Choose the method</option>
+              <tal:opts tal:repeat="m choices">
+                <option tal:attributes="value m/id; selected python:'selected' if m['id'] == sel else None"
+                        tal:content="m/label">Method</option>
               </tal:opts>
             </select>
           </div>

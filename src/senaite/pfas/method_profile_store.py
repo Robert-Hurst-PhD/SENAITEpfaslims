@@ -984,8 +984,10 @@ def _global_injection_keywords():
 
 
 def _convert_seeds():
-    from senaite.pfas import isomers, labelled_standards
-    for _data in DEFAULT_PROFILES.values():
+    from senaite.pfas import isomers, labelled_standards, method_engine
+    for _mid, _data in DEFAULT_PROFILES.items():
+        # how the method is judged (Engine), as the seeded method had it
+        method_engine.migrate(_data, _mid)
         labelled_standards.migrate(_data, _global_injection_keywords())
         isomers.migrate(_data)          # isomer_summation -> isomers
         from senaite.pfas.qc.qc_types import fold_associated_qc_types
@@ -1085,6 +1087,9 @@ def migrate_profile_models(portal):
         from senaite.pfas import epa1633a_seeds
         p = epa1633a_seeds.seed_icv_as_ccv(profile, method_id) or p
         p = epa1633a_seeds.seed_lab_spike_values(profile, method_id) or p
+        # how each shipped method is judged, as settings (Engine), once
+        from senaite.pfas import method_engine
+        p = method_engine.migrate(profile, method_id) or p
         if a or b or c or d or e or f or g or h or i or j or k or l or m or n or o or p:
             save_profile(portal, method_id, profile)
             changed.append(method_id)
@@ -1417,6 +1422,7 @@ def export_profiles_to_file(portal, path=None):
     """
     if path is None:
         path = PROFILES_EXPORT_PATH
+    from senaite.pfas.method_engine import NOT_BACKFILLED as _NOT_BACKFILLED
 
     all_profiles = {}
     for mid, dflt in DEFAULT_PROFILES.items():
@@ -1434,7 +1440,7 @@ def export_profiles_to_file(portal, path=None):
                 profile = json.loads(raw)
                 dflt = DEFAULT_PROFILES.get(method_id, {})
                 for key, default_val in dflt.items():
-                    if key not in profile:
+                    if key not in profile and key not in _NOT_BACKFILLED:
                         profile[key] = copy.deepcopy(default_val)
                 _migrate_spike_levels(profile, dflt)
                 all_profiles[method_id] = profile
@@ -1449,7 +1455,7 @@ def export_profiles_to_file(portal, path=None):
                 dflt = DEFAULT_PROFILES.get(method_id, {})
                 # Back-fill new default keys absent from the stored profile
                 for key, default_val in dflt.items():
-                    if key not in profile:
+                    if key not in profile and key not in _NOT_BACKFILLED:
                         profile[key] = copy.deepcopy(default_val)
                 # Apply shape-migration so exported file always has new-format spike_levels
                 _migrate_spike_levels(profile, dflt)
@@ -1500,6 +1506,12 @@ def export_profiles_to_file(portal, path=None):
         # FDA; also populates EPA 537.1 / 1633A, which carry no per_analyte rows
         # and previously exported an empty display set. per_analyte remains the
         # source of per-analyte PARAMETERS (tiers/factors/confirm-ions) only.
+        # how the worker judges the method; exported even when empty (every
+        # feature off), so an export from before the Engine settings is
+        # recognisable to the worker and refused rather than misread
+        if not isinstance(profile.get("engine"), dict):
+            profile["engine"] = {}
+
         profile["display_analyte_set"] = [
             _kw_to_display.get(kw, kw)
             for kw in profile.get("master_analyte_set", [])

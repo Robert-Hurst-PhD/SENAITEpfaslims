@@ -307,13 +307,19 @@ class PFASMethodProfileEditView(BrowserView):
         inclusion = self.profile().get("analyte_matrix_inclusion", {})
         return json.dumps(inclusion)
 
+    def _engine(self):
+        from senaite.pfas import method_engine
+        return method_engine.engine(self.profile())
+
     def analyte_matrix_needs_verification(self):
-        # the EPA methods: confirmed against the published method. Not FDA:
-        # its values are the lab's own, as a co-author of C-010.04.
-        return self.method_id() in ("EPA_537_1", "EPA_1633A")
+        # a published method's inclusion is confirmed against its text; a
+        # method whose values are the lab's own is not (Engine setting)
+        return self._engine()["inclusion_needs_verification"]
 
     def show_eis_overrides(self):
-        return self.method_id() == "EPA_1633A"
+        # the SUR Limits pane: shown when the method judges its extracted
+        # standards per analyte and matrix class (Engine setting)
+        return self._engine()["eis_recovery_limits"]
 
     # ── Surrogate IS lane data ────────────────────────────────────────────────
 
@@ -446,8 +452,7 @@ class PFASMethodProfileEditView(BrowserView):
         return "LFB" in ((self.profile().get("qc_acceptance") or {}))
 
     def grouped_tiers(self):
-        from senaite.pfas.method_profile_sections import GROUPED_TIER_METHODS
-        return self.method_id() in GROUPED_TIER_METHODS
+        return self._engine()["grouped_recovery_tiers"]
 
     def recovery_grid(self):
         from senaite.pfas.method_profile_sections import recovery_grid

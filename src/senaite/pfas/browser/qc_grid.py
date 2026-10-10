@@ -43,18 +43,8 @@ QC_COLUMNS = [
 # Spike levels for per-level RPD criterion differentiation.
 SPIKE_LEVELS = ["Low", "Mid", "High"]
 
-# Methods shown as grid rows (order matches method_profile_store.DEFAULT_PROFILES).
-# Method ID list single-sourced from analyte_reference.get_method_ids();
-# short labels are presentation only (see qc.rules for the same pattern).
-from senaite.pfas.analyte_reference import get_method_ids as _get_method_ids
-
-_METHOD_SHORT_LABELS = {
-    "FDA_32PFAS": "FDA 32-PFAS",
-    "EPA_537_1":  "EPA 537.1",
-    "EPA_1633A":  "EPA 1633A",
-}
-GRID_METHODS = [{"id": mid, "label": _METHOD_SHORT_LABELS.get(mid, mid)}
-                for mid in _get_method_ids()]
+# The grid's rows are the configured methods (configured_methods.choices),
+# labelled from their profiles: a method made in the wizard gets a row.
 
 
 class PFASQCTypeGridView(BrowserView):
@@ -94,7 +84,10 @@ class PFASQCTypeGridView(BrowserView):
         return self._columns
 
     def grid_methods(self):
-        return GRID_METHODS
+        if getattr(self, "_methods", None) is None:
+            from senaite.pfas import configured_methods
+            self._methods = configured_methods.choices(self._portal())
+        return self._methods
 
     def spike_levels(self):
         return SPIKE_LEVELS
@@ -114,7 +107,7 @@ class PFASQCTypeGridView(BrowserView):
     def grid_state(self):
         """Return {method_id: {qc_code: bool}} for the template."""
         state = {}
-        for m in GRID_METHODS:
+        for m in self.grid_methods():
             mid = m["id"]
             profile = self._load_profile(mid)
             # the enabled flags: the one source the engine reads too
@@ -153,7 +146,7 @@ class PFASQCTypeGridView(BrowserView):
         from senaite.pfas.method_profile_store import get_profile, save_profile
         portal = self._portal()
 
-        for m in GRID_METHODS:
+        for m in self.grid_methods():
             mid = m["id"]
             try:
                 profile = get_profile(portal, mid) or {}

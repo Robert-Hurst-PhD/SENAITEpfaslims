@@ -189,7 +189,7 @@ class PFASSiteSearchView(BrowserView):
     def _settings(self):
         try:
             from senaite.pfas import settings_adapters, settings_registry as sr
-            settings_adapters.declare_all()
+            settings_adapters.declare_all(api.get_portal())
             regs = sr.registered()
         except Exception as exc:                            # noqa: BLE001
             logger.warning("search: settings: %s", exc)

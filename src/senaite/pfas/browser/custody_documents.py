@@ -175,7 +175,7 @@ class PFASSOPCoverView(BrowserView):
         if not entry:
             return None
         entry = dict(entry[0])
-        entry["method_label"] = sd.METHOD_LABELS.get(entry.get("method_slug") or u"", u"General Lab")
+        entry["method_label"] = sd.method_label(entry.get("method_slug"))
         revs = sd._get_revisions(portal, sop_id)
         names = {}
         for r in revs:

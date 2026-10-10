@@ -15,24 +15,50 @@ system already holds where it can:
                        the calculation (§9.3.9): 0.8 - 1.5
   mrl          §9.2.6  MRL confirmation (method_studies)
 
-Only EPA 537.1 has an IDC here; FDA and EPA 1633A wait for their criteria.
+A method has an IDC when its profile holds an IDC spec (method_engine
+.idc_spec): {"elements": [[key, label], ...], "asymmetry": [low, high]}.
+The elements are chosen from the ones this module can judge (EVALUATED).
 A new analyst (no approved IDC for the method) is due one; nothing else
-prompts it (lab, 2026-10-09). Pure; Python 2.7 and 3.
+prompts it. Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-METHODS = ("EPA_537_1",)
-ELEMENTS = [
-    ("isomers", u"Branched / linear isomer profile (§9.2.1)"),
-    ("lsb", u"Low system background (§9.2.2)"),
-    ("pa", u"Precision and accuracy (§9.2.3, §9.2.4)"),
-    ("qcs", u"Calibration confirmation, QCS = the ICV (§9.2.7)"),
-    ("asymmetry", u"Peak asymmetry (§9.2.5)"),
-    ("mrl", u"MRL confirmation (§9.2.6)"),
-]
-ELEMENT_LABELS = dict(ELEMENTS)
-ASYMMETRY = (0.8, 1.5)          # EPA 537.1 §9.2.5, factor per the §9.3.9 equation
+# the elements this module can judge (the view computes each one)
+EVALUATED = ("isomers", "lsb", "pa", "qcs", "asymmetry", "mrl")
+
 PASS, FAIL, OPEN = u"pass", u"fail", u"not evaluated"
+
+
+def spec_elements(spec):
+    """[(key, label)] of a spec's elements ([key, label] pairs or
+    {"key", "label"} dicts)."""
+    out = []
+    for el in (spec or {}).get("elements") or []:
+        if isinstance(el, dict):
+            key, label = el.get("key"), el.get("label")
+        elif isinstance(el, (list, tuple)) and el:
+            key, label = el[0], (el[1] if len(el) > 1 else None)
+        else:
+            key, label = el, None
+        if key:
+            out.append((key, label or key))
+    return out
+
+
+def spec_asymmetry(spec):
+    """(low, high) from a spec ([low, high] or {"min", "max"}), else None."""
+    raw = (spec or {}).get("asymmetry")
+    if isinstance(raw, dict):
+        raw = (raw.get("min"), raw.get("max"))
+    try:
+        lo, hi = float(raw[0]), float(raw[1])
+    except (TypeError, ValueError, IndexError, KeyError):
+        return None
+    return (lo, hi)
+
+
+def not_evaluated(key):
+    return {"verdict": OPEN, "reason": u"no evaluation for the element %s" % key}
 
 
 def judged_rows(rows):
@@ -53,8 +79,9 @@ def isomers(profile, analyte=u"PFOA"):
     return {"verdict": PASS, "linear": entry.get("linear") or u"", "branched": branched}
 
 
-def asymmetry(values, pdf_present):
-    """`values` = the factors typed for the first two eluting peaks."""
+def asymmetry(values, pdf_present, window=None):
+    """`values` = the factors typed for the first two eluting peaks;
+    `window` = the spec's (low, high)."""
     nums = []
     for v in values or []:
         try:
@@ -65,7 +92,10 @@ def asymmetry(values, pdf_present):
         return {"verdict": OPEN, "reason": u"type the factor of the first two eluting peaks"}
     if not pdf_present:
         return {"verdict": OPEN, "values": nums[:2], "reason": u"attach the calculation (PDF)"}
-    lo, hi = ASYMMETRY
+    if window is None:
+        return {"verdict": OPEN, "values": nums[:2],
+                "reason": u"the method profile sets no asymmetry window"}
+    lo, hi = window
     ok = all(lo <= v <= hi for v in nums[:2])
     return {"verdict": PASS if ok else FAIL, "values": nums[:2], "window": [lo, hi]}
 
@@ -83,9 +113,13 @@ def per_analyte(results):
     return {"verdict": PASS}
 
 
-def overall(elements):
-    """{element: result} -> pass only when every element passes."""
-    vs = [(elements.get(k) or {}).get("verdict") for k, _l in ELEMENTS]
+def overall(elements, keys):
+    """{element: result} -> pass only when every element of `keys` (the
+    spec's, or an approved record's) passes."""
+    keys = list(keys or [])
+    if not keys:
+        return OPEN
+    vs = [(elements.get(k) or {}).get("verdict") for k in keys]
     if FAIL in vs:
         return FAIL
     return PASS if all(v == PASS for v in vs) else OPEN

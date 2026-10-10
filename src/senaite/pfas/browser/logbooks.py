@@ -240,6 +240,29 @@ class _LogbookBase(BrowserView):
                     return ""
         return bm.resolve(batch)[0]
 
+    def method_choices(self):
+        """The configured methods ([{"id", "label"}]) a log may name."""
+        from senaite.pfas import configured_methods
+        if getattr(self, "_method_choices", None) is None:
+            portal = getToolByName(self.context, "portal_url").getPortalObject()
+            self._method_choices = configured_methods.choices(portal)
+        return self._method_choices
+
+    def selected_method(self):
+        """The method the log names, else the batch's ("" = none yet: the
+        form asks rather than preselecting one)."""
+        return (self.data() or {}).get("method") or self.batch_method() or u""
+
+    def _posted_method(self, form):
+        """(method id, refusal): the form's method, else the batch's; it must
+        be a configured method."""
+        from senaite.pfas import configured_methods as cm
+        try:
+            return cm.chosen(form.get("method"), self.batch_method(),
+                             [m["id"] for m in self.method_choices()], u"this log"), u""
+        except cm.MethodUnresolved as exc:
+            return u"", u"{0}".format(exc)
+
     def _redirect(self, url):
         self.request.response.redirect(url)
         return ""
@@ -506,7 +529,8 @@ class PFASLogbook251View(_LogbookBase):
 
     def _cal_defaults(self):
         portal = getToolByName(self.context, "portal_url").getPortalObject()
-        return cal_defaults(portal, self.batch_method() or u"FDA_32PFAS")
+        # the batch's method only: with none set there are no defaults
+        return cal_defaults(portal, self.batch_method())
 
     def data_json(self):
         return script_json(self.data(), indent=2)
@@ -524,8 +548,11 @@ class PFASLogbook251View(_LogbookBase):
             cal_points = _rows_from_form(f, "cal_points_json", existing, "cal_points")
         except ValueError as exc:
             return self._redirect_error(str(exc).replace(" ", "+"))
+        method, refusal = self._posted_method(f)
+        if refusal:
+            return self._redirect_error(refusal)
         data = {
-            "method":           f.get("method", "FDA_32PFAS"),
+            "method":           method,
             "prepared_by":      f.get("prepared_by", ""),
             "prepared_date":    f.get("prepared_date", ""),
             "reviewed_by":      f.get("reviewed_by", ""),
@@ -621,8 +648,11 @@ class PFASLogbook252View(_LogbookBase):
                 "samples", "reagents", "standards", "extraction_materials"))
         except ValueError as exc:
             return self._redirect_error(str(exc).replace(" ", "+"))
+        method, refusal = self._posted_method(f)
+        if refusal:
+            return self._redirect_error(refusal)
         data = {
-            "method":           f.get("method", ""),
+            "method":           method,
             "analyst":          f.get("analyst", ""),
             "extraction_date":  f.get("extraction_date", ""),
             "reviewed_by":      f.get("reviewed_by", ""),
@@ -790,15 +820,10 @@ class PFASLogbookAdminView(BrowserView):
     # ── Method-aware helpers ──────────────────────────────────────────────────
 
     def available_methods(self):
-        """Return list of {method_id, display_name} for all defined methods."""
-        from senaite.pfas.method_profile_store import DEFAULT_PROFILES
-        result = []
-        for mid, p in sorted(DEFAULT_PROFILES.items()):
-            result.append({
-                "method_id":    mid,
-                "display_name": p.get("display_name", mid),
-            })
-        return result
+        """[{method_id, display_name}] for every configured method."""
+        from senaite.pfas import configured_methods
+        return [{"method_id": m["id"], "display_name": m["label"]}
+                for m in configured_methods.choices(self._portal())]
 
     def required_json(self, method_id):
         """The method's CURRENT required logbooks, rendered into the sequence
@@ -828,12 +853,13 @@ class PFASLogbookAdminView(BrowserView):
         }
         """
         from senaite.pfas.logbook_store import get_logbook_defs
-        from senaite.pfas.method_profile_store import get_profile, DEFAULT_PROFILES
+        from senaite.pfas.method_profile_store import get_profile
+        from senaite.pfas import configured_methods
         portal = self._portal()
         all_defs = {d["slug"]: d for d in get_logbook_defs(portal)}
 
         result = {}
-        for mid in DEFAULT_PROFILES:
+        for mid in configured_methods.ids(portal):
             try:
                 profile = get_profile(portal, mid)
                 req_slugs = profile.get("required_logbooks", [])

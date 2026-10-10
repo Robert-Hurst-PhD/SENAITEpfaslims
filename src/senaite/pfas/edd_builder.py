@@ -89,7 +89,28 @@ class EDDBuilder(object):
                                      (section(prof, "value_lists") or {}).get(fmt.QUALIFIER_LIST) or [])
 
     def _get_method_cfg(self, method_id):
-        return method_codes(self._edd_profile, method_id)
+        """The profile's codes for the method; with none, a BLOCKING error
+        naming the method (once per export) and no codes."""
+        cfg = method_codes(self._edd_profile, method_id)
+        if cfg is not None:
+            return cfg
+        if getattr(self, "_method_errors", None) is None:
+            self._method_errors, self._methods_without_codes = [], set()
+        missing = self._methods_without_codes
+        if method_id not in missing:
+            missing.add(method_id)
+            prof = getattr(self, "_edd_profile", None) or {}
+            if method_id:
+                msg = (u"No {0} method codes for method {1} (test code, prep method, "
+                       u"units) -- add them in EDD Configuration".format(
+                           prof.get("state") or u"EDD", method_id))
+            else:
+                msg = (u"A sample's method could not be resolved, so it has no {0} "
+                       u"test code -- set the batch's method".format(
+                           prof.get("state") or u"EDD"))
+            self._method_errors.append({"row": 0, "field": "TEST", "type": "BLOCKING",
+                                        "message": msg})
+        return {}
 
     def _translate_qualifier(self, our_qual):
         if not our_qual:
@@ -236,6 +257,8 @@ class EDDBuilder(object):
         self._unset_weight_basis = set()
         self._rounding_errors = []
         self._qualifier_errors = []
+        self._method_errors = []
+        self._methods_without_codes = set()
         self._tz_warned = False
 
         batch_id = batch_obj.getId()
@@ -299,6 +322,7 @@ class EDDBuilder(object):
 
         all_errors.extend(getattr(self, "_rounding_errors", []))
         all_errors.extend(getattr(self, "_qualifier_errors", []))
+        all_errors.extend(getattr(self, "_method_errors", []))
         for matrix in sorted(getattr(self, "_unmapped_matrices", set())):
             all_errors.append({
                 "row": 0,

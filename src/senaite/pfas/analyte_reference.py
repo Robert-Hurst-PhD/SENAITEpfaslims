@@ -120,6 +120,9 @@ INTERNAL_STANDARDS = [
 ]
 
 # ── Methods (each a SENAITE Method object) ───────────────────────────────────
+# The core Methods the install created, by title (method_bridge matches an
+# older site's Method by it). Which methods exist is the configured method
+# profiles (configured_methods), not this table.
 METHODS = [
     ("FDA_32PFAS", "USDA/FDA 32-PFAS in Food v10",
      "LC-MS/MS isotope dilution; AOAC SMPR 2023.003 criteria"),
@@ -232,14 +235,6 @@ def get_cas_by_keyword(dashed=True):
             cas = _re.sub(r"[^0-9]", "", cas)
         out[row[0]] = cas
     return out
-
-
-def get_method_ids():
-    """Ordered list of method IDs — the single source of truth for "which
-    methods exist" (FDA_32PFAS, EPA_537_1, EPA_1633A). Presentation labels stay
-    local to each consumer; only the ID list/order is owned here, so adding a
-    method to METHODS propagates everywhere that derives from this."""
-    return [row[0] for row in METHODS]
 
 
 def get_surrogate_map_by_keyword():

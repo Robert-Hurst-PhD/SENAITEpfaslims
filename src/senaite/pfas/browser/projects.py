@@ -70,10 +70,8 @@ def _url_quote(s):
 
 
 def _method_ids(portal):
-    """Every method id with a profile -- defaults plus anything explicitly
-    saved -- same union method_profiles.py's list view already uses."""
-    saved = set(method_profile_store.list_method_ids(portal))
-    return sorted(set(method_profile_store.DEFAULT_PROFILES.keys()) | saved)
+    """Every configured method id (a stored method profile)."""
+    return sorted(method_profile_store.list_method_ids(portal) or [])
 
 
 # ── Date helpers ─────────────────────────────────────────────────────────────

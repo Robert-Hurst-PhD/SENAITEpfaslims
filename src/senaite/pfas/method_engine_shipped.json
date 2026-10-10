@@ -1,0 +1,184 @@
+{
+ "_about": "What the three shipped methods did when their rules were code: written once into their profiles by method_engine.migrate. Moved, not changed; the lab edits the profile, never this file.",
+ "methods": {
+  "EPA_1633A": {
+   "blank_role_name": "MB",
+   "engine": {
+    "aliases": [
+     "1633",
+     "1633A",
+     "EPA1633"
+    ],
+    "eis_default_window": "lfsm_tier",
+    "eis_recovery_limits": true,
+    "eis_verify_flag": true,
+    "grouped_recovery_tiers": false,
+    "inclusion_needs_verification": true,
+    "qc_type_aliases": {
+     "IPR": "LFB",
+     "OPR": "LFB"
+    },
+    "required_keys": {
+     "calibration": [
+      "r2_min",
+      "point_pct_dev_max",
+      "low_point_pct_dev_max"
+     ],
+     "confirmation": [
+      "ion_ratio_tol_pct",
+      "sn_quan_min",
+      "sn_confirm_min"
+     ],
+     "is_response": [
+      "vs_ical_avg_min",
+      "vs_ical_avg_max"
+     ]
+    },
+    "rule_notes": {
+     "confirmation_rule": "Ion-ratio window wider in 1633A (50–150% of expected typical)",
+     "eis": "EIS limits per-analyte x matrix class (1633A Tables 6/8, EPA 820-R-24-007) — VERIFY against purchased method copy",
+     "is_rule": "NIS screen; EIS uses per-analyte limits",
+     "tier": "1633A per-analyte (verify against method)"
+    },
+    "surrogate_fallback": null,
+    "surrogate_guidance_only": false
+   },
+   "matrix_classes_from_titles": true,
+   "study_kinds": [
+    "mdl",
+    "pt"
+   ]
+  },
+  "EPA_537_1": {
+   "blank_role_name": "LRB",
+   "engine": {
+    "aliases": [
+     "537",
+     "537.1",
+     "EPA537"
+    ],
+    "eis_recovery_limits": false,
+    "eis_verify_flag": false,
+    "grouped_recovery_tiers": false,
+    "inclusion_needs_verification": true,
+    "required_keys": {
+     "calibration": [
+      "r2_min",
+      "point_pct_dev_max",
+      "low_point_pct_dev_max"
+     ],
+     "confirmation": [
+      "rt_tol_abs_min"
+     ],
+     "is_response": [
+      "vs_ical_avg_min",
+      "vs_ical_avg_max",
+      "vs_last_ccv_min",
+      "vs_last_ccv_max"
+     ]
+    },
+    "rule_notes": {
+     "confirmation_rule": "RT within ±0.05 min of expected; no qual-ion ratio criterion in 537.1",
+     "is_rule": "Both conditions must hold (§9.3.4); on failure re-inject a second aliquot in a fresh vial"
+    },
+    "surrogate_fallback": {
+     "citation": "§9.3.5 surrogates 70–130%",
+     "max": 130.0,
+     "min": 70.0
+    },
+    "surrogate_guidance_only": false
+   },
+   "idc": {
+    "asymmetry": [
+     0.8,
+     1.5
+    ],
+    "elements": [
+     [
+      "isomers",
+      "Branched / linear isomer profile (§9.2.1)"
+     ],
+     [
+      "lsb",
+      "Low system background (§9.2.2)"
+     ],
+     [
+      "pa",
+      "Precision and accuracy (§9.2.3, §9.2.4)"
+     ],
+     [
+      "qcs",
+      "Calibration confirmation, QCS = the ICV (§9.2.7)"
+     ],
+     [
+      "asymmetry",
+      "Peak asymmetry (§9.2.5)"
+     ],
+     [
+      "mrl",
+      "MRL confirmation (§9.2.6)"
+     ]
+    ]
+   },
+   "study_kinds": [
+    "mdl",
+    "pt",
+    "pa",
+    "mrl",
+    "dl",
+    "idc"
+   ]
+  },
+  "FDA_32PFAS": {
+   "blank_role_name": "MB",
+   "engine": {
+    "aliases": [
+     "FDA",
+     "FDA32",
+     "C-010.04"
+    ],
+    "eis_recovery_limits": false,
+    "eis_verify_flag": false,
+    "grouped_recovery_tiers": true,
+    "inclusion_needs_verification": false,
+    "labelled_compound_fit": "mean_response_factor",
+    "qc_type_aliases": {
+     "duplicate": "Dup"
+    },
+    "required_keys": {
+     "calibration": [
+      "r2_min"
+     ],
+     "confirmation": [
+      "ion_ratio_tol_pct",
+      "rrt_tol_pct",
+      "sn_quan_min",
+      "sn_confirm_min"
+     ],
+     "is_response": [
+      "vs_ical_avg_min",
+      "vs_ical_avg_max"
+     ]
+    },
+    "rule_notes": {
+     "confirmation_rule": "PFBA/PFPeA positives require LC-HRMS confirmation; cholic acid (TDCA/TCDCA/TUDCA) interference transitions monitored for PFOS (§2024.8.5)",
+     "is_rule": "Lab SOP screen; the FDA method sets no numeric IS-area limit",
+     "tier_default": "Table 10-1 tier 2 (other matrices / other analytes)",
+     "tier_key_tight": "PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood (Table 10-1 tier 1)",
+     "tier_low_level": "low-level window (<= {0:g} x RL)",
+     "tier_no_std": "No matched labeled standard (Table 10-1 footnote a)"
+    },
+    "surrogate_fallback": {
+     "citation": "Surrogate recovery is guidance only (FDA §2024.10.1(5))",
+     "max": 150.0,
+     "min": 50.0
+    },
+    "surrogate_guidance_only": true
+   },
+   "study_kinds": [
+    "mdl",
+    "pt"
+   ]
+  }
+ }
+}
