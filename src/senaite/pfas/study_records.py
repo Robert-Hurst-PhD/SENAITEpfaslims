@@ -77,7 +77,9 @@ def new(records, kind, method, matrix, by, at, **params):
     rec = {"id": next_id(records), "kind": kind, "method": method, "matrix": matrix,
            "status": DRAFT, "created_by": by, "created_at": at, "exclusions": [],
            "worksheets": [], "levels": [], "fortified": None, "since": u"", "until": u"",
-           "title": u"", "reference_materials": [], "pt": {}}
+           "title": u"", "reference_materials": [], "pt": {},
+           # an IDC: whose, and the typed peak asymmetry (idc.py)
+           "analyst": u"", "idc": {}}
     rec.update(dict((k, v) for k, v in params.items() if k in rec or k in ("title",)))
     return rec
 

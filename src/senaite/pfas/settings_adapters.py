@@ -283,11 +283,9 @@ def declare_all():
             ("accreditation", u"Accreditation statement", KIND_TEXT),
             ("footer_text", u"Printed-document footer", KIND_TEXT),
             ("show_signoff", u"Print the QA sign-off block", KIND_BOOL),
-            ("coa_show_cas", u"Certificate: CAS number column", KIND_BOOL),
-            ("coa_show_mdl", u"Certificate: MDL column", KIND_BOOL),
-            ("coa_show_dilution", u"Certificate: dilution column", KIND_BOOL),
-            ("coa_nd_format", u"Certificate: how a non-detect prints", KIND_TEXT),
-            ("coa_sig_figs", u"Certificate: significant figures", KIND_TEXT),
+            # the certificate's columns, non-detect print and significant
+            # figures are each method's (Reporting tab, report_format.py),
+            # with built-in defaults (lab, 2026-10-09): not rows here
             ("coa_signature_style", u"Certificate: sign-off layout", KIND_TEXT)):
         _link("print." + field, label, GROUP_WORDING, kind, _print(field),
               "pfas-print-settings",

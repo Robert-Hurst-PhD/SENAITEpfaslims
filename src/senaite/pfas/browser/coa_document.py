@@ -165,6 +165,10 @@ def documents(collection, layout, snapshot=None, rev=None, request=None, preview
     if missing:
         raise ValueError(u"the standard certificate would print %s, which the designed layout "
                          u"cannot show yet" % u" and ".join(missing))
+    if not preview and not (settings.get("lab_address") or u"").strip():
+        # ISO/IEC 17025 7.8.2.1 b): the laboratory's address is on every
+        # report (lab, 2026-10-09); the accreditation statement is optional
+        raise ValueError(u"the laboratory address is not set (Print Settings)")
     extra = {"lab_address": settings.get("lab_address"), "lab_phone": settings.get("lab_phone"),
              "lab_email": settings.get("lab_email"), "lab_logo": _logo_uri(settings)}
     extra.update(_signatories(signatories, preview))

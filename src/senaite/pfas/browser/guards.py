@@ -67,6 +67,26 @@ class ReportTemplateGuard(object):
 
 
 @implementer(IGuardAdapter)
+class LabAddressGuard(object):
+    """No certificate without the laboratory's address (ISO/IEC 17025
+    7.8.2.1 b; lab, 2026-10-09). The accreditation statement is optional."""
+
+    def __init__(self, context):
+        self.context = context
+
+    def guard(self, transition):
+        if transition not in PUBLISH_TRANSITIONS:
+            return True
+        try:
+            from bika.lims import api
+            from senaite.pfas.print_settings import get_print_settings
+            return bool((get_print_settings(api.get_portal()).get("lab_address") or u"").strip())
+        except Exception as exc:                            # noqa: BLE001
+            logger.error("LabAddressGuard: %s", exc)
+            return False
+
+
+@implementer(IGuardAdapter)
 class QCStandardsGuard(object):
     """A certificate never prints an empty surrogate / internal-standard
     table for a sample that was run. A sample with no run

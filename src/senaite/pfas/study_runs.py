@@ -56,11 +56,14 @@ ELEMENTS = [
     ("dl", u"Detection-limit replicates (one run per day)", LFB, 3),
     ("mdl", u"MDL spiked replicates", LFB, 3),
     ("blank", u"Method blanks", BLANK, 3),
+    # EPA 537.1 §9.2.2: an LRB on each SPE port (the count is the lab's ports)
+    ("lsb", u"Low system background LRBs (one per SPE port)", BLANK, 1),
 ]
 ELEMENT = dict((e[0], e) for e in ELEMENTS)
 # the parts a study of each kind may have (a proficiency test has none: its
 # sample is the provider's)
-KIND_ELEMENTS = {"pa": ("pa",), "mrl": ("mrl",), "dl": ("dl",), "mdl": ("mdl", "blank")}
+KIND_ELEMENTS = {"pa": ("pa",), "mrl": ("mrl",), "dl": ("dl",), "mdl": ("mdl", "blank"),
+                 "idc": ("lsb", "pa", "mrl")}
 WATER_SYSTEM, WATER_LOT, REFERENCE_LOT = u"water_system", u"water_lot", u"reference_lot"
 SOURCES = [(WATER_SYSTEM, u"In-house reagent water system"),
            (WATER_LOT, u"Vendor reagent water (inventory lot)"),
@@ -185,6 +188,10 @@ def lot_choices(items, kind, reference_category, water_category):
         if i.get("kind") != u"reagent":
             continue
         cat = i.get("category") or u""
+        if not isinstance(cat, type(u"")):
+            # a category stored as UTF-8 bytes (Python 2) never equals its
+            # unicode name ("Reagent Water \u2014 ...")
+            cat = cat.decode("utf-8", "replace")
         if kind == REFERENCE_LOT and cat == reference_category:
             out.append(i)
         elif kind == WATER_LOT and cat == water_category:

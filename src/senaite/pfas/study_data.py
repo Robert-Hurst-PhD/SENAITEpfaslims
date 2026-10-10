@@ -31,6 +31,7 @@ KINDS = [
     ("pa", u"Precision and accuracy (EPA 537.1 §9.2.3, §9.2.4)"),
     ("dl", u"Detection limit (EPA 537.1 §9.2.8.1)"),
     ("pt", u"Proficiency test"),
+    ("idc", u"Initial demonstration of capability (EPA 537.1 §9.2)"),
 ]
 # what a PT provider says of each reported analyte
 PT_VERDICTS = [(u"acceptable", u"Acceptable"), (u"not_acceptable", u"Not acceptable")]

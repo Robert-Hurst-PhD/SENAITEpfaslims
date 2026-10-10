@@ -64,6 +64,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             return self._serve_pdf()
         if f.get("certificate") and self.record() is not None:
             return self._serve_certificate()
+        if f.get("asymmetry_pdf") and self.record() is not None:
+            return self._serve_asymmetry()
         if self.request.get("REQUEST_METHOD") == "POST":
             action = f.get("action") or u""
             denied = deny_gated_action(self.context, self.request, action, GATES)
@@ -88,6 +90,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self._receipt()
             elif action == "charts":
                 self._charts()
+            elif action == "idc_save":
+                self._save_idc()
         return self.template()
 
     # ── identity ───────────────────────────────────────────────────────────
@@ -264,6 +268,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         rec = self.record()
         if rec is None:
             return {}
+        if rec.get("kind") == "idc":
+            return {}              # an IDC is read element by element (idc_elements)
         if rec.get("status") != sr.DRAFT:
             return rec.get("results") or {}
         if rec["kind"] == "pt":
@@ -273,6 +279,119 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         spikes, blanks = self.data()
         return sd.calculate_levels(rec["kind"], spikes, blanks, self.fortified_by_level(),
                                    rec.get("exclusions"), self.existing())
+
+    # ── initial demonstration of capability (idc.py) ─────────────────────
+    def _qc_rows(self, qc_type, batches):
+        """[{"passed"}] the runs stored for `qc_type` on `batches`."""
+        if not batches or not os.path.exists(QC_DB):
+            return []
+        conn = sqlite3.connect(QC_DB)          # read only
+        try:
+            q = ("SELECT passed FROM qc_results WHERE result_status='active' AND qc_type=? "
+                 "AND batch_id IN (%s)" % ",".join("?" * len(batches)))
+            return [{"passed": p} for (p,) in conn.execute(q, [qc_type] + list(batches))]
+        finally:
+            conn.close()
+
+    def _part_worksheets(self, element):
+        rec = self.record() or {}
+        reviewed = self._reviewed(set(w for p in rec.get("parts") or [] if p.get("element") == element
+                                      for w in p.get("worksheets") or []))
+        return sorted(reviewed)
+
+    def _part_results(self, element, kind):
+        rec = self.record() or {}
+        ws = self._part_worksheets(element)
+        if not ws or not os.path.exists(QC_DB):
+            return {}
+        conn = sqlite3.connect(QC_DB)
+        try:
+            spikes = sd.injections(conn, rec["method"], ["LFB"], batches=ws)
+        finally:
+            conn.close()
+        levels = self._levels(ws)
+        spikes = [dict(r, level=levels.get((r["batch"], r["injection"])) or u"") for r in spikes]
+        fort = dict((lv, self.fortified(lv)) for lv in set(r["level"] for r in spikes))
+        out = {}
+        for lv, res in sd.calculate_levels(kind, spikes, None, fort, rec.get("exclusions")).items():
+            out.update(dict((u"%s %s" % (kw, lv) if lv else kw, r) for kw, r in res.items()))
+        return out
+
+    def idc_elements(self):
+        """{element: result} for an IDC (frozen at approval)."""
+        from senaite.pfas import idc
+        rec = self.record() or {}
+        if rec.get("kind") != "idc":
+            return {}
+        if rec.get("status") != sr.DRAFT:
+            return (rec.get("results") or {}).get("idc") or {}
+        every = sorted(set(w for p in rec.get("parts") or [] for w in p.get("worksheets") or []))
+        return {
+            "isomers": idc.isomers(self.profile()),
+            "lsb": idc.judged_rows(self._qc_rows(sd.blank_role(rec["method"]),
+                                                 self._part_worksheets("lsb"))),
+            "pa": idc.per_analyte(self._part_results("pa", "pa")),
+            "qcs": idc.judged_rows(self._qc_rows("ICV", sorted(self._reviewed(set(every))))),
+            "asymmetry": idc.asymmetry((rec.get("idc") or {}).get("asymmetry"),
+                                       self._asymmetry_present(rec)),
+            "mrl": idc.per_analyte(self._part_results("mrl", "mrl")),
+        }
+
+    def idc_rows(self):
+        from senaite.pfas import idc
+        el = self.idc_elements()
+        return [(k, label, el.get(k) or {}) for k, label in idc.ELEMENTS]
+
+    def idc_overall(self):
+        from senaite.pfas import idc
+        return idc.overall(self.idc_elements())
+
+    def idc_due(self):
+        """Analysts with no approved IDC for each method that has one."""
+        from senaite.pfas import idc
+        return [(m, idc.due(self.analysts(), self.records(), m)) for m in idc.METHODS]
+
+    def _asymmetry_path(self, rec):
+        return os.path.join(PDF_DIR, rec["id"], u"asymmetry.pdf")
+
+    def _asymmetry_present(self, rec):
+        return bool((rec.get("idc") or {}).get("pdf")) and os.path.exists(self._asymmetry_path(rec))
+
+    def _save_idc(self):
+        """The peak asymmetry factors and the PDF of their calculation."""
+        f = self.request.form
+        rec = self.record()
+        if rec is None or rec.get("kind") != "idc" or rec.get("status") != sr.DRAFT:
+            self.error = u"Only a draft IDC is edited here."
+            return
+        data = dict(rec.get("idc") or {})
+        data["asymmetry"] = [(f.get(u"asym.%d" % i) or u"").strip() for i in (1, 2)]
+        upload = f.get("asymmetry_file")
+        if upload is not None and getattr(upload, "filename", u""):
+            body = upload.read()
+            if not body.startswith(b"%PDF"):
+                self.error = u"The calculation must be a PDF."
+                return
+            path = self._asymmetry_path(rec)
+            if not os.path.isdir(os.path.dirname(path)):
+                os.makedirs(os.path.dirname(path))
+            with open(path, "wb") as fh:
+                fh.write(body)
+            data["pdf"] = {"name": upload.filename, "by": _user(), "at": _now()}
+        rec["idc"] = data
+        sr.save(self.portal(), self.records())
+        self.message = u"Saved."
+
+    def _serve_asymmetry(self):
+        rec = self.record()
+        path = self._asymmetry_path(rec)
+        if not os.path.exists(path):
+            self.request.response.setStatus(404)
+            return u"No calculation."
+        with open(path, "rb") as fh:
+            body = fh.read()
+        self.request.response.setHeader("Content-Type", "application/pdf")
+        return body
 
     def level_rows(self):
         """[(level, [(keyword, result)])] for the results macro."""
@@ -472,6 +591,16 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         if matrix not in (self.profile(method).get("supported_matrices") or []):
             self.error = u"%s is not a matrix of %s." % (matrix, method)    # rule 2
             return self.template()
+        analyst = u""
+        if kind == "idc":
+            from senaite.pfas import idc
+            analyst = (f.get("idc_analyst") or u"").strip()
+            if method not in idc.METHODS:
+                self.error = u"An IDC is defined for %s only so far." % u", ".join(idc.METHODS)
+                return self.template()
+            if analyst not in dict(self.analysts()):
+                self.error = u"Choose the analyst whose capability this demonstrates."
+                return self.template()
         recs = self.records()
         ws = [w.strip() for w in (f.get("worksheets") or u"").replace(u",", u" ").split() if w.strip()]
         levels = [l for l in self.level_labels() if f.get(u"level.%s" % l)]
@@ -481,7 +610,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         rec = sr.new(recs, kind, method, matrix, _user(), _now(), levels=levels, reference_materials=rms,
                      worksheets=ws, since=(f.get("since") or u"").strip(),
                      until=(f.get("until") or u"").strip(), title=(f.get("title") or u"").strip(),
-                     fortified=(f.get("fortified") or u"").strip() or None)
+                     fortified=(f.get("fortified") or u"").strip() or None, analyst=analyst)
         recs.append(rec)
         sr.save(self.portal(), recs)
         self.request.response.redirect("%s/@@pfas-method-studies?id=%s" % (self.portal_url(), rec["id"]))
@@ -571,6 +700,13 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self.error = problems[0]
                 return
         results, applied = self.results(), self.applied()
+        if rec.get("kind") == "idc":
+            from senaite.pfas import idc
+            elements = self.idc_elements()
+            if idc.overall(elements) != idc.PASS:
+                self.error = u"Every element of the IDC must pass before it is approved."
+                return
+            results, applied = {"idc": elements}, {}
         recs = self.records()
         self.error = sr.approve(recs, rec, results, applied, _user(), _now(),
                                 self.request.form.get("statement") or u"",

@@ -44,6 +44,7 @@ def help_lists():
     out["publish_holds"] = [
         (u"Method not identified", u"the reported analyses carry no method, or different ones"),
         (u"No reporting template issued", u"a manager issues the first revision"),
+        (u"No laboratory address", u"a manager enters it in Print Settings"),
         (u"Run stored before verdicts were kept", q.LEGACY),
         (u"Run judged before rounding applied", q.UNROUNDED),
         (u"Rounding rule changed since the run", q.RULE_CHANGED),

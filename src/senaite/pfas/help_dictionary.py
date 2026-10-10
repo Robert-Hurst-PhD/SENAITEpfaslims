@@ -513,7 +513,8 @@ ENTRIES = [
      ]},
     {"id": "publishing-holds", "term": "Why a sample cannot be published",
      "text": "Publishing (and re-publishing) is held until the cause is fixed: no "
-             "identified method, no issued reporting template, or a run whose "
+             "identified method, no issued reporting template, no laboratory "
+             "address, or a run whose "
              "surrogate / internal-standard verdicts are missing, unrounded or judged "
              "under another rule. A sample with no run at all is not held.",
      "where": [("Data Review", "@@pfas-data-review"), ("Reporting Template", "@@pfas-report-template")],
@@ -522,6 +523,7 @@ ENTRIES = [
      "effects": [
          ("Method identified", P + "browser/guards.py", "class SampleMethodGuard"),
          ("Reporting template issued", P + "browser/guards.py", "class ReportTemplateGuard"),
+         ("Laboratory address set", P + "browser/guards.py", "class LabAddressGuard"),
          ("Surrogate / internal-standard verdicts", P + "browser/guards.py", "class QCStandardsGuard"),
      ]},
     {"id": "reprocess", "term": "Reprocess a run",

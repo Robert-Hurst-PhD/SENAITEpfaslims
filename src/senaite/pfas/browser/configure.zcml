@@ -761,6 +761,14 @@
       name="senaite.pfas.report_template"
       />
 
+  <!-- No certificate without the laboratory's address -->
+  <adapter
+      factory=".guards.LabAddressGuard"
+      for="bika.lims.interfaces.IAnalysisRequest"
+      provides="bika.lims.interfaces.IGuardAdapter"
+      name="senaite.pfas.lab_address"
+      />
+
   <!-- No certificate for a sample that was run while its surrogate /
        internal-standard verdicts are missing -->
   <adapter
