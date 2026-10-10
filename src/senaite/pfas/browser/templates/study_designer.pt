@@ -84,7 +84,8 @@
           <tal:r tal:condition="python:el['type'] == 'replicates'"><tal:s tal:define="s el/stats">
             <label>Role
               <select tal:attributes="name string:${p}role">
-                <option tal:repeat="r view/roles" tal:content="r"
+                <option value="">Choose</option>
+                <option tal:repeat="r python:view.qc_types(t.get('method'))" tal:content="r"
                         tal:attributes="value r; selected python:'selected' if r == el.get('role') else None">LFB</option>
               </select></label>
             <label>Limits from
@@ -117,12 +118,14 @@
           <tal:m tal:condition="python:el['type'] == 'mdl'">
             <label>Spiked replicates
               <select tal:attributes="name string:${p}spike_role">
-                <option tal:repeat="r view/roles" tal:content="r"
+                <option value="">Choose</option>
+                <option tal:repeat="r python:view.qc_types(t.get('method'))" tal:content="r"
                         tal:attributes="value r; selected python:'selected' if r == el.get('spike_role') else None">LFB</option>
               </select></label>
             <label>Blanks
               <select tal:attributes="name string:${p}blank_role">
-                <option tal:repeat="r view/roles" tal:content="r"
+                <option value="">Choose</option>
+                <option tal:repeat="r python:view.qc_types(t.get('method'))" tal:content="r"
                         tal:attributes="value r; selected python:'selected' if r == el.get('blank_role') else None">MB</option>
               </select></label>
           </tal:m>

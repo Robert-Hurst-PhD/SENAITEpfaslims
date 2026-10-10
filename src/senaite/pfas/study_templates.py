@@ -8,7 +8,8 @@ A template:
 
 Element types (each {"id", "type", "name", ...}):
 
-  replicates   replicate injections of one role (LFB, ...), grouped by
+  replicates   replicate injections of one role (one of the method's QC
+               types: LFSM for a food or environmental matrix), grouped by
                SOURCE (how many independent standard sources) x LEVEL
                ([{"label", "value"}] in the matrix's unit); "replicates" per
                cell (blank: set when the cell is assigned). Statistics, each
@@ -24,6 +25,8 @@ Element types (each {"id", "type", "name", ...}):
                RSD and RPD are one limit (qc_tiers.spread_limit).
   mdl          40 CFR 136 App. B Rev. 2 from the study's spiked replicates
                and blanks (method_studies.mdl_rev2); "spike_role", "blank_role"
+Roles are chosen from the method profile's QC types; none is assumed (an
+LFB, reagent water fortified, exists only where the method has one).
   qualitative  a check judged by a person on uploaded evidence
                (chromatograms): "instructions", "accept" (file types); passes
                when at least one file is uploaded and a reviewer passed it
@@ -67,12 +70,12 @@ def new_element(etype, existing_ids=()):
         n += 1
     el = {"id": u"E%d" % n, "type": etype, "name": TYPE_LABELS[etype]}
     if etype == "replicates":
-        el.update(role=u"LFB", limits_from=u"", sources=1, levels=[], replicates=None,
+        el.update(role=u"", limits_from=u"", sources=1, levels=[], replicates=None,
                   stats={"recovery": {"on": False},
                          "rsd_within": {"on": False},
                          "rsd_between": {"on": False, "basis": u"means"}})
     elif etype == "mdl":
-        el.update(spike_role=u"LFB", blank_role=u"MB")
+        el.update(spike_role=u"", blank_role=u"")
     elif etype == "qualitative":
         el.update(instructions=u"", accept=u"pdf, png, jpg")
     elif etype == "typed":
@@ -109,9 +112,17 @@ def levels_text(levels):
                       else u"%s=%g" % (l["label"], l["value"]) for l in levels or [])
 
 
-def problems(template):
-    """What stops a template being used."""
+def problems(template, qc_types=None):
+    """What stops a template being used. `qc_types`: the method profile's
+    QC types, which every role must be one of (None = not checked)."""
     out = []
+
+    def role(el, field, what):
+        r = el.get(field) or u""
+        if not r:
+            out.append(u"%s: choose the %s." % (el.get("name") or el.get("id"), what))
+        elif qc_types is not None and r not in qc_types:
+            out.append(u"%s: %s is not a QC type of this method." % (el.get("name") or el.get("id"), r))
     if not (template.get("name") or u"").strip():
         out.append(u"Name the template.")
     if not template.get("method"):
@@ -125,6 +136,12 @@ def problems(template):
                 out.append(u"%s: give at least one level." % label)
             if int(el.get("sources") or 0) < 1:
                 out.append(u"%s: at least one source." % label)
+            role(el, "role", u"role")
+            if el.get("limits_from"):
+                role(el, "limits_from", u"QC type the limits come from")
+        if el.get("type") == "mdl":
+            role(el, "spike_role", u"role of the spiked replicates")
+            role(el, "blank_role", u"role of the blanks")
         if el.get("type") == "typed" and int(el.get("count") or 0) < 1:
             out.append(u"%s: at least one value." % label)
     return out
@@ -146,12 +163,12 @@ def cells(design):
                 for lv in el.get("levels") or []:
                     out.append({"key": u"%s|%s|%s" % (el["id"], src, lv["label"]),
                                 "element": el["id"], "name": el.get("name") or u"",
-                                "role": el.get("role") or u"LFB", "source": src,
+                                "role": el.get("role") or u"", "source": src,
                                 "level": lv["label"], "value": lv["value"],
                                 "replicates": el.get("replicates")})
         elif el.get("type") == "mdl":
-            for part, role in ((u"spiked", el.get("spike_role") or u"LFB"),
-                               (u"blanks", el.get("blank_role") or u"MB")):
+            for part, role in ((u"spiked", el.get("spike_role") or u""),
+                               (u"blanks", el.get("blank_role") or u"")):
                 out.append({"key": u"%s|%s" % (el["id"], part), "element": el["id"],
                             "name": u"%s, %s" % (el.get("name") or u"MDL", part), "role": role,
                             "source": u"", "level": u"", "value": None, "replicates": None})
@@ -192,7 +209,7 @@ def _judge_window(value, lo, hi, unset=TO_ENTER):
 
 def limits_qc(el):
     """The method profile QC type whose tiers set this element's limits."""
-    return el.get("limits_from") or el.get("role") or u"LFB"
+    return el.get("limits_from") or el.get("role") or u""
 
 
 def _range(lo, hi):
@@ -350,7 +367,7 @@ def apply_form(template, form):
         if _f(form, el, "name") is not None:
             el["name"] = (_f(form, el, "name") or u"").strip() or TYPE_LABELS[el["type"]]
         if el["type"] == "replicates":
-            el["role"] = _f(form, el, "role") or el.get("role") or u"LFB"
+            el["role"] = _f(form, el, "role") or el.get("role") or u""
             if _f(form, el, "limits_from") is not None:
                 el["limits_from"] = _f(form, el, "limits_from") or u""
             el["sources"] = _int(_f(form, el, "sources")) or 1
@@ -366,8 +383,8 @@ def apply_form(template, form):
                                 "basis": u"pooled" if _f(form, el, "rsd_between_basis") == u"pooled"
                                 else u"means"}}
         elif el["type"] == "mdl":
-            el["spike_role"] = _f(form, el, "spike_role") or el.get("spike_role") or u"LFB"
-            el["blank_role"] = _f(form, el, "blank_role") or el.get("blank_role") or u"MB"
+            el["spike_role"] = _f(form, el, "spike_role") or el.get("spike_role") or u""
+            el["blank_role"] = _f(form, el, "blank_role") or el.get("blank_role") or u""
         elif el["type"] == "qualitative":
             el["instructions"] = (_f(form, el, "instructions") or u"").strip()
             el["accept"] = (_f(form, el, "accept") or u"").strip() or u"pdf, png, jpg"

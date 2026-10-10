@@ -78,16 +78,12 @@ class PFASStudyDesignerView(GateMixin, BrowserView):
     def types(self):
         return st.TYPES
 
-    def roles(self):
-        from senaite.pfas.extraction_batch import QC_ROLES
-        return list(QC_ROLES)
-
     def levels_text(self, el):
         return st.levels_text(el.get("levels"))
 
     def problems(self):
         t = self.current()
-        return st.problems(t) if t else []
+        return st.problems(t, self.qc_types(t.get("method"))) if t else []
 
     def fmt(self, v):
         return u"" if v is None else (u"%g" % v if isinstance(v, float) else u"%s" % v)

@@ -759,7 +759,7 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             if design is None:
                 self.error = u"That template no longer exists."
                 return self.template()
-            probs = st.problems(design)
+            probs = st.problems(design, sorted(self.profile(method).get("qc_acceptance") or {}))
             if probs:
                 self.error = u"The template is not finished: %s" % probs[0]
                 return self.template()
