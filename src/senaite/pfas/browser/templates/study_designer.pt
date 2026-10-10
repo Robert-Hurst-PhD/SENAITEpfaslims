@@ -87,6 +87,12 @@
                 <option tal:repeat="r view/roles" tal:content="r"
                         tal:attributes="value r; selected python:'selected' if r == el.get('role') else None">LFB</option>
               </select></label>
+            <label>Limits from
+              <select tal:attributes="name string:${p}limits_from">
+                <option value="" tal:attributes="selected python:'selected' if not el.get('limits_from') else None">Its role's QC type</option>
+                <option tal:repeat="q python:view.qc_types(t.get('method'))" tal:content="q"
+                        tal:attributes="value q; selected python:'selected' if q == el.get('limits_from') else None">LFSM</option>
+              </select></label>
             <label>Sources <input type="number" min="1" step="1" tal:attributes="name string:${p}sources; value el/sources" /></label>
             <label>Levels (comma-separated, matrix unit)
               <input type="text" tal:attributes="name string:${p}levels; value python:view.levels_text(el)" /></label>
@@ -95,16 +101,12 @@
             <label class="field-check"><input type="checkbox" value="on"
                    tal:attributes="name string:${p}recovery_on; checked python:'checked' if s['recovery']['on'] else None" />
               Mean recovery per level</label>
-            <label>Lowest recovery (%) <input type="number" step="any" tal:attributes="name string:${p}recovery_min; value python:view.fmt(s['recovery'].get('min'))" /></label>
-            <label>Highest recovery (%) <input type="number" step="any" tal:attributes="name string:${p}recovery_max; value python:view.fmt(s['recovery'].get('max'))" /></label>
             <label class="field-check"><input type="checkbox" value="on"
                    tal:attributes="name string:${p}rsd_within_on; checked python:'checked' if s['rsd_within']['on'] else None" />
               RSD within each source</label>
-            <label>Highest RSD within a source (%) <input type="number" step="any" tal:attributes="name string:${p}rsd_within_max; value python:view.fmt(s['rsd_within'].get('max'))" /></label>
             <label class="field-check"><input type="checkbox" value="on"
                    tal:attributes="name string:${p}rsd_between_on; checked python:'checked' if s['rsd_between']['on'] else None" />
               RSD between sources, per level</label>
-            <label>Highest RSD between sources (%) <input type="number" step="any" tal:attributes="name string:${p}rsd_between_max; value python:view.fmt(s['rsd_between'].get('max'))" /></label>
             <label>RSD between sources of
               <select tal:attributes="name string:${p}rsd_between_basis">
                 <option value="means" tal:attributes="selected python:'selected' if s['rsd_between'].get('basis') != 'pooled' else None">the source means</option>

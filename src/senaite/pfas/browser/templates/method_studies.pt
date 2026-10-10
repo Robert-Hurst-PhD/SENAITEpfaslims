@@ -274,7 +274,9 @@
           <table class="pfas-table"><tbody><tr><th>Verdict</th>
             <td><span tal:attributes="class python:'badge ' + ('badge-active' if v == 'pass' else 'badge-expired' if v == 'fail' else 'badge-quarantine')"
                       tal:content="v">pass</span>
-                <span tal:condition="r/reason|nothing" tal:content="r/reason">reason</span></td></tr></tbody></table>
+                <span tal:condition="r/reason|nothing" tal:content="r/reason">reason</span></td></tr>
+            <tr tal:condition="python:el['type'] == 'replicates'"><th>Limits</th>
+              <td tal:content="python:u'Method profile, %s tiers' % view.limits_qc(el)">Method profile, LFSM tiers</td></tr></tbody></table>
           <table class="pfas-table" tal:condition="r/rows|nothing">
             <thead><tr><th>Analyte</th><th>Level</th><th>Statistic</th><th>Value</th><th>Limit</th><th>Verdict</th></tr></thead>
             <tbody>
@@ -283,7 +285,7 @@
                 <td tal:content="row/level">25</td>
                 <td tal:content="row/stat">RSD</td>
                 <td tal:content="python:view.fmt(row['value'])">4.2</td>
-                <td tal:content="python:row['limit'] if row['limit'] not in (None, u'None-None') else u'to be entered'">20</td>
+                <td tal:content="python:view.fmt(row['limit']) if row['limit'] is not None else u'not set in the method profile'">20</td>
                 <td tal:content="row/verdict">pass</td>
               </tr>
             </tbody>

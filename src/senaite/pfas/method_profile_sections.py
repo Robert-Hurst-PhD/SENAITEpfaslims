@@ -1479,39 +1479,29 @@ def key_analytes(profile):
     return set(get_key_analyte_keywords())
 
 
+def _qc_tiers():
+    try:
+        from senaite.pfas import qc_tiers
+    except Exception:                        # tests: loaded without the package
+        import qc_tiers
+    return qc_tiers
+
+
 def resolve_tier(profile, is_key, is_no_std, matrix, qc=RECOVERY_QC):
     """The ORDINARY tier the engine applies above the low level (None = it
-    refuses: unconfigured). Mirrors pfas_pipeline's resolution."""
-    tiers = [t for t in _tiers(profile, qc) if t.get(LOW_LEVEL_KEY) is None]
-    if not tiers:
+    refuses: unconfigured) -- qc_tiers, the engine's own selection."""
+    qt = _qc_tiers()
+    try:
+        chosen = qt.base_tier(profile, qc, matrix, is_key, is_no_std)
+    except qt.Unconfigured:
         return None
-    if profile.get("method_id") not in GROUPED_TIER_METHODS:
-        return tiers[0]
-    tight = set((profile.get("tight_matrices") or []))
-    for t in tiers:
-        ag, ms = t.get("analyte_group", "all"), t.get("matrix_scope", "all")
-        if ag == "no_std" and is_no_std:
-            return t
-        if ag == "key" and ms == "tight" and is_key and matrix in tight:
-            return t
-    for t in tiers:
-        if t.get("analyte_group", "all") in ("linked", "all"):
-            return t
-    return None
+    return chosen[0] if chosen else None
 
 
 def low_level_tier(profile, base, matrix, qc=RECOVERY_QC):
     """The low-level tiers that may replace `base` at a low spike, smallest
-    N first -- the engine's _low_level_tier with the spike not yet known."""
-    if base is None:
-        return []
-    grouped = profile.get("method_id") in GROUPED_TIER_METHODS
-    tight = matrix in set(profile.get("tight_matrices") or [])
-    group = base.get("analyte_group", "all")
-    out = [t for t in _tiers(profile, qc) if t.get(LOW_LEVEL_KEY) is not None and
-           (not grouped or (t.get("analyte_group", "all") in ("all", group) and
-                            (t.get("matrix_scope", "all") != "tight" or tight)))]
-    return sorted(out, key=lambda t: float(t[LOW_LEVEL_KEY]))
+    N first -- the engine's choice with the spike not yet known."""
+    return _qc_tiers().low_level_candidates(profile, qc, base, matrix)
 
 
 def no_std_set(profile):

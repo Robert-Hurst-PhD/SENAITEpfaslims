@@ -68,6 +68,13 @@ class PFASStudyDesignerView(GateMixin, BrowserView):
         from senaite.pfas.method_profile_store import get_profile
         return list((get_profile(api.get_portal(), method_id) or {}).get("supported_matrices") or [])
 
+    def qc_types(self, method_id):
+        """The method profile's QC types: a replicates element's limits come
+        from one of them (qc_tiers), never typed here."""
+        from senaite.pfas.method_profile_store import get_profile
+        qa = (get_profile(api.get_portal(), method_id) or {}).get("qc_acceptance") or {}
+        return sorted(qa)
+
     def types(self):
         return st.TYPES
 

@@ -150,6 +150,14 @@ def derived_rl(profile, matrix, keyword=None):
     return to_reporting(lowest(profile, keyword), profile, matrix)
 
 
+def reporting_limit(profile, matrix, keyword):
+    """The analyte's RL in the matrix's reporting unit: the Reporting Limits
+    entry, else its lowest calibrator (derived_rl); None when neither."""
+    entry = (((profile or {}).get("reporting_limits") or {}).get(matrix) or {}).get(keyword) or {}
+    rl = _num(entry.get("rl"))
+    return rl if rl is not None else derived_rl(profile, matrix, keyword)
+
+
 def fmt(v):
     """4 significant figures, never in exponent form (10000, not 1e+04)."""
     if v is None:

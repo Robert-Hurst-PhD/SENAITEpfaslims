@@ -409,7 +409,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         for el in design.get("elements") or []:
             eid = el["id"]
             if el["type"] == "replicates":
-                res = st.evaluate_replicates(el, self._design_injections(eid + u"|", el.get("role")))
+                res = st.evaluate_replicates(el, self._design_injections(eid + u"|", el.get("role")),
+                                             self._design_limits(rec, st.limits_qc(el)))
             elif el["type"] == "mdl":
                 spikes = self._design_injections(eid + u"|spiked", el.get("spike_role"))
                 blanks = self._design_injections(eid + u"|blanks", el.get("blank_role"))
@@ -421,6 +422,27 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 res = st.evaluate_typed(el, entries.get(eid), bool(self.design_files(eid)))
             out.append((el, res))
         return out
+
+    def limits_qc(self, el):
+        from senaite.pfas import study_templates as st
+        return st.limits_qc(el)
+
+    def _design_limits(self, rec, qc_type):
+        """limits(keyword, level) for a designed element: the method profile's
+        tier for that QC type, analyte, matrix and level (qc_tiers) -- a study
+        is judged by the method's limits, never by limits of its own."""
+        from senaite.pfas import calibration_levels as cl
+        from senaite.pfas import method_profile_sections as mps
+        from senaite.pfas import qc_tiers
+        profile = self.profile(rec.get("method")) or {}
+        matrix = rec.get("matrix") or (rec.get("design") or {}).get("matrix") or u""
+        keys, no_std = mps.key_analytes(profile), mps.no_std_set(profile)
+
+        def limits(kw, level):
+            return qc_tiers.study_limits(profile, qc_type, kw, matrix, level,
+                                         cl.reporting_limit(profile, matrix, kw),
+                                         kw in keys, kw in no_std)
+        return limits
 
     def design_overall(self):
         from senaite.pfas import study_templates as st

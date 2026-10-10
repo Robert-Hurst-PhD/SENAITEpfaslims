@@ -531,87 +531,22 @@ def _resolve_fda_tier(analyte, matrix, profile_data, qc_type="LFSM",
       analyte_group="key" + matrix_scope="tight" → tier1 window if matrix matches
       analyte_group="linked"  → tier2 window (default)
     """
-    qa = profile_data.get("qc_acceptance", {})
-    qc_entry = qa.get(qc_type)
-    if qc_entry is None or not qc_entry.get("enabled", True):
-        return None
-    all_tiers = qc_entry.get("tiers", [])
-    tiers = _ordinary_tiers(all_tiers)
     where = "{0} / {1} / {2} / {3}".format(method_id, analyte, matrix or "(no matrix)", qc_type)
-
-    def _rule(tier, notes, is_tight=False):
-        group = tier.get("analyte_group", "all")
-        tier = _low_level_tier(
-            all_tiers, tier,
-            lambda t: (t.get("analyte_group", "all") in ("all", group) and
-                       (t.get("matrix_scope", "all") != "tight" or is_tight)),
-            conc, rl, where)
-        if tier.get(LOW_LEVEL_KEY):
-            notes = tier.get("description") or "low-level window (<= {0:g} x RL)".format(
-                float(tier[LOW_LEVEL_KEY]))
-        return _tier_rule(tier, notes, method_id, analyte, matrix, qc_type)
-
-    # New structure: tiers have analyte_group and matrix_scope keys
-    if tiers and "analyte_group" in tiers[0]:
-        # "No labelled standard" is derived from THIS method's surrogate links
-        # (consolidation P4); tight matrices are the method's own list.
-        from .analyte_alias import no_labelled_names_for, key_analyte_names
-        no_std = no_labelled_names_for(profile_data)
-        key = key_analyte_names()
-        # Canonical titles, plus the profile's own alias list. Substring
-        # matching had quietly narrowed this: "deer muscle" meets neither
-        # "Meat / Muscle" nor any other title, so a key analyte there dropped
-        # from tier 1 to tier 2. Aliases are lab-editable rather than a word
-        # list buried in code.
-        aliases = profile_data.get("matrix_aliases") or {}
-        m = matrix.lower().strip()
-        tight = set()
-        for title in (profile_data.get("tight_matrices") or []):
-            tight.add(title.lower().strip())
-            for alias in (aliases.get(title) or []):
-                tight.add(alias.lower().strip())
-
-        is_no_std = analyte in no_std
-        # Key analytes are the METHOD's own list; a profile
-        # without one falls back to the global flag, as before.
-        own_keys = profile_data.get("key_analytes")
-        if isinstance(own_keys, list):
-            from .analyte_alias import keyword_for
-            is_key = (keyword_for(analyte) or analyte) in set(own_keys) or analyte in set(own_keys)
-        else:
-            is_key = analyte in key
-        is_tight = m in tight
-
-        for tier in tiers:
-            ag = tier.get("analyte_group", "all")
-            ms = tier.get("matrix_scope", "all")
-            if ag == "no_std" and is_no_std:
-                return _rule(tier, "No matched labeled standard (Table 10-1 footnote a)", is_tight)
-            if ag == "key" and ms == "tight" and is_key and is_tight:
-                return _rule(tier,
-                             "PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood "
-                             "(Table 10-1 tier 1)", is_tight)
-        # Fall through to the "linked" / default tier
-        for tier in tiers:
-            ag = tier.get("analyte_group", "all")
-            if ag in ("linked", "all"):
-                return _rule(tier, "Table 10-1 tier 2 (other matrices / other analytes)", is_tight)
-        raise UnconfiguredCriterion(
-            "No tier matches {0} / {1} / {2} / {3}: the configured tiers cover "
-            "neither this analyte group nor a default. Add a tier with "
-            "analyte_group 'all' in Method Profiles -> QC Types -> {3}.".format(
-                method_id, analyte, matrix or "(no matrix)", qc_type))
-
-    # The legacy `recovery_tiers` branch that stood here was retired by
-    # migrate_profile_structure and could only ever mask a missing config with
-    # a second, divergent copy of the tier logic -- the §1.3 duplication that
-    # this session traced ten defects to. A profile that has not been migrated
-    # now says so instead of quietly judging against stale numbers.
-    raise UnconfiguredCriterion(
-        "{0} has no qc_acceptance.{1}.tiers. This profile predates "
-        "migrate_profile_structure; run the migration so its acceptance "
-        "criteria are read from the structure the engine enforces.".format(
-            method_id, qc_type))
+    is_key, is_no_std = _analyte_groups(analyte, profile_data)
+    chosen = _select_tier(profile_data, qc_type, analyte, matrix, conc, rl,
+                          is_key, is_no_std, where)
+    if chosen is None:
+        return None
+    tier, branch = chosen
+    if tier.get(LOW_LEVEL_KEY):
+        notes = tier.get("description") or "low-level window (<= {0:g} x RL)".format(
+            float(tier[LOW_LEVEL_KEY]))
+    else:
+        notes = {"no_std": "No matched labeled standard (Table 10-1 footnote a)",
+                 "key_tight": "PFOS/PFOA/PFHxS/PFNA in eggs/meat/seafood "
+                              "(Table 10-1 tier 1)"}.get(
+            branch, "Table 10-1 tier 2 (other matrices / other analytes)")
+    return _tier_rule(tier, notes, method_id, analyte, matrix, qc_type)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -635,12 +570,9 @@ class MethodProfile:
         entry = ((data.get("reporting_limits") or {}).get(matrix) or {}).get(kw) or {}
         unit = (data.get("unit_map") or {}).get(matrix) or ""
         num = lambda v: None if v is None else float(v)       # noqa: E731
-        rl = num(entry.get("rl"))
-        if rl is None:
-            # the analyte's lowest calibrator in this unit -- the add-on's own
-            # rule, loaded from its file
-            rl = _cal().derived_rl(data, matrix, kw)
-        return rl, num(entry.get("mdl")), unit
+        # the Reporting Limits entry, else the lowest calibrator -- the
+        # add-on's own rule, loaded from its file
+        return _cal().reporting_limit(data, matrix, kw), num(entry.get("mdl")), unit
 
     # ── the judged value ────────────────────────────────────────
     # every result and QC check judges the ROUNDED value, the
@@ -931,24 +863,16 @@ class EPA537Profile(MethodProfile):
     description = "EPA 537.1 PFAS in drinking water (EPA/600/R-20/006)"
 
     def qc_rules(self, analyte, matrix="", qc_type="LFSM", conc=None, rl=None):
-        qa = self._profile_data().get("qc_acceptance", {})
         if qc_type in ("SUR", "surrogate"):
             return _method_text_rule(
                 self._profile_data(), self.method_id,
                 "§9.3.5 surrogates 70–130%", 70.0, 130.0)
-        entry = qa.get(qc_type)
-        if entry is None or not entry.get("enabled", True):
+        chosen = _select_tier(
+            self._profile_data(), qc_type, analyte, matrix, conc, rl, False, False,
+            "{0} / {1} / {2} / {3}".format(self.method_id, analyte, matrix, qc_type))
+        if chosen is None:
             return None
-        tiers = entry.get("tiers", [])
-        if not tiers:
-            raise UnconfiguredCriterion(
-                "{0} has no tiers configured for {1}. Set them in Method "
-                "Profiles -> QC Types -> {1}, or disable that QC type.".format(
-                    self.method_id, qc_type))
-        # its FIRST ordinary tier, replaced by a low-level tier when one holds
-        base = (_ordinary_tiers(tiers) or tiers)[0]
-        t = _low_level_tier(tiers, base, lambda _t: True, conc, rl,
-                            "{0} / {1} / {2} / {3}".format(self.method_id, analyte, matrix, qc_type))
+        t = chosen[0]
         rule = _tier_rule(t, t.get("description", ""), self.method_id,
                           analyte, matrix, qc_type)
         return QCRule(
@@ -1041,28 +965,49 @@ def _cal():
     return load("calibration_levels")
 
 
+def _qc_tiers():
+    """senaite.pfas.qc_tiers: which tier applies, chosen once for the run QC
+    here and for the method studies in the add-on."""
+    from .addon import load
+    return load("qc_tiers")
+
+
 def _ordinary_tiers(tiers):
-    return [t for t in tiers if not t.get(LOW_LEVEL_KEY)]
+    return _qc_tiers().ordinary_tiers(tiers)
 
 
 def _low_level_tier(tiers, base, applies, conc, rl, where):
     """The low-level tier whose condition holds (smallest N first), else
     `base`. Refuses when one could apply but conc/RL are unknown."""
-    cond = [t for t in tiers if t.get(LOW_LEVEL_KEY) and applies(t)]
-    if not cond:
-        return base
-    missing = [n for n, v in (("the fortified concentration", conc),
-                              ("the analyte's RL for this matrix", rl)) if not v]
-    if missing:
-        raise UnconfiguredCriterion(
-            "{0}: a low-level tier (applies at <= N x RL) is configured, so the "
-            "window depends on the spike level, but {1} is not set. Enter it "
-            "(Method Profiles -> Recovery Tiers spike levels / Reporting "
-            "Limits) -- the engine does not guess.".format(where, " and ".join(missing)))
-    for t in sorted(cond, key=lambda t: float(t[LOW_LEVEL_KEY])):
-        if float(conc) <= float(t[LOW_LEVEL_KEY]) * float(rl):
-            return t
-    return base
+    qt = _qc_tiers()
+    try:
+        return qt.low_level_tier(tiers, base, applies, conc, rl, where)
+    except qt.Unconfigured as e:
+        raise UnconfiguredCriterion(str(e))
+
+
+def _select_tier(profile_data, qc_type, analyte, matrix, conc, rl,
+                 is_key, is_no_std, where):
+    qt = _qc_tiers()
+    try:
+        return qt.select_tier(profile_data, qc_type, analyte, matrix, conc, rl,
+                              is_key, is_no_std, where)
+    except qt.Unconfigured as e:
+        raise UnconfiguredCriterion(str(e))
+
+
+def _analyte_groups(analyte, profile_data):
+    """(is_key, is_no_std) for this method. "No labelled standard" comes from
+    the method's own surrogate links; key analytes are the method's own list,
+    else the global flag."""
+    from .analyte_alias import no_labelled_names_for, key_analyte_names, keyword_for
+    own_keys = profile_data.get("key_analytes")
+    if isinstance(own_keys, list):
+        keys = set(own_keys)
+        is_key = (keyword_for(analyte) or analyte) in keys or analyte in keys
+    else:
+        is_key = analyte in key_analyte_names()
+    return is_key, analyte in no_labelled_names_for(profile_data)
 
 
 def _tier_rule(tier, notes, method_id, analyte, matrix, qc_type):
@@ -1315,21 +1260,14 @@ class EPA1633AProfile(MethodProfile):
                                 "(1633A Tables 6/8, EPA 820-R-24-007) — VERIFY "
                                 "against purchased method copy")
 
-        qa = profile.get("qc_acceptance", {})
         # OPR (ongoing precision & recovery) maps to LFB code in the pool
         mapped = "LFB" if qc_type in ("OPR", "IPR") else qc_type
-        entry = qa.get(mapped)
-        if entry is None or not entry.get("enabled", True):
+        chosen = _select_tier(
+            profile, mapped, analyte, matrix, conc, rl, False, False,
+            "{0} / {1} / {2} / {3}".format(self.method_id, analyte, matrix, mapped))
+        if chosen is None:
             return None
-        tiers = entry.get("tiers", [])
-        if not tiers:
-            raise UnconfiguredCriterion(
-                "{0} has no tiers configured for {1}. Set them in Method "
-                "Profiles -> QC Types -> {1}, or disable that QC type.".format(
-                    self.method_id, mapped))
-        base = (_ordinary_tiers(tiers) or tiers)[0]
-        t = _low_level_tier(tiers, base, lambda _t: True, conc, rl,
-                            "{0} / {1} / {2} / {3}".format(self.method_id, analyte, matrix, mapped))
+        t = chosen[0]
         rule = _tier_rule(
             t, t.get("description",
                      "1633A per-analyte (verify against method)"),

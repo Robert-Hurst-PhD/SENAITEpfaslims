@@ -12,12 +12,16 @@ Element types (each {"id", "type", "name", ...}):
                SOURCE (how many independent standard sources) x LEVEL
                ([{"label", "value"}] in the matrix's unit); "replicates" per
                cell (blank: set when the cell is assigned). Statistics, each
-               switched on with its own limit (blank limit = to be entered):
-                 recovery        mean recovery per level, min / max %
-                 rsd_within      RSD of each source's replicates, max %
-                 rsd_between     RSD between sources per level, max %;
-                                 "between_basis": "means" (of the source means)
-                                 or "pooled" (all replicates at the level)
+               switched on; their LIMITS are never typed here but read from
+               the method profile: "limits_from" names the
+               QC type whose tier applies ("" = the element's role), chosen
+               per analyte, matrix and level exactly as a run's (qc_tiers):
+                 recovery        mean recovery per level vs the tier's window
+                 rsd_within      RSD of each source's replicates
+                 rsd_between     RSD between sources per level; "basis":
+                                 "means" (of the source means) or "pooled"
+                                 (all replicates at the level)
+               RSD and RPD are one limit (qc_tiers.spread_limit).
   mdl          40 CFR 136 App. B Rev. 2 from the study's spiked replicates
                and blanks (method_studies.mdl_rev2); "spike_role", "blank_role"
   qualitative  a check judged by a person on uploaded evidence
@@ -45,6 +49,7 @@ TYPES = [
 TYPE_LABELS = dict(TYPES)
 PASS, FAIL, OPEN = u"pass", u"fail", u"not evaluated"
 TO_ENTER = u"to be entered"
+NOT_SET = u"not set in the method profile"
 
 
 # ── the template ──────────────────────────────────────────────────────────
@@ -62,10 +67,10 @@ def new_element(etype, existing_ids=()):
         n += 1
     el = {"id": u"E%d" % n, "type": etype, "name": TYPE_LABELS[etype]}
     if etype == "replicates":
-        el.update(role=u"LFB", sources=1, levels=[], replicates=None,
-                  stats={"recovery": {"on": False, "min": None, "max": None},
-                         "rsd_within": {"on": False, "max": None},
-                         "rsd_between": {"on": False, "max": None, "basis": u"means"}})
+        el.update(role=u"LFB", limits_from=u"", sources=1, levels=[], replicates=None,
+                  stats={"recovery": {"on": False},
+                         "rsd_within": {"on": False},
+                         "rsd_between": {"on": False, "basis": u"means"}})
     elif etype == "mdl":
         el.update(spike_role=u"LFB", blank_role=u"MB")
     elif etype == "qualitative":
@@ -105,8 +110,7 @@ def levels_text(levels):
 
 
 def problems(template):
-    """What stops a template being used (a blank limit does not: it reads
-    'to be entered')."""
+    """What stops a template being used."""
     out = []
     if not (template.get("name") or u"").strip():
         out.append(u"Name the template.")
@@ -173,21 +177,35 @@ def _judge_max(value, limit):
     if value is None:
         return OPEN
     if limit is None:
-        return TO_ENTER
+        return NOT_SET
     return PASS if round(value, 6) <= limit else FAIL
 
 
-def _judge_window(value, lo, hi):
+def _judge_window(value, lo, hi, unset=TO_ENTER):
     if value is None:
         return OPEN
     if lo is None and hi is None:
-        return TO_ENTER
+        return unset
     ok = (lo is None or round(value, 6) >= lo) and (hi is None or round(value, 6) <= hi)
     return PASS if ok else FAIL
 
 
-def evaluate_replicates(el, rows):
-    """`rows` = [{"source", "level", "values": {analyte: value}}]. Returns
+def limits_qc(el):
+    """The method profile QC type whose tiers set this element's limits."""
+    return el.get("limits_from") or el.get("role") or u"LFB"
+
+
+def _range(lo, hi):
+    if lo is None and hi is None:
+        return NOT_SET
+    return u"%s-%s" % (u"" if lo is None else u"%g" % lo, u"" if hi is None else u"%g" % hi)
+
+
+def evaluate_replicates(el, rows, limits):
+    """`rows` = [{"source", "level", "values": {analyte: value}}];
+    `limits(analyte, level value)` -> {"recovery_min", "recovery_max",
+    "spread", "problem"}: the method profile's tier for it (the caller asks
+    qc_tiers.select_tier; "spread" is its one RSD / RPD limit). Returns
     {"rows": [{analyte, level, stat, value, limit, verdict}], "verdict"}."""
     stats = el.get("stats") or {}
     fort = dict((l["label"], l["value"]) for l in el.get("levels") or [])
@@ -195,33 +213,37 @@ def evaluate_replicates(el, rows):
     out = []
     for a in analytes:
         for lv in [l["label"] for l in el.get("levels") or []]:
+            lim = limits(a, fort.get(lv)) or {}
+            problem, spread = lim.get("problem"), lim.get("spread")
             at = [r for r in rows if r.get("level") == lv and (r.get("values") or {}).get(a) is not None]
             by_src = {}
             for r in at:
                 by_src.setdefault(r.get("source"), []).append(float(r["values"][a]))
             vals = [v for vs in by_src.values() for v in vs]
+
+            def row(stat, value, limit, verdict):
+                if problem and verdict != OPEN:
+                    limit, verdict = problem, NOT_SET
+                out.append({"analyte": a, "level": lv, "stat": stat, "value": value,
+                            "limit": limit, "verdict": verdict})
             if (stats.get("recovery") or {}).get("on"):
                 rec = _mean([100.0 * v / fort[lv] for v in vals]) if vals and fort.get(lv) else None
-                s = stats["recovery"]
-                out.append({"analyte": a, "level": lv, "stat": u"Mean recovery %", "value": rec,
-                            "limit": u"%s-%s" % (s.get("min"), s.get("max")),
-                            "verdict": _judge_window(rec, s.get("min"), s.get("max"))})
+                lo, hi = lim.get("recovery_min"), lim.get("recovery_max")
+                row(u"Mean recovery %", rec, _range(lo, hi), _judge_window(rec, lo, hi, NOT_SET))
             if (stats.get("rsd_within") or {}).get("on"):
                 for src in sorted(by_src):
                     r = _rsd(by_src[src])
-                    out.append({"analyte": a, "level": lv, "stat": u"RSD %% within %s" % src,
-                                "value": r, "limit": stats["rsd_within"].get("max"),
-                                "verdict": _judge_max(r, stats["rsd_within"].get("max"))})
+                    row(u"RSD %% within %s" % src, r, spread if spread is not None else NOT_SET,
+                        _judge_max(r, spread))
             if (stats.get("rsd_between") or {}).get("on"):
                 s = stats["rsd_between"]
                 if s.get("basis") == u"pooled":
                     r = _rsd(vals) if len(by_src) > 1 else None
                 else:
                     r = _rsd([_mean(v) for v in by_src.values()]) if len(by_src) > 1 else None
-                out.append({"analyte": a, "level": lv,
-                            "stat": u"RSD %% between sources (%s)" % (
-                                u"pooled" if s.get("basis") == u"pooled" else u"of the means"),
-                            "value": r, "limit": s.get("max"), "verdict": _judge_max(r, s.get("max"))})
+                row(u"RSD %% between sources (%s)" % (
+                    u"pooled" if s.get("basis") == u"pooled" else u"of the means"),
+                    r, spread if spread is not None else NOT_SET, _judge_max(r, spread))
     return {"rows": out, "verdict": combine([r["verdict"] for r in out])}
 
 
@@ -310,8 +332,7 @@ def _int(v):
 
 def apply_form(template, form):
     """(template', [problem]) from the designer's fields: t__name, t__method,
-    t__matrix and e__<element id>__<field>. A malformed number is refused;
-    a blank limit is kept as 'to be entered'."""
+    t__matrix and e__<element id>__<field>. A malformed number is refused."""
     t = json.loads(json.dumps(template))          # a copy
     bad = []
     for k in ("name", "method", "matrix"):
@@ -330,6 +351,8 @@ def apply_form(template, form):
             el["name"] = (_f(form, el, "name") or u"").strip() or TYPE_LABELS[el["type"]]
         if el["type"] == "replicates":
             el["role"] = _f(form, el, "role") or el.get("role") or u"LFB"
+            if _f(form, el, "limits_from") is not None:
+                el["limits_from"] = _f(form, el, "limits_from") or u""
             el["sources"] = _int(_f(form, el, "sources")) or 1
             levels, probs = parse_levels(_f(form, el, "levels"))
             bad.extend(u"%s: %s" % (el["name"], p) for p in probs)
@@ -337,13 +360,9 @@ def apply_form(template, form):
             reps = number(el, "replicates", u"replicates")
             el["replicates"] = int(reps) if reps else None
             el["stats"] = {
-                "recovery": {"on": _on(_f(form, el, "recovery_on")),
-                             "min": number(el, "recovery_min", u"lowest recovery"),
-                             "max": number(el, "recovery_max", u"highest recovery")},
-                "rsd_within": {"on": _on(_f(form, el, "rsd_within_on")),
-                               "max": number(el, "rsd_within_max", u"RSD within a source")},
+                "recovery": {"on": _on(_f(form, el, "recovery_on"))},
+                "rsd_within": {"on": _on(_f(form, el, "rsd_within_on"))},
                 "rsd_between": {"on": _on(_f(form, el, "rsd_between_on")),
-                                "max": number(el, "rsd_between_max", u"RSD between sources"),
                                 "basis": u"pooled" if _f(form, el, "rsd_between_basis") == u"pooled"
                                 else u"means"}}
         elif el["type"] == "mdl":
