@@ -493,7 +493,7 @@ class QCResultStore(object):
     def get_chart_data(self, analyte, qc_type, qc_level=None, method=None,
                        analyst=None, instrument_id=None, limit=20,
                        include_superseded=False, include_test=False,
-                       date_from=None, date_to=None):
+                       date_from=None, date_to=None, exclude_batches=()):
         """
         Return ordered list of dicts for Levey-Jennings charting.
 
@@ -529,6 +529,11 @@ class QCResultStore(object):
             # synthetic rows (TEST_DATA* flags, SYNTHETIC_ batches).
             sql += (" AND r.flag NOT LIKE 'TEST_DATA%'"
                     " AND r.batch_id NOT LIKE 'SYNTHETIC_%'")
+        hidden = sorted(set(exclude_batches or ()))
+        if hidden:
+            # study runs a study has not opted into the charts
+            sql += " AND r.batch_id NOT IN (%s)" % ",".join("?" * len(hidden))
+            params.extend(hidden)
 
         if qc_level is not None:
             # an LFSMD measure ("RPD", "Recovery") across runs: stored per

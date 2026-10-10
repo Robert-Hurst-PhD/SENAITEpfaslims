@@ -233,8 +233,8 @@ DEFAULT_PROFILES = {
         ),
         "instrument_verification": {
             "calibration": {
-                # 0.995 matches legacy default; FDA method specifies 0.990
-                "r2_min": 0.995,
+                # the lab's value (C-010.04), confirmed 2026-10-09
+                "r2_min": 0.990,
                 "force_origin": False,
                 "point_pct_dev_max": 20.0,
                 "low_point_pct_dev_max": None,
@@ -245,6 +245,9 @@ DEFAULT_PROFILES = {
                 "recovery_max": 130.0,
                 "low_level_min": None,
                 "low_level_max": None,
+                # a CCV (after the CCB) opens the bracket: every extracted
+                # injection runs inside one (lab, 2026-10-09)
+                "opens_run": "yes",
             },
             "is_response": {
                 "vs_ical_avg_min": 50.0,

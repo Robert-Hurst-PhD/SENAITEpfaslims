@@ -97,6 +97,8 @@ data/                 runtime folders (mounted volumes)
 
 ## Licence
 
+Copyright (C) 2026 Robert Hurst, PhD
+
 This program is free software; you can redistribute it and/or modify it under
 the terms of the **GNU General Public License version 2** as published by the
 Free Software Foundation. See [LICENSE](LICENSE) for the full text.

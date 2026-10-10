@@ -1452,6 +1452,14 @@ def get_blank_subtraction(method_id: str) -> bool:
     return bool(data.get("blank_subtraction"))
 
 
+def get_mxb_reference_recovery(method_id: str) -> bool:
+    """Whether a matrix blank whose lot carries reference values is judged as
+    a recovery against them with the LFSM recovery tolerances (Method
+    Profile > QC composition > Matrix blanks; off by default)."""
+    data = _profile_data_cache.get(method_id, {}) or {}
+    return bool(data.get("mxb_reference_recovery"))
+
+
 def get_reporting_unit(method_id: str, matrix: str) -> str:
     """The unit results are reported in for this method x matrix, from the
     profile's unit_map (Animal Feed -> ng/kg, Milk -> ng/mL)."""

@@ -800,6 +800,22 @@ class PFASExtractionGuideView(BrowserView):
             logger.warning("batch samples: %s", exc)
         return sorted(out, key=lambda s: s["sample_id"])
 
+    def _card_members(self, b):
+        """Every member whose amount or extract volume is recorded: the
+        samples and the QC (a QC member's test portion is used like a
+        sample's; lab, 2026-10-09). A batch without members: its samples."""
+        from senaite.pfas import extraction_batch
+        members = [m for m in extraction_batch.load(b) if m.get("injection")]
+        if not members:
+            return self._batch_samples(b)
+        by_uid = dict((m.get("id"), m) for m in members)
+        out = []
+        for m in members:
+            matrix = m.get("matrix") or (by_uid.get(m.get("parent")) or {}).get("matrix") or u""
+            out.append({"sample_id": m["injection"],
+                        "matrix": matrix if m.get("role") == u"Sample" else (matrix or m.get("role") or u"")})
+        return sorted(out, key=lambda s: s["sample_id"])
+
     def _samples_log(self, b):
         """FM-ENV-003, its rows keyed by the members' LIMS-issued names."""
         from senaite.pfas import extraction_batch
@@ -845,7 +861,7 @@ class PFASExtractionGuideView(BrowserView):
             rows = self._port_rows(b)
         else:
             rows = sample_table.rows_for_card(self._samples_log(b).get("samples"),
-                                              self._batch_samples(b))
+                                              self._card_members(b))
         draft = dict((d.get("sample_id"), d) for d in self.stage_draft().get("samples") or [])
         for r in rows:
             if r.get("sample_id") in draft:

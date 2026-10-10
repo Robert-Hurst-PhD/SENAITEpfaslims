@@ -1784,6 +1784,20 @@ class PFASRunManifestView(BrowserView):
         })
 
 
+def _mxb_reference(portal, lot_uid):
+    """{"levels": {analyte: value}, "unit"} in force on a blank-matrix lot,
+    or None."""
+    try:
+        from senaite.pfas.browser.assigned_levels import lot_record
+        rec = lot_record(portal, lot_uid)
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("matrix blank reference for %s: %s", lot_uid, exc)
+        return None
+    if not rec or not rec.get("levels"):
+        return None
+    return {"levels": dict(rec["levels"]), "unit": rec.get("unit") or u""}
+
+
 def _field_qc_code(member):
     """u"FRB" for a member sample whose CoC Field QC says it is a field
     reagent blank, u"TB" for a trip blank -- read from the sample, which owns
@@ -1867,6 +1881,13 @@ class PFASBatchDilutionsView(BrowserView):
                                       # the method blank to subtract
                                       "subtract": bool(m.get("subtract"))})
                 for m in members if m.get("injection"))
+            # a matrix blank's lot reference values, for the method that
+            # judges it as a recovery against them (Matrix blanks)
+            for m in members:
+                if m.get("role") == u"MxB" and m.get("injection") and m.get("lot"):
+                    ref = _mxb_reference(portal, m["lot"])
+                    if ref:
+                        payload["_members"][m["injection"]]["reference"] = ref
             # a re-injection made at the bench files as its original
             payload["_members"].update(extraction_batch.reinjection_aliases(
                 extraction_batch.load_requests(batch), members))

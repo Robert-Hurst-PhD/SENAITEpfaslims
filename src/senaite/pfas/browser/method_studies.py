@@ -31,9 +31,7 @@ from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
 
 logger = logging.getLogger("senaite.pfas.browser.method_studies")
 
-GATES = {"approve": TIER_CONFIG, "assign": TIER_CONFIG}
-# reagent categories never offered as purchased reagent water
-NOT_WATER = (u"Consumable", u"Internal Standard", u"Salt", u"Acid / Base", u"Buffer")
+GATES = {"approve": TIER_CONFIG, "assign": TIER_CONFIG, "charts": TIER_CONFIG}
 QC_DB = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 PDF_DIR = os.path.join(os.path.dirname(QC_DB), "studies")
 
@@ -88,6 +86,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self._assign()
             elif action == "receipt":
                 self._receipt()
+            elif action == "charts":
+                self._charts()
         return self.template()
 
     # ── identity ───────────────────────────────────────────────────────────
@@ -104,6 +104,11 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
 
     def listed(self):
         return list(reversed(self.records()))
+
+    def mdl_due(self):
+        """Annual MDL verification: when each method x matrix is due."""
+        from datetime import date
+        return sr.mdl_due(self.records(), date.today().isoformat())
 
     def record(self):
         return sr.find(self.records(), (self.request.form.get("id") or u"").strip())
@@ -153,11 +158,23 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     REVIEWED_STATES = ("verified", "published")
 
     def _reviewed(self, batch_ids):
-        """The worksheets among `batch_ids` that passed technical review."""
+        """The worksheets among `batch_ids` that passed technical review: core
+        verified or published, or -- a study worksheet, which has no analyses
+        -- approved on its Data Review checklist."""
         from bika.lims import api
+        if not batch_ids:
+            return set()
         cat = api.get_tool("senaite_catalog_worksheet")
-        return set(b.getId for b in cat(portal_type="Worksheet", id=sorted(batch_ids),
-                                        review_state=list(self.REVIEWED_STATES))) if batch_ids else set()
+        out = set()
+        for b in cat(portal_type="Worksheet", id=sorted(batch_ids)):
+            if b.review_state in self.REVIEWED_STATES:
+                out.add(b.getId)
+                continue
+            ws = b.getObject()
+            if sru.load_run(ws) is not None and sru.checklist_review_state(
+                    b.review_state, bool(ws.getAnalyses()), sru.checklist_of(ws)) == u"verified":
+                out.add(b.getId)
+        return out
 
     def data(self):
         """(spikes, blanks) for the open study."""
@@ -320,9 +337,9 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
 
     def lot_options(self, kind):
         """The usable lots a source of `kind` may name."""
-        from senaite.pfas.content.reagent import CATEGORY_INHOUSE_WATER, CATEGORY_REFERENCE
+        from senaite.pfas.content.reagent import CATEGORY_PURCHASED_WATER, CATEGORY_REFERENCE
         return sru.lot_choices(self._usable(), kind, CATEGORY_REFERENCE,
-                               NOT_WATER + (CATEGORY_INHOUSE_WATER,))
+                               CATEGORY_PURCHASED_WATER)
 
     def all_worksheets(self):
         return sru.study_worksheets(self.record() or {})
@@ -469,6 +486,19 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         sr.save(self.portal(), recs)
         self.request.response.redirect("%s/@@pfas-method-studies?id=%s" % (self.portal_url(), rec["id"]))
         return u""
+
+    def _charts(self):
+        """Whether the study's runs join the control charts and blank
+        history (off until a manager says so)."""
+        rec = self.record()
+        if rec is None:
+            self.error = u"No such study."
+            return
+        rec["in_charts"] = self.request.form.get("in_charts") == u"1"
+        sr.save(self.portal(), self.records())
+        self.message = (u"Its runs are in the control charts and blank history."
+                        if rec["in_charts"] else
+                        u"Its runs are kept out of the control charts and blank history.")
 
     def _exclude(self):
         f = self.request.form

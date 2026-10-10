@@ -324,6 +324,48 @@ class RunQueue:
         return sum(len(v) for v in owed.values())
 
     # ── automatic evaluation ──────────────────────────────────────────────────
+    def _mxb_by_reference(self, profile, inj, analyte, row, matrix, flags_by_injection, _record_gap):
+        """A matrix blank whose lot carries a reference value for `analyte`,
+        in a method that judges it so (Matrix blanks): its recovery against
+        that value, with the LFSM recovery tolerances (lab, 2026-10-09).
+        False when it is to be judged against the blank limit instead."""
+        from .method_profiles import get_mxb_reference_recovery
+        if not get_mxb_reference_recovery(self.method_id):
+            return False
+        ref = (getattr(self.batch, "mxb_references", None) or {}).get(inj) or {}
+        assigned = (ref.get("levels") or {}).get(analyte)
+        if assigned in (None, "", 0):
+            return False
+        conc = reported_conc(row)
+        unit = (getattr(row, "conc_units", "") or "").strip()
+        if conc is None:
+            return False
+        # the matrix-blank rule: compared only in the same unit, never
+        # converted (matrix_blank.same_unit)
+        if not unit or (ref.get("unit") or "").strip().lower() != unit.lower():
+            _record_gap("MxB", analyte, UnconfiguredCriterion(
+                "{0}: reference value in {1}, result in {2} -- not compared.".format(
+                    inj, ref.get("unit") or "no unit", unit or "no unit")))
+            return True
+        win = {}
+        try:
+            flag = recovery_check_profiled(profile, analyte, matrix, "LFSM",
+                                           conc / float(assigned) * 100.0, inj,
+                                           conc=float(assigned), window=win)
+        except UnconfiguredCriterion as exc:
+            _record_gap("MxB", analyte, exc)
+            return True
+        self.batch.lcs_results.append({
+            "qc_type": "MxB", "analyte": analyte, "injection_name": inj,
+            "recovery": conc / float(assigned) * 100.0, "passed": flag is None,
+            "lo": win.get("lo"), "hi": win.get("hi"), "basis": win.get("basis", ""),
+            "issue": flag.issue if flag is not None else ""})
+        if flag is not None:
+            flags_by_injection.setdefault(inj, []).append(QCFlag(
+                source="MxB", check_kind=KIND_BLANK, analyte=flag.analyte,
+                injection_name=inj, value=flag.value, issue=flag.issue))
+        return True
+
     def auto_evaluate(self):
         """
         Run the full QC engine and mark checks AUTO_PASS / AUTO_FAIL.
@@ -1036,6 +1078,10 @@ class RunQueue:
                         break
                     if rule is None:
                         continue                     # the QC type is switched off
+                    if role == "MxB" and self._mxb_by_reference(profile, inj, analyte, row, _bmatrix,
+                                                                flags_by_injection, _record_gap):
+                        judged = True                # its recovery against the lot
+                        continue
                     if rule.max_conc_x_rl is None:
                         # a solvent blank is reviewed on its chromatogram and a
                         # matrix blank compared with its lot; a method blank
@@ -1189,6 +1235,20 @@ class RunQueue:
                          for i in order],
                         n, opens, counts_qc):
                     flags_by_injection.setdefault(flag.injection_name, []).append(flag)
+
+        # 9a. THE RUN CLOCK: a CCV, sample or spiked QC the instrument stamps
+        # before the run's first calibrator was not bracketed by that curve,
+        # whatever order the export lists it in. It fails as a bracketing
+        # failure (lab, 2026-10-09). Every run, whatever the switches.
+        from .run_shape import time_order_injections
+        for inj, when, start in time_order_injections(
+                all_rows, lambda n: classify_injection(n, dilutions)):
+            flags_by_injection.setdefault(inj, []).append(QCFlag(
+                source="CCV frequency", check_kind=KIND_CCV_FREQ, analyte="",
+                injection_name=inj, value="before the first calibrator",
+                issue="(CCV) acquired %s, before the run's first calibrator (%s): "
+                      "not bracketed by its curve" % (when.strftime("%Y-%m-%d %H:%M"),
+                                                     start.strftime("%Y-%m-%d %H:%M"))))
 
         # 10. MDL: a reported detection below the analyte's MDL. Switch: mdl_check.
         if profile is not None and _rule_enabled(toggles, "mdl_check"):

@@ -49,6 +49,10 @@ INVALID = "invalid"
 OK = "ok"
 #: Extracted past the limit.
 EXCEEDED = "exceeded"
+#: The method sets no holding time for this matrix (stored as "none" in
+#: Matrices & Units, lab 2026-10-09): nothing to judge, and not unconfigured.
+NOT_APPLICABLE = "not_applicable"
+NONE_SET = "none"
 
 #: Statuses that must not let the Chain of Custody gate pass.
 BLOCKING = frozenset([EXCEEDED, INVALID])
@@ -111,6 +115,8 @@ def limit_for(profile, matrix):
             if u"{0}".format(key).strip().lower() == wanted:
                 raw = value
                 break
+    if isinstance(raw, (type(u""), type(""))) and raw.strip().lower() == NONE_SET:
+        return NONE_SET
     try:
         days = float(raw)
     except (TypeError, ValueError):
@@ -133,6 +139,10 @@ def evaluate(collected, extracted, limit_days):
         "limit_days": limit_days,
         "message":    u"",
     }
+    if limit_days == NONE_SET:
+        result["status"] = NOT_APPLICABLE
+        result["message"] = u"The method sets no holding time for this matrix."
+        return result
     if limit_days is None:
         result["message"] = (
             u"No holding time is configured for this method and matrix. "
@@ -183,7 +193,7 @@ def evaluate(collected, extracted, limit_days):
 
 
 # worst first: the combined verdict of several samples is the worst one
-_RANK = [INVALID, EXCEEDED, NO_DATES, UNCONFIGURED, OK]
+_RANK = [INVALID, EXCEEDED, NO_DATES, UNCONFIGURED, OK, NOT_APPLICABLE]
 
 
 def extract_limit_for(profile, matrix):

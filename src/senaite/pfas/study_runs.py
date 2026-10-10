@@ -42,6 +42,9 @@ except ImportError:                    # tests: loaded by path
 
 STUDY_RUN_KEY = "senaite.pfas.study_run"
 RECEIPT_KEY = "senaite.pfas.reagent.receipt"
+# the Data Review checklist's annotation key (browser/data_review imports it
+# from here, so this pure module can read a study worksheet's review)
+CHECKLIST_KEY = u"senaite.pfas.data_review.checklist"
 
 BLANK = None                           # the method's own blank role (blank_role)
 LFB = u"LFB"
@@ -155,6 +158,17 @@ def study_worksheets(rec):
     return out
 
 
+def gate_scope(run, enabled_types):
+    """(required, judged_by_study) for a study run's QC Summary gate (lab,
+    2026-10-09): the run must carry its part's own role, and the CCVs where the
+    method runs them; calibration is gated as for any run. The part's
+    replicates are judged by the study, not by the routine recovery or blank
+    limits, so their routine verdicts do not hold the run."""
+    role = role_for(run["element"], run["method_id"])
+    required = set([role]) | (set(enabled_types or ()) & set(["CCV"]))
+    return required, set([role])
+
+
 def run_record(rec, part):
     """What the study worksheet carries (STUDY_RUN_KEY)."""
     return {"study": rec["id"], "part": part["id"], "element": part["element"],
@@ -162,11 +176,10 @@ def run_record(rec, part):
             "analyst": part["analyst"], "level": part.get("level") or u""}
 
 
-def lot_choices(items, kind, reference_category, not_water):
+def lot_choices(items, kind, reference_category, water_category):
     """The usable inventory lots a source of `kind` may name. `items` are
     bench_inventory items; a reference sample is a reagent lot of the
-    reference category; vendor water is any other reagent lot outside
-    `not_water` (categories that are never purchased water)."""
+    reference category, vendor water one of the purchased-water category."""
     out = []
     for i in items or []:
         if i.get("kind") != u"reagent":
@@ -174,7 +187,7 @@ def lot_choices(items, kind, reference_category, not_water):
         cat = i.get("category") or u""
         if kind == REFERENCE_LOT and cat == reference_category:
             out.append(i)
-        elif kind == WATER_LOT and cat != reference_category and cat not in not_water:
+        elif kind == WATER_LOT and cat == water_category:
             out.append(i)
     return out
 
@@ -262,6 +275,26 @@ def new_receipt(form, previous, by, at):
 
 
 # ── annotation shell ─────────────────────────────────────────────────────────
+
+def checklist_review_state(core_state, has_analyses, checklist):
+    """A study worksheet holds no analyses, and core refuses to submit or
+    verify an empty worksheet. Its technical review is the Data Review
+    checklist itself (lab, 2026-10-09): submitted -> to_be_verified,
+    approved -> verified. A worksheet with analyses keeps core's state."""
+    if has_analyses:
+        return core_state
+    cl = checklist or {}
+    if cl.get("approved_at"):
+        return u"verified"
+    if cl.get("submitted_at"):
+        return u"to_be_verified"
+    return u"open"
+
+
+def checklist_of(ws):
+    """The Data Review checklist of a worksheet (its annotation), or {}."""
+    return _load(ws, CHECKLIST_KEY) or {}
+
 
 def _load(obj, key):
     from zope.annotation.interfaces import IAnnotations

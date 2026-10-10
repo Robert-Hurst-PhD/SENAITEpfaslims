@@ -24,6 +24,50 @@ KEY = "senaite.pfas.method_studies"
 DRAFT, APPROVED, SUPERSEDED = u"draft", u"approved", u"superseded"
 
 
+MDL_DUE_MONTHS = 13      # 40 CFR 136 App. B Rev. 2 4(f): at least every 13 months
+
+
+def _plus_months(iso_day, months):
+    y, m, d = (int(x) for x in iso_day[:10].split("-"))
+    m += months
+    y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+    days = [31, 29 if (y % 4 == 0 and (y % 100 or y % 400 == 0)) else 28,
+            31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
+    return u"%04d-%02d-%02d" % (y, m, min(d, days))
+
+
+def mdl_due(records, today):
+    """[{method, matrix, approved, due, overdue}] for every method x matrix
+    with an approved annual MDL study (the latest one), oldest due first."""
+    latest = {}
+    for r in records or []:
+        if r.get("kind") != "mdl" or r.get("status") != APPROVED or not r.get("approved_at"):
+            continue
+        key = (r.get("method"), r.get("matrix"))
+        if key not in latest or r["approved_at"] > latest[key]:
+            latest[key] = r["approved_at"]
+    out = []
+    for (method, matrix), at in latest.items():
+        due = _plus_months(at, MDL_DUE_MONTHS)
+        out.append({"method": method, "matrix": matrix, "approved": at[:10],
+                    "due": due, "overdue": due < (today or u"")[:10]})
+    return sorted(out, key=lambda e: e["due"])
+
+
+def chart_hidden(records):
+    """The worksheets of every study that has not opted into the control
+    charts and blank history (`in_charts`, off by default; lab, 2026-10-09:
+    study runs are kept apart from routine data)."""
+    out = set()
+    for r in records or []:
+        if r.get("in_charts"):
+            continue
+        out.update(r.get("worksheets") or [])
+        for p in r.get("parts") or []:
+            out.update(p.get("worksheets") or [])
+    return out
+
+
 def next_id(records):
     nums = [int(r["id"].split("-")[1]) for r in records if r.get("id", u"").startswith(u"MS-")]
     return u"MS-%04d" % (max(nums or [0]) + 1)

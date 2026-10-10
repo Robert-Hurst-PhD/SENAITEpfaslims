@@ -8,7 +8,7 @@ setup(
                 "extraction-driven reporting, and multi-vendor instrument import.",
     long_description=open("README.md").read() if __import__("os").path.exists("README.md") else "",
     long_description_content_type="text/markdown",
-    author="PFAS Lab",
+    author="Robert Hurst, PhD",
     # GPLv2, matching the LICENSE file and the stack this extends. senaite.core,
     # senaite.lims and senaite.storage are all GPLv2 and are imported directly,
     # so this add-on is a derivative work and cannot be offered under a

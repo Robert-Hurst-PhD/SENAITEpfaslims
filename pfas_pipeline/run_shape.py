@@ -48,6 +48,13 @@ def problems(planned, rows, spikes=None):
 
 
 def time_order_problems(rows, role_of):
+    """The messages of time_order_injections."""
+    return ["%s was acquired %s, before the run's first calibrator (%s): "
+            "the clock contradicts the run order" % (n, _stamp(t), _stamp(start))
+            for n, t, start in time_order_injections(rows, role_of)]
+
+
+def time_order_injections(rows, role_of):
     """Injections the instrument's clock places before the run's first
     calibrator: quantified against a curve that did not exist yet (an FDA
     example export stamps its CCVs, blank and samples a year before its
@@ -79,9 +86,7 @@ def time_order_problems(rows, role_of):
     if not cals:
         return []
     start = min(cals)
-    return ["%s was acquired %s, before the run's first calibrator (%s): "
-            "the clock contradicts the run order" % (n, _stamp(when[n]), _stamp(start))
-            for n in sorted(order, key=lambda n: when[n])
+    return [(n, when[n], start) for n in sorted(order, key=lambda n: when[n])
             if role_of(n) != "CAL" and role_of(n) not in BLANK_ROLES and when[n] < start]
 
 

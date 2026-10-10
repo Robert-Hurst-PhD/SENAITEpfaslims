@@ -46,7 +46,7 @@ from senaite.pfas import holding_time
 
 logger = logging.getLogger("senaite.pfas.browser.data_review")
 
-CHECKLIST_KEY         = u"senaite.pfas.data_review.checklist"
+from senaite.pfas.study_runs import CHECKLIST_KEY  # noqa: E402  (one definition)
 INSTRUMENT_REPORT_DIR = os.environ.get("PFAS_INSTRUMENT_REPORTS", "/data/instrument_reports")
 DEFAULT_DB_PATH       = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 
@@ -343,7 +343,19 @@ class PFASDataReviewView(BrowserView):
         if not ws:
             return u"open"
         wf_tool = getToolByName(self.context, "portal_workflow")
-        return wf_tool.getInfoFor(ws, "review_state", "open")
+        state = wf_tool.getInfoFor(ws, "review_state", "open")
+        if self._study_review(ws):
+            from senaite.pfas.study_runs import checklist_review_state
+            return checklist_review_state(state, False, self._get_checklist(ws))
+        return state
+
+    def _study_review(self, ws):
+        """A study worksheet without analyses: its review is this checklist
+        (core cannot submit or verify an empty worksheet)."""
+        try:
+            return self.study_run() is not None and not (ws.getAnalyses() or [])
+        except Exception:                                   # noqa: BLE001
+            return False
 
     def active_tab(self):
         return self.request.form.get("tab", "overview")
@@ -888,6 +900,7 @@ class PFASDataReviewView(BrowserView):
         "Ion ratio": "ion_ratio", "S/N": "sn", "Surrogate": "surrogate",
         # a field reagent blank: a client sample, so not control material
         "FRB": "field_blank",
+        "TB": "trip_blank",
     }
 
     #: qc_types that ARE laboratory control material. Everything else is
@@ -984,7 +997,7 @@ class PFASDataReviewView(BrowserView):
         failure belongs to. None when there are none.
         The stamp writes them; the Final Data tab shows them for review."""
         from senaite.pfas.qc_qualification import (
-            applies_to_coc, applies_to_sample, reported_keyword)
+            COC_BLANKS, applies_to_coc, applies_to_sample, reported_keyword)
         if summary is None:
             try:
                 summary = self._get_qc_summary(ws) or {}
@@ -1021,7 +1034,7 @@ class PFASDataReviewView(BrowserView):
             return uids, [samples[u][1] for u in uids if u in samples]
 
         def applies(e, uid, names):
-            if e.get("qc_type") == "FRB":
+            if e.get("qc_type") in COC_BLANKS:
                 frb_uids, cocs = frb_scope(e.get("applies_to") or u"")
                 return applies_to_coc(frb_uids, cocs, uid, (samples.get(uid) or ((), u""))[1])
             return applies_to_sample(e.get("applies_to") or u"", uid, names, pushed)
@@ -1227,9 +1240,15 @@ class PFASDataReviewView(BrowserView):
             failing = []
             unevaluated = []
             qualified = []
+            study, study_required, study_judged = self.study_run(), None, set()
+            if study is not None:
+                from senaite.pfas.qc.qc_types import enabled_qc_types
+                from senaite.pfas.study_runs import gate_scope
+                study_required, study_judged = gate_scope(
+                    study, enabled_qc_types(self._method_profile() or {}))
             for row in (summary.get("rows") or []):
                 for qc_type, cell in (row.get("cells") or {}).items():
-                    if not cell:
+                    if not cell or qc_type in study_judged:
                         continue
                     if cell.get("status") == "fail":
                         failing.append(qc_type)
@@ -1267,7 +1286,8 @@ class PFASDataReviewView(BrowserView):
             profile = self._method_profile() or {}
             # the QC types the method RUNS -- the same flags the engine reads
             from senaite.pfas.qc.qc_types import enabled_qc_types
-            required = set(enabled_qc_types(profile))
+            required = set(enabled_qc_types(profile)) if study_required is None \
+                else study_required
             present = set(summary.get("qc_types") or [])
             # a trip blank comes with the samples that ask for one (Field QC
             # on the CoC), not with every run
@@ -3736,6 +3756,8 @@ class PFASDataReviewView(BrowserView):
             return self._redirect_with_msg("checklist_machine_attested", "error")
         if not self.all_items_pass():
             return self._redirect_with_msg("checklist_incomplete", "error")
+        if self._study_review(ws):
+            return self._sign_study_review(ws, "submitted")
         wf_tool = getToolByName(self.context, "portal_workflow")
         # Submit the RESULTS this review just signed off, then the worksheet.
         #
@@ -3802,6 +3824,8 @@ class PFASDataReviewView(BrowserView):
             # (a reprocess held a submitted worksheet's QC and Approve Release
             # still verified it).
             return self._redirect_with_msg("checklist_changed", "error")
+        if self._study_review(ws):
+            return self._sign_study_review(ws, "approved")
         wf_tool = getToolByName(self.context, "portal_workflow")
         # Verify the RESULTS, and the worksheet follows. `verify` is available
         # on the analyses, not on the worksheet — the same cascade as submit.
@@ -3847,6 +3871,29 @@ class PFASDataReviewView(BrowserView):
         self._audit(ws)
         return self._redirect_with_msg("batch_approved", "ok")
 
+    def _sign_study_review(self, ws, step):
+        """Submit or approve a study worksheet's review: the checklist is the
+        record (no core transition can fire on it). Approval freezes the
+        criteria here, the one producer on this path: no verify transition
+        fires to do it."""
+        user = getSecurityManager().getUser()
+        now = datetime.datetime.utcnow().isoformat()
+        cl = self._get_checklist(ws)
+        cl[step + "_by"] = user.getId()
+        cl[step + "_at"] = now
+        self._save_checklist(ws, cl)
+        if step == "approved":
+            try:
+                from senaite.pfas import worksheet_criteria_snapshot
+                worksheet_criteria_snapshot.freeze_resolved_criteria(
+                    self._portal(), ws, self._linked_batch(ws),
+                    self.batch_method(), self._batch_matrix())
+            except Exception as exc:                        # noqa: BLE001
+                logger.error("criteria-freeze: study worksheet %s: %s", ws.getId(), exc)
+        self._audit(ws)
+        return self._redirect_with_msg(
+            "batch_approved" if step == "approved" else "submitted_for_review", "ok")
+
     def _handle_reject(self):
         if not self.is_manager():
             return self._redirect_with_msg("permission_denied", "error")
@@ -3855,6 +3902,12 @@ class PFASDataReviewView(BrowserView):
             return self._redirect_with_msg("no_worksheet", "error")
         if self.ws_state() != "to_be_verified":
             return self._redirect_with_msg("wrong_state", "error")
+        if self._study_review(ws):
+            cl = self._get_checklist(ws)
+            cl["submitted_by"] = cl["submitted_at"] = None
+            self._save_checklist(ws, cl)
+            self._audit(ws)
+            return self._redirect_with_msg("batch_rejected", "ok")
         wf_tool = getToolByName(self.context, "portal_workflow")
         try:
             wf_tool.doActionFor(ws, "reject")

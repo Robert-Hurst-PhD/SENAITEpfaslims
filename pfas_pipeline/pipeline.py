@@ -864,6 +864,7 @@ def run_pipeline(
     dilution_map = {}
     spike_map = {}
     field_blanks, field_duplicates, trip_blanks = [], [], []
+    mxb_references = {}
     logged_amounts = {}
     if senaite is not None and not senaite_batch_id and not batch_id:
         # (the worksheet id is enough: it is the extraction batch; D1 -- the
@@ -897,6 +898,9 @@ def run_pipeline(
         field_duplicates = sorted(k for k, v in member_map.items() if (v or {}).get("field_qc") == "FD")
         trip_blanks = sorted(k for k, v in member_map.items() if (v or {}).get("field_qc") == "TB")
         set_member_roles(run_roles)
+        # a matrix blank's lot reference values (Matrix blanks)
+        mxb_references = dict((k, v["reference"]) for k, v in member_map.items()
+                              if (v or {}).get("reference"))
         # a re-injection replaces the injection it repeats
         # (only where the re-injection is among the rows: a run uploaded
         # without it keeps the original)
@@ -1007,6 +1011,7 @@ def run_pipeline(
         field_blanks=field_blanks,
         field_duplicates=field_duplicates,
         trip_blanks=trip_blanks,
+        mxb_references=mxb_references,
         # the marked blank AS RUN: a re-injection carries the mark and the
         # original it replaced is no longer among the rows
         subtraction_blank=next((k for k, v in sorted(member_map.items())
@@ -1033,13 +1038,8 @@ def run_pipeline(
     for reason in _shape_problems(planned, rows, spike_map):
         batch.unconfigured.append({"qc_type": _SHAPE, "analyte": "", "reason": reason,
                                    "method_id": method_id})
-    # the instrument's clock against the run's order, planned or not: held
-    # for a reviewer like a plan difference (CCVs and samples stamped before
-    # their calibrators were bracketed and passed as if in order)
-    from .run_shape import time_order_problems as _time_problems
-    for reason in _time_problems(rows, lambda n: classify_injection(n, dilution_map)):
-        batch.unconfigured.append({"qc_type": _SHAPE, "analyte": "", "reason": reason,
-                                   "method_id": method_id})
+    # the instrument's clock against the run's order: judged in the queue
+    # (run_queue 9a) as a bracketing failure of each injection out of order
     # After the engine, so the flag informs the reviewer and changes no
     # automatic verdict: these were corrected with the NOMINAL factor.
     batch.correction_fallbacks = list(correction_fallbacks)

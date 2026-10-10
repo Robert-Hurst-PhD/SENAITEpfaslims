@@ -173,7 +173,8 @@ class PFASControlChartView(BrowserView):
                     instrument_id=self.selected_instrument(), limit=self.selected_limit(),
                     include_superseded=self.show_history(),
                     date_from=self.selected_date_from() or None,
-                    date_to=self.selected_date_to() or None)
+                    date_to=self.selected_date_to() or None,
+                    exclude_batches=self._study_hidden())
             except Exception as e:                          # noqa: BLE001
                 logger.error("stack get_chart_data %s: %s", a, e)
                 rows = []
@@ -438,6 +439,19 @@ class PFASControlChartView(BrowserView):
 
     # ── Chart data builder ───────────────────────────────────────────────
 
+    def _study_hidden(self):
+        """Worksheets of studies not opted into the charts."""
+        if not hasattr(self, "_hidden"):
+            from bika.lims import api
+            from senaite.pfas import study_records
+            try:
+                self._hidden = study_records.chart_hidden(
+                    study_records.load(api.get_portal()))
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("study runs not hidden: %s", exc)
+                self._hidden = set()
+        return self._hidden
+
     def _build_chart_dict(self):
         qc_type     = self.selected_qc_type()
         analyte     = self.selected_analyte()
@@ -467,6 +481,7 @@ class PFASControlChartView(BrowserView):
                 include_superseded=history,
                 date_from=date_from,
                 date_to=date_to,
+                exclude_batches=self._study_hidden(),
             )
         except Exception as e:
             logger.error("get_chart_data: %s", e)

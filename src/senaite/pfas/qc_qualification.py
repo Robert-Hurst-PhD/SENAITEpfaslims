@@ -142,9 +142,13 @@ def reported_keyword(analyte, keyword_of):
     return (keyword_of or {}).get(name) or (keyword_of or {}).get(analyte) or name
 
 
+# field QC that travels with a CoC's samples: its qualifier belongs on them
+COC_BLANKS = ("FRB", "TB")
+
+
 def applies_to_coc(frb_uids, frb_cocs, sample_uid, sample_coc):
-    """Whether a field reagent blank's qualifier belongs on this sample: the
-    other samples of the FRB's CoC. An FRB whose CoC
+    """Whether a field reagent (or trip) blank's qualifier belongs on this
+    sample: the other samples of the blank's CoC. An FRB whose CoC
     is not known qualifies every sample of the run -- the conservative
     reading -- and never itself (its detection is the finding)."""
     if sample_uid in (frb_uids or ()):
@@ -239,6 +243,9 @@ FAILURE_TYPES = [
     # blocks: the samples of its CoC. "B" is the
     # code the EDD already emits for blank contamination.
     ("field_blank",  u"Field reagent blank detection",       QUALIFY, u"B"),
+    # a trip blank travels with the samples too: the same treatment (lab,
+    # 2026-10-09)
+    ("trip_blank",   u"Trip blank detection",                QUALIFY, u"B"),
 ]
 
 FAILURE_LABELS = dict((k, label) for k, label, _d, _c in FAILURE_TYPES)
@@ -282,6 +289,13 @@ DEFAULT_LIBRARY = {
                      u"blank limit. Contamination during sampling or "
                      u"transport cannot be excluded, and the affected "
                      u"results may be biased high.",
+    },
+    "trip_blank": {
+        "statement": u"The affected analytes were detected in the trip "
+                     u"blank shipped with these samples above the blank "
+                     u"limit. Contamination during transport or storage "
+                     u"cannot be excluded, and the affected results may be "
+                     u"biased high.",
     },
     "surrogate": {
         "statement": u"Surrogate recovery for the affected analytes fell "

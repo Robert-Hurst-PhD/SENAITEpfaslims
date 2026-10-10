@@ -108,6 +108,11 @@ class PFASExtractionBatchView(BrowserView):
         return [m for m in self.members() if m.get("role") == u"LFSM"]
 
     def plan(self):
+        # a study batch holds its part's replicates (made when the part was
+        # assigned) and owes no routine QC
+        from senaite.pfas import study_runs
+        if study_runs.load_run(self.context) is not None:
+            return {}
         n = len(self.sample_members())
         return eb.plan_qc(self.profile(), {}, n)
 

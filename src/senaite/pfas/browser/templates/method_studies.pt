@@ -17,6 +17,21 @@
 
     <!-- the list and a new study -->
     <tal:list tal:condition="not:rec">
+      <section class="bench-block" tal:define="due view/mdl_due" tal:condition="due">
+        <h2 class="bench-h">MDL verification due</h2>
+        <table class="pfas-table">
+          <thead><tr><th>Method</th><th>Matrix</th><th>Last approved</th><th>Due by</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="d due">
+              <td tal:content="d/method">EPA_537_1</td>
+              <td tal:content="d/matrix">Drinking Water</td>
+              <td tal:content="d/approved">2025-08-15</td>
+              <td><span tal:content="d/due">2026-09-15</span>
+                <span class="badge badge-expired" tal:condition="d/overdue">Overdue</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
       <section class="bench-block">
         <table class="pfas-table" tal:condition="view/listed">
           <thead><tr><th>Study</th><th>Kind</th><th>Method</th><th>Matrix</th><th>Status</th><th>Approved</th><th></th></tr></thead>
@@ -142,8 +157,18 @@
                 <th>Worksheets</th><td tal:content="python:u', '.join(view.all_worksheets()) or u'\u2014'">WS</td></tr>
             <tr><th>Status</th><td tal:content="rec/status">draft</td>
                 <th>Approved</th><td tal:content="python:u'%s %s' % (rec.get('approved_by') or u'', rec.get('approved_at') or u'')">by</td></tr>
+            <tr><th>Control charts</th>
+                <td colspan="3" tal:content="python:u'its runs are included' if rec.get('in_charts') else u'its runs are kept out'">kept out</td></tr>
           </tbody>
         </table>
+        <form method="post" class="form-actions" tal:condition="can_approve"
+              tal:attributes="action string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="id" tal:attributes="value rec/id" />
+          <input type="hidden" name="in_charts" tal:attributes="value python:u'0' if rec.get('in_charts') else u'1'" />
+          <button class="btn-sm" type="submit" name="action" value="charts"
+                  tal:content="python:u'Keep its runs out of the charts' if rec.get('in_charts') else u'Include its runs in the charts'">Include</button>
+        </form>
         <a class="btn-sm btn-secondary" target="_blank"
            tal:attributes="href string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}&amp;pdf=1">Packet PDF</a>
         <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-method-studies">All studies</a>

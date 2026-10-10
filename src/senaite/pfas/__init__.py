@@ -11,3 +11,5 @@ messageFactory = MessageFactory(PRODUCT_NAME)
 
 def initialize(context):
     logger.info("*** Initializing senaite.pfas ***")
+    from senaite.pfas import log_filters
+    log_filters.install()

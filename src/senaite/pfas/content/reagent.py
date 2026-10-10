@@ -30,6 +30,8 @@ STATUS_QUARANTINE = u"quarantine"
 # supplier. The distinction is which one the bench selected, not what it is
 # called.
 CATEGORY_INHOUSE_WATER = u"Reagent Water — in-house Type 1"
+# purchased reagent water a study may be made in (lab, 2026-10-09)
+CATEGORY_PURCHASED_WATER = u"Reagent Water — purchased"
 # what a matrix blank is made from; its assigned levels annotate the lot
 # (matrix_blank.py)
 CATEGORY_REFERENCE = u"Standard / Reference Material"
@@ -43,6 +45,7 @@ REAGENT_CATEGORIES = [
     u"Acid / Base",
     u"Salt",
     CATEGORY_INHOUSE_WATER,
+    CATEGORY_PURCHASED_WATER,
     u"Consumable",              # tubes, vials, syringes, filters: by lot
     u"Other Reagent",
 ]

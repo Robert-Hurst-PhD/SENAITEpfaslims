@@ -179,7 +179,15 @@ class PFASBlankHistoryView(BrowserView):
 
     def all_runs(self):
         if not hasattr(self, "_runs"):
-            self._runs = blank_data()
+            from bika.lims import api
+            from senaite.pfas import study_records
+            try:
+                hidden = study_records.chart_hidden(study_records.load(api.get_portal()))
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("study runs not hidden: %s", exc)
+                hidden = set()
+            # study runs stay out unless their study opted in
+            self._runs = [r for r in blank_data() if r.get("batch_id") not in hidden]
         return self._runs
 
     # each choice is derived from the others; unmemoised, one page computed

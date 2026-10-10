@@ -373,6 +373,9 @@ class Batch:
     # trip blanks (the CoC's Field QC): client samples judged against the
     # method's own trip blank limit, never another blank's
     trip_blanks:        list                 = field(default_factory=list)
+    # {matrix-blank injection: {"levels": {analyte: value}, "unit"}}: its
+    # lot's reference values (Matrix blanks)
+    mxb_references:     dict                 = field(default_factory=dict)
     # the method blank the extraction batch marks for subtraction and the
     # "< LOD" comparison; "" = none marked
     subtraction_blank:  str                  = ""

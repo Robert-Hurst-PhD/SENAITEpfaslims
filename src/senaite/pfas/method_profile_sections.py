@@ -423,9 +423,15 @@ def read_matrices(profile):
     return [{"name": m,
              "aliases": u", ".join(aliases.get(m) or []),
              "unit": units.get(m) or None,
-             "holding_days": holding.get(m),
+             "holding_days": None if _none_set(holding.get(m)) else holding.get(m),
+             "holding_none": _none_set(holding.get(m)),
              "extract_holding_days": extract.get(m)}
             for m in profile.get("supported_matrices") or []]
+
+
+def _none_set(value):
+    """The method sets no holding time (holding_time.NONE_SET)."""
+    return isinstance(value, (type(u""), type(""))) and value.strip().lower() == u"none"
 
 
 def _set(profile, key, value):
@@ -446,7 +452,9 @@ def write_matrices(profile, rows):
         if r.get("unit"):
             units[r["name"]] = r["unit"]
         days = r.get("holding_days")
-        if days is not None and days == int(days):
+        if r.get("holding_none"):
+            days = u"none"           # the method sets none: not applicable
+        elif days is not None and days == int(days):
             days = int(days)
         # Kept as an explicit None: the matrix is listed as deliberately unset,
         # and the review refuses to judge rather than passing it.
@@ -523,6 +531,7 @@ MATRICES = cf.Collection(
         cf.Field("unit", u"Reporting Unit", kind=cf.CHOICE, choices=unit_choices),
         cf.Field("holding_days", u"Holding Time (days)", greater_than=0,
                  placeholder=u"not set"),
+        cf.Field("holding_none", u"Method sets no holding time", kind=cf.BOOL),
         cf.Field("extract_holding_days", u"Extract Holding Time (days)", greater_than=0,
                  placeholder=u"not set"),
     ],
@@ -809,6 +818,19 @@ BLANK_LIMITS = cf.Table(
              cf.Field("fails_at_limit", u"Fails at the limit", kind=cf.BOOL)],
     rows=blank_limit_rows, read=read_blank_limits, write=write_blank_limits,
     row_heading=u"Blank")
+
+# A matrix blank follows its blank limit (above). Where its lot carries
+# reference (assigned) values, the lab may judge it as a recovery against
+# them with the LFSM recovery tolerances instead (lab, 2026-10-09).
+MATRIX_BLANKS = cf.Section(
+    id=u"mxb", title=u"Matrix blanks", base=(),
+    groups=[(u"Matrix blanks", [
+        cf.Field("mxb_reference_recovery",
+                 u"Where the lot has reference values, judge recovery against the LFSM recovery tolerances",
+                 kind=cf.BOOL,
+                 help=u"Off, or no reference value for an analyte in the result's unit: "
+                      u"judged against the matrix blank limit."),
+    ])])
 
 # ── EIS limits (EPA 1633A only) ──────────────────────────────────────────────
 # eis_overrides: [{"analyte", "recovery_min", "recovery_max"}], keyed by EPA's
@@ -1674,7 +1696,7 @@ SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, 
                                     SURROGATE_SCOPE, RPD_BASIS,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
                                     REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS,
-                                    EXTRACTION_LABELS, EXTRACTION_BATCH, BLANK_LIMITS] +
+                                    EXTRACTION_LABELS, EXTRACTION_BATCH, BLANK_LIMITS, MATRIX_BLANKS] +
                 list(SPIKE_LEVELS.values()))
 
 
