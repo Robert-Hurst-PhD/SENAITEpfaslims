@@ -1081,6 +1081,10 @@ def migrate_profile_models(portal):
         p = epa537_standards.seed_qcs(profile, method_id) or p
         p = epa537_standards.seed_extract_holding(profile, method_id) or p
         p = epa537_standards.seed_bracket_rpd(profile, method_id) or p
+        # EPA 1633A: the ICV judged with the CV / CCV window (§14.3.3), once
+        from senaite.pfas import epa1633a_seeds
+        p = epa1633a_seeds.seed_icv_as_ccv(profile, method_id) or p
+        p = epa1633a_seeds.seed_lab_spike_values(profile, method_id) or p
         if a or b or c or d or e or f or g or h or i or j or k or l or m or n or o or p:
             save_profile(portal, method_id, profile)
             changed.append(method_id)

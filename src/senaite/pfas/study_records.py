@@ -79,7 +79,9 @@ def new(records, kind, method, matrix, by, at, **params):
            "worksheets": [], "levels": [], "fortified": None, "since": u"", "until": u"",
            "title": u"", "reference_materials": [], "pt": {},
            # an IDC: whose, and the typed peak asymmetry (idc.py)
-           "analyst": u"", "idc": {}}
+           "analyst": u"", "idc": {},
+           # a designed study: its template's copy and what is typed / judged
+           "design": None, "entries": {}}
     rec.update(dict((k, v) for k, v in params.items() if k in rec or k in ("title",)))
     return rec
 

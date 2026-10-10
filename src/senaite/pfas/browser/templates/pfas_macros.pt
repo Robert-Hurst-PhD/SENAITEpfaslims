@@ -411,6 +411,10 @@
     .field-grid legend { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body);
                          padding: 0; margin-bottom: 4px; }
     .field-grid .cf-chips .cf-chip { flex-direction: row; }
+    /* one element of a designed study (Study Designer) */
+    fieldset.study-element { border: 1px solid var(--s-border); border-radius: 6px;
+                             padding: var(--sp-3) var(--sp-4); margin: var(--sp-3) 0; }
+    fieldset.study-element > legend { font-weight: var(--fw-heading); padding: 0 var(--sp-2); }
     /* a record's form, opened under its row across the table */
     .pfas-table tr.row-detail td { padding-top: 0; }
     .pfas-table tbody tr.row-detail:hover td { background: none; }

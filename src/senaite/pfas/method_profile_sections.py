@@ -632,6 +632,31 @@ def matrix_factor_rows(profile):
     return _one_group(u"mf", u"Matrix adjustment"), rows
 
 
+def nominal_amount_rows(profile):
+    rows = [{"key": (m,), "group": u"nom", "label": m}
+            for m in profile.get("supported_matrices") or []]
+    return _one_group(u"nom", u"Nominal amount"), rows
+
+
+def read_nominal_amounts(profile):
+    return dict(((m,), dict(v)) for m, v in (profile.get("nominal_amounts") or {}).items()
+                if isinstance(v, dict))
+
+
+def write_nominal_amounts(profile, updates, env=None):
+    """{matrix: {"amount", "unit"}}; a matrix with no amount has no row."""
+    out = dict(profile.get("nominal_amounts") or {})
+    for (m,), vals in updates.items():
+        amount, unit = vals.get(("amount",)), vals.get(("unit",))
+        if amount is None:
+            out.pop(m, None)
+        else:
+            out[m] = {"amount": amount, "unit": unit or u"g"}
+    if out or "nominal_amounts" in profile:
+        profile["nominal_amounts"] = out
+    return profile
+
+
 def read_matrix_factors(profile):
     out = {}
     for e in profile.get("matrix_factors") or []:
@@ -667,6 +692,12 @@ SAMPLE_CORRECTION = cf.Section(
                           (u"lims", u"Back-calculated in the LIMS: final volume / sample amount, per sample")],
                  help=u"Uses each sample's logged amount and extract volume; without both, "
                       u"the nominal factor applies and the sample is flagged."),
+        # lab, 2026-10-10: either; matters only when the LIMS corrects per sample
+        cf.Field("spike_basis", u"Spike levels are entered", kind=cf.CHOICE, blank=u"remove",
+                 placeholder=u"After the adjustment: used as entered",
+                 choices=[(u"before", u"Before the adjustment: scaled by nominal / actual amount")],
+                 help=u"Before: each spiked portion's expected level is scaled by the "
+                      u"matrix's nominal amount (below) over the portion's actual amount."),
     ]), (u"Method blank", [
         # a per-method switch, off by default (EPA 537.1 does
         # not subtract); off, a result at or below the blank reads "< LOD"
@@ -739,6 +770,14 @@ MATRIX_FACTORS = cf.Table(
     id=u"mf", title=u"Matrix Adjustment Factors", base=("matrix_factors",),
     columns=[cf.Field("factor", u"Factor", greater_than=0, placeholder=u"1.0")],
     rows=matrix_factor_rows, read=read_matrix_factors, write=write_matrix_factors,
+    row_heading=u"Sample Type (core)")
+
+# the test portion each matrix's spike levels assume (spike basis "before")
+NOMINAL_AMOUNTS = cf.Table(
+    id=u"nom", title=u"Nominal sample amount", base=("nominal_amounts",),
+    columns=[cf.Field("amount", u"Amount", greater_than=0, placeholder=u"not set"),
+             cf.Field("unit", u"Unit", kind=cf.CHOICE, choices=[(u"g", u"g"), (u"mL", u"mL")])],
+    rows=nominal_amount_rows, read=read_nominal_amounts, write=write_nominal_amounts,
     row_heading=u"Sample Type (core)")
 
 # ── Blank limits: the most each blank may hold, x RL ─────
@@ -1692,7 +1731,7 @@ def apply_qc_toggles(profile, offered, enabled):
 PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
 
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, QC_COMPOSITION, REPORTING_LIMITS, MATRICES,
-                                    SALT, SAMPLE_CORRECTION, SAMPLE_RECEIPT, QC_NAME_CODES, MATRIX_FACTORS, EIS_GRID, SURROGATE_MAP,
+                                    SALT, SAMPLE_CORRECTION, NOMINAL_AMOUNTS, SAMPLE_RECEIPT, QC_NAME_CODES, MATRIX_FACTORS, EIS_GRID, SURROGATE_MAP,
                                     SURROGATE_SCOPE, RPD_BASIS,
                                     LABELLED_STANDARDS, ISOMERS, RECOVERY_TIERS, DUP_RPD,
                                     REPORT_FORMAT, ACTION_LEVELS, GROUPS, LFSMD_RPD, LFB_TIERS,

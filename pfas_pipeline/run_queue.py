@@ -324,6 +324,19 @@ class RunQueue:
         return sum(len(v) for v in owed.values())
 
     # ── automatic evaluation ──────────────────────────────────────────────────
+    def _scaled_spike(self, inj, spike):
+        """(expected spike, problem). Spike levels entered before the amount
+        adjustment are scaled by the portion's nominal / actual amount; with
+        no ratio (no nominal amount, no recorded amount) it is not judged."""
+        if spike is None or getattr(self.batch, "spike_basis", "") != "before":
+            return spike, ""
+        ratio = (getattr(self.batch, "spike_scales", None) or {}).get(inj)
+        if ratio is None:
+            return None, ("{0}: spike levels are entered before the amount adjustment, but "
+                          "the portion's amount or the matrix's nominal amount (Sample "
+                          "correction) is not recorded".format(inj))
+        return spike * ratio, ""
+
     def _mxb_by_reference(self, profile, inj, analyte, row, matrix, flags_by_injection, _record_gap):
         """A matrix blank whose lot carries a reference value for `analyte`,
         in a method that judges it so (Matrix blanks): its recovery against
@@ -759,6 +772,10 @@ class RunQueue:
                     if spike_val is None:
                         spike_val, spike_units = profile.resolve_spike(
                             "LFSM", level_label, matrix=matrix)
+                    spike_val, scale_problem = self._scaled_spike(lfsm_inj, spike_val)
+                    if scale_problem:
+                        unevaluated_lfsm[lfsm_inj] = scale_problem
+                        continue
                     if spike_val is None or spike_val == 0:
                         logger.info("No spike level for %s — LFSM recovery "
                                     "stays pending", lfsm_inj)
@@ -1173,6 +1190,10 @@ class RunQueue:
                 spike, spike_unit = _spike_amount(pedigree)
                 if spike is None and level:
                     spike, spike_unit = profile.resolve_spike(qc, level, matrix=_bmatrix)
+                spike, scale_problem = self._scaled_spike(inj, spike)
+                if scale_problem:
+                    _record_gap(qc, "", UnconfiguredCriterion(scale_problem))
+                    continue
                 if spike in (None, 0):
                     _record_gap(qc, "", UnconfiguredCriterion(
                         "{0}: {1} recovery not judged -- {2}".format(

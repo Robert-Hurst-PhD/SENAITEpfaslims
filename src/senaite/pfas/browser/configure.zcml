@@ -1029,6 +1029,12 @@
       permission="zope2.View"
       />
   <browser:page
+      name="pfas-study-designer"
+      for="*"
+      class=".study_designer.PFASStudyDesignerView"
+      permission="zope2.View"
+      />
+  <browser:page
       name="pfas-vocabularies"
       for="*"
       class=".vocab_editor.PFASVocabulariesView"

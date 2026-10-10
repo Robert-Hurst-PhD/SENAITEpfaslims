@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Study Designer</title>
+  <metal:fill fill-slot="header-title">Study Designer</metal:fill>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-method-studies">Method Studies</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body" tal:define="purl view/portal_url; t view/current; mgr view/can_configure">
+
+    <div class="alert alert-success" tal:condition="request/saved|nothing">Saved.</div>
+    <div class="alert alert-danger" tal:repeat="e view/errors" tal:content="e">error</div>
+
+    <!-- the list -->
+    <tal:list tal:condition="not:t">
+      <table class="pfas-table" tal:condition="view/templates">
+        <thead><tr><th>Template</th><th>Method</th><th>Matrix</th><th>Elements</th><th></th></tr></thead>
+        <tbody>
+          <tr tal:repeat="x view/templates">
+            <td tal:content="x/name">FDA IDC</td>
+            <td tal:content="x/method">FDA_32PFAS</td>
+            <td tal:content="python:x.get('matrix') or u'any'">Eggs</td>
+            <td tal:content="python:len(x.get('elements') or [])">3</td>
+            <td class="row-actions-cell"><div class="row-actions">
+              <a class="btn-sm btn-primary" tal:attributes="href string:${purl}/@@pfas-study-designer?id=${x/id}">Edit</a>
+              <form method="post" tal:condition="mgr" tal:attributes="action string:${purl}/@@pfas-study-designer">
+                <input tal:replace="structure context/@@authenticator/authenticator" />
+                <input type="hidden" name="id" tal:attributes="value x/id" />
+                <button class="btn-sm btn-danger" type="submit" name="action" value="delete"
+                        tal:attributes="aria-label string:Delete ${x/name}">Delete</button>
+              </form>
+            </div></td>
+          </tr>
+        </tbody>
+      </table>
+      <form method="post" tal:condition="mgr" tal:attributes="action string:${purl}/@@pfas-study-designer">
+        <input tal:replace="structure context/@@authenticator/authenticator" />
+        <div class="section-group-hdr">New template</div>
+        <div class="field-grid page-body-narrow">
+          <label>Name <input type="text" name="t__name" /></label>
+          <label>Method
+            <select name="t__method">
+              <option tal:repeat="m view/methods" tal:attributes="value m" tal:content="m">FDA_32PFAS</option>
+            </select></label>
+        </div>
+        <div class="form-actions"><button class="btn btn-primary" type="submit" name="action" value="new">Create template</button></div>
+      </form>
+    </tal:list>
+
+    <!-- one template -->
+    <form method="post" tal:condition="t" tal:attributes="action string:${purl}/@@pfas-study-designer?id=${t/id}">
+      <input tal:replace="structure context/@@authenticator/authenticator" />
+      <input type="hidden" name="id" tal:attributes="value t/id" />
+      <ul class="bench-alerts" tal:define="probs view/problems" tal:condition="probs">
+        <li tal:repeat="p probs" tal:content="p">problem</li>
+      </ul>
+      <fieldset class="pfas-ro" tal:attributes="disabled python:None if mgr else 'disabled'">
+      <div class="field-grid page-body-narrow">
+        <label>Name <input type="text" name="t__name" tal:attributes="value t/name" /></label>
+        <label>Method
+          <select name="t__method">
+            <option tal:repeat="m view/methods" tal:content="m"
+                    tal:attributes="value m; selected python:'selected' if m == t.get('method') else None">FDA_32PFAS</option>
+          </select></label>
+        <label>Matrix
+          <select name="t__matrix">
+            <option value="">Any</option>
+            <option tal:repeat="m python:view.matrices(t.get('method'))" tal:content="m"
+                    tal:attributes="value m; selected python:'selected' if m == t.get('matrix') else None">Eggs</option>
+          </select></label>
+      </div>
+
+      <tal:el tal:repeat="el python:t.get('elements') or []">
+      <fieldset class="study-element" tal:define="p string:e__${el/id}__">
+        <legend tal:content="python:u'%s: %s' % (el['id'], dict(view.types())[el['type']])">E1</legend>
+        <div class="field-grid">
+          <label class="field-wide">Name <input type="text" tal:attributes="name string:${p}name; value el/name" /></label>
+
+          <tal:r tal:condition="python:el['type'] == 'replicates'"><tal:s tal:define="s el/stats">
+            <label>Role
+              <select tal:attributes="name string:${p}role">
+                <option tal:repeat="r view/roles" tal:content="r"
+                        tal:attributes="value r; selected python:'selected' if r == el.get('role') else None">LFB</option>
+              </select></label>
+            <label>Sources <input type="number" min="1" step="1" tal:attributes="name string:${p}sources; value el/sources" /></label>
+            <label>Levels (comma-separated, matrix unit)
+              <input type="text" tal:attributes="name string:${p}levels; value python:view.levels_text(el)" /></label>
+            <label>Replicates per source and level
+              <input type="number" min="1" step="1" tal:attributes="name string:${p}replicates; value python:view.fmt(el.get('replicates'))" /></label>
+            <label class="field-check"><input type="checkbox" value="on"
+                   tal:attributes="name string:${p}recovery_on; checked python:'checked' if s['recovery']['on'] else None" />
+              Mean recovery per level</label>
+            <label>Lowest recovery (%) <input type="number" step="any" tal:attributes="name string:${p}recovery_min; value python:view.fmt(s['recovery'].get('min'))" /></label>
+            <label>Highest recovery (%) <input type="number" step="any" tal:attributes="name string:${p}recovery_max; value python:view.fmt(s['recovery'].get('max'))" /></label>
+            <label class="field-check"><input type="checkbox" value="on"
+                   tal:attributes="name string:${p}rsd_within_on; checked python:'checked' if s['rsd_within']['on'] else None" />
+              RSD within each source</label>
+            <label>Highest RSD within a source (%) <input type="number" step="any" tal:attributes="name string:${p}rsd_within_max; value python:view.fmt(s['rsd_within'].get('max'))" /></label>
+            <label class="field-check"><input type="checkbox" value="on"
+                   tal:attributes="name string:${p}rsd_between_on; checked python:'checked' if s['rsd_between']['on'] else None" />
+              RSD between sources, per level</label>
+            <label>Highest RSD between sources (%) <input type="number" step="any" tal:attributes="name string:${p}rsd_between_max; value python:view.fmt(s['rsd_between'].get('max'))" /></label>
+            <label>RSD between sources of
+              <select tal:attributes="name string:${p}rsd_between_basis">
+                <option value="means" tal:attributes="selected python:'selected' if s['rsd_between'].get('basis') != 'pooled' else None">the source means</option>
+                <option value="pooled" tal:attributes="selected python:'selected' if s['rsd_between'].get('basis') == 'pooled' else None">all replicates pooled</option>
+              </select></label>
+          </tal:s></tal:r>
+
+          <tal:m tal:condition="python:el['type'] == 'mdl'">
+            <label>Spiked replicates
+              <select tal:attributes="name string:${p}spike_role">
+                <option tal:repeat="r view/roles" tal:content="r"
+                        tal:attributes="value r; selected python:'selected' if r == el.get('spike_role') else None">LFB</option>
+              </select></label>
+            <label>Blanks
+              <select tal:attributes="name string:${p}blank_role">
+                <option tal:repeat="r view/roles" tal:content="r"
+                        tal:attributes="value r; selected python:'selected' if r == el.get('blank_role') else None">MB</option>
+              </select></label>
+          </tal:m>
+
+          <tal:q tal:condition="python:el['type'] == 'qualitative'">
+            <label class="field-wide">What the reviewer checks
+              <textarea rows="3" tal:attributes="name string:${p}instructions" tal:content="el/instructions"></textarea></label>
+            <label>Files accepted <input type="text" tal:attributes="name string:${p}accept; value el/accept" /></label>
+          </tal:q>
+
+          <tal:y tal:condition="python:el['type'] == 'typed'">
+            <label>How many values <input type="number" min="1" step="1" tal:attributes="name string:${p}count; value el/count" /></label>
+            <label>Unit <input type="text" tal:attributes="name string:${p}unit; value el/unit" /></label>
+            <label>Lowest <input type="number" step="any" tal:attributes="name string:${p}min; value python:view.fmt(el.get('min'))" /></label>
+            <label>Highest <input type="number" step="any" tal:attributes="name string:${p}max; value python:view.fmt(el.get('max'))" /></label>
+            <label class="field-check"><input type="checkbox" value="on"
+                   tal:attributes="name string:${p}upload; checked python:'checked' if el.get('upload') else None" />
+              Evidence file required</label>
+          </tal:y>
+        </div>
+        <div class="form-actions">
+          <button class="btn-sm btn-secondary" type="submit" name="action"
+                  tal:attributes="value string:remove:${el/id}; aria-label string:Remove ${el/name}">Remove element</button>
+        </div>
+      </fieldset>
+      </tal:el>
+
+      <div class="field-grid page-body-narrow">
+        <label>Add an element
+          <select name="new_type">
+            <option value="">Choose</option>
+            <option tal:repeat="ty view/types" tal:attributes="value python:ty[0]" tal:content="python:ty[1]">Replicates</option>
+          </select></label>
+      </div>
+      <div class="form-actions">
+        <button class="btn-sm btn-secondary" type="submit" name="action" value="add">Add element</button>
+        <button class="btn btn-primary" type="submit" name="action" value="save">Save template</button>
+        <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-study-designer">All templates</a>
+      </div>
+      </fieldset>
+    </form>
+  </div>
+  </div>
+</html>

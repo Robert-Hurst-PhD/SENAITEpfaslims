@@ -31,7 +31,8 @@ from senaite.pfas.browser.perms import TIER_CONFIG, GateMixin, deny_gated_action
 
 logger = logging.getLogger("senaite.pfas.browser.method_studies")
 
-GATES = {"approve": TIER_CONFIG, "assign": TIER_CONFIG, "charts": TIER_CONFIG}
+GATES = {"approve": TIER_CONFIG, "assign": TIER_CONFIG, "charts": TIER_CONFIG,
+         "delete_draft": TIER_CONFIG}
 QC_DB = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
 PDF_DIR = os.path.join(os.path.dirname(QC_DB), "studies")
 
@@ -66,6 +67,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             return self._serve_certificate()
         if f.get("asymmetry_pdf") and self.record() is not None:
             return self._serve_asymmetry()
+        if f.get("evidence_file") and self.record() is not None:
+            return self._serve_evidence()
         if self.request.get("REQUEST_METHOD") == "POST":
             action = f.get("action") or u""
             denied = deny_gated_action(self.context, self.request, action, GATES)
@@ -92,6 +95,10 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self._charts()
             elif action == "idc_save":
                 self._save_idc()
+            elif action == "design_entry":
+                self._design_entry()
+            elif action == "delete_draft":
+                return self._delete_draft()
         return self.template()
 
     # ── identity ───────────────────────────────────────────────────────────
@@ -118,9 +125,13 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         return sr.find(self.records(), (self.request.form.get("id") or u"").strip())
 
     def kinds(self):
-        return sd.KINDS
+        """The study kinds, and every template designed in the Study Designer."""
+        from senaite.pfas import study_templates as st
+        return list(sd.KINDS) + [(u"tpl:%s" % t["id"], t["name"]) for t in st.load(self.portal())]
 
-    def kind_label(self, kind):
+    def kind_label(self, kind, rec=None):
+        if kind == "designed":
+            return ((rec or self.record() or {}).get("design") or {}).get("name") or u"Designed study"
         return sd.KIND_LABELS.get(kind, kind)
 
     def methods(self):
@@ -268,8 +279,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         rec = self.record()
         if rec is None:
             return {}
-        if rec.get("kind") == "idc":
-            return {}              # an IDC is read element by element (idc_elements)
+        if rec.get("kind") in ("idc", "designed"):
+            return {}              # read element by element (idc_elements, design_results)
         if rec.get("status") != sr.DRAFT:
             return rec.get("results") or {}
         if rec["kind"] == "pt":
@@ -336,6 +347,137 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                                        self._asymmetry_present(rec)),
             "mrl": idc.per_analyte(self._part_results("mrl", "mrl")),
         }
+
+    # ── a designed study (study_templates) ───────────────────────────────
+    def _design_injections(self, element_key_prefix, role):
+        """[{"source", "level", "values", "batch", "date", "injection"}] of
+        the parts whose cell key starts with `element_key_prefix`, from
+        their reviewed worksheets."""
+        rec = self.record() or {}
+        out = []
+        if not os.path.exists(QC_DB):
+            return out
+        for p in rec.get("parts") or []:
+            if not (p.get("element") or u"").startswith(element_key_prefix):
+                continue
+            ws = sorted(self._reviewed(set(p.get("worksheets") or [])))
+            if not ws:
+                continue
+            conn = sqlite3.connect(QC_DB)
+            try:
+                rows = sd.injections(conn, rec["method"], [p.get("role") or role], batches=ws)
+            finally:
+                conn.close()
+            for r in rows:
+                out.append(dict(r, source=p.get("std_source") or u"", level=p.get("level") or u""))
+        return out
+
+    def _delete_draft(self):
+        """A draft study is removed (an approved one never is); its parts'
+        worksheets stay, as any worksheet does."""
+        rec = self.record()
+        if rec is None or rec.get("status") != sr.DRAFT:
+            self.error = u"Only a draft study is deleted."
+            return self.template()
+        sr.save(self.portal(), [r for r in self.records() if r.get("id") != rec["id"]])
+        # its uploaded evidence goes with it (a draft's files are its own)
+        import shutil
+        d = os.path.join(PDF_DIR, rec["id"])
+        if rec["id"] and os.path.isdir(d):
+            shutil.rmtree(d, ignore_errors=True)
+        self.request.response.redirect("%s/@@pfas-method-studies" % self.portal_url())
+        return u""
+
+    def _design_dir(self, rec, eid):
+        return os.path.join(PDF_DIR, rec["id"], eid)
+
+    def design_files(self, eid):
+        rec = self.record() or {}
+        d = self._design_dir(rec, eid) if rec else u""
+        return sorted(os.listdir(d)) if d and os.path.isdir(d) else []
+
+    def design_results(self):
+        """[(element, result)] in the template's order (frozen at approval)."""
+        from senaite.pfas import study_templates as st
+        rec = self.record() or {}
+        design = rec.get("design") or {}
+        if rec.get("status") != sr.DRAFT:
+            frozen = (rec.get("results") or {}).get("design") or {}
+            return [(el, frozen.get(el["id"]) or {}) for el in design.get("elements") or []]
+        entries = rec.get("entries") or {}
+        out = []
+        for el in design.get("elements") or []:
+            eid = el["id"]
+            if el["type"] == "replicates":
+                res = st.evaluate_replicates(el, self._design_injections(eid + u"|", el.get("role")))
+            elif el["type"] == "mdl":
+                spikes = self._design_injections(eid + u"|spiked", el.get("spike_role"))
+                blanks = self._design_injections(eid + u"|blanks", el.get("blank_role"))
+                res = st.evaluate_mdl(sd.calculate("mdl", spikes, blanks, exclusions=rec.get("exclusions"))
+                                      if spikes else {})
+            elif el["type"] == "qualitative":
+                res = st.evaluate_qualitative(el, entries.get(eid), self.design_files(eid))
+            else:
+                res = st.evaluate_typed(el, entries.get(eid), bool(self.design_files(eid)))
+            out.append((el, res))
+        return out
+
+    def design_overall(self):
+        from senaite.pfas import study_templates as st
+        return st.combine([r.get("verdict") for _el, r in self.design_results()])
+
+    def _design_entry(self):
+        """Upload evidence, type values, or (a manager) judge a qualitative
+        element: one element at a time (`eid`)."""
+        f = self.request.form
+        rec = self.record()
+        if rec is None or rec.get("status") != sr.DRAFT or not rec.get("design"):
+            self.error = u"Only a draft designed study is edited here."
+            return
+        eid = f.get("eid") or u""
+        el = dict((e["id"], e) for e in rec["design"].get("elements") or []).get(eid)
+        if el is None:
+            self.error = u"No such element."
+            return
+        entry = dict((rec.get("entries") or {}).get(eid) or {})
+        upload = f.get("evidence")
+        if upload is not None and getattr(upload, "filename", u""):
+            name = os.path.basename(upload.filename).replace(u" ", u"_")
+            ext = name.rsplit(u".", 1)[-1].lower() if u"." in name else u""
+            allowed = [a.strip().lower().lstrip(u".") for a in (el.get("accept") or u"pdf, png, jpg").split(u",")]
+            if ext not in allowed:
+                self.error = u"%s: only %s files." % (name, u", ".join(allowed))
+                return
+            d = self._design_dir(rec, eid)
+            if not os.path.isdir(d):
+                os.makedirs(d)
+            with open(os.path.join(d, name), "wb") as fh:
+                fh.write(upload.read())
+        if el["type"] == "typed":
+            entry["values"] = [(f.get(u"value.%d" % i) or u"").strip() for i in range(int(el.get("count") or 1))]
+        if el["type"] == "qualitative" and f.get("verdict") in (u"pass", u"fail"):
+            if not self.can_configure():
+                self.error = u"A manager judges the evidence."
+                return
+            entry.update(verdict=f.get("verdict"), note=(f.get("note") or u"").strip(),
+                         by=_user(), at=_now())
+        rec.setdefault("entries", {})[eid] = entry
+        sr.save(self.portal(), self.records())
+        self.message = u"Saved."
+
+    def _serve_evidence(self):
+        rec = self.record()
+        eid, name = self.request.form.get("eid") or u"", os.path.basename(self.request.form.get("file") or u"")
+        path = os.path.join(self._design_dir(rec, eid), name)
+        if not name or not os.path.exists(path):
+            self.request.response.setStatus(404)
+            return u"No such file."
+        with open(path, "rb") as fh:
+            body = fh.read()
+        ctype = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg",
+                 "jpeg": "image/jpeg"}.get(name.rsplit(".", 1)[-1].lower(), "application/octet-stream")
+        self.request.response.setHeader("Content-Type", ctype)
+        return body
 
     def idc_rows(self):
         from senaite.pfas import idc
@@ -417,9 +559,12 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     # ── parts, assigned to analysts ───────────────────────────────────────
     def elements(self):
         rec = self.record() or {}
-        return sru.elements_for(rec.get("kind"))
+        return sru.elements_for(rec.get("kind"), rec)
 
     def element_label(self, element):
+        for e in self.elements():
+            if e[0] == element:
+                return e[1]
         return (sru.ELEMENT.get(element) or (None, element))[1]
 
     def sources(self):
@@ -585,7 +730,23 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
     def _create(self):
         f = self.request.form
         kind, method, matrix = f.get("kind") or u"", f.get("method") or u"", f.get("matrix") or u""
-        if kind not in sd.KIND_LABELS or not method or not matrix:
+        design = None
+        if kind.startswith(u"tpl:"):
+            from senaite.pfas import study_templates as st
+            design = st.find(st.load(self.portal()), kind[4:])
+            if design is None:
+                self.error = u"That template no longer exists."
+                return self.template()
+            probs = st.problems(design)
+            if probs:
+                self.error = u"The template is not finished: %s" % probs[0]
+                return self.template()
+            if design.get("method") != method or (design.get("matrix") and design["matrix"] != matrix):
+                self.error = u"The template is for %s%s." % (design.get("method"),
+                                                            u" / %s" % design["matrix"] if design.get("matrix") else u"")
+                return self.template()
+            kind = u"designed"
+        if kind not in sd.KIND_LABELS and kind != u"designed" or not method or not matrix:
             self.error = u"Choose the kind, method and matrix."
             return self.template()
         if matrix not in (self.profile(method).get("supported_matrices") or []):
@@ -611,6 +772,9 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                      worksheets=ws, since=(f.get("since") or u"").strip(),
                      until=(f.get("until") or u"").strip(), title=(f.get("title") or u"").strip(),
                      fortified=(f.get("fortified") or u"").strip() or None, analyst=analyst)
+        if design is not None:
+            rec["design"] = design                  # a copy: the template may change later
+            rec["title"] = design["name"]
         recs.append(rec)
         sr.save(self.portal(), recs)
         self.request.response.redirect("%s/@@pfas-method-studies?id=%s" % (self.portal_url(), rec["id"]))
@@ -707,6 +871,13 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                 self.error = u"Every element of the IDC must pass before it is approved."
                 return
             results, applied = {"idc": elements}, {}
+        if rec.get("kind") == "designed":
+            from senaite.pfas import study_templates as st
+            res = self.design_results()
+            if st.combine([r.get("verdict") for _el, r in res]) != st.PASS:
+                self.error = u"Every element of the study must pass before it is approved."
+                return
+            results, applied = {"design": dict((el["id"], r) for el, r in res)}, {}
         recs = self.records()
         self.error = sr.approve(recs, rec, results, applied, _user(), _now(),
                                 self.request.form.get("statement") or u"",

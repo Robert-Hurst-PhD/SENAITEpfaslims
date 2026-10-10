@@ -8,6 +8,9 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Method Studies</tal:t>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-study-designer">Study Designer</a>
+  </tal:r>
   <tal:t metal:fill-slot="header-context"><span class="header-badge" tal:define="rec view/record"
          tal:condition="rec" tal:content="rec/id">MS-0001</span></tal:t>
 
@@ -50,7 +53,7 @@
           <tbody>
             <tr tal:repeat="r view/listed">
               <td tal:content="r/id">MS-0001</td>
-              <td tal:content="python:view.kind_label(r['kind'])">MDL</td>
+              <td tal:content="python:view.kind_label(r['kind'], r)">MDL</td>
               <td tal:content="r/method">EPA_537_1</td>
               <td tal:content="r/matrix">Drinking Water</td>
               <td tal:content="r/status">draft</td>
@@ -161,7 +164,7 @@
     <!-- one study -->
     <tal:one tal:condition="rec"><tal:d tal:define="draft python:rec['status'] == 'draft'">
       <section class="bench-block">
-        <h2 class="bench-h" tal:content="python:view.kind_label(rec['kind'])">MDL</h2>
+        <h2 class="bench-h" tal:content="python:view.kind_label(rec['kind'], rec)">MDL</h2>
         <table class="pfas-table">
           <tbody>
             <tr><th>Method</th><td tal:content="rec/method">EPA_537_1</td>
@@ -178,6 +181,12 @@
                 <td colspan="3" tal:content="python:u'its runs are included' if rec.get('in_charts') else u'its runs are kept out'">kept out</td></tr>
           </tbody>
         </table>
+        <form method="post" class="form-actions" tal:condition="python:can_approve and draft"
+              tal:attributes="action string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="id" tal:attributes="value rec/id" />
+          <button class="btn-sm btn-danger" type="submit" name="action" value="delete_draft">Delete this draft</button>
+        </form>
         <form method="post" class="form-actions" tal:condition="can_approve"
               tal:attributes="action string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}">
           <input tal:replace="structure context/@@authenticator/authenticator" />
@@ -253,7 +262,70 @@
         </form>
       </section>
 
-      <section class="bench-block" tal:condition="python:rec['kind'] != 'idc'">
+      <section class="bench-block" tal:condition="python:rec['kind'] == 'designed'"
+               tal:define="ov view/design_overall">
+        <h2 class="bench-h" tal:content="python:view.kind_label('designed', rec)">Designed study</h2>
+        <table class="pfas-table">
+          <tbody><tr><th>Overall</th><td tal:content="ov">not evaluated</td></tr></tbody>
+        </table>
+        <fieldset class="study-element" tal:repeat="er view/design_results">
+          <tal:d tal:define="el python:er[0]; r python:er[1]; v python:r.get('verdict') or u'not evaluated'">
+          <legend tal:content="el/name">Element</legend>
+          <table class="pfas-table"><tbody><tr><th>Verdict</th>
+            <td><span tal:attributes="class python:'badge ' + ('badge-active' if v == 'pass' else 'badge-expired' if v == 'fail' else 'badge-quarantine')"
+                      tal:content="v">pass</span>
+                <span tal:condition="r/reason|nothing" tal:content="r/reason">reason</span></td></tr></tbody></table>
+          <table class="pfas-table" tal:condition="r/rows|nothing">
+            <thead><tr><th>Analyte</th><th>Level</th><th>Statistic</th><th>Value</th><th>Limit</th><th>Verdict</th></tr></thead>
+            <tbody>
+              <tr tal:repeat="row r/rows">
+                <td tal:content="row/analyte">PFOA</td>
+                <td tal:content="row/level">25</td>
+                <td tal:content="row/stat">RSD</td>
+                <td tal:content="python:view.fmt(row['value'])">4.2</td>
+                <td tal:content="python:row['limit'] if row['limit'] not in (None, u'None-None') else u'to be entered'">20</td>
+                <td tal:content="row/verdict">pass</td>
+              </tr>
+            </tbody>
+          </table>
+          <tal:q tal:condition="python:el['type'] in ('qualitative', 'typed')">
+            <blockquote tal:condition="el/instructions|nothing" tal:content="el/instructions">instructions</blockquote>
+            <div class="form-actions">
+              <a tal:repeat="fn python:view.design_files(el['id'])" class="btn-sm btn-secondary" target="_blank"
+                 tal:attributes="href string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}&amp;evidence_file=1&amp;eid=${el/id}&amp;file=${fn}"
+                 tal:content="fn">chromatogram.pdf</a>
+            </div>
+            <form method="post" enctype="multipart/form-data" tal:condition="draft"
+                  tal:attributes="action string:${view/portal_url}/@@pfas-method-studies?id=${rec/id}">
+              <input tal:replace="structure context/@@authenticator/authenticator" />
+              <input type="hidden" name="id" tal:attributes="value rec/id" />
+              <input type="hidden" name="eid" tal:attributes="value el/id" />
+              <div class="field-grid page-body-narrow">
+                <tal:v tal:condition="python:el['type'] == 'typed'"
+                       tal:define="vals python:((rec.get('entries') or {}).get(el['id']) or {}).get('values') or []">
+                  <label tal:repeat="i python:range(int(el.get('count') or 1))">Value <tal:n tal:replace="python:i + 1">1</tal:n>
+                    <input type="number" step="any" tal:attributes="name string:value.${i}; value python:vals[i] if i &lt; len(vals) else u''" /></label>
+                </tal:v>
+                <label class="field-wide">Evidence (<tal:a tal:replace="python:el.get('accept') or u'pdf'">pdf</tal:a>)
+                  <input type="file" name="evidence" /></label>
+                <tal:j tal:condition="python:el['type'] == 'qualitative' and can_approve">
+                  <label>Reviewer's verdict
+                    <select name="verdict">
+                      <option value="">Not judged</option>
+                      <option value="pass">Pass</option>
+                      <option value="fail">Fail</option>
+                    </select></label>
+                  <label>Note <input type="text" name="note" /></label>
+                </tal:j>
+              </div>
+              <div class="form-actions"><button class="btn-sm btn-primary" type="submit" name="action" value="design_entry">Save</button></div>
+            </form>
+          </tal:q>
+          </tal:d>
+        </fieldset>
+      </section>
+
+      <section class="bench-block" tal:condition="python:rec['kind'] not in ('idc', 'designed')">
         <h2 class="bench-h">Results</h2>
         <metal:r use-macro="context/@@pfas-method-study-macros/macros/results" />
       </section>

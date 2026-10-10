@@ -945,6 +945,20 @@ def run_pipeline(
                                      sample_amounts=sample_amounts,
                                      dilutions=dilution_map,
                                      fallbacks=correction_fallbacks)
+    # spike levels entered before the amount adjustment: each spiked
+    # portion's expected level is scaled by nominal / actual amount when its
+    # result is on the actual portion (per-sample correction)
+    from .method_profiles import get_spike_basis, get_nominal_amount, spike_scale
+    spike_basis = get_spike_basis(method_id) if method_id else ""
+    spike_scales = {}
+    if spike_basis == "before" and _get_sample_correction(method_id) in ("lims", "instrument"):
+        nominal, nominal_unit = get_nominal_amount(method_id, matrix)
+        for inj in set(r.injection_name for r in rows):
+            ratio = spike_scale(nominal, nominal_unit, (sample_amounts or {}).get(inj))
+            if ratio is not None:
+                spike_scales[inj] = ratio
+    else:
+        spike_basis = ""
 
 
     # 2. Injection-name check.
@@ -1012,6 +1026,8 @@ def run_pipeline(
         field_duplicates=field_duplicates,
         trip_blanks=trip_blanks,
         mxb_references=mxb_references,
+        spike_basis=spike_basis,
+        spike_scales=spike_scales,
         # the marked blank AS RUN: a re-injection carries the mark and the
         # original it replaced is no longer among the rows
         subtraction_blank=next((k for k, v in sorted(member_map.items())

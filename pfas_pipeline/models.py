@@ -376,6 +376,10 @@ class Batch:
     # {matrix-blank injection: {"levels": {analyte: value}, "unit"}}: its
     # lot's reference values (Matrix blanks)
     mxb_references:     dict                 = field(default_factory=dict)
+    # spike levels entered before the amount adjustment ("before"): each
+    # spiked portion's nominal / actual amount (method_profiles.spike_scale)
+    spike_basis:        str                  = ""
+    spike_scales:       dict                 = field(default_factory=dict)
     # the method blank the extraction batch marks for subtraction and the
     # "< LOD" comparison; "" = none marked
     subtraction_blank:  str                  = ""

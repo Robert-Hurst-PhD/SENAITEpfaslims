@@ -71,7 +71,22 @@ SOURCES = [(WATER_SYSTEM, u"In-house reagent water system"),
 SOURCE_LABELS = dict(SOURCES)
 
 
-def elements_for(kind):
+def _cells(rec):
+    try:
+        from senaite.pfas import study_templates as st
+    except ImportError:                                     # tests: by path
+        import study_templates as st
+    return st.cells((rec or {}).get("design")) if (rec or {}).get("design") else []
+
+
+def elements_for(kind, rec=None):
+    """[(id, label, role, default replicates)]: a designed study's cells
+    (study_templates.cells), else the kind's fixed parts."""
+    cells = _cells(rec)
+    if cells:
+        return [(c["key"], u"%s: %s%s" % (c["name"], u"%s, " % c["source"] if c["source"] else u"",
+                                         c["level"] or u"all"), c["role"], c.get("replicates"))
+                for c in cells]
     return [ELEMENT[e] for e in KIND_ELEMENTS.get(kind, ())]
 
 
@@ -89,6 +104,10 @@ def new_part(rec, element, analyst, analyst_name, level, replicates, source, by,
     """(part, problem). The caller appends the part to rec["parts"]."""
     if rec.get("status") != u"draft":
         return None, u"An approved study is not changed."
+    cells = dict((c["key"], c) for c in _cells(rec))
+    if cells:
+        return _new_cell_part(rec, cells.get(element), analyst, analyst_name, replicates,
+                              source, by, at)
     if element not in KIND_ELEMENTS.get(rec.get("kind"), ()):
         return None, u"This kind of study has no such part."
     if not analyst:
@@ -119,7 +138,35 @@ def new_part(rec, element, analyst, analyst_name, level, replicates, source, by,
         level = u""
     part = {"id": next_part_id(rec.get("parts")), "element": element, "analyst": analyst,
             "analyst_name": analyst_name or analyst, "level": level, "replicates": n,
+            "role": role_for(element, rec.get("method")),
             "source": dict(source), "worksheets": [], "by": by, "at": at}
+    return part, u""
+
+
+def _new_cell_part(rec, cell, analyst, analyst_name, replicates, source, by, at):
+    """A part of a designed study: one cell (element x standard source x
+    level) with the cell's role and level."""
+    if cell is None:
+        return None, u"This study has no such part."
+    if not analyst:
+        return None, u"Choose the analyst who performs it."
+    kind = (source or {}).get("kind")
+    if kind not in SOURCE_LABELS:
+        return None, u"Choose where the study's matrix comes from."
+    if kind != WATER_SYSTEM and not source.get("uid"):
+        return None, u"Choose the lot the replicates are made in."
+    n = replicates if replicates not in (None, u"", "") else cell.get("replicates")
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return None, u"Give the number of replicates."
+    if n < 1:
+        return None, u"At least one replicate."
+    part = {"id": next_part_id(rec.get("parts")), "element": cell["key"], "analyst": analyst,
+            "analyst_name": analyst_name or analyst, "level": cell.get("level") or u"",
+            "replicates": n, "role": cell["role"], "std_source": cell.get("source") or u"",
+            "design_element": cell["element"], "source": dict(source), "worksheets": [],
+            "by": by, "at": at}
     return part, u""
 
 
@@ -136,7 +183,7 @@ def add_reference(rec, source):
 
 def plan(part, method_id):
     """{extraction-batch role: count} for one assignment of the part."""
-    return {role_for(part["element"], method_id): part["replicates"]}
+    return {part.get("role") or role_for(part["element"], method_id): part["replicates"]}
 
 
 def set_levels(members, part):
@@ -145,7 +192,7 @@ def set_levels(members, part):
     out = []
     for m in members:
         m = dict(m)
-        if part.get("level") and m.get("role") == LFB and not m.get("level"):
+        if part.get("level") and m.get("role") == (part.get("role") or LFB) and not m.get("level"):
             m["level"] = part["level"]
         out.append(m)
     return out
@@ -167,7 +214,7 @@ def gate_scope(run, enabled_types):
     method runs them; calibration is gated as for any run. The part's
     replicates are judged by the study, not by the routine recovery or blank
     limits, so their routine verdicts do not hold the run."""
-    role = role_for(run["element"], run["method_id"])
+    role = run.get("role") or role_for(run["element"], run["method_id"])
     required = set([role]) | (set(enabled_types or ()) & set(["CCV"]))
     return required, set([role])
 
@@ -175,6 +222,7 @@ def gate_scope(run, enabled_types):
 def run_record(rec, part):
     """What the study worksheet carries (STUDY_RUN_KEY)."""
     return {"study": rec["id"], "part": part["id"], "element": part["element"],
+            "role": part.get("role") or u"", "std_source": part.get("std_source") or u"",
             "method_id": rec["method"], "matrix": rec["matrix"], "source": part["source"],
             "analyst": part["analyst"], "level": part.get("level") or u""}
 

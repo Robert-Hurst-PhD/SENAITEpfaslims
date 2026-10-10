@@ -1452,6 +1452,40 @@ def get_blank_subtraction(method_id: str) -> bool:
     return bool(data.get("blank_subtraction"))
 
 
+def get_spike_basis(method_id: str) -> str:
+    """"before" when spike levels are entered before the per-sample amount
+    adjustment (scaled by nominal / actual amount), else "" (as entered).
+    Sample correction tab; lab, 2026-10-10."""
+    data = _profile_data_cache.get(method_id, {}) or {}
+    return "before" if data.get("spike_basis") == "before" else ""
+
+
+def get_nominal_amount(method_id: str, matrix: str):
+    """(amount, unit) the matrix's spike levels assume, or (None, "")."""
+    data = _profile_data_cache.get(method_id, {}) or {}
+    v = (data.get("nominal_amounts") or {}).get(matrix) or {}
+    try:
+        amount = float(v.get("amount"))
+    except (TypeError, ValueError):
+        return None, ""
+    return (amount, v.get("unit") or "g") if amount > 0 else (None, "")
+
+
+def spike_scale(nominal, nominal_unit, actual_row):
+    """nominal / actual amount for one spiked portion, or None (no recorded
+    amount, or another unit)."""
+    if not nominal or not actual_row:
+        return None
+    try:
+        actual = float(actual_row.get("amount"))
+    except (TypeError, ValueError):
+        return None
+    unit = (actual_row.get("amount_unit") or "g").strip().lower()
+    if actual <= 0 or unit != (nominal_unit or "g").strip().lower():
+        return None
+    return nominal / actual
+
+
 def get_mxb_reference_recovery(method_id: str) -> bool:
     """Whether a matrix blank whose lot carries reference values is judged as
     a recovery against them with the LFSM recovery tolerances (Method

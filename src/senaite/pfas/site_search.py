@@ -37,7 +37,7 @@ GROUP_LABELS = dict(GROUPS)
 SECTION_PANE = {"rf": "pane-rf", "iso": "pane-iso", "ls": "pane-sur", "sur": "pane-sur",
                 "eis_grid": "pane-eis", "salt": "pane-corr", "scorr": "pane-corr", "rtemp": "pane-mtx", "surscope": "pane-sur", "rpdbasis": "pane-rt", "qcnames": "pane-cal",
                 "mf": "pane-corr", "mtx": "pane-mtx", "rl": "pane-rl", "al": "pane-rl",
-                "qc_comp": "pane-qct", "lbl": "pane-qct", "xbatch": "pane-qct", "blk": "pane-qct", "mxb": "pane-qct", "cal": "pane-cal", "cal_levels": "pane-cal",
+                "qc_comp": "pane-qct", "lbl": "pane-qct", "xbatch": "pane-qct", "blk": "pane-qct", "mxb": "pane-qct", "nom": "pane-corr", "cal": "pane-cal", "cal_levels": "pane-cal",
                 "cal_scale": "pane-cal", "groups": "pane-rt", "tiers": "pane-rt",
                 "tiers_lfb": "pane-rt", "dup": "pane-rt", "lfsmd": "pane-rt"}
 PANE_LABEL = {"pane-toggles": u"Rule Toggles & QC Run", "pane-qct": u"QC Types",
