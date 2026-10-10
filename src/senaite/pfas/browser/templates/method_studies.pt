@@ -88,6 +88,11 @@
               </select></label>
             <label>Fortified concentration (one level) <input type="number" step="any" min="0" name="fortified"
                                                   placeholder="from the spike level" /></label>
+            <label>Spiked replicates (MDL)
+              <select name="spike_role">
+                <option value="">Choose</option>
+                <option tal:repeat="r view/spike_roles" tal:attributes="value r" tal:content="r">LFSM</option>
+              </select></label>
             <label>From (MDL) <input type="date" name="since" tal:attributes="value view/default_since" /></label>
             <label>To (MDL) <input type="date" name="until" /></label>
             <label>Worksheets (MRL, precision, DL) <input type="text" name="worksheets" placeholder="WS-101 WS-102" /></label>
@@ -173,6 +178,8 @@
                 <td tal:content="python:u', '.join(u'%s (%s)' % (l, view.fmt(view.fortified(l))) for l in rec.get('levels') or []) or u'\u2014'">Low (4)</td>
                 <th>Reference materials</th>
                 <td tal:content="python:u', '.join(u'%s %s' % (m.get('name'), m.get('lot_number')) for m in rec.get('reference_materials') or []) or u'\u2014'">CRM</td></tr>
+            <tr><th>Spiked replicates</th><td tal:content="python:view.spike_role(rec) or u'\u2014'">LFSM</td>
+                <th>Blanks</th><td tal:content="python:view.blank_role(rec)">MB</td></tr>
             <tr><th>Period</th><td tal:content="python:u'%s to %s' % (rec.get('since') or u'\u2014', rec.get('until') or u'today')">period</td>
                 <th>Worksheets</th><td tal:content="python:u', '.join(view.all_worksheets()) or u'\u2014'">WS</td></tr>
             <tr><th>Status</th><td tal:content="rec/status">draft</td>

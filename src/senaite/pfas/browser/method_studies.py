@@ -151,6 +151,20 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
                     out.append(x)
         return out
 
+    def spike_roles(self):
+        """Every QC type the methods define: the MDL's spiked-replicate
+        choices (checked against the chosen method on create)."""
+        out = set()
+        for m in self.methods():
+            out.update(self.profile(m).get("qc_acceptance") or {})
+        return sorted(out)
+
+    def spike_role(self, rec):
+        return sd.spike_role(rec)
+
+    def blank_role(self, rec):
+        return sd.blank_role(rec.get("method"))
+
     def default_since(self):
         return (date.today() - timedelta(days=365 * sd.MDL_MONTHS // 12)).isoformat()
 
@@ -201,13 +215,13 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
             conn = sqlite3.connect(QC_DB)          # read only: nothing is written here
             try:
                 if rec["kind"] == "mdl":
-                    spikes = sd.injections(conn, rec["method"], ["LFB"], since=rec.get("since") or None,
+                    spikes = sd.injections(conn, rec["method"], [sd.spike_role(rec) or u"-"], since=rec.get("since") or None,
                                            until=rec.get("until") or None, matrix=rec["matrix"])
                     blanks = sd.injections(conn, rec["method"], [sd.blank_role(rec["method"])],
                                            since=rec.get("since") or None, until=rec.get("until") or None,
                                            matrix=rec["matrix"])
                 else:
-                    spikes = sd.injections(conn, rec["method"], ["LFB"],
+                    spikes = sd.injections(conn, rec["method"], [sd.spike_role(rec) or u"-"],
                                            batches=sru.study_worksheets(rec) or [u"-"])
             finally:
                 conn.close()
@@ -226,14 +240,15 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
 
     def fortified(self, level):
         """The fortified concentration of one level: typed on the study (one
-        level), else the method's LFB spike level in the matrix's unit."""
+        level), else the method's spike level for the study's spiked role,
+        in the matrix's unit."""
         rec = self.record() or {}
         if rec.get("fortified") not in (None, u"") and len(rec.get("levels") or []) <= 1:
             return float(rec["fortified"])
         from senaite.pfas.calibration_levels import level_value, matrix_unit
         prof = self.profile()
         unit = matrix_unit(prof, rec.get("matrix"))
-        levels = ((prof.get("spike_levels") or {}).get(rec.get("matrix")) or {}).get("LFB") or []
+        levels = ((prof.get("spike_levels") or {}).get(rec.get("matrix")) or {}).get(sd.spike_role(rec)) or []
         for e in levels:
             if e.get("label") == level:
                 return level_value(e, unit)
@@ -244,11 +259,12 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         return dict((lv, self.fortified(lv)) for lv in set(r.get("level") or u"" for r in spikes))
 
     def level_labels(self):
-        """Every LFB spike level label the methods define (the form's choices)."""
+        """Every spike level label the methods define, any role (the form's
+        choices)."""
         out = []
         for m in self.methods():
             for per in (self.profile(m).get("spike_levels") or {}).values():
-                for e in (per or {}).get("LFB") or []:
+                for e in [e for role_levels in (per or {}).values() for e in role_levels or []]:
                     if e.get("label") and e["label"] not in out:
                         out.append(e["label"])
         return out
@@ -771,6 +787,16 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         if kind not in sd.KIND_LABELS and kind != u"designed" or not method or not matrix:
             self.error = u"Choose the kind, method and matrix."
             return self.template()
+        if not sd.kind_allowed(kind, method):
+            self.error = u"%s is defined for %s only." % (sd.KIND_LABELS[kind], u", ".join(sd.KIND_METHODS[kind]))
+            return self.template()
+        spike = u""
+        if kind == "mdl":
+            spike = f.get("spike_role") or u""
+            if spike not in (self.profile(method).get("qc_acceptance") or {}):
+                self.error = (u"Choose the spiked replicates' role from %s's QC types (%s)."
+                              % (method, u", ".join(sorted(self.profile(method).get("qc_acceptance") or {}))))
+                return self.template()
         if matrix not in (self.profile(method).get("supported_matrices") or []):
             self.error = u"%s is not a matrix of %s." % (matrix, method)    # rule 2
             return self.template()
@@ -793,7 +819,8 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         rec = sr.new(recs, kind, method, matrix, _user(), _now(), levels=levels, reference_materials=rms,
                      worksheets=ws, since=(f.get("since") or u"").strip(),
                      until=(f.get("until") or u"").strip(), title=(f.get("title") or u"").strip(),
-                     fortified=(f.get("fortified") or u"").strip() or None, analyst=analyst)
+                     fortified=(f.get("fortified") or u"").strip() or None, analyst=analyst,
+                     spike_role=spike)
         if design is not None:
             rec["design"] = design                  # a copy: the template may change later
             rec["title"] = design["name"]

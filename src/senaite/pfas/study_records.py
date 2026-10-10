@@ -77,6 +77,8 @@ def new(records, kind, method, matrix, by, at, **params):
     rec = {"id": next_id(records), "kind": kind, "method": method, "matrix": matrix,
            "status": DRAFT, "created_by": by, "created_at": at, "exclusions": [],
            "worksheets": [], "levels": [], "fortified": None, "since": u"", "until": u"",
+           # the role of the spiked replicates (study_data.spike_role)
+           "spike_role": u"",
            "title": u"", "reference_materials": [], "pt": {},
            # an IDC: whose, and the typed peak asymmetry (idc.py)
            "analyst": u"", "idc": {},

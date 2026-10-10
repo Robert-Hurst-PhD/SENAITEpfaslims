@@ -36,6 +36,25 @@ KINDS = [
 # what a PT provider says of each reported analyte
 PT_VERDICTS = [(u"acceptable", u"Acceptable"), (u"not_acceptable", u"Not acceptable")]
 KIND_LABELS = dict(KINDS)
+# kinds defined by one method's text: EPA 537.1 §9.2 is built on LFBs
+# (reagent water fortified), which only a drinking-water method has. Every
+# other kind is open to every method.
+KIND_METHODS = {"mrl": ("EPA_537_1",), "pa": ("EPA_537_1",), "dl": ("EPA_537_1",),
+                "idc": ("EPA_537_1",)}
+LFB = "LFB"
+
+
+def kind_allowed(kind, method_id):
+    return method_id in KIND_METHODS.get(kind, (method_id,))
+
+
+def spike_role(rec):
+    """The role of a study's spiked replicates: chosen on an MDL (from the
+    method's QC types: LFSM for a food or environmental matrix), LFB for
+    the EPA 537.1 kinds."""
+    if rec.get("spike_role"):
+        return rec["spike_role"]
+    return LFB if rec.get("kind") in KIND_METHODS else u""
 # the method blank by the method's name for it (EPA 537.1 calls it LRB)
 BLANK_ROLE = {"EPA_537_1": "LRB"}
 MDL_MONTHS = 24          # App. B Rev. 2 §4(b), §4(e)
