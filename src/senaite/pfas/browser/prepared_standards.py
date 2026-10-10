@@ -448,6 +448,14 @@ def build_parentage(portal, rec, used_on=None, _seen=None, _depth=0):
                     u"circular parentage: %s is already in this chain"
                     % child_lot)
             else:
+                # the equipment a parent lot was made with, as of ITS
+                # preparation: an established problem travels up the chain
+                # like a missing parent does (the top lot's own equipment is
+                # equipment_gate_problems)
+                for prob in equipment_problems(build_equipment(portal, child_rec)):
+                    node["problems"].append(u"made with %s%s: %s" % (
+                        prob["unit"], u" (%s)" % prob["role"] if prob["role"] else u"",
+                        prob["reason"]))
                 # The child's own preparation date governs ITS water check.
                 node["children"] = build_parentage(
                     portal, child_rec,
@@ -655,6 +663,19 @@ def equipment_problems(nodes):
             out.append({"unit": n.get("name") or u"", "role": n.get("role") or u"",
                         "reason": prob})
     return out
+
+
+def equipment_gate_problems(portal, rec):
+    """The established equipment problems of a lot -- a balance with no passed
+    verification on the prepared date, a pipette out of calibration -- as
+    release blockers: [{"lot", "name", "reason"}]. Warnings (no equipment
+    recorded, an unregistered serial) are not here: they do not block (lab,
+    2026-10-09, option A). One function for the release gate and the bench
+    lot picker, so both give the same answer."""
+    return [{"lot": rec.get("lot_number") or u"", "name": p["unit"],
+             "reason": u"%s%s: %s" % (p["unit"], u" (%s)" % p["role"] if p["role"] else u"",
+                                     p["reason"])}
+            for p in equipment_problems(build_equipment(portal, rec))]
 
 
 def _render_equipment_html(nodes):
@@ -1107,7 +1128,10 @@ class PFASPrepStandardsView(BrowserView):
             return []
 
     def standard_types(self):
-        return STANDARD_TYPES
+        """[(key, label)]: the lab's prepared-standard types."""
+        from bika.lims import api
+        from senaite.pfas import vocab_store as vs
+        return vs.options(vs.get(api.get_portal()), "prepared_standard_types")
 
     def edit_uid(self):
         return self.request.form.get("edit_uid", "")

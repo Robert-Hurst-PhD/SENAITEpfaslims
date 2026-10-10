@@ -1122,7 +1122,8 @@ def usable_lots(portal, lot_type="", q=""):
     """
     try:
         from senaite.pfas.browser.prepared_standards import (
-            STATUS_ACTIVE, _list, build_parentage, parentage_problems)
+            STATUS_ACTIVE, _list, build_parentage, equipment_gate_problems,
+            parentage_problems)
     except Exception as exc:
         logger.warning("usable_lots: %s", exc)
         return []
@@ -1145,7 +1146,8 @@ def usable_lots(portal, lot_type="", q=""):
         # The same walk the certificate and the gate use, so the reason shown at
         # the bench is the reason release will give.
         try:
-            problems = parentage_problems(build_parentage(portal, d))
+            problems = parentage_problems(build_parentage(portal, d)) + \
+                equipment_gate_problems(portal, d)
         except Exception as exc:          # a data-entry error must not break the picker
             logger.warning("usable_lots: parentage for %s: %s",
                            d.get("lot_number"), exc)

@@ -926,8 +926,10 @@ class PFASExtractionGuideView(BrowserView):
         return script_json(supplier_titles() + [IN_HOUSE]).replace("<", "\\u003c")
 
     def categories_json(self):
-        from senaite.pfas.content.reagent import REAGENT_CATEGORIES
-        return script_json(list(REAGENT_CATEGORIES))
+        """The categories a lot received here may take: [[key, label]]."""
+        from bika.lims import api
+        from senaite.pfas import vocab_store as vs
+        return script_json([list(c) for c in vs.choices(vs.get(api.get_portal()), "reagent_categories")])
 
     def _handle_receive_lot(self):
         """Receive a lot that is not in the inventory without leaving the

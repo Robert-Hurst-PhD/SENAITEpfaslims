@@ -155,8 +155,9 @@
         l.appendChild(document.createTextNode("Lot type "));
         var ls = el("select", "fb-in");
         ls.appendChild(opt("", "— any —", !f.lot_type));
+        // [key, label] pairs (the lab's prepared-standard types)
         LOT_TYPES.forEach(function (x) {
-          ls.appendChild(opt(x, x, x === f.lot_type));
+          ls.appendChild(opt(x[0], x[1], x[0] === f.lot_type));
         });
         ls.addEventListener("change", function () { f.lot_type = ls.value; markDirty(); });
         l.appendChild(ls); sub.appendChild(l);

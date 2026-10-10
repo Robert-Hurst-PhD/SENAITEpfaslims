@@ -501,7 +501,7 @@ class PFASPrepLogbooksView(BrowserView):
     def lot_types_json(self):
         """Lot-type choices for a lot_ref field — same list as standard_type,
         so the two can never drift."""
-        return script_json(self.standard_types())
+        return script_json([list(t) for t in self.standard_types()])
 
     def media_url(self):
         """Endpoint the builder POSTs step media to / reads thumbnails from."""
@@ -562,15 +562,10 @@ class PFASPrepLogbooksView(BrowserView):
         return getToolByName(self.context, "portal_url")()
 
     def standard_types(self):
-        return [
-            "Calibration Standard",
-            "QC Check Standard",
-            "Surrogate Mix",
-            "Internal Standard Mix",
-            "Matrix Spike",
-            "Solvent / Reagent",
-            "Other",
-        ]
+        """[(key, label)]: the lab's prepared-standard types."""
+        from bika.lims import api
+        from senaite.pfas import vocab_store as vs
+        return vs.options(vs.get(api.get_portal()), "prepared_standard_types")
 
     # ── Handlers ─────────────────────────────────────────────────────────
 

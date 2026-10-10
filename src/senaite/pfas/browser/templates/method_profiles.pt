@@ -27,6 +27,9 @@
 
     <div class="alert alert-success" tal:condition="request/ok|nothing" tal:content="request/ok">ok</div>
     <div class="alert alert-error" tal:condition="request/error|nothing" tal:content="request/error">error</div>
+    <ul class="bench-alerts" tal:define="probs view/matrix_problems" tal:condition="probs">
+      <li tal:repeat="p probs" tal:content="p">matrix out of step</li>
+    </ul>
     <p class="lead">Each method&#8217;s QC criteria; a save is handed to the pipeline at once. <tal:h define="hid string:method-profile"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
 
     <div class="table-wrap">

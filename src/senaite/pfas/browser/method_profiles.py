@@ -65,6 +65,23 @@ class PFASMethodProfilesView(BrowserView):
     def portal_url(self):
         return _portal(self.context).absolute_url()
 
+    def matrix_problems(self):
+        """Profile matrices out of step with core's Sample Types (a rename
+        where no event fired, an unlinked or deleted type, an alias that is
+        now another matrix's name)."""
+        from bika.lims import api
+        from senaite.pfas import method_profile_store as mps
+        from senaite.pfas.matrix_rename import consistency
+        portal = _portal(self.context)
+        try:
+            titles = dict((api.get_uid(st), st.Title()) for st in
+                          api.get_senaite_setup()["sampletypes"].objectValues())
+            profiles = dict((m, mps.raw_profile(portal, m) or {}) for m in mps.list_method_ids(portal))
+            return consistency(profiles, titles)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("matrix consistency: %s", exc)
+            return []
+
     def methods(self):
         portal = _portal(self.context)
         try:

@@ -99,6 +99,11 @@ class PFASRegulatoryLimitsView(GateMixin, BrowserView):
     def kinds(self):
         return rg.KINDS
 
+    def kind_choices(self, current=None):
+        """[(key, label)]: the lab's active kinds, and the row's own."""
+        from senaite.pfas import vocab_store as vs
+        return vs.choices(vs.get(api.get_portal()), "regulatory_limit_kinds", current)
+
     def units(self):
         return ["ng/L", "ng/mL", "ug/L", "ng/kg", "ng/g", "ug/kg"]
 

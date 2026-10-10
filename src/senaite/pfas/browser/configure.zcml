@@ -1021,6 +1021,12 @@
       permission="zope2.View"
       />
   <browser:page
+      name="pfas-vocabularies"
+      for="*"
+      class=".vocab_editor.PFASVocabulariesView"
+      permission="zope2.View"
+      />
+  <browser:page
       name="pfas-homogenisation-setup"
       for="*"
       class=".homogenisation_setup.PFASHomogenisationSetupView"

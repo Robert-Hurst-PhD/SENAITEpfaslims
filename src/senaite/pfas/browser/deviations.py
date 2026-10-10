@@ -18,17 +18,18 @@ from senaite.pfas.qc_deviation import (
 logger = logging.getLogger("senaite.pfas.deviations")
 
 
-EVENT_TYPES = [
-    ("missed_calibration",   "Missed Calibration"),
-    ("missed_verification",  "Missed Verification"),
-    ("procedure_deviation",  "Procedure Deviation"),
-    ("equipment_failure",    "Equipment Failure"),
-    ("reagent_issue",        "Reagent / Standard Issue"),
-    ("data_entry_error",     "Data Entry Error"),
-    ("other",                "Other"),
-]
+# the shipped event types; the lab's list is vocab_store "deviation_event_types"
+from senaite.pfas.vocab_store import LISTS as _VOCAB  # noqa: E402
+EVENT_TYPES = list(_VOCAB["deviation_event_types"][1])
 
-EVENT_LABELS = dict(EVENT_TYPES)
+
+def _event_label(key):
+    from bika.lims import api
+    from senaite.pfas import vocab_store as vs
+    try:
+        return vs.label(vs.get(api.get_portal()), "deviation_event_types", key)
+    except Exception:                                       # noqa: BLE001
+        return dict(EVENT_TYPES).get(key, key)
 
 LIKELIHOOD_LABELS = {
     1: "1 — Rare",
@@ -191,7 +192,7 @@ class PFASDeviationView(BrowserView):
             dev = dict(dev)
             dev["risk_colour"] = _risk_colour(dev.get("risk_score", 0))
             dev["risk_label"]  = _risk_label(dev.get("risk_score", 0))
-            dev["event_label"] = EVENT_LABELS.get(dev.get("event_type", ""), dev.get("event_type", ""))
+            dev["event_label"] = _event_label(dev.get("event_type", ""))
             dev["ca_count"]    = len(dev.get("corrective_actions", []))
             dev["ca_pending"]  = sum(
                 1 for ca in dev.get("corrective_actions", [])
@@ -210,7 +211,7 @@ class PFASDeviationView(BrowserView):
                 dev = dict(dev)
                 dev["risk_colour"] = _risk_colour(dev.get("risk_score", 0))
                 dev["risk_label"]  = _risk_label(dev.get("risk_score", 0))
-                dev["event_label"] = EVENT_LABELS.get(dev.get("event_type", ""), "")
+                dev["event_label"] = _event_label(dev.get("event_type", ""))
                 dev["all_cas_complete"] = all(
                     ca.get("status") == "complete"
                     for ca in dev.get("corrective_actions", [])
@@ -222,7 +223,9 @@ class PFASDeviationView(BrowserView):
         return bool(self.request.form.get("dev_id", "").strip())
 
     def event_types(self):
-        return EVENT_TYPES
+        from bika.lims import api
+        from senaite.pfas import vocab_store as vs
+        return vs.choices(vs.get(api.get_portal()), "deviation_event_types")
 
     def likelihood_range(self):
         return list(range(1, 6))

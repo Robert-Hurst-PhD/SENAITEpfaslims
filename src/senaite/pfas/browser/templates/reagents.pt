@@ -548,7 +548,7 @@
               <select name="category" id="f-category">
                 <option value=""></option>
                 <tal:cats tal:repeat="cat view/categories">
-                  <option tal:attributes="value cat" tal:content="cat"></option>
+                  <option tal:attributes="value python:cat[0]" tal:content="python:cat[1]"></option>
                 </tal:cats>
               </select>
             </div>

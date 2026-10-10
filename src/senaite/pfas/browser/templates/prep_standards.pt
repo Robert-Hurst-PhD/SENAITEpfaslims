@@ -104,7 +104,7 @@
       <select name="type">
         <option value="">— All Types —</option>
         <tal:opts tal:repeat="t view/standard_types">
-          <option tal:content="t" tal:attributes="value t; selected python:request.form.get('type')==t">type</option>
+          <option tal:content="python:t[1]" tal:attributes="value python:t[0]; selected python:request.form.get('type')==t[0]">type</option>
         </tal:opts>
       </select>
       <button type="submit" class="btn btn-primary">Filter</button>
@@ -247,7 +247,7 @@
                 <select name="standard_type" id="psType">
                   <option value="">— Select —</option>
                   <tal:opts tal:repeat="t view/standard_types">
-                    <option tal:content="t" tal:attributes="value t">type</option>
+                    <option tal:content="python:t[1]" tal:attributes="value python:t[0]">type</option>
                   </tal:opts>
                 </select>
               </div>

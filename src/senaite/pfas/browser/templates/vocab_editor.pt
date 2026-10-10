@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html metal:use-macro="context/@@pfas-macros/macros/page"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:tal="http://xml.zope.org/namespaces/tal"
+      xmlns:metal="http://xml.zope.org/namespaces/metal">
+
+  <title metal:fill-slot="title">Lists</title>
+  <metal:fill fill-slot="header-title">Lists</metal:fill>
+  <tal:r metal:fill-slot="header-right">
+    <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-lab-settings">Lab Settings</a>
+  </tal:r>
+
+  <div metal:fill-slot="content">
+  <div class="page-body page-body-narrow" tal:define="purl view/portal_url; name view/list_name">
+
+    <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
+    <div class="alert alert-danger" tal:repeat="e view/errors|nothing" tal:content="e">error</div>
+
+    <nav class="cf-chips">
+      <tal:l tal:repeat="l view/lists"><a tal:define="lk python:l[0]"
+         tal:attributes="href string:${purl}/@@pfas-vocabularies?list=${lk};
+                         class python:'btn-sm btn-primary' if lk == name else 'btn-sm btn-secondary'"
+         tal:content="python:l[1]">Deviation event types</a></tal:l>
+    </nav>
+
+    <form method="post" tal:condition="name"
+          tal:attributes="action string:${purl}/@@pfas-vocabularies?list=${name}">
+      <input type="hidden" name="list" tal:attributes="value name" />
+      <fieldset class="pfas-ro" tal:attributes="disabled python:None if view.can_configure() else 'disabled'">
+      <div class="section-group-hdr" tal:content="view/title">List</div>
+      <table class="pfas-table pfas-table-form">
+        <thead><tr><th>Term</th><th>Offered for new records</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="t view/terms">
+            <td><input type="hidden" tal:attributes="name string:t__${repeat/t/index}__key; value t/key" />
+                <input type="text" tal:attributes="name string:t__${repeat/t/index}__label; value t/label;
+                                                   aria-label string:Label for ${t/key}" /></td>
+            <td><input type="checkbox" value="on"
+                       tal:attributes="name string:t__${repeat/t/index}__active;
+                                       aria-label string:Offer ${t/label};
+                                       checked python:'checked' if t['active'] else None" /></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="field-grid">
+        <label>Add a term <input type="text" name="new_label" /></label>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+      </fieldset>
+    </form>
+  </div>
+  </div>
+</html>

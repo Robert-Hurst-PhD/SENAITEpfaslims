@@ -895,7 +895,7 @@
       SUPPLIERS.map(function(s) { return '\u003coption' + (s === rc.supplier ? ' selected' : '') + '>' + esc(s) + '\u003c/option>'; }).join('') +
       '\u003c/select>' + f('cat_number', 'Catalogue #') +
       '\u003cselect onchange="reagentData[' + i + '].receiving.category=this.value">\u003coption value="">Category\u003c/option>' +
-      CATEGORIES.map(function(c) { return '\u003coption' + (c === rc.category ? ' selected' : '') + '>' + esc(c) + '\u003c/option>'; }).join('') +
+      CATEGORIES.map(function(c) { return '\u003coption value="' + esc(c[0]) + '"' + (c[0] === rc.category ? ' selected' : '') + '>' + esc(c[1]) + '\u003c/option>'; }).join('') +
       '\u003c/select>\u003c/div>' +
       (rc.error ? '\u003cdiv class="reagent-miss">' + esc(rc.error) + '\u003c/div>' : '') +
       '\u003cbutton type="button" class="btn-sm btn-primary" onclick="submitReceive(' + i + ')">Receive and use this lot\u003c/button> ' +

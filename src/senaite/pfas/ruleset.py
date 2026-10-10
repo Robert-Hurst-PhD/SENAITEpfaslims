@@ -152,6 +152,15 @@ SHAPES_BY_KEY = {
     "duplicate_all_samples": method_baselines.SHAPE_MIN,
 }
 
+def _flag(value):
+    """A stored yes / no (the form writes "yes") as a boolean, so SHAPE_MIN
+    compares True / False, never a string with a boolean; None when unset
+    (the next tier decides)."""
+    if value in (None, u"", ""):
+        return None
+    return value is True or (u"%s" % value).strip().lower() in (u"yes", u"true", u"1", u"on")
+
+
 # SEEDING DISCIPLINE for the three composition keys above (mirrors
 # method_baselines.py's docstring for the numeric criteria): "all samples in
 # duplicate" / "LFSM every N samples" are QAPP-level demands ON TOP OF a
@@ -243,8 +252,8 @@ _LAB_EXTRACTORS = {
     # today, same as an unconfigured numeric criterion does.
     "lfsm_frequency": lambda profile, matrix, analyte: _dig(
         profile, ["qc_acceptance", "LFSM", "frequency"]),
-    "duplicate_all_samples": lambda profile, matrix, analyte: _dig(
-        profile, ["qc_acceptance", "Dup", "duplicate_all_samples"]),
+    "duplicate_all_samples": lambda profile, matrix, analyte: _flag(_dig(
+        profile, ["qc_acceptance", "Dup", "duplicate_all_samples"])),
 }
 
 

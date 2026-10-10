@@ -32,7 +32,12 @@ import json
 import re
 
 STORE_KEY = "senaite.pfas.regulatory_limits"
-KINDS = ("MCL", "Interim standard", "Action level", "Advisory")
+# the shipped kinds; the lab's list is vocab_store "regulatory_limit_kinds"
+try:
+    from senaite.pfas.vocab_store import LISTS as _VOCAB  # noqa: E402
+except ImportError:                                         # loaded by path (tests)
+    from vocab_store import LISTS as _VOCAB  # noqa: E402
+KINDS = tuple(k for k, _l in _VOCAB["regulatory_limit_kinds"][1])
 
 # Units the comparison understands, as (dimension, factor to the base unit).
 # Base units: ng/L for per-volume, ng/kg for per-mass. A limit and a result in

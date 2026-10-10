@@ -22,15 +22,9 @@ STATUS_ACTIVE    = u"active"
 STATUS_EXHAUSTED = u"exhausted"
 STATUS_EXPIRED   = u"expired"
 
-STANDARD_TYPES = [
-    u"Calibration Standard",
-    u"QC Check Standard",
-    u"Surrogate Mix",
-    u"Internal Standard Mix",
-    u"Matrix Spike",
-    u"Solvent / Reagent",
-    u"Other",
-]
+# the shipped types (the lab's list: vocab_store "prepared_standard_types")
+from senaite.pfas.vocab_store import LISTS as _VOCAB  # noqa: E402
+STANDARD_TYPES = [k for k, _l in _VOCAB["prepared_standard_types"][1]]
 
 
 class IPreparedStandard(model.Schema):

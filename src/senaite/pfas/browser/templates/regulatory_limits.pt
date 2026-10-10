@@ -81,7 +81,8 @@
             </td>
             <td>
               <select tal:attributes="name string:lim.${i}.kind">
-                <option tal:repeat="k kinds" tal:attributes="value k; selected python:k == r.get('kind')" tal:content="k">MCL</option>
+                <option tal:repeat="k python:view.kind_choices(r.get('kind'))"
+                        tal:attributes="value python:k[0]; selected python:k[0] == r.get('kind')" tal:content="python:k[1]">MCL</option>
               </select>
             </td>
             <td>

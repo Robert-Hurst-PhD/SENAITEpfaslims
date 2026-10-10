@@ -2172,9 +2172,9 @@ class PFASDataReviewView(BrowserView):
                 try:
                     from senaite.pfas.browser.prepared_standards import (
                         _obj_to_dict as _psdict, build_parentage,
-                        parentage_problems)
-                    ps_node["parentage"] = build_parentage(
-                        portal, _psdict(ps_obj))
+                        equipment_gate_problems, parentage_problems)
+                    ps_rec = _psdict(ps_obj)
+                    ps_node["parentage"] = build_parentage(portal, ps_rec)
                     for prob in parentage_problems(ps_node["parentage"]):
                         tree["unresolved"].append({
                             "source": "prepstd.parentage",
@@ -2182,6 +2182,11 @@ class PFASDataReviewView(BrowserView):
                             "name": prob.get("name"),
                             "reason": prob.get("reason"),
                         })
+                    # the equipment the lot was made with, as of its
+                    # preparation: an established problem blocks, as the
+                    # extraction's own equipment does
+                    for prob in equipment_gate_problems(portal, ps_rec):
+                        tree["unresolved"].append(dict(prob, source="prepstd.equipment"))
                 except Exception as exc:                    # noqa: BLE001
                     logger.error("parentage walk for %s: %s", lot_ref, exc)
                     tree["unresolved"].append({

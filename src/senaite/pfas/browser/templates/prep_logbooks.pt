@@ -305,7 +305,7 @@
               <select name="standard_type" id="lbType">
                 <option value="">— Select —</option>
                 <tal:opts tal:repeat="t view/standard_types">
-                  <option tal:content="t" tal:attributes="value t">type</option>
+                  <option tal:content="python:t[1]" tal:attributes="value python:t[0]">type</option>
                 </tal:opts>
               </select>
             </div>
@@ -484,7 +484,7 @@
 
   <!-- Builder lives in a static resource: Chameleon parses inline <script>
        bodies and chokes on bare "<", "&" and "&&". Bump ?v= when editing. -->
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_builder.js?v=2"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_builder.js?v=3"></script>
 
   <script>
 

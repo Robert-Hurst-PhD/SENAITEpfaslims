@@ -34,11 +34,31 @@ from __future__ import absolute_import, print_function, unicode_literals
 import logging
 
 from senaite.pfas.settings_registry import (
-    GROUP_QC_LIMITS, GROUP_THRESHOLDS, GROUP_WORDING,
-    KIND_BOOL, KIND_CHOICE, KIND_FLOAT, KIND_INT, KIND_TEXT,
+    GROUP_QC_LIMITS, GROUP_THRESHOLDS, GROUP_VOCABULARY, GROUP_WORDING,
+    KIND_BOOL, KIND_CHOICE, KIND_FLOAT, KIND_INT, KIND_LIST, KIND_TEXT,
     STORAGE_LINKED, TIER_LAB, register)
 
 logger = logging.getLogger("senaite.pfas.settings_adapters")
+
+
+def _vocab(name):
+    """A vocab_store list: its active terms, customised once the lab saved it."""
+
+    def _hook(portal, setting):
+        try:
+            from senaite.pfas import vocab_store as vs
+            stored = vs.get(portal)
+            terms = vs.terms(stored, name)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("vocabulary hook for %s: %s", setting.key, exc)
+            return {"value": None, "seed": None, "source": "unknown"}
+        active = [t["label"] for t in terms if t["active"]]
+        seed = [l for _k, l in vs.LISTS[name][1]]
+        return {"value": u", ".join(active), "seed": u", ".join(seed),
+                "source": "override" if name in stored else "seed",
+                "customised": name in stored}
+
+    return _hook
 
 
 # ── Generic hook factory: merge-over-seed surfaces ───────────────────────────
@@ -245,6 +265,16 @@ def declare_all():
               "pfas-method-profile-edit", unit=u"days", judging=True,
               anchor="matrices",
               reader="senaite.pfas.holding_time.limit_for")
+
+    # ── Lists the lab edits (vocab_store) ───────────────────────────────────
+    try:
+        from senaite.pfas.vocab_store import LISTS
+    except Exception:                                       # noqa: BLE001
+        LISTS = {}
+    for name in sorted(LISTS):
+        _link("vocab." + name, LISTS[name][0], GROUP_VOCABULARY, KIND_LIST,
+              _vocab(name), "pfas-vocabularies", anchor=name,
+              reader="senaite.pfas.vocab_store.terms")
 
     # ── Wording on documents ────────────────────────────────────────────────
     for field, label, kind in (

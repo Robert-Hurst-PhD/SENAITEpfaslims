@@ -36,19 +36,10 @@ CATEGORY_PURCHASED_WATER = u"Reagent Water — purchased"
 # (matrix_blank.py)
 CATEGORY_REFERENCE = u"Standard / Reference Material"
 
-REAGENT_CATEGORIES = [
-    u"Mobile Phase / Solvent",
-    u"Extraction Reagent",
-    CATEGORY_REFERENCE,
-    u"Internal Standard",
-    u"Buffer",
-    u"Acid / Base",
-    u"Salt",
-    CATEGORY_INHOUSE_WATER,
-    CATEGORY_PURCHASED_WATER,
-    u"Consumable",              # tubes, vials, syringes, filters: by lot
-    u"Other Reagent",
-]
+# the shipped categories (the lab's list: vocab_store "reagent_categories";
+# Consumable = tubes, vials, syringes, filters, by lot)
+from senaite.pfas.vocab_store import LISTS as _VOCAB  # noqa: E402
+REAGENT_CATEGORIES = [k for k, _l in _VOCAB["reagent_categories"][1]]
 
 
 class IReagent(model.Schema):

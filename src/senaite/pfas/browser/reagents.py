@@ -824,7 +824,10 @@ class PFASReagentsView(GateMixin, BrowserView):
         return ALL_STATUSES
 
     def categories(self):
-        return REAGENT_CATEGORIES
+        """[(key, label)]: the lab's reagent categories."""
+        from bika.lims import api
+        from senaite.pfas import vocab_store as vs
+        return vs.options(vs.get(api.get_portal()), "reagent_categories")
 
     def effective_expiry(self, rec):
         return _effective_expiry(rec)
