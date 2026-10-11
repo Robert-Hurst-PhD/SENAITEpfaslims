@@ -12,6 +12,11 @@
   <link rel="apple-touch-icon" tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/favicon-180.png" />
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-tokens.css" />
+  <!-- the shared components (segmented control, switch, filter bar, tree, action menu,
+       drawer ...): one file for PFAS and core pages alike (decided 2026-10-11) -->
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-components.css" />
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-components.js"></script>
   <!-- the one top toolbar, shared with core pages -->
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/vendor/adminlte-topbar-3.2.0.css" />

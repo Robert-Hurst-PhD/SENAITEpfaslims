@@ -70,7 +70,7 @@
       <metal:m use-macro="context/@@pfas-blank-history-macros/macros/comparison" />
     </section>
 
-    <script tal:attributes="src string:https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/chart.js-4.4.3.umd.min.js"></script>
     <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
     <script>
     /* points only (each blank is its own measurement, not a trend line);

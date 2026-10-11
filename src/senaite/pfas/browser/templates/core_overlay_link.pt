@@ -3,6 +3,9 @@
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-tokens.css" />
   <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-components.css" />
+  <script tal:attributes="src string:${portal}/++resource++senaite.pfas/pfas-components.js"></script>
+  <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-core-overlay.css" />
   <!-- the one top toolbar, shared with PFAS pages -->
   <link rel="stylesheet" type="text/css"

@@ -182,3 +182,58 @@
    zero specificity: any class that sizes a control still wins. */
 :where(button, input, select, textarea) { font-size: var(--fs-base); }
 :where(code, pre, kbd, samp) { font-family: var(--font-mono); }
+
+/* ── Semantic layer (decided 2026-10-11): what components and pages use from now
+   on. The palette above stays underneath; these names are the ones a page may
+   write, and the dark set below redefines ONLY these, so no page changes to be
+   themed. Light is the default; dark is a per-user switch in the top bar
+   (html[data-theme="dark"]), never the lab's default. */
+:root {
+  --surface:        var(--s-bg);          /* page, card and table ground */
+  --surface-2:      var(--s-light);       /* strips, hover, insets, the segmented track */
+  --surface-raised: #ffffff;              /* a card or menu above surface (with --shadow-card) */
+  --text:           var(--s-body);
+  --text-muted:     var(--s-secondary);
+  --line:           var(--s-border);
+  --line-strong:    var(--s-input-border);
+  --accent:         var(--s-primary);     /* fills only: pill, underline, selected edge, switch track */
+  --accent-text:    var(--s-primary-dk);  /* brand as text; fill under --on-accent */
+  --accent-soft:    var(--s-primary-lt);
+  --on-accent:      #ffffff;
+  --frame:          var(--s-dark);
+  --on-frame:       #ffffff;
+  --on-frame-muted: rgba(255,255,255,.72);
+  --focus:          var(--s-focus-ring);
+  /* weights: a literal font-weight in a template is drift (373 found 2026-10-11) */
+  --fw-body:   400;
+  --fw-strong: 600;
+  /* shape additions */
+  --radius-card: 8px;
+  --radius-pill: 999px;
+  --fab-size:    56px;
+  /* elevation */
+  --shadow-card:       0 1px 3px rgba(0,0,0,.06);
+  --shadow-card-hover: 0 4px 12px rgba(0,0,0,.12);
+  --shadow-pill:       0 1px 2px rgba(0,0,0,.12);
+  /* motion: calm and short; reduced-motion switches it off */
+  --t-fast: 160ms; --t-pill: 180ms; --t-reveal: 220ms;
+  --ease: cubic-bezier(.2,.7,.2,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-fast: 0ms; --t-pill: 0ms; --t-reveal: 0ms; }
+}
+/* The dark set: the same meanings, values chosen for 4.5:1 text on each ground. */
+html[data-theme="dark"] {
+  --s-primary: #3dbb8f; --s-primary-dk: #6fd3b4; --s-primary-xdk: #8fe0c6; --s-primary-lt: #1b3a32;
+  --s-dark: #0f1a18; --s-body: #e6efec; --s-secondary: #9db0aa; --s-light: #1f2d2a; --s-bg: #16211f;
+  --s-border: #2f403c; --s-input-border: #3a4d48; --s-input-text: #d7e3df; --s-focus-ring: rgba(61,187,143,.4);
+  --s-success-lt: #1b3a30; --s-success-bd: #2f5e4c; --s-success-text: #86dcbc;
+  --s-info: #4fa39a; --s-info-lt: #17332f; --s-info-bd: #2c5a55; --s-info-text: #8fd0c8;
+  --s-warn-lt: #3d2d12; --s-warn-bd: #6a4a1a; --s-warn-text: #f2c77a;
+  --s-danger-lt: #3f1f18; --s-danger-bd: #6e3328; --s-danger-dk: #f4a08c;
+  --tier-c1: #5f9bd0; --tier-c2: #a583d8; --tier-c3: #5f9a90; --tier-c4: #d59a3f; --tier-c5: #94a3b3;
+  --series-1: #3dbb8f; --series-2: #5f9bd0; --series-3: #a583d8; --series-4: #5f9a90; --series-5: #7fc0e3; --series-6: #94a3b3;
+  --surface-raised: #1c2825; --on-accent: #0f1a18; --on-frame: #e6efec; --on-frame-muted: rgba(230,239,236,.70);
+  --shadow-card: 0 1px 3px rgba(0,0,0,.5); --shadow-card-hover: 0 4px 12px rgba(0,0,0,.6); --shadow-pill: 0 1px 2px rgba(0,0,0,.6);
+  color-scheme: dark;
+}
