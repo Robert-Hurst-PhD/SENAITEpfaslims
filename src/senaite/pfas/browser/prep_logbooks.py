@@ -266,12 +266,14 @@ def _next_revision(portal, slug):
     return max(revs) + 1 if revs else 1
 
 
+# The four shared logbooks are offered to every method (each method lists the
+# ones it uses in its own sequence); a scope narrows a logbook the lab adds.
 _BUILTIN_DEFS = [
     {
         "logbook_slug": "250",
         "logbook_code": "FM-ENV-001",
         "title":        u"Solvent / Reagent Prep Log",
-        "method_slug":  u"FDA_32PFAS",   # the method ID the pool matches
+        "method_slug":  u"",             # offered to every method
         "sort_order":   0,
         "status":       STATUS_ACTIVE,
         "active":       True,
@@ -283,7 +285,7 @@ _BUILTIN_DEFS = [
         "logbook_slug": "251",
         "logbook_code": "FM-ENV-002",
         "title":        u"Calibration Curve Prep Log",
-        "method_slug":  u"FDA_32PFAS",   # the method ID the pool matches
+        "method_slug":  u"",             # offered to every method
         "sort_order":   1,
         "status":       STATUS_ACTIVE,
         "active":       True,
@@ -295,7 +297,7 @@ _BUILTIN_DEFS = [
         "logbook_slug": "252",
         "logbook_code": "FM-ENV-003",
         "title":        u"Extraction Log",
-        "method_slug":  u"FDA_32PFAS",   # the method ID the pool matches
+        "method_slug":  u"",             # offered to every method
         "sort_order":   2,
         "status":       STATUS_ACTIVE,
         "active":       True,
@@ -307,7 +309,7 @@ _BUILTIN_DEFS = [
         "logbook_slug": "253",
         "logbook_code": "FM-ENV-004",
         "title":        u"Sample Processing Log",
-        "method_slug":  u"FDA_32PFAS",   # the method ID the pool matches
+        "method_slug":  u"",             # offered to every method
         "sort_order":   3,
         "status":       STATUS_ACTIVE,
         "active":       True,

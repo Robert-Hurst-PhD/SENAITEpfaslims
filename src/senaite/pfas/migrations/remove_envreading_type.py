@@ -57,7 +57,7 @@ def _get_portal():
         import Zope2
         from Testing.makerequest import makerequest
         app_obj = makerequest(Zope2.app())
-    portals = [o for o in app_obj.objectValues("Plone Site")]
+    portals = [o for o in app_obj.objectValues(["Plone Site"])]
     if not portals:
         print("ERROR: no Plone site found.")
         sys.exit(1)

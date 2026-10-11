@@ -1743,7 +1743,7 @@ class PFASRetireAttachmentView(BrowserView):
             return json.dumps({"error": "No object {0}".format(parent_uid)})
 
         doomed = []
-        for obj in parent.objectValues("Attachment"):
+        for obj in parent.objectValues(["Attachment"]):
             try:
                 keys = obj.getAttachmentKeys() or u""
             except Exception:

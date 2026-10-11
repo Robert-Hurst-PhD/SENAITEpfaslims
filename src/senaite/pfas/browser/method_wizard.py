@@ -41,6 +41,11 @@ logger = logging.getLogger("senaite.pfas.browser.method_wizard")
 WIZARD_SESSIONS_KEY = u"senaite.pfas.wizard_sessions"
 NUM_STEPS = 10
 
+# The steps' checkbox groups (name="<field>:list"): read as lists before
+# flatten_form, which collapses any list of strings to its first value.
+LIST_FIELDS = ("service_uid", "sampletype_uid", "qc_type_code",
+               "storage_uid", "container_uid", "instrument_uid")
+
 # (num, id, title, explain, depends)
 STEP_META = [
     (1, "method",
@@ -224,6 +229,15 @@ def _get_pfas_ref_defs(context):
     return result
 
 
+def _as_list(value):
+    """A posted checkbox group as a list of non-empty values."""
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        value = [value]
+    return [v for v in value if v]
+
+
 # ---------------------------------------------------------------------------
 # View
 # ---------------------------------------------------------------------------
@@ -236,6 +250,8 @@ class PFASMethodWizardView(BrowserView):
     # -- Dispatch --------------------------------------------------------
 
     def __call__(self):
+        self._lists = dict((k, _as_list(self.request.form.get(k)))
+                           for k in LIST_FIELDS)
         flatten_form(self.request)
         rq = self.request
         action = rq.form.get("action", "")
@@ -265,6 +281,15 @@ class PFASMethodWizardView(BrowserView):
 
     def portal_url(self):
         return getToolByName(self.context, "portal_url")()
+
+    def num_steps(self):
+        return NUM_STEPS
+
+    def _form_list(self, name):
+        lists = getattr(self, "_lists", None)
+        if lists is not None and name in lists:
+            return list(lists[name])
+        return _as_list(self.request.form.get(name))
 
     def _portal(self):
         return getToolByName(self.context, "portal_url").getPortalObject()
@@ -570,9 +595,7 @@ class PFASMethodWizardView(BrowserView):
         return self.session().get("step3", {})
 
     def _handle_step3(self, wid, sess):
-        selected_uids = self.request.form.get("service_uid", [])
-        if isinstance(selected_uids, str):
-            selected_uids = [selected_uids]
+        selected_uids = self._form_list("service_uid")
 
         method_uid = sess.get("method_uid", "")
         method_obj = (_get_by_uid(self.context, method_uid)
@@ -596,6 +619,7 @@ class PFASMethodWizardView(BrowserView):
 
         sess["step3"] = {"service_uids": selected_uids}
         self._mark_done(sess, 3)
+        self._update_profile(sess)
         return self._advance(wid, sess, 4)
 
     # -- Step 4: Sample types --------------------------------------------
@@ -607,76 +631,120 @@ class PFASMethodWizardView(BrowserView):
         return self.session().get("step4", {})
 
     def _handle_step4(self, wid, sess):
-        selected_uids = self.request.form.get("sampletype_uid", [])
-        if isinstance(selected_uids, str):
-            selected_uids = [selected_uids]
+        selected_uids = self._form_list("sampletype_uid")
         sess["step4"] = {"sampletype_uids": selected_uids}
         self._mark_done(sess, 4)
+        self._update_profile(sess)
         return self._advance(wid, sess, 5)
 
     # -- Step 5: Associate QC Types --------------------------------------
 
+    def _profile(self, sess):
+        mid = sess.get("method_id")
+        if not mid:
+            return {}
+        from senaite.pfas.method_profile_store import get_profile
+        return get_profile(self._portal(), mid) or {}
+
+    def _qc_type_rows(self, profile):
+        """The batch QC types a method can switch on: the rows the method
+        profile's QC Types tab toggles (the tagged QC types plus any the
+        profile carries), so both pages offer the same keys."""
+        from senaite.pfas.qc_labels import get_qc_label_map
+        from senaite.pfas.method_profile_sections import qc_type_rows
+        return [r for r in qc_type_rows(profile, get_qc_label_map(self._portal()))
+                if r.get("toggle")]
+
     def pfas_qc_types(self):
-        """Return all PFAS QC types from the pool, with is_selected flag."""
+        """The QC types offered at step 5, with is_selected: the session's
+        choice, else what the method's profile already runs."""
         sess = self.session()
-        selected_codes = set(sess.get("step5", {}).get("qc_type_codes", []))
-        pool = _get_pfas_ref_defs(self.context)
-        for entry in pool:
-            entry["is_selected"] = entry["qc_code"] in selected_codes
-        return pool
+        chosen = sess.get("step5", {}).get("qc_type_codes")
+        out = []
+        for r in self._qc_type_rows(self._profile(sess)):
+            out.append({
+                "qc_code": r["key"],
+                "title": r["label"],
+                "is_selected": (r["key"] in chosen) if chosen else r["enabled"],
+            })
+        return out
 
     def step5_data(self):
         return self.session().get("step5", {})
 
     def _handle_step5(self, wid, sess):
-        selected_codes = self.request.form.get("qc_type_code", [])
-        if isinstance(selected_codes, str):
-            selected_codes = [selected_codes]
-
+        mid = sess.get("method_id")
+        if not mid:
+            return self._redirect_step(wid, 1, error="Create+the+method+first")
+        profile = self._profile(sess)
+        offered = [r["key"] for r in self._qc_type_rows(profile)]
+        selected_codes = [c for c in self._form_list("qc_type_code") if c in offered]
         if not selected_codes:
             return self._redirect_step(wid, 5,
                                        error="Select+at+least+one+QC+type")
 
+        upper = set(c.upper() for c in selected_codes)
         pool = _get_pfas_ref_defs(self.context)
         selected_uids = [e["uid"] for e in pool
-                         if e["qc_code"] in selected_codes]
+                         if (e["qc_code"] or "").upper() in upper]
 
         sess["step5"] = {
             "qc_type_codes": selected_codes,
             "qc_type_uids":  selected_uids,
         }
         self._mark_done(sess, 5)
-
-        # Persist associated QC types into the method profile store so
-        # Step 6 (Method Profile) knows which acceptance sections to show.
-        mid = sess.get("method_id")
-        if mid:
-            try:
-                from senaite.pfas.method_profile_store import (
-                    get_profile, save_profile)
-                portal = self._portal()
-                profile = get_profile(portal, mid) or {}
-                # the label every method picker shows (configured_methods)
-                if not profile.get("display_name"):
-                    profile["display_name"] = (sess.get("step1") or {}).get("title") or mid
-                # the enabled flags are the one source of which QC types a
-                # method runs; a new type starts with NO limits
-                qca = profile.setdefault("qc_acceptance", {})
-                for code in selected_codes:
-                    if isinstance(qca.get(code), dict):
-                        qca[code]["enabled"] = True
-                    else:
-                        qca[code] = {"enabled": True, "tiers": []}
-                for code, cfg in qca.items():
-                    if code not in selected_codes and isinstance(cfg, dict):
-                        cfg["enabled"] = False
-                profile.pop("associated_qc_types", None)
-                save_profile(portal, mid, profile)
-            except Exception as exc:
-                logger.warning(
-                    "step5: could not persist associated_qc_types: %s", exc)
-
+        # the enabled flags are the one source of which QC types a method
+        # runs; a type switched on here starts with NO limits (the same
+        # writer as the profile's QC Types tab)
+        from senaite.pfas.method_profile_sections import apply_qc_toggles
+        apply_qc_toggles(profile, offered, set(selected_codes))
+        profile.pop("associated_qc_types", None)
+        self._update_profile(sess, profile=profile, create=True)
         return self._advance(wid, sess, 6)
+
+    def _update_profile(self, sess, profile=None, create=False):
+        """Write the wizard's choices onto the method profile: its label, the
+        matrices ticked at step 4 and the natives linked at step 3 (the core
+        Method <-> Service links). Added, never removed: removing a matrix
+        or an analyte is the profile's own tabs' work, where what it would
+        orphan is checked. Before step 5 a method with no profile is left
+        alone (step 5 creates it)."""
+        mid = sess.get("method_id")
+        if not mid:
+            return
+        from senaite.pfas.method_profile_store import (
+            get_master_analyte_set, save_profile)
+        portal = self._portal()
+        if profile is None:
+            profile = self._profile(sess)
+        if not profile and not create:
+            return
+        changed = create
+        # the label every method picker shows (configured_methods)
+        if not profile.get("display_name"):
+            profile["display_name"] = (sess.get("step1") or {}).get("title") or mid
+            changed = True
+        matrices = list(profile.get("supported_matrices") or [])
+        for uid in sess.get("step4", {}).get("sampletype_uids", []):
+            obj = _get_by_uid(self.context, uid)
+            title = obj.Title() if obj is not None else ""
+            if title and title not in matrices:
+                matrices.append(title)
+                changed = True
+        profile["supported_matrices"] = matrices
+        panel = list(profile.get("master_analyte_set") or [])
+        try:
+            linked = get_master_analyte_set(portal, mid, profile=profile)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("wizard: natives of %s not read: %s", mid, exc)
+            linked = []
+        for kw in linked:
+            if kw not in panel:
+                panel.append(kw)
+                changed = True
+        profile["master_analyte_set"] = panel
+        if changed:
+            save_profile(portal, mid, profile)
 
     # -- Step 6: Method Profile ------------------------------------------
 
@@ -725,12 +793,8 @@ class PFASMethodWizardView(BrowserView):
         return self.session().get("step8", {}).get("container_uids", [])
 
     def _handle_step8(self, wid, sess):
-        storage_uids = self.request.form.get("storage_uid", [])
-        container_uids = self.request.form.get("container_uid", [])
-        if isinstance(storage_uids, str):
-            storage_uids = [storage_uids]
-        if isinstance(container_uids, str):
-            container_uids = [container_uids]
+        storage_uids = self._form_list("storage_uid")
+        container_uids = self._form_list("container_uid")
         sess["step8"] = {
             "storage_uids": storage_uids,
             "container_uids": container_uids,
@@ -785,9 +849,7 @@ class PFASMethodWizardView(BrowserView):
         return result
 
     def _handle_step10(self, wid, sess):
-        selected_uids = self.request.form.get("instrument_uid", [])
-        if isinstance(selected_uids, str):
-            selected_uids = [selected_uids]
+        selected_uids = self._form_list("instrument_uid")
 
         method_uid = sess.get("method_uid", "")
         method_obj = (_get_by_uid(self.context, method_uid)

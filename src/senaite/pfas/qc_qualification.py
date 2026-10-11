@@ -562,15 +562,16 @@ def analytes_for_failure(failure_type, analyte, method_id=""):
 
 def _same_compound(a, b):
     """Compare labelled-compound names across spellings (13C3-HFPO-DA /
-    13C3-GenX (HFPO-DA); the retired supplier codes, LABELLED_KEYWORD_RENAMES)."""
+    13C3-GenX (HFPO-DA); the retired supplier codes): the compound
+    library's names, the services' PFAS tab."""
     if not a or not b:
         return False
     if a == b:
         return True
     try:
-        from senaite.pfas.analyte_reference import COMPOUND_NAME_TO_KEYWORD
-        return (COMPOUND_NAME_TO_KEYWORD.get(a, a)
-                == COMPOUND_NAME_TO_KEYWORD.get(b, b))
+        from senaite.pfas import compound_library, compound_library_store
+        n2k = compound_library.name_to_keyword(compound_library_store.library())
+        return n2k.get(a, a) == n2k.get(b, b)
     except Exception:
         return False
 

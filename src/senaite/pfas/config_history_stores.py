@@ -77,5 +77,7 @@ def register_all():
                         # : staff (Lab Contact, title, credentials,
                         # sign rights, signature fingerprint), the Director
                         ("staff", u"Lab staff"), ("lab_director", u"Laboratory Director"),
-                        ("badge", u"Badge")):
+                        ("badge", u"Badge"),
+                        # a deleted method: recorded, never restored from here
+                        ("method_deleted", u"Method deleted")):
         config_history.TITLES[name] = title

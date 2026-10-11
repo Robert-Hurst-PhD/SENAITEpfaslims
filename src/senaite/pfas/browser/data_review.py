@@ -1291,10 +1291,10 @@ class PFASDataReviewView(BrowserView):
             required = set(enabled_qc_types(profile)) if study_required is None \
                 else study_required
             present = set(summary.get("qc_types") or [])
-            # a trip blank comes with the samples that ask for one (Field QC
-            # on the CoC), not with every run
+            # a trip blank or field reagent blank comes with the samples that
+            # ask for one (Field QC on the CoC), not with every run
             missing = sorted(r for r in required
-                             if r not in present and r not in ("Dup", "MxB", "TB"))
+                             if r not in present and r not in ("Dup", "MxB", "FRB", "TB"))
             if "LFSMD" in missing and "Dup" in present:
                 # a sample duplicate run instead of the LFSMD satisfies the
                 # batch's precision requirement

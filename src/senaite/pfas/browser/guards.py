@@ -80,7 +80,11 @@ class LabAddressGuard(object):
         try:
             from bika.lims import api
             from senaite.pfas.print_settings import get_print_settings
-            return bool((get_print_settings(api.get_portal()).get("lab_address") or u"").strip())
+            from senaite.pfas.report_templates import issued_snapshot, lab_address_problem
+            portal = api.get_portal()
+            # the address the certificate prints: the issued revision's
+            snap, rev = issued_snapshot(portal)
+            return lab_address_problem(snap, rev, get_print_settings(portal)) is None
         except Exception as exc:                            # noqa: BLE001
             logger.error("LabAddressGuard: %s", exc)
             return False

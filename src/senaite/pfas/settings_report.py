@@ -78,13 +78,18 @@ INSTRUMENT_APPLICATION = [
     (u"MDL", u"Detections at or above the MDL", True,
      u"Every reported detection below the analyte's MDL for the matrix. Not judged "
      u"without an MDL.", "mdl", "mdl_check"),
+    (u"Calibration range", u"Results within the top calibration level", True,
+     u"Every native result on the sample basis (an isomer group summed) against the "
+     u"highest calibration level in the matrix's reporting unit; above it the result "
+     u"reads ALoQ and the dilution reports.", "over_range", "over_range"),
 ]
 
 # The rule switches the pipeline actually reads (pinned against the code by
 # tests/test_settings_report.py). A switch outside this set changes nothing.
 CONSUMED_TOGGLES = frozenset(["is_response", "rrt_deviation", "ion_ratio", "cal_r2",
                               "ccv_recovery", "sn_min", "single_transition_confirm",
-                              "ccv_frequency", "mdl_check", "surrogate_recovery"])
+                              "ccv_frequency", "mdl_check", "surrogate_recovery",
+                              "over_range"])
 
 
 def _switch_labels():

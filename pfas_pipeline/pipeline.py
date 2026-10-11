@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .importer import (
-    load_instrument_csv, detect_software_version,
+    load_instrument_csv, file_head,
     validate_injection_name, classify_injection,
     group_by_injection,
 )
@@ -37,7 +37,7 @@ from .run_queue import RunQueue
 from .review_checks import REVIEW_CHECKS
 from .analyte_alias import keyword_for
 from .extraction_log import ExtractionLog
-from .qc_engine import single_transition_confirm_needed
+from .qc_engine import single_transition_confirm_needed, KIND_OVER_RANGE
 from .report import generate_batch_report
 from .constants import (
     QUALIFIER_ND, QUALIFIER_LOD, QUALIFIER_BLOQ, QUALIFIER_NC, QUALIFIER_ALOQ,
@@ -81,9 +81,41 @@ _NO_SAMPLE_BASIS_ROLES = frozenset(["CAL", "ICV", "CCV", "CCB"])
 
 
 def _has_sample_basis(row):
-    if (row.sample_type or "").strip() in _NO_SAMPLE_BASIS:
+    """Is this injection on the sample basis? An injection the run plan or
+    the extraction record names is what its role says (whatever word the
+    export uses for it); one they do not name falls back to the export's
+    sample type, then the name."""
+    from .importer import _MEMBER_ROLES
+    if row.injection_name not in _MEMBER_ROLES and (row.sample_type or "").strip() in _NO_SAMPLE_BASIS:
         return False
     return classify_injection(row.injection_name) not in _NO_SAMPLE_BASIS_ROLES
+
+
+def _isomer_parts(method_id):
+    """{isomer peak name: the analyte its group is reported as} of the method
+    (its Isomers tab)."""
+    out = {}
+    for g in (_get_isomer_summation(method_id) if method_id else []):
+        for n in [g.get("linear")] + list(g.get("branched_list") or []):
+            if n:
+                out[n] = g.get("reported") or ""
+    return out
+
+
+def _is_native(row, parts=None):
+    """A native analyte's row: so typed by the export ("Analyte"), or -- whatever
+    the export calls it, or with no type column at all -- a compound the
+    compound library holds as a native analyte, or an isomer peak of one (the
+    method's isomer groups, `parts`). An instrument's own "Total" row sums
+    natives and is never one."""
+    kind = (row.compound_type or "").strip()
+    if kind == "Analyte":
+        return True
+    if kind == "Total":
+        return False
+    from .analyte_alias import is_native_name
+    name = row.compound_name
+    return is_native_name(name) or bool((parts or {}).get(name)) and is_native_name(parts[name])
 
 
 def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
@@ -115,11 +147,12 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
     # was built from, so it belongs on the extract basis, before the extract is
     # converted to the sample basis. The two are multiplicative and commute,
     # but keeping the order meaningful keeps the log readable.
+    parts = _isomer_parts(method_id)
     salt_factors = _get_salt_factors(method_id) if method_id else {}
     if salt_factors:
         salted = 0
         for row in rows:
-            if (row.compound_type or "").strip() != "Analyte":
+            if not _is_native(row, parts):
                 continue
             if not _has_sample_basis(row):
                 continue
@@ -151,8 +184,7 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
         # imported number IS the sample-basis result. Applying any factor
         # here would correct it twice.
         for row in rows:
-            if (row.compound_type or "").strip() == "Analyte" and _has_sample_basis(row) \
-                    and reported_unit:
+            if _is_native(row, parts) and _has_sample_basis(row) and reported_unit:
                 row.conc_units = reported_unit
         logger.info("%s: results arrive per sample from the MS software; no "
                     "matrix factor applied", method_id)
@@ -162,7 +194,7 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
         parents = dict((k, (v or {}).get("parent") or "") for k, v in (dilutions or {}).items())
         per_sample_rows, nominal = 0, set()
         for row in rows:
-            if (row.compound_type or "").strip() != "Analyte" or not _has_sample_basis(row):
+            if not _is_native(row, parts) or not _has_sample_basis(row):
                 continue
             sample = parents.get(row.injection_name) or row.injection_name
             factor = per_sample((sample_amounts or {}).get(sample), reported_unit)
@@ -192,7 +224,7 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
     if matrix_factor and matrix_factor != 1.0:
         converted = 0
         for row in rows:
-            if (row.compound_type or "").strip() != "Analyte":
+            if not _is_native(row, parts):
                 continue
             if not _has_sample_basis(row):
                 continue
@@ -833,6 +865,13 @@ def run_pipeline(
             % (method_id, os.environ.get("PFAS_PROFILES_PATH",
                                          "/data/qc/method_profiles.json"),
                ", ".join(sorted(_profile_data_cache)) or "no method"))
+    # the compounds are the services' library as SENAITE exported it: no
+    # export, an ambiguous one, or a compound the method names that it does
+    # not hold is refused, never looked up in another table
+    from .analyte_alias import library_refusal
+    why = library_refusal(method_id, _profile_data_cache.get(method_id))
+    if why:
+        raise RuntimeError(why)
 
     csv_path = Path(csv_path)
     from .importer import set_member_roles
@@ -850,21 +889,21 @@ def run_pipeline(
         # The pipeline deliberately does NOT detect the vendor itself: two
         # detectors meant two answers, and the profile key built from the
         # loser's answer never matched anything Import Studio had saved.
-        import pandas as _pd
-        _headers = list(_pd.read_csv(csv_path, dtype=str, encoding="utf-8-sig",
-                                     nrows=0).columns)
-        _version = detect_software_version(csv_path)
-        # Fetch profile — raises on SENAITE connectivity failure (no fallback)
+        # The file's first lines and the run's instrument: SENAITE matches
+        # them against the saved import layouts (each read with its own
+        # options) and answers the one layout that fits, or a refusal.
+        # Raises on a SENAITE connectivity failure (no fallback).
         import_profile = senaite.get_instrument_profile(
-            version=_version, columns=_headers)
+            head=file_head(csv_path),
+            instrument_uid=(sidecar or {}).get("instrument_uid") or "")
         if "error" in import_profile:
             raise ImportError(import_profile["error"])
-        logger.info("Using Import Studio profile %s:%s for %s",
-                    import_profile.get("resolved_vendor_key", "?"),
-                    import_profile.get("resolved_version") or "(no version)",
+        logger.info("Using the import layout %s for %s",
+                    import_profile.get("name") or import_profile.get("resolved_vendor_key", "?"),
                     csv_path.name)
 
     rows = load_instrument_csv(csv_path, profile=import_profile)
+    refuse_unreadable(rows, import_profile, csv_path)
     logger.info("Loaded %d rows / %d injections from %s",
                 len(rows), len(group_by_injection(rows)), csv_path.name)
     this_file = set(r.injection_name for r in rows)     # what the plan check compares
@@ -878,6 +917,10 @@ def run_pipeline(
                                % (csv_path.name, earlier, csv_path.parent))
         rows = load_instrument_csv(path, profile=import_profile) + rows
         logger.info("With the earlier run %s: %d rows", earlier, len(rows))
+    if (import_profile or {}).get("labelled_from_columns"):
+        made = labelled_rows(rows, method_id)
+        rows = rows + made
+        logger.info("%d labelled-standard row(s) made from the analytes' IS columns", len(made))
 
     # Dilution map — needed before the name check below.
     #
@@ -1089,6 +1132,10 @@ def run_pipeline(
             check_kind="sample_correction"))
     logger.info("QC engine raised %d flags; %d checks pending review",
                 len(batch.qc_flags), len(queue.pending()))
+
+    # 4b. Above the calibration range: the platform's own judgement (rule
+    # switch over_range), so the summary reports the dilution or ALoQ
+    batch.qc_flags.extend(over_range(batch.injections, method_id, matrix))
 
     # 5. Summary
     build_summary(batch)
@@ -1313,6 +1360,99 @@ def _save_watched(path, seen):
         logger.warning("watcher record %s not written: %s", path, exc)
 
 
+# the export types the Run Builder's upload accepts
+WATCHED_TYPES = (".csv", ".txt", ".tsv")
+
+
+def _watched(watch_dir):
+    return sorted(p for p in Path(watch_dir).iterdir()
+                  if p.is_file() and p.suffix.lower() in WATCHED_TYPES)
+
+
+def refuse_unreadable(rows, profile, path):
+    """An export the layout reads no row of -- no row naming both an injection
+    and a compound -- is refused, never processed as a run of nothing."""
+    def named(v):
+        return bool(v) and ("%s" % v).strip().lower() not in ("nan", "none")
+    if not any(named(r.injection_name) and named(r.compound_name) for r in rows):
+        raise ImportError(
+            "No row of %s names both an injection and a compound as the import layout %s "
+            "reads it (%d row(s)): check its layout and column mapping in Import Studio."
+            % (Path(path).name, (profile or {}).get("name") or "(none)", len(rows)))
+
+
+def labelled_rows(rows, method_id):
+    """Rows for the labelled standards a layout gives only as columns of each
+    analyte's row (the profile's "labelled standards from columns"): one per
+    injection and standard, from the IS area and IS retention time, the
+    standard named by the row's linked standard, else the method's surrogate
+    map. A standard the export has a row for is left as it is."""
+    from dataclasses import replace
+    from .analyte_alias import labelled_display_name
+    sur = _get_surrogate_map(method_id) if method_id else {}
+    have = set((r.concat_id, r.compound_name) for r in rows)
+    parts = _isomer_parts(method_id)
+    out = []
+    for r in rows:
+        if r.is_response is None or not _is_native(r, parts):
+            continue
+        name = r.linked_is or sur.get(r.compound_name) or sur.get(keyword_for(r.compound_name) or "")
+        if not name:
+            continue
+        name = labelled_display_name(keyword_for(name) or name)
+        if (r.concat_id, name) in have:
+            continue
+        have.add((r.concat_id, name))
+        out.append(replace(
+            r, compound_name=name, compound_type="Internal Standard", compound_group="",
+            response=r.is_response, observed_rt=r.is_observed_rt, is_response=None,
+            response_ratio=None, expected_conc=None, calculated_conc=None, measured_conc=None,
+            pct_deviation=None, pct_recovery_is=None, ion_ratios=None, expected_ion_ratios=None,
+            quan_ref_expected_ion_ratios=None, method_expected_ion_ratios=None,
+            qual_ions_responses=None, signal_to_noise=None, qual_sn=None, reporting_limit=None,
+            r2=None, linked_is=None, conc_qualifier="", manual_changes=None,
+            manual_integration=None, included_in_cal=False))
+    return out
+
+
+def over_range(rows, method_id, matrix):
+    """[QCFlag] for each injection's native result above the method's top
+    calibration level, in the matrix's reporting unit (the profile's levels,
+    senaite.pfas.calibration_levels): the platform's own judgement, whatever
+    the instrument wrote. An isomer group is judged on its sum. The rows read
+    ALoQ, so the summary reports the dilution where there is one. Switched
+    by the rule over_range (QC Rules)."""
+    from .run_queue import _load_rule_toggles, _rule_enabled
+    from .method_profiles import _profile_data_cache
+    if not method_id or not _rule_enabled(_load_rule_toggles(method_id), "over_range"):
+        return []
+    data = _profile_data_cache.get(method_id) or {}
+    cal = _addon("calibration_levels")
+    unit = (data.get("unit_map") or {}).get(matrix) or ""
+    group_of = _isomer_parts(method_id)
+    members = {}
+    for r in rows:
+        if reported_conc(r) is None or not _is_native(r, group_of) or not _has_sample_basis(r):
+            continue
+        kw = group_of.get(r.compound_name) or keyword_for(r.compound_name) or r.compound_name
+        members.setdefault((r.concat_id, kw), []).append(r)
+    flags = []
+    for (_cid, kw), group in members.items():
+        top = cal.derived_top(data, matrix, kw)
+        if top is None:
+            continue
+        total = sum(reported_conc(r) for r in group)
+        if total <= top * (1 + 1e-9):
+            continue
+        for r in group:
+            r.conc_qualifier = QUALIFIER_ALOQ
+            flags.append(QCFlag(
+                source="Calibration range", check_kind=KIND_OVER_RANGE, analyte=r.compound_name,
+                injection_name=r.injection_name, value="%g %s" % (total, unit),
+                issue="(ALoQ) above the top calibration level %g %s" % (top, unit)))
+    return flags
+
+
 def start_watcher(
     watch_dir: str | Path,
     output_dir: str | Path,
@@ -1339,7 +1479,14 @@ def start_watcher(
     state = Path(output_dir) / ".watched.json"
     seen: dict[str, int] = _load_watched(state)
     if seen is None:
-        seen = {p.name: p.stat().st_mtime_ns for p in watch_dir.glob("*.csv")}
+        seen = {p.name: p.stat().st_mtime_ns for p in _watched(watch_dir)}
+        _save_watched(state, seen)
+    else:
+        # the types watched since the Run Builder's .txt / .tsv: one already
+        # here when the worker starts counts as processed, as at a first start
+        for p in _watched(watch_dir):
+            if p.suffix.lower() != ".csv" and p.name not in seen:
+                seen[p.name] = p.stat().st_mtime_ns
         _save_watched(state, seen)
     logger.info("Watching %s (every %ds)", watch_dir, poll_seconds)
     from . import import_log
@@ -1347,7 +1494,7 @@ def start_watcher(
 
     while True:
         time.sleep(poll_seconds)
-        for p in watch_dir.glob("*.csv"):
+        for p in _watched(watch_dir):
             if seen.get(p.name) == p.stat().st_mtime_ns:
                 continue
             attempts, next_at, mtime = retries.get(p.name, (0, 0, None))

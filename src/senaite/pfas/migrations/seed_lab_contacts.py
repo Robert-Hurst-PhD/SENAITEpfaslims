@@ -29,7 +29,7 @@ SEED = [
 
 def run():
     app = globals().get("app")
-    portals = [o for o in app.objectValues("Plone Site")]
+    portals = [o for o in app.objectValues(["Plone Site"])]
     if not portals:
         print("ERROR: no Plone site"); sys.exit(1)
     portal = portals[0]

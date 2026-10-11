@@ -40,6 +40,7 @@ except Exception:          # tests: loaded without the package
     import config_history as _history   # noqa: F401
 
 REMOVE = object()          # a parsed value meaning "delete this key"
+CLEARED = object()         # a parsed value meaning "store None: deliberately none"
 
 NUMBER, INT, BOOL, TEXT, TEXTAREA, CHOICE, MULTI = (
     "number", "int", "bool", "text", "textarea", "choice", "multi")
@@ -80,7 +81,8 @@ class Field(object):
         # options depend on the stored value (e.g. every unit already in use)
         self.choices = choices if callable(choices) else list(choices or [])
         self.greater_than = greater_than  # a strict lower bound (0 < days)
-        self.blank = blank          # "unset" -> None, "remove" -> key deleted
+        self.blank = blank          # "unset" -> None, "remove" -> key deleted,
+                                    # "none" -> None stored, the key created
 
 
 class Section(object):
@@ -221,6 +223,8 @@ def _value(f, raw, saved, label=None, choices=None):
             return _SKIP, u"%s is required." % label
         if f.blank == u"remove":
             return REMOVE, None
+        if f.blank == u"none":
+            return CLEARED, None
         if saved in (u"", ""):
             return saved, None            # stored empty stays empty: not "" -> None
         return (u"" if f.kind in (TEXT, TEXTAREA) else None), None
@@ -297,13 +301,21 @@ def apply(section, stored, updates, env=None):
     # receipt_temperature {same_day_on_ice: false} and qc_name_codes {} written
     # by untouched saves). An existing block is saved as always.
     if section.base and _get(stored or {}, section.base) is None and all(
-            v is None or v is REMOVE or v is False or v == u"" for v in updates.values()):
+            v is None or v is REMOVE or v is CLEARED or v is False or v == u""
+            for v in updates.values()):
         return value
     base = value
     for p in section.base:
         base = _descend(base, p)
     for path, new in updates.items():
         node = base
+        if new is CLEARED:
+            # a field whose blank is a decision ("none"): stored as None in
+            # the section, creating the key
+            for p in path[:-1]:
+                node = node.setdefault(p, {})
+            node[path[-1]] = None
+            continue
         if new is None or new is REMOVE:
             # an unset value never CREATES a missing block: an untouched save
             # of a field the profile has no parent for stores nothing

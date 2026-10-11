@@ -70,12 +70,13 @@ class EDDBuilder(object):
         self.portal = portal
         self._use_profile({})
 
-    def _use_profile(self, client_cfg):
-        """Everything the export reads comes from the client's profile: its
-        defaults, method codes, code maps, analyte naming and valid codes
-        (the CAS stays single-sourced in analyte_reference)."""
+    def _use_profile(self, client_cfg, profile_id=None):
+        """Everything the export reads comes from the profile (the one chosen
+        for this export, else the client's): its defaults, method codes, code
+        maps, analyte naming and valid codes (the CAS is the analyte
+        service's own: compound_library)."""
         self._edd_profile_id, self._edd_profile = \
-            get_edd_profile_for_client(self.portal, client_cfg)
+            get_edd_profile_for_client(self.portal, client_cfg, profile_id)
         prof = self._edd_profile
         self._lab_cfg = section(prof, "defaults") or {}
         self._qualifier_dict = profile_qualifier_dict(prof)
@@ -224,23 +225,28 @@ class EDDBuilder(object):
         fmt = lab.get("sdg_format", "{prefix}{batch_id}") or "{prefix}{batch_id}"
         return fmt.format(prefix=prefix, batch_id=batch_id)
 
-    def generate_from_batch(self, batch_obj, client_obj=None, per_report_override=True):
+    def generate_from_batch(self, batch_obj, client_obj=None, per_report_override=True, profile_id=None):
         """
         Generate EDD CSV for a SENAITE batch.
 
         batch_obj:            SENAITE Batch AT object
         client_obj:           SENAITE Client AT object (for project_site etc.)
         per_report_override:  if False, suppress EDD even for gov clients
+        profile_id:           the profile chosen for this export (else the
+                              client's)
 
-        Returns: (csv_string, validation_errors, filename)
+        Returns: (csv_string, validation_errors, filename). A profile whose
+        format writes its own delivery (a column-mapped profile) returns its
+        delivery: one file's text, or a zip of its files as bytes.
         """
         client_cfg = get_client_settings(client_obj) if client_obj is not None else {}
 
         if not per_report_override:
             return ("", [], "")
 
-        # the client's profile first: everything below reads it
-        self._use_profile(client_cfg)
+        # the profile first: everything below reads it
+        self._profile_override = profile_id
+        self._use_profile(client_cfg, profile_id)
         lab = self._lab_cfg
         project_site = (
             client_field(client_cfg, "project_site") or
@@ -260,6 +266,11 @@ class EDDBuilder(object):
         self._method_errors = []
         self._methods_without_codes = set()
         self._tz_warned = False
+
+        # a format that writes its own delivery from the profile's data
+        writer = getattr(_formats.format_of(self._edd_profile), "generate", None)
+        if writer is not None:
+            return writer(self, batch_obj, client_obj, client_cfg)
 
         batch_id = batch_obj.getId()
         sdg = self._build_sdg(batch_id)
@@ -711,7 +722,7 @@ class EDDBuilder(object):
         from datetime import date
         today = date.today().strftime("%Y%m%d")
         if client_cfg:
-            self._use_profile(client_cfg)
+            self._use_profile(client_cfg, getattr(self, "_profile_override", None))
         sdg = self._build_sdg(batch_id).replace("/", "-").replace(" ", "_")
         client_id = ""
         if client_field(client_cfg, "project_site"):

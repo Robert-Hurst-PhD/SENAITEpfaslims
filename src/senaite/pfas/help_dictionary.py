@@ -65,7 +65,7 @@ WORKFLOW = [
     ("Report", "Rounding, the reporting template and what holds a certificate.",
      ("rounding", "reporting-template", "publishing-holds")),
     ("Deliver", "The state's electronic data deliverable.",
-     ("edd-profiles", "edd-qualifiers")),
+     ("edd-profiles", "edd-column-mapped", "edd-qualifiers")),
 ]
 
 # Which tab each entry is on.
@@ -82,7 +82,7 @@ _TAB = {
     "Review and release": ("data-review", "qc-standards-table", "publishing-holds", "method-identified"),
     "Reporting": ("rounding", "rl", "non-detect", "reporting-format", "action-level", "reporting-template",
                   "document-designs", "settings-report"),
-    "EDD": ("edd-values", "edd-qualifiers", "edd-profiles"),
+    "EDD": ("edd-values", "edd-qualifiers", "edd-profiles", "edd-column-mapped"),
     "Signatures and access": ("sign-rights", "lab-director", "badges"),
 }
 TAB_OF = dict((eid, tab) for tab, ids in _TAB.items() for eid in ids)
@@ -605,14 +605,56 @@ ENTRIES = [
      "effects": [
          ("A client's profile (the default profile otherwise)", P + "edd_store.py", "def get_edd_profile_for_client"),
      ]},
-    {"id": "import-profiles", "term": "Import profiles",
-     "text": "How an instrument's export columns map to what the pipeline reads, saved "
-             "per instrument and software version in Import Studio. A file without an "
-             "active profile is refused, never guessed.",
+    {"id": "edd-column-mapped", "term": "Column-mapped EDD profiles",
+     "text": "A delivery format described on the EDD pages, never in code. Files: each file's name "
+             "(it takes {sdg}, {batch} and {date}), its rows (one per sample, per result, or per "
+             "test and lab batch), delimiter, header row (plain, a comment row with its prefix, or "
+             "none) and line ending; several files are delivered as one zip. Columns: each column's "
+             "heading, the platform fact it carries (or a constant, or nothing), a fact to use when "
+             "that one is blank, a code map, a format (date:%m/%d/%Y %H:%M, cas:dashed, cas:digits, "
+             "upper, lower), when it is written (a fact; not a fact; a fact = a value, != a value, in "
+             "a,b or not in a,b), how a list of codes is joined, and whether it is required, from a "
+             "value list, or of a maximum length. Code maps: our value to the format's code; a map "
+             "keyed by a second fact looks up \"value|second\" first (e.g. Drinking Water|FB). A value "
+             "a map lacks, a blank required field, a code outside its list and a profile's own "
+             "problem block the delivery. Value lists: one column of a sheet of the agency's "
+             "workbook, or pasted codes. Lab values: the lab's identity, named for the columns (the "
+             "sample delivery group follows the prefix and format values). Client fields: what a "
+             "client gives, on its EDD settings for any profile. The profile is chosen per export "
+             "on the batch EDD page; a profile no client uses can be deleted.",
+     "where": [("EDD Export", "@@pfas-edd-config")],
+     "who": "config",
+     "effects": [
+         ("A value a map lacks is refused", P + "edd_delimited.py", "def lookup"),
+         ("A profile's own problems block the delivery", P + "edd_delimited.py", "def problems"),
+         ("The profile chosen for an export", P + "edd_store.py", "def get_edd_profile_for_client"),
+         ("Deleted only when no client uses it", P + "edd_store.py", "def delete_edd_profile"),
+     ]},
+    {"id": "import-profiles", "term": "Import layouts",
+     "text": "How an instrument export is laid out and what its columns mean, saved by name "
+             "in Import Studio. The reader options (delimiter, encoding, header row, "
+             "missing-value markers, rows to skip; a long table, column groups per compound "
+             "on two header rows, or one block per compound) are form controls; the studio "
+             "and the worker read a file with them in the same way. A file is matched to the "
+             "active layout it fits best: by default the columns of the fields the layout "
+             "needs (injection, compound, a result, any it marks required) must be found, "
+             "compared without case, spacing, punctuation or a unit in brackets, and other "
+             "columns may be added or left out; a layout set to \"exactly these columns\" "
+             "asks for the same columns. The run's instrument ranks first, then the most "
+             "columns matched. A tie is refused naming both layouts; a file no layout fits "
+             "is refused naming each missing column and the nearest headers, and is mapped "
+             "in Import Studio from what was found -- never guessed. A layout bound to an instrument is "
+             "used only for its runs. A retired layout is never used; a deleted one is kept "
+             "in Configuration History. Words the export uses for the platform's are mapped "
+             "one per line (field: export's word = platform's), scales one per line "
+             "(field = factor, or percent); a row named compound + the qualifier suffix is "
+             "that compound's qualifier transition.",
      "where": [("Import Studio", "@@pfas-import-studio")],
      "who": "config",
      "effects": [
          ("The pipeline reads only saved mappings", W + "importer.py", "column mapping saved in Import Studio"),
+         ("A file is matched to one layout, else refused", P + "import_layouts.py", "def match"),
+         ("An export no row of which can be read is refused", W + "pipeline.py", "def refuse_unreadable"),
      ]},
     # ── Projects ──────────────────────────────────────────────────────────
     {"id": "project-specs", "term": "Project specs",

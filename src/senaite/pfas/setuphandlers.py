@@ -42,6 +42,24 @@ def _stamp_pfas_role(obj, role):
                        getattr(obj, "getKeyword", lambda: "?")(), role, exc)
 
 
+def _seed_service(svc, created, role):
+    """A seeded service's PFAS identity. The role and the compound library's
+    facts (compound_library_store) are written when the install CREATES the
+    service, and the role also when it has none: a role or fact the lab set
+    in Setup is the lab's, and this runs on every restart."""
+    from senaite.pfas import compound_library_store as cls
+    if created or not cls._get(svc, "pfas_role"):
+        _stamp_pfas_role(svc, role)
+    if created:
+        row = cls.seed_row(svc.getKeyword())
+        if row:
+            try:
+                cls.stamp_seed(svc, row)
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("compound library facts not written on %s: %s",
+                               svc.getKeyword(), exc)
+
+
 def _get_or_create(container, portal_type, title, key=None, **kw):
     """Idempotent get-or-create using bika.lims.api. Returns (obj, created).
 
@@ -124,7 +142,11 @@ def setup_handler(context):
     # ── Methods ─────────────────────────────────────────────────────────
     method_folder = portal["methods"]
     methods = {}
+    from senaite.pfas.method_delete import deleted_ids
+    deleted = deleted_ids(portal)      # a deleted method is not made again
     for row in _read("methods.csv"):
+        if row["MethodID"] in deleted:
+            continue
         m, created = _get_or_create(method_folder, "Method", row["Title"],
                                     key=("getMethodID", row["MethodID"]))
         if created:
@@ -151,13 +173,12 @@ def setup_handler(context):
                 svc.setPrecision(int(row["PrecisionDigits"]))
             except Exception:
                 pass
-        # NOTE: SENAITE 2.6 core AnalysisService has NO CAS field, so CAS is NOT
-        # stored on the core service. Analyte CAS is owned in the add-on
-        # (analyte_reference.NATIVE_ANALYTES, single source), keyed by Keyword —
-        # which is the join back to this core service. A previous setCASNumber()
+        # NOTE: SENAITE 2.6 core AnalysisService has NO CAS field: the CAS is
+        # the PFAS tab's pfas_cas (compound_library), seeded with the other
+        # library facts when the service is created. A previous setCASNumber()
         # call here threw AttributeError into a silent except and also blocked
         # setPrecision(); both are fixed by removing it.
-        _stamp_pfas_role(svc, "analyte")
+        _seed_service(svc, created, "analyte")
 
     # ── Internal standards / surrogates ─────────────────────────────────
     is_cat = categories[u"PFAS - Internal Standards"]
@@ -177,7 +198,17 @@ def setup_handler(context):
                 svc.setCategory(is_cat)
             except Exception:
                 pass
-        _stamp_pfas_role(svc, row.get("Role", "surrogate"))
+        _seed_service(svc, created, row.get("Role", "surrogate"))
+
+    # ── The compound library on the services, once per site ────────────
+    # (what analyte_reference.py held: names, CAS, labelled-form links,
+    # export spellings, published names, key flags; facts already set stay;
+    # the method profiles' export below writes it for the worker)
+    try:
+        from senaite.pfas import compound_library_store
+        compound_library_store.migrate(portal)
+    except Exception as e:
+        logger.warning("Compound library not migrated onto the services: %s", e)
 
     # ── Sample types ────────────────────────────────────────────────────
     st_folder = new_setup["sampletypes"]
@@ -259,6 +290,12 @@ def setup_handler(context):
             logger.info("Import profiles: ion-ratio fallback columns mapped in %d", n)
     except Exception as e:
         logger.warning("Import profiles not updated: %s", e)
+    # ── Import Studio: the earlier profiles become import layouts (once) ──
+    try:
+        from senaite.pfas import import_layouts_store
+        import_layouts_store.migrate(portal)
+    except Exception as e:
+        logger.warning("Import layouts not migrated: %s", e)
 
     # ── Logbook definitions ───────────────────────────────────────────────
     try:
@@ -700,11 +737,13 @@ def migrate_method_profiles_from_annotations(portal):
     migrated = 0
     skipped = 0
     errors = 0
+    from senaite.pfas.method_delete import deleted_ids
+    deleted = deleted_ids(portal)      # a deleted method is not restored
 
     # Migrate profiles stored in the annotation PersistentMapping (verbatim copy).
     if store is not None:
         for method_id, raw in store.items():
-            if method_id in folder:
+            if method_id in folder or method_id in deleted:
                 skipped += 1
                 continue
             try:
@@ -731,7 +770,7 @@ def migrate_method_profiles_from_annotations(portal):
 
     # Seed any DEFAULT_PROFILES methods not covered above (missing from annotation store).
     for method_id, data in DEFAULT_PROFILES.items():
-        if method_id in folder:
+        if method_id in folder or method_id in deleted:
             continue
         try:
             display_name = data.get("display_name") or method_id

@@ -545,6 +545,8 @@ class RunQueue:
         iq_enabled  = _rule_enabled(toggles, "ion_ratio")
         # 4. Calibration (cal_r2 OR ccv_recovery — run if either is on)
         cal_enabled  = _rule_enabled(toggles, "cal_r2") or _rule_enabled(toggles, "ccv_recovery")
+        # r2 itself only under its own switch (the point deviations run either way)
+        r2_enabled   = _rule_enabled(toggles, "cal_r2")
         # 5. Signal-to-Noise (sn_min rule)
         sn_enabled   = _rule_enabled(toggles, "sn_min")
         # 6. LFSM/LFSMD. These gate on the METHOD PROFILE's qc_acceptance
@@ -590,7 +592,7 @@ class RunQueue:
             if cal_enabled:
                 for res in (_guard("Calibration", analyte,
                                    calibration_check_profiled,
-                                   profile, rows, analyte)
+                                   profile, rows, analyte, r2_enabled)
                             if profile else calibration_check(rows, analyte)):
                     if res.flag:
                         flags_by_injection.setdefault(res.injection_name, []).append(res.flag)
@@ -677,6 +679,15 @@ class RunQueue:
                 if rule is None or rule.recovery_min is None:
                     _verdicts()
                     continue
+                # in a CCV, the method's own CCV window when it sets one
+                # (Calibration & CCV); half set is a gap for the CCVs only
+                ccv_rule = rule
+                if sur_in_ccv:
+                    try:
+                        ccv_rule = getattr(profile, "ccv_recovery_rule", lambda r: r)(rule)
+                    except UnconfiguredCriterion as exc:
+                        _record_gap("Surrogate Recovery", compound, exc)
+                        ccv_rule = None
                 # `rows`, not `all_rows`: dilutions are excluded for the same
                 # reason RT, ion-ratio and calibration exclude them. is_raw_check
                 # above is the deliberate exception, and it corrects for the
@@ -686,25 +697,28 @@ class RunQueue:
                         continue
                     if row.pct_recovery_is is None:
                         continue
-                    if not (_takes_surrogate_recovery(row.injection_name, dilutions)
-                            or (sur_in_ccv and classify_injection(row.injection_name, dilutions) == "CCV")):
+                    in_ccv = sur_in_ccv and classify_injection(row.injection_name, dilutions) == "CCV"
+                    if not (_takes_surrogate_recovery(row.injection_name, dilutions) or in_ccv):
                         continue
+                    row_rule = ccv_rule if in_ccv else rule
+                    if row_rule is None:
+                        continue                     # its gap is filed above
                     raw_flag = recovery_check_profiled(
                         profile, compound, _matrix, "SUR",
-                        float(row.pct_recovery_is), row.injection_name)
+                        float(row.pct_recovery_is), row.injection_name, rule=row_rule)
                     # the check's own verdict, for the certificate
                     self.batch.surrogate_results.append({
                         "injection_name": row.injection_name, "compound": compound,
                         "value": float(row.pct_recovery_is),
-                        "window_min": rule.recovery_min, "window_max": rule.recovery_max,
+                        "window_min": row_rule.recovery_min, "window_max": row_rule.recovery_max,
                         "judged": profile.judged_pct(float(row.pct_recovery_is), _matrix),
-                        "guidance": bool(rule.is_guidance_only),
+                        "guidance": bool(row_rule.is_guidance_only),
                         "status": "within" if raw_flag is None else "outside",
                         "std_role": "surrogate"})
                     if raw_flag is None:
                         eis_evaluated.add(row.injection_name)
                         continue
-                    if rule.is_guidance_only:
+                    if row_rule.is_guidance_only:
                         # FDA §2024.10.1(5) makes surrogate recovery ADVISORY.
                         # It is recorded so the QC log and the reviewer see it,
                         # and carries NO check_kind, so it cannot AUTO_FAIL a
@@ -1065,10 +1079,16 @@ class RunQueue:
         if profile is not None:
             frbs = set(getattr(self.batch, "field_blanks", None) or [])
             tbs = set(getattr(self.batch, "trip_blanks", None) or [])
+            # a field reagent blank is judged against its own row on Blank
+            # limits alone (its limit and its own "fails at the limit");
+            # without one it is flagged not judged, never judged against
+            # another blank's row
+            frb_own = bool(getattr(profile, "has_blank_limit", lambda _q: False)("FRB"))
+            self.batch.field_blank_own_row = frb_own
             for inj in order:
                 role = classify_injection(inj, dilutions)
-                # a field reagent blank is a client sample judged against the
-                # method blank's limit
+                # a field reagent blank is a client sample judged against its
+                # own limit; none set is a gap the reviewer sees
                 frb = inj in frbs
                 # a trip blank is a client sample judged against the method's
                 # own trip blank limit (Blank limits); none set is a gap
@@ -1077,7 +1097,19 @@ class RunQueue:
                 # judged only where the method sets it a limit (Blank limits)
                 if role not in BLANK_ROLES and not frb and not tb:
                     continue
-                rule_role, role = ("MB", "FRB") if frb else ("TB", "TB") if tb else (role, role)
+                if frb and not frb_own:
+                    _record_gap("FRB", "", UnconfiguredCriterion(
+                        "{0}: the field reagent blank is not judged -- no field reagent blank "
+                        "limit is set for {1} (Method Profiles -> QC Types -> Blank limits); "
+                        "it is never judged against another blank's limit.".format(
+                            inj, self.method_id)))
+                    continue
+                if frb:
+                    rule_role, role = "FRB", "FRB"
+                elif tb:
+                    rule_role, role = "TB", "TB"
+                else:
+                    rule_role = role
                 judged = False
                 for analyte in _analytes:
                     if analyte in _components:
@@ -1090,11 +1122,6 @@ class RunQueue:
                         continue
                     try:
                         rule = profile.qc_rules(analyte, _bmatrix, rule_role)
-                        if frb and rule is None:
-                            # the method's own method blank: EPA 537.1 calls
-                            # it LRB and switches MB off (synthetic runs,
-                            # 2026-10-07: no FRB was ever judged)
-                            rule = profile.qc_rules(analyte, _bmatrix, "LRB")
                     except UnconfiguredCriterion as exc:
                         _record_gap(role, analyte, exc)
                         continue
@@ -1163,18 +1190,16 @@ class RunQueue:
                             "{0}: blank result in {1}, RL in {2} -- not compared.".format(
                                 analyte, _unit(row), rl_unit)))
                         continue
-                    # the blank result as reported: rounded
-                    # a field reagent blank borrows the method blank's limit
-                    # but fails only ABOVE it (EPA 537.1 §9.3.8 "greater
-                    # than"), whatever the borrowed type says at the limit
+                    # the blank result as reported: rounded; at the limit
+                    # its own row's switch says
                     flag = blank_check(analyte, inj,
                                        profile.judged_conc(reported_conc(row), _bmatrix), rl,
                                        rule.max_conc_x_rl, rl_unit, role,
-                                       rule.fails_at_limit and not frb)
+                                       rule.fails_at_limit)
                     blank_limits[(inj, analyte)] = {
                         "limit": rule.max_conc_x_rl * rl, "unit": rl_unit,
                         "x_rl": rule.max_conc_x_rl,
-                        "at_limit": rule.fails_at_limit and not frb,
+                        "at_limit": rule.fails_at_limit,
                         "covers": _covers(inj, analyte, row),
                         "value": profile.judged_conc(reported_conc(row), _bmatrix)}
                     judged = True

@@ -344,14 +344,18 @@ class SenaiteConnector:
 
     # ── Import Studio profile bridge ─────────────────────────────────────────
     def get_instrument_profile(self, vendor_key: str = "", version: str = "",
-                               columns: "list | None" = None) -> dict:
+                               columns: "list | None" = None, head: str = "",
+                               instrument_uid: str = "") -> dict:
         """
-        Fetch a saved Import Studio column-mapping profile from SENAITE.
+        The Import Studio layout profile for a file, from SENAITE.
 
-        Returns the profile dict ({"vendor"..., "map": {...}, ...}) on success.
-        Returns {"error": "..."} when no profile has been saved for this
-        vendor_key+version — the importer should refuse and tell the user to open
-        Import Studio.
+        `head` is the file's first lines and `instrument_uid` the run's
+        instrument: SENAITE reads the head with each saved layout's own
+        options and answers the one whose columns fit (senaite.pfas.
+        import_layouts.match). Returns the profile dict ({"name", "reader",
+        "map", ...}) or {"error": "..."} -- no layout fits, or two do --
+        and the importer refuses, naming Import Studio. (`columns` alone, a
+        header row read as comma-separated, is what an older worker sent.)
 
         Raises requests.HTTPError / ConnectionError if SENAITE is unreachable.
         In strict mode, callers do NOT catch this exception —
@@ -362,10 +366,11 @@ class SenaiteConnector:
             payload["vendor_key"] = vendor_key
         if version:
             payload["version"] = version
+        if head:
+            payload["head"] = head
+        if instrument_uid:
+            payload["instrument_uid"] = instrument_uid
         if columns:
-            # Let SENAITE identify the instrument from the file's own headers.
-            # It owns the only vendor detector; the pipeline no longer keeps a
-            # second one that could disagree with it.
             payload["columns"] = json.dumps(list(columns))
         r = self.session.post(
             f"{self.base}/@@pfas-instrument-profile",

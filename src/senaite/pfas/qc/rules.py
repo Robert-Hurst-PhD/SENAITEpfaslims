@@ -80,6 +80,11 @@ RULE_LIBRARY = [
     {"key": "single_transition_confirm",
      "label": "Single-Transition Confirmation", "params": [],
      "note": u"Technique named under Chromatographic Confirmation (Calibration & CCV tab)."},
+    # A result above the method's top calibration level (the profile's
+    # levels, in the matrix's reporting unit) reads ALoQ and is reported from
+    # the dilution, whatever the instrument wrote (on by default).
+    {"key": "over_range", "label": "Above the Calibration Range", "params": [],
+     "note": u"Top level: the highest calibration level (Calibration & CCV tab)."},
 ]
 
 # ── Default toggle state per method ──────────────────────────────────────────
@@ -93,6 +98,7 @@ DEFAULT_METHOD_RULE_TOGGLES = {
         # prompt off if it confirms them another way.
         "single_transition_confirm": True,
         "surrogate_recovery": True,
+        "over_range": True,
     },
     "EPA_537_1": {
         # no ion-ratio criterion in EPA 537.1
@@ -104,6 +110,7 @@ DEFAULT_METHOD_RULE_TOGGLES = {
         # DOES declare one gets the prompt without also having to find a switch.
         "single_transition_confirm": True,
         "surrogate_recovery": True,
+        "over_range": True,
     },
     "EPA_1633A": {
         "is_response": True, "rrt_deviation": True, "ion_ratio": True,
@@ -111,6 +118,7 @@ DEFAULT_METHOD_RULE_TOGGLES = {
         "sn_min": True, "mdl_check": True,
         "single_transition_confirm": True,
         "surrogate_recovery": True,
+        "over_range": True,
     },
 }
 
@@ -195,6 +203,7 @@ LIBRARY_KEY_TO_ENGINE_CHECKS = {
     "mdl_check":     [],   # flags detections below the MDL (no review item)
     "surrogate_recovery": ["surrogate_recovery"],
     "single_transition_confirm": ["identity_confirmation"],
+    "over_range":    [],   # the result reads ALoQ; the dilution reports (no review item)
 }
 
 # ── Default QC rule set ───────────────────────────────────────────────────────

@@ -57,6 +57,15 @@
       handler=".matrix_rename.on_sampletype_modified"
       />
 
+  <!-- A core Analysis Service added or edited in Setup (its PFAS tab holds
+       the compound library) is exported to the worker with the method
+       profiles (compound_library_store.py) -->
+  <subscriber
+      for="bika.lims.interfaces.IAnalysisService
+           zope.lifecycleevent.interfaces.IObjectModifiedEvent"
+      handler=".compound_library_store.on_service_changed"
+      />
+
   <!-- A core analysis shows the method x matrix unit and the lab-rounded
        decimals: set inside SENAITE whenever it changes or is submitted
        (analysis_display.py) -->

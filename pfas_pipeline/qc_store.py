@@ -194,8 +194,8 @@ def _qc_rows(batch) -> list:
         rows.append(_blank_row(common, role, key[0], key[1], lim.get("value"),
                                lim.get("unit") or "", lim, key in blank_failed))
 
-    # field reagent blanks: judged in run_queue against the blank limit; a
-    # detection qualifies the samples of the same CoC
+    # field reagent blanks: judged in run_queue against their own limit
+    # (Blank limits); a detection qualifies the samples of the same CoC
     blank_flags = {(f.injection_name, f.analyte) for f in (batch.qc_flags or [])
                    if getattr(f, "check_kind", "") == "blank"}
     by_name = {}
@@ -203,8 +203,8 @@ def _qc_rows(batch) -> list:
         by_name.setdefault(r.injection_name, []).append(r)
     frb_written = set()
 
-    field_qc = {"FRB": ("FRB within the method's blank limit (QC Types)",
-                     "(BLK) field reagent blank above the blank limit"),
+    field_qc = {"FRB": ("FRB within the method's field reagent blank limit (Blank limits)",
+                        "(BLK) field reagent blank above the field reagent blank limit"),
              "TB": ("TB within the method's trip blank limit (Blank limits)",
                     "(BLK) trip blank above the trip blank limit")}
 
@@ -214,12 +214,14 @@ def _qc_rows(batch) -> list:
                     applies_to=inj, qc_level=inj, value=value,
                     limit_basis=basis, units="", flag=(issue if failed else ""),
                     passed=0 if failed else 1)
-    frbs = list(getattr(batch, "field_blanks", None) or [])
-    # a trip blank is written only where it was judged (a limit is set); an
-    # unset limit is its gap, filed with the run's other gaps
-    judged_tbs = set(k[0] for k in blank_limits)
+    # a field reagent or trip blank is written only where it was judged (its
+    # own limit is set); an unset limit is its gap, filed with the run's
+    # other gaps -- never a pass
+    judged = set(k[0] for k in blank_limits)
+    every_frb = list(getattr(batch, "field_blanks", None) or [])
+    frbs = [i for i in every_frb if i in judged]
     tbs = [i for i in (getattr(batch, "trip_blanks", None) or [])
-           if i not in frbs and i in judged_tbs]
+           if i not in every_frb and i in judged]
     for inj, qc_type in [(i, "FRB") for i in frbs] + [(i, "TB") for i in tbs]:
         for r in by_name.get(inj, []):
             if r.compound_type and r.compound_type != "Analyte":

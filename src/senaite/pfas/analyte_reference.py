@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Master PFAS analyte reference table.
+The install seed of the PFAS compound library.
 
-One authoritative source of truth for analyte metadata used to populate the
-SENAITE setup (AnalysisServices, keywords, CAS, units) and to cross-link
-native analytes to their isotopically-labeled internal standards / surrogates.
+The compound library itself -- each native's and labelled standard's role,
+name in instrument exports, CAS, labelled-form link, other export names,
+published-method names, key-analyte default -- is owned by the core
+Analysis Services (their PFAS tab; senaite.pfas.compound_library) and
+exported to the worker from them. The tables below are what the install and
+the one-time migration write onto those services
+(compound_library.seed_rows); a value changed in Setup is not changed here.
+The worker never reads this file; the few add-on pages that still label
+analytes from it are open work.
 
 CAS numbers and full chemical names are populated where well-established;
 entries marked PLACEHOLDER need lab confirmation against your standard COAs.

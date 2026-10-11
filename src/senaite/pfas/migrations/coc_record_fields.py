@@ -23,7 +23,7 @@ def run():
     app = globals().get("app")
     from AccessControl.SecurityManagement import newSecurityManager
     from zope.component.hooks import setSite
-    portal = [o for o in app.objectValues("Plone Site")][0]
+    portal = [o for o in app.objectValues(["Plone Site"])][0]
     newSecurityManager(None, app.acl_users.getUserById("admin").__of__(app.acl_users))
     setSite(portal)
     from senaite.pfas import custody_documents as cus

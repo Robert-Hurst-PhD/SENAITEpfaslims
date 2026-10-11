@@ -62,15 +62,23 @@ def _store_batch_edd(batch_obj, csv_str, filename, errors):
     """Persist generated EDD on the batch annotation."""
     from datetime import datetime
     blocking = [e for e in errors if e.get("type") == "BLOCKING"]
+    encoding = u""
+    if isinstance(csv_str, bytes) and (filename or u"").lower().endswith(".zip"):
+        # a delivery of several files is a zip: kept as base64 text
+        import base64
+        csv_str, encoding = base64.b64encode(csv_str).decode("ascii"), u"base64"
     try:
         ann = IAnnotations(batch_obj)
-        ann[EXPORT_KEY] = json.dumps({
+        record = {
             "csv":            csv_str,
             "filename":       filename,
             "generated":      datetime.utcnow().isoformat(),
             "error_count":    len(errors),
             "blocking_count": len(blocking),
-        })
+        }
+        if encoding:
+            record["encoding"] = encoding
+        ann[EXPORT_KEY] = json.dumps(record)
     except Exception as exc:
         logger.error("Cannot store EDD on batch %s: %s", batch_obj.getId(), exc)
 

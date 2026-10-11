@@ -14,9 +14,11 @@ Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-from . import egad_v6
+from . import delimited, egad_v6
 
-FORMATS = {egad_v6.PROFILE_ID: egad_v6}
+# the default format, and the column-mapped type whose format is the
+# profile's own data
+FORMATS = {egad_v6.PROFILE_ID: egad_v6, delimited.PROFILE_ID: delimited}
 DEFAULT_PROFILE_ID = egad_v6.PROFILE_ID
 
 

@@ -232,8 +232,8 @@ METHOD_CODES = {
 # (edd_store.method_codes, edd_builder), never borrowing another method's.
 
 # Analyte naming: EGAD PARAMETER_NAME and, where the state uses its own code, a
-# DEP##### code in place of the CAS. The CAS itself stays single-sourced in
-# analyte_reference.NATIVE_ANALYTES.
+# DEP##### code in place of the CAS. The CAS itself stays single-sourced on
+# the analyte's service (its PFAS tab, compound_library).
 ANALYTE_OVERLAY = {
     "9ClPF3ONS":   {"parameter_name": "9CL-PF3ONS_A",   "override_note": ""},
     "11ClPF3OUdS": {"parameter_name": "11CL-PF3OUDS_A",  "override_note": ""},

@@ -102,7 +102,7 @@ def parse_conc(val: str) -> "tuple[float | None, str]":
         return None, ""
 
 _FLOAT_COLS = {
-    "observed_rt", "rt_relative_to_is", "response", "is_response",
+    "observed_rt", "rt_relative_to_is", "response", "is_response", "is_observed_rt",
     "response_ratio", "expected_conc", "calculated_conc", "reporting_limit",
     "pct_deviation", "pct_recovery_is", "ion_ratios", "r2", "rf",
     "signal_to_noise", "qual_sn", "measured_conc", "injection_volume",
@@ -166,14 +166,19 @@ _DATETIME_FORMATS = (
     "%b %d, %Y",          "%B %d, %Y",
     "%Y-%m-%d",           "%d/%m/%Y",          "%m/%d/%Y",
     "%Y/%m/%d",           "%d-%b-%Y",
+    # 12-hour clocks: a profile's date format (Import Studio) says which
+    # order day and month are in; these are the last resort
+    "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %I:%M %p",
 )
 
 
-def _parse_datetime(date_str: str, time_str: str = "") -> datetime | None:
+def _parse_datetime(date_str: str, time_str: str = "", first: str = "") -> datetime | None:
+    """The acquisition time; `first` is the import profile's own date format,
+    tried before the list."""
     raw = f"{date_str} {time_str}".strip()
     if not raw:
         return None
-    for fmt in _DATETIME_FORMATS:
+    for fmt in ((first,) if first else ()) + _DATETIME_FORMATS:
         try:
             return datetime.strptime(raw, fmt)
         except ValueError:
@@ -221,7 +226,12 @@ def load_instrument_csv(
     path = Path(path)
     rows: list[InstrumentRow] = []
 
-    df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
+    if profile is not None and profile.get("reader"):
+        # the layout the profile describes (Import Studio): the same reader
+        # the Studio's preview used
+        df = read_layout(path, profile)
+    else:
+        df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
 
     if profile is not None:
         # Use Import Studio profile map exclusively
@@ -241,6 +251,11 @@ def load_instrument_csv(
                     "Import mapping assigns more than one column to the same "
                     "field, which would silently discard data: {0}. Fix the "
                     "mapping in Import Studio.".format(detail))
+            if profile.get("reader"):
+                # the layout's columns found in this file by name, else by
+                # their key (case, spacing, punctuation, a unit in brackets)
+                from .addon import load as _load
+                col_map = _load("import_layouts").resolve_map(profile, list(df.columns))
             df = df.rename(columns=col_map)
     else:
         # §7: Import Studio is the SINGLE source of instrument mappings — the
@@ -271,14 +286,21 @@ def load_instrument_csv(
     _mi = _load_addon("manual_integration")
     _mi_captured = "manual_changes" in df.columns
     _mi_markers = _mi.parse_markers((profile or {}).get("manual_markers") or "")
+    # the profile's value maps and scales (a word or a scale the export uses
+    # -> the platform's), applied to the mapped fields
+    _values = bool((profile or {}).get("value_maps") or (profile or {}).get("scales"))
+    _date_format = (profile or {}).get("date_format") or ""
 
     for _, raw in df.iterrows():
         r: dict = raw.to_dict()
+        if _values:
+            r = _load_addon("import_layouts").apply_values(r, profile)
 
         # Parse datetime
         dt = _parse_datetime(
             r.get("acq_date_str", "") or r.get("acq_datetime_str", ""),
             r.get("acq_time_str", ""),
+            _date_format,
         )
         r["_dt"] = dt
 
@@ -351,9 +373,60 @@ def load_instrument_csv(
                                    if _mi_captured else None),
             injection_volume    = parsed_floats.get("injection_volume"),
             sample_position     = r.get("sample_position") or None,
+            is_observed_rt      = parsed_floats.get("is_observed_rt"),
         ))
 
+    suffix = (profile or {}).get("qualifier_suffix") or ""
+    if suffix:
+        rows = qualifier_rows(rows, suffix)
     return rows
+
+
+def read_layout(path, profile):
+    """The export read with the import profile's layout (senaite.pfas.
+    import_layouts, the reader Import Studio uses), as a frame of text cells;
+    an empty cell is NaN, as pandas reads one."""
+    import numpy as np
+    from .addon import load
+    lay = load("import_layouts")
+    reader = profile.get("reader") or {}
+    text = lay.decode(Path(path).read_bytes(), reader.get("encoding"))
+    try:
+        got = lay.read(text, reader)
+    except ValueError as exc:
+        raise ImportError("The import layout %r cannot read %s: %s"
+                          % (profile.get("name") or "", Path(path).name, exc))
+    df = pd.DataFrame(got["rows"], columns=got["headers"], dtype=object)
+    return df.replace({"": np.nan})
+
+
+def file_head(path) -> str:
+    """The first lines of an export, as text: what its import layout is
+    matched on (senaite.pfas.import_layouts.match)."""
+    from .addon import load
+    lay = load("import_layouts")
+    with Path(path).open("rb") as fh:
+        raw = fh.read(1 << 20)
+    return lay.head(lay.decode(raw))
+
+
+def qualifier_rows(rows, suffix):
+    """A row named <compound><suffix> in an injection is that compound's
+    qualifier transition (the import profile's qualifier-row suffix): its
+    response becomes the compound's qualifier response, where the compound's
+    own row gives none, and it is not read as a compound of its own."""
+    by = dict(((r.concat_id, r.compound_name), r) for r in rows)
+    out = []
+    for r in rows:
+        name = r.compound_name or ""
+        base = (by.get((r.concat_id, name[:-len(suffix)]))
+                if name.endswith(suffix) and len(name) > len(suffix) else None)
+        if base is None:
+            out.append(r)
+            continue
+        if not base.qual_ions_responses and r.response is not None:
+            base.qual_ions_responses = repr(r.response)
+    return out
 
 
 # ── Injection name validator ──────────────────────────────────────────────────

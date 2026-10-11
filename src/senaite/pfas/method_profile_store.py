@@ -1002,13 +1002,16 @@ def _convert_seeds():
 # which took the whole site down, 2026-10-01.)
 
 
-def _seed_key_analytes(profile):
-    """Give a profile its own key-analyte list, from the global flag limited to
-    its panel -- exactly the set the engine used (idempotent)."""
+def _seed_key_analytes(profile, keys=None):
+    """Give a profile its own key-analyte list, from the key-analyte flag
+    (the compound library's, `keys`; the install seed's for the shipped
+    seeds) limited to its panel -- exactly the set the engine used
+    (idempotent)."""
     if isinstance(profile.get("key_analytes"), list):
         return False
-    from senaite.pfas.analyte_reference import get_key_analyte_keywords
-    keys = get_key_analyte_keywords()
+    if keys is None:
+        from senaite.pfas.analyte_reference import get_key_analyte_keywords
+        keys = get_key_analyte_keywords()
     profile["key_analytes"] = [kw for kw in (profile.get("master_analyte_set") or []) if kw in keys]
     return True
 
@@ -1037,6 +1040,14 @@ def migrate_profile_models(portal):
     from senaite.pfas import isomers, labelled_standards
     from senaite.pfas import qc_consolidation
     saved_rules = _raw_qc_rules()
+    key_keywords = []        # the library's key-analyte flags, read when needed
+
+    def _library_keys():
+        if not key_keywords:
+            from senaite.pfas import compound_library, compound_library_store
+            key_keywords.append(compound_library.key_keywords(
+                compound_library_store.library(portal)))
+        return key_keywords[0]
     changed = []
     for method_id in list_method_ids(portal):
         profile = raw_profile(portal, method_id)
@@ -1052,7 +1063,8 @@ def migrate_profile_models(portal):
         from senaite.pfas import report_format
         from senaite.pfas.print_settings import get_print_settings
         e = report_format.migrate(profile, get_print_settings(portal))
-        f = _seed_key_analytes(profile)
+        f = (not isinstance(profile.get("key_analytes"), list)
+             and _seed_key_analytes(profile, _library_keys()))
         from senaite.pfas import low_level_tiers
         g = low_level_tiers.seed_537_1(profile)       # EPA 537.1 §9.3.3/9.3.6.3/9.3.7.4
         # calibration levels: unit-aware once; existing
@@ -1414,21 +1426,33 @@ def list_method_ids(portal):
     return list(store.keys())
 
 
-def export_profiles_to_file(portal, path=None):
+def export_profiles_to_file(portal, path=None, extra_service=None):
     """
     Write all profiles (stored overrides + defaults for any not yet edited)
-    to a JSON file so the pipeline worker can read them.
+    to a JSON file so the pipeline worker can read them, and the compound
+    library the services hold beside it (compound_library.json, written
+    first: a profile may name a compound added with it). `extra_service` is
+    a service being saved, read from the object (it may not be catalogued
+    yet).
     Atomic: writes to .tmp then renames.
     """
     if path is None:
         path = PROFILES_EXPORT_PATH
     from senaite.pfas.method_engine import NOT_BACKFILLED as _NOT_BACKFILLED
+    from senaite.pfas import compound_library as _cl
+    from senaite.pfas import compound_library_store as _cls
+    _library = _cls.library(portal, extra=extra_service)
+    _cls.write_export(_library, os.path.join(os.path.dirname(path), _cl.FILE_NAME))
 
     all_profiles = {}
-    for mid, dflt in DEFAULT_PROFILES.items():
-        all_profiles[mid] = copy.deepcopy(dflt)
-
     folder = _get_profiles_folder(portal)
+    if folder is None:
+        # a site before the profile folder: the shipped seeds for any not
+        # stored. With the folder, what it holds is what exists (get_profile
+        # serves nothing else), so a deleted method is not exported again.
+        for mid, dflt in DEFAULT_PROFILES.items():
+            all_profiles[mid] = copy.deepcopy(dflt)
+
     if folder is not None:
         # Dexterity path
         for method_id in folder.objectIds():
@@ -1463,8 +1487,9 @@ def export_profiles_to_file(portal, path=None):
             except (ValueError, TypeError):
                 pass
 
-    # keyword -> display-name map, single-sourced from the analyte library.
-    _kw_to_display = dict((row[0], row[1]) for row in _NATIVE_ANALYTES)
+    # keyword -> display-name map, from the compound library the services
+    # hold (the same export the worker reads names from)
+    _kw_to_display = _cl.native_names(_library)
 
     # The worker judges every result and QC value ROUNDED and must
     # round exactly as the certificate prints: with the ISSUED reporting-
@@ -1645,11 +1670,13 @@ def seed_default_profiles(portal):
     folder.
     """
     folder = _get_profiles_folder(portal)
+    from senaite.pfas.method_delete import deleted_ids
+    deleted = deleted_ids(portal)      # a deleted method is not seeded again
     if folder is not None:
         # Dexterity path: seed any missing profile objects into the folder.
         seeded = 0
         for method_id, data in DEFAULT_PROFILES.items():
-            if method_id not in folder:
+            if method_id not in folder and method_id not in deleted:
                 display_name = data.get("display_name") or method_id
                 try:
                     folder.invokeFactory("MethodProfile", id=method_id, title=display_name)
@@ -1672,7 +1699,7 @@ def seed_default_profiles(portal):
         store = get_profile_store(portal)
         seeded = 0
         for method_id, data in DEFAULT_PROFILES.items():
-            if method_id not in store:
+            if method_id not in store and method_id not in deleted:
                 seeded_data = dict(data)
                 seeded_data["_seeded"] = True  # cleared when a user saves their own values
                 store[method_id] = json.dumps(seeded_data)

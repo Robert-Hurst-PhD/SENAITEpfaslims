@@ -16,7 +16,7 @@ Derived from the links, all three today agree exactly (tests pin it).
     no_labelled_standard(profile, analog_map) -> frozenset of keywords
 
 `analog_map` = {labelled keyword: native keyword}
-(analyte_reference.get_labeled_analog_map()). Pure, no imports: the worker
+(compound_library.analog_map). Pure, no imports: the worker
 loads this file from the add-on (pfas_pipeline.addon). Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals

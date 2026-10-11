@@ -203,7 +203,12 @@
 
   <tal:c metal:fill-slot="header-context"><span class="header-badge" tal:content="view/method_id">FDA_32PFAS</span></tal:c>
   <tal:r metal:fill-slot="header-right">
-    
+    <form method="get" action="@@pfas-method-profile-edit"
+          tal:condition="python:view.method_id() and not view.delete_requested()">
+      <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+      <input type="hidden" name="delete" value="check" />
+      <button type="submit" class="btn-sm btn-danger" id="method-delete-check">Delete method</button>
+    </form>
     <a href="@@pfas-method-profiles" class="btn-sm btn-secondary btn-back">All Methods</a>
   </tal:r>
 
@@ -263,6 +268,49 @@
     </p>
     <div class="alert alert-error" tal:condition="view/error">
       <span tal:content="view/error">Error message</span>
+    </div>
+
+    <!-- Delete method: what uses it refuses the deletion and is listed;
+         with nothing using it, what goes with it, then the confirm button.
+         The define is on an inner element: TAL runs define before condition. -->
+    <div id="method-delete" tal:condition="view/delete_requested">
+     <tal:d define="dr view/delete_report">
+      <tal:used condition="dr/uses">
+        <div class="alert alert-error">
+          <strong tal:content="string:${view/display_name} cannot be deleted while these use it.">cannot be deleted</strong>
+        </div>
+        <table class="pfas-table" id="method-delete-uses">
+          <thead><tr><th>Used by</th><th>Which</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="r dr/uses"><td tal:content="python:r[0]">what</td><td tal:content="python:r[1]">which</td></tr>
+          </tbody>
+        </table>
+        <div class="form-actions">
+          <a class="btn btn-secondary" tal:attributes="href string:@@pfas-method-profile-edit?method_id=${view/method_id}">Back to the method</a>
+        </div>
+      </tal:used>
+      <tal:free condition="not:dr/uses">
+        <div class="alert alert-warn">
+          <strong tal:content="string:Nothing uses ${view/display_name}. Deleting it removes:">Nothing uses it</strong>
+        </div>
+        <table class="pfas-table" id="method-delete-removes">
+          <thead><tr><th>Removed</th><th>Which</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="r dr/removes"><td tal:content="python:r[0]">what</td><td tal:content="python:r[1]">which</td></tr>
+            <tr><td>Configuration History</td><td>The deletion is recorded; earlier changes are kept</td></tr>
+          </tbody>
+        </table>
+        <form method="post" class="form-actions" action="@@pfas-method-profile-edit">
+          <input tal:replace="structure context/@@authenticator/authenticator" />
+          <input type="hidden" name="method_id" tal:attributes="value view/method_id" />
+          <input type="hidden" name="action" value="delete_method" />
+          <input type="hidden" name="confirm" value="yes" />
+          <button type="submit" class="btn btn-danger" id="method-delete-confirm"
+                  tal:content="string:Delete ${view/display_name}">Delete</button>
+          <a class="btn btn-secondary" tal:attributes="href string:@@pfas-method-profile-edit?method_id=${view/method_id}">Cancel</a>
+        </form>
+      </tal:free>
+     </tal:d>
     </div>
 
     <form id="profile-form" method="POST"
@@ -614,12 +662,9 @@
       <div class="tab-pane" id="pane-eis">
         <div><!-- a wide grid: the full content width (6C) -->
           <tal:eis tal:condition="view/show_eis_overrides">
-            <div class="alert alert-warn">
+            <div class="alert alert-warn" tal:condition="view/eis_needs_verification">
               &#9888; <strong>Lab verification required.</strong>
-              Per-analyte SUR/OPR recovery limits (EPA 1633A calls these surrogates extracted internal standards, EIS)
-              from EPA 1633A Tables 6 and 8
-              (EPA 820-R-24-007, December 2024). Verify each value against your
-              purchased method copy before production use.
+              Verify each limit against your copy of the published method before production use.
             </div>
             <p class="pane-intro">Window per surrogate designation: aqueous, then per matrix class; a blank class cell uses the aqueous limit. Saved on its own. <tal:h define="hid string:eis-limits"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
             <div class="table-wrap"

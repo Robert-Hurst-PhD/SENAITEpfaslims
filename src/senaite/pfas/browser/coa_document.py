@@ -168,7 +168,11 @@ def documents(collection, layout, snapshot=None, rev=None, request=None, preview
     if not preview and not (settings.get("lab_address") or u"").strip():
         # ISO/IEC 17025 7.8.2.1 b): the laboratory's address is on every
         # report (lab, 2026-10-09); the accreditation statement is optional
-        raise ValueError(u"the laboratory address is not set (Print Settings)")
+        from senaite.pfas.print_settings import get_print_settings
+        from senaite.pfas.report_templates import lab_address_problem
+        snap, rev = sections.template_revision()
+        raise ValueError(lab_address_problem(snap, rev, get_print_settings(portal))
+                         or u"the laboratory address is not set (Print Settings)")
     extra = {"lab_address": settings.get("lab_address"), "lab_phone": settings.get("lab_phone"),
              "lab_email": settings.get("lab_email"), "lab_logo": _logo_uri(settings)}
     extra.update(_signatories(signatories, preview))

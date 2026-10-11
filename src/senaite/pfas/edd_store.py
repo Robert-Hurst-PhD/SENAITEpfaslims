@@ -10,7 +10,8 @@ owns everything about its format:
     value_lists               the format's valid codes (refreshable)
     qualifier_map, qc_type_map our qualifier / QC type -> the format's code
     analyte_naming            the format's analyte names and code overrides
-                              (the CAS itself stays in analyte_reference)
+                              (the CAS itself is the analyte's: its service's
+                              PFAS tab, compound_library)
     matrix_map                our sample type -> the format's sample-type code
     client_fields             what a client must give for this format
 
@@ -32,7 +33,6 @@ import json
 import logging
 
 from senaite.pfas import edd_profiles
-from senaite.pfas.analyte_reference import get_cas_by_keyword as _get_cas_by_keyword
 
 logger = logging.getLogger("senaite.pfas.edd_store")
 
@@ -116,11 +116,75 @@ def clone_edd_profile(portal, source_id, new_id, new_name):
     return new
 
 
-def get_edd_profile_for_client(portal, client_cfg):
-    """(profile id, profile) the client exports with (the default profile
-    when it names none or one that no longer exists)."""
-    pid = (client_cfg or {}).get("edd_profile") or DEFAULT_PROFILE_ID
+def _new_id(portal, name):
+    import re
+    base = re.sub(r"[^a-z0-9_]+", "_", (name or u"").lower()).strip("_") or "profile"
+    taken = set(get_edd_profiles(portal))
+    pid, n = base, 2
+    while pid in taken:
+        pid, n = "%s_%d" % (base, n), n + 1
+    return pid
+
+
+def new_edd_profile(portal, name, format_id):
+    """A new profile of a format that has a seed of its own (a column-mapped
+    profile starts from its skeleton). Its id, or None for an unknown
+    format."""
+    fmt = edd_profiles.FORMATS.get(format_id)
+    if fmt is None:
+        return None
+    prof = fmt.seed_profile()
+    prof["name"] = name or prof.get("name") or format_id
+    prof["format"] = prof["base"] = fmt.PROFILE_ID
+    pid = _new_id(portal, prof["name"])
+    save_edd_profile(portal, pid, prof)
+    return pid
+
+
+def clients_using(portal, profile_id):
+    """The titles of the clients whose EDD settings name the profile."""
+    from bika.lims import api
+    out = []
+    for brain in api.search({"portal_type": [str("Client")]}):
+        try:
+            client = brain.getObject()
+            if get_client_settings(client).get("edd_profile") == profile_id:
+                out.append(client.Title())
+        except Exception:                                   # noqa: BLE001
+            continue
+    return sorted(out)
+
+
+def delete_edd_profile(portal, profile_id):
+    """Delete a stored profile: u"" when deleted, else why it was refused
+    (the default profile; a profile a client uses). The deletion is
+    recorded in the configuration history."""
+    if profile_id == DEFAULT_PROFILE_ID:
+        return u"The default profile cannot be deleted."
+    if profile_id not in _store(portal):
+        return u"There is no stored profile %s." % profile_id
+    users = clients_using(portal, profile_id)
+    if users:
+        return u"Clients use this profile: %s. Choose another profile for them first." % u", ".join(users)
+    try:
+        from senaite.pfas import config_history
+        config_history.track(portal, 'edd_profile', profile_id,
+                             lambda: get_edd_profiles(portal).get(profile_id),
+                             label=u"EDD profile %s" % profile_id)
+    except Exception:                                       # noqa: BLE001
+        pass
+    del _store(portal)[profile_id]
+    return u""
+
+
+def get_edd_profile_for_client(portal, client_cfg, profile_id=None):
+    """(profile id, profile) an export uses: the one chosen for this export
+    when it exists, else the client's (the default profile when it names
+    none or one that no longer exists)."""
     profs = get_edd_profiles(portal)
+    if profile_id and profile_id in profs:
+        return profile_id, profs[profile_id]
+    pid = (client_cfg or {}).get("edd_profile") or DEFAULT_PROFILE_ID
     if pid not in profs:
         pid = DEFAULT_PROFILE_ID
     return pid, profs[pid]
@@ -144,13 +208,24 @@ def profile_tic_keywords(profile):
                      if (nm or {}).get("tic"))
 
 
-def profile_analyte_cas(profile):
+def _get_cas_by_keyword(dashed=True, library=None):
+    """{native keyword: CAS} from the compound library the services hold
+    (or the given export)."""
+    from senaite.pfas import compound_library, compound_library_store
+    if library is None:
+        library = compound_library_store.library()
+    return compound_library.cas_by_keyword(library, dashed=dashed)
+
+
+def profile_analyte_cas(profile, library=None):
     """{keyword: {cas_no, parameter_name, override_note}}: the profile's
-    analyte naming over the master CAS. A profile that names analytes covers
-    exactly those (an unnamed one exports with no code, which the row check
-    blocks); one with no naming at all covers every analyte the library
-    knows, each with the format's "verify the name" note."""
-    master = _get_cas_by_keyword(dashed=False)
+    analyte naming over the master CAS (the compound library's; `library`
+    an export to read instead of the services). A profile that names
+    analytes covers exactly those (an unnamed one exports with no code,
+    which the row check blocks); one with no naming at all covers every
+    analyte the library knows, each with the format's "verify the name"
+    note."""
+    master = _get_cas_by_keyword(dashed=False, library=library)
     out = {}
     if not (profile or {}).get("analyte_naming"):
         note = getattr(edd_profiles.format_of(profile), "UNNAMED_NOTE", u"")
@@ -160,6 +235,30 @@ def profile_analyte_cas(profile):
         out[kw] = {"cas_no": nm.get("code_override") or master.get(kw, ""),
                    "parameter_name": nm.get("parameter_name", ""),
                    "override_note": nm.get("note", "")}
+    return out
+
+
+def exported_methods(profile):
+    """The methods this profile exports: those it gives a code."""
+    return sorted(mid for mid, c in (section(profile, "method_codes") or {}).items()
+                  if any(v for k, v in (c or {}).items() if k != "method_id"))
+
+
+def listed_analytes(profile, panels, library=None):
+    """{keyword: {cas_no, parameter_name, override_note}} the Analytes tab
+    lists: what the profile covers (profile_analyte_cas) and every analyte of
+    the methods it exports (`panels` {method_id: [keyword]}), so a name a
+    method's analyte lacks can be entered there. The export still covers
+    what profile_analyte_cas covers, and refuses an analyte with no name."""
+    out = profile_analyte_cas(profile, library=library)
+    master = None
+    for mid in exported_methods(profile):
+        for kw in panels.get(mid) or []:
+            if kw in out:
+                continue
+            if master is None:
+                master = _get_cas_by_keyword(dashed=False, library=library)
+            out[kw] = {"cas_no": master.get(kw, ""), "parameter_name": "", "override_note": ""}
     return out
 
 

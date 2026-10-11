@@ -169,16 +169,21 @@ class PFASCalibrationsView(BrowserView):
                 from senaite.pfas.method_profile_store import get_profile
                 from Products.CMFCore.utils import getToolByName
                 portal = getToolByName(self.context, "portal_url").getPortalObject()
-                iv = (get_profile(portal, method) or {}).get("instrument_verification") or {}
+                profile = get_profile(portal, method) or {}
+                iv = profile.get("instrument_verification") or {}
+                from senaite.pfas.qc.rules import method_toggles
+                judge_r2 = method_toggles(profile, method).get("cal_r2", True)
             except Exception:                                   # noqa: BLE001
-                iv = {}
+                iv, judge_r2 = {}, True
             cal, ccv, icv = (iv.get("calibration") or {}), (iv.get("ccv") or {}), (iv.get("icv") or {})
             num = lambda v: None if v in (None, u"") else float(v)       # noqa: E731
             # the same keys and rules the worker judges by (qc_engine:
             # calibration_check_profiled, _ccv_window, icv_check_profiled).
             # Charts draw each point's stored window when the run recorded
             # one; these are the fallback for runs stored before it did.
-            out["r2"] = num(cal.get("r2_min"))
+            # r2: judged only when the method sets a minimum AND its
+            # "Calibration r2" switch is on (as the worker judges it)
+            out["r2"] = num(cal.get("r2_min")) if judge_r2 else None
             out["cal_pct"] = num(cal.get("point_pct_dev_max"))
             out["CAL"] = {"max": out["cal_pct"], "low_max": num(cal.get("low_point_pct_dev_max")),
                           "warn": None}

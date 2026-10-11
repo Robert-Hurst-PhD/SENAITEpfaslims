@@ -150,6 +150,17 @@ def derived_rl(profile, matrix, keyword=None):
     return to_reporting(lowest(profile, keyword), profile, matrix)
 
 
+def highest(profile, keyword=None):
+    lv = levels(profile, keyword)
+    return lv[-1] if lv else None
+
+
+def derived_top(profile, matrix, keyword=None):
+    """The analyte's highest level in the matrix's reporting unit, or None:
+    a result above it is above the calibration range."""
+    return to_reporting(highest(profile, keyword), profile, matrix)
+
+
 def reporting_limit(profile, matrix, keyword):
     """The analyte's RL in the matrix's reporting unit: the Reporting Limits
     entry, else its lowest calibrator (derived_rl); None when neither."""

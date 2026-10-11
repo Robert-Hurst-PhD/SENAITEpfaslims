@@ -57,7 +57,7 @@ class QCRule:
 
 @dataclass(frozen=True)
 class CalibrationRule:
-    r2_min:             float = 0.99
+    r2_min:             Optional[float] = 0.99   # None: the method sets no r2 criterion
     point_pct_dev_max:  Optional[float] = None  # ±% each point vs curve
     low_point_pct_dev_max: Optional[float] = None  # looser limit at/below MRL
     force_origin:       bool = False
@@ -102,26 +102,11 @@ class ConfirmationRule:
     notes: str = ""
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Keyword <-> display name (instrument export format, MassLynx compound names).
-#
-# The ZODB store's analyte_matrix_inclusion uses KEYWORDS as dict keys
-# while the exported panel uses DISPLAY NAMES (e.g. "GenX (HFPO-DA)") to match
-# instrument export.  The map below bridges them. PFOS/PFHxS are reported
-# under their plain names since 2026-10-01; "lr-" names only their linear peak.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Analyte keyword → instrument display name (only entries that differ)
-_KW_TO_DISPLAY: dict = {
-    "GenX":        "GenX (HFPO-DA)",
-    "4:2FTS":      "4:2 FTS",
-    "8:2FTS":      "8:2 FTS",
-    "10:2FTS":     "10:2 FTS",
-    "9ClPF3ONS":   "9Cl-PF3ONS",
-    "11ClPF3OUdS": "11Cl-PF3OUdS",
-}
-# Reverse: display name → keyword (for inclusion-matrix lookup)
-_DISPLAY_TO_KW: dict = {v: k for k, v in _KW_TO_DISPLAY.items()}
+# Keyword <-> display name (instrument export format, MassLynx compound names):
+# the ZODB store's analyte_matrix_inclusion uses KEYWORDS as dict keys while
+# the exported panel uses DISPLAY NAMES (e.g. "GenX (HFPO-DA)") to match the
+# instrument export; the compound library's native names bridge them
+# (analyte_alias.native_name_to_keyword).
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Profile data cache — populated ONLY from the exported method profiles
@@ -181,6 +166,13 @@ def reload_from_profiles(profiles_path=None, batch_id=None):
     """
     if profiles_path is None:
         profiles_path = PROFILES_PATH
+
+    # the compound library SENAITE exports with the profiles (beside them,
+    # or PFAS_LIBRARY_PATH); a run refuses when it cannot be used
+    from .analyte_alias import reload_library
+    why = reload_library(profiles_path=profiles_path)
+    if why:
+        logger.error("reload_from_profiles: %s", why)
 
     if not os.path.exists(profiles_path):
         logger.error("reload_from_profiles: %s does not exist -- no method is "
@@ -638,6 +630,46 @@ class MethodProfile:
         is judged there (EPA 537.1 §9.3.5.1). Calibration & CCV."""
         return (self._iv().get("ccv") or {}).get("surrogate_recovery") in (True, "yes")
 
+    def has_blank_limit(self, qc_type):
+        """True when the method sets this blank type a limit of its own
+        (Blank limits: an enabled type with a tier carrying x RL). A row the
+        grid cleared keeps its tier without a limit: that is no row."""
+        entry = (self._profile_data().get("qc_acceptance") or {}).get(qc_type)
+        if not isinstance(entry, dict) or not entry.get("enabled", True):
+            return False
+        return any(isinstance(t, dict) and t.get("max_conc_x_rl") not in (None, "")
+                   for t in entry.get("tiers") or [])
+
+    def ccv_surrogate_window(self):
+        """(min, max) % the labelled standards' recovery is judged by in a
+        CCV when the method gives them a window of their own there
+        (Calibration & CCV); None when neither end is set, so the sample
+        window applies as before. One end set without the other is refused,
+        never an open interval and never a fall back to the sample window."""
+        ccv = self._iv().get("ccv") or {}
+        lo, hi = ccv.get("surrogate_window_min"), ccv.get("surrogate_window_max")
+        lo = None if lo in (None, "") else float(lo)
+        hi = None if hi in (None, "") else float(hi)
+        if lo is None and hi is None:
+            return None
+        if lo is None or hi is None:
+            raise UnconfiguredCriterion(
+                "{0}: the CCV window for labelled standards has only one end set. "
+                "Set both (Method Profiles -> Calibration & CCV -> Surrogate recovery "
+                "min / max in CCVs), or clear both to judge CCVs with the sample "
+                "window.".format(self.method_id))
+        return lo, hi
+
+    def ccv_recovery_rule(self, rule):
+        """The rule a labelled standard's recovery in a CCV is judged by: the
+        sample rule with the CCV window when one is set, else the sample rule
+        itself. Raises UnconfiguredCriterion for a half-set window."""
+        window = self.ccv_surrogate_window()
+        if window is None or rule is None:
+            return rule
+        return dataclasses.replace(rule, recovery_min=window[0], recovery_max=window[1],
+                                   notes=_CCV_SURROGATE_WINDOW_NOTE)
+
     def icv_same_as_ccv(self):
         """True when the method judges its ICV / QCS with the CCV's window
         (EPA 537.1 §9.3.10: "acceptance criteria for the QCS are identical to
@@ -988,6 +1020,7 @@ def _limit_or(value, fallback):
 
 
 _SURROGATE_WINDOW_NOTE = "Surrogate recovery (method profile)"
+_CCV_SURROGATE_WINDOW_NOTE = "Surrogate recovery in CCVs (method profile)"
 _LABELLED_PREFIXES = ("M", "13C")
 
 
@@ -1142,9 +1175,15 @@ class ConfiguredProfile(MethodProfile):
         eng = _engine_module().engine(data)
         cal = _calibration(data, self.method_id)
         where = " -> Calibration & CCV"
-        # r2_min decides whether a curve is acceptable at all: a rule cannot
-        # be built without it, whatever the Engine lists
+        # r2_min: never configured (absent) is a gap, whatever the Engine
+        # lists; cleared (None) means the method sets no r2 criterion, which
+        # a method whose Engine requires one is refused rather than run
         r2 = _required(cal, "r2_min", self.method_id, "calibration", where)
+        if r2 is None and "r2_min" in (eng["required_keys"].get("calibration") or ()):
+            raise UnconfiguredCriterion(
+                "{0} requires an r2 minimum (Method Profiles -> Engine, calibration "
+                "criteria that must be set) and has none. Set it in Method "
+                "Profiles{1}.".format(self.method_id, where))
         point = self._criterion(eng, "calibration", cal, "point_pct_dev_max", where)
         low_point = self._criterion(eng, "calibration", cal, "low_point_pct_dev_max", where)
         fit = "linear"
@@ -1152,7 +1191,7 @@ class ConfiguredProfile(MethodProfile):
                 and (analyte or "").startswith(_LABELLED_PREFIXES)):
             fit = "mean_response_factor"
         return CalibrationRule(
-            r2_min=float(r2),
+            r2_min=None if r2 is None else float(r2),
             point_pct_dev_max=point,
             low_point_pct_dev_max=low_point,
             force_origin=bool(cal.get("force_origin", False)),
@@ -1530,8 +1569,8 @@ def get_included_display_analytes(method_id: str, matrix: str) -> list:
     yet (profile JSON not loaded), falls back to the full analyte list so
     the pipeline continues to work before first configuration.
 
-    Keyword keys that differ from display names are handled via
-    _DISPLAY_TO_KW / _KW_TO_DISPLAY.  Default: included (True) when a
+    Display names that differ from their keyword are mapped back through the
+    compound library's native names.  Default: included (True) when a
     keyword is not found in the inclusion dict (conservative — never silently
     drop an analyte due to missing config data).
     """
@@ -1541,9 +1580,11 @@ def get_included_display_analytes(method_id: str, matrix: str) -> list:
     if not inclusion:
         return full_list
 
+    from .analyte_alias import native_name_to_keyword
+    display_to_kw = native_name_to_keyword()
     result = []
     for display_name in full_list:
-        keyword = _DISPLAY_TO_KW.get(display_name, display_name)
+        keyword = display_to_kw.get(display_name, display_name)
         matrix_map = inclusion.get(keyword, {})
         if matrix_map.get(matrix, True):
             result.append(display_name)

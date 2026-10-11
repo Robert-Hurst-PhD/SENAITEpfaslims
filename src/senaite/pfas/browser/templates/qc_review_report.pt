@@ -125,9 +125,9 @@
         <tr tal:repeat="c cal">
           <td tal:content="c/analyte">a</td>
           <td class="num" tal:content="python:'%.6f' % c['r2'] if c['r2'] is not None else '—'">r</td>
-          <td class="num" tal:content="c/limit">l</td>
-          <td tal:attributes="class python:'pass' if c['passed'] else 'fail'"
-              tal:content="python:'PASS' if c['passed'] else 'FAIL'">v</td>
+          <td class="num" tal:content="python:c['limit'] if c['limit'] is not None else '—'">l</td>
+          <td tal:attributes="class python:'' if c['passed'] is None else ('pass' if c['passed'] else 'fail')"
+              tal:content="python:'not judged' if c['passed'] is None else ('PASS' if c['passed'] else 'FAIL')">v</td>
         </tr>
       </table>
     </div>

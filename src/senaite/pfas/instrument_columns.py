@@ -55,6 +55,7 @@ CANONICAL_FIELDS = [
     # Instrument response
     ("response",            "Raw Peak Area (native analyte)"),
     ("is_response",         "IS Peak Area"),
+    ("is_observed_rt",      "IS Retention Time (on the analyte's row)"),
     ("response_ratio",      "Area Ratio (native / IS)"),
     ("pct_recovery_is",     "% Recovery (Internal Standard)"),
     ("linked_is",           "Linked Internal Standard"),

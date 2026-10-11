@@ -45,6 +45,19 @@ def _safe(key):
     return re.sub(r"[^A-Za-z0-9_]", "_", key)
 
 
+def _method_panels(portal, profile):
+    """{method_id: its analyte panel} for the methods the profile exports."""
+    from senaite.pfas.method_profile_store import get_profile
+    out = {}
+    for mid in store.exported_methods(profile):
+        try:
+            out[mid] = list(get_profile(portal, mid).get("master_analyte_set") or [])
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("EDD analytes: %s's panel not read: %s", mid, exc)
+            out[mid] = []
+    return out
+
+
 def _methods(portal, codes):
     """The lab's methods (the method profiles), and any the profile codes."""
     out = []
@@ -60,6 +73,14 @@ def _methods(portal, codes):
 
 
 # ── Profiles and their settings ──────────────────────────────────────────────
+
+def copy_file(f, i):
+    """A new file entry, named apart from the others."""
+    out = dict(f)
+    out["name"] = u"file_%d.csv" % (i + 1)
+    out["columns"] = []
+    return out
+
 
 def weight_rows(profile):
     """[{matrix, code, basis}] for every matrix the profile maps: the basis
@@ -152,7 +173,9 @@ class PFASEDDConfigView(BrowserView):
 
     def analyte_rows(self):
         prof = self.profile()
-        cas = store.profile_analyte_cas(prof)
+        # every analyte of the methods this profile exports, so a missing
+        # name can be entered here
+        cas = store.listed_analytes(prof, _method_panels(_portal(self.context), prof))
         naming = store.section(prof, "analyte_naming") or {}
         guidance = getattr(self.fmt(), "analyte_guidance", lambda k, c: u"")
         rows = []
@@ -212,6 +235,188 @@ class PFASEDDConfigView(BrowserView):
     def weight_bases(self):
         return list(getattr(self.fmt(), "WEIGHT_BASES", ()))
 
+    # ── a column-mapped profile: its format is its own data ─────────────────
+
+    DEFAULT_TABS = (("defaults", u"Defaults"), ("methods", u"Methods"), ("analytes", u"Analytes"),
+                    ("qualifiers", u"Qualifiers"), ("qc_types", u"QC types"), ("value_lists", u"Value lists"),
+                    ("test", u"Test export"), ("profiles", u"Profiles"))
+
+    def mapped(self):
+        """True when the profile's format is its own data (the format's
+        module names its own tabs)."""
+        return bool(getattr(self.fmt(), "TABS", None))
+
+    def tabs(self):
+        return [{"id": t, "label": l} for t, l in (getattr(self.fmt(), "TABS", None) or self.DEFAULT_TABS)]
+
+    def new_types(self):
+        """The formats a new profile can be made of from nothing (a
+        column-mapped one); every other profile is a clone."""
+        return [{"id": fid, "name": getattr(mod, "NAME", fid)} for fid, mod in sorted(edd_profiles.FORMATS.items())
+                if getattr(mod, "TABS", None)]
+
+    def problems(self):
+        if not self.mapped():
+            return []
+        from senaite.pfas import edd_delimited
+        return edd_delimited.problems(self.profile())
+
+    def _mapped_section(self, name):
+        return store.section(self.profile(), name)
+
+    @staticmethod
+    def _choices(pairs):
+        return [{"value": v, "label": l} for v, l in pairs]
+
+    def grains(self):
+        from senaite.pfas import edd_delimited
+        return self._choices(edd_delimited.GRAINS)
+
+    def delimiters(self):
+        from senaite.pfas import edd_delimited
+        return self._choices(edd_delimited.DELIMITERS)
+
+    def headers(self):
+        from senaite.pfas import edd_delimited
+        return self._choices(edd_delimited.HEADERS)
+
+    def newlines(self):
+        from senaite.pfas import edd_delimited
+        return self._choices(edd_delimited.NEWLINES)
+
+    def package(self):
+        return self.profile().get("package") or u""
+
+    def file_rows(self):
+        out = []
+        for i, f in enumerate(self._mapped_section("files") or []):
+            out.append({"i": i, "name": f.get("name") or u"", "grain": f.get("grain") or u"",
+                        "delimiter": u"tab" if f.get("delimiter") == u"\t" else (f.get("delimiter") or u","),
+                        "header": f.get("header") or u"names", "header_prefix": f.get("header_prefix") or u"",
+                        "newline": f.get("newline") or u"crlf", "n_columns": len(f.get("columns") or [])})
+        return out
+
+    def file_index(self):
+        """The file whose columns the tab shows and saves; None when the
+        request names no file the profile has (never another file)."""
+        n = len(self._mapped_section("files") or [])
+        raw = u"%s" % (self.request.get("file") if self.request.get("file") is not None else u"0")
+        return int(raw) if raw.isdigit() and int(raw) < n else None
+
+    def column_rows(self):
+        files = self._mapped_section("files") or []
+        if not files or self.file_index() is None:
+            return []
+        out = []
+        for j, c in enumerate(files[self.file_index()].get("columns") or []):
+            row = dict((k, (u"%s" % (c.get(k) if c.get(k) is not None else u""))) for k in (
+                "heading", "source", "fallback", "constant", "map", "format", "when", "join", "list",
+                "max_length"))
+            row.update({"j": j, "order": j + 1, "required": bool(c.get("required"))})
+            out.append(row)
+        return out
+
+    def source_options(self):
+        from senaite.pfas import edd_delimited
+        prof = self.profile()
+        out = [{"value": u"", "label": u"(none)"}]
+        out += self._choices(edd_delimited.SOURCES)
+        out += [{"value": u"client." + f.get("key"), "label": u"Client: %s" % (f.get("label") or f.get("key"))}
+                for f in (store.section(prof, "client_fields") or []) if f.get("key")]
+        out += [{"value": u"profile." + n, "label": u"Lab value: %s" % n}
+                for n in sorted(store.section(prof, "defaults") or {})]
+        return out
+
+    def map_names(self):
+        return sorted(self._mapped_section("maps") or {})
+
+    def list_names(self):
+        return sorted(k for k, v in (self._mapped_section("lists") or {}).items() if isinstance(v, list))
+
+    def map_blocks(self):
+        from senaite.pfas.edd_forms import BLANK_ROWS
+        out = []
+        for k, (name, m) in enumerate(sorted((self._mapped_section("maps") or {}).items())):
+            rows = [dict(r, n=n) for n, r in enumerate(m.get("rows") or [])]
+            rows += [{"n": len(rows) + b, "ours": u"", "code": u"", "description": u""} for b in range(BLANK_ROWS)]
+            out.append({"k": k, "name": name, "by": m.get("by") or u"", "list": m.get("list") or u"",
+                        "rows": rows})
+        return out
+
+    def list_rows(self):
+        return [{"n": n, "name": k, "count": len(v), "sample": u", ".join(v[:6])}
+                for n, (k, v) in enumerate(sorted((self._mapped_section("lists") or {}).items()))
+                if isinstance(v, list)]
+
+    def named_rows(self):
+        from senaite.pfas.edd_forms import BLANK_ROWS
+        rows = [{"n": n, "name": k, "value": v} for n, (k, v) in enumerate(sorted(
+            (self._mapped_section("defaults") or {}).items()))]
+        return rows + [{"n": len(rows) + b, "name": u"", "value": u""} for b in range(BLANK_ROWS)]
+
+    def client_field_rows(self):
+        from senaite.pfas.edd_forms import BLANK_ROWS
+        rows = [dict(f, n=n) for n, f in enumerate(self._mapped_section("client_fields") or [])]
+        return rows + [{"n": len(rows) + b, "key": u"", "label": u"", "list": u""} for b in range(BLANK_ROWS)]
+
+    def _post_mapped(self, portal, section, pid, prof, form):
+        """Save one of a column-mapped profile's sections (None when the
+        section is not one of them)."""
+        from senaite.pfas import edd_delimited, edd_forms
+        act = form.get("edd_action", "")
+        if section == "files":
+            files, package = edd_forms.read_files(form, prof)
+            if act == "add_file":
+                files.append(copy_file(edd_delimited.skeleton(u"")["files"][0], len(files)))
+            prof["files"], prof["package"] = files, package
+        elif section == "columns":
+            i = self.file_index()
+            files = prof.get("files") or []
+            if not files:
+                return self._back("files", error=u"Add a file first.")
+            if i is None:
+                return self._back("files", error=u"There is no such file; nothing saved.")
+            cols = edd_forms.read_columns(form, prof, i)
+            if act == "add_columns":
+                cols = edd_forms.add_columns(cols, form.get("n_columns") or 1)
+            files[i]["columns"] = cols
+            prof["files"] = files
+            store.save_edd_profile(portal, pid, prof)
+            return self._back("columns", ok=u"Saved.", extra={"file": i})
+        elif section == "maps":
+            prof["maps"] = edd_forms.read_maps(form, prof)
+        elif section == "lists":
+            lists = dict(prof.get("lists") or {})
+            for key in list(form.keys()):
+                if key.startswith("l") and key.endswith("__remove") and form.get(key):
+                    name = form.get(key[:-len("__remove")] + "__name")
+                    lists.pop(name, None)
+            name = (form.get("list_name") or u"").strip()
+            if act == "import":
+                upload = self.request.get("upload")
+                if upload and hasattr(upload, "read") and getattr(upload, "filename", None):
+                    sheet = (form.get("sheet") or u"").strip()
+                    column = (form.get("column") or u"").strip()
+                    values, error = edd_delimited.read_list(upload.read(), sheet, column)
+                    if error:
+                        return self._back("lists", error=error)
+                    name = name or u"%s.%s" % (sheet, column)
+                else:
+                    values = edd_forms.parse_pasted(form.get("pasted") or u"")
+                if not name or not values:
+                    return self._back("lists", error=u"Name the list and give its values (a workbook sheet "
+                                                     u"and column, or one code per line).")
+                lists = edd_forms.new_list(lists, name, values)
+            prof["lists"] = lists
+        elif section == "named_defaults":
+            prof["defaults"] = edd_forms.read_named(form)
+        elif section == "client_fields":
+            prof["client_fields"] = edd_forms.read_client_fields(form)
+        else:
+            return None
+        store.save_edd_profile(portal, pid, prof)
+        return self._back(section, ok=u"Saved.")
+
     # saving: every section is the selected profile's
     def _handle_post(self):
         form = self.request.form
@@ -222,6 +427,22 @@ class PFASEDDConfigView(BrowserView):
 
         if section == "profiles":
             act = form.get("edd_action", "")
+            if act == "new":
+                name = (form.get("new_name") or "").strip() or "New EDD profile"
+                new_id = store.new_edd_profile(portal, name, form.get("new_type") or "")
+                if new_id is None:
+                    return self._back("profiles", error=u"Choose the type of the new profile.")
+                self.request.response.redirect("%s/@@pfas-edd-config?profile=%s&tab=files"
+                                               % (portal.absolute_url(), new_id))
+                return u""
+            if act == "delete":
+                target = form.get("profile_id", "")
+                why = store.delete_edd_profile(portal, target)
+                if why:
+                    return self._back("profiles", error=why)
+                self.request.response.redirect("%s/@@pfas-edd-config?tab=profiles&ok=%s" % (
+                    portal.absolute_url(), "Deleted."))
+                return u""
             if act == "clone":
                 src = form.get("source_id") or store.DEFAULT_PROFILE_ID
                 name = (form.get("new_name") or "").strip() or "New EDD profile"
@@ -253,6 +474,11 @@ class PFASEDDConfigView(BrowserView):
                                            % (portal.absolute_url(), pid))
             return u""
 
+        if self.mapped():
+            done = self._post_mapped(portal, section, pid, prof, form)
+            if done is not None:
+                return done
+
         if section == "defaults":
             values = store.section(prof, "defaults") or {}
             for s in getattr(self.fmt(), "DEFAULT_FIELDS", []):
@@ -271,13 +497,16 @@ class PFASEDDConfigView(BrowserView):
             store.save_profile_section(portal, pid, "method_codes", codes)
         elif section == "analytes":
             naming = store.section(prof, "analyte_naming") or {}
-            for kw in store.profile_analyte_cas(prof):
+            for kw in store.listed_analytes(prof, _method_panels(portal, prof)):
                 s = _safe(kw)
                 if ("name_" + s) not in form:
                     continue
-                naming[kw] = {"code_override": (form.get("code_" + s) or u"").strip(),
-                              "parameter_name": (form.get("name_" + s) or u"").strip(),
-                              "note": (form.get("note_" + s) or u"").strip()}
+                entry = {"code_override": (form.get("code_" + s) or u"").strip(),
+                         "parameter_name": (form.get("name_" + s) or u"").strip(),
+                         "note": (form.get("note_" + s) or u"").strip()}
+                if kw not in naming and not any(entry.values()) and not form.get("tic_" + s):
+                    continue                 # listed for its method, still not named
+                naming[kw] = entry
                 if form.get("tic_" + s):
                     naming[kw]["tic"] = True
             store.save_profile_section(portal, pid, "analyte_naming", naming)
@@ -301,9 +530,10 @@ class PFASEDDConfigView(BrowserView):
             return self._back("defaults", error=u"Unknown section.")
         return self._back(section, ok=u"Saved.")
 
-    def _back(self, tab, ok=u"", error=u""):
+    def _back(self, tab, ok=u"", error=u"", extra=None):
         from six.moves.urllib.parse import urlencode
         q = {"profile": self.profile_id(), "tab": tab}
+        q.update(extra or {})
         if ok:
             q["ok"] = ok.encode("utf-8")
         if error:
@@ -333,8 +563,18 @@ class PFASEDDClientConfigView(BrowserView):
     def settings(self):
         return store.get_client_settings(self.context)
 
+    def shown_profile_id(self):
+        """The profile whose client fields the page shows: the one asked for
+        (?fields_of=, so a client can give the fields of a profile chosen at
+        export without changing its own), else the client's."""
+        portal = _portal(self.context)
+        asked = self.request.get("fields_of") or ""
+        if asked and asked in store.get_edd_profiles(portal):
+            return asked
+        return store.get_edd_profile_for_client(portal, self.settings())[0]
+
     def profile(self):
-        return store.get_edd_profile_for_client(_portal(self.context), self.settings())[1]
+        return store.get_edd_profiles(_portal(self.context))[self.shown_profile_id()]
 
     def profile_options(self):
         profs = store.get_edd_profiles(_portal(self.context))
@@ -368,7 +608,8 @@ class PFASEDDClientConfigView(BrowserView):
                 fields[f["key"]] = (form.get(f["name"]) or u"").strip()
         cfg["fields"] = fields
         store.save_client_settings(self.context, cfg)
-        self.request.response.redirect(self.context.absolute_url() + "/@@pfas-edd-client-config?saved=1")
+        self.request.response.redirect(self.context.absolute_url() + "/@@pfas-edd-client-config?saved=1"
+                                       + ("&fields_of=%s" % form.get("fields_of") if form.get("fields_of") else ""))
         return u""
 
     def portal_url(self):
@@ -422,15 +663,19 @@ class PFASEDDExportView(BrowserView):
         from senaite.pfas.edd_builder import EDDBuilder
         builder = EDDBuilder(portal)
         per_report = not bool(self.request.get("suppress"))
+        # the profile chosen for this export (the batch EDD page offers it;
+        # blank: the client's)
+        chosen = (self.request.get("profile") or "").strip() or None
         csv_str, errors, filename = builder.generate_from_batch(
-            batch_obj, client_obj=client_obj, per_report_override=per_report)
+            batch_obj, client_obj=client_obj, per_report_override=per_report, profile_id=chosen)
         blocking = [e for e in errors if e.get("type") == "BLOCKING"]
         report_text = builder.format_validation_report(errors)
 
         if preview:
+            rows = getattr(builder, "_last_rows", None)
             return json.dumps({
-                "batch_id": batch_id, "filename": filename,
-                "row_count": csv_str.count("\r\n") - 1 if csv_str else 0,
+                "batch_id": batch_id, "filename": filename, "profile": builder._edd_profile_id,
+                "row_count": rows if rows is not None else (csv_str.count("\r\n") - 1 if csv_str else 0),
                 "blocking_count": len(blocking), "error_count": len(errors),
                 "validation_report": report_text, "has_csv": bool(csv_str)})
         if blocking:
@@ -439,6 +684,12 @@ class PFASEDDExportView(BrowserView):
                 "error": "BLOCKING validation errors — cannot generate EDD",
                 "blocking_errors": [e["message"] for e in blocking],
                 "validation_report": report_text})
+        if (filename or "").lower().endswith(".zip"):
+            # a delivery of several files: one archive
+            self.request.response.setHeader("Content-Type", "application/zip")
+            self.request.response.setHeader(
+                "Content-Disposition", "attachment; filename=\"{0}\"".format(filename))
+            return csv_str
         self.request.response.setHeader("Content-Type", "text/csv; charset=utf-8")
         self.request.response.setHeader(
             "Content-Disposition", "attachment; filename=\"{0}\"".format(filename or (batch_id + "_EDD.csv")))
@@ -489,6 +740,12 @@ class PFASEDDBatchesView(BrowserView):
     def portal_url(self):
         return _portal(self.context).absolute_url()
 
+    def profile_options(self):
+        """Every profile, for choosing the one an export uses (the batch's
+        client's is preselected)."""
+        profs = store.get_edd_profiles(_portal(self.context))
+        return [{"id": k, "name": v.get("name", k)} for k, v in sorted(profs.items())]
+
     def batch_id(self):
         return self.request.get("batch_id", "")
 
@@ -527,6 +784,7 @@ class PFASEDDBatchesView(BrowserView):
                 stored = get_batch_edd(batch_obj)
                 rows.append({
                     "batch_id": bid, "title": batch_obj.Title() or bid,
+                    "edd_profile": store.get_edd_profile_for_client(portal, cfg)[0],
                     "created": batch_obj.created().strftime("%Y-%m-%d"),
                     "client_title": client_obj.Title() if client_obj else "",
                     "edd_enabled": bool(cfg.get("edd_enabled")),

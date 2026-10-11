@@ -175,8 +175,15 @@
             </td>
             <td>
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <a tal:attributes="href b/download_url"
-                   class="btn-sm btn-primary">Download EDD</a>
+                <!-- the export's profile: the client's preselected, any other chosen here -->
+                <form method="get" class="filter-row" tal:attributes="action string:${view/portal_url}/@@pfas-edd-export">
+                  <input type="hidden" name="batch_id" tal:attributes="value b/batch_id" />
+                  <select name="profile" tal:attributes="aria-label string:EDD profile for ${b/batch_id}">
+                    <option tal:repeat="p view/profile_options" tal:content="p/name"
+                            tal:attributes="value p/id; selected python:'selected' if p['id'] == b['edd_profile'] else None">profile</option>
+                  </select>
+                  <button type="submit" class="btn-sm btn-primary">Download EDD</button>
+                </form>
                 <a tal:attributes="href b/sampletype_url"
                    class="btn-sm btn-secondary">Sample Types</a>
               </div>

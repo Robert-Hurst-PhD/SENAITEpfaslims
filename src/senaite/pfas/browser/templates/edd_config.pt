@@ -29,11 +29,236 @@
   </ul>
 
   <nav class="pfas-tabs" aria-label="Profile settings">
-    <a tal:repeat="t python:[('defaults','Defaults'),('methods','Methods'),('analytes','Analytes'),('qualifiers','Qualifiers'),('qc_types','QC types'),('value_lists','Value lists'),('test','Test export'),('profiles','Profiles')]"
-       tal:attributes="href python:'%s&tab=%s' % (base, t[0]);
-                       class python:'pfas-tab active' if tab == t[0] else 'pfas-tab'"
-       tal:content="python:t[1] + ((' (%d to code)' % view.blocking_count()) if t[0] == 'analytes' and view.blocking_count() else '')">Defaults</a>
+    <a tal:repeat="t view/tabs"
+       tal:attributes="href python:'%s&tab=%s' % (base, t['id']);
+                       class python:'pfas-tab active' if tab == t['id'] else 'pfas-tab'"
+       tal:content="python:t['label'] + ((' (%d to code)' % view.blocking_count()) if t['id'] == 'analytes' and view.blocking_count() else '')">Defaults</a>
   </nav>
+
+  <!-- a column-mapped profile: what stops its delivery -->
+  <ul class="bench-alerts" tal:define="probs view/problems" tal:condition="probs">
+    <li class="bench-warn" tal:repeat="p probs" tal:content="p">problem</li>
+  </ul>
+
+  <!-- files: the delivery's files, each one's name, rows and layout -->
+  <section class="bench-block" tal:condition="python:tab == 'files' and view.mapped()">
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="files" />
+      <div class="table-wrap">
+      <table class="pfas-table pfas-table-form">
+        <thead><tr><th>File name</th><th>Rows</th><th>Delimiter</th><th>Header</th><th>Header prefix</th>
+          <th>Line ending</th><th>Columns</th><th>Remove</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="f view/file_rows">
+            <td><input type="text" tal:attributes="name string:f${f/i}__name; value f/name; aria-label string:File ${f/i} name" /></td>
+            <td><select tal:attributes="name string:f${f/i}__grain; aria-label string:File ${f/i} rows">
+              <option tal:repeat="o view/grains" tal:content="o/label"
+                      tal:attributes="value o/value; selected python:'selected' if o['value'] == f['grain'] else None">g</option></select></td>
+            <td><select tal:attributes="name string:f${f/i}__delimiter; aria-label string:File ${f/i} delimiter">
+              <option tal:repeat="o view/delimiters" tal:content="o/label"
+                      tal:attributes="value o/value; selected python:'selected' if o['value'] == f['delimiter'] else None">d</option></select></td>
+            <td><select tal:attributes="name string:f${f/i}__header; aria-label string:File ${f/i} header row">
+              <option tal:repeat="o view/headers" tal:content="o/label"
+                      tal:attributes="value o/value; selected python:'selected' if o['value'] == f['header'] else None">h</option></select></td>
+            <td><input type="text" size="3" tal:attributes="name string:f${f/i}__header_prefix; value f/header_prefix; aria-label string:File ${f/i} header prefix" /></td>
+            <td><select tal:attributes="name string:f${f/i}__newline; aria-label string:File ${f/i} line ending">
+              <option tal:repeat="o view/newlines" tal:content="o/label"
+                      tal:attributes="value o/value; selected python:'selected' if o['value'] == f['newline'] else None">n</option></select></td>
+            <td><a class="btn-sm btn-secondary" tal:attributes="href python:'%s&tab=columns&file=%d' % (base, f['i'])"
+                   tal:content="string:${f/n_columns} columns">0</a></td>
+            <td><input type="checkbox" value="1" tal:attributes="name string:f${f/i}__remove; aria-label string:Remove file ${f/i}" /></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <label class="section-gap">Package name (several files are delivered as one zip)
+        <input type="text" name="package" tal:attributes="value view/package" /></label>
+      <div class="filter-row section-gap">
+        <button class="btn-sm btn-primary" type="submit">Save files</button>
+        <tal:h define="hid string:edd-column-mapped"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+        <button class="btn-sm btn-secondary" type="submit" name="edd_action" value="add_file">Add file</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- columns: one file's columns in order, each one's source, constant,
+       condition, code map, format and checks -->
+  <section class="bench-block" tal:condition="python:tab == 'columns' and view.mapped()"
+           tal:define="fi view/file_index">
+    <form method="get" class="filter-row" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="tab" value="columns" />
+      <select name="file" onchange="this.form.submit()" aria-label="File">
+        <option tal:repeat="f view/file_rows" tal:content="f/name"
+                tal:attributes="value f/i; selected python:'selected' if f['i'] == fi else None">file</option>
+      </select>
+    </form>
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="columns" />
+      <input type="hidden" name="file" tal:attributes="value fi" />
+      <div class="table-wrap">
+      <table class="pfas-table pfas-table-form" tal:define="sources view/source_options; maps view/map_names; lists view/list_names">
+        <thead><tr><th>Order</th><th>Heading</th><th>Source</th><th>Else</th><th>Constant</th><th>Code map</th>
+          <th>Format</th><th>Only when</th><th>Join</th><th>Required</th><th>Value list</th><th>Max length</th><th>Remove</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="c view/column_rows">
+            <td><input type="text" size="3" tal:attributes="name string:c${c/j}__order; value c/order; aria-label string:Column ${c/j} order" /></td>
+            <td><input type="text" tal:attributes="name string:c${c/j}__heading; value c/heading; aria-label string:Column ${c/j} heading" /></td>
+            <td><select tal:attributes="name string:c${c/j}__source; aria-label string:Column ${c/j} source">
+              <option tal:repeat="o sources" tal:content="o/label"
+                      tal:attributes="value o/value; selected python:'selected' if o['value'] == c['source'] else None">s</option></select></td>
+            <td><select tal:attributes="name string:c${c/j}__fallback; aria-label string:Column ${c/j} source when blank">
+              <option tal:repeat="o sources" tal:content="o/label"
+                      tal:attributes="value o/value; selected python:'selected' if o['value'] == c['fallback'] else None">s</option></select></td>
+            <td><input type="text" size="8" tal:attributes="name string:c${c/j}__constant; value c/constant; aria-label string:Column ${c/j} constant" /></td>
+            <td><select tal:attributes="name string:c${c/j}__map; aria-label string:Column ${c/j} code map">
+              <option value="">(none)</option>
+              <option tal:repeat="m maps" tal:content="m"
+                      tal:attributes="value m; selected python:'selected' if m == c['map'] else None">m</option></select></td>
+            <td><input type="text" size="12" tal:attributes="name string:c${c/j}__format; value c/format; aria-label string:Column ${c/j} format" /></td>
+            <td><input type="text" size="14" tal:attributes="name string:c${c/j}__when; value c/when; aria-label string:Column ${c/j} only when" /></td>
+            <td><input type="text" size="2" tal:attributes="name string:c${c/j}__join; value c/join; aria-label string:Column ${c/j} join" /></td>
+            <td><input type="checkbox" value="1" tal:attributes="name string:c${c/j}__required; checked python:'checked' if c['required'] else None; aria-label string:Column ${c/j} required" /></td>
+            <td><select tal:attributes="name string:c${c/j}__list; aria-label string:Column ${c/j} value list">
+              <option value="">(none)</option>
+              <option tal:repeat="l lists" tal:content="l"
+                      tal:attributes="value l; selected python:'selected' if l == c['list'] else None">l</option></select></td>
+            <td><input type="text" size="4" tal:attributes="name string:c${c/j}__max_length; value c/max_length; aria-label string:Column ${c/j} maximum length" /></td>
+            <td><input type="checkbox" value="1" tal:attributes="name string:c${c/j}__remove; aria-label string:Remove column ${c/j}" /></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="filter-row section-gap">
+        <button class="btn-sm btn-primary" type="submit">Save columns</button>
+        <tal:h define="hid string:edd-column-mapped"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+        <input type="text" name="n_columns" value="1" size="3" aria-label="Number of columns to add" />
+        <button class="btn-sm btn-secondary" type="submit" name="edd_action" value="add_columns">Add columns</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- code maps: our value to the format's code, keyed by a second source
+       where needed -->
+  <section class="bench-block" tal:condition="python:tab == 'maps' and view.mapped()">
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config"
+          tal:define="sources view/source_options; lists view/list_names">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="maps" />
+      <fieldset class="section-gap" tal:repeat="m view/map_blocks">
+        <legend tal:content="m/name">map</legend>
+        <input type="hidden" tal:attributes="name string:m${m/k}__name; value m/name" />
+        <div class="filter-row">
+          <label>Also keyed by
+            <select tal:attributes="name string:m${m/k}__by; aria-label string:${m/name} also keyed by">
+              <option tal:repeat="o sources" tal:content="o/label"
+                      tal:attributes="value o/value; selected python:'selected' if o['value'] == m['by'] else None">s</option></select></label>
+          <label>Codes from the list
+            <select tal:attributes="name string:m${m/k}__list; aria-label string:${m/name} codes from the list">
+              <option value="">(any)</option>
+              <option tal:repeat="l lists" tal:content="l"
+                      tal:attributes="value l; selected python:'selected' if l == m['list'] else None">l</option></select></label>
+          <label><input type="checkbox" value="1" tal:attributes="name string:m${m/k}__remove; aria-label string:Remove the map ${m/name}" /> Remove the map</label>
+        </div>
+        <table class="pfas-table pfas-table-form">
+          <thead><tr><th>Ours</th><th>Code</th><th>Description</th><th>Remove</th></tr></thead>
+          <tbody>
+            <tr tal:repeat="r m/rows">
+              <td><input type="text" tal:attributes="name string:m${m/k}__r${r/n}__ours; value r/ours; aria-label string:${m/name} row ${r/n} ours" /></td>
+              <td><input type="text" tal:attributes="name string:m${m/k}__r${r/n}__code; value r/code; aria-label string:${m/name} row ${r/n} code" /></td>
+              <td><input type="text" tal:attributes="name string:m${m/k}__r${r/n}__description; value r/description; aria-label string:${m/name} row ${r/n} description" /></td>
+              <td><input type="checkbox" value="1" tal:attributes="name string:m${m/k}__r${r/n}__remove; aria-label string:${m/name} remove row ${r/n}" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </fieldset>
+      <div class="filter-row section-gap">
+        <button class="btn-sm btn-primary" type="submit">Save maps</button>
+        <tal:h define="hid string:edd-column-mapped"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+        <input type="text" name="new_map" placeholder="New map name" aria-label="New map name" />
+        <button class="btn-sm btn-secondary" type="submit" name="edd_action" value="add_map">Add map</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- value lists: the format's valid codes, a column at a time from the
+       agency's workbook, or pasted -->
+  <section class="bench-block" tal:condition="python:tab == 'lists' and view.mapped()">
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="lists" />
+      <table class="pfas-table">
+        <thead><tr><th>List</th><th>Codes</th><th>First codes</th><th>Remove</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="l view/list_rows">
+            <td tal:content="l/name">rt_unit.unit_code</td><td tal:content="l/count">3</td><td tal:content="l/sample">ng/l</td>
+            <td><input type="hidden" tal:attributes="name string:l${l/n}__name; value l/name" />
+              <input type="checkbox" value="1" tal:attributes="name string:l${l/n}__remove; aria-label string:Remove the list ${l/name}" /></td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn-sm btn-secondary section-gap" type="submit">Remove the ticked lists</button>
+    </form>
+    <form method="post" enctype="multipart/form-data" class="section-gap"
+          tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="lists" />
+      <div class="field-grid">
+        <label>List name <input type="text" name="list_name" /></label>
+        <label>Workbook (.xlsx) <input type="file" name="upload" accept=".xlsx" /></label>
+        <label>Sheet <input type="text" name="sheet" /></label>
+        <label>Column <input type="text" name="column" /></label>
+        <label>Or paste the codes, one per line <textarea name="pasted" rows="4"></textarea></label>
+      </div>
+      <button class="btn-sm btn-primary" type="submit" name="edd_action" value="import">Import list</button>
+      <tal:h define="hid string:edd-column-mapped"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
+    </form>
+  </section>
+
+  <!-- lab values: the lab's identity in this format, named for the columns -->
+  <section class="bench-block" tal:condition="python:tab == 'named_defaults' and view.mapped()">
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="named_defaults" />
+      <table class="pfas-table pfas-table-form">
+        <thead><tr><th>Name</th><th>Value</th><th>Remove</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="d view/named_rows">
+            <td><input type="text" tal:attributes="name string:d${d/n}__name; value d/name; aria-label string:Lab value ${d/n} name" /></td>
+            <td><input type="text" tal:attributes="name string:d${d/n}__value; value d/value; aria-label string:Lab value ${d/n} value" /></td>
+            <td><input type="checkbox" value="1" tal:attributes="name string:d${d/n}__remove; aria-label string:Remove lab value ${d/n}" /></td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn-sm btn-primary section-gap" type="submit">Save lab values</button>
+    </form>
+  </section>
+
+  <!-- client fields: what a client gives for this format -->
+  <section class="bench-block" tal:condition="python:tab == 'client_fields' and view.mapped()">
+    <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config"
+          tal:define="lists view/list_names">
+      <input type="hidden" name="profile" tal:attributes="value pid" />
+      <input type="hidden" name="section" value="client_fields" />
+      <table class="pfas-table pfas-table-form">
+        <thead><tr><th>Key</th><th>Label</th><th>Value list</th><th>Remove</th></tr></thead>
+        <tbody>
+          <tr tal:repeat="f view/client_field_rows">
+            <td><input type="text" tal:attributes="name string:cf${f/n}__key; value f/key; aria-label string:Client field ${f/n} key" /></td>
+            <td><input type="text" tal:attributes="name string:cf${f/n}__label; value f/label; aria-label string:Client field ${f/n} label" /></td>
+            <td><select tal:attributes="name string:cf${f/n}__list; aria-label string:Client field ${f/n} value list">
+              <option value="">(none)</option>
+              <option tal:repeat="l lists" tal:content="l"
+                      tal:attributes="value l; selected python:'selected' if l == f['list'] else None">l</option></select></td>
+            <td><input type="checkbox" value="1" tal:attributes="name string:cf${f/n}__remove; aria-label string:Remove client field ${f/n}" /></td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn-sm btn-primary section-gap" type="submit">Save client fields</button>
+    </form>
+  </section>
 
   <!-- defaults: the lab's identity and default values in this format -->
   <section class="bench-block" tal:condition="python:tab == 'defaults'">
@@ -156,6 +381,17 @@
       <input type="text" name="new_name" placeholder="New profile name" />
       <button class="btn-sm btn-primary" type="submit">Clone profile</button>
     </form>
+    <!-- a profile whose format is its own data, started empty -->
+    <form method="post" class="filter-row section-gap" tal:condition="view/new_types"
+          tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+      <input type="hidden" name="section" value="profiles" />
+      <input type="hidden" name="edd_action" value="new" />
+      <select name="new_type" aria-label="Type of the new profile">
+        <option tal:repeat="t view/new_types" tal:attributes="value t/id" tal:content="t/name">type</option>
+      </select>
+      <input type="text" name="new_name" placeholder="New profile name" aria-label="Name of the new profile" />
+      <button class="btn-sm btn-primary" type="submit">New profile</button>
+    </form>
     <details tal:repeat="p view/profile_rows" class="section-gap">
       <summary tal:content="python:u'%s · %s · %d columns' % (p['name'], p['state'] or u'-', p['n_columns'])">profile</summary>
       <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
@@ -188,6 +424,15 @@
           </tbody>
         </table>
         <button class="btn-sm btn-primary" type="submit">Save profile</button>
+      </form>
+      <!-- refused for the default profile and while a client uses it -->
+      <form method="post" class="section-gap" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config"
+            onsubmit="return confirm('Delete this EDD profile?');">
+        <input type="hidden" name="section" value="profiles" />
+        <input type="hidden" name="edd_action" value="delete" />
+        <input type="hidden" name="profile_id" tal:attributes="value p/id" />
+        <button class="btn-sm btn-secondary" type="submit"
+                tal:attributes="aria-label string:Delete profile ${p/name}">Delete profile</button>
       </form>
     </details>
   </section>
@@ -232,7 +477,7 @@
   }
   function eddPreview(form) {
     var out = document.getElementById('edd-preview');
-    var url = '<tal:u tal:replace="view/portal_url"/>/@@pfas-edd-export?preview=1&batch_id=' +
+    var url = '<tal:u tal:replace="view/portal_url"/>/@@pfas-edd-export?preview=1&profile=<tal:p tal:replace="view/profile_id"/>&batch_id=' +
               encodeURIComponent(form.batch_id.value.trim());
     out.textContent = 'Checking...';
     fetch(url, {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (d) {

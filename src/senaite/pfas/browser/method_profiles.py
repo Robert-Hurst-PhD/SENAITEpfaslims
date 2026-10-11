@@ -8,6 +8,8 @@ PFAS Method Profile browser views.
 @@pfas-method-profile-edit?method_id=FDA_32PFAS
     Edit a single method profile; POST saves to ZODB and exports
     /data/qc/method_profiles.json for the pipeline worker.
+    ...&delete=check lists what uses the method (method_delete.py) and,
+    when nothing does, offers to delete it (POST action=delete_method).
 
 Both views require Manager, LabManager, or Owner role.
 Python 2.7 compatible.
@@ -24,7 +26,6 @@ from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
 from senaite.pfas.browser.perms import refuse
 from senaite.pfas.method_profile_store import (
-    DEFAULT_PROFILES,
     get_profile,
     list_method_ids,
     save_profile,
@@ -88,8 +89,9 @@ class PFASMethodProfilesView(BrowserView):
             from senaite.pfas.method_bridge import get_association, get_core_method
         except Exception:
             get_association = get_core_method = None
-        saved_ids = set(list_method_ids(portal))
-        all_ids = sorted(set(list(DEFAULT_PROFILES.keys())) | saved_ids)
+        # the stored profiles: a deleted method (a shipped one included) is
+        # not listed again from the seeds
+        all_ids = sorted(list_method_ids(portal))
         from senaite.pfas import method_revisions as mr
         from senaite.pfas.method_profile_store import raw_profile
         from senaite.pfas.qc.rules import method_toggles
@@ -142,8 +144,60 @@ class PFASMethodProfileEditView(BrowserView):
         if self.request.form.get("_preview") == "rt":
             return self._preview_recovery_grid()
         if self.request.method == "POST":
+            if self.request.form.get("action") == "delete_method":
+                return self._delete_method()
             return self._handle_post()
         return self.template()
+
+    # ── Delete method (method_delete.py) ──────────────────────────────────────
+
+    def delete_requested(self):
+        """The confirm step: what uses the method, or what a deletion removes."""
+        return self.request.form.get("delete") == "check" and bool(self.method_id())
+
+    def delete_report(self):
+        """{"uses": [(what, which)], "removes": [(what, which)]}. A failure to
+        read is a use ("Could not be checked"), never a free method."""
+        if not hasattr(self, "_delete_report"):
+            from senaite.pfas import method_delete
+            try:
+                uses, removes = method_delete.report(_portal(self.context), self.method_id())
+            except Exception as exc:                        # noqa: BLE001
+                logger.exception("delete check for %s", self.method_id())
+                uses, removes = [(u"Could not be checked", u"%s" % exc)], []
+            self._delete_report = {"uses": uses, "removes": removes}
+        return self._delete_report
+
+    def _delete_method(self):
+        """POST: delete the method when nothing uses it (read again here);
+        refused, back to the confirm step that lists what uses it."""
+        import transaction
+        from senaite.pfas import method_delete
+        try:
+            from plone.protect import CheckAuthenticator
+            CheckAuthenticator(self.request)
+        except ImportError:
+            pass
+        mid = self.method_id()
+        portal = _portal(self.context)
+        if self.request.form.get("confirm") != "yes":
+            return self._redirect_error(mid, u"Not deleted: confirm the deletion.")
+        label = self.display_name()
+        try:
+            method_delete.delete(portal, mid)
+        except method_delete.MethodInUse:
+            transaction.abort()
+            self.request.response.redirect(
+                "{0}/@@pfas-method-profile-edit?method_id={1}&delete=check".format(
+                    self.context.absolute_url(), urllib.quote(mid.encode("utf-8"))))
+            return u""
+        except Exception as exc:                            # noqa: BLE001
+            transaction.abort()
+            logger.exception("method %s not deleted", mid)
+            return self._redirect_error(mid, u"Not deleted: {0}".format(exc))
+        self.request.response.redirect("{0}/@@pfas-method-profiles?ok={1}".format(
+            portal.absolute_url(), urllib.quote(u"{0} deleted.".format(label).encode("utf-8"))))
+        return u""
 
     # ── Template helpers ──────────────────────────────────────────────────────
 
@@ -320,6 +374,11 @@ class PFASMethodProfileEditView(BrowserView):
         # the SUR Limits pane: shown when the method judges its extracted
         # standards per analyte and matrix class (Engine setting)
         return self._engine()["eis_recovery_limits"]
+
+    def eis_needs_verification(self):
+        # the pane's notice: the limits are marked to be verified against
+        # the published method (Engine setting), never by the method's id
+        return self._engine()["eis_verify_flag"]
 
     # ── Surrogate IS lane data ────────────────────────────────────────────────
 

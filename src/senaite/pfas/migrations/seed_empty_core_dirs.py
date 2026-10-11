@@ -29,7 +29,7 @@ CSV_DIR = "/addon/src/senaite/pfas/setupdata"
 
 def _get_portal():
     app = globals().get("app")
-    portals = [o for o in app.objectValues("Plone Site")]
+    portals = [o for o in app.objectValues(["Plone Site"])]
     if not portals:
         print("ERROR: no Plone site"); sys.exit(1)
     return portals[0]

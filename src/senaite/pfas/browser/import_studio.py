@@ -666,16 +666,17 @@ def seed_vendor_templates(portal):
 # ── REST bridge view ──────────────────────────────────────────────────────────
 
 class PFASInstrumentProfileView(BrowserView):
-    """JSON endpoint used by the pipeline importer to fetch a saved column-
-    mapping profile.
+    """JSON endpoint the pipeline worker asks for a file's import layout.
 
-    GET @@pfas-instrument-profile?vendor_key=sciex&version=1.7.2
-      → 200 {"vendor": "SCIEX OS", "vendor_key": "sciex", "map": {...}, ...}
-      → 200 {"error": "No import mapping exists for sciex version 1.7.2 — ..."}
+    POST/GET @@pfas-instrument-profile  head=<the file's first lines>
+                                        instrument_uid=<the run's instrument>
+      -> 200 the saved layout profile ({"id", "name", "reader", "map", ...})
+      -> 200 {"error": "..."} when no saved layout fits the file, or two do
 
-    The pipeline treats any response with an "error" key as a refusal.
-    No profile is served from the templates store; only explicitly saved
-    profiles (written by Import Studio) satisfy the pipeline's check.
+    The file is read with each saved layout's own options and matched by its
+    columns (senaite.pfas.import_layouts.match); a file no layout fits is
+    refused, never sent to a pass-through. `columns` alone (a header row an
+    older worker read as comma-separated) is matched the same way.
     """
 
     def __call__(self):
@@ -688,58 +689,30 @@ class PFASInstrumentProfileView(BrowserView):
             except ImportError:
                 pass
         portal = getToolByName(self.context, "portal_url").getPortalObject()
-        vendor_key = (self.request.form.get("vendor_key", "") or "").strip().lower()
-        version = (self.request.form.get("version", "") or "").strip()
-
         self.request.response.setHeader("Content-Type", "application/json")
-
-        # Vendor detection happens HERE and nowhere else. The pipeline used to
-        # run its own copy (vendor_profiles.detect_vendor) to build the lookup
-        # key, and the two implementations disagreed — the Studio saved under
-        # "waters" while the importer asked for "native", so no profile the UI
-        # wrote was ever reachable. The caller now sends the file's headers and
-        # this side, which owns the detector, resolves them.
-        if not vendor_key:
-            raw_columns = self.request.form.get("columns", "")
-            columns = []
-            if raw_columns:
-                try:
-                    columns = json.loads(raw_columns)
-                except (ValueError, TypeError):
-                    columns = [c for c in raw_columns.split("\t") if c]
-            if columns:
-                vendor_key, _confidence = _detect_vendor_py27(columns)
-
-        if not vendor_key:
+        f = self.request.form
+        head = f.get("head") or ""
+        columns = []
+        raw_columns = f.get("columns") or ""
+        if raw_columns:
+            try:
+                columns = json.loads(raw_columns)
+            except (ValueError, TypeError):
+                columns = [c for c in raw_columns.split("\t") if c]
+        if not head and not columns:
             self.request.response.setStatus(400)
-            return json.dumps({
-                "error": "vendor_key or columns parameter is required"})
-
-        profile = load_vendor_profile(portal, vendor_key, version)
-        if profile is not None and profile.get("retired"):
-            self.request.response.setHeader("Content-Type", "application/json")
-            return json.dumps({"error": (
-                "Import profile for {0} version {1} is RETIRED — imports are "
-                "refused. Reactivate it in Import Studio if this mapping is "
-                "still valid.".format(vendor_key, version or "(any)"))})
-        if profile is not None:
-            profile = dict(profile)
-            profile["resolved_vendor_key"] = vendor_key
-            profile["resolved_version"] = version
-            return json.dumps(profile)
-
-        # Not found — return refusal message for the pipeline
-        v_label = _VENDOR_COLUMN_MAP.get(vendor_key, {}).get("vendor", vendor_key)
-        if version:
-            detail = "{0} version {1}".format(v_label, version)
-        else:
-            detail = v_label
-        return json.dumps({
-            "error": (
-                "No import mapping exists for {0} — "
-                "open Import Studio to create one.".format(detail)
-            )
-        })
+            return json.dumps({"error": "send the file's first lines (head) to match its import layout"})
+        from senaite.pfas import import_layouts, import_layouts_store
+        try:
+            profile = import_layouts_store.match_file(
+                portal, head=head, instrument_uid=(f.get("instrument_uid") or "").strip(),
+                columns=columns)
+        except import_layouts.LayoutRefused as exc:
+            return json.dumps({"error": "%s" % exc})
+        profile = dict(profile)
+        profile["resolved_id"] = profile.get("id")
+        profile["resolved_name"] = profile.get("name")
+        return json.dumps(profile)
 
 
 # ── View ─────────────────────────────────────────────────────────────────────
@@ -755,6 +728,7 @@ STUDIO_GATES = {
     "save_profile": TIER_CONFIG,
     "retire_profile": TIER_CONFIG,
     "reactivate_profile": TIER_CONFIG,
+    "delete_profile": TIER_CONFIG,
     "save_export": TIER_CONFIG,
 }
 
@@ -778,6 +752,8 @@ class PFASImportStudioView(GateMixin, BrowserView):
                 return self._handle_retire_profile(True)
             if action == "reactivate_profile":
                 return self._handle_retire_profile(False)
+            if action == "delete_profile":
+                return self._handle_delete_profile()
             if action == "save_profile":
                 return self._handle_save_profile()
             if action == "save_export":
@@ -788,20 +764,43 @@ class PFASImportStudioView(GateMixin, BrowserView):
 
     # -- Helpers -------------------------------------------------------------
 
-    def _handle_retire_profile(self, retired):
+    def _user(self):
         from AccessControl import getSecurityManager
+        return getSecurityManager().getUser().getId()
+
+    def _handle_retire_profile(self, retired):
+        from senaite.pfas import import_layouts_store
         f = self.request.form
-        user = getSecurityManager().getUser().getId()
-        ok = set_vendor_profile_retired(
-            self._portal(), (f.get("vendor_key") or "").strip(),
-            (f.get("version") or "").strip(), retired, user,
+        ok = import_layouts_store.set_retired(
+            self._portal(), (f.get("layout_id") or "").strip(), retired, self._user(),
             reason=(f.get("reason") or "").strip())
-        msg = ("Profile+retired" if retired else "Profile+reactivated") if ok \
-            else "Profile+not+found"
+        msg = ("Layout+retired" if retired else "Layout+reactivated") if ok else "Layout+not+found"
         return self._redirect("{0}?ok={1}".format(self._self_url(), msg))
 
+    def _handle_delete_profile(self):
+        """Delete a layout profile; Configuration History keeps what it was."""
+        from senaite.pfas import import_layouts_store
+        f = self.request.form
+        ok = import_layouts_store.delete(self._portal(), (f.get("layout_id") or "").strip(),
+                                         self._user(), reason=(f.get("reason") or "").strip())
+        return self._redirect("{0}?{1}".format(
+            self._self_url(), "ok=Layout+deleted" if ok else "error=Layout+not+found"))
+
     def saved_profiles(self):
-        return list_vendor_profiles(self._portal())
+        """The saved import layouts, for the list: name, instrument, layout,
+        columns, status."""
+        from senaite.pfas import import_layouts, import_layouts_store
+        titles = dict((i["uid"], i["title"]) for i in self.instruments())
+        kinds = dict(import_layouts.LAYOUTS)
+        out = []
+        for p in import_layouts_store.list_profiles(self._portal()):
+            out.append({"id": p["id"], "name": p.get("name") or p["id"],
+                        "instrument": titles.get(p.get("instrument_uid") or "", u"any instrument")
+                        if p.get("instrument_uid") else u"any instrument",
+                        "layout": kinds.get((p.get("reader") or {}).get("layout") or "long", u""),
+                        "n_columns": len(p.get("signature") or []),
+                        "retired": bool(p.get("retired")), "notes": p.get("notes") or u""})
+        return out
 
     # -- Injection list per instrument (instrument_export.py) ----
 
@@ -909,235 +908,155 @@ class PFASImportStudioView(GateMixin, BrowserView):
         # Escape chars that break XML/Chameleon parsing when injected into <script>
         return raw.replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e')
 
-    # -- Phase 1: upload & detect -------------------------------------------
+    # -- the reader options the page offers (senaite.pfas.import_layouts) ----
+
+    def layout_choices(self):
+        from senaite.pfas import import_layouts as L
+        return {"layouts": L.LAYOUTS, "delimiters": L.DELIMITERS, "encodings": L.ENCODINGS,
+                "match": L.MATCH_MODES}
+
+    def reader_form(self):
+        """The reader options as the upload form last held them (defaults first)."""
+        from senaite.pfas import import_layouts as L
+        f = self.request.form
+        out = dict(L.READER_DEFAULTS)
+        for k in L.READER_DEFAULTS:
+            if f.get(k) not in (None, ""):
+                out[k] = f.get(k)
+        return out
+
+    # -- Phase 1: upload & read ----------------------------------------------
 
     def _handle_upload(self):
+        """Read the uploaded export with the reader options chosen on the
+        form; a saved layout the file fits is opened for editing, else the
+        columns start from the detected vendor's suggestions. Nothing is
+        saved."""
+        from senaite.pfas import import_layouts as L
+        from senaite.pfas import import_layouts_store
         f = self.request.form
-        instrument_uid = f.get("instrument_uid", "").strip()
+        instrument_uid = (f.get("instrument_uid") or "").strip()
         upload = f.get("upload_file")
-        # Zope wraps file uploads as FileUpload objects; an empty/missing
-        # upload may still have a .read method but an empty filename.
         upload_filename = getattr(upload, "filename", "") or ""
         if not upload or not hasattr(upload, "read") or not upload_filename:
-            url = "{0}?error=Please+select+a+file+before+uploading".format(self._self_url())
-            return self._redirect(url)
-
+            return self._redirect("{0}?error=Please+select+a+file+before+uploading".format(self._self_url()))
         try:
             raw = upload.read()
-            filename = upload_filename or "file.csv"
         except Exception as exc:
-            url = "{0}?error=Upload+failed:+{1}".format(self._self_url(), str(exc)[:40])
-            return self._redirect(url)
-
-        # Decode
+            return self._redirect("{0}?error=Upload+failed:+{1}".format(self._self_url(), str(exc)[:40]))
+        opts = L.options(self.reader_form())
+        text = L.decode(raw, opts.get("encoding"))
+        if not text.strip():
+            return self._redirect("{0}?error=File+is+empty".format(self._self_url()))
         try:
-            text = raw.decode("utf-8")
-        except (UnicodeDecodeError, AttributeError):
-            try:
-                text = raw.decode("latin-1")
-            except Exception:
-                text = str(raw)
-
-        lines = text.splitlines()
-        if not lines:
-            url = "{0}?error=File+is+empty".format(self._self_url())
-            return self._redirect(url)
-
-        # Detect software version from the preamble ABOVE the header row.
-        # These exports start with the header, so there is normally none —
-        # which is correct, and stable, unlike scraping it out of the data.
-        auto_version = _detect_software_version(lines, header_line_index=0)
-
-        # Python 2.7's csv module requires byte strings for the file content
-        # and the delimiter. unicode_literals makes "," into u"," which breaks
-        # csv.reader with "TypeError: delimiter must be string, not unicode".
-        text_bytes = text.encode("utf-8") if isinstance(text, unicode) else text
-
-        # Parse headers (sniff delimiter)
-        try:
-            sample_bytes = b"\n".join(text_bytes.splitlines()[:5])
-            dialect = csv.Sniffer().sniff(sample_bytes)
-            delimiter = str(dialect.delimiter)  # str() = bytes in Python 2.7
-        except Exception:
-            delimiter = b","
-
-        reader = csv.reader(StringIO.StringIO(text_bytes), delimiter=delimiter)
-        headers = []
-        preview_rows = []
-        for i, row in enumerate(reader):
-            if i == 0:
-                headers = [h.decode("utf-8", "replace") if isinstance(h, bytes) else h
-                           for h in row]
-            else:
-                preview_rows.append(
-                    [c.decode("utf-8", "replace") if isinstance(c, bytes) else c
-                     for c in row]
-                )
-            if i >= 4:
-                break
-
+            got = L.read(text, opts)
+        except ValueError as exc:
+            self.request.form["error"] = u"%s" % exc
+            return self.template()
+        headers = got["headers"]
         if not headers:
-            url = "{0}?error=Could+not+parse+headers".format(self._self_url())
-            return self._redirect(url)
-
-        # Detect vendor
+            self.request.form["error"] = (u"No column was read with these options: check the "
+                                          u"layout, the delimiter and the header row.")
+            return self.template()
+        preview = [[r.get(h, u"") for h in headers] for r in got["rows"][:3]]
         vendor_key, confidence = _detect_vendor_py27(headers)
-
-        # Build suggested mapping
         col_map = _suggest_mapping(headers, vendor_key)
-
-        # Check for existing profile on this instrument
-        existing_profile = None
-        instrument_title = ""
-        instrument_profiles = []
+        # a saved layout this file fits (its own columns, this instrument):
+        # opened for editing -- never another layout's mapping
+        existing, notice = None, u""
+        try:
+            existing = import_layouts_store.match_file(self._portal(), head=L.head(text),
+                                                       instrument_uid=instrument_uid)
+        except L.LayoutRefused as exc:
+            existing, notice = None, u"%s" % exc
+            closest = getattr(exc, "closest", None)
+            if closest:
+                # never guessed into processing: the analyst maps the file,
+                # starting from the columns the closest layout found
+                found = L.resolve_map(closest, headers)
+                col_map = dict((h, found.get(h) or col_map.get(h, "ignore")) for h in headers)
+        settings = {}
+        if existing:
+            found = L.resolve_map(existing, headers)
+            col_map = dict((h, found.get(h, "ignore")) for h in headers)
+            settings = self._settings_of(existing)
+            opts = L.options(existing.get("reader"))
+        instr_title = u""
         if instrument_uid:
-            catalog = getToolByName(self.context, "uid_catalog")
-            brains = catalog(UID=instrument_uid)
+            brains = getToolByName(self.context, "uid_catalog")(UID=instrument_uid)
             if brains:
-                try:
-                    instr = brains[0].getObject()
-                    instrument_title = instr.Title() or ""
-                    instrument_profiles = _list_profiles(instr)
-                    # Try matching by version
-                    if auto_version:
-                        existing_profile = _load_profile(instr, auto_version)
-                    # If not found, take the most recent
-                    if not existing_profile and instrument_profiles:
-                        existing_profile = _load_profile(
-                            instr, instrument_profiles[-1]["version"])
-                    if existing_profile:
-                        col_map = existing_profile.get("map", col_map)
-                        vendor_key = existing_profile.get("vendor_key", vendor_key)
-                except Exception:
-                    pass
-
-        upload_result = {
-            "filename": filename,
-            "delimiter": delimiter,
-            "headers": headers,
-            "preview": preview_rows[:3],
-            "vendor_key": vendor_key,
-            "confidence": confidence,
-            "auto_version": auto_version,
-            "col_map": col_map,
-            "instrument_uid": instrument_uid,
-            "instrument_title": instrument_title,
-            "instrument_profiles": instrument_profiles,
-            "existing_profile": bool(existing_profile),
-        }
-
-        self.request.form["upload_result_json"] = json.dumps(upload_result)
+                instr_title = brains[0].getObject().Title() or u""
+        self.request.form["upload_result_json"] = json.dumps({
+            "filename": upload_filename, "headers": headers, "preview": preview,
+            "rows_read": len(got["rows"]), "delimiter": got["delimiter"],
+            "vendor_key": vendor_key, "confidence": confidence, "col_map": col_map,
+            "instrument_uid": instrument_uid, "instrument_title": instr_title,
+            "reader": opts, "signature": got["signature"],
+            "existing_profile": bool(existing), "layout_id": (existing or {}).get("id") or "",
+            "settings": settings, "notice": notice,
+        })
         return self.template()
 
-    # -- Phase 1b: load saved profile for editing (no file upload needed) ----
+    def _settings_of(self, p):
+        """A saved layout's settings as the save form shows them."""
+        from senaite.pfas import import_layouts as L
+        return {"layout_name": p.get("name") or "", "match": p.get("match") or "within",
+                "required_fields": u", ".join(p.get("required") or []),
+                "calc_mode": p.get("calc_mode") or "final",
+                "manual_markers": p.get("manual_markers") or "",
+                "date_format": p.get("date_format") or "",
+                "value_maps": L.format_value_maps(p.get("value_maps")),
+                "scales": L.format_scales(p.get("scales")),
+                "qualifier_suffix": p.get("qualifier_suffix") or "",
+                "labelled_from_columns": bool(p.get("labelled_from_columns")),
+                "notes": p.get("notes") or "", "software": p.get("software") or ""}
+
+    # -- Phase 1b: a saved layout, opened for editing (no file) ------------
 
     def _handle_edit_profile(self):
+        from senaite.pfas import import_layouts_store
         f = self.request.form
-        instrument_uid = f.get("instrument_uid", "").strip()
-        version = f.get("version", "").strip()
-        if not instrument_uid or not version:
-            url = "{0}?error=Missing+instrument+or+version".format(self._self_url())
-            return self._redirect(url)
-        catalog = getToolByName(self.context, "uid_catalog")
-        brains = catalog(UID=instrument_uid)
-        if not brains:
-            url = "{0}?error=Instrument+not+found".format(self._self_url())
-            return self._redirect(url)
-        try:
-            instr = brains[0].getObject()
-        except Exception:
-            url = "{0}?error=Could+not+load+instrument".format(self._self_url())
-            return self._redirect(url)
-        profile = _load_profile(instr, version)
-        if not profile:
-            url = "{0}?error=Profile+version+not+found".format(self._self_url())
-            return self._redirect(url)
-
-        col_map = profile.get("map", {})
-        vendor_key = profile.get("vendor_key", "native")
-        # Reconstruct headers from the saved mapping keys
-        headers = list(col_map.keys())
-
-        upload_result = {
-            "filename": "Saved profile: {0}".format(version),
-            "delimiter": ",",
-            "headers": headers,
-            "preview": [],
-            "vendor_key": vendor_key,
-            "confidence": 100,
-            "auto_version": version,
-            "col_map": col_map,
-            "instrument_uid": instrument_uid,
-            "instrument_title": instr.Title() or "",
-            "instrument_profiles": _list_profiles(instr),
-            "existing_profile": True,
-            "edit_mode": True,
-        }
-        self.request.form["upload_result_json"] = json.dumps(upload_result)
+        p = import_layouts_store.get(self._portal(), (f.get("layout_id") or "").strip())
+        if not p:
+            return self._redirect("{0}?error=Layout+not+found".format(self._self_url()))
+        headers = list(p.get("columns") or p.get("signature") or [])
+        self.request.form["upload_result_json"] = json.dumps({
+            "filename": u"Saved layout: %s" % (p.get("name") or p["id"]), "headers": headers,
+            "preview": [], "rows_read": 0, "delimiter": "", "vendor_key": "", "confidence": 100,
+            "col_map": dict((h, (p.get("map") or {}).get(h, "ignore")) for h in headers),
+            "instrument_uid": p.get("instrument_uid") or "", "instrument_title": u"",
+            "reader": p.get("reader") or {}, "signature": p.get("signature") or [],
+            "existing_profile": True, "layout_id": p["id"], "edit_mode": True,
+            "settings": self._settings_of(p),
+        })
         return self.template()
 
-    # -- Phase 2: save profile -----------------------------------------------
+    # -- Phase 2: save the layout ---------------------------------------------
 
     def _handle_save_profile(self):
-        f = self.request.form
-        instrument_uid = f.get("instrument_uid", "").strip()
-        version = f.get("software_version", "").strip()
-        vendor_key = f.get("vendor_key", "native").strip()
-        calc_mode = f.get("calc_mode", "final").strip()
-        notes = f.get("notes", "").strip()
-        manual_markers = f.get("manual_markers", "").strip()
-        col_map_raw = f.get("col_map_json", "{}")
+        """Save the layout profile from the form (senaite.pfas.import_layouts.
+        build_profile): refused, naming what is missing, when it could not
+        import a file."""
+        from senaite.pfas import import_layouts as L
+        from senaite.pfas import import_layouts_store
+        f = dict(self.request.form)
         try:
-            col_map = json.loads(col_map_raw)
+            f.update(json.loads(f.get("reader_json") or "{}"))
         except (ValueError, TypeError):
-            col_map = {}
-
-        if not instrument_uid:
-            return self._redirect("{0}?error=No+instrument+selected".format(self._self_url()))
-        # Version may legitimately be empty: it is read from the export's
-        # preamble, and a file that begins with its header row simply does not
-        # declare one. Requiring it here would have forced the analyst to
-        # invent a value — and inventing it is what produced the "0.039" key
-        # scraped out of a concentration.
-
-        # A mapping that points two columns at one field destroys one of them
-        # on import, without an error. Refuse at the point of authoring rather
-        # than discovering it in a result months later.
-        dupes = duplicate_targets(col_map)
-        if dupes:
-            detail = "; ".join(
-                "{0}: {1}".format(FIELD_LABELS.get(t, t), ", ".join(cols))
-                for t, cols in sorted(dupes.items()))
-            return self._redirect(
-                "{0}?instrument_uid={1}&error={2}".format(
-                    self._self_url(), instrument_uid,
-                    ("Two+columns+assigned+to+the+same+field+-+one+would+be+"
-                     "discarded+on+import.+" + detail).replace(" ", "+")))
-
-        catalog = getToolByName(self.context, "uid_catalog")
-        brains = catalog(UID=instrument_uid)
-        if not brains:
-            return self._redirect("{0}?error=Instrument+not+found".format(self._self_url()))
+            pass
+        profile, problems = L.build_profile(f, duplicate_targets=duplicate_targets)
         try:
-            instr = brains[0].getObject()
-        except Exception:
-            return self._redirect("{0}?error=Could+not+load+instrument".format(self._self_url()))
+            profile["columns"] = json.loads(f.get("columns_json") or "[]")
+        except (ValueError, TypeError):
+            profile["columns"] = []
+        if problems:
+            return self._redirect("{0}?error={1}".format(self._self_url(), _q(u" ".join(problems))))
+        lid = import_layouts_store.save(self._portal(), profile, self._user())
+        return self._redirect("{0}?ok={1}".format(
+            self._self_url(), _q(u"Layout saved: %s" % (profile.get("name") or lid))))
 
-        _save_profile(instr, version, vendor_key, calc_mode, col_map, notes, manual_markers)
 
-        # Also write to portal-level profiles store so the pipeline importer
-        # can fetch this profile by vendor_key + version without a ZODB lookup.
-        portal = self._portal()
-        profile_data = {
-            "vendor": _VENDOR_COLUMN_MAP.get(vendor_key, {}).get("vendor", vendor_key),
-            "vendor_key": vendor_key,
-            "calc_mode": calc_mode,
-            "map": col_map,
-            "notes": notes,
-            "manual_markers": manual_markers,
-        }
-        save_vendor_profile(portal, vendor_key, version, profile_data)
-
-        url = "{0}?instrument_uid={1}&ok=Profile+saved+for+{2}".format(
-            self._self_url(), instrument_uid, version.replace(" ", "+"))
-        return self._redirect(url)
+def _q(text):
+    """Text for a redirect's query string (Python 2: bytes first)."""
+    from six.moves.urllib.parse import quote_plus
+    return quote_plus(text.encode("utf-8") if not isinstance(text, bytes) else text)

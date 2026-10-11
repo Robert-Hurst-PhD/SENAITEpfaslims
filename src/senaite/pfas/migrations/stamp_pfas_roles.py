@@ -67,7 +67,7 @@ def run():
             from Testing.makerequest import makerequest
             import Zope2
             app = makerequest(Zope2.app())
-        portals = [o for o in app.objectValues("Plone Site")]
+        portals = [o for o in app.objectValues(["Plone Site"])]
         if not portals:
             raise RuntimeError("No Plone site found")
         portal = portals[0]

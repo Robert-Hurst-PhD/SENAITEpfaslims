@@ -25,9 +25,10 @@ CALIBRATION_CCV = cf.Section(
     id=u"cal", title=u"Calibration & CCV", base=("instrument_verification",),
     groups=[
         (u"Calibration", [
-            cf.Field("calibration.r2_min", u"R² Minimum", required=True,
-                     minimum=0.9, maximum=1.0, placeholder=u"0.990",
-                     help=u"e.g. 0.990 (FDA) or 0.995 (generic)"),
+            cf.Field("calibration.r2_min", u"R² Minimum", blank=u"none",
+                     minimum=0.9, maximum=1.0, placeholder=u"none",
+                     help=u"Blank: the method sets no r² criterion (refused when the "
+                          u"Engine requires one)."),
             cf.Field("calibration.point_pct_dev_max", u"Point % Deviation Max",
                      unit=PCT, minimum=0,
                      help=u"Each cal point must be within ±N% of curve. Leave blank for no limit."),
@@ -95,6 +96,12 @@ CALIBRATION_CCV = cf.Section(
             cf.Field("ccv.surrogate_recovery", u"Surrogate recovery judged in CCVs", kind=cf.CHOICE,
                      blank=u"remove", choices=[(u"", u"No"), (u"yes", u"Yes")],
                      help=u"EPA 537.1 \u00a79.3.5.1: the CCC carries the surrogates."),
+            # a window of their own for the labelled standards in a CCV; blank
+            # = the sample window (a method may set a narrower window in its
+            # continuing calibration check than in samples)
+            cf.Field("ccv.surrogate_window_min", u"Surrogate recovery min in CCVs", unit=PCT, minimum=0),
+            cf.Field("ccv.surrogate_window_max", u"Surrogate recovery max in CCVs", unit=PCT, minimum=0,
+                     help=u"Blank: the sample window."),
             cf.Field("ccv.pct_dev_warn", u"CCV warning line (± %)", unit=PCT, minimum=0,
                      help=u"Drawn on the Calibrations page's ICV/CCV plot; not a pass/fail limit."),
             cf.Field("icv.criteria", u"ICV criteria", kind=cf.CHOICE, blank=u"remove",
@@ -134,12 +141,20 @@ CALIBRATION_CCV = cf.Section(
         ]),
     ])
 
-def _global_titles():
+def _library():
+    """(compound_library, the library the services hold)."""
     try:
-        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
+        from senaite.pfas import compound_library, compound_library_store
     except Exception:          # tests: loaded without the package
-        from analyte_reference import NATIVE_ANALYTES
-    return dict((row[0], row[1]) for row in NATIVE_ANALYTES)
+        import compound_library
+        import compound_library_store
+    return compound_library, compound_library_store.library()
+
+
+def _global_titles():
+    """{native keyword: display name}, the compound library's."""
+    cl, lib = _library()
+    return cl.native_names(lib)
 
 
 try:
@@ -1032,8 +1047,13 @@ NOMINAL_AMOUNTS = cf.Table(
 # value is the default tier (all analytes, all matrices) the worker reads.
 # A trip blank (Field QC on the CoC) is judged only against its own row: it
 # never borrows another blank's limit, and with none set it is not evaluated.
+# A field reagent blank (Field QC on the CoC) is judged against its own row
+# alone, its "fails at the limit" included (a method may fail it above, not
+# at, its limit); without one it is flagged not judged, never judged against
+# another blank's row.
 BLANK_TYPES = [(u"MB", u"Method blank"), (u"LRB", u"Laboratory reagent blank"),
                (u"MxB", u"Matrix blank"), (u"CCB", u"Solvent blank (reviewed on its chromatogram)"),
+               (u"FRB", u"Field reagent blank (Field QC on the CoC)"),
                (u"TB", u"Trip blank (Field QC on the CoC)")]
 
 
@@ -1721,15 +1741,12 @@ GROUPS = cf.Section(
 
 
 def key_analytes(profile):
-    """The method's key analytes (its own list), or the global flag where a
-    profile predates the list."""
+    """The method's key analytes (its own list), or the compound library's
+    key-analyte flag where a profile predates the list."""
     if isinstance(profile.get("key_analytes"), list):
         return set(profile["key_analytes"])
-    try:
-        from senaite.pfas.analyte_reference import get_key_analyte_keywords
-    except Exception:
-        from analyte_reference import get_key_analyte_keywords
-    return set(get_key_analyte_keywords())
+    cl, lib = _library()
+    return set(cl.key_keywords(lib))
 
 
 def _qc_tiers():
@@ -1760,26 +1777,21 @@ def low_level_tier(profile, base, matrix, qc=RECOVERY_QC):
 def no_std_set(profile):
     """Keywords with no labelled standard of their own in THIS method,
     derived from its surrogate links (senaite.pfas.labelled_coverage;
-    consolidation P4)."""
+    consolidation P4) and the compound library's labelled-form links."""
     try:
         from senaite.pfas import labelled_coverage as lc
-        from senaite.pfas.analyte_reference import get_labeled_analog_map
     except Exception:                        # tests: loaded without the package
         import labelled_coverage as lc
-        from analyte_reference import get_labeled_analog_map
-    return lc.no_labelled_standard(profile, get_labeled_analog_map())
+    cl, lib = _library()
+    return lc.no_labelled_standard(profile, cl.analog_map(lib))
 
 
 def recovery_grid(profile):
     """Read-only grid: analyte group rows x matrix columns, each cell the
     window the engine applies there."""
-    try:
-        from senaite.pfas.analyte_reference import NATIVE_ANALYTES
-    except Exception:
-        from analyte_reference import NATIVE_ANALYTES
     keys = key_analytes(profile)
     no_std = no_std_set(profile)
-    flags = dict((r[0], (r[0] in keys, r[0] in no_std)) for r in NATIVE_ANALYTES)   # (key, no_std)
+    flags = dict((kw, (kw in keys, kw in no_std)) for kw in _global_titles())   # (key, no_std)
     labels = _analyte_titles(profile)
     panel = profile.get("master_analyte_set") or []
     groups = [(u"Key analytes", lambda k, n: k and not n),
@@ -1969,9 +1981,23 @@ def apply_qc_toggles(profile, offered, enabled):
     return profile
 
 
+def check_required_r2(profile):
+    """A cleared r2 minimum means the method sets no r2 criterion; a method
+    whose Engine requires one (calibration criteria that must be set) is
+    refused the save instead, as the worker would refuse its runs."""
+    required = ((profile.get("engine") or {}).get("required_keys") or {}).get("calibration") or ()
+    cal = (profile.get("instrument_verification") or {}).get("calibration") or {}
+    if "r2_min" in required and cal.get("r2_min") in (None, u""):
+        return [u"This method's Engine requires an r\u00b2 minimum (Engine > Calibration "
+                u"criteria that must be set): enter it on Calibration & CCV, or take "
+                u"r2_min off that list."]
+    return []
+
+
 # Whole-profile checks, run after a tab's sections are applied, keyed by the
 # sections whose save must pass them.
-PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers)]
+PROFILE_CHECKS = [((u"sur", u"ls"), check_profile), ((u"iso",), check_isomers),
+                  ((u"cal", u"engine_text"), check_required_r2)]
 
 SECTIONS = dict((s.id, s) for s in [CALIBRATION_CCV, CAL_LEVELS, ANALYTE_SCALE, QC_COMPOSITION, REPORTING_LIMITS, MATRICES,
                                     SALT, SAMPLE_CORRECTION, NOMINAL_AMOUNTS, SAMPLE_RECEIPT, QC_NAME_CODES, MATRIX_FACTORS, EIS_GRID, SURROGATE_MAP,

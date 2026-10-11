@@ -82,6 +82,28 @@ def changes(issued, draft):
     return out
 
 
+def printed_settings(snap, live):
+    """The Print Settings a certificate prints: the issued revision's, or the
+    live ones when no revision is issued (publishing is then held by its own
+    guard)."""
+    if snap is None:
+        return dict(live or {})
+    return dict(snap.get("print_settings") or {})
+
+
+def lab_address_problem(snap, rev, live):
+    """Why a certificate would print no laboratory address, or None. An
+    address entered in Print Settings reaches certificates only with the
+    next issued revision."""
+    if (printed_settings(snap, live).get("lab_address") or u"").strip():
+        return None
+    if snap is not None and ((live or {}).get("lab_address") or u"").strip():
+        return (u"the laboratory address is not in the issued reporting template "
+                u"(revision %s): issue a new revision (Reporting Template) to carry "
+                u"the address entered in Print Settings" % rev)
+    return u"the laboratory address is not set (Print Settings)"
+
+
 def next_number(records):
     return max([r.get("rev", 0) for r in records or []] or [0]) + 1
 

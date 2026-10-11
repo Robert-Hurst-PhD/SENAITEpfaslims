@@ -322,7 +322,8 @@ class PFASBlankHistoryView(BrowserView):
         try:
             from senaite.pfas.method_profile_store import get_profile
             from senaite.pfas.report_limits import limits_for
-            from senaite.pfas.analyte_reference import COMPOUND_NAME_TO_KEYWORD as kw
+            from senaite.pfas import compound_library, compound_library_store
+            kw = compound_library.name_to_keyword(compound_library_store.library())
             a = self.analyte()
             key = kw.get(a.replace(u"lr-", u"").replace(u"br-", u""), a)
             mtx = self.matrix() or (self.matrices() or [u""])[0]

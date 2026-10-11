@@ -112,13 +112,13 @@ class PFASCoCView(BrowserView):
 
     def clients(self):
         return [(api.get_uid(c), api.get_title(c))
-                for c in api.get_portal().clients.objectValues("Client")]
+                for c in api.get_portal().clients.objectValues(["Client"])]
 
     def contacts(self, rec):
         client = api.get_object_by_uid(rec.get("client_uid"), None)
         if client is None:
             return []
-        return [(api.get_uid(c), c.getFullname()) for c in client.objectValues("Contact")]
+        return [(api.get_uid(c), c.getFullname()) for c in client.objectValues(["Contact"])]
 
     def choices(self):
         if hasattr(self, "_choices"):

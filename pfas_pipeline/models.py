@@ -66,6 +66,10 @@ class InstrumentRow:
     quan_ref_expected_ion_ratios: Optional[str] = None
     method_expected_ion_ratios:   Optional[str] = None
     qual_ions_responses:          Optional[str] = None
+    # a layout that gives the labelled standard only as columns of the
+    # analyte's row (its area, its retention time): the import profile's
+    # "labelled standards from columns" makes the standard's own rows from them
+    is_observed_rt:               Optional[float] = None
 
 
 def reported_conc(row) -> "float | None":
@@ -386,6 +390,9 @@ class Batch:
     # each blank analyte the run judged: (injection, analyte) -> {limit,
     # unit, x_rl, at_limit}; qc_store writes the verdict against it
     blank_limits:       dict                 = field(default_factory=dict)
+    # the field reagent blanks were judged against their own row (Blank
+    # limits), not the method blank's limit
+    field_blank_own_row: bool                = False
     # FDA §10.2(4): analytes with one usable MS/MS transition (PFBA, PFPeA)
     # cannot be identified by ion ratio, so a POSITIVE has to be confirmed by an
     # orthogonal technique. Populated by build_summary, which is the only place

@@ -51,6 +51,7 @@ KIND_LCS         = "lcs"
 KIND_CCV_FREQ    = "ccv_frequency"
 KIND_MDL         = "mdl"
 KIND_DUP         = "dup"
+KIND_OVER_RANGE  = "over_range"   # above the top calibration level (pipeline.over_range)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -106,9 +107,9 @@ def is_raw_check(
         dilution, so its area does NOT scale. It is compared as measured, and a
         drop in a dilution is a real finding rather than arithmetic.
 
-    Both roles are recorded on the AnalysisService (`pfas_role`) and in
-    analyte_reference; the pipeline previously held a flat list with no roles
-    and applied one rule to all of them.
+    Both roles are recorded on the AnalysisService (`pfas_role`), which the
+    compound library export carries; the pipeline previously held a flat
+    list with no roles and applied one rule to all of them.
     """
     from .analyte_alias import injection_is_names, keyword_for
     from .method_profiles import get_surrogate_is_chain
@@ -117,8 +118,8 @@ def is_raw_check(
     # The METHOD decides which labelled compound is the injection standard.
     # surrogate_is_chain maps each surrogate to the IS it is quantified
     # against, so a compound that appears only as a VALUE is the injection
-    # standard and every KEY is a surrogate. The global analyte_reference table
-    # is the fallback: it is not method-scoped, and under a method that uses a
+    # standard and every KEY is a surrogate. The compound library's global
+    # roles are the fallback: not method-scoped, and under a method that uses a
     # different injection standard it would scale the wrong compound.
     from .method_profiles import get_labelled_roles
     roles = get_labelled_roles(method_id) if method_id else {}
@@ -276,10 +277,7 @@ def rt_deviation_check(
     Compute RT % deviation from batch average (Standards) for every injection.
     Flags deviations beyond ±rt_dev_abs_min minutes.
     """
-    std_rows = [r for r in rows
-                if r.compound_name == analyte
-                and r.sample_type == "Standard"
-                and r.observed_rt is not None]
+    std_rows = calibrator_rows(rows, analyte, lambda r: r.observed_rt is not None)
     if not std_rows:
         return []
 
@@ -421,12 +419,20 @@ def expected_ratios(r, calibrators=None):
     return out
 
 
+def calibrator_rows(rows, analyte, keep=None):
+    """The run's calibrators of an analyte: by their role in the run plan
+    (CAL), whatever word the export uses for them; the export's "Standard"
+    only for a run with no role recorded."""
+    from .importer import classify_injection
+    mine = [r for r in rows if r.compound_name == analyte and (keep is None or keep(r))]
+    by_role = [r for r in mine if classify_injection(r.injection_name) == "CAL"]
+    return by_role or [r for r in mine if r.sample_type == "Standard"]
+
+
 def calibrator_ratio_means(rows, analyte):
     """Mean observed ratio per qualifier ion over the run's calibrators."""
     sums = {}
-    for r in rows:
-        if r.compound_name != analyte or r.sample_type != "Standard":
-            continue
+    for r in calibrator_rows(rows, analyte):
         for i, o in enumerate(observed_ratios(r)):
             if isinstance(o, float):
                 sums.setdefault(i, []).append(o)
@@ -555,9 +561,7 @@ def calibration_check(
     Check calibration % deviation and R² for each calibration standard injection.
     Flags: (CAL) if |% dev| > 20% or R² < 0.995.
     """
-    cal_rows = [r for r in rows
-                if r.compound_name == analyte
-                and r.sample_type == "Standard"]
+    cal_rows = calibrator_rows(rows, analyte)
 
     r2_max = CRITERIA["cal_r2_min"]
     pct_max = CRITERIA["cal_pct_dev_max"]
@@ -723,18 +727,22 @@ def recovery_check_profiled(
     conc: Optional[float] = None,
     rl: Optional[float] = None,
     window: Optional[dict] = None,
+    rule=None,
 ) -> Optional[QCFlag]:
     """
     Resolve recovery limits via the method profile and flag if outside.
     `window`, when given, receives the window applied ({lo, hi, basis}):
     Data Review shows each result against the criterion it was judged by.
+    `rule`, when given, is the rule already resolved for this row (a
+    labelled standard in a CCV judged with the CCV window).
     Handles FDA's three-tier (analyte × matrix) table automatically:
       PFOA in deer muscle  → 80–120%
       PFOA in feed         → 65–135%
       PFTrDA anywhere      → 40–140%
     """
-    rule = (profile.qc_rules(analyte, matrix, qc_type, conc=conc, rl=rl)
-            if conc is not None or rl is not None else profile.qc_rules(analyte, matrix, qc_type))
+    if rule is None:
+        rule = (profile.qc_rules(analyte, matrix, qc_type, conc=conc, rl=rl)
+                if conc is not None or rl is not None else profile.qc_rules(analyte, matrix, qc_type))
     if rule is None or rule.recovery_min is None:
         return None
     if window is not None:
@@ -933,10 +941,14 @@ def calibration_check_profiled(
     profile: MethodProfile,
     rows: list[InstrumentRow],
     analyte: str,
+    judge_r2: bool = True,
 ) -> list[CalibrationResult]:
     """Calibration check with profile r² (FDA 0.990, not 0.995) and
-    per-point %dev where the method defines one (537.1: 30%/50%)."""
+    per-point %dev where the method defines one (537.1: 30%/50%).
+    r² is judged only when the method sets a minimum and its "Calibration
+    r²" rule switch is on (judge_r2); the point deviations either way."""
     rule = profile.calibration_rule(analyte)
+    r2_min = rule.r2_min if judge_r2 else None
     from .importer import classify_injection
     # the run's CALIBRATORS (their role in the run plan), not every row the
     # export calls "Standard" -- some software also labels a CCC so;
@@ -955,8 +967,8 @@ def calibration_check_profiled(
     for r in cal_rows:
         issues = []
         limit, lowest = None, False
-        if r.r2 is not None and r.r2 < rule.r2_min:
-            issues.append(f"R²={r.r2:.4f}<{rule.r2_min}")
+        if r2_min is not None and r.r2 is not None and r.r2 < r2_min:
+            issues.append(f"R²={r.r2:.4f}<{r2_min}")
         if rule.point_pct_dev_max is not None and r.pct_deviation is not None:
             limit = rule.point_pct_dev_max
             if rule.low_point_pct_dev_max and (
@@ -982,7 +994,7 @@ def calibration_check_profiled(
             analyte=analyte, injection_name=r.injection_name,
             concat_id=r.concat_id, r2=r.r2,
             calculated_conc=r.calculated_conc,
-            pct_deviation=r.pct_deviation, flag=flag, limit=limit, r2_min=rule.r2_min, lowest=lowest,
+            pct_deviation=r.pct_deviation, flag=flag, limit=limit, r2_min=r2_min, lowest=lowest,
         ))
     return results
 
@@ -1006,9 +1018,7 @@ def rrt_check_profiled(
     Falls back to legacy ±0.10 min absolute when the profile sets neither.
     """
     conf = profile.confirmation_rule()
-    std_rows = [r for r in rows
-                if r.compound_name == analyte
-                and r.sample_type == "Standard" and r.observed_rt]
+    std_rows = calibrator_rows(rows, analyte, lambda r: r.observed_rt)
     if not std_rows:
         return []
     avg_rt = statistics.mean(r.observed_rt for r in std_rows)
@@ -1113,8 +1123,8 @@ def blank_check(analyte: str, injection_name: str, conc: Optional[float],
                   issue=f"(BLK) {word} {max_x_rl:g} x RL = {limit:g} {unit}".strip())
 
 
-# the blanks judged against the Blank limits (the field reagent blank borrows
-# the method blank's rule): one list for the check and the stored rows
+# the blanks judged against the Blank limits (a field or trip blank only
+# against its own row): one list for the check and the stored rows
 BLANK_ROLES = frozenset(("MB", "LRB", "MxB", "CCB"))
 # what a method may leave out of the "CCV every N" count: EPA 537.1 §10.3,
 # "a 'sample' is considered to be a Field Sample. LRBs, CCCs, LFBs, LFSMs,

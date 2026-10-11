@@ -17,7 +17,7 @@ def run():
     from AccessControl.SecurityManagement import newSecurityManager
     from zope.annotation.interfaces import IAnnotations
     from zope.component.hooks import setSite
-    portal = [o for o in app.objectValues("Plone Site")][0]
+    portal = [o for o in app.objectValues(["Plone Site"])][0]
     newSecurityManager(None, app.acl_users.getUserById("admin").__of__(app.acl_users))
     setSite(portal)
     from bika.lims import api

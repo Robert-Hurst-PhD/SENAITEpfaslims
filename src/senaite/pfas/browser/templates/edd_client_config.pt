@@ -15,7 +15,17 @@
   <!-- a client's EDD settings: on/off, its profile, and the fields that
        profile asks for (edd_store) -->
   <ul class="bench-alerts" tal:condition="view/saved"><li class="bench-ok">Saved.</li></ul>
+  <!-- the fields of any profile can be given (a profile chosen at export
+       reads them), whichever profile the client exports with -->
+  <form method="get" class="filter-row">
+    <label>Fields of the profile
+      <select name="fields_of" onchange="this.form.submit()">
+        <option tal:repeat="p view/profile_options" tal:content="p/name"
+                tal:attributes="value p/id; selected python:'selected' if p['id'] == view.shown_profile_id() else None">profile</option>
+      </select></label>
+  </form>
   <form method="post" class="bench-block">
+    <input type="hidden" name="fields_of" tal:attributes="value view/shown_profile_id" />
     <div class="field-grid">
       <label>
         <span><input type="checkbox" name="edd_enabled" value="1"

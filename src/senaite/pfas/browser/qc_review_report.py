@@ -65,7 +65,7 @@ def _worksheet_for(obj):
     if portal_type == "Worksheet":
         return obj
     if portal_type == "AnalysisRequest":
-        for analysis in obj.objectValues("Analysis"):
+        for analysis in obj.objectValues(["Analysis"]):
             try:
                 worksheet = analysis.getWorksheet()
             except Exception:
@@ -281,6 +281,12 @@ class PFASQCReviewReportView(BrowserView):
         profile = review._method_profile() or {}
         r2_min = ((profile.get("instrument_verification") or {})
                   .get("calibration") or {}).get("r2_min")
+        try:
+            from senaite.pfas.qc.rules import method_toggles
+            if not method_toggles(profile, profile.get("method_id")).get("cal_r2", True):
+                r2_min = None
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("calibrations: rule switches not read: %s", exc)
         out = []
         for row in rows:
             r2 = row.get("r2")
@@ -288,8 +294,10 @@ class PFASQCReviewReportView(BrowserView):
                 "analyte": row.get("analyte", u""),
                 "r2": r2,
                 "limit": r2_min,
-                "passed": (r2 is not None and r2_min is not None
-                           and r2 >= r2_min),
+                # None: the method sets no r2 minimum, or its r2 switch is
+                # off -- not judged (never a FAIL)
+                "passed": (None if r2_min is None else
+                           (r2 is not None and r2 >= r2_min)),
             })
         return sorted(out, key=lambda r: r["analyte"])
 

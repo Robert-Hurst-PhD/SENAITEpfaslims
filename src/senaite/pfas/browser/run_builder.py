@@ -1273,6 +1273,9 @@ class PFASRunBuilderView(BrowserView):
                                senaite_batch_id=cb.getId() if cb is not None else u"",
                                matrix=matrix,
                                client_uid=api.get_uid(client) if client else u"")
+        # the run's instrument: the worker's import layout is matched for it
+        instr = self._instrument(b)
+        record["instrument_uid"] = api.get_uid(instr) if instr is not None else u""
         record.update(extra or {})
         path = os.path.join(UPLOAD_DIR, "{0}_extraction.json".format(stem))
         tmp = path + ".part"
