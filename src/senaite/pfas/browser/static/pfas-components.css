@@ -172,5 +172,16 @@
 .pfas-table tr.is-warn td:first-child { box-shadow: inset 3px 0 0 var(--s-warning); }
 .pfas-table td .btn-sm, .pfas-table td .pfas-switch { vertical-align: middle; }
 
+/* ── A page with an aside (the context tree beside the panes) ──────────── */
+.pfas-aside-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--sp-5); align-items: start; }
+.pfas-aside-main { min-width: 0; }
+.pfas-aside { position: sticky; top: var(--sp-4); }
+.pfas-aside-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 0 0 var(--sp-3); }
+.pfas-aside-head h3 { font-family: var(--font-heading); font-size: var(--fs-lg); font-weight: var(--fw-heading); margin: 0; }
+.pfas-aside .pfas-tree { display: block; }
+.pfas-aside .pfas-tree-node { height: auto; min-height: var(--ctl-h-sm); padding: 4px 10px; font-size: var(--fs-sm); flex-wrap: wrap; }
+.pfas-aside .pfas-tree-row { margin-bottom: 6px; }
+@media (max-width: 1100px) { .pfas-aside-layout { grid-template-columns: 1fr; } .pfas-aside { position: static; } }
+
 /* ── Theme switch (top bar user menu) ──────────────────────────────────── */
 .pfas-theme-switch { display: inline-flex; align-items: center; gap: var(--sp-2); }

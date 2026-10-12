@@ -360,6 +360,64 @@ class PFASDataReviewView(BrowserView):
     def active_tab(self):
         return self.request.form.get("tab", "overview")
 
+    # the stage names the lab reads (sample_status keeps the five-stage model)
+    _STAGE_WORDS = {1: u"Processing", 2: u"Extraction", 3: u"Analysis", 4: u"Review", 5: u"Reported"}
+
+    def context_tree(self):
+        """Where this run sits (lab, 2026-10-11): client > chain of custody >
+        batch > this worksheet > its stage, with the samples and QC under it.
+        Drawn by the shared tree; nothing here is new data."""
+        ws = self._get_worksheet()
+        if ws is None:
+            return {}
+        from bika.lims import api
+        from senaite.pfas.core_fields import samples_of
+        from senaite.pfas.browser.sample_status import _compute_stage, _build_stage_steps
+        out = {"client": None, "coc": [], "batch": None, "worksheet": {"id": ws.getId(), "state": self.ws_state(),
+                                                                       "url": ws.absolute_url()},
+               "stages": [], "samples": [], "qc": 0}
+        try:
+            stage, who = _compute_stage(ws)
+            out["stages"] = [dict(s, label=self._STAGE_WORDS.get(s["num"], s["label"]))
+                             for s in _build_stage_steps(stage)]
+            out["stage_who"] = who
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("context_tree stage: %s", exc)
+        samples = []
+        try:
+            samples = list(samples_of(ws))
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("context_tree samples: %s", exc)
+        for s in samples:
+            try:
+                out["samples"].append({"id": s.getId(), "csid": s.getClientSampleID() or u"",
+                                       "state": api.get_review_status(s), "url": s.absolute_url()})
+            except Exception:                                 # noqa: BLE001
+                continue
+        try:
+            first = samples[0] if samples else None
+            batch = first.getBatch() if first is not None else None
+            if batch is not None:
+                out["batch"] = {"id": batch.getId(), "title": batch.Title(), "url": batch.absolute_url(),
+                                "state": api.get_review_status(batch)}
+            client = (batch.getClient() if batch is not None else None) or (first.getClient() if first is not None else None)
+            if client is not None:
+                out["client"] = {"title": client.Title(), "url": client.absolute_url()}
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("context_tree batch: %s", exc)
+        try:
+            for r in (self.coc_records_summary(ws) or {}).get("records") or []:
+                out["coc"].append({"number": r.get("number"), "status": r.get("status") or u"",
+                                   "url": u"%s/@@pfas-coc?number=%s" % (self.portal_url(), r.get("number"))})
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("context_tree coc: %s", exc)
+        try:
+            from senaite.pfas import extraction_batch
+            out["qc"] = len([m for m in (extraction_batch.load(ws) or []) if (m.get("role") or u"Sample") != u"Sample"])
+        except Exception:                                   # noqa: BLE001
+            pass
+        return out
+
     def save_message(self):
         return self.request.form.get("msg", "")
 

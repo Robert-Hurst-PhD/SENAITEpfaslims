@@ -25,14 +25,8 @@
     .ws-verified{ background:var(--s-success-lt); color:var(--s-success-text); }
     .ws-other   { background:var(--s-light); color:var(--s-secondary); }
 
-    .dr-tabs { display:flex; gap:0; border-bottom:2px solid var(--s-border);
-               margin-bottom:20px; flex-wrap:wrap; }
-    .dr-tab  { padding:8px 16px; cursor:pointer; font-size:var(--fs-base); font-weight:600;
-               border-bottom:3px solid transparent; margin-bottom:-2px;
-               color:var(--s-secondary); text-decoration:none; white-space:nowrap; }
-    .dr-tab:hover { color: var(--s-primary-dk); }
-    .dr-tab.active { color: var(--s-primary-dk); border-bottom-color:var(--s-primary); }
-
+    /* the tab strip is the shared segmented control (pfas-components.css) */
+    .dr-tabs { margin-bottom: var(--sp-5); }
     .dr-tab-pane { display:none; }
     .dr-tab-pane.active { display:block; }
 
@@ -339,42 +333,25 @@
         <span tal:content="python:u'%s says %s; this batch is %s.' % (c[0], c[1], view.batch_method())">x</span></li>
     </ul>
 
-    <!-- tabs nav (no JS required; POST-back carries tab param) -->
-    <div class="dr-tabs">
-      <tal:tl tal:define="at view/active_tab">
-        <a class="dr-tab" href="?tab=overview"
-           tal:attributes="class python:'dr-tab active' if at == 'overview' else 'dr-tab'">
-           Overview</a>
-        <a class="dr-tab" href="?tab=coc"
-           tal:attributes="class python:'dr-tab active' if at == 'coc' else 'dr-tab'">
-           Chain of Custody</a>
-        <a class="dr-tab" href="?tab=traceability"
-           tal:attributes="class python:'dr-tab active' if at == 'traceability' else 'dr-tab'">
-           Traceability</a>
-        <a class="dr-tab" href="?tab=extraction" title="The guided extraction of this worksheet's batch"
-           tal:attributes="class python:'dr-tab active' if at == 'extraction' else 'dr-tab'">
-           Extraction</a>
-        <a class="dr-tab" href="?tab=qc_summary"
-           tal:attributes="class python:'dr-tab active' if at == 'qc_summary' else 'dr-tab'">
-           QC Summary</a>
-        <a class="dr-tab" href="?tab=calibration"
-           tal:attributes="class python:'dr-tab active' if at == 'calibration' else 'dr-tab'">
-           Calibration</a>
-        <span style="align-self:center;color:var(--s-border);padding:0 2px;">|</span>
-        <a class="dr-tab" href="?tab=samples" title="Per-sample results verification"
-           tal:attributes="class python:'dr-tab active' if at == 'samples' else 'dr-tab'">
-           Samples</a>
-        <a class="dr-tab" href="?tab=spike_qc" title="LFSM/LFSMD/LFB/LCS recovery + RPD"
-           tal:attributes="class python:'dr-tab active' if at == 'spike_qc' else 'dr-tab'">
-           Spike QC</a>
-        <a class="dr-tab" href="?tab=final_data"
-           tal:attributes="class python:'dr-tab active' if at == 'final_data' else 'dr-tab'">
-           Final Data</a>
-        <a class="dr-tab" href="?tab=instrument_report"
-           tal:attributes="class python:'dr-tab active' if at == 'instrument_report' else 'dr-tab'">
-           Instrument Report</a>
+    <div class="pfas-aside-layout">
+    <div class="pfas-aside-main">
+    <!-- tabs nav: the shared segmented control in links mode (no JS required;
+         the server renders the active one; POST-back carries tab param) -->
+    <nav class="pfas-seg pfas-seg-strip dr-tabs" aria-label="Review sections">
+      <tal:tl tal:define="at view/active_tab;
+                          tabs python:(('?tab=overview', u'Overview', u''), ('?tab=coc', u'Chain of Custody', u''),
+                                       ('?tab=traceability', u'Traceability', u''),
+                                       ('?tab=extraction', u'Extraction', u'The guided extraction of this worksheet\'s batch'),
+                                       ('?tab=qc_summary', u'QC Summary', u''), ('?tab=calibration', u'Calibration', u''),
+                                       ('?tab=samples', u'Samples', u'Per-sample results verification'),
+                                       ('?tab=spike_qc', u'Spike QC', u'LFSM/LFSMD/LFB/LCS recovery + RPD'),
+                                       ('?tab=final_data', u'Final Data', u''), ('?tab=instrument_report', u'Instrument Report', u''))">
+        <a class="pfas-seg-item" tal:repeat="t tabs"
+           tal:attributes="href python:t[0]; title python:t[2] or None;
+                           aria-selected python:'true' if at == t[0][5:] else 'false'"
+           tal:content="python:t[1]">Overview</a>
       </tal:tl>
-    </div>
+    </nav><!-- /dr-tabs -->
 
     <!-- ══════ OVERVIEW TAB ════════════════════════════════════════════ -->
     <div class="dr-tab-pane"
@@ -1619,6 +1596,54 @@
 
     </div><!-- /instrument_report -->
 
+    </div><!-- /pfas-aside-main -->
+    <aside class="pfas-aside" tal:define="tree view/context_tree" tal:condition="tree">
+      <div class="pfas-tree" data-view="path">
+        <div class="pfas-aside-head">
+          <h3>Where this run sits</h3>
+          <label class="pfas-switch"><input type="checkbox" data-tree-view="1" /><span class="pfas-switch-track"></span><span>Show all</span></label>
+        </div>
+        <div class="pfas-tree-nodes">
+          <div class="pfas-tree-row" tal:condition="tree/client">
+            <a class="pfas-tree-node is-path" tal:attributes="href tree/client/url"><tal:x tal:replace="tree/client/title">Client</tal:x> <small>Client</small></a>
+          </div>
+          <div class="pfas-tree-row" tal:repeat="c tree/coc">
+            <span class="pfas-tree-elbow is-path"></span>
+            <a class="pfas-tree-node is-path" tal:attributes="href c/url"><tal:x tal:replace="c/number">COC</tal:x> <small>Chain of custody</small>
+              <span class="badge badge-opened" tal:condition="c/status" tal:content="c/status">received</span></a>
+          </div>
+          <div class="pfas-tree-row" tal:condition="tree/batch" tal:attributes="style python:'padding-left:%dpx' % (36 if tree['coc'] else 0)">
+            <span class="pfas-tree-elbow is-path"></span>
+            <a class="pfas-tree-node is-path" tal:attributes="href tree/batch/url"><tal:x tal:replace="tree/batch/id">B-1</tal:x> <small>Batch</small></a>
+          </div>
+          <div class="pfas-tree-row" tal:attributes="style python:'padding-left:%dpx' % (36 * (1 + bool(tree['coc']) + bool(tree['batch'])) - 36)">
+            <span class="pfas-tree-elbow is-path"></span>
+            <span class="pfas-tree-node is-selected"><tal:x tal:replace="tree/worksheet/id">WS</tal:x> <small>Worksheet</small>
+              <span class="badge badge-quarantine" tal:content="tree/worksheet/state">state</span></span>
+          </div>
+          <tal:st tal:define="depth python:36 * (1 + bool(tree['coc']) + bool(tree['batch']))">
+          <div class="pfas-tree-row" tal:repeat="st tree/stages"
+               tal:attributes="class python:'pfas-tree-row' if st['status'] != 'pending' else 'pfas-tree-row is-off-path';
+                               style python:'padding-left:%dpx' % depth">
+            <span tal:attributes="class python:'pfas-tree-elbow is-path' if st['status'] != 'pending' else 'pfas-tree-elbow'"></span>
+            <span tal:attributes="class python:'pfas-tree-node is-path' if st['status'] == 'done' else ('pfas-tree-node is-selected' if st['status'] == 'current' else 'pfas-tree-node')">
+              <tal:x tal:replace="st/label">Stage</tal:x> <small>Stage</small>
+              <span class="badge badge-active" tal:condition="python:st['status'] == 'done'">done</span></span>
+          </div>
+          <div class="pfas-tree-row is-off-path" tal:repeat="s tree/samples" tal:attributes="style python:'padding-left:%dpx' % depth">
+            <span class="pfas-tree-elbow"></span>
+            <a class="pfas-tree-node" tal:attributes="href s/url"><tal:x tal:replace="python:s['csid'] or s['id']">Sample</tal:x> <small tal:content="s/id">id</small>
+              <span class="badge badge-archived" tal:content="s/state">state</span></a>
+          </div>
+          <div class="pfas-tree-row is-off-path" tal:condition="tree/qc" tal:attributes="style python:'padding-left:%dpx' % depth">
+            <span class="pfas-tree-elbow"></span>
+            <a class="pfas-tree-node" tal:attributes="href string:?tab=spike_qc"><tal:x tal:replace="python:u'%d QC' % tree['qc']">QC</tal:x> <small>extraction batch</small></a>
+          </div>
+          </tal:st>
+        </div>
+      </div>
+    </aside>
+    </div><!-- /pfas-aside-layout -->
   </div><!-- /page-body -->
   </tal:with_ws>
 
