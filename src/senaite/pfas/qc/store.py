@@ -517,7 +517,7 @@ class QCResultStore(object):
             status_clause = "result_status='active'"
 
         sql = ("SELECT r.id, r.run_date, r.value, r.expected_value, r.flag, r.passed, r.batch_id, "
-               "       r.analyst, r.instrument_id, r.result_status, "
+               "       r.analyst, r.instrument_id, r.result_status, r.prov_key, "
                "       b.analyst AS batch_analyst "
                "FROM qc_results r "
                "LEFT JOIN batches b ON r.batch_id = b.batch_id "

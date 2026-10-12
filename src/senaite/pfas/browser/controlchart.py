@@ -26,6 +26,7 @@ import logging
 import os
 import re
 
+from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
 from senaite.pfas.browser.formutil import flatten_form
@@ -70,8 +71,9 @@ QC_TYPE_UNITS = {
 
 
 # a blank's non-detect is stored with no value; it is charted at 0, hollow,
-# as "not detected" -- skipping it left most blank runs off the chart
-BLANK_TYPES = ("MB", "LRB", "MxB", "CCB", "FRB", "TB")
+# as "not detected" -- skipping it left most blank runs off the chart. The
+# list is the one Blank History's rules keep (blanks mode, 2026-10-11).
+from senaite.pfas.blank_history import BLANK_TYPES   # noqa: E402
 RECOVERY_TYPES = ("CCV", "ICV")
 
 
@@ -189,6 +191,7 @@ class PFASControlChartView(BrowserView):
                     nds.add((a, k))
         order = sorted(keys)
         return script_json({
+            "lot_markers": self._lot_markers([k[1] for k in order]),
             "labels": [u"%s %s" % k for k in order],
             "series": [{"analyte": a, "values": [cells.get((a, k)) for k in order],
                         "nd": [(a, k) in nds for k in order]}
@@ -198,6 +201,46 @@ class PFASControlChartView(BrowserView):
 
     def selected_level(self):
         return self.request.get("qc_level", "")
+
+    # ── Blanks mode: Blank History's features on the chart page (lab, 2026-10-11) ──
+    def blanks_mode(self):
+        """A blank kind is selected: the page adds what rose, the lots that
+        differ, the compare-two form and lot-change markers on the chart."""
+        return bool(self.db_available and self.selected_qc_type() in BLANK_TYPES)
+
+    @memoize
+    def blank_view(self):
+        """Blank History's view on this same request (its ?method=, ?qc_type=,
+        an.*, ?a=, ?b=, ?matrix= are the ones this page uses)."""
+        from senaite.pfas.browser.blank_history import PFASBlankHistoryView
+        return PFASBlankHistoryView(self.context, self.request)
+
+    def blank_runs(self):
+        return self.blank_view().runs() if self.blanks_mode() else []
+
+    def blank_pair(self):
+        return self.blank_view().pair() if self.blanks_mode() else (None, None)
+
+    def blank_comparison(self):
+        return self.blank_view().comparison() if self.blanks_mode() else None
+
+    def _lot_markers(self, batch_ids):
+        """Lot changes between consecutive runs on the chart (blank_history
+        .lot_markers), each run's lots read once."""
+        if not self.blanks_mode() or not batch_ids:
+            return []
+        from senaite.pfas import blank_history as bh
+        from senaite.pfas.browser.blank_history import run_lots
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        lots = {}
+        for b in batch_ids:
+            if b not in lots:
+                try:
+                    lots[b] = run_lots(portal, b)
+                except Exception as exc:                        # noqa: BLE001
+                    logger.warning("lot markers %s: %s", b, exc)
+                    lots[b] = []
+        return bh.lot_markers(list(batch_ids), lots)
 
     def selected_analyst(self):
         return self.request.get("analyst", "") or None
@@ -507,6 +550,9 @@ class PFASControlChartView(BrowserView):
                 "analyst":       str(r.get("analyst") or r.get("batch_analyst") or ""),
                 "instrument_id": str(r.get("instrument_id", "")),
                 "status":        str(r.get("result_status", "active")),
+                # the value's provenance record: a point click opens it on
+                # the run's Data Review (lab, 2026-10-11)
+                "prov_key":      str(r.get("prov_key") or ""),
             })
 
         # Check if this QC type uses a threshold chart (blanks) vs L-J
@@ -570,7 +616,7 @@ class PFASControlChartView(BrowserView):
 
         labels, values, batch_ids, flags = [], [], [], []
         analysts_list, instruments_list = [], []
-        point_viol, point_status, point_nd = [], [], []
+        point_viol, point_status, point_nd, prov_keys = [], [], [], []
 
         for i, p in enumerate(points):
             # one run per label: several runs share a date
@@ -586,6 +632,7 @@ class PFASControlChartView(BrowserView):
                 if i in v.get("indices", [])
             ))
             point_status.append(p["status"])
+            prov_keys.append(p.get("prov_key") or "")
 
         return {
             "analyte":        analyte,
@@ -603,6 +650,8 @@ class PFASControlChartView(BrowserView):
             "violations":     point_viol,
             "point_status":   point_status,
             "point_nd":       point_nd,
+            "prov_keys":      prov_keys,
+            "lot_markers":    self._lot_markers(batch_ids),
             "limits":         limits,
             "target":         target,
             "threshold":      self._r(threshold_val),

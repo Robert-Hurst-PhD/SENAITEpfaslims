@@ -1158,7 +1158,7 @@
           <tal:bl tal:define="cmps view/blank_comparisons" tal:condition="cmps">
             <h3>Blanks
               <a class="btn-sm btn-secondary"
-                 tal:attributes="href string:${view/portal_url}/@@pfas-blank-history">Blank History</a></h3>
+                 tal:attributes="href python:u'%s/@@pfas-control-chart?qc_type=%s&amp;method=%s' % (view.portal_url(), (cmps[0].get('current') or {}).get('qc_type') or u'MB', (cmps[0].get('current') or {}).get('method') or u'')">Control charts</a></h3>
             <tal:c tal:repeat="cmp cmps">
               <metal:m use-macro="context/@@pfas-blank-history-macros/macros/comparison" />
             </tal:c>

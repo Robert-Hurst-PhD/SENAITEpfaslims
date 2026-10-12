@@ -161,12 +161,21 @@ def compare(portal, current, prev, cache=None):
 
 
 class PFASBlankHistoryView(BrowserView):
-
-    template = ViewPageTemplateFile("templates/blank_history.pt")
+    """Retired as a page (2026-10-11): Control Charts' blanks mode shows the
+    same data on the chart's page. The address redirects there with its
+    choices; the data helpers and the comparison macro stay in use."""
 
     def __call__(self):
         flatten_form(self.request)
-        return self.template()
+        f = self.request.form
+        qs = [("method", self.method()), ("qc_type", self.qc_type()), ("matrix", self.matrix()),
+              ("a", self._f("a")), ("b", self._f("b"))]
+        qs += [(k, u"1") for k in sorted(f) if k.startswith(u"an.") and f.get(k)]
+        from six.moves.urllib.parse import urlencode
+        url = u"%s/@@pfas-control-chart?%s" % (
+            self.portal_url(), urlencode([(k, (v or u"").encode("utf-8")) for k, v in qs if v]))
+        self.request.response.redirect(url)
+        return u""
 
     def portal(self):
         return getToolByName(self.context, "portal_url").getPortalObject()

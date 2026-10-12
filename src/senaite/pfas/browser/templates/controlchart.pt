@@ -12,34 +12,12 @@
     /* ── Control chart layout: filters as a top bar ────────────────────── */
     .main { padding: 18px; min-width: 0; }
 
-    /* Top filter bar (was the left sidebar) */
-    .filter-bar { background: var(--s-bg); border: 1px solid var(--s-border);
-                  border-radius: 6px; padding: 12px 14px; margin-bottom: 16px;
-                  display: flex; flex-wrap: wrap; gap: 10px 16px;
-                  align-items: flex-end; }
-    .filter-group { display: flex; flex-direction: column; min-width: 130px; }
-    .filter-group.grow { flex: 1 1 150px; }
-    .filter-label { display: block; font-size: var(--fs-sm); color: var(--s-body);
-                    margin-bottom: 4px; font-weight: 600; }
-    .filter-bar select, .filter-bar input[type=number],
-    .filter-bar input[type=date], .filter-bar input[type=text] {
-      width: 100%; padding: 6px 8px; border: 1px solid var(--s-input-border);
-      border-radius: 4px; font-size: var(--fs-base); background: #fafafa;
-      color: var(--s-input-text); box-sizing: border-box; }
-    .filter-bar select:focus, .filter-bar input:focus {
-      outline: none; border-color: var(--s-primary);
-      box-shadow: 0 0 0 3px var(--s-focus-ring); }
+    /* the filter bar is the shared component (pfas-components.css) */
     .date-range { display: flex; gap: 6px; align-items: center; }
-    .date-range input[type=date] { width: 148px; }
+    .date-range input[type=date] { width: 148px; min-width: 0; }
     .date-range span { font-size: var(--fs-xs); color: var(--s-secondary); }
-    .filter-bar .reset-link { font-size: var(--fs-xs); color: var(--s-secondary);
-                              align-self: center; white-space: nowrap; }
-
-    .limit-input { width: 80px; }
-
-    .toggle-row { display: flex; align-items: center; gap: 6px;
-                  font-size: var(--fs-sm); white-space: nowrap; padding-bottom: 6px; }
-    .toggle-row input[type=checkbox] { width: 14px; height: 14px; }
+    .limit-input { width: 80px; min-width: 0; }
+    .pfas-filterbar .pfas-select, .pfas-filterbar .pfas-input { min-width: 140px; }
 
     .cc-note { margin-top: 16px; padding: 12px 14px; background: var(--s-light);
                border: 1px solid var(--s-border); border-radius: 6px;
@@ -90,8 +68,7 @@
 
     @media (max-width: 768px) {
       .main { padding: 10px 12px; }
-      .filter-group, .filter-group.grow { flex: 1 1 100%; min-width: 0; }
-      .filter-bar .apply-btn { width: 100%; }
+      .pfas-field { flex: 1 1 100%; }
       .date-range input[type=date] { width: 100%; }
       .chart-container { height: 220px; }
       .stats-bar { gap: 8px; }
@@ -113,12 +90,12 @@
   <div metal:fill-slot="content">
 
   <!-- ── Top filter bar (was the left sidebar) ──────────────────────────── -->
-  <form class="filter-bar" method="GET" action="" id="filterForm"
+  <form class="pfas-filterbar" method="GET" action="" id="filterForm"
         tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
 
-    <div class="filter-group grow">
-      <label class="filter-label" for="method">Method</label>
-      <select id="method" name="method" onchange="this.form.submit()">
+    <div class="pfas-field">
+      <label for="method">Method</label>
+      <select id="method" name="method" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all methods &#8212;</option>
         <tal:methods tal:repeat="m view/methods">
           <option tal:attributes="value m;
@@ -128,9 +105,9 @@
       </select>
     </div>
 
-    <div class="filter-group">
-      <label class="filter-label" for="qc_type">QC type</label>
-      <select id="qc_type" name="qc_type" onchange="this.form.submit()">
+    <div class="pfas-field">
+      <label for="qc_type">QC type</label>
+      <select id="qc_type" name="qc_type" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all QC types &#8212;</option>
         <tal:types tal:repeat="qt view/qc_types">
           <option tal:attributes="value qt;
@@ -140,8 +117,8 @@
       </select>
     </div>
 
-    <div class="filter-group grow">
-      <label class="filter-label">Analytes</label>
+    <div class="pfas-field">
+      <span>Analytes</span>
       <details class="pick-list" tal:define="picked view/selected_analytes">
         <summary class="btn-sm btn-secondary"
                  tal:content="python:(u', '.join(picked[:3]) + (u' +%d' % (len(picked) - 3) if len(picked) > 3 else u'')) or u'Choose'">PFOA</summary>
@@ -154,9 +131,9 @@
       </details>
     </div>
 
-    <div class="filter-group">
-      <label class="filter-label" for="qc_level">QC level</label>
-      <select id="qc_level" name="qc_level" onchange="this.form.submit()">
+    <div class="pfas-field">
+      <label for="qc_level">QC level</label>
+      <select id="qc_level" name="qc_level" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all levels &#8212;</option>
         <tal:levels tal:repeat="lv python:view.qc_levels(view.selected_qc_type(), view.selected_analyte())">
           <option tal:attributes="value lv;
@@ -166,34 +143,35 @@
       </select>
     </div>
 
-    <div class="filter-group">
-      <label class="filter-label" for="chart_type_override">Chart type</label>
-      <select id="chart_type_override" name="chart_type_override" onchange="this.form.submit()">
-        <option value="">&#8212; auto &#8212;</option>
-        <option value="levey_jennings"
-                tal:attributes="selected python:view.selected_chart_type_override()=='levey_jennings'">
-          Levey-Jennings
-        </option>
-        <option value="threshold"
-                tal:attributes="selected python:view.selected_chart_type_override()=='threshold'">
-          Threshold
-        </option>
-      </select>
+    <!-- the mode switches: one segmented control each (the value posts
+         through its hidden input; without script the Apply button below) -->
+    <div class="pfas-field" tal:define="ct view/selected_chart_type_override">
+      <span>Chart</span>
+      <input type="hidden" name="chart_type_override" tal:attributes="value ct" />
+      <div class="pfas-seg pfas-seg-sm" data-name="chart_type_override" aria-label="Chart type">
+        <button type="button" class="pfas-seg-item" data-submit="1" data-value=""
+                tal:attributes="aria-pressed python:'true' if not ct else 'false'">Auto</button>
+        <button type="button" class="pfas-seg-item" data-submit="1" data-value="levey_jennings"
+                tal:attributes="aria-pressed python:'true' if ct == 'levey_jennings' else 'false'">Levey-Jennings</button>
+        <button type="button" class="pfas-seg-item" data-submit="1" data-value="threshold"
+                tal:attributes="aria-pressed python:'true' if ct == 'threshold' else 'false'">Threshold</button>
+      </div>
     </div>
 
-    <div class="filter-group">
-      <label class="filter-label" for="view_mode">View</label>
-      <select id="view_mode" name="view_mode" onchange="this.form.submit()">
-        <option value="lj"
-                tal:attributes="selected python:view.selected_view_mode()=='lj'">Levey-Jennings</option>
-        <option value="westgard"
-                tal:attributes="selected python:view.selected_view_mode()=='westgard'">Westgard rules</option>
-      </select>
+    <div class="pfas-field" tal:define="vm view/selected_view_mode">
+      <span>Rules</span>
+      <input type="hidden" name="view_mode" tal:attributes="value vm" />
+      <div class="pfas-seg pfas-seg-sm" data-name="view_mode" aria-label="Rules">
+        <button type="button" class="pfas-seg-item" data-submit="1" data-value="lj"
+                tal:attributes="aria-pressed python:'true' if vm == 'lj' else 'false'">Levey-Jennings</button>
+        <button type="button" class="pfas-seg-item" data-submit="1" data-value="westgard"
+                tal:attributes="aria-pressed python:'true' if vm == 'westgard' else 'false'">Westgard</button>
+      </div>
     </div>
 
-    <div class="filter-group">
-      <label class="filter-label" for="analyst">Analyst</label>
-      <select id="analyst" name="analyst" onchange="this.form.submit()">
+    <div class="pfas-field">
+      <label for="analyst">Analyst</label>
+      <select id="analyst" name="analyst" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all analysts &#8212;</option>
         <tal:analysts tal:repeat="a view/analysts">
           <option tal:attributes="value a;
@@ -203,9 +181,9 @@
       </select>
     </div>
 
-    <div class="filter-group">
-      <label class="filter-label" for="instrument_id">Instrument</label>
-      <select id="instrument_id" name="instrument_id" onchange="this.form.submit()">
+    <div class="pfas-field">
+      <label for="instrument_id">Instrument</label>
+      <select id="instrument_id" name="instrument_id" class="pfas-select" onchange="this.form.submit()">
         <option value="">&#8212; all instruments &#8212;</option>
         <tal:insts tal:repeat="inst view/instruments">
           <option tal:attributes="value inst;
@@ -216,37 +194,38 @@
     </div>
 
     <!-- Date range — bounded to the dates the database actually holds -->
-    <div class="filter-group" tal:define="bounds view/date_bounds">
-      <label class="filter-label">Date range</label>
+    <div class="pfas-field" tal:define="bounds view/date_bounds">
+      <span>Date range</span>
       <div class="date-range">
-        <input type="date" name="date_from" onchange="this.form.submit()"
+        <input type="date" name="date_from" class="pfas-input" onchange="this.form.submit()"
                tal:attributes="value view/selected_date_from;
                                min bounds/min; max bounds/max;
                                title string:Earliest in database: ${bounds/min}" />
         <span>&#8594;</span>
-        <input type="date" name="date_to" onchange="this.form.submit()"
+        <input type="date" name="date_to" class="pfas-input" onchange="this.form.submit()"
                tal:attributes="value view/selected_date_to;
                                min bounds/min; max bounds/max;
                                title string:Latest in database: ${bounds/max}" />
       </div>
     </div>
 
-    <div class="filter-group">
-      <label class="filter-label" for="limit">Show last (runs)</label>
-      <input class="limit-input" type="number" id="limit" name="limit"
-             min="5" max="300"
+    <div class="pfas-field">
+      <label for="limit">Last runs</label>
+      <input class="pfas-input limit-input" type="number" id="limit" name="limit"
+             min="5" max="300" onchange="this.form.submit()"
              tal:attributes="value view/selected_limit"
              title="Caps the most-recent points within the date range. Default 20; set 200+ for annual review." />
     </div>
 
-    <div class="toggle-row">
+    <span class="pfas-filterbar-spacer"></span>
+    <label class="pfas-switch">
       <input type="checkbox" id="show_history" name="show_history" value="1"
              tal:attributes="checked python:view.show_history() and 'checked' or None"
              onchange="this.form.submit()" />
-      <label for="show_history">Incl. superseded</label>
-    </div>
-
-    <button class="btn btn-primary apply-btn" type="submit">Apply</button>
+      <span class="pfas-switch-track"></span>
+      <span>Include superseded</span>
+    </label>
+    <noscript><button class="btn btn-primary" type="submit">Apply</button></noscript>
     <a class="btn-sm btn-secondary"
        tal:attributes="href string:${context/absolute_url}/@@pfas-control-chart">Reset</a>
   </form>
@@ -419,7 +398,7 @@
               </tal:lim>
             </div>
             <div class="chart-container">
-              <canvas id="qcChart"></canvas>
+              <canvas id="qcChart" tal:attributes="data-review-url string:${context/absolute_url}/@@pfas-data-review"></canvas>
             </div>
           </tal:hasdata>
 
@@ -441,6 +420,39 @@
         </div>
 
       </tal:content>
+
+      <!-- Blanks mode: what Blank History showed, on the chart's own page
+           (lab, 2026-10-11): the rise against the previous comparable
+           blank, the lots that differ, two blanks compared by choice -->
+      <tal:blanks tal:condition="view/blanks_mode"
+                  tal:define="bruns view/blank_runs; cmp view/blank_comparison; pr view/blank_pair;
+                              picked view/selected_analytes">
+        <div class="chart-card" tal:condition="bruns">
+          <div class="chart-title">Blanks &#8212; what changed</div>
+          <div class="chart-subtitle">A dashed marker on the chart is a run whose lots differ from the run before it.
+            Below: this blank against the previous comparable one (same kind, method and matrix), what rose, and every lot both used.</div>
+          <form method="GET" class="pfas-filterbar" tal:condition="python:len(bruns) > 1"
+                tal:attributes="action string:${context/absolute_url}/@@pfas-control-chart">
+            <input type="hidden" name="method" tal:attributes="value view/selected_method" />
+            <input type="hidden" name="qc_type" tal:attributes="value view/selected_qc_type" />
+            <input type="hidden" tal:repeat="a picked" tal:attributes="name string:an.${a}" value="1" />
+            <label class="pfas-field"><span>This blank</span>
+              <select name="a" class="pfas-select" onchange="this.form.submit()">
+                <option tal:repeat="r bruns" tal:content="string:${r/run_date} ${r/key}"
+                        tal:attributes="value r/key; selected python:pr[0] and r['key'] == pr[0]['key']">run</option>
+              </select></label>
+            <label class="pfas-field"><span>Against</span>
+              <select name="b" class="pfas-select" onchange="this.form.submit()">
+                <option tal:repeat="r bruns" tal:content="string:${r/run_date} ${r/key}"
+                        tal:attributes="value r/key; selected python:pr[1] and r['key'] == pr[1]['key']">run</option>
+              </select></label>
+            <noscript><button class="btn btn-secondary" type="submit">Compare</button></noscript>
+          </form>
+          <tal:c tal:condition="cmp">
+            <metal:m use-macro="context/@@pfas-blank-history-macros/macros/comparison" />
+          </tal:c>
+        </div>
+      </tal:blanks>
 
       <div class="cc-note" tal:condition="view/db_available">
         Control limits are computed from the first 20 in-control results.
@@ -464,6 +476,18 @@
     var axisX = {type: 'category', title: {display: true, text: 'Run', font: {size: 11}},
                  ticks: {maxTicksLimit: 24, maxRotation: 50, font: {size: 10}}, grid: {display: false}};
 
+    /* a lot changed between two runs: a dashed marker at the later run,
+       labelled with the lot (blank_history.lot_markers) */
+    function lotAnnotations(markers) {
+      var out = {};
+      (markers || []).forEach(function (m, i) {
+        out['lot' + i] = {type: 'line', scaleID: 'x', value: m.index, borderColor: cMuted, borderDash: [3, 3],
+                          borderWidth: 1, label: {display: true, content: 'lot: ' + m.text, position: 'start',
+                          rotation: -90, backgroundColor: 'rgba(255,255,255,0.9)', color: cMuted,
+                          font: {size: 10}, padding: {x: 3, y: 1}}};
+      });
+      return out;
+    }
     if (STACK) {
       var el = document.getElementById('qcStack');
       if (!el) return;
@@ -476,7 +500,8 @@
                   pointBackgroundColor: (s.nd || []).map(function (n) { return n ? 'transparent' : c; })};
         })},
         options: {responsive: true, maintainAspectRatio: false, animation: false,
-                  plugins: {legend: {position: 'bottom', labels: {usePointStyle: true, boxWidth: 8}}},
+                  plugins: {legend: {position: 'bottom', labels: {usePointStyle: true, boxWidth: 8}},
+                            annotation: {annotations: lotAnnotations(STACK.lot_markers)}},
                   scales: {x: axisX, y: {title: {display: true, text: STACK.units || 'Value'}, grace: '8%'}}}
       });
       return;
@@ -527,6 +552,8 @@
     }
     if (CHART_DATA.chart_type !== 'threshold')
       hline('t', CHART_DATA.target, cMuted, [8, 4], 1, 'Target', 'end');
+    var lotAnn = lotAnnotations(CHART_DATA.lot_markers);
+    for (var lk in lotAnn) ann[lk] = lotAnn[lk];
 
     var main = {
       label: CHART_DATA.analyte + ' (' + (CHART_DATA.qc_type_label || CHART_DATA.qc_type) + ')',
@@ -561,12 +588,33 @@
       seenLabel[l] = (seenLabel[l] || 0) + 1;
       return seenLabel[l] > 1 ? l + ' #' + seenLabel[l] : l;
     });
-    new Chart(document.getElementById('qcChart'), {
+    /* a point is a run: click opens that run's Data Review on the value
+       (its provenance record); hover says so */
+    var canvas = document.getElementById('qcChart');
+    var reviewUrl = canvas.getAttribute('data-review-url') || '';
+    function pointUrl(idx) {
+      var b = (CHART_DATA.batch_ids || [])[idx], k = (CHART_DATA.prov_keys || [])[idx];
+      if (!b || !reviewUrl) return '';
+      return reviewUrl + '?batch_id=' + encodeURIComponent(b) + '&tab=qc_summary' +
+             (k ? '#prov=' + encodeURIComponent(k) : '');
+    }
+    tooltipPlugin.callbacks.footer = function (items) {
+      return pointUrl(items[0].dataIndex) ? 'Click: open the run\u2019s Data Review' : '';
+    };
+    new Chart(canvas, {
       type: 'line',
       data: {labels: labels, datasets: [main]},
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         interaction: {mode: 'nearest', intersect: true},
+        onClick: function (evt, els) {
+          if (!els.length) return;
+          var url = pointUrl(els[0].index);
+          if (url) window.location.href = url;
+        },
+        onHover: function (evt, els) {
+          evt.native.target.style.cursor = els.length && pointUrl(els[0].index) ? 'pointer' : 'default';
+        },
         plugins: {tooltip: tooltipPlugin, annotation: {annotations: ann},
                   legend: {labels: {usePointStyle: true, boxWidth: 8, font: {size: 11}}, position: 'bottom'}},
         scales: {x: axisX,

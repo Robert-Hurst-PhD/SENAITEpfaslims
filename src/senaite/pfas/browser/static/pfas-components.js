@@ -66,8 +66,17 @@
     placePill(seg);
     seg.addEventListener("click", function (e) {
       var item = e.target.closest(".pfas-seg-item");
-      if (!item || item.tagName === "A" || item.hasAttribute("data-submit")) { return; }   /* links and form values: the server renders the state */
+      if (!item || item.tagName === "A") { return; }   /* a link: the server renders the state */
       e.preventDefault();
+      if (item.hasAttribute("data-submit")) {
+        /* a form value: the seg's data-name names the hidden input; the form applies */
+        var form = seg.closest("form"), name = seg.getAttribute("data-name");
+        var input = form && name ? form.querySelector('input[name="' + name + '"]') : null;
+        if (input) { input.value = item.getAttribute("data-value") || ""; }
+        activate(seg, item);
+        if (form) { form.submit(); }
+        return;
+      }
       activate(seg, item);
     });
     seg.addEventListener("keydown", function (e) {

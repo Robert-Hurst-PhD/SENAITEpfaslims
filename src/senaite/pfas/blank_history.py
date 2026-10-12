@@ -21,8 +21,10 @@ Pure; Python 2.7 and 3.
 """
 from __future__ import absolute_import, unicode_literals
 
-# extracted blanks, the solvent (instrument) blank and the matrix blank
-BLANK_TYPES = ("MB", "LRB", "CCB", "MxB")
+# extracted blanks, the solvent (instrument) blank, the matrix blank and the
+# field blanks: ONE list for Blank History's data, the control charts and
+# the blanks mode (two lists differed, 2026-10-11)
+BLANK_TYPES = ("MB", "LRB", "CCB", "MxB", "FRB", "TB")
 
 # FM-ENV-002 lot fields (the same list Data Review's traceability walk reads)
 FM251_FIELDS = (("pds_a_lot", u"PDS-A"), ("pds_b_lot", u"PDS-B"),
@@ -117,6 +119,29 @@ def lot_diff(current, previous_lots):
     key = lambda x: (x.get("kind") or u"", x.get("role") or x.get("name") or u"")   # noqa: E731
     return {"changed": sorted(changed, key=key), "new": sorted(new, key=key),
             "gone": sorted(gone, key=key), "shared": sorted(shared, key=key)}
+
+
+def lot_markers(order, lots_by_run):
+    """Where the lots changed along a chart: [{index, run, changed, new,
+    text}] for each point whose run used a lot its previous (different) run
+    did not -- a changed lot for the same role, or a new one. `order` is the
+    runs in chart order (a run may repeat: one marker per change);
+    `lots_by_run` maps a run to its lots (lots_of)."""
+    out, prev = [], None
+    for i, run in enumerate(order):
+        if prev is None or run == prev:
+            prev = run                                   # the first run, or the same run again
+            continue
+        d = lot_diff(lots_by_run.get(run) or [], lots_by_run.get(prev) or [])
+        prev = run
+        if not d["changed"] and not d["new"]:
+            continue
+        parts = [u"%s %s \u2192 %s" % (c.get("role") or c.get("name") or u"", c["before"], c["now"])
+                 for c in d["changed"]]
+        parts += [u"new %s %s" % (n.get("role") or n.get("name") or u"", n["lot"]) for n in d["new"]]
+        out.append({"index": i, "run": run, "changed": d["changed"], "new": d["new"],
+                    "text": u"; ".join(parts)})
+    return out
 
 
 def rise(current, prev):
