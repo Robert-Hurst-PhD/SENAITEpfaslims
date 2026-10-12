@@ -6,107 +6,6 @@
 <head>
   <title metal:fill-slot="title">Import Studio — Instrument Mapping</title>
   <tal:styles metal:fill-slot="head-extra">
-  <style>
-    .btn-save-profile { width: 100%; }   /* look: shared .btn-primary */
-    .studio-layout { display: flex; gap: 24px; align-items: flex-start; }
-    .studio-main   { flex: 1 1 auto; min-width: 0; }
-    .studio-side   { flex: 0 0 260px; }
-
-    /* ── Landing page ─────────────────────────────────────── */
-    .instr-list { list-style: none; padding: 0; margin: 0 0 20px; }
-    .instr-list li { padding: 10px 14px; border: 1px solid var(--s-border);
-                     border-radius: 8px; margin-bottom: 8px; display: flex;
-                     justify-content: space-between; align-items: center; }
-    .instr-list li .instr-title { font-weight: 600; font-size: var(--fs-base); }
-    .profile-badge { font-size: var(--fs-xs); color: var(--s-secondary); margin-left: 8px; }
-    .instr-action  { font-size: var(--fs-sm); }
-
-    /* ── Upload area ──────────────────────────────────────── */
-    .upload-box { border: 2px dashed var(--s-border); border-radius: 12px;
-                  padding: 40px 24px; text-align: center;
-                  background: #fafbfc; cursor: pointer;
-                  transition: border-color .15s; }
-    .upload-box:hover, .upload-box.drag-over { border-color: var(--s-primary); background: var(--s-info-lt); }
-    .upload-box .upload-icon { font-size: 36px; margin-bottom: 10px; }
-    .upload-box p  { font-size: var(--fs-base); color: var(--s-secondary); margin: 0; }
-    /* file input is rendered outside .upload-box; hidden via inline style */
-    .upload-chosen { font-size: var(--fs-sm); color: var(--s-primary-dk); margin-top: 8px; font-weight: 600; }
-
-    /* ── Detection banner ─────────────────────────────────── */
-    .detect-banner { border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;
-                     font-size: var(--fs-base); display: flex; gap: 12px; align-items: center; }
-    .detect-banner.high  { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text); }
-    .detect-banner.med   { background: var(--s-warn-lt); border: 1px solid var(--s-warn-bd); color: var(--s-warn-text); }
-    .detect-banner.low   { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk); }
-    .detect-banner strong { font-size: var(--fs-base); }
-    .conf-pill { font-size: var(--fs-xs); padding: 2px 8px; border-radius: 10px;
-                 background: rgba(0,0,0,.12); font-weight: 700; }
-
-    /* ── Mapping grid ─────────────────────────────────────── */
-    .mapping-grid { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-    .mapping-grid th { background: var(--s-light); padding: 8px 10px; text-align: left;
-                       border-bottom: 2px solid var(--s-border); font-weight: 700; }
-    .mapping-grid td { padding: 5px 8px; border-bottom: 1px solid var(--s-border); vertical-align: middle; }
-    .mapping-grid td.col-name  { font-family: var(--font-mono); font-size: var(--fs-xs); color: #333; max-width: 160px;
-                                  word-break: break-all; }
-    .mapping-grid td.col-preview { font-family: var(--font-mono); font-size: var(--fs-xs); color: #666; max-width: 200px; }
-    .mapping-grid select { width: 100%; padding: 4px 6px; font-size: var(--fs-sm);
-                           border: 1px solid var(--s-input-border); border-radius: 5px; }
-    .mapping-grid select.mapped   { border-color: var(--s-success); background: #f0fff4; }
-    .mapping-grid select.ignored  { border-color: #adb5bd; background: var(--s-light); color: var(--s-secondary); }
-
-    /* ── Preview rows ─────────────────────────────────────── */
-    .preview-table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs);
-                     font-family: var(--font-mono); margin-bottom: 20px; overflow-x: auto; display: block; }
-    .preview-table th { background: var(--s-light); padding: 4px 6px;
-                        border: 1px solid var(--s-border); font-weight: 700; }
-    .preview-table td { padding: 3px 6px; border: 1px solid var(--s-border); white-space: nowrap; }
-
-    /* ── Side: save profile form ─────────────────────────── */
-    .profile-card { background: var(--s-light); border: 1px solid var(--s-border);
-                    border-radius: 10px; padding: 18px; }
-    .profile-card h3 { font-size: var(--fs-base); font-weight: 700; margin: 0 0 14px; }
-    .profile-card label { font-size: var(--fs-sm); font-weight: 600; display: block;
-                          margin-bottom: 3px; color: var(--s-dark); }
-    .profile-card input[type=text],
-    .profile-card select,
-    .profile-card textarea { width: 100%; padding: 6px 8px; font-size: var(--fs-sm);
-                              border: 1px solid var(--s-input-border); border-radius: 5px;
-                              margin-bottom: 12px; box-sizing: border-box; }
-    .profile-card textarea { min-height: 60px; resize: vertical; }
-    .calc-explainer { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: -8px; margin-bottom: 12px;
-                      line-height: 1.4; }
-
-    /* ── Existing profiles list ──────────────────────────── */
-    .saved-profiles { margin-top: 20px; }
-    .saved-profiles h4 { font-size: var(--fs-sm); font-weight: 700; margin-bottom: 8px;
-                         color: var(--s-secondary); text-transform: uppercase; letter-spacing: .5px; }
-    .profile-row { font-size: var(--fs-xs); padding: 5px 0;
-                   border-bottom: 1px solid var(--s-border); display: flex;
-                   justify-content: space-between; align-items: center; }
-    .profile-row .pv-tag { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 700; }
-    .profile-row .pv-vendor { color: var(--s-secondary); }
-    .pv-calc { font-size: var(--fs-xs); padding: 1px 6px; border-radius: 8px; font-weight: 600; }
-    .pv-calc.final { background: var(--s-success-lt); color: var(--s-success-text); }
-    .pv-calc.raw   { background: var(--s-info-lt); color: var(--s-info-text); }
-
-    /* ── Alerts ────────────────────────────────────────────── */
-    .alert-ok    { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text);
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
-    .alert-error { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk);
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
-    .alert-info  { background: var(--s-info-lt); border: 1px solid var(--s-info-bd); color: var(--s-info-text);
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
-
-    .section-title { font-size: var(--fs-lg); font-weight: 700; color: var(--s-dark);
-                     margin: 0 0 18px; padding-bottom: 8px;
-                     border-bottom: 2px solid var(--s-border); }
-    .instr-selector { margin-bottom: 20px; }
-    .instr-selector label { font-weight: 600; font-size: var(--fs-base); margin-right: 10px; }
-    .instr-selector select { padding: 7px 10px; font-size: var(--fs-base);
-                              border: 1px solid var(--s-input-border); border-radius: 6px;
-                              min-width: 280px; }
-  </style>
   <script type="text/javascript">
   //<![CDATA[
   /* All Import Studio JS lives here (head-extra slot) because Plone's
@@ -131,7 +30,7 @@
   function showChosen(inp) {
     var n = inp && inp.files && inp.files[0] ? inp.files[0].name : '';
     var el = document.getElementById('chosen-name');
-    if (el && n) { el.textContent = '✔ ' + n; el.hidden = false; }
+    if (el && n) { el.textContent = '\u2714 ' + n; el.hidden = false; }
     var btn = document.getElementById('upload-btn');
     if (btn) { btn.disabled = !n; }
   }
@@ -208,7 +107,7 @@
     var sels = document.querySelectorAll('#mapping-body select');
     for (var i = 0; i < sels.length; i++) {
       if (sels[i].getAttribute('data-col') === col) {
-        sels[i].className = (colMap[col] || 'ignore') === 'ignore' ? 'ignored' : 'mapped';
+        sels[i].className = (colMap[col] || 'ignore') === 'ignore' ? 'is-ignored' : 'is-mapped';
       }
     }
   }
@@ -223,7 +122,7 @@
   function autoIgnoreAll() {
     Object.keys(colMap).forEach(function(col) { colMap[col] = 'ignore'; });
     var sels = document.querySelectorAll('#mapping-body select');
-    for (var i = 0; i < sels.length; i++) { sels[i].value = 'ignore'; sels[i].className = 'ignored'; }
+    for (var i = 0; i < sels.length; i++) { sels[i].value = 'ignore'; sels[i].className = 'is-ignored'; }
     updateCount(Object.keys(colMap));
     updateColMapJson();
   }
@@ -245,6 +144,8 @@
   document.addEventListener('DOMContentLoaded', function() {
     var btn = document.getElementById('upload-btn');
     if (btn) { btn.disabled = true; }
+    var calc = document.getElementById('s-calc');
+    if (calc) { calc.addEventListener('change', updateCalChain); }
     var fi = document.getElementById('file-input');
     if (fi) { fi.addEventListener('change', function() { showChosen(this); }); }
     if (typeof UPLOAD_RESULT === 'undefined' || !UPLOAD_RESULT) return;
@@ -296,8 +197,8 @@
   </tal:r>
   <div metal:fill-slot="content">
   <div class="page-body">
-    <div tal:condition="view/ok_msg"    class="alert-ok"    tal:content="view/ok_msg"></div>
-    <div tal:condition="view/error_msg" class="alert-error" tal:content="view/error_msg"></div>
+    <div tal:condition="view/ok_msg"    class="alert alert-success" tal:content="view/ok_msg"></div>
+    <div tal:condition="view/error_msg" class="alert alert-error" tal:content="view/error_msg"></div>
     <!-- TAL-driven variables: inject server state for JS to consume -->
     <script type="text/javascript">
     var UPLOAD_RESULT = <tal:d tal:replace="structure view/upload_result_json" />;
@@ -306,7 +207,7 @@
     <!-- PHASE 1: the instrument, the export and how it is laid out -->
     <tal:phase1 tal:define="instruments view/instruments; rf view/reader_form; ch view/layout_choices">
     <div id="phase-landing">
-      <h2 class="section-title">Step 1 &mdash; Instrument, export and how it is laid out</h2>
+      <h2 class="pfas-section-title">Step 1 &mdash; Instrument, export and how it is laid out</h2>
       <p class="field-hint">Upload an export with the options its layout needs.
         <tal:h define="hid string:import-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
       <p tal:condition="not:view/can_configure">Import layouts are set by a Manager.</p>
@@ -380,33 +281,33 @@
             <span class="field-hint">Lines before the first block are skipped.</span>
           </label>
         </div>
-        <label class="upload-box" id="upload-box" for="file-input"
+        <label class="pfas-upload" id="upload-box" for="file-input"
                ondragover="this.classList.add('drag-over');event.preventDefault()"
                ondragleave="this.classList.remove('drag-over')"
                ondrop="handleDrop(event)">
-          <div class="upload-icon">&#128196;</div>
+          <div class="pfas-upload-icon"></div>
           <p><strong>Drop an instrument export here</strong></p>
           <p>or click to browse (CSV, TXT, TSV)</p>
-          <p class="upload-chosen" id="chosen-name" hidden="hidden"></p>
+          <p class="pfas-upload-chosen" id="chosen-name" hidden="hidden"></p>
         </label>
         <input type="file" id="file-input" name="upload_file" accept=".csv,.txt,.tsv" hidden="hidden" />
         <div class="form-actions">
-          <button type="submit" id="upload-btn" class="btn btn-primary">Read &amp; Map Columns &#8594;</button>
+          <button type="submit" id="upload-btn" class="btn btn-primary">Read &amp; Map Columns &rarr;</button>
         </div>
       </form>
     </div><!-- /phase-landing -->
     </tal:phase1>
     <!-- PHASE 2: the columns and the layout's settings -->
     <div id="phase-mapping" hidden="hidden">
-      <div id="detect-banner" class="alert-info" hidden="hidden"></div>
-      <h2 class="section-title" id="mapping-title">
+      <div id="detect-banner" class="alert alert-info" hidden="hidden"></div>
+      <h2 class="pfas-section-title" id="mapping-title">
         Column Mapping &mdash; <span id="mapping-filename"></span>
       </h2>
-      <div class="studio-layout">
-        <div class="studio-main">
+      <div class="pfas-studio">
+        <div class="pfas-studio-main">
           <div class="table-wrap">
             <p class="field-hint">DATA PREVIEW (first 3 rows, as the layout reads them)</p>
-            <table class="preview-table" id="preview-table">
+            <table class="pfas-preview" id="preview-table">
               <thead><tr id="preview-head"></tr></thead>
               <tbody id="preview-body"></tbody>
             </table>
@@ -418,7 +319,7 @@
             <button type="button" class="btn-sm btn-secondary" onclick="autoIgnoreAll()">Ignore all</button>
           </p>
           <div class="table-wrap">
-          <table class="mapping-grid">
+          <table class="pfas-map-grid">
             <thead>
               <tr><th>Column Name</th><th>Purpose</th><th>Sample Values</th></tr>
             </thead>
@@ -426,8 +327,8 @@
           </table>
           </div>
         </div><!-- /studio-main -->
-        <div class="studio-side">
-          <div class="profile-card" tal:condition="view/can_configure">
+        <div class="pfas-studio-side">
+          <div class="pfas-card is-tint" tal:condition="view/can_configure">
             <h3>Save as Import Layout</h3>
             <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-import-studio"
                   id="save-form" onsubmit="return prepSave()">
@@ -458,7 +359,7 @@
                   <input type="text" id="s-software" name="software" placeholder="optional" />
                 </label>
                 <label class="field-wide">Calculation mode
-                  <select id="s-calc" name="calc_mode" onchange="updateCalChain()">
+                  <select id="s-calc" name="calc_mode" class="pfas-select">
                     <option value="final">Final: the file has concentrations</option>
                     <option value="raw">Raw: the file has peak areas</option>
                   </select>
@@ -492,7 +393,7 @@
                   <textarea id="s-notes" name="notes" rows="2" placeholder="export settings, quirks..."></textarea>
                 </label>
               </div>
-              <button class="btn btn-primary btn-save-profile" type="submit">Save Layout</button>
+              <button class="btn btn-primary btn-block" type="submit">Save Layout</button>
             </form>
           </div><!-- /profile-card -->
         </div><!-- /studio-side -->
@@ -502,7 +403,7 @@
       </div>
     </div><!-- /phase-mapping -->
     <!-- the injection list per instrument: what its software reads -->
-    <div class="profile-card">
+    <div class="pfas-card is-tint">
       <h3>Injection list (per instrument) <tal:h define="hid string:sequence-export"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></h3>
       <form method="post" class="dilution-form" tal:repeat="x view/export_configs"
             tal:attributes="action string:${view/portal_url}/@@pfas-import-studio">
@@ -518,7 +419,7 @@
       </form>
     </div>
     <!-- saved import layouts: edit, retire / reactivate, delete (audited) -->
-    <div class="profile-card" tal:define="profiles view/saved_profiles">
+    <div class="pfas-card is-tint" tal:define="profiles view/saved_profiles">
       <h3>Saved Import Layouts <tal:h define="hid string:import-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></h3>
       <div class="table-wrap" tal:condition="profiles">
       <table class="pfas-table" id="saved-layouts">
@@ -544,7 +445,8 @@
                          tal:attributes="value python:'reactivate_profile' if p['retired'] else 'retire_profile'"/>
                   <input type="hidden" name="layout_id" tal:attributes="value p/id"/>
                   <input type="text" name="reason" placeholder="reason" tal:condition="not:p/retired"/>
-                  <button class="btn btn-action" type="submit"
+                  <button type="submit"
+                          tal:attributes="class python:'btn-sm btn-secondary' if p['retired'] else 'btn-sm btn-warn'"
                           tal:content="python:'Reactivate' if p['retired'] else 'Retire'">Retire</button>
                 </form>
                 <form method="post" onsubmit="return confirm('Delete this import layout? Configuration History keeps what it was.')"
@@ -552,7 +454,7 @@
                   <input type="hidden" name="action" value="delete_profile"/>
                   <input type="hidden" name="layout_id" tal:attributes="value p/id"/>
                   <input type="text" name="reason" placeholder="reason"/>
-                  <button class="btn btn-action" type="submit">Delete</button>
+                  <button class="btn-sm btn-danger" type="submit">Delete</button>
                 </form>
               </div>
             </td>

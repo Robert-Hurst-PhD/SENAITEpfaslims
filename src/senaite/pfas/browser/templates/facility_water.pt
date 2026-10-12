@@ -5,66 +5,49 @@
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
   <title metal:fill-slot="title">Type 1 Water QC Log</title>
-  <tal:styles metal:fill-slot="head-extra">
-  <style>
-    .log-form { background:var(--s-bg); border:1px solid var(--s-border);
-                border-radius:8px; padding:16px; margin-bottom:18px; }
-    .log-form h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 12px; color:var(--s-body); }
-    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
-    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
-    .fld input { padding:6px 8px; font-size:var(--fs-base); border:1px solid var(--s-input-border);
-                 border-radius:4px; color:var(--s-input-text); }
-    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
-    .fld-row .fld { flex:1; min-width:120px; }
-    .p-ok  { background:var(--s-success-lt); color:var(--s-success-text); padding:2px 9px; border-radius:8px;
-              font-size:var(--fs-xs); font-weight:700; }
-    .p-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); padding:2px 9px; border-radius:8px;
-               font-size:var(--fs-xs); font-weight:700; }
-  </style>
-  </tal:styles>
 </head>
 <body>
 <tal:t metal:fill-slot="header-title">Type 1 Water QC Log</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url; defs view/defaults">
 
-  <div class="log-form">
+  <div class="pfas-card">
     <h3>New Entry</h3>
     <form method="POST" tal:attributes="action string:${purl}/@@pfas-water-log">
-      <div class="fld-row">
-        <div class="fld"><label>Date *</label>
+      <div class="pfas-form-row">
+        <div class="pfas-form-field"><label>Date *</label>
           <input type="date" name="log_date" id="wDate" required/></div>
-        <div class="fld"><label>Time</label>
+        <div class="pfas-form-field"><label>Time</label>
           <input type="time" name="log_time" id="wTime"/></div>
-        <div class="fld"><label>Operator initials *</label>
+        <div class="pfas-form-field"><label>Operator initials *</label>
           <input type="text" name="operator" maxlength="10" required/></div>
       </div>
-      <div class="fld-row">
-        <div class="fld">
+      <div class="pfas-form-row">
+        <div class="pfas-form-field">
           <label>Conductivity (&mu;S/cm)
-            <small style="color:var(--s-secondary)">
+            <small>
               max <tal:m tal:replace="python:defs['conductivity_max']"/>
             </small>
           </label>
           <input type="number" step="0.01" name="conductivity" required/>
         </div>
-        <div class="fld">
+        <div class="pfas-form-field">
           <label>TOC (ppb)
-            <small style="color:var(--s-secondary)">
+            <small>
               max <tal:m tal:replace="python:defs['toc_max']"/>
             </small>
           </label>
           <input type="number" step="1" name="toc" required/>
         </div>
-        <div class="fld"><label>Conductivity max (&mu;S/cm)</label>
+        <div class="pfas-form-field"><label>Conductivity max (&mu;S/cm)</label>
           <input type="number" step="0.1" name="conductivity_max"
                  tal:attributes="value python:defs['conductivity_max']"/></div>
-        <div class="fld"><label>TOC max (ppb)</label>
+        <div class="pfas-form-field"><label>TOC max (ppb)</label>
           <input type="number" step="1" name="toc_max"
                  tal:attributes="value python:defs['toc_max']"/></div>
       </div>
-      <div class="fld-row">
-        <div class="fld" style="flex:3"><label>Notes</label>
+      <div class="pfas-form-row">
+        <div class="pfas-form-field is-grow"><label>Notes</label>
           <input type="text" name="notes"/></div>
       </div>
       <button type="submit" class="btn btn-primary">
@@ -73,10 +56,10 @@
     </form>
   </div>
 
-  <div class="log-form">
+  <div class="pfas-card">
     <h3>Recent Log</h3>
     <tal:none tal:condition="python:not view.logs()">
-      <p style="color:var(--s-secondary);font-size:var(--fs-sm)">No entries yet.</p>
+      <p class="pfas-note-sm">No entries yet.</p>
     </tal:none>
     <table class="pfas-table log-table" tal:condition="python:bool(view.logs())">
       <tr>
@@ -88,13 +71,13 @@
           <td tal:content="r/log_date"></td>
           <td tal:content="r/log_time"></td>
           <td tal:content="r/operator"></td>
-          <td tal:attributes="style python:'color: var(--s-danger-dk)' if r.get('conductivity') and r['conductivity']>r['conductivity_max'] else ''"
+          <td tal:attributes="class python:'pfas-text-bad' if r.get('conductivity') and r['conductivity']>r['conductivity_max'] else None"
               tal:content="python:'{:.2f}'.format(r['conductivity']) if r.get('conductivity') is not None else '—'"></td>
-          <td tal:attributes="style python:'color: var(--s-danger-dk)' if r.get('toc') and r['toc']>r['toc_max'] else ''"
+          <td tal:attributes="class python:'pfas-text-bad' if r.get('toc') and r['toc']>r['toc_max'] else None"
               tal:content="python:'{:.0f}'.format(r['toc']) if r.get('toc') is not None else '—'"></td>
-          <td><span tal:attributes="class python:'p-ok' if r['passed'] else 'p-fail'"
+          <td><span tal:attributes="class python:'badge badge-ok' if r['passed'] else 'badge badge-fail'"
                     tal:content="python:'Pass' if r['passed'] else 'Fail'"></span></td>
-          <td style="color:var(--s-secondary)" tal:content="python:r.get('notes','')"></td>
+          <td class="pfas-muted-cell" tal:content="python:r.get('notes','')"></td>
         </tr>
       </tal:each>
     </table>

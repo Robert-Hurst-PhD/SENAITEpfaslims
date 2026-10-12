@@ -5,50 +5,6 @@
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
   <title metal:fill-slot="title">Temperature Log</title>
-  <tal:styles metal:fill-slot="head-extra">
-  <style>
-    .temp-nav { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
-    .temp-nav a { padding:5px 14px; border-radius:16px; font-size:var(--fs-sm); font-weight:600;
-                  text-decoration:none; background:var(--s-light);
-                  border:1px solid var(--s-border); color:var(--s-body); }
-    .temp-nav a.active { background:var(--s-primary-dk); color:#fff; border-color:var(--s-primary-dk); }
-    .chart-wrap { background:var(--s-bg); border:1px solid var(--s-border);
-                  border-radius:8px; padding:16px; margin-bottom:18px; }
-    .chart-canvas-wrap { position:relative; height:300px; }
-    .day-filter { display:flex; gap:8px; align-items:center; margin-bottom:14px;
-                  font-size:var(--fs-sm); }
-    .day-filter a { padding:3px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:600;
-                    text-decoration:none; background:var(--s-light);
-                    border:1px solid var(--s-border); color:var(--s-body); }
-    .day-filter a.active { background:var(--s-primary-dk); color:#fff; border-color:var(--s-primary-dk); }
-    .study-section { background:var(--s-bg); border:1px solid var(--s-border);
-                     border-radius:8px; padding:16px; margin-bottom:18px; }
-    .study-section h3 { font-size:var(--fs-base); font-weight:700; color:var(--s-body); margin:0 0 12px; }
-    .study-row { display:flex; gap:12px; flex-wrap:wrap; align-items:center;
-                 padding:8px 0; border-bottom:1px solid var(--s-border); font-size:var(--fs-sm); }
-    .study-row:last-child { border-bottom:none; }
-    .study-badge { padding:2px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:700; }
-    .study-pass { background:var(--s-success-lt); color:var(--s-success-text); }
-    .study-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
-    .study-pending { background:var(--s-light); color:var(--s-secondary); }
-    .point-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:8px;
-                  margin-top:12px; }
-    .point-cell { border:1px solid var(--s-border); border-radius:6px;
-                  padding:10px; background:var(--s-light); font-size:var(--fs-xs); }
-    .point-cell label { display:block; font-weight:600; color:var(--s-secondary);
-                        margin-bottom:4px; }
-    .point-cell input { width:100%; box-sizing:border-box; padding:4px 6px;
-                        font-size:var(--fs-sm); border:1px solid var(--s-input-border);
-                        border-radius:4px; }
-    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
-    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
-    .fld input, .fld select, .fld textarea {
-      padding:6px 8px; font-size:var(--fs-base); border:1px solid var(--s-input-border);
-      border-radius:4px; color:var(--s-input-text); }
-    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
-    .fld-row .fld { flex:1; min-width:140px; }
-  </style>
-  </tal:styles>
 </head>
 <body>
 <tal:t metal:fill-slot="header-title">Temperature Log</tal:t>
@@ -61,18 +17,18 @@
   ">
 
   <!-- Unit navigation -->
-  <div class="temp-nav">
+  <nav class="pfas-seg pfas-seg-strip is-spaced" aria-label="Unit">
     <tal:each tal:repeat="u units_nav">
-      <a tal:attributes="
+      <a class="pfas-seg-item"
+         tal:attributes="
            href string:${purl}/@@pfas-temperature-log?unit_id=${u/id};
-           class python:'active' if unit and unit['id']==u['id'] else ''"
+           aria-selected python:'true' if unit and unit['id']==u['id'] else 'false'"
          tal:content="u/name">Unit</a>
     </tal:each>
-  </div>
+  </nav>
 
   <tal:no-unit tal:condition="python:not unit">
-    <div style="padding:24px;text-align:center;color:var(--s-secondary);
-                border:1px dashed var(--s-border);border-radius:8px;">
+    <div class="pfas-empty is-boxed">
       Select a unit above, or
       <a class="btn-sm btn-secondary" tal:attributes="href string:${purl}/@@pfas-equipment"
         >Equipment</a>.
@@ -82,23 +38,26 @@
   <tal:has-unit tal:condition="unit">
 
     <!-- Chart -->
-    <div class="chart-wrap">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <strong style="font-size:var(--fs-base)" tal:content="unit/name">Unit</strong>
-        <div class="day-filter">
-          Show:
-          <tal:each tal:repeat="d python:[7,14,30,90]">
-            <a tal:attributes="
-                 href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;days=${d};
-                 class python:'active' if days==d else ''"
-               tal:content="string:${d}d">7d</a>
-          </tal:each>
+    <div class="pfas-card">
+      <div class="pfas-between">
+        <strong tal:content="unit/name">Unit</strong>
+        <div class="pfas-inline">
+          <span class="pfas-muted">Show:</span>
+          <nav class="pfas-seg pfas-seg-sm" aria-label="Days">
+            <tal:each tal:repeat="d python:[7,14,30,90]">
+              <a class="pfas-seg-item"
+                 tal:attributes="
+                   href string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}&amp;days=${d};
+                   aria-selected python:'true' if days==d else 'false'"
+                 tal:content="string:${d}d">7d</a>
+            </tal:each>
+          </nav>
         </div>
       </div>
-      <div class="chart-canvas-wrap">
+      <div class="pfas-chart-box">
         <canvas id="tempChart"></canvas>
       </div>
-      <div style="font-size:var(--fs-xs);color:var(--s-secondary);margin-top:6px;">
+      <div class="pfas-chart-note">
         Acceptance range:
         <tal:mn tal:replace="python:unit.get('temp_min','—')"/>–<tal:mx tal:replace="python:unit.get('temp_max','—')"/>&deg;C
         <tal:h tal:condition="python:unit.get('humidity_min') is not None">
@@ -115,18 +74,18 @@
     </div>
 
     <!-- Temperature studies -->
-    <div class="study-section">
+    <div class="pfas-card">
       <h3>Quarterly Temperature Studies (NIST Verification)</h3>
-      <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin:0 0 12px">Four paired readings over two days beside the NIST reference; the correction applies until the next study. <tal:h define="hid string:temperature-study"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <p class="pfas-note-sm">Four paired readings over two days beside the NIST reference; the correction applies until the next study. <tal:h define="hid string:temperature-study"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
 
       <!-- Existing studies -->
       <tal:each tal:repeat="s view/studies">
-        <div class="study-row">
-          <strong style="min-width:90px" tal:content="s/study_date"></strong>
+        <div class="pfas-study-row">
+          <strong tal:content="s/study_date"></strong>
           <span tal:content="string:NIST: ${s/nist_serial}"></span>
-          <span style="color:var(--s-secondary)" tal:content="string:Tol: ±${s/tolerance}°C"></span>
+          <span class="pfas-muted-cell" tal:content="string:Tol: ±${s/tolerance}°C"></span>
           <span tal:content="s/operator"></span>
-          <span tal:attributes="class python:'study-badge study-'+s['status']"
+          <span tal:attributes="class python:'badge badge-'+{'pass': 'ok', 'fail': 'fail'}.get(s['status'], 'pending')"
                 tal:content="python:s['status'].upper()"></span>
           <span tal:condition="python:s.get('correction') is not None"
                 tal:content="python:u'correction %+.3f \u00b0C' % s['correction']">correction +0.300 °C</span>
@@ -137,14 +96,13 @@
         </div>
       </tal:each>
       <tal:none tal:condition="python:not view.studies()">
-        <p style="font-size:var(--fs-sm);color:var(--s-secondary)">No studies recorded yet.</p>
+        <p class="pfas-note-sm">No studies recorded yet.</p>
       </tal:none>
 
       <!-- Study detail -->
       <tal:detail tal:define="det view/study_detail" tal:condition="det">
-        <div style="margin-top:16px;padding:14px;background:var(--s-light);
-                    border-radius:6px;border:1px solid var(--s-border);">
-          <strong style="font-size:var(--fs-sm)">
+        <div class="pfas-subpanel">
+          <strong>
             Study <tal:d tal:replace="python:det['study']['study_date']"/> —
             NIST <tal:s tal:replace="python:det['study']['nist_serial']"/>
             (tol ±<tal:t tal:replace="python:det['study']['tolerance']"/>&deg;C)
@@ -163,15 +121,14 @@
               </tr></tbody>
             </table>
           </tal:ch>
-          <div class="point-grid" style="margin-top:10px;">
+          <div class="pfas-point-grid">
             <tal:each tal:repeat="pt python:det['points']">
-              <div class="point-cell">
+              <div class="pfas-point-cell">
                 <label>Point <tal:n tal:replace="pt/time_point"/></label>
-                <div tal:condition="python:pt.get('sensor_reading') is not None"
-                     style="margin-bottom:4px;">
+                <div tal:condition="python:pt.get('sensor_reading') is not None">
                   Sensor: <strong tal:content="python:'{:.2f}'.format(pt['sensor_reading'])"/>&deg;C<br/>
                   NIST: <strong tal:content="python:'{:.2f}'.format(pt['nist_reading'])"/>&deg;C<br/>
-                  Dev: <span tal:attributes="style python:'color: var(--s-danger-dk)' if pt.get('passed')==0 else 'color: var(--s-success-text)'"
+                  Dev: <span tal:attributes="class python:'pfas-text-bad' if pt.get('passed')==0 else 'pfas-text-ok'"
                              tal:content="python:('+' if pt['deviation']>=0 else '')+'{:.3f}'.format(pt['deviation'])"></span>&deg;C
                 </div>
                 <form method="POST"
@@ -187,7 +144,7 @@
                          tal:attributes="value python:pt.get('sensor_reading','')"/>
                   <input type="number" step="0.01" name="nist_reading" placeholder="NIST °C"
                          tal:attributes="value python:pt.get('nist_reading','')"/>
-                  <button type="submit" class="btn-sm btn-primary" style="margin-top:4px;width:100%">
+                  <button type="submit" class="btn-sm btn-primary">
                     Save
                   </button>
                 </form>
@@ -198,36 +155,36 @@
       </tal:detail>
 
       <!-- New study form -->
-      <details style="margin-top:14px;">
-        <summary style="font-size:var(--fs-sm);font-weight:600;cursor:pointer;color: var(--s-primary-dk)">
+      <details class="pfas-mt-md">
+        <summary class="pfas-summary-link">
           + New Temperature Study
         </summary>
-        <form method="POST" style="margin-top:12px;"
+        <form method="POST" class="pfas-mt"
               tal:attributes="action string:${purl}/@@pfas-temperature-log?unit_id=${unit/id}">
           <input type="hidden" name="action" value="add_study"/>
           <input type="hidden" name="unit_id" tal:attributes="value unit/id"/>
-          <div class="fld-row">
-            <div class="fld"><label>Study date</label>
+          <div class="pfas-form-row">
+            <div class="pfas-form-field"><label>Study date</label>
               <input type="date" name="study_date"/></div>
-            <div class="fld"><label>Operator initials</label>
+            <div class="pfas-form-field"><label>Operator initials</label>
               <input type="text" name="operator" maxlength="10"/></div>
-            <div class="fld"><label>Reference thermometer</label>
+            <div class="pfas-form-field"><label>Reference thermometer</label>
               <select name="reference_uid">
-                <option value="">&#8212; not registered: type its serial &#8212;</option>
+                <option value="">&mdash; not registered: type its serial &mdash;</option>
                 <option tal:repeat="r view/reference_thermometers"
                         tal:attributes="value r/id"
                         tal:content="python:'%s (SN %s)' % (r['name'], r['serial_number'] or '?')">Ref 1</option>
               </select></div>
-            <div class="fld"><label>NIST thermometer serial</label>
+            <div class="pfas-form-field"><label>NIST thermometer serial</label>
               <input type="text" name="nist_serial"/></div>
-            <div class="fld"><label>NIST cert date</label>
+            <div class="pfas-form-field"><label>NIST cert date</label>
               <input type="date" name="nist_cert_date"/></div>
-            <div class="fld"><label>Tolerance (&deg;C)</label>
+            <div class="pfas-form-field"><label>Tolerance (&deg;C)</label>
               <input type="number" step="0.1" name="tolerance"
                      tal:attributes="value python:unit.get('study_tolerance',1.0)"/></div>
           </div>
-          <div class="fld"><label>Notes</label>
-            <textarea name="notes" rows="2" style="resize:vertical"></textarea></div>
+          <div class="pfas-form-field is-spaced"><label>Notes</label>
+            <textarea name="notes" rows="2"></textarea></div>
           <button type="submit" class="btn btn-primary">
             Create Study
           </button>
@@ -250,12 +207,14 @@
 (function(){
   var canvas = document.getElementById('tempChart');
   if (!canvas || !_readings || !_readings.length) {
-    if (canvas) canvas.parentNode.innerHTML = '<div style="padding:24px;text-align:center;color:var(--s-secondary)">No readings in this period.</div>';
+    if (canvas) canvas.parentNode.innerHTML = '<div class="pfas-empty">No readings in this period.</div>';
     return;
   }
 
   var _css = getComputedStyle(document.documentElement);
   function tok(n){ return (_css.getPropertyValue(n)||'').trim(); }
+  var fsz = parseInt(tok('--fs-xs'), 10) || 11;
+  var muted = tok('--text-muted');
   function rgba(v,a){ var h=v.replace('#',''); return 'rgba('+parseInt(h.substr(0,2),16)+','+parseInt(h.substr(2,2),16)+','+parseInt(h.substr(4,2),16)+','+a+')'; }
 
   var tempData = [], humData = [], hasHum = false;
@@ -320,24 +279,25 @@
   });
 
   var scales = {
-    x: { type:'category', ticks:{maxTicksLimit:10, font:{size:10}},
+    x: { type:'category', ticks:{maxTicksLimit:10, font:{size:fsz}},
          grid:{color:rgba(tok('--s-border'),1)} },
-    yTemp: { position:'left', title:{display:true,text:'°C',font:{size:10}},
-             ticks:{font:{size:10}}, grid:{color:rgba(tok('--s-border'),1)} },
+    yTemp: { position:'left', title:{display:true,text:'°C',font:{size:fsz}},
+             ticks:{font:{size:fsz}}, grid:{color:rgba(tok('--s-border'),1)} },
   };
   if (hasHum) scales.yHum = {
-    position:'right', title:{display:true,text:'% RH',font:{size:10}},
-    ticks:{font:{size:10}}, grid:{display:false}
+    position:'right', title:{display:true,text:'% RH',font:{size:fsz}},
+    ticks:{font:{size:fsz}}, grid:{display:false}
   };
 
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  if (muted) Chart.defaults.color = muted;
   new Chart(canvas, {
     type: 'scatter',
     data: {datasets: datasets},
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: {display:true, position:'top', labels:{boxWidth:9,font:{size:10}}},
+        legend: {display:true, position:'top', labels:{boxWidth:9,font:{size:fsz}}},
         tooltip: {callbacks:{label:function(ctx){
           var d = tempData[ctx.dataIndex] || {};
           var lines = ['Temp: '+ctx.parsed.y.toFixed(2)+'°C'];

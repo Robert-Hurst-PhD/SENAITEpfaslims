@@ -5,39 +5,23 @@
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
   <title metal:fill-slot="title">Waste Container Log (SAA)</title>
-  <tal:styles metal:fill-slot="head-extra">
-  <style>
-    .log-form { background:var(--s-bg); border:1px solid var(--s-border);
-                border-radius:8px; padding:16px; margin-bottom:18px; }
-    .log-form h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 12px; color:var(--s-body); }
-    .fld { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
-    .fld label { font-size:var(--fs-xs); font-weight:600; color:var(--s-secondary); }
-    .fld input, .fld select { padding:6px 8px; font-size:var(--fs-base);
-                               border:1px solid var(--s-input-border);
-                               border-radius:4px; color:var(--s-input-text); }
-    .fld-row { display:flex; gap:12px; flex-wrap:wrap; }
-    .fld-row .fld { flex:1; min-width:120px; }
-    .cond-ok     { color: var(--s-success-text); font-weight:600; }
-    .cond-needs  { color: var(--s-danger-dk);  font-weight:600; }
-  </style>
-  </tal:styles>
 </head>
 <body>
 <tal:t metal:fill-slot="header-title">Waste Container Log (SAA)</tal:t>
 <metal:content metal:fill-slot="content">
   <tal:def tal:define="purl view/portal_url">
 
-  <div class="log-form">
+  <div class="pfas-card">
     <h3>New Entry</h3>
     <form method="POST" tal:attributes="action string:${purl}/@@pfas-waste-log">
-      <div class="fld-row">
-        <div class="fld"><label>Date *</label>
+      <div class="pfas-form-row">
+        <div class="pfas-form-field"><label>Date *</label>
           <input type="date" name="log_date" id="wstDate" required/></div>
-        <div class="fld"><label>Time</label>
+        <div class="pfas-form-field"><label>Time</label>
           <input type="time" name="log_time" id="wstTime"/></div>
-        <div class="fld"><label>Operator initials *</label>
+        <div class="pfas-form-field"><label>Operator initials *</label>
           <input type="text" name="operator" maxlength="10" required/></div>
-        <div class="fld"><label>Container</label>
+        <div class="pfas-form-field"><label>Container</label>
           <select name="unit_id">
             <option value="">— General SAA —</option>
             <tal:each tal:repeat="u view/waste_units">
@@ -45,7 +29,7 @@
             </tal:each>
           </select>
         </div>
-        <div class="fld"><label>Condition *</label>
+        <div class="pfas-form-field"><label>Condition *</label>
           <select name="condition" required>
             <option value="acceptable">Acceptable</option>
             <option value="needs_emptying">Needs Emptying</option>
@@ -53,8 +37,8 @@
           </select>
         </div>
       </div>
-      <div class="fld-row">
-        <div class="fld" style="flex:3"><label>Notes</label>
+      <div class="pfas-form-row">
+        <div class="pfas-form-field is-grow"><label>Notes</label>
           <input type="text" name="notes"/></div>
       </div>
       <button type="submit" class="btn btn-primary">
@@ -63,10 +47,10 @@
     </form>
   </div>
 
-  <div class="log-form">
+  <div class="pfas-card">
     <h3>Recent Log</h3>
     <tal:none tal:condition="python:not view.logs()">
-      <p style="color:var(--s-secondary);font-size:var(--fs-sm)">No entries yet.</p>
+      <p class="pfas-note-sm">No entries yet.</p>
     </tal:none>
     <table class="pfas-table log-table" tal:condition="python:bool(view.logs())">
       <tr>
@@ -79,9 +63,9 @@
           <td tal:content="r/log_time"></td>
           <td tal:content="python:r.get('unit_name') or 'General SAA'"></td>
           <td tal:content="r/operator"></td>
-          <td tal:attributes="class python:'cond-ok' if r['condition']=='acceptable' else 'cond-needs'"
+          <td tal:attributes="class python:'pfas-text-ok' if r['condition']=='acceptable' else 'pfas-text-bad'"
               tal:content="python:r['condition'].replace('_',' ').title()"></td>
-          <td style="color:var(--s-secondary)" tal:content="python:r.get('notes','')"></td>
+          <td class="pfas-muted-cell" tal:content="python:r.get('notes','')"></td>
         </tr>
       </tal:each>
     </table>

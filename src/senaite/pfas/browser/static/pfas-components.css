@@ -417,3 +417,153 @@ summary .badge { margin-left: var(--sp-2); }
 
 /* ── Theme switch (top bar user menu) ──────────────────────────────────── */
 .pfas-theme-switch { display: inline-flex; align-items: center; gap: var(--sp-2); }
+
+/* ── Equipment pages: panels, explainers, state banners, status badges ─── */
+.pfas-card { padding: var(--sp-4); margin-bottom: var(--sp-5); background: var(--surface-raised);
+  border: 1px solid var(--line); border-radius: var(--radius-card); }
+.pfas-card h3, .pfas-card-title { margin: 0 0 var(--sp-3); font-size: var(--fs-base); font-weight: var(--fw-heading); color: var(--text); }
+.pfas-card h3 + .pfas-hint { margin: calc(-1 * var(--sp-2)) 0 var(--sp-3); }
+.pfas-card-head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.pfas-card-head > strong { font-size: var(--fs-base); }
+.pfas-why { margin-bottom: var(--sp-5); padding: 10px 14px; font-size: var(--fs-sm); color: var(--text-muted);
+  background: var(--surface-2); border-left: 3px solid var(--line); border-radius: 0 var(--radius) var(--radius) 0; }
+.pfas-state { margin-bottom: var(--sp-4); padding: 10px 14px; font-size: var(--fs-sm); border-radius: var(--radius-lg); }
+.pfas-state.is-ok { background: var(--s-success-lt); color: var(--s-success-text); }
+.pfas-state.is-bad { background: var(--s-danger-lt); color: var(--s-danger-dk); }
+.badge-fail { background: var(--s-danger-lt); color: var(--s-danger-dk); }
+.badge-pending { background: var(--surface-2); color: var(--text-muted); }
+.badge-info { background: var(--s-info-lt); color: var(--s-info-text); }
+.pfas-text-ok { color: var(--s-success-text); font-weight: var(--fw-strong); }
+.pfas-text-bad { color: var(--s-danger-dk); font-weight: var(--fw-strong); }
+.pfas-hint.is-bad { color: var(--s-danger-dk); font-weight: var(--fw-strong); }
+.pfas-prob { display: block; font-size: var(--fs-xs); color: var(--s-danger-dk); }
+.pfas-section-head { margin: var(--sp-5) 0 var(--sp-2); padding-bottom: 5px; font-size: var(--fs-xs); font-weight: var(--fw-heading);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--line); }
+.pfas-empty.is-boxed { border: 1px dashed var(--line-strong); border-radius: var(--radius-card); padding: var(--sp-5); }
+.pfas-select { height: var(--ctl-h); padding: 0 10px; box-sizing: border-box; font-family: inherit; font-size: var(--fs-base);
+  color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); }
+.pfas-form-field label small, .pfas-form-field small { font-weight: var(--fw-body); color: var(--text-muted); }
+.pfas-form-field.is-grow { flex: 3 1 280px; }
+.pfas-form-field.is-narrow-fill { flex: 1 1 120px; }
+.pfas-check label { font-size: var(--fs-sm); }
+.pfas-tile.is-static.is-left { text-align: left; }
+.pfas-tile-head { display: flex; align-items: center; gap: var(--sp-3); }
+.pfas-tile-head .pfas-tile-icon { width: 24px; text-align: center; }
+.pfas-tile-head > div { flex: 1; min-width: 0; }
+.pfas-tile-stat.is-md { font-size: var(--fs-xl); }
+.pfas-tile-stat small { font-family: var(--font-sans); font-size: var(--fs-base); font-weight: var(--fw-body); color: var(--text-muted); }
+.pfas-tile-stat.is-quiet { font-family: var(--font-sans); font-size: var(--fs-base); font-weight: var(--fw-body); color: var(--text-muted); }
+.pfas-tile-meta { font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-tile-foot { margin-top: auto; padding-top: var(--sp-2); }
+.pfas-tiles + .pfas-section-head, .pfas-section-head:first-child { margin-top: var(--sp-5); }
+.pfas-chart-box { position: relative; height: 300px; }
+.pfas-chart-note { margin-top: 6px; font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-study-row { display: flex; gap: var(--sp-3); flex-wrap: wrap; align-items: center; padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+.pfas-study-row:last-child { border-bottom: 0; }
+.pfas-study-row > strong:first-child { min-width: 90px; }
+.pfas-point-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
+.pfas-point-cell { padding: 10px; font-size: var(--fs-xs); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.pfas-point-cell > label { display: block; margin-bottom: 4px; font-weight: var(--fw-strong); color: var(--text-muted); }
+.pfas-point-cell input { width: 100%; box-sizing: border-box; margin-bottom: 4px; padding: 4px 6px; font-size: var(--fs-sm);
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); }
+.pfas-point-cell .btn-sm { width: 100%; justify-content: center; }
+.pfas-subpanel { margin-top: var(--sp-4); padding: 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.pfas-subpanel > strong { font-size: var(--fs-sm); }
+.pfas-between { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.pfas-seg-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.pfas-summary-link { font-size: var(--fs-sm); font-weight: var(--fw-strong); cursor: pointer; color: var(--accent-text); }
+.pfas-table-fit { width: auto; }
+.pfas-num-in { width: 120px; }
+.pfas-dev { font-weight: var(--fw-strong); }
+.pfas-dev.is-pass { color: var(--s-success-text); }
+.pfas-dev.is-fail { color: var(--s-danger-dk); }
+.pfas-muted-cell { color: var(--text-muted); }
+.pfas-mt-md { margin-top: var(--sp-4); }
+.pfas-mb-0 { margin-bottom: 0; }
+.pfas-tile > .badge { align-self: flex-start; }
+.pfas-point-cell > div { margin-bottom: 4px; }
+.pfas-entry { margin-bottom: var(--sp-4); }
+.pfas-entry-trace { margin: 0 0 6px; font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-meta-row { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: 6px; font-size: var(--fs-sm); }
+.pfas-meta-row > strong { font-size: var(--fs-sm); }
+
+/* ── Import Studio ─────────────────────────────────────────────────────── */
+.pfas-studio { display: flex; gap: var(--sp-5); align-items: flex-start; }
+.pfas-studio-main { flex: 1 1 auto; min-width: 0; }
+.pfas-studio-side { flex: 0 0 260px; }
+.pfas-section-title { margin: 0 0 18px; padding-bottom: var(--sp-2); font-size: var(--fs-lg); font-weight: var(--fw-heading);
+  color: var(--text); border-bottom: 2px solid var(--line); }
+.pfas-upload { display: block; margin: var(--sp-4) 0; padding: 40px 24px; text-align: center; cursor: pointer;
+  background: var(--surface-2); border: 2px dashed var(--line-strong); border-radius: var(--radius-card);
+  transition: border-color var(--t-fast); }
+.pfas-upload:hover, .pfas-upload.drag-over { border-color: var(--accent); background: var(--accent-soft); }
+.pfas-upload-icon { margin-bottom: 10px; font-size: 36px; }
+.pfas-upload-icon::before { content: "\1F4C4"; }
+.pfas-upload p { margin: 0; font-size: var(--fs-base); color: var(--text-muted); }
+.pfas-upload p.pfas-upload-chosen { margin-top: var(--sp-2); font-size: var(--fs-sm); font-weight: var(--fw-strong); color: var(--accent-text); }
+.pfas-map-grid { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.pfas-map-grid th { padding: var(--sp-2) 10px; text-align: left; font-weight: var(--fw-heading);
+  background: var(--surface-2); border-bottom: 2px solid var(--line); }
+.pfas-map-grid td { padding: 5px var(--sp-2); vertical-align: middle; border-bottom: 1px solid var(--line); }
+.pfas-map-grid td.col-name { max-width: 160px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text); word-break: break-all; }
+.pfas-map-grid td.col-preview { max-width: 200px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-map-grid select { width: 100%; padding: 4px 6px; font-size: var(--fs-sm); color: var(--text); background: var(--surface);
+  border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.pfas-map-grid select.is-mapped { border-color: var(--s-success); background: var(--s-success-lt); }
+.pfas-map-grid select.is-ignored { border-color: var(--line-strong); background: var(--surface-2); color: var(--text-muted); }
+.pfas-preview { display: block; width: 100%; margin-bottom: 20px; overflow-x: auto; border-collapse: collapse;
+  font-family: var(--font-mono); font-size: var(--fs-xs); }
+.pfas-preview th { padding: 4px 6px; font-weight: var(--fw-heading); background: var(--surface-2); border: 1px solid var(--line); }
+.pfas-preview td { padding: 3px 6px; white-space: nowrap; border: 1px solid var(--line); }
+.pfas-card.is-tint { background: var(--surface-2); }
+.pfas-card.is-tint > h3 { margin-bottom: var(--sp-3); }
+.pfas-card.is-tint .pfas-textarea { margin-bottom: var(--sp-2); }
+
+/* ── Run Builder ───────────────────────────────────────────────────────── */
+.pfas-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+@media (max-width: 900px) { .pfas-cols-2 { grid-template-columns: 1fr; } }
+.pfas-cols-2 > .pfas-card { margin-bottom: 0; min-width: 0; }
+.pfas-field.is-spaced { margin-bottom: var(--sp-3); }
+.pfas-field > .pfas-select, .pfas-field > .pfas-input, .pfas-field > .pfas-textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
+.pfas-field .pfas-hint { text-transform: none; letter-spacing: 0; font-weight: var(--fw-body); }
+.pfas-radios { display: flex; flex-direction: column; gap: 6px; }
+.pfas-radios .pfas-check { font-size: var(--fs-base); font-weight: var(--fw-body); }
+.pfas-input { height: var(--ctl-h); padding: 0 10px; box-sizing: border-box; font-family: inherit; font-size: var(--fs-base);
+  color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); }
+.pfas-input.is-upper { text-transform: uppercase; }
+.pfas-lead.is-narrow { max-width: 860px; margin-bottom: var(--sp-4); }
+.pfas-filterbar.is-narrow { max-width: 520px; }
+.pfas-banner.is-plain { gap: var(--sp-2) var(--sp-5); font-size: var(--fs-sm); }
+.pfas-banner.is-plain b { color: var(--text); }
+.pfas-banner.is-warn { background: var(--s-warn-lt); border-color: var(--s-warn-bd); color: var(--s-warn-text); font-size: var(--fs-sm); }
+.pfas-text-accent { color: var(--accent-text); font-weight: var(--fw-strong); }
+.pfas-text-warn { color: var(--s-warn-text); font-weight: var(--fw-strong); }
+.pfas-mono { font-family: var(--font-mono); }
+.pfas-card > h3.pfas-card-head { margin-bottom: var(--sp-3); }
+.pfas-card-head > .pfas-sub { margin: 0; font-weight: var(--fw-body); }
+.pfas-card-head .btn.is-end { margin-left: auto; }
+.pfas-card.is-spaced { margin-top: 22px; }
+.pfas-seqlist { display: flex; flex-direction: column; gap: 5px; max-width: 540px; padding: var(--sp-2);
+  background: var(--surface-2); border: 1px dashed var(--line-strong); border-radius: var(--radius-lg); }
+.pfas-seqrow { display: flex; align-items: center; gap: 9px; padding: 7px 9px; font-size: var(--fs-sm); cursor: grab;
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.pfas-seqrow.dragging { opacity: .35; }
+.pfas-seqrow.samples { background: var(--s-success-lt); border-color: var(--s-success-bd); }
+.pfas-seqrow.cal { background: var(--s-info-lt); border-color: var(--s-info-bd); }
+.pfas-seqrow.blank { background: var(--surface-2); }
+.pfas-seqrow .grip { color: var(--text-muted); font-size: var(--fs-md); line-height: 1; cursor: grab; user-select: none; }
+.pfas-seqrow .lbl { flex: 1; font-weight: var(--fw-strong); }
+.pfas-seqrow .code { color: var(--text-muted); font-size: var(--fs-xs); }
+.pfas-seqrow .del { padding: 2px 5px; font-size: var(--fs-base); line-height: 1; color: var(--text-muted);
+  background: transparent; border: 0; border-radius: var(--radius); cursor: pointer; }
+.pfas-seqrow .del:hover { background: var(--accent-soft); color: var(--text); }
+.pfas-seq-add { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.pfas-seq-add select { max-width: 280px; }
+.is-readonly .pfas-seqrow { cursor: default; }
+.is-readonly .pfas-seqrow .grip, .is-readonly .pfas-seqrow .del, .is-readonly .pfas-seq-add { display: none; }
+.pfas-seqrow .grip::before { content: "\22EE"; }
+.pfas-card > h3.is-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.pfas-card > h3 .pfas-muted { font-weight: var(--fw-body); }
+.pfas-card > h3 .btn.is-end { margin-left: auto; }
+.pfas-card .pfas-check { margin-bottom: var(--sp-2); }
