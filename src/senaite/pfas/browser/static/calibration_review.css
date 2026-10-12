@@ -7,7 +7,7 @@
   .stat-box { background:var(--s-bg); border-radius:6px; padding:10px 16px;
               border:1px solid var(--s-border);
               box-shadow:0 1px 3px rgba(0,0,0,.06); min-width:80px; text-align:center; }
-  .stat-box .sv { font-size:var(--fs-xl); font-weight:700; color:var(--s-dark); }
+  .stat-box .sv { font-size:var(--fs-xl); font-weight:700; color: var(--text); }
   .stat-box .sl { font-size:var(--fs-xs); color:var(--s-secondary); text-transform:uppercase;
                   letter-spacing:.05em; margin-top:2px; }
   .stat-box.good .sv { color: var(--s-success-text); }
@@ -42,7 +42,7 @@
                   overflow:hidden; }
   .card-head { padding:10px 14px 8px; border-bottom:1px solid var(--s-border);
                display:flex; align-items:center; gap:8px; }
-  .card-head .analyte-name { font-size:var(--fs-base); font-weight:700; flex:1; color:var(--s-dark); }
+  .card-head .analyte-name { font-size:var(--fs-base); font-weight:700; flex:1; color: var(--text); }
   .r2-badge { padding:2px 10px; border-radius:10px; font-size:var(--fs-xs); font-weight:700; }
   .r2-ok   { background:var(--s-primary-lt); color: var(--s-primary-dk); }
   .r2-fail { background:var(--s-danger-lt); color:var(--s-danger-dk); }
@@ -59,7 +59,7 @@
   .card-controls label { font-size: var(--fs-sm); color: var(--s-body); font-weight: 600; }
   .card-controls select { font-size:var(--fs-xs); padding:3px 6px;
                           border:1px solid var(--s-input-border); border-radius:3px;
-                          background:#fff; color:var(--s-input-text); }
+                          background: var(--surface-raised); color:var(--s-input-text); }
   .save-ovr { font-size:var(--fs-xs); padding:3px 10px; border:none; border-radius:3px;
               cursor:pointer; background:var(--s-primary-dk); color:#fff; }
   .save-ovr:hover { opacity:.85; }
@@ -102,7 +102,7 @@
     background:rgba(0,0,0,.48); z-index:9999;
     display:none; align-items:center; justify-content:center; }
   .cal-detail-modal.open { display:flex; }
-  .cal-detail-box { background:#fff; border-radius:10px; padding:22px 24px;
+  .cal-detail-box { background: var(--surface-raised); border-radius:10px; padding:22px 24px;
     max-width:400px; width:92%; box-shadow:0 8px 32px rgba(0,0,0,.22); }
   .cal-detail-box h4 { margin:0 0 14px; font-size:var(--fs-base); display:flex;
     align-items:center; gap:8px; }

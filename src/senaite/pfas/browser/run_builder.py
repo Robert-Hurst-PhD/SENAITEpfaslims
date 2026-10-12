@@ -1248,8 +1248,8 @@ class PFASRunBuilderView(BrowserView):
         sess["method_id"] = self.batch_method(b) or sess.get("method_id") or u""
         names = {}
         if sess["method_id"]:
-            for st in get_profile(self._portal(), sess["method_id"]).get(
-                    "extraction_stages") or []:
+            from senaite.pfas.stage_plan import stages_for
+            for st in stages_for(sess, get_profile(self._portal(), sess["method_id"])):
                 names[u"%s" % st.get("order")] = st.get("name") or u""
         # the extraction batch is the worksheet; its client Batch names
         # the project, the prep log and the client

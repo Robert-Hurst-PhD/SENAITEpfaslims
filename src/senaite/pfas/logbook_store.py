@@ -174,6 +174,30 @@ def form_code(portal, slug, default=None):
     return default or u"%s" % slug
 
 
+def print_control(portal, slug, entry=None, method=None):
+    """What a logbook prints as, for the control block: the form number the
+    lab gave it, the revision of its template and the day that revision was
+    last changed, the entry (the worksheet or batch it was filled for) and the
+    method. One answer for the browser print and the PDFs."""
+    out = {"doc_id": form_code(portal, slug), "title": u"", "revision": u"",
+           "date": u"", "date_label": u"Template dated"}
+    try:
+        obj = _find_prep_def_by_slug(portal, slug)
+        if obj is not None:
+            out["revision"] = u"%s" % (getattr(obj, "revision", None) or 1)
+            out["title"] = obj.title or u""
+            out["date"] = u"%s" % obj.modified().strftime("%Y-%m-%d")
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("print_control(%s): %s", slug, exc)
+    cells = []
+    if entry:
+        cells.append((u"Entry", u"%s" % entry))
+    if method:
+        cells.append((u"Method", u"%s" % method))
+    out["cells"] = cells
+    return out
+
+
 def normalise_form_codes(portal):
     """Startup: each form number used once (a custom logbook sharing a
     built-in's number takes the next free one), the pool in number order.
@@ -242,6 +266,8 @@ def save_logbook_defs(portal, defs):
                 obj.revision = 1
                 obj.status = u"active"
                 obj.builtin = False
+                # a new logbook's fields (its table columns among them)
+                obj.field_schema_json = d.get("field_schema_json") or u"[]"
             except Exception as exc:
                 logger.error("save_logbook_defs: create failed for slug=%s: %s", slug, exc)
                 continue

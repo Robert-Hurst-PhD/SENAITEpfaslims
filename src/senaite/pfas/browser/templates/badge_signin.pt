@@ -9,8 +9,8 @@
   <title>Badge sign-in</title>
   <link rel="icon" type="image/x-icon" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/favicon.ico" />
   <link rel="apple-touch-icon" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/favicon-180.png" />
-  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/pfas-tokens.css" />
-  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/badge.css" />
+  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/pfas-tokens.css?v=${context/@@pfas-macros/asset_version}" />
+  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/badge.css?v=${context/@@pfas-macros/asset_version}" />
 </head>
 <body class="badge-page">
   <main class="badge-card">

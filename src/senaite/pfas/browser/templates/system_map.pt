@@ -5,29 +5,11 @@
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
   <title metal:fill-slot="title">System Map</title>
-  <tal:styles metal:fill-slot="head-extra">
-  <style>
-    .map-intro { color: var(--s-secondary); font-size: var(--fs-base); margin: 0 0 16px; max-width: 900px; }
-    .map-wrap {
-      border: 1px solid var(--s-border); border-radius: 10px; background: var(--s-bg);
-      padding: 14px 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
-    }
-    .pfas-map-svg { display: block; min-width: 900px; }
-    /* clickable bubbles */
-    .pfas-map-svg a { text-decoration: none; }
-    .pfas-map-svg .clickable { cursor: pointer; }
-    .pfas-map-svg .clickable rect { transition: stroke-width .1s, filter .1s; }
-    .pfas-map-svg a:hover .clickable rect {
-      stroke-width: 3.4; filter: brightness(0.96) drop-shadow(0 2px 4px rgba(0,0,0,.18));
-    }
-    .pfas-map-svg a:focus { outline: none; }
-    .pfas-map-svg a:focus .clickable rect { stroke-width: 3.4; }
-    .map-legend { display: flex; flex-wrap: wrap; gap: 16px 26px; margin-top: 16px; font-size: var(--fs-sm); color: var(--s-secondary); }
-    .map-legend .chip { display: inline-flex; align-items: center; gap: 7px; }
-    .map-legend .sw { width: 26px; height: 13px; border-radius: 3px; border: 1px solid #adb5bd; display: inline-block; }
-    .map-hint { font-size: var(--fs-sm); color: var(--s-secondary); margin-top: 6px; }
-  </style>
-  </tal:styles>
+  <tal:extras metal:fill-slot="head-extra">
+  <link rel="stylesheet" tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/system_map.css?v=${context/@@pfas-macros/asset_version}" />
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/d3-7.9.0.min.js"></script>
+  <script defer="defer" tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/system_map.js?v=${context/@@pfas-macros/asset_version}"></script>
+  </tal:extras>
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">System Map</tal:t>
@@ -35,21 +17,61 @@
   <div metal:fill-slot="content">
   <div class="page-body">
 
-    <p class="map-intro">How each workspace connects to SENAITE and the report; click a highlighted bubble to open that screen.</p>
-
-    <div class="map-wrap" tal:content="structure view/map_svg">SVG</div>
-
-    <div class="map-legend">
-      <span class="chip"><span class="sw" style="background:var(--s-info-lt);border-color:#3b6fb0"></span>User entry point (role workspace)</span>
-      <span class="chip"><span class="sw" style="background:#cbe6d3;border-color:var(--s-success-text)"></span>★ Single-source master data</span>
-      <span class="chip"><span class="sw" style="background:var(--s-primary-lt);border-color:var(--s-primary-dk)"></span>Add-on module / store</span>
-      <span class="chip"><span class="sw" style="background:#eceff1;border-color:#607d8b"></span>Core SENAITE service</span>
+    <div class="pfas-filterbar pfas-map-tools">
+      <div class="pfas-field">
+        <label for="map-find">Find</label>
+        <input id="map-find" class="pfas-input" type="search" placeholder="Worksheet, sample, lot, method" />
+      </div>
+      <label class="pfas-switch">
+        <input type="checkbox" id="map-path-only" />
+        <span class="pfas-switch-track"></span>
+        <span>Path only</span>
+      </label>
+      <label class="pfas-switch">
+        <input type="checkbox" id="map-cross" checked="checked" />
+        <span class="pfas-switch-track"></span>
+        <span>Cross-links</span>
+      </label>
+      <span class="pfas-filterbar-spacer"></span>
+      <button type="button" class="btn btn-sm btn-secondary" id="map-fit">Fit</button>
+      <button type="button" class="btn btn-sm btn-secondary" id="map-reset">Reset view</button>
+      <div class="pfas-map-legend" aria-label="Node kinds">
+        <span><i class="k-method"></i>Method</span>
+        <span><i class="k-matrix"></i>Matrix and settings</span>
+        <span><i class="k-worksheet"></i>Worksheet</span>
+        <span><i class="k-sample"></i>Sample and result</span>
+        <span><i class="k-lot"></i>Lots</span>
+      </div>
     </div>
-    <p class="map-hint">
-      Edges: <span style="color:#3b6fb0;font-weight:600;">blue</span> entry → add-on ·
-      <span style="color:var(--s-primary-dk);font-weight:600;">teal</span> add-on → core ·
-      dashed = single-source reference.
-    </p>
+
+    <div class="pfas-map" id="pfas-map"
+         tal:attributes="data-url view/data_url;
+                         data-root view/root_json">
+      <div class="pfas-map-view" tabindex="0" aria-label="System map: drag to move, use the buttons on a node to open it">
+        <!-- without script: the first level as a list -->
+        <div class="pfas-tree pfas-map-fallback" tal:define="root view/root">
+          <div class="pfas-tree-nodes">
+            <div class="pfas-tree-row"><span class="pfas-tree-node is-path" tal:content="root/node/label">Laboratory</span></div>
+            <div class="pfas-tree-row pfas-map-indent" tal:repeat="n root/children">
+              <span class="pfas-tree-elbow"></span>
+              <a class="pfas-tree-node" tal:condition="n/url" tal:attributes="href n/url"
+                 tal:content="n/label">Method</a>
+              <span class="pfas-tree-node" tal:condition="not:n/url" tal:content="n/label">Lots</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside class="pfas-map-card" aria-live="polite">
+        <div class="pfas-map-kind"><i></i><span>Select a node</span></div>
+        <h3></h3>
+        <span class="badge pfas-map-badge" hidden="hidden"></span>
+        <dl></dl>
+        <div class="pfas-map-acts">
+          <a class="btn btn-sm btn-primary pfas-map-open" hidden="hidden">Open</a>
+          <button type="button" class="btn btn-sm btn-secondary pfas-map-pathbtn" hidden="hidden">Path to here</button>
+        </div>
+      </aside>
+    </div>
 
   </div>
   </div><!-- /content slot -->

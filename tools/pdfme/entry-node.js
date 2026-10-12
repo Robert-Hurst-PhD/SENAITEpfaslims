@@ -3,7 +3,7 @@
 // browser bundle (entry.js) offers the same plugins under palette names.
 import { generate } from "@pdfme/generator";
 import * as s from "@pdfme/schemas";
-import { checkTemplate } from "@pdfme/common";
+import { checkTemplate, getDefaultFont } from "@pdfme/common";
 import { PDFDocument, StandardFonts, rgb } from "@pdfme/pdf-lib";
 
 export const plugins = {
@@ -15,4 +15,4 @@ export const plugins = {
 };
 // eslint-disable-next-line no-undef
 export const version = __PDFME_VERSION__;   // set by build.mjs
-export { generate, checkTemplate, PDFDocument, StandardFonts, rgb };
+export { generate, checkTemplate, getDefaultFont, PDFDocument, StandardFonts, rgb };

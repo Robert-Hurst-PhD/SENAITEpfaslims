@@ -482,3 +482,14 @@ table.contentstable thead th.sortable:hover { color: var(--s-body); }
 /* the Add Sample form's services filter is a text input core paints white by its own id-chained rule */
 body:not(.pfas-app) form input.form-control.services-filter {
   background-color: var(--surface) !important; color: var(--text) !important; }
+
+/* The setup consoles (@@lims-setup) have no breadcrumb row: their first line sat
+   under the fixed top bar. */
+body:not(.pfas-app) #lims-controlpanel { padding-top: var(--sp-4); }
+body:not(.pfas-app) #lims-controlpanel .pfas-filterbar[hidden] { display: none; }
+
+/* A core page whose content is wider than the space beside the sidebar (the
+   sample's header form) grew the whole container past the window: the
+   container may shrink, and the content scrolls inside it. */
+body:not(.pfas-app) .wrapper > .container-fluid { min-width: 0; }
+body:not(.pfas-app) #content { min-width: 0; overflow-x: auto; }

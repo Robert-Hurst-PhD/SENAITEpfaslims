@@ -121,6 +121,22 @@ class PFASMethodStudiesView(BrowserView, GateMixin):
         from datetime import date
         return sr.mdl_due(self.records(), date.today().isoformat())
 
+    def print_css(self):
+        from senaite.pfas import print_doc
+        rec = self.record() or {}
+        return print_doc.document_css(u"Method study %s" % rec.get("id", u""), None,
+                                      print_doc.current_user_label(self.context), size="letter")
+
+    def print_head(self):
+        from senaite.pfas import print_doc
+        rec = self.record() or {}
+        approved = u" ".join(x for x in (rec.get("approved_by"), rec.get("approved_at")) if x)
+        cells = [(u"Study", rec.get("id", u"")), (u"Kind", self.kind_label(rec.get("kind"))),
+                 (u"Method", u"%s / %s" % (rec.get("method", u""), rec.get("matrix", u""))),
+                 (u"Status", rec.get("status", u"")), (u"Approved", approved)]
+        return print_doc.head_html(print_doc.print_settings(self.context),
+                                   u"Method study %s" % rec.get("id", u""), cells)
+
     def record(self):
         return sr.find(self.records(), (self.request.form.get("id") or u"").strip())
 

@@ -720,11 +720,13 @@ ENTRIES = [
              "every reagent, standard and consumable lot is picked from the inventory, "
              "sample amounts and dilutions are recorded, and the finished record is the "
              "batch's Extraction Log, handed to the pipeline with the run. The stage that "
-             "takes the test portion is the Sample Processing Log.",
+             "takes the test portion is the Sample Processing Log. An extraction keeps the "
+             "stages and method revision it started with, so a later change to the method's "
+             "stages never moves its records.",
      "where": [("Lab Workflow tab", "@@pfas-method-profiles"), ("Extraction Guide", "@@pfas-extraction-guide")],
      "who": "bench",
      "effects": [
-         ("Stages from the method profile", P + "browser/extraction_guide.py", "profile.get(\"extraction_stages\")"),
+         ("Stages from the plan the extraction started with, else the method profile", P + "stage_plan.py", "def stages_for(session, profile)"),
          ("The sample processing stage", P + "sample_table.py", "def processing_stage(stages)"),
          ("Checks a stage asks to be ticked", P + "extraction_review.py", "def unconfirmed(stage_def, ticked)"),
      ]},

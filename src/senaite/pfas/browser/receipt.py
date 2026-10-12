@@ -59,6 +59,30 @@ class PFASReceiptView(BrowserView):
     def _portal_url(self):
         return self.context.portal_url.getPortalObject().absolute_url()
 
+    def _coc_number(self):
+        """The CoC number the sample carries (the tracking number names the
+        sample); empty when the sample came in without one."""
+        t = self.tracking_number()
+        if not t:
+            return u""
+        try:
+            from bika.lims import api
+            from senaite.pfas.tracking_store import get_ar_uid_by_tracking
+            uid = get_ar_uid_by_tracking(self.context.portal_url.getPortalObject(), t)
+            ar = api.get_object_by_uid(uid, None) if uid else None
+            field = ar.getField("CoCNumber") if ar is not None else None
+            return u"%s" % (field.get(ar) or u"") if field is not None else u""
+        except Exception:                                   # noqa: BLE001
+            return u""
+
+    def print_control(self):
+        t = self.tracking_number()
+        cells = [(u"Tracking number", t)] if t else []
+        coc = self._coc_number()
+        if coc:
+            cells.append((u"Chain of custody", coc))
+        return {"doc_id": u"Sample receipt", "title": u"Sample receipt", "cells": cells}
+
     def tracking_number(self):
         return self.request.form.get('t', '').strip().upper()
 

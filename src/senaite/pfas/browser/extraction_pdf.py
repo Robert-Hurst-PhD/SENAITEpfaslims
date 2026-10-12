@@ -34,6 +34,28 @@ class PFASExtractionPDFView(BrowserView):
 
     print_template = ViewPageTemplateFile("templates/extraction_pdf.pt")
 
+    def _control(self):
+        from senaite.pfas.logbook_store import print_control
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        d = self.data
+        return print_control(portal, "252", getattr(self, "batch_id_text", u""),
+                             d.get("method_name"))
+
+    def print_css(self):
+        from senaite.pfas import print_doc
+        c = self._control()
+        return print_doc.document_css(c["doc_id"], c.get("revision"),
+                                      print_doc.current_user_label(self.context),
+                                      size="letter")
+
+    def print_head(self):
+        from senaite.pfas import print_doc
+        c = self._control()
+        cells = [(u"Form", c["doc_id"]), (u"Template rev.", c.get("revision")),
+                 (u"Template dated", c.get("date"))] + list(c.get("cells") or [])
+        return print_doc.head_html(print_doc.print_settings(self.context),
+                                   c.get("title") or u"Extraction Log", cells)
+
     def __call__(self):
         flatten_form(self.request)
         uid = self.request.form.get("batch_uid", "")
@@ -86,6 +108,7 @@ class PFASExtractionPDFView(BrowserView):
                                  spike_rows=spike_rows,
                                  extracted=roster(members, log.get("samples"),
                                                   log.get("spe_ports")))
+        self.batch_id_text = batch_id
         # an issued design (Document Templates) is the extraction log from then on
         from senaite.pfas import report_documents
         from senaite.pfas.browser.report_designs import DesignedReportError, designed_pdf

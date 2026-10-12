@@ -11,7 +11,7 @@
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-study-designer">Study Designer</a>
   </tal:r>
-  <tal:t metal:fill-slot="header-context"><span class="header-badge" tal:define="rec view/record"
+  <tal:t metal:fill-slot="header-context"><span class="pfas-chip" tal:define="rec view/record"
          tal:condition="rec" tal:content="rec/id">MS-0001</span></tal:t>
 
   <metal:fill fill-slot="content" tal:define="rec view/record; can_approve view/can_configure">

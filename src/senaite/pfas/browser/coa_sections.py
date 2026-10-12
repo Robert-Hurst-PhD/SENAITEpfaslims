@@ -97,6 +97,11 @@ class PFASCoASectionsView(BrowserView):
 
     template = ViewPageTemplateFile("templates/coa_sections.pt")
 
+    def print_css(self):
+        """The lab theme for this section (print_doc.certificate_css)."""
+        from senaite.pfas import print_doc
+        return print_doc.certificate_css(api.get_portal().absolute_url())
+
     def __call__(self, collection=None, report_view=None, section="samples"):
         self.collection = collection or []
         self.report_view = report_view

@@ -6,12 +6,12 @@
 <head>
   <title metal:fill-slot="title">Extraction labels</title>
   <tal:h metal:fill-slot="head-extra">
-    <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/pfas-extraction-labels.css" />
+    <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/pfas-extraction-labels.css?v=${context/@@pfas-macros/asset_version}" />
   </tal:h>
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Extraction labels</tal:t>
-  <tal:c metal:fill-slot="header-context"><span class="chip" tal:content="context/getId">WS-1</span></tal:c>
+  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="context/getId">WS-1</span></tal:c>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href string:${context/absolute_url}/@@pfas-extraction-batch">Extraction batch</a>
   </tal:r>

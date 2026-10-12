@@ -145,7 +145,8 @@ def _extraction_queue(portal, request):
         session = _load_session(batch)
         method_id = queue_method_id(batch, request)       # core first (batch_method.py)
         profile = get_profile(portal, method_id) if method_id else {}
-        orders = [s.get("order") for s in profile.get("extraction_stages") or []]
+        from senaite.pfas.stage_plan import stages_for
+        orders = [s.get("order") for s in stages_for(session, profile)]
         state = extraction_state(session, orders)
         client = extraction_batch.linked_batch(batch)
         title = batch.getId() + (u" \u00b7 " + client.Title() if client is not None else u"")
@@ -301,9 +302,45 @@ class PFASExtractionGuideView(BrowserView):
         return get_profile(self._portal(), mid) if mid else {}
 
     def extraction_stages(self):
-        profile = self.method_profile()
-        stages = profile.get("extraction_stages", [])
-        return sorted(stages, key=lambda s: s.get("order", 0))
+        """The stages this extraction follows: the plan the session took when
+        it started (stage_plan), else the method's stages now."""
+        from senaite.pfas.stage_plan import stages_for
+        return stages_for(self.session(), self.method_profile())
+
+    def plan_notes(self):
+        """What changed in the method's stages since this extraction
+        started; the extraction keeps its own plan."""
+        from senaite.pfas.stage_plan import drift
+        try:
+            return drift(self.session(), self.method_profile())
+        except Exception:                                   # noqa: BLE001
+            return []
+
+    def plan_revision(self):
+        """The method revision this extraction was started under, as text."""
+        from senaite.pfas.stage_plan import revision_of, has_plan
+        sess = self.session()
+        if not has_plan(sess):
+            return u""
+        rev, _fp = revision_of(sess)
+        return (u"r%s" % rev) if rev is not None else u"not issued"
+
+    def _take_plan(self, method_id):
+        """The plan a new session starts with: the method's stages now and
+        the revision in force (unissued changes are marked)."""
+        from senaite.pfas.stage_plan import take
+        portal = self._portal()
+        profile = get_profile(portal, method_id) if method_id else {}
+        rev, fp = None, u""
+        try:
+            from senaite.pfas import method_revisions as mr
+            from senaite.pfas.qc.rules import method_toggles
+            fp = mr.fingerprint(profile, method_toggles(profile, method_id))
+            st = mr.status(mr.records(portal, method_id), fp)
+            rev = st.get("rev") if not st.get("unissued") else None
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning("plan revision for %s: %s", method_id, exc)
+        return take(profile, method_id, rev, fp, _utcnow())
 
     def current_stage_order(self):
         sess = self.session()
@@ -332,7 +369,7 @@ class PFASExtractionGuideView(BrowserView):
         n = self.view_order()
         st = ([s for s in self.extraction_stages() if s.get("order") == n] or [{}])[0]
         return stage_summary(n, st.get("name"),
-                             (self.session().get("stages") or {}).get(u"%s" % n))
+                             (self.session().get("stages") or {}).get(u"%s" % n), st)
 
     def review_data(self):
         from senaite.pfas.extraction_review import review
@@ -477,6 +514,7 @@ class PFASExtractionGuideView(BrowserView):
             "stages":        {},
             "pedigree":      {},
             "finalized":     False,
+            "plan":          self._take_plan(method_id),
         }
         _save_session(b, data)
         url = "{0}?batch_uid={1}&ok=Extraction+session+started".format(
@@ -512,8 +550,8 @@ class PFASExtractionGuideView(BrowserView):
         from datetime import date
         from senaite.pfas.bench_queue import balance_blocks, stage_warnings
         equipment_sns = _json_or(f.get("equipment_sns_json"), {})
-        profile_stages = get_profile(self._portal(), sess.get("method_id", "")).get(
-            "extraction_stages", [])
+        from senaite.pfas.stage_plan import stages_for
+        profile_stages = stages_for(sess, get_profile(self._portal(), sess.get("method_id", "")))
         stage_def = ([s for s in profile_stages
                       if u"%s" % s.get("order") == stage_order] or [{}])[0]
         warnings = stage_warnings(reagents, date.today())
@@ -523,6 +561,10 @@ class PFASExtractionGuideView(BrowserView):
         blocks = balance_blocks(self._balance_checks(
             stage_def, equipment_sns,
             done_on((sess.get("stages") or {}).get(str(stage_order))) or None))
+        # the stage's own questions (stage_form): a missing or out-of-rule
+        # answer stops the stage like an unverified balance
+        answers, answer_problems = self._answers_from_form(stage_def)
+        blocks = list(blocks) + answer_problems
         # the checks the stage asks to be ticked (stage editor: confirmations)
         # one field per check (flatten_form keeps only the first of a list)
         checks = [c for c in stage_def.get("confirmations") or [] if (c or u"").strip()]
@@ -554,9 +596,11 @@ class PFASExtractionGuideView(BrowserView):
                 "equipment_sns": equipment_sns,
                 "solutions_prepared": _json_or(f.get("solutions_prepared_json"), []),
                 "samples": sample_edits, "deviations": deviations, "confirmed": confirmed,
-                "warnings": warnings, "blocks": blocks}
+                "warnings": warnings, "blocks": blocks, "answers": answers}
             _save_session(b, sess)
-            msg = (u"Not completed: a balance without a passed verification that day "
+            msg = (u"Not completed: %s Your entries are kept." % u" ".join(answer_problems)
+                   if answer_problems else
+                   u"Not completed: a balance without a passed verification that day "
                    u"cannot be used. Record its verification under Equipment, or choose "
                    u"a balance that passed. Your entries are kept." if blocks else
                    u"Not completed yet: write a deviation note explaining what is "
@@ -596,6 +640,7 @@ class PFASExtractionGuideView(BrowserView):
             "homogenisation":      homog,           # what was confirmed per sample
             "warnings":            warnings,        # what the note had to explain
             "solutions_prepared":  _json_or(f.get("solutions_prepared_json"), []),
+            "answers":             answers,         # the stage's own questions
         }
         stages = sess.setdefault("stages", {})
         # a corrected stage keeps every earlier version and its reason
@@ -1001,6 +1046,65 @@ class PFASExtractionGuideView(BrowserView):
 
     def stage_draft_json(self):
         return script_json(self.stage_draft())
+
+    # ── The stage as a form (stage_form.py): its layout and the lab's own
+    #    questions, drawn by the shared logbook field macro ──────────────────
+
+    def stage_layout(self, stage):
+        from senaite.pfas import stage_form
+        return stage_form.layout(stage)
+
+    def _questions(self):
+        from senaite.pfas import stage_form
+        return stage_form.generic_fields(self.current_stage())
+
+    def data(self):
+        """The current stage's answers: a refused completion's, else the
+        stage's record (a correction), else none."""
+        if not hasattr(self, "_answers"):
+            draft = self.stage_draft()
+            if "answers" in draft:
+                self._answers = draft.get("answers") or {}
+            else:
+                rec = (self.session().get("stages") or {}).get(u"%s" % self.current_stage_order()) or {}
+                self._answers = rec.get("answers") or {}
+        return self._answers
+
+    def is_shown(self, field):
+        from senaite.pfas.logbook_schema import visible_names
+        name = (field or {}).get("name")
+        return not name or name in visible_names(self._questions(), self.data())
+
+    def show_if_json(self, field):
+        cond = (field or {}).get("show_if")
+        return json.dumps(cond) if isinstance(cond, dict) and cond.get("field") else None
+
+    def option_param(self, name, index):
+        from senaite.pfas.logbook_schema import OPTION_PARAM
+        return OPTION_PARAM % (name, index)
+
+    def stored_json(self, name):
+        return script_json((self.data() or {}).get(name) or [])
+
+    def _answers_from_form(self, stage_def):
+        """(answers, problems) for the stage's own questions: hidden ones
+        dropped; required and out-of-rule answers are problems that stop the
+        stage being completed (it is kept as a draft)."""
+        from senaite.pfas import stage_form
+        from senaite.pfas import logbook_schema as LS
+        from senaite.pfas.browser.logbooks import _extract_data_from_schema
+        questions = stage_form.generic_fields(stage_def)
+        if not questions:
+            return {}, []
+        answers = _extract_data_from_schema(self.request.form, questions)
+        for name in LS.hidden_names(questions, answers):
+            answers.pop(name, None)
+        problems = []
+        missing = LS.missing_required(questions, answers)
+        if missing:
+            problems.append(u"Required: %s" % u", ".join(missing))
+        problems += LS.value_errors(questions, answers)
+        return answers, problems
 
     def _resolve_equipment(self, sns_json):
         """[{unit_id, role}] for each stage equipment serial that is registered.

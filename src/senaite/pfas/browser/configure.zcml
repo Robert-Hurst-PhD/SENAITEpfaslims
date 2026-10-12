@@ -87,12 +87,20 @@
       permission="senaite.core.permissions.ManageBika"
       />
 
-  <!-- Interactive system map — clickable architecture diagram under Configuration -->
+  <!-- System map: the lab's live model as a tree (d3), one level per request -->
   <browser:page
       name="pfas-system-map"
       for="*"
       class=".system_map.PFASSystemMapView"
       permission="zope2.View"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
+      />
+  <browser:page
+      name="pfas-system-map-data"
+      for="*"
+      class=".system_map.PFASSystemMapDataView"
+      permission="zope2.View"
+      layer="senaite.pfas.interfaces.ISenaitePFASLayer"
       />
 
   <!-- Shared METAL macro provider — access via context/@@pfas-macros/macros/page -->

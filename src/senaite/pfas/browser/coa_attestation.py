@@ -40,6 +40,11 @@ class PFASCoAAttestationView(BrowserView):
 
     attestation = ViewPageTemplateFile("templates/coa_attestation.pt")
 
+    def print_css(self):
+        """The lab theme for this section (print_doc.certificate_css)."""
+        from senaite.pfas import print_doc
+        return print_doc.certificate_css(api.get_portal().absolute_url())
+
     def __call__(self, collection=None, report_view=None):
         # `collection` is the impress report's list of SuperModels (one per
         # sample on the certificate); `report_view` is the impress ReportView.
@@ -199,9 +204,7 @@ class PFASCoAAttestationView(BrowserView):
             parts.append(report_id)
         parts.append(u"uncontrolled when printed")
         return (
-            u'<div style="margin-top:10px; padding-top:6px; '
-            u'border-top:1px solid #ccc; font-size:10px; color:#666; '
-            u'text-align:center;">{0}</div>'
+            u'<div class="pfas-coa-stamp">{0}</div>'
         ).format(u" &middot; ".join(parts))
 
     # ── resolution ────────────────────────────────────────────────────────

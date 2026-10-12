@@ -70,7 +70,7 @@
       </form>
       <p class="bench-sub" tal:condition="not:samples">No verified or published sample to preview against.</p>
       <iframe name="rt-preview" class="rt-preview" title="Certificate preview"
-              srcdoc="&lt;p&gt;Choose a sample and press Preview.&lt;/p&gt;"
+              srcdoc="&lt;p style='font:14px/1.5 sans-serif;color:GrayText;margin:16px'&gt;Choose a sample and press Preview.&lt;/p&gt;"
               onload="if (this.contentWindow &amp;&amp; this.contentWindow.location.href !== 'about:srcdoc') this.classList.add('rt-open')"></iframe>
     </section>
 

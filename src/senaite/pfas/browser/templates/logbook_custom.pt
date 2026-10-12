@@ -34,7 +34,7 @@
                         border:1px solid transparent; border-radius:3px;
                         background:transparent; }
     .data-table input:focus { border-color:var(--s-input-border);
-                              background:#fff; outline:none; }
+                              background: var(--surface-raised); outline:none; }
     .data-table tr:hover td { background:var(--s-primary-lt); }
     .actions-bar { display:flex; gap:10px; align-items:center; margin-top:8px; }
     .alert-ok { background:var(--s-success-lt); border:1px solid var(--s-success-bd); color:var(--s-success-text);
@@ -50,7 +50,7 @@
     Logbook
   </tal:t>
   <tal:r metal:fill-slot="header-context">
-    <span class="header-meta" tal:content="view/batch_title">Batch</span>
+    <span class="pfas-chip"><b tal:content="view/batch_title">Batch</b></span>
   </tal:r>
 
   <div metal:fill-slot="content">

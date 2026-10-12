@@ -23,8 +23,57 @@
                          flabel python:field.get('label', field.get('name',''));
                          fvalue python:view.data().get(field.get('name',''), '');
                          fcorr python:bool(field.get('correctable', False));
-                         freq python:bool(field.get('required', False));
-                         fwidth python:field.get('width', 'md')">
+                         fshown python:view.is_shown(field);
+                         freq python:bool(field.get('required', False)) and fshown;
+                         fwidth python:field.get('width', 'md');
+                         fhelp python:field.get('help') or u''">
+      <div class="lb-q"
+           tal:attributes="data-q fname;
+                           data-show-if python:view.show_if_json(field);
+                           hidden python:None if fshown else 'hidden'">
+
+        <!-- ── SECTION: a heading between groups of questions ── -->
+        <tal:section condition="python:ftype == 'section'">
+          <div class="lb-section-head">
+            <h3 tal:content="flabel">Section</h3>
+            <p tal:condition="field/description|nothing" tal:content="field/description"></p>
+          </div>
+        </tal:section>
+
+        <!-- ── CHOICE: radio buttons, a dropdown, or checkboxes ── -->
+        <tal:choice condition="python:ftype == 'choice'"
+                    define="disp python:field.get('display') or 'radio';
+                            opts python:field.get('options') or [];
+                            picked python:fvalue if isinstance(fvalue, (list, tuple)) else ([fvalue] if fvalue else [])">
+          <div class="lb-fields-row">
+            <div class="lb-field lb-field-wide">
+              <fieldset class="lb-choice" tal:condition="python:disp != 'dropdown'">
+                <legend><tal:l tal:replace="flabel" /><span class="lb-req" tal:condition="freq"> *</span></legend>
+                <label class="lb-opt" tal:repeat="o opts">
+                  <input tal:condition="python:disp == 'radio'" type="radio"
+                         tal:attributes="name fname; value o/value;
+                                         checked python:'checked' if o['value'] in picked else None;
+                                         required python:'required' if freq else None" />
+                  <input tal:condition="python:disp == 'checkboxes'" type="checkbox" value="yes"
+                         tal:attributes="name python:view.option_param(fname, repeat['o'].index);
+                                         data-value o/value;
+                                         checked python:'checked' if o['value'] in picked else None" />
+                  <span tal:content="o/label">Option</span>
+                </label>
+              </fieldset>
+              <tal:dd condition="python:disp == 'dropdown'">
+                <label tal:attributes="for fname"><tal:l tal:replace="flabel" /><span class="lb-req" tal:condition="freq"> *</span></label>
+                <select class="lb-input lb-input-lg"
+                        tal:attributes="name fname; id fname; required python:'required' if freq else None">
+                  <option value="">&#8212; choose &#8212;</option>
+                  <option tal:repeat="o opts"
+                          tal:attributes="value o/value; selected python:'selected' if o['value'] in picked else None"
+                          tal:content="o/label">Option</option>
+                </select>
+              </tal:dd>
+            </div>
+          </div>
+        </tal:choice>
 
         <!-- ── TABLE ── -->
         <tal:table condition="python:ftype == 'table'">
@@ -144,7 +193,7 @@
         </tal:thermo>
 
         <!-- ── TEXT / DATE / NUMBER / LOT_REF / REAGENT_REF ── -->
-        <tal:scalar condition="python:ftype in ('text','date','number','lot_ref','reagent_ref')">
+        <tal:scalar condition="python:ftype in ('text','date','time','datetime','number','lot_ref','reagent_ref')">
           <div class="lb-fields-row">
             <div tal:attributes="class python:'lb-field corr-field' if fcorr else 'lb-field';
                                  data-field python:fname if fcorr else None">
@@ -193,10 +242,14 @@
               </tal:reagentref>
 
               <!-- plain text / date / number -->
-              <tal:plain condition="python:ftype in ('text','date','number')">
+              <tal:plain condition="python:ftype in ('text','date','time','datetime','number')">
                 <input tal:condition="not:field/core_owned|nothing"
-                       tal:attributes="type ftype;
+                       tal:attributes="type python:{'datetime': 'datetime-local'}.get(ftype, ftype);
                                        step python:'any' if ftype == 'number' else None;
+                                       min python:field.get('min') if ftype == 'number' else None;
+                                       max python:field.get('max') if ftype == 'number' else None;
+                                       pattern python:field.get('pattern') if ftype == 'text' else None;
+                                       title python:field.get('message') or None;
                                        class string:lb-input lb-input-${fwidth};
                                        name fname;
                                        value python:fvalue if fvalue not in (None, False) else u'';
@@ -236,6 +289,8 @@
           </div>
         </tal:scalar>
 
+        <p class="lb-help" tal:condition="python:fhelp and ftype != 'section'" tal:content="fhelp"></p>
+      </div>
       </tal:fdef>
 </metal:field>
 

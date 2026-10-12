@@ -147,8 +147,50 @@
     }
   }
 
+  /* Every table on a PFAS page scrolls sideways inside its own box: a table
+     wider than its column never pushes the page sideways and never has its
+     cells squeezed into each other on a phone. A table already inside a
+     scrolling box is left as it is; core's listings are not touched (React
+     renders them and they scroll on their own). */
+  function inScrollBox(el, stop) {
+    for (var p = el.parentElement; p && p !== stop; p = p.parentElement) {
+      if (p.classList.contains("pfas-scroll-x")) { return true; }
+      var o = window.getComputedStyle(p).overflowX;
+      if (o === "auto" || o === "scroll") { return true; }
+    }
+    return false;
+  }
+  function wrapTables(root) {
+    var area = doc.querySelector(".pfas-content-area");
+    if (!area) { return; }
+    var tables = (root && root.querySelectorAll ? root : area).querySelectorAll("table");
+    for (var i = 0; i < tables.length; i++) {
+      var t = tables[i];
+      if (t.__pfasWrapped || !area.contains(t) || t.closest(".no-scroll-wrap")) { continue; }
+      t.__pfasWrapped = true;
+      if (inScrollBox(t, area)) { continue; }
+      var box = doc.createElement("div");
+      box.className = "pfas-scroll-x";
+      t.parentNode.insertBefore(box, t);
+      box.appendChild(t);
+    }
+  }
+  function watchTables() {
+    var area = doc.querySelector(".pfas-content-area");
+    if (!area || !window.MutationObserver || area.__pfasWatch) { return; }
+    area.__pfasWatch = true;
+    var pending = false;
+    new MutationObserver(function () {
+      if (pending) { return; }
+      pending = true;
+      window.setTimeout(function () { pending = false; wrapTables(); }, 50);
+    }).observe(area, { childList: true, subtree: true });
+  }
+
   function init(root) {
     root = root || doc;
+    wrapTables(root === doc ? null : root);
+    watchTables();
     var segs = root.querySelectorAll(".pfas-seg"); for (var i = 0; i < segs.length; i++) { initSeg(segs[i]); }
     var fabs = root.querySelectorAll(".pfas-fab"); for (var f = 0; f < fabs.length; f++) { initFab(fabs[f]); }
     var trees = root.querySelectorAll(".pfas-tree"); for (var t = 0; t < trees.length; t++) { initTree(trees[t]); }
@@ -175,5 +217,5 @@
     var segs = doc.querySelectorAll(".pfas-seg"); for (var i = 0; i < segs.length; i++) { placePill(segs[i]); }
   });
   window.PFAS = window.PFAS || {};
-  window.PFAS.components = { init: init, theme: theme, drawer: drawer, placePill: placePill };
+  window.PFAS.components = { init: init, theme: theme, drawer: drawer, placePill: placePill, wrapTables: wrapTables };
 })();

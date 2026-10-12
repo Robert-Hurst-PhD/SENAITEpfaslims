@@ -55,6 +55,35 @@ class PFASSettingsReportView(BrowserView):
 
     # ── one method, its revisions ─────────────────────────────────────────
 
+    def _control(self):
+        """The control block: the report's title, the revision its label says
+        (a DRAFT is never given a number), when it was generated and the
+        fingerprint of the configuration it describes."""
+        import re
+        rep = self.report()
+        label = rep.get("revision_label") or u""
+        if label.startswith(u"DRAFT"):
+            rev = u"DRAFT"
+        else:
+            found = re.search(r"Revision (\d+)", label)
+            rev = found.group(1) if found else u""
+        return {"doc_id": rep["title"], "revision": rev, "generated": rep["generated"],
+                "user": rep["user"], "fingerprint": rep["fingerprint"]}
+
+    def print_css(self):
+        from senaite.pfas import print_doc
+        c = self._control()
+        return print_doc.document_css(c["doc_id"], c["revision"], c["user"], c["generated"],
+                                      size="A4 landscape", margin="14mm 12mm 16mm")
+
+    def print_head(self):
+        from senaite.pfas import print_doc
+        c = self._control()
+        cells = [(u"Document", c["doc_id"]), (u"Revision", c["revision"]),
+                 (u"Generated", c["generated"]), (u"Configuration", c["fingerprint"])]
+        return print_doc.head_html(print_doc.print_settings(self.context),
+                                   c["doc_id"], cells)
+
     def method_id(self):
         return (self.request.form.get("method_id") or "").strip()
 

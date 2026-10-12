@@ -25,16 +25,8 @@
        browser/reportview.py on a qualified release. Deliberately understated:
        it must be legible next to the number without competing with it, and the
        wording it points at is in the QC Qualifications section below. -->
-  <style type="text/css">
-    .qc-qualifier {
-      font-size: 0.8em;
-      font-weight: 600;
-      vertical-align: super;
-      margin-left: 0.15em;
-      color: #8a5a00;
-      white-space: nowrap;
-    }
-  </style>
+  <style type="text/css"
+         tal:content="structure python:context.restrictedTraverse('@@pfas-coa-sections').print_css()">/* the lab print stylesheet */</style>
 
   <!-- COMPACT CoA: PFAS header, one block of
        sample facts and one results table per sample replace core's header,
@@ -70,23 +62,23 @@
   <tal:accred define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
                       accred python:att.accreditation_disclosure(view.collection);"
               condition="python:accred and accred.get('out_of_scope')">
-    <div style="margin-top:14px; padding:9px 11px; border:2px solid #000;">
-      <div style="font-weight:bold; font-size:12px; margin-bottom:4px;"
+    <div class="pfas-coa-box scope">
+      <div class="bh"
            i18n:translate="">
         Not covered by the laboratory's accreditation
       </div>
-      <div style="font-size:10px; color:#222; margin-bottom:6px;">
+      <div class="bt">
         This sample was analysed under project-specific requirements that depart
         from the published method. The departures are stated below. Results are
         reported in full; they are not accredited results.
       </div>
-      <table style="width:100%; font-size:10px; border-collapse:collapse;">
-        <tr tal:repeat="line accred/lines" style="vertical-align:top;">
-          <td style="width:14px; padding:3px 4px;">&#8226;</td>
-          <td style="padding:3px 4px;" tal:content="line">departure</td>
+      <table>
+        <tr tal:repeat="line accred/lines">
+          <td class="dot">&#8226;</td>
+          <td tal:content="line">departure</td>
         </tr>
       </table>
-      <div style="font-size:9px; color:#555; margin-top:5px;"
+      <div class="bn"
            tal:condition="accred/frozen_at">
         Governing criteria recorded at technical review
         (<tal:v replace="accred/frozen_at"/>).
@@ -105,21 +97,21 @@
   <tal:quals define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
                      quals python:att.qc_qualifications(view.collection);"
              condition="quals">
-    <div style="margin-top:14px; padding:8px 10px; border:1px solid #bbb; page-break-inside:avoid;">
-      <div style="font-weight:bold; font-size:12px; margin-bottom:4px;"
+    <div class="pfas-coa-box">
+      <div class="bh"
            i18n:translate="">Quality control qualifications</div>
-      <div style="font-size:10px; color:#444; margin-bottom:6px;"
+      <div class="bt"
            i18n:translate="">
         The results below were released although a quality control criterion was
         not met. Each qualified result carries the code shown.
       </div>
-      <table style="width:100%; font-size:10px; border-collapse:collapse;">
-        <tr tal:repeat="q quals" style="vertical-align:top;">
-          <td style="width:34px; font-weight:bold; padding:3px 4px;"
+      <table>
+        <tr tal:repeat="q quals">
+          <td class="code"
               tal:content="q/code">M</td>
-          <td style="padding:3px 4px;">
+          <td>
             <div tal:content="q/statement">statement</div>
-            <div style="color:#666; margin-top:2px;"
+            <div class="affected"
                  tal:condition="q/analytes">
               <span i18n:translate="">Affected analytes:</span>
               <span tal:content="q/analytes">PFOA</span>
@@ -144,8 +136,7 @@
        (prospective at render time) and the uncontrolled-when-printed notice. -->
   <tal:stamp define="att python:context.restrictedTraverse('@@pfas-coa-attestation');
                      meta python:att.controlled_doc_meta(view.collection)">
-    <div style="margin-top:10px; padding-top:6px; border-top:1px solid #ccc;
-                font-size:10px; color:#666; text-align:center;">
+    <div class="pfas-coa-stamp">
       <span i18n:translate="">Controlled documentation publication</span>
       <tal:rid condition="meta/report_id">
         &middot; <span tal:content="meta/report_id"></span>

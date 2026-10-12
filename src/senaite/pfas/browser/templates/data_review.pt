@@ -11,8 +11,8 @@
     <meta name="pfas-batch-id" tal:attributes="content view/batch_id" />
     <meta name="pfas-provenance-url" tal:attributes="content string:${context/portal_url}/@@pfas-provenance" />
     <link rel="stylesheet" type="text/css"
-          tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/provenance.css" />
-    <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/provenance.js"></script>
+          tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/provenance.css?v=${context/@@pfas-macros/asset_version}" />
+    <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/provenance.js?v=${context/@@pfas-macros/asset_version}"></script>
   <style>
     /* ── Data Review ────────────────────────────────────────────────────── */
     .dr-header { display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
@@ -34,7 +34,7 @@
     .cl-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px; }
     @media (max-width:700px) { .cl-grid { grid-template-columns:1fr; } }
     .cl-card { border:1px solid var(--s-border); border-radius:8px; padding:14px 16px;
-               background:#fff; display:flex; flex-direction:column; gap:6px; }
+               background: var(--surface-raised); display:flex; flex-direction:column; gap:6px; }
     .cl-card.pass { border-left:4px solid var(--s-success); }
     .cl-card.fail { border-left:4px solid var(--s-danger); }
     .cl-card.blocked { border-left:4px solid #c0841a; }
@@ -113,7 +113,7 @@
                       vertical-align:middle; }
     .dr-worklist tr:hover td { background:var(--s-primary-lt); }
     .dr-worklist .dr-num { font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .dr-worklist .dr-analyst { color:var(--s-dark); }
+    .dr-worklist .dr-analyst { color: var(--text); }
     .dr-stage { display:inline-block; font-size:var(--fs-xs); font-weight:700;
                 padding:2px 9px; border-radius:11px; white-space:nowrap; }
     .dr-stage-open { background:var(--s-warn-lt); color:#b26a00; }
@@ -164,9 +164,8 @@
   </tal:t>
 
   <tal:r metal:fill-slot="header-context">
-    <span class="role-badge"
-          tal:attributes="class string:ws-badge ws-${view/ws_state}; title view/ws_state"
-          tal:content="view/ws_state">open</span>
+    <span class="pfas-chip" tal:condition="view/batch_id"><b tal:content="view/batch_id">WS-1</b><tal:m tal:condition="view/batch_method|nothing"><span class="pfas-chip-sep">&#183;</span><tal:x tal:replace="view/batch_method">EPA_537_1</tal:x></tal:m><span class="pfas-chip-sep">&#183;</span><span tal:attributes="class string:ws-badge ws-${view/ws_state}; title view/ws_state"
+          tal:content="view/ws_state">open</span></span>
   </tal:r>
 
   <div metal:fill-slot="content">
@@ -333,8 +332,6 @@
         <span tal:content="python:u'%s says %s; this batch is %s.' % (c[0], c[1], view.batch_method())">x</span></li>
     </ul>
 
-    <div class="pfas-aside-layout">
-    <div class="pfas-aside-main">
     <!-- tabs nav: the shared segmented control in links mode (no JS required;
          the server renders the active one; POST-back carries tab param) -->
     <nav class="pfas-seg pfas-seg-strip dr-tabs" aria-label="Review sections">
@@ -352,6 +349,9 @@
            tal:content="python:t[1]">Overview</a>
       </tal:tl>
     </nav><!-- /dr-tabs -->
+
+    <div class="pfas-aside-layout">
+    <div class="pfas-aside-main">
 
     <!-- ══════ OVERVIEW TAB ════════════════════════════════════════════ -->
     <div class="dr-tab-pane"
@@ -1197,7 +1197,7 @@
          tal:attributes="class python:'dr-tab-pane active' if view.active_tab() == 'calibration' else 'dr-tab-pane'"
          tal:condition="python: view.active_tab() == 'calibration'">
       <tal:cal tal:define="cal view/calibration_review">
-        <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/calibration_review.css?v=3" />
+        <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/calibration_review.css?v=${context/@@pfas-macros/asset_version}" />
         <p tal:condition="python:cal['source'] == 'reused'"
            tal:content="python:u'Reused curve: %s %s' % (cal['run_date'], cal.get('from') or u'')"></p>
         <div id="cal-runs-area"></div>
@@ -1216,8 +1216,8 @@
         <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/chart.js-4.4.3.umd.min.js"></script>
         <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
         <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/ml-matrix-6.12.1.umd.js"></script>
-        <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=1"></script>
-        <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=4"></script>
+        <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=${context/@@pfas-macros/asset_version}"></script>
+        <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=${context/@@pfas-macros/asset_version}"></script>
         <script>renderAll(CAL_RUNS);</script>
         <div id="pfas-cal-modal" class="cal-detail-modal"
              onclick="if(event.target===this)this.classList.remove('open')">

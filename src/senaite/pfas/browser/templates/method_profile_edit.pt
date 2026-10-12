@@ -56,7 +56,7 @@
     .factor-table .del-btn:hover { opacity: .75; }
 
     .stage-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px;
-                  background: #fff; }
+                  background: var(--surface-raised); }
     .stage-card.dragging { opacity: .4; }
     .stage-card-hdr { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
                       background: var(--s-light); border-radius: 6px 6px 0 0;
@@ -75,7 +75,7 @@
     .stage-row label input[type=text],
     .stage-row label input[type=number] { padding: 5px 8px; border: 1px solid var(--s-input-border);
                                            border-radius: 4px; font-size: var(--fs-base);
-                                           font-family: inherit; background: #fff; }
+                                           font-family: inherit; background: var(--surface-raised); }
     .stage-row label input:focus { outline: none; border-color: var(--s-primary); }
     .cb-label { flex-direction: row !important; align-items: center !important; gap: 6px !important;
                 font-size: var(--fs-base) !important; font-weight: 500 !important; color: var(--s-text) !important;
@@ -95,7 +95,7 @@
                                   font-size: var(--fs-xs); font-family: inherit; }
     .pa-table input[type=text].pa-mono { font-family: var(--font-mono); }
     .pa-table select { padding: 3px 5px; border: 1px solid var(--s-border); border-radius: 3px;
-                       font-size: var(--fs-xs); background: #fff; }
+                       font-size: var(--fs-xs); background: var(--surface-raised); }
     .pa-table input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
     .pa-tier-1 { color: var(--s-primary-dk); font-weight: 600; }
     .pa-tier-3 { color: var(--s-secondary); font-style: italic; }
@@ -140,12 +140,12 @@
                                           color: var(--s-input-text); width: 100%; }
 
     .spike-matrix-section { border: 1px solid var(--s-border); border-radius: 6px;
-                             margin-bottom: 12px; background: #fff; overflow: hidden; }
+                             margin-bottom: 12px; background: var(--surface-raised); overflow: hidden; }
     .spike-matrix-hdr { padding: 7px 12px; background: var(--s-light);
                         border-bottom: 1px solid var(--s-border);
                         font-size: var(--fs-sm); font-weight: 700; color: var(--s-primary-dk); }
 
-    .tier-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px; background: #fff; }
+    .tier-card { border: 1px solid var(--s-border); border-radius: 6px; margin-bottom: 10px; background: var(--surface-raised); }
     .tier-card-hdr { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
                      background: var(--s-light); border-radius: 6px 6px 0 0;
                      border-bottom: 1px solid var(--s-border); }
@@ -153,7 +153,7 @@
                   padding: 1px 8px; font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
     .tier-desc { flex: 1; border: 1px solid transparent; border-radius: 4px; padding: 3px 6px;
                  font-size: var(--fs-base); font-family: inherit; background: transparent; color: var(--s-text); }
-    .tier-desc:focus { outline: none; border-color: var(--s-primary); background: #fff;
+    .tier-desc:focus { outline: none; border-color: var(--s-primary); background: var(--surface-raised);
                        box-shadow: 0 0 0 2px var(--s-focus-ring); }
     .tier-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
     .tier-limits { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: var(--fs-base); }
@@ -188,7 +188,7 @@
   <tal:t metal:fill-slot="header-title"
          tal:content="view/display_name">Method Profile</tal:t>
 
-  <tal:c metal:fill-slot="header-context"><span class="header-badge" tal:content="view/method_id">FDA_32PFAS</span></tal:c>
+  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="view/method_id">FDA_32PFAS</span></tal:c>
   <tal:r metal:fill-slot="header-right">
     <form method="get" action="@@pfas-method-profile-edit"
           tal:condition="python:view.method_id() and not view.delete_requested()">
@@ -1108,7 +1108,7 @@
     var MP_MEDIA_URL = "<tal:m tal:replace="string:${view/portal_url}/@@pfas-logbook-media" />";
     </script>
     <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/Sortable-1.15.6.min.js"></script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=11"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/method_profile_edit.js?v=${context/@@pfas-macros/asset_version}"></script>
 
   </div><!-- /content slot -->
 

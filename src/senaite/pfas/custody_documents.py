@@ -17,6 +17,14 @@ for both. Examples are DEMO. Pure: Python 2.7 and 3.
 from __future__ import absolute_import, unicode_literals
 
 try:
+    from senaite.pfas.print_style import PALETTE as _P
+except ImportError:                                          # loaded by path (tests)
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from print_style import PALETTE as _P
+
+try:
     from senaite.pfas import doc_fields as _df
 except ImportError:                                         # loaded by path (tests)
     import os, sys
@@ -52,7 +60,7 @@ def _image(name, x, y, w, h, **kw):
 
 def _rule(name, x, y, w, **kw):
     return dict({"name": name, "type": "line", "position": {"x": x, "y": y},
-                 "width": w, "height": 0.3, "readOnly": True, "color": "#222222"}, **kw)
+                 "width": w, "height": 0.3, "readOnly": True, "color": _P["s-body"]}, **kw)
 
 
 def _table(name, columns, x, y, w, widths, size=6.5):
@@ -60,12 +68,12 @@ def _table(name, columns, x, y, w, widths, size=6.5):
             "height": 12, "showHead": True, "repeatHead": True,
             "head": [t for _k, t, _e in columns], "headWidthPercentages": widths,
             "pfasColumns": [k for k, _t2, _e in columns], "content": "[]",
-            "tableStyles": {"borderColor": "#222222", "borderWidth": 0.2},
-            "headStyles": {"fontSize": size, "fontColor": "#222222", "backgroundColor": "",
-                           "borderColor": "#222222",
+            "tableStyles": {"borderColor": _P["s-body"], "borderWidth": 0.2},
+            "headStyles": {"fontSize": size, "fontColor": _P["s-body"], "backgroundColor": "",
+                           "borderColor": _P["s-body"],
                            "borderWidth": {"top": 0.3, "right": 0.1, "bottom": 0.3, "left": 0.1},
                            "padding": {"top": 1, "right": 1, "bottom": 1, "left": 1}},
-            "bodyStyles": {"fontSize": size, "borderColor": "#888888", "alternateBackgroundColor": "",
+            "bodyStyles": {"fontSize": size, "borderColor": _P["s-input-border"], "alternateBackgroundColor": "",
                            "borderWidth": {"top": 0, "right": 0.1, "bottom": 0.1, "left": 0.1},
                            "padding": {"top": 1.2, "right": 1, "bottom": 1.2, "left": 1}}}
 

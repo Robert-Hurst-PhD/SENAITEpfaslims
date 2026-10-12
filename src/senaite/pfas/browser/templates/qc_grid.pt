@@ -47,35 +47,26 @@
                   </td>
                 </tal:cols>
               </tr>
-              <!-- Per-spike-level RPD row — LFSMD only (Dup is unfortified, flat RPD) -->
-              <tr class="pfas-grid-rpd">
-                <td class="pfas-grid-rpd-label">
-                  LFSMD spike level RPD
+              <!-- Per-spike-level RPD row, LFSMD only (Dup is unfortified, flat RPD):
+                   one line across the row, the levels side by side -->
+              <tr class="pfas-grid-rpd"
+                  tal:define="mid python:m['id'];
+                              has_rpd python:[c for c in view.qc_columns() if c['criterion'] == 'rpd' and c['code'] == 'LFSMD']">
+                <td class="pfas-grid-rpd-label" tal:attributes="colspan python:len(view.qc_columns()) + 1">
+                  <div class="pfas-grid-rpd-line">
+                    <span>LFSMD spike level RPD (%)</span>
+                    <tal:levels tal:condition="has_rpd" tal:define="tiers python:view.rpd_tiers(mid, 'LFSMD')">
+                      <label class="pfas-grid-rpd-level" tal:repeat="level view/spike_levels">
+                        <tal:l tal:replace="level">Low</tal:l>
+                        <input type="number" step="0.1" min="0" max="100" class="pfas-input"
+                               tal:define="existing python:[t.get('rpd_max', '') for t in tiers if t.get('spike_level') == level]"
+                               tal:attributes="name python:'rpd__%s__%s_%s' % (mid, 'LFSMD', level);
+                                               value python:existing[0] if existing else '';
+                                               placeholder string:%" />
+                      </label>
+                    </tal:levels>
+                  </div>
                 </td>
-                <tal:rpd_cols tal:repeat="col view/qc_columns">
-                  <td class="pfas-grid-rpd-cell">
-                    <tal:block tal:condition="python:col['criterion'] == 'rpd' and col['code'] == 'LFSMD'"
-                               tal:define="mid python:m['id'];
-                                           code python:col['code'];
-                                           tiers python:view.rpd_tiers(mid, code)">
-                      <div class="pfas-grid-stack">
-                        <tal:level tal:repeat="level view/spike_levels">
-                          <tal:block tal:define="existing python:[t.get('rpd_max','') for t in tiers if t.get('spike_level') == level];
-                                                  val python:existing[0] if existing else ''">
-                            <label tal:content="level">Low</label>
-                            <input type="number" step="0.1" min="0" max="100"
-                                   tal:attributes="name python:'rpd__%s__%s_%s' % (mid, code, level);
-                                                   value python:val;
-                                                   placeholder string:%" />
-                          </tal:block>
-                        </tal:level>
-                      </div>
-                    </tal:block>
-                    <tal:block tal:condition="python:not (col['criterion'] == 'rpd' and col['code'] == 'LFSMD')">
-                      <!-- blank cell for non-LFSMD or non-RPD columns -->
-                    </tal:block>
-                  </td>
-                </tal:rpd_cols>
               </tr>
             </tal:method>
           </tal:rows>

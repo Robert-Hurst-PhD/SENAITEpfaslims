@@ -459,7 +459,7 @@
 
   <!-- Builder lives in a static resource: Chameleon parses inline <script>
        bodies and chokes on bare "<", "&" and "&&". Bump ?v= when editing. -->
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_builder.js?v=4"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_builder.js?v=${context/@@pfas-macros/asset_version}"></script>
 
   <script>
 

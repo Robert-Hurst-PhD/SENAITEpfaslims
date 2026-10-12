@@ -81,7 +81,7 @@ def kind_spec(slug, title, form_code, revision, schema, starter=None):
     fields, tables, order, long_fields = list(HEADER), {}, [], ["hdr_corrections"]
     for f in schema or []:
         name = f.get("name")
-        if not name:
+        if not name or f.get("type") == "section":        # a heading holds no value
             continue
         if f.get("type") == "table":
             tables[name] = [(c.get("name"), c.get("label") or c.get("name"),
@@ -159,6 +159,14 @@ def data(schema, entry, header):
             out[name] = rows
         elif ftype == "checkbox":
             out[name] = "Yes" if value in (True, "on", "true", "1", 1, "yes", "Yes") else "No"
+        elif ftype == "section":
+            continue
+        elif ftype == "choice":
+            # the options' labels, as the form showed them
+            labels = dict((u"%s" % o.get("value"), o.get("label") or o.get("value"))
+                          for o in f.get("options") or [] if isinstance(o, dict))
+            picked = value if isinstance(value, (list, tuple)) else ([value] if value else [])
+            out[name] = u", ".join(_s(labels.get(u"%s" % v, v)) for v in picked)
         else:
             out[name] = _s(value)
     return out

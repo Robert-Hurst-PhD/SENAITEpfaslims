@@ -29,7 +29,7 @@
   </metal:fill>
   <tal:s metal:fill-slot="scripts">
     <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/pdfme/pdfme.min.js"></script>
-    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/badge_print.js"></script>
+    <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/badge_print.js?v=${context/@@pfas-macros/asset_version}"></script>
   </tal:s>
 </body>
 </html>

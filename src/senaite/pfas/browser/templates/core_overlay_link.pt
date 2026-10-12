@@ -1,16 +1,16 @@
 <tal:overlay xmlns:tal="http://xml.zope.org/namespaces/tal"
              tal:define="portal context/@@plone_portal_state/portal_url">
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-tokens.css" />
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-tokens.css?v=${context/@@pfas-macros/asset_version}" />
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-components.css" />
-  <script tal:attributes="src string:${portal}/++resource++senaite.pfas/pfas-components.js"></script>
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-components.css?v=${context/@@pfas-macros/asset_version}" />
+  <script tal:attributes="src string:${portal}/++resource++senaite.pfas/pfas-components.js?v=${context/@@pfas-macros/asset_version}"></script>
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-core-overlay.css" />
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-core-overlay.css?v=${context/@@pfas-macros/asset_version}" />
   <!-- the one top toolbar, shared with PFAS pages -->
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${portal}/++resource++senaite.pfas/vendor/adminlte-topbar-3.2.0.css" />
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-topbar.css" />
-  <script tal:attributes="src string:${portal}/++resource++senaite.pfas/pfas-topbar.js"></script>
+        tal:attributes="href string:${portal}/++resource++senaite.pfas/pfas-topbar.css?v=${context/@@pfas-macros/asset_version}" />
+  <script tal:attributes="src string:${portal}/++resource++senaite.pfas/pfas-topbar.js?v=${context/@@pfas-macros/asset_version}"></script>
 </tal:overlay>

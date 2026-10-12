@@ -62,6 +62,9 @@
     var card = document.createElement('div');
     card.className = 'stage-card';
     card.id = id;
+    /* the stage as stored: keys this card has no input for are carried
+       through the next save instead of being dropped */
+    card._stored = s;
     card.innerHTML =
       '<div class="stage-card-hdr">' +
         '<span class="drag-handle" title="Drag to reorder">&#9776;</span>' +
@@ -216,11 +219,12 @@
       var splitCsv = function(s) {
         return s ? s.split(',').map(function(x) { return x.trim(); }).filter(Boolean) : [];
       };
-      /* WARNING: this object is rebuilt from scratch on every edit, so any
-         stage key WITHOUT a matching [data-field] input above is silently
-         dropped on the next profile save. Adding a key here without also
-         adding its input in addStageCard() (or vice versa) loses data. */
-      result.push({
+      /* the edited keys over the stage as stored, so a key with no input
+         on this card (a newer editor's, a migration's) is kept */
+      var stored = card._stored || {};
+      var kept = {};
+      Object.keys(stored).forEach(function(k) { kept[k] = stored[k]; });
+      result.push(Object.assign(kept, {
         id:               get('id') || ('stage_' + (result.length + 1)),
         order:            parseInt(get('order'), 10) || (result.length + 1),
         name:             get('name'),
@@ -234,7 +238,7 @@
         capture_pedigree: getBool('capture_pedigree'),
         media:            get('media'),
         media_alt:        get('media_alt'),
-      });
+      }));
     });
     document.getElementById('extraction_stages_json').value = JSON.stringify(result, null, 2);
   }

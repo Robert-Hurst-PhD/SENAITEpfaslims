@@ -92,6 +92,12 @@ class PFASQCReviewReportView(BrowserView):
 
     template = ViewPageTemplateFile("templates/qc_review_report.pt")
 
+    def print_css(self):
+        """The lab theme for this section (print_doc.certificate_css)."""
+        from bika.lims import api
+        from senaite.pfas import print_doc
+        return print_doc.certificate_css(api.get_portal().absolute_url())
+
     def __call__(self):
         flatten_form(self.request)
         return self.template()

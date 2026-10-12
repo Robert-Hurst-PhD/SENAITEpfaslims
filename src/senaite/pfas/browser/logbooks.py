@@ -186,6 +186,27 @@ class _LogbookBase(BrowserView):
         from senaite.pfas.logbook_store import form_code
         return form_code(getToolByName(self.context, "portal_url").getPortalObject(), slug)
 
+    def _print_slug(self):
+        slug = getattr(self, "_slug", None)
+        if slug is not None:
+            return slug()
+        import re
+        found = re.search(r"(\d{3})", type(self).__name__)
+        return found.group(1) if found else u""
+
+    def print_control(self):
+        """What this logbook prints as: the form number the lab gave it, the
+        revision of its template and when that revision was last changed, and
+        the entry (the worksheet or batch it was filled for). The page macro
+        draws the control block and footer from it."""
+        from senaite.pfas.logbook_store import print_control
+        portal = getToolByName(self.context, "portal_url").getPortalObject()
+        try:
+            method = self.batch_method()
+        except Exception:                                   # noqa: BLE001
+            method = u""
+        return print_control(portal, self._print_slug(), self.batch_id(), method)
+
     def stored_json(self, key):
         """The saved rows for `key`, rendered into the hidden field so the
         form carries them even before (or without) the page's script."""
@@ -448,7 +469,8 @@ class PFASLogbookIndexView(_LogbookBase):
             from senaite.pfas.method_profile_store import get_profile
             from senaite.pfas.sample_table import processing_stage
             portal = getToolByName(self.context, "portal_url").getPortalObject()
-            st = processing_stage(get_profile(portal, self.batch_method()).get("extraction_stages"))
+            from senaite.pfas.stage_plan import stages_for
+            st = processing_stage(stages_for(session, get_profile(portal, self.batch_method())))
             return bool(st) and u"%s" % st.get("order") in ((session or {}).get("stages") or {})
         except Exception:                                   # noqa: BLE001
             return False
@@ -982,6 +1004,7 @@ class PFASLogbookAdminView(BrowserView):
             method_scope = self.request.form.get("new_method_scope", "").strip()
             table_columns = [c.strip() for c in cols_raw.split(",") if c.strip()]
             if new_title:
+                from senaite.pfas.logbook_schema import columns_schema
                 new_slug = "custom-" + uuid.uuid4().hex[:8]
                 if not new_form_num:            # the next form number, not a slug
                     from senaite.pfas.form_codes import next_code
@@ -994,7 +1017,9 @@ class PFASLogbookAdminView(BrowserView):
                     "active":           True,
                     "table_columns":    table_columns,
                     "method_slug":      method_scope,
-                    "field_schema_json": "[]",
+                    # the columns become the logbook's field schema (the
+                    # store keeps fields only there; an empty one lost them)
+                    "field_schema_json": json.dumps(columns_schema(table_columns)),
                 })
                 # If scoped to a method, also add it to that method's required list
                 if method_scope:
@@ -1104,6 +1129,10 @@ def _apply_receipt_thermometers(data, schema_fields):
     rt.enrich(data, schema_fields, fq.get_unit, fq.current_correction, as_of)
 
 
+# Bookkeeping key on a logbook entry: the definition revision it is filled under.
+PIN_KEY = "_def_rev"
+
+
 def _extract_data_from_schema(form, schema_fields, only_fields=None):
     """Build data dict from POST form data based on the field schema.
 
@@ -1120,6 +1149,13 @@ def _extract_data_from_schema(form, schema_fields, only_fields=None):
         if only_fields is not None and fname not in only_fields:
             continue
         ftype = field.get("type", "text")
+        if ftype == "section":                  # a heading: holds no value
+            continue
+        if ftype == "choice" and field.get("display") == "checkboxes":
+            from senaite.pfas.logbook_schema import OPTION_PARAM
+            data[fname] = [o.get("value") for i, o in enumerate(field.get("options") or [])
+                           if isinstance(o, dict) and form.get(OPTION_PARAM % (fname, i))]
+            continue
         if ftype == "table":
             # absent -> the saved rows stay (the caller seeds from them);
             # unreadable -> ValueError, the save is refused
@@ -1515,6 +1551,12 @@ class PFASDynamicLogbookView(_LogbookBase):
             url += "&ok=" + msg.replace(" ", "+")
         return self._redirect(url)
 
+    def _redirect_error(self, msg):
+        """Back to THIS logbook (the base view's error redirect drops the slug)."""
+        url = "{0}/@@pfas-logbook-dynamic?slug={1}&error={2}".format(
+            self.batch_url(), self._slug(), msg.replace(" ", "+"))
+        return self._redirect(url)
+
     def has_designed_pdf(self):
         """An issued design exists for this logbook (Document Templates)."""
         try:
@@ -1527,8 +1569,9 @@ class PFASDynamicLogbookView(_LogbookBase):
         except Exception:                                   # noqa: BLE001
             return False
 
-    def _logbook_def(self):
-        """Return PrepLogbookDef dict for this slug (active revision preferred)."""
+    def _current_def(self):
+        """The definition a new entry is filled on: the active revision,
+        else the newest."""
         from senaite.pfas.browser.prep_logbooks import _list
         portal = getToolByName(self.context, "portal_url").getPortalObject()
         slug = self._slug()
@@ -1536,6 +1579,29 @@ class PFASDynamicLogbookView(_LogbookBase):
         if not defs:
             defs = _list(portal, slug=slug)
         return defs[0] if defs else {}
+
+    def _logbook_def(self):
+        """The definition this batch's entry is shown and saved with: the
+        revision the entry was first saved under (PIN_KEY), so a new revision
+        of the template never re-labels or drops what was recorded; a new
+        entry uses the current revision."""
+        from senaite.pfas.browser.prep_logbooks import _list
+        pinned = (_get_logbook(self.context, self._slug()) or {}).get(PIN_KEY)
+        if pinned:
+            portal = getToolByName(self.context, "portal_url").getPortalObject()
+            for d in _list(portal, slug=self._slug()):
+                if d.get("revision") == pinned:
+                    return d
+        return self._current_def()
+
+    def revision_note(self):
+        """'' or a line saying the entry keeps an older template revision."""
+        pinned = (_get_logbook(self.context, self._slug()) or {}).get(PIN_KEY)
+        current = self._current_def().get("revision")
+        if pinned and current and pinned != current:
+            return (u"Filled under template revision %s, and kept on it; "
+                    u"the current revision is %s." % (pinned, current))
+        return u""
 
     def logbook_def(self):
         return self._logbook_def()
@@ -1555,6 +1621,27 @@ class PFASDynamicLogbookView(_LogbookBase):
 
     def field_schema_json(self):
         return script_json(self.field_schema())
+
+    def _shown(self):
+        if not hasattr(self, "_shown_cache"):
+            from senaite.pfas.logbook_schema import visible_names
+            self._shown_cache = visible_names(self.field_schema(), self.data())
+        return self._shown_cache
+
+    def is_shown(self, field):
+        """The question is shown for the answers saved so far (its show-if)."""
+        name = (field or {}).get("name")
+        return not name or name in self._shown()
+
+    def show_if_json(self, field):
+        """The question's show-if for logbook_runtime.js, or None."""
+        cond = (field or {}).get("show_if")
+        return json.dumps(cond) if isinstance(cond, dict) and cond.get("field") else None
+
+    def option_param(self, name, index):
+        """The form parameter of one answer of a several-answer choice."""
+        from senaite.pfas.logbook_schema import OPTION_PARAM
+        return OPTION_PARAM % (name, index)
 
     def lot_defaults_json(self):
         """{lot_type: most-recent-usable-lot} for the lot_ref fields on this
@@ -1630,6 +1717,17 @@ class PFASDynamicLogbookView(_LogbookBase):
         except ValueError as exc:
             return self._redirect_error(str(exc).replace(" ", "+"))
 
+        from senaite.pfas.logbook_schema import hidden_names, missing_required, value_errors
+        # a question its show-if hides is neither required nor kept
+        for name in hidden_names(schema_fields, data):
+            data.pop(name, None)
+        missing = missing_required(schema_fields, data, only)
+        if missing:
+            return self._redirect_error(quote_plus((u"Not saved. Required: %s" % u", ".join(missing)).encode("utf-8")))
+        wrong = value_errors(schema_fields, data, only)
+        if wrong:
+            return self._redirect_error(quote_plus((u"Not saved. %s" % u" ".join(wrong)).encode("utf-8")))
+
         correctable = _correctable_fields(schema_fields)
         if only is not None:
             correctable = [n for n in correctable if n in only]
@@ -1654,6 +1752,10 @@ class PFASDynamicLogbookView(_LogbookBase):
             if step_id not in done:
                 done.append(step_id)
             data["_steps_done"] = done
+
+        # the template revision this entry is filled under, kept from its first save
+        if not data.get(PIN_KEY):
+            data[PIN_KEY] = self._logbook_def().get("revision") or 1
 
         _save_logbook(self.context, slug, data)
 

@@ -22,26 +22,13 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Logbooks</tal:t>
-  <tal:r metal:fill-slot="header-context">
-    <span class="header-meta"
-          tal:content="view/batch_title">Batch</span>
-  </tal:r>
+  <tal:ctx metal:fill-slot="header-context">
+    <span class="pfas-chip"><b tal:content="view/batch_title">Batch</b><tal:m tal:condition="view/batch_method|nothing"><span class="pfas-chip-sep">&#183;</span><tal:x tal:replace="view/batch_method">Method</tal:x></tal:m></span>
+  </tal:ctx>
 
   <div metal:fill-slot="content">
   <div class="page-body">
 
-    <!-- Breadcrumb -->
-    <nav class="pfas-crumb is-inline" aria-label="Logbook">
-      <span>Lab</span>
-      <span class="pfas-crumb-sep">&#8250;</span>
-      <tal:m tal:condition="view/batch_method">
-        <span tal:content="view/batch_method">Method</span>
-        <span class="pfas-crumb-sep">&#8250;</span>
-      </tal:m>
-      <strong class="pfas-crumb-here" tal:content="view/batch_title">Batch</strong>
-      <span class="pfas-crumb-sep">&#8250;</span>
-      <strong class="pfas-crumb-here">Logbooks</strong>
-    </nav>
 
     <p class="pfas-lead">
       Logbooks for this batch.  Fill them in on the bench or tablet before

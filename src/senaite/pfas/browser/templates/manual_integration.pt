@@ -6,7 +6,7 @@
 
   <title metal:fill-slot="title">Manual integration</title>
   <metal:fill fill-slot="header-title">Manual integration</metal:fill>
-  <metal:fill fill-slot="header-context"><span tal:replace="context/getId">WS-0001</span></metal:fill>
+  <metal:fill fill-slot="header-context"><span class="pfas-chip" tal:content="context/getId">WS-0001</span></metal:fill>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary"
        tal:attributes="href string:${view/portal_url}/@@pfas-mi-reasons">Reasons</a>
@@ -200,7 +200,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
             tal:condition="d/file"></script>
     <script tal:condition="d/file"
-            tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/manual_integration.js"></script>
+            tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/manual_integration.js?v=${context/@@pfas-macros/asset_version}"></script>
   </div>
   </div>
 </html>

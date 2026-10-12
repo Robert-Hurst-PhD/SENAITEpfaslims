@@ -663,3 +663,39 @@ textarea.pfas-fill.is-sm { font-size: var(--fs-sm); }
    read exactly as .alert-error / .alert-success (pfas_macros.pt) ─────────── */
 .alert-danger { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk); }
 .alert-ok { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text); }
+
+/* A page group's sibling pages (Settings, Reporting setup, Equipment checks): the
+   segmented strip in links mode, on the frame's content edge. */
+.pfas-group-bar { padding: var(--sp-3) 20px 0; }
+@media print { .pfas-group-bar { display: none; } }
+/* a cell kept on one line (a date) still wraps its note underneath */
+.cell-nowrap .pfas-sub { white-space: normal; }
+/* QC Type Grid: the LFSMD spike-level RPD limits on one line under the method */
+.pfas-grid-rpd-line { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
+.pfas-grid-rpd-level { display: inline-flex; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.pfas-grid-rpd-level .pfas-input { width: 80px; height: var(--ctl-h-sm); text-align: right; }
+/* An input or select a page left unclassed takes the shared control look,
+   so no page falls back to the browser's own (38px, its own border). */
+.pfas-content-area input:not([class]):not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([type=submit]):not([type=button]):not([type=range]):not([type=color]),
+.pfas-content-area select:not([class]) {
+  height: var(--ctl-h); box-sizing: border-box; padding: 0 10px; font-family: inherit; font-size: var(--fs-base);
+  color: var(--text); background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.pfas-content-area input:not([class]):focus, .pfas-content-area select:not([class]):focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.pfas-table-fixed td.cell-nowrap { white-space: nowrap; overflow-wrap: normal; }
+
+/* Each table's own sideways scroll (pfas-components.js wrapTables) */
+.pfas-scroll-x, .pfas-content-area .table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  /* a soft shadow at an edge with more columns behind it (the covers scroll
+     with the content, the shadows stay with the box) */
+  background:
+    linear-gradient(90deg, var(--surface) 30%, rgba(0, 0, 0, 0)) 0 0 / 40px 100% no-repeat local,
+    linear-gradient(270deg, var(--surface) 30%, rgba(0, 0, 0, 0)) 100% 0 / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, .16), rgba(0, 0, 0, 0)) 0 0 / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, .16), rgba(0, 0, 0, 0)) 100% 0 / 12px 100% no-repeat scroll; }
+.pfas-scroll-x > table { margin-bottom: 0; }
+/* A field inside a table cell never runs past its cell into the next one */
+.pfas-content-area td > input:not([type=checkbox]):not([type=radio]):not([type=hidden]),
+.pfas-content-area td > select, .pfas-content-area td > textarea { max-width: 100%; box-sizing: border-box; }
+/* a status badge in a set-width column wraps rather than spilling into the next */
+.pfas-table-fixed td .badge { white-space: normal; text-align: center; line-height: 1.25; }

@@ -25,15 +25,16 @@
       <!-- Back link + section heading in filtered mode -->
       <tal:filtered tal:condition="sect">
         <div class="pfas-page-head">
-          <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${purl}/@@lims-setup"
+          <a class="btn btn-sm btn-secondary btn-back" tal:attributes="href string:${purl}/@@lims-setup"
             >All Configuration</a>
         </div>
       </tal:filtered>
 
       <div id="setupview">
 
-        <!-- Search box only shown in the full (unfiltered) view -->
-        <div class="pfas-filterbar" tal:condition="python:not sect">
+        <!-- Search box: shown in the full view; drawn hidden in a section's view,
+             since core's setup script binds to it on every page -->
+        <div class="pfas-filterbar" tal:attributes="hidden python:'hidden' if sect else None">
           <div class="pfas-field">
             <input id="searchbox"
                    autofocus

@@ -13,7 +13,7 @@
                  font-size:var(--fs-base); }
     /* ── Badges (page-specific — base .badge is global) ─────── */
     .badge-deviation  { background:var(--s-info-lt); color:var(--s-info-text); }
-    .badge-car        { background:var(--s-light); color:var(--s-dark); border:1px solid var(--s-border); }
+    .badge-car        { background:var(--s-light); color: var(--text); border:1px solid var(--s-border); }
     .badge-open       { background:var(--s-warn-lt); color:var(--s-warn-text); }
     .badge-in_progress{ background:var(--s-info-lt); color:var(--s-info-text); }
     .badge-closed     { background:var(--s-success-lt); color:var(--s-success-text); }
@@ -72,7 +72,7 @@
     .rm-cell.clickable:hover { outline:3px solid var(--text); outline-offset:-2px; }
     .rm-cell.rm-selected { outline:3px solid var(--text); outline-offset:-2px; }
     .rm-cell.risk-green  { background:var(--s-success); color:var(--on-accent); }
-    .rm-cell.risk-yellow { background:var(--s-warning); color:var(--s-dark); }
+    .rm-cell.risk-yellow { background:var(--s-warning); color: var(--text); }
     .rm-cell.risk-orange { background:color-mix(in srgb, var(--s-warning), var(--s-danger)); color:var(--on-accent); }
     .rm-cell.risk-red    { background:var(--s-danger); color:var(--on-accent); }
     .risk-score-display { display:inline-block; padding:5px 14px; border-radius:6px;
@@ -85,7 +85,7 @@
     .ca-type-label { font-size:var(--fs-xs); font-weight:var(--fw-heading); text-transform:uppercase;
                      letter-spacing:.06em; padding:2px 8px; border-radius:10px; }
     .ca-sop_revision  { background:var(--s-info-lt); color:var(--s-info-text); }
-    .ca-training      { background:var(--s-light); color:var(--s-dark); }
+    .ca-training      { background:var(--s-light); color: var(--text); }
     .ca-notification  { background:var(--s-warn-lt); color:var(--s-warn-text); }
     .ca-desc { font-size:var(--fs-base); color:var(--s-body); margin-bottom:10px; }
     .ca-meta { font-size:var(--fs-sm); color:var(--s-secondary); margin-bottom:8px; }
@@ -702,29 +702,19 @@
       <div class="pfas-field">
         <span>Status</span>
         <nav class="pfas-seg" aria-label="Status">
-          <a class="pfas-seg-item"
-             tal:attributes="aria-selected python:'true' if (not view.filter_type() and not view.filter_status()) else 'false';
-                             href string:${view/portal_url}/@@pfas-deviations">All</a>
-          <a class="pfas-seg-item"
-             tal:attributes="aria-selected python:'true' if view.filter_status() == 'open' else 'false';
-                             href string:${view/portal_url}/@@pfas-deviations?filter_status=open">Open</a>
-          <a class="pfas-seg-item"
-             tal:attributes="aria-selected python:'true' if view.filter_status() == 'in_progress' else 'false';
-                             href string:${view/portal_url}/@@pfas-deviations?filter_status=in_progress">In Progress</a>
-          <a class="pfas-seg-item"
-             tal:attributes="aria-selected python:'true' if view.filter_status() == 'closed' else 'false';
-                             href string:${view/portal_url}/@@pfas-deviations?filter_status=closed">Closed</a>
+          <a class="pfas-seg-item" tal:repeat="o python:(('', u'All'), ('open', u'Open'), ('in_progress', u'In Progress'), ('closed', u'Closed'))"
+             tal:attributes="aria-selected python:'true' if view.filter_status() == o[0] else 'false';
+                             href python:view.filter_url(status=o[0])"
+             tal:content="python:o[1]">All</a>
         </nav>
       </div>
       <div class="pfas-field">
         <span>Type</span>
         <nav class="pfas-seg" aria-label="Type">
-          <a class="pfas-seg-item"
-             tal:attributes="aria-selected python:'true' if view.filter_type() == 'deviation' else 'false';
-                             href string:${view/portal_url}/@@pfas-deviations?filter_type=deviation">Deviations Only</a>
-          <a class="pfas-seg-item"
-             tal:attributes="aria-selected python:'true' if view.filter_type() == 'car' else 'false';
-                             href string:${view/portal_url}/@@pfas-deviations?filter_type=car">CARs Only</a>
+          <a class="pfas-seg-item" tal:repeat="o python:(('', u'All'), ('deviation', u'Deviations'), ('car', u'CARs'))"
+             tal:attributes="aria-selected python:'true' if view.filter_type() == o[0] else 'false';
+                             href python:view.filter_url(type_=o[0])"
+             tal:content="python:o[1]">All</a>
         </nav>
       </div>
     </div>

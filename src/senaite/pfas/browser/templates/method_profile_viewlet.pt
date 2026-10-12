@@ -7,7 +7,7 @@
     .pfas-mlink-label { font-size:var(--fs-xs); font-weight:700; letter-spacing:.05em;
       text-transform:uppercase; color:var(--s-secondary); }
     .pfas-mlink-title { font-size:var(--fs-md); font-weight:700; color:var(--s-body); margin-top:2px; }
-    .pfas-mlink-id { font-family: var(--font-mono); font-size:var(--fs-xs); color: var(--s-primary-dk); background:#fff;
+    .pfas-mlink-id { font-family: var(--font-mono); font-size:var(--fs-xs); color: var(--s-primary-dk); background: var(--surface-raised);
       border:1px solid var(--s-border); padding:1px 6px; border-radius:3px; margin-left:6px; }
     .pfas-mlink-meta { font-size:var(--fs-sm); color:var(--s-secondary); margin-top:3px; }
     .pfas-mlink-btn { background:var(--s-primary-dk); color:#fff; text-decoration:none; font-weight:600;

@@ -1,105 +1,305 @@
 # -*- coding: utf-8 -*-
 """
-@@pfas-system-map — an interactive system map. Renders the 3-layer architecture
-diagram (user entry points → add-on parts → core SENAITE services) as inline
-SVG whose bubbles are clickable links to the corresponding page, so users can
-jump straight to the screen they need to edit.
+@@pfas-system-map -- the lab's live model as a tree (system_map_data.py),
+drawn with d3 (static/system_map.js): methods, their matrices, the recent
+worksheets of each, their stages, samples and results, and the lots those
+worksheets used, with the cross-links between them.
 
-The SVG is generated with portal-relative <a> links baked in (native SVG
-navigation, no JS). Layout mirrors senaite_pfas_map.svg.
+@@pfas-system-map-data?node=<id> answers one level (the node's children) as
+JSON; nothing loads until a node is opened. Staff only: the map names
+samples, worksheets and lots. Read-only.
 
 Python 2.7 compatible.
 """
 from __future__ import absolute_import, print_function, unicode_literals
 
+import json
+import logging
+import os
+import sqlite3
+from datetime import datetime, timedelta
+
 from Products.CMFCore.utils import getToolByName
 from Products.Five.browser import BrowserView
 from Products.Five.browser.pagetemplatefile import ViewPageTemplateFile
+
+from senaite.pfas import system_map_data as smd
 from senaite.pfas.browser.formutil import flatten_form
 
+logger = logging.getLogger("senaite.pfas.system_map")
 
-# ── Layout constants (match gen_svg / senaite_pfas_map.svg) ───────────────────
-W, H = 1660, 980
-Y_ENTRY, Y_ADDON, Y_CORE = 150, 470, 800
-NH = 62
-COLS, X0, GAP = 8, 34, 12
-CW = (W - 2 * X0 - (COLS - 1) * GAP) / float(COLS)
+QC_DB = os.environ.get("PFAS_QC_DB", "/data/qc/pfas_qc_results.db")
+OPEN_STATES = ("open", "attachment_due", "to_be_verified")
 
-C = {
-    "entry": "#e8f0fe", "entryS": "#3b6fb0",
-    "addon": "#d7ecf3", "addonS": "#387493",
-    "master": "#cbe6d3", "masterS": "#2e7d32",
-    "new": "#fff8e1", "newS": "#c9a227",
-    "core": "#eceff1", "coreS": "#607d8b",
-    "defect": "#fdecea", "defectS": "#c62828",
-    "body": "#293333", "sub": "#5b6b6b",
-}
-
-# id: (col, span, row_offset, band, title, sub, kind, nav)
-#   band: e/a/c   row_offset: 0 = main row, 1 = second row
-#   nav: portal-relative path (or None = not clickable)
-NODES = [
-    # ── ENTRY POINTS ──
-    ("setup",  0,   1.4, 0, "e", "Method & Analyte Setup", "Manager",            "entry", "@@lims-setup?section=methods"),
-    ("bench",  1.5, 1.2, 0, "e", "Bench",                  "Bench Chemist",      "entry", "@@pfas-reagents"),
-    ("sample", 2.8, 1.2, 0, "e", "Sample Workflow",        "Manager/Analyst",    "entry", "samples"),
-    ("qc",     4.1, 1.2, 0, "e", "QC Management",          "Manager/QAO",        "entry", "@@pfas-qc-management"),
-    ("review", 5.4, 1.2, 0, "e", "Data Review",            "Analyst",            "entry", "@@pfas-data-review"),
-    ("report", 6.7, 1.3, 0, "e", "Reporting & EDD",        "Manager/Analyst",    "entry", "@@pfas-edd-config"),
-    ("facil",  1.5, 1.2, 1, "e", "Facility QC",            "Manager/QAO",        "entry", "@@pfas-facility-qc"),
-    ("instr",  2.8, 1.2, 1, "e", "Instrument & Import",    "Manager/Analyst",    "entry", "@@pfas-import-studio"),
-    ("client", 6.7, 1.3, 1, "e", "Client Tracker",         "Client (no login)",  "entry", "@@pfas-track"),
-    # ── ADD-ON PARTS ──
-    ("analyte", 0,   1.4, 0, "a", "analyte_reference  ★", "MASTER: analytes·CAS·IS·matrices", "master", "@@pfas-setup-references"),
-    ("mps",     1.5, 1.6, 0, "a", "method_profile_store",  "METHOD PROFILE hub", "addon", "@@pfas-method-profiles"),
-    ("reag",    3.2, 1.1, 0, "a", "reagents + prep_std",   "3-level traceability", "addon", "@@pfas-reagents"),
-    ("qcs",     4.4, 1.1, 0, "a", "qc.rules + qc.store",   "toggles + results DB", "addon", "@@pfas-qc-rules"),
-    ("edd",     6.8, 1.2, 0, "a", "EDD engine",  "profiles · builder · CAS overlay", "addon", "@@pfas-edd-config"),
-    ("logbk",   1.5, 1.1, 1, "a", "logbook_store",         "FM-ENV logbooks",    "addon", "@@pfas-logbook-admin"),
-    ("facmod",  2.7, 1.1, 1, "a", "facility_qc",           "SQLite readings",    "addon", "@@pfas-facility-qc"),
-    ("import",  3.9, 1.1, 1, "a", "import_studio",         "instrument mappings", "addon", "@@pfas-import-studio"),
-    ("chart",   5.1, 1.1, 1, "a", "control_chart",         "Westgard control charts", "addon", "@@pfas-control-chart"),
-    ("track",   6.8, 1.2, 1, "a", "tracking_store",        "client tracker backend", "addon", "@@pfas-track"),
-    # ── CORE SENAITE SERVICES ──
-    ("svc",    0,   1.2, 0, "c", "AnalysisService",  "analyte identity·keyword", "core", "bika_setup/bika_analysisservices"),
-    ("stype",  1.3, 1.1, 0, "c", "SampleType",       "matrix identity",    "core", "setup/sampletypes"),
-    ("batch",  2.5, 1.0, 0, "c", "Batch",            "method × matrix", "core", "batches"),
-    ("ws",     3.5, 1.0, 0, "c", "Worksheet",        "analytical unit",    "core", "worksheets"),
-    ("refdef", 5.7, 1.1, 0, "c", "ReferenceDefinition", "QC controls",     "core", "bika_setup/bika_referencedefinitions"),
-    ("cat",    6.8, 1.2, 0, "c", "senaite catalogs", "+ snapshot / audit log", "core", None),
-]
-
-# edges: (from, to, kind)  kind: e2a / a2c / new / ref
-EDGES = [
-    ("setup", "analyte", "e2a"), ("setup", "mps", "e2a"),
-    ("bench", "reag", "e2a"), ("bench", "logbk", "e2a"),
-    ("sample", "mps", "e2a"),
-    ("qc", "qcs", "e2a"), ("qc", "mps", "e2a"), ("qc", "chart", "e2a"),
-    ("review", "qcs", "e2a"), ("review", "reag", "e2a"),
-    ("report", "edd", "e2a"),
-    ("facil", "facmod", "e2a"), ("instr", "import", "e2a"), ("client", "track", "e2a"),
-    ("analyte", "mps", "ref"), ("mps", "edd", "ref"),
-    ("qcs", "chart", "ref"),
-    ("analyte", "svc", "a2c"), ("analyte", "stype", "a2c"),
-    ("mps", "svc", "a2c"), ("mps", "stype", "a2c"),
-    ("reag", "batch", "a2c"), ("edd", "batch", "a2c"), ("edd", "cat", "a2c"),
-    ("qcs", "refdef", "a2c"), ("track", "ws", "a2c"), ("reag", "ws", "a2c"),
-]
-
-_EDGE_STYLE = {
-    "e2a":   ("#3b6fb0", "aE", 2.2, ""),
-    "a2c":   ("#387493", "aA", 2.2, ""),
-    "new":   ("#c9a227", "aN", 2.6, ""),
-    "live2": ("#c9a227", "aN", 2.8, ""),   # bidirectional (double-headed)
-    "ref":   ("#8a9ba8", "aR", 1.6, ' stroke-dasharray="5 4"'),
-}
+# The worksheet index (method, matrix, samples per recent worksheet) is
+# shared by every request for INDEX_SECONDS: opening one node after another
+# must not walk every worksheet each time. A map a minute or two old is the
+# price, as for the Bench queue's method cache.
+_INDEX = {}
+INDEX_SECONDS = 120
 
 
-def _esc(s):
-    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+class _MapData(object):
+    """Gathers what the nodes are made from, once per request."""
+
+    def __init__(self, context, request):
+        self.context = context
+        self.request = request
+        self.portal = getToolByName(context, "portal_url").getPortalObject()
+        self.purl = self.portal.absolute_url()
+        self._methods = None
+        self._worksheets = None
+        self._uses = None
+
+    # ── methods ──────────────────────────────────────────────────────────
+    def methods(self):
+        if self._methods is None:
+            from senaite.pfas.method_profile_store import get_profile, list_method_ids
+            from senaite.pfas import method_revisions as mr
+            out = []
+            for mid in list_method_ids(self.portal):
+                p = get_profile(self.portal, mid) or {}
+                try:
+                    recs = mr.records(self.portal, mid)
+                    rev = (u"issued r%s" % max(r.get("rev", 0) for r in recs)) if recs else u"not issued"
+                except Exception:                           # noqa: BLE001
+                    rev = u""
+                out.append({"id": mid, "label": p.get("display_name") or mid,
+                            "matrices": list(p.get("supported_matrices") or []),
+                            "url": u"%s/@@pfas-method-profile-edit?method_id=%s" % (self.purl, mid),
+                            "revision": rev})
+            self._methods = out
+        return self._methods
+
+    def method(self, mid):
+        for m in self.methods():
+            if m["id"] == mid:
+                return m
+        return None
+
+    # ── worksheets: open, or closed within RECENT_DAYS ─────────────────────
+    def _run_methods(self):
+        try:
+            conn = sqlite3.connect(QC_DB)
+            try:
+                return dict((r[0], r[1]) for r in conn.execute("SELECT batch_id, method FROM batches"))
+            finally:
+                conn.close()
+        except Exception:                                   # noqa: BLE001
+            return {}
+
+    def worksheets(self):
+        if self._worksheets is not None:
+            return self._worksheets
+        import time
+        key = "/".join(self.portal.getPhysicalPath())
+        hit = _INDEX.get(key)
+        if hit is not None and time.time() - hit[1] < INDEX_SECONDS:
+            self._worksheets = hit[0]
+            return hit[0]
+        self._worksheets = self._index()
+        _INDEX[key] = (self._worksheets, time.time())
+        return self._worksheets
+
+    def _known_method(self, ws, session, run_methods):
+        """The worksheet's method from what is already recorded: its
+        extraction, its processed run, or the Bench queue's cache. Never the
+        full resolver (it walks every analysis: tens of seconds for a lab's
+        open worksheets); a worksheet with none of these shows under
+        "Method not resolved"."""
+        from bika.lims import api
+        from senaite.pfas.browser import extraction_guide as eg
+        mid = session.get("method_id") or run_methods.get(ws.getId())
+        if not mid:
+            hit = eg._METHOD_CACHE.get(api.get_uid(ws))
+            mid = hit[0] if hit else u""
+        return mid or u""
+
+    def _sample_types(self):
+        from bika.lims import api
+        try:
+            return dict((b.UID, b.Title) for b in api.search({"portal_type": "SampleType"}, "senaite_catalog_setup"))
+        except Exception:                                   # noqa: BLE001
+            return {}
+
+    def _analyses(self, query):
+        """Routine analyses as catalog brains: no sample or analysis is
+        opened to draw the map."""
+        from bika.lims import api
+        q = dict(query, portal_type="Analysis")
+        return api.search(q, "senaite_catalog_analysis")
+
+    def _index(self):
+        """One row per recent worksheet, from the worksheet and analysis
+        catalogs; a worksheet object is opened only to read its extraction's
+        method when no processed run names it."""
+        from bika.lims import api
+        from senaite.pfas.browser.extraction_guide import _load_session
+        since = datetime.now() - timedelta(days=smd.RECENT_DAYS)
+        run_methods = self._run_methods()
+        types = self._sample_types()
+        out = []
+        for brain in api.search({"portal_type": "Worksheet"}, "senaite_catalog_worksheet"):
+            # the catalog search is the person's own: a worksheet they
+            # cannot see is not listed
+            state = brain.review_state
+            created = brain.created
+            try:
+                recent = created is not None and created.asdatetime().replace(tzinfo=None) >= since
+            except Exception:                               # noqa: BLE001
+                recent = False
+            if state not in OPEN_STATES and not recent:
+                continue
+            try:
+                ws_id = brain.getId
+                mid = run_methods.get(ws_id) or u""
+                analyst = u""
+                if not mid:
+                    ws = brain.getObject()
+                    session = _load_session(ws)
+                    mid = self._known_method(ws, session, run_methods)
+                    analyst = session.get("analyst") or u""
+                an = self._analyses({"getWorksheetUID": brain.UID})
+                samples = set(x.getRequestID for x in an)
+                m = self.method(mid)
+                matrix = smd.matrix_of(m["matrices"] if m else [],
+                                       [types.get(x.getSampleTypeUID, u"") for x in an])
+                out.append({"id": ws_id, "uid": brain.UID, "state": state, "url": brain.getURL(),
+                            "method": mid, "matrix": matrix, "analyst": analyst,
+                            "samples": len(samples),
+                            "created": created.strftime("%Y-%m-%d") if created else u""})
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("system map: worksheet %s: %s", brain.getId, exc)
+        return out
+
+    def uses(self):
+        if self._uses is None:
+            from senaite.pfas import inventory_ledger as led
+            try:
+                self._uses = led.uses_for_batches(None, [w["id"] for w in self.worksheets()])
+            except Exception as exc:                        # noqa: BLE001
+                logger.warning("system map: usage ledger: %s", exc)
+                self._uses = []
+        return self._uses
+
+    # ── one level ────────────────────────────────────────────────────────
+    def root(self):
+        """The lab and its first level, from the catalog alone: no worksheet
+        is opened until a method is."""
+        from bika.lims import api
+        try:
+            n_open = len(api.search({"portal_type": "Worksheet", "review_state": list(OPEN_STATES)},
+                                    "senaite_catalog_worksheet"))
+        except Exception:                                   # noqa: BLE001
+            n_open = u""
+        lab = smd.node(u"lab", self._lab_name(), "lab", sub=u"Laboratory", has_children=True,
+                       facts=[(u"Methods", len(self.methods())), (u"Open worksheets", n_open)])
+        return {"node": lab, "children": smd.lab_children(self.methods(), None)}
+
+    def _lab_name(self):
+        try:
+            ps = self.context.restrictedTraverse("@@pfas-macros").print_settings()
+            return ps.get("lab_name") or u"Laboratory"
+        except Exception:                                   # noqa: BLE001
+            return u"Laboratory"
+
+    def children(self, nid):
+        nid = nid or u"lab"
+        if nid == u"lab":
+            return smd.lab_children(self.methods(), None)
+        if nid == u"unresolved":
+            links = smd.ws_lot_links(self.uses())
+            rows = [dict(w, lots=links.get(w["id"], [])) for w in self.worksheets()
+                    if not self.method(w["method"])]
+            return smd.matrix_children(rows, nid)
+        if nid.startswith(u"m:"):
+            m = self.method(nid[2:])
+            if m is None:
+                return []
+            counts = {}
+            for w in self.worksheets():
+                if w["method"] == m["id"]:
+                    counts[w["matrix"]] = counts.get(w["matrix"], 0) + 1
+            return smd.method_children(m, counts, m["url"])
+        if nid.startswith(u"mx:"):
+            mid, _sep, mx = nid[3:].partition(u"|")
+            links = smd.ws_lot_links(self.uses())
+            rows = [dict(w, lots=links.get(w["id"], [])) for w in self.worksheets()
+                    if w["method"] == mid and w["matrix"] == mx]
+            return smd.matrix_children(rows, nid)
+        if nid.startswith(u"ws:"):
+            return self._worksheet_children(nid[3:])
+        if nid.startswith(u"s:"):
+            return self._sample_children(nid[2:])
+        if nid == u"lots":
+            return [smd.lot_node(l, has_parents=l["kind"] == u"prepared_standard", url=self._lot_url(l))
+                    for l in smd.lots_from_uses(self.uses())][:smd.MAX_CHILDREN]
+        if nid.startswith(u"lot:prepared_standard:"):
+            return self._parent_lots(nid.split(u":", 2)[2])
+        return []
+
+    def _lot_url(self, lot):
+        return u"%s/@@pfas-lot-usage?kind=%s&uid=%s" % (self.purl, lot["kind"], lot["uid"])
+
+    def _worksheet_children(self, ws_id):
+        from bika.lims import api
+        from senaite.pfas.browser.sample_status import _build_stage_steps, _compute_stage
+        row = ([w for w in self.worksheets() if w["id"] == ws_id] or [None])[0]
+        folder = self.portal.get("worksheets")
+        ws = folder.get(ws_id) if folder is not None else None
+        if ws is None:
+            return []
+        try:
+            steps = _build_stage_steps(_compute_stage(ws)[0])
+        except Exception:                                   # noqa: BLE001
+            steps = []
+        an = self._analyses({"getWorksheetUID": row["uid"] if row else api.get_uid(ws)})
+        per = {}
+        for x in an:
+            rec = per.setdefault(x.getRequestID, {"id": x.getRequestID, "url": x.getRequestURL,
+                                                  "results": 0, "csid": u"", "state": u""})
+            if (x.getResult or u"") != u"":
+                rec["results"] += 1
+        if per:
+            for sb in api.search({"portal_type": "AnalysisRequest", "getId": list(per)}, "senaite_catalog_sample"):
+                if sb.getId in per:
+                    per[sb.getId]["state"] = sb.review_state
+                    per[sb.getId]["csid"] = getattr(sb, "getClientSampleID", u"") or u""
+        review = u"%s/@@pfas-data-review?batch_id=%s" % (self.purl, ws_id)
+        return smd.worksheet_children(ws_id, steps, [per[k] for k in sorted(per)], review)
+
+    def _sample_children(self, sample_id):
+        out = []
+        for x in self._analyses({"getRequestID": sample_id}):
+            if (x.getResult or u"") == u"":
+                continue
+            out.append({"keyword": x.getKeyword, "title": x.Title, "result": x.getResult,
+                        "unit": x.getUnit or u"", "state": x.review_state, "url": x.getRequestURL})
+        return smd.sample_children(sample_id, sorted(out, key=lambda r: r["title"] or u""))
+
+    def _parent_lots(self, ps_uid):
+        from senaite.pfas.browser import prepared_standards as ps
+        rec = ps._get(self.portal, ps_uid) or {}
+        out = []
+        for parent in rec.get("parent_reagents") or []:
+            try:
+                obj, kind = ps._resolve_lot(self.portal, parent)
+            except Exception:                               # noqa: BLE001
+                obj, kind = None, None
+            if obj is None:
+                out.append(smd.node(u"lot:unresolved:%s" % (parent.get("lot") or parent.get("name") or u"?"),
+                                    parent.get("lot") or parent.get("name") or u"?", "lot",
+                                    sub=u"Parent lot not found", badge=u"unresolved", badge_kind=u"badge-expired"))
+                continue
+            k = u"prepared_standard" if kind == ps.KIND_PREPARED else u"reagent"
+            lot = {"id": smd.lot_id(k, obj.getId()), "kind": k, "uid": obj.getId(),
+                   "lot": getattr(obj, "lot_number", u"") or u"", "name": obj.Title(), "worksheets": []}
+            out.append(smd.lot_node(lot, has_parents=k == u"prepared_standard", url=self._lot_url(lot)))
+        return out
 
 
 class PFASSystemMapView(BrowserView):
+
     template = ViewPageTemplateFile("templates/system_map.pt")
 
     def __call__(self):
@@ -107,124 +307,39 @@ class PFASSystemMapView(BrowserView):
         return self.template()
 
     def portal_url(self):
-        return getToolByName(self.context, "portal_url").getPortalObject().absolute_url()
+        return getToolByName(self.context, "portal_url")()
 
-    # ── geometry helpers ──
-    def _x(self, col, span):
-        x = X0 + col * (CW + GAP)
-        return x, x + span * CW + (span - 1) * GAP
+    def data_url(self):
+        return self.portal_url() + u"/@@pfas-system-map-data"
 
-    def _layout(self):
-        band_y = {"e": Y_ENTRY, "a": Y_ADDON, "c": Y_CORE}
-        pos = {}
-        for nid, col, span, roff, band, title, sub, kind, nav in NODES:
-            x0, x1 = self._x(col, span)
-            y = band_y[band] + roff * 86
-            pos[nid] = {
-                "x": x0, "w": x1 - x0, "y": y, "cx": (x0 + x1) / 2.0,
-                "cy": y + NH / 2.0, "title": title, "sub": sub, "kind": kind,
-                "nav": nav,
-            }
-        return pos
+    def root(self):
+        if not hasattr(self, "_root"):
+            try:
+                self._root = _MapData(self.context, self.request).root()
+            except Exception as exc:                        # noqa: BLE001
+                logger.exception("system map root: %s", exc)
+                self._root = {"node": smd.node(u"lab", u"Laboratory", "lab"), "children": []}
+        return self._root
 
-    def map_svg(self):
-        purl = self.portal_url()
-        pos = self._layout()
-        out = []
-        out.append(
-            '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
-            'viewBox="0 0 %d %d" width="100%%" height="auto" class="pfas-map-svg" '
-            'font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif">' % (W, H))
-        for mid, col in [("aE", "#3b6fb0"), ("aA", "#387493"), ("aN", "#c9a227"), ("aR", "#8a9ba8")]:
-            # amber marker doubles as a start-arrow (reversed) for two-way edges
-            orient = "auto-start-reverse" if mid == "aN" else "auto"
-            out.append('<marker id="%s" markerWidth="9" markerHeight="9" refX="7" refY="3" '
-                       'orient="%s"><path d="M0,0L7,3L0,6Z" fill="%s"/></marker>' % (mid, orient, col))
+    def root_json(self):
+        from senaite.pfas.document_templates import script_json
+        return script_json(self.root())
 
-        # band labels + separators
-        for lbl, y in [("USER ENTRY POINTS  ·  role workspaces", Y_ENTRY - 16),
-                       ("SENAITE.PFAS ADD-ON PARTS", Y_ADDON - 16),
-                       ("CORE SENAITE SERVICES", Y_CORE - 16)]:
-            out.append('<text x="34" y="%d" font-size="12.5" font-weight="700" '
-                       'letter-spacing="1.5" fill="#9aa7b0">%s</text>' % (y, lbl))
-        for y in (Y_ENTRY - 30, Y_ADDON - 30, Y_CORE - 30):
-            out.append('<line x1="30" y1="%d" x2="%d" y2="%d" stroke="#eef1f3" stroke-width="1"/>'
-                       % (y, W - 30, y))
 
-        # ── edges: port-spread + vertical-stub routing (declutters crossings) ──
-        SAME = 6.0
-        # assign a spread-out "port" on each node edge so multiple edges from one
-        # node don't stack at its centre; order ports by the other end's x.
-        down_out, down_in, up_out, up_in = {}, {}, {}, {}
-        for idx, (f, t, kind) in enumerate(EDGES):
-            nf, nt = pos[f], pos[t]
-            dy = nf["cy"] - nt["cy"]
-            if abs(dy) < SAME:
-                continue
-            if dy < 0:
-                down_out.setdefault(f, []).append((nt["cx"], idx))
-                down_in.setdefault(t, []).append((nf["cx"], idx))
-            else:
-                up_out.setdefault(f, []).append((nt["cx"], idx))
-                up_in.setdefault(t, []).append((nf["cx"], idx))
+class PFASSystemMapDataView(BrowserView):
+    """@@pfas-system-map-data?node=<id> -> {"node", "children"} as JSON."""
 
-        def _port_x(node, sibs, idx):
-            order = sorted(sibs)
-            n = len(order)
-            if n <= 1:
-                return node["cx"]
-            k = [i for i, (_, ei) in enumerate(order) if ei == idx][0]
-            lo, hi = node["x"] + node["w"] * 0.24, node["x"] + node["w"] * 0.76
-            return lo + (hi - lo) * k / float(n - 1)
-
-        for idx, (f, t, kind) in enumerate(EDGES):
-            col, mk, wdt, dash = _EDGE_STYLE[kind]
-            nf, nt = pos[f], pos[t]
-            dy = nf["cy"] - nt["cy"]
-            if abs(dy) < SAME:
-                # same band → connect nearest sides (clean horizontal S)
-                if nf["cx"] <= nt["cx"]:
-                    x1, y1, x2, y2 = nf["x"] + nf["w"], nf["cy"], nt["x"], nt["cy"]
-                else:
-                    x1, y1, x2, y2 = nf["x"], nf["cy"], nt["x"] + nt["w"], nt["cy"]
-                mx = (x1 + x2) / 2.0
-                d = "M%.0f,%.0f C%.0f,%.0f %.0f,%.0f %.0f,%.0f" % (x1, y1, mx, y1, mx, y2, x2, y2)
-            elif dy < 0:  # downward: source bottom → target top, vertical stubs
-                x1 = _port_x(nf, down_out[f], idx); y1 = nf["y"] + NH
-                x2 = _port_x(nt, down_in[t], idx);  y2 = nt["y"]
-                my = (y1 + y2) / 2.0
-                d = "M%.0f,%.0f C%.0f,%.0f %.0f,%.0f %.0f,%.0f" % (x1, y1, x1, my, x2, my, x2, y2)
-            else:  # upward: source top → target bottom
-                x1 = _port_x(nf, up_out[f], idx); y1 = nf["y"]
-                x2 = _port_x(nt, up_in[t], idx);  y2 = nt["y"] + NH
-                my = (y1 + y2) / 2.0
-                d = "M%.0f,%.0f C%.0f,%.0f %.0f,%.0f %.0f,%.0f" % (x1, y1, x1, my, x2, my, x2, y2)
-            start = ' marker-start="url(#%s)"' % mk if kind == "live2" else ''
-            out.append('<path d="%s" stroke="%s" stroke-width="%.1f" fill="none"%s '
-                       'marker-end="url(#%s)"%s opacity="0.85"/>' % (d, col, wdt, dash, mk, start))
-
-        # nodes (clickable ones wrapped in <a>)
-        kmap = {"entry": ("entry", "entryS"), "addon": ("addon", "addonS"),
-                "master": ("master", "masterS"), "new": ("new", "newS"),
-                "core": ("core", "coreS"), "defect": ("defect", "defectS")}
-        for nid, n in pos.items():
-            fill, strk = kmap[n["kind"]]
-            sw = "2.4" if n["kind"] in ("master", "new") else "1.7"
-            g = []
-            g.append('<rect x="%.0f" y="%d" width="%.0f" height="%d" rx="9" fill="%s" '
-                     'stroke="%s" stroke-width="%s"/>' % (n["x"], n["y"], n["w"], NH, C[fill], C[strk], sw))
-            g.append('<text x="%.0f" y="%d" text-anchor="middle" font-size="13" '
-                     'font-weight="700" fill="%s">%s</text>' % (n["cx"], n["y"] + 26, C["body"], _esc(n["title"])))
-            if n["sub"]:
-                g.append('<text x="%.0f" y="%d" text-anchor="middle" font-size="10" fill="%s">%s</text>'
-                         % (n["cx"], n["y"] + 44, C["sub"], _esc(n["sub"])))
-            grp = '<g class="node%s">%s</g>' % (" clickable" if n["nav"] else "", "".join(g))
-            if n["nav"]:
-                href = _esc("%s/%s" % (purl, n["nav"]))
-                out.append('<a xlink:href="%s" href="%s" target="_top"><title>Open: %s</title>%s</a>'
-                           % (href, href, _esc(n["title"]), grp))
-            else:
-                out.append(grp)
-
-        out.append('</svg>')
-        return "".join(out)
+    def __call__(self):
+        flatten_form(self.request)
+        from senaite.pfas.browser.perms import is_staff, refuse
+        self.request.response.setHeader("Content-Type", "application/json")
+        if not is_staff(self.context):
+            return refuse(self.request, json.dumps({"error": "Staff only."}))
+        nid = (self.request.form.get("node") or u"lab").strip()
+        try:
+            children = _MapData(self.context, self.request).children(nid)
+        except Exception as exc:                            # noqa: BLE001
+            logger.exception("system map node %s", nid)
+            self.request.response.setStatus(500)
+            return json.dumps({"error": "The map could not be read: %s" % exc})
+        return json.dumps({"node": nid, "children": children})

@@ -1,0 +1,215 @@
+/* ============================================================================
+ * pfas-print.css -- the look of a controlled document on paper.
+ * ----------------------------------------------------------------------------
+ * One source for every printed record: the browser print of a logbook, SOP,
+ * receipt or label sheet (linked by the page macro and the standalone print
+ * templates) and the PDFs WeasyPrint draws inside the SENAITE container
+ * (extraction log, method study, settings report, certificate, QC review).
+ *
+ * WeasyPrint 0.42 has no custom properties, so tools/make_print_css.py writes
+ * this file out with every var(--x) resolved from pfas-tokens.css into
+ * senaite/pfas/print_style.py; tests/test_print_style.py fails when the two
+ * differ. Keep to what WeasyPrint 0.42 draws: tables for layout (no grid, no
+ * flex), px and pt lengths, no calc().
+ *
+ * A flag (amber, coral) is never colour alone: it is a text label with a shape
+ * beside it, so a greyscale copy reads the same.
+ * ========================================================================== */
+/* every page: margins and the footer boxes; the text of the left one (document,
+   revision, who printed it and when) is set per document beside this sheet */
+@page { margin: 16mm 15mm 18mm;
+        @bottom-left { width: 80%; font-family: var(--font-sans); font-size: 9px;
+                       color: var(--s-secondary); vertical-align: top; padding-top: 6px; }
+        @bottom-right { font-family: var(--font-sans); font-size: 9px; font-weight: 700;
+                        color: var(--s-secondary); vertical-align: top; padding-top: 6px;
+                        content: "Page " counter(page) " of " counter(pages); } }
+
+.pd { font-family: var(--font-sans); font-size: 12px; line-height: 17px; color: var(--s-body);
+      font-feature-settings: "tnum"; }
+.pd h1 { font-family: var(--font-heading); font-weight: 800; font-size: 22px; line-height: 28px;
+         margin: 0 0 10px; color: var(--s-body); }
+.pd h2 { font-family: var(--font-heading); font-weight: 700; font-size: 13px; line-height: 18px;
+         margin: 16px 0 6px; color: var(--s-primary-dk); text-transform: uppercase;
+         letter-spacing: .03em; page-break-after: avoid; }
+.pd h3 { font-family: var(--font-heading); font-weight: 700; font-size: 13px; line-height: 18px;
+         margin: 12px 0 4px; color: var(--s-body); page-break-after: avoid; }
+.pd h1:empty { display: none; }
+.pd p { margin: 0 0 6px; }
+.pd .pd-label { font-weight: 700; margin: 6px 0 2px; }
+.pd code { font-family: var(--font-mono); font-size: 11px; }
+.pd hr { border: 0; border-top: 1px solid var(--s-border); margin: 6px 0 10px; }
+.pd .newpage { page-break-before: always; }
+.pd .muted { color: var(--s-secondary); }
+
+/* tables: 1.5px header rule, 1px row rules. Any table inside a document takes
+   the look; the control block and the lab header (below) override it. */
+.pd table { width: 100%; border-collapse: collapse; margin: 2px 0 10px; }
+.pd th { text-align: left; font-weight: 700; font-size: 10px; line-height: 14px;
+         text-transform: uppercase; letter-spacing: .04em; color: var(--s-secondary);
+         border-bottom: 1.5px solid var(--s-body); padding: 4px 6px; vertical-align: bottom; }
+.pd td { border-bottom: 1px solid var(--s-border); padding: 4px 6px; vertical-align: top; }
+.pd tr { page-break-inside: avoid; }
+.pd .num { text-align: right; }
+.pd table.pd-kv th { width: 28%; text-transform: none; letter-spacing: 0; font-size: 11px;
+                     font-weight: 600; border-bottom: 1px solid var(--s-border); vertical-align: top; }
+.pd .pd-box { border: 1px solid var(--s-border); border-radius: 6px; padding: 6px 10px; margin: 0 0 10px; }
+.pd .btn-sm, .pd .btn-help, .pd .no-print { display: none; }
+
+/* the lab header: the mint rule */
+.pd table.pd-lab { border-bottom: 3px solid var(--s-primary); margin: 0 0 12px; }
+.pd table.pd-lab td { padding: 0 0 10px; vertical-align: middle; border: 0; }
+.pd-mark { display: inline-block; width: 36px; height: 36px; line-height: 36px; text-align: center;
+           border-radius: 8px; background: var(--s-primary-dk); color: var(--on-accent);
+           font-family: var(--font-heading); font-weight: 800; font-size: 16px; }
+.pd-logo { max-height: 40px; }
+.pd-lab-name { font-family: var(--font-heading); font-weight: 700; font-size: 16px; line-height: 20px; }
+.pd-lab-sub { color: var(--s-secondary); font-size: 11px; line-height: 15px; }
+
+/* the control block: document, revision, date, who printed it */
+.pd table.pd-ctl { border-collapse: separate; border-spacing: 0; margin: 0 0 14px;
+                   border: 1.5px solid var(--s-body); border-radius: 6px; }
+.pd table.pd-ctl td { padding: 5px 10px; vertical-align: top; border: 0;
+                      border-right: 1px solid var(--s-border); }
+.pd table.pd-ctl td:last-child { border-right: 0; }
+.pd-ctl small { display: block; font-size: 10px; line-height: 13px; letter-spacing: .04em;
+                text-transform: uppercase; color: var(--s-secondary); }
+.pd-ctl b { font-family: var(--font-heading); font-weight: 700; font-size: 13px; line-height: 18px; }
+
+/* flags: a label and a shape, never colour alone */
+.pd-flag { display: inline-block; border: 1.5px solid var(--s-body); border-radius: 3px; padding: 0 5px;
+           font-weight: 700; font-size: 10px; line-height: 15px; text-transform: uppercase;
+           letter-spacing: .03em; }
+.pd-flag-ok:before { content: "\2713\00a0"; }
+.pd-flag-warn { border-color: var(--s-warn-text); color: var(--s-warn-text); background: var(--s-warn-lt); }
+.pd-flag-warn:before { content: "\25B2\00a0"; }
+.pd-flag-fail { border: 2px solid var(--s-danger-dk); color: var(--s-danger-dk); background: var(--s-danger-lt); }
+.pd-flag-fail:before { content: "\25C6\00a0"; }
+.pd .pd-fail { color: var(--s-danger-dk); font-weight: 700; }
+.pd .pd-warn { color: var(--s-warn-text); font-weight: 700; }
+.pd .pd-ok { color: var(--s-success-text); font-weight: 700; }
+
+/* signatures */
+.pd table.pd-sign { margin-top: 10px; }
+.pd table.pd-sign td { border: 0; padding: 18px 8px 2px 0; font-size: 11px; color: var(--s-secondary); }
+.pd table.pd-sign td.line { border-bottom: 1px solid var(--s-body); width: 34%; }
+
+/* the settings report */
+.pd .sr-method { page-break-before: always; }
+.pd .sr-method:first-of-type { page-break-before: auto; }
+.pd .sr-stamp span { margin-right: 14px; }
+.pd .sr-intro, .pd .sr-meta { margin: 3px 0; }
+.pd .sr-table th { background: var(--s-light); }
+.pd .sr-how { color: var(--s-secondary); font-size: 10px; }
+.pd .sr-yes { color: var(--s-success-text); font-weight: 700; }
+.pd .sr-no { color: var(--s-danger-dk); font-weight: 700; }
+.pd .sr-warn { color: var(--s-warn-text); }
+.pd .sr-revision { font-family: var(--font-heading); font-size: 14px; font-weight: 700; margin: 2px 0 6px; }
+.pd .pd-note { font-size: 10px; color: var(--s-secondary); margin-top: 12px; }
+
+/* ---- the certificate (senaite.impress, drawn by WeasyPrint) ---------------
+   The sections keep impress's own row classes so its paginator places them. */
+.pfas-coa { font-family: var(--font-sans); font-size: 10px; color: var(--s-body); font-feature-settings: "tnum"; }
+.pfas-coa-lab { display: flex; align-items: flex-end; }
+.pfas-coa-sample { width: 100%; }
+.pfas-coa-head { width: 100%; display: flex; justify-content: space-between; align-items: flex-end;
+  border-bottom: 3px solid var(--s-primary); padding-bottom: 6px; margin-bottom: 8px; }
+.pfas-coa-head .lab { font-family: var(--font-heading); font-size: 15px; font-weight: 700; }
+.pfas-coa-head .sub { font-size: 9px; color: var(--s-secondary); margin-top: 2px; }
+.pfas-coa-head .doc { text-align: right; }
+.pfas-coa-head .doc .t { font-family: var(--font-heading); font-size: 14px; font-weight: 800; letter-spacing: .02em; }
+.pfas-coa-head img { max-height: 42px; max-width: 160px; margin-right: 10px; }
+.pfas-coa-info { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+.pfas-coa-info th { text-align: left; font-weight: 600; color: var(--s-secondary); width: 16%;
+  padding: 2px 6px 2px 0; white-space: nowrap; }
+.pfas-coa-info td { padding: 2px 10px 2px 0; width: 34%; }
+.pfas-coa-res { width: 100%; border-collapse: collapse; }
+.pfas-coa-res caption { caption-side: top; text-align: left; font-family: var(--font-heading);
+  font-weight: 700; font-size: 11px; padding: 4px 0; }
+.pfas-coa-res th { font-size: 9px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--s-secondary); border-bottom: 1.5px solid var(--s-body);
+  padding: 3px 5px; text-align: left; }
+.pfas-coa-res td { padding: 2px 5px; border-bottom: 1px solid var(--s-border); }
+.pfas-coa-res .num { text-align: right; white-space: nowrap; }
+.pfas-coa-res tr.det td.res { font-weight: 700; }
+.pfas-coa-qcstd { margin-top: 8px; }
+.pfas-coa-res tr.out td.st { font-weight: 700; color: var(--s-danger-dk); }
+.pfas-coa-res tr.out td.st:before { content: "\25C6\00a0"; }
+.pfas-coa-legend { font-size: 8.5px; color: var(--s-secondary); margin-top: 4px; }
+.pfas-coa-sample { margin-bottom: 12px; page-break-inside: auto; }
+.pfas-coa-foot { font-family: var(--font-sans); font-size: 8.5px; color: var(--s-secondary); }
+.pfas-coa-reg { margin-top: 8px; padding: 6px 8px; border: 1px solid var(--s-input-border); page-break-inside: avoid; }
+.pfas-coa-reg .h { font-family: var(--font-heading); font-weight: 700; font-size: 11px; margin-bottom: 3px; }
+.pfas-coa-reg .finding { margin: 2px 0; }
+.pfas-coa-reg .finding.exceeds { border-left: 3px solid var(--s-danger-dk); padding-left: 5px; }
+.pfas-coa-reg .finding.exceeds:before { content: "\25C6\00a0"; color: var(--s-danger-dk); }
+.pfas-coa-reg .finding.undetermined { border-left: 3px solid var(--s-warn-text); padding-left: 5px; }
+.pfas-coa-reg .finding.undetermined:before { content: "\25B2\00a0"; color: var(--s-warn-text); }
+.pfas-coa-reg .cite { color: var(--s-secondary); }
+.pfas-coa-reg .links { margin-top: 4px; }
+.pfas-coa-reg a { color: var(--s-info-text); }
+.pfas-coa-error { color: var(--s-danger-dk); font-weight: 700; }
+.pfas-coa-box { margin-top: 14px; padding: 8px 10px; border: 1px solid var(--s-input-border); page-break-inside: avoid; }
+.pfas-coa-box.scope { padding: 9px 11px; border: 2px solid var(--s-body); }
+.pfas-coa-box .bh { font-family: var(--font-heading); font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+.pfas-coa-box .bt { font-size: 10px; margin-bottom: 6px; }
+.pfas-coa-box table { width: 100%; font-size: 10px; border-collapse: collapse; }
+.pfas-coa-box td { vertical-align: top; padding: 3px 4px; }
+.pfas-coa-box td.code { width: 34px; font-weight: 700; }
+.pfas-coa-box td.dot { width: 14px; }
+.pfas-coa-box .bn { font-size: 9px; color: var(--s-secondary); margin-top: 5px; }
+.pfas-coa-box .affected { color: var(--s-secondary); margin-top: 2px; }
+.pfas-coa-stamp { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--s-border);
+  font-size: 10px; color: var(--s-secondary); text-align: center; }
+.qc-qualifier { font-size: .8em; font-weight: 600; vertical-align: super; margin-left: .15em;
+  color: var(--s-warn-text); white-space: nowrap; }
+
+/* the attestation: who prepared, verified and authorised the certificate */
+.pfas-coa-attestation { margin: 22px 0 6px; page-break-inside: avoid; }
+.pfas-coa-attestation .coa-att-title { font-family: var(--font-heading); font-size: 12px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--s-primary-dk);
+  border-bottom: 1.5px solid var(--s-body); padding-bottom: 4px; margin-bottom: 10px; }
+.pfas-coa-attestation .coa-att-id { float: right; font-family: var(--font-mono); font-weight: 600; }
+.pfas-coa-attestation table.coa-att-tbl { width: 100%; border-collapse: collapse; }
+.pfas-coa-attestation td { padding: 8px 8px; vertical-align: top; border-bottom: 1px solid var(--s-border); }
+.pfas-coa-attestation td.role { width: 110px; font-weight: 600; color: var(--s-secondary); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .03em; padding-top: 12px; }
+.pfas-coa-attestation .person { display: inline-block; min-width: 190px; margin: 0 22px 6px 0; vertical-align: bottom; }
+.pfas-coa-attestation .sig { max-height: 46px; max-width: 180px; display: block; margin-bottom: 2px; }
+.pfas-coa-attestation .sigline { height: 40px; border-bottom: 1px solid var(--s-body); width: 180px; margin-bottom: 2px; }
+.pfas-coa-attestation .nm { font-weight: 600; font-size: 12px; }
+.pfas-coa-attestation .jt { color: var(--s-secondary); font-size: 11px; }
+.pfas-coa-attestation .dt { color: var(--s-secondary); font-size: 11px; white-space: nowrap; }
+.pfas-coa-attestation table.coa-att-compact { width: 100%; border-collapse: collapse; }
+.pfas-coa-attestation table.coa-att-compact td { width: 33%; vertical-align: top; padding: 4px 8px 4px 0;
+  border-bottom: 0; font-size: 10px; }
+.pfas-coa-attestation table.coa-att-compact .role { font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .03em; color: var(--s-secondary); margin-bottom: 2px; }
+.pfas-coa-attestation .sig-sm { max-height: 26px; max-width: 120px; display: block; }
+.pfas-coa-attestation .coa-att-note { margin-top: 10px; font-size: 10px; color: var(--s-secondary); font-style: italic; }
+
+/* the QC review report (the reviewer's counterpart to the certificate) */
+.qcr { font-family: var(--font-sans); font-size: 11px; color: var(--s-body); font-feature-settings: "tnum"; }
+.qcr h1 { font-family: var(--font-heading); font-size: 18px; font-weight: 800; margin: 0 0 2px; }
+.qcr h2 { font-family: var(--font-heading); font-size: 12.5px; font-weight: 700; margin: 20px 0 6px;
+  padding-bottom: 3px; border-bottom: 1.5px solid var(--s-body); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--s-primary-dk); }
+.qcr .lead { font-size: 11px; color: var(--s-secondary); margin: 0 0 14px; }
+.qcr table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.qcr th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--s-secondary); border-bottom: 1.5px solid var(--s-body); padding: 4px 6px; }
+.qcr td { padding: 3px 6px; border-bottom: 1px solid var(--s-border); vertical-align: top; }
+.qcr .num { text-align: right; }
+.qcr .k { color: var(--s-secondary); width: 32%; }
+.qcr .pass { color: var(--s-success-text); font-weight: 700; }
+.qcr .pass:before { content: "\2713\00a0"; }
+.qcr .fail { color: var(--s-danger-dk); font-weight: 700; }
+.qcr .fail:before { content: "\25C6\00a0"; }
+.qcr .blocked { color: var(--s-warn-text); font-weight: 700; }
+.qcr .blocked:before { content: "\25B2\00a0"; }
+.qcr .muted { color: var(--s-secondary); }
+.qcr .why { color: var(--s-warn-text); font-size: 10px; }
+.qcr .note { background: var(--s-light); border-left: 3px solid var(--s-input-border);
+  padding: 7px 10px; font-size: 10px; color: var(--s-secondary); margin: 6px 0 12px; }
+.qcr .sect { page-break-inside: avoid; }
+.qcr .appendix { page-break-before: always; }
+.qcr .appendix td, .qcr .appendix th { font-size: 9px; padding: 2px 4px; }

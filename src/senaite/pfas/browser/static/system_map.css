@@ -1,0 +1,64 @@
+/* System map (@@pfas-system-map, system_map.js): the live model as a tree.
+   Nodes reuse the tree component's states (pfas-components.css .pfas-tree-*);
+   every colour is a token, so the dark theme follows. */
+
+.pfas-map-tools { margin-bottom: var(--sp-3); }
+.pfas-map-legend { display: flex; flex-wrap: wrap; gap: var(--sp-3); color: var(--text-muted); font-size: var(--fs-sm); }
+.pfas-map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.pfas-map-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.k-method    { background: var(--series-4); }
+.k-matrix    { background: var(--series-2); }
+.k-worksheet { background: var(--series-1); }
+.k-sample    { background: var(--series-5); }
+.k-lot       { background: var(--series-3); }
+.k-lab, .k-more { background: var(--text-muted); }
+
+.pfas-map { display: flex; flex-wrap: wrap; min-height: 620px; border: 1px solid var(--line); border-radius: var(--radius-card); overflow: hidden; background: var(--surface); }
+.pfas-map-view { position: relative; flex: 999 1 560px; min-width: 0; min-height: 620px; overflow: hidden; background: var(--surface-2); cursor: grab; }
+.pfas-map-view:active { cursor: grabbing; }
+.pfas-map-view:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.pfas-map-plane { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.pfas-map-plane svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.pfas-map-link { fill: none; stroke: var(--line-strong); stroke-width: 1.5; }
+.pfas-map-link.is-path { stroke: var(--accent); stroke-width: 2.5; }
+.pfas-map-cross { fill: none; stroke: var(--series-3); stroke-width: 2; stroke-dasharray: 6 5; }
+
+.pfas-map-node { position: absolute; box-sizing: border-box; width: 168px; height: 44px; padding: 0 12px 0 14px;
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 0;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface-raised);
+  color: var(--text); font: var(--fw-strong) var(--fs-sm)/17px var(--font-sans); text-align: left;
+  box-shadow: var(--shadow-card); cursor: pointer; overflow: hidden; }
+.pfas-map-node b { font-weight: var(--fw-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+.pfas-map-node small { font-weight: var(--fw-body); font-size: var(--fs-xs); line-height: 15px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+.pfas-map-node .pfas-map-edge { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+.pfas-map-node.is-path { border-color: var(--accent); background: var(--accent-soft); }
+.pfas-map-node.is-selected { border-color: var(--accent-text); background: var(--accent-text); color: var(--on-accent); }
+.pfas-map-node.is-selected small { color: var(--on-accent); opacity: .85; }
+.pfas-map-node.is-match { outline: 2px solid var(--s-info); outline-offset: 2px; }
+.pfas-map-node:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.pfas-map-tog { position: absolute; width: 24px; height: 24px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--line-strong); background: var(--surface-raised); color: var(--text-muted);
+  font: var(--fw-heading) var(--fs-sm)/20px var(--font-sans); text-align: center; cursor: pointer; }
+.pfas-map-tog:hover { color: var(--accent-text); border-color: var(--accent); }
+.pfas-map-tog[aria-busy="true"] { opacity: .5; }
+.pfas-map-xlabel { position: absolute; width: 190px; font-size: var(--fs-xs); color: var(--series-3); pointer-events: none; }
+
+.pfas-map-card { flex: 1 1 280px; max-width: 320px; box-sizing: border-box; padding: var(--sp-4) var(--sp-5);
+  border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--sp-3); background: var(--surface); }
+.pfas-map-card h3 { margin: 0; font: var(--fw-heading) var(--fs-lg)/1.3 var(--font-heading); word-break: break-word; }
+.pfas-map-kind { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-muted); font-size: var(--fs-sm); }
+.pfas-map-kind i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; background: var(--line-strong); }
+.pfas-map-card dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: var(--fs-sm); }
+.pfas-map-card dt { color: var(--text-muted); }
+.pfas-map-card dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-word; }
+.pfas-map-acts { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: auto; }
+.pfas-map-card [hidden] { display: none !important; }   /* .btn and .badge set a display */
+.pfas-map-fallback { padding: var(--sp-4); }
+.pfas-map-indent { padding-left: 36px; }
+
+@media (max-width: 900px) {
+  .pfas-map-card { max-width: none; border-left: 0; border-top: 1px solid var(--line); }
+}
+@media print { .pfas-map-tools, .pfas-map-card .pfas-map-acts { display: none; } }

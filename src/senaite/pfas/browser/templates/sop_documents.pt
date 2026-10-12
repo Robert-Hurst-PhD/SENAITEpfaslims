@@ -121,7 +121,7 @@
           <tr class="pfas-row-toggle"
               tal:define="sop_id_js python:sop['sop_id'].replace('-','_')"
               tal:attributes="onclick string:sopToggle('detail-${sop_id_js}')">
-            <td><strong tal:content="sop/sop_id">SOP-001</strong></td>
+            <td class="cell-nowrap"><strong tal:content="sop/sop_id">SOP-001</strong></td>
             <td tal:content="sop/title">Title</td>
             <td tal:content="sop/doc_type_label">SOP</td>
             <td tal:content="sop/category">—</td>

@@ -371,6 +371,14 @@ class PFASDeviationView(BrowserView):
     def filter_status(self):
         return self.request.form.get("filter_status", "")
 
+    def filter_url(self, status=None, type_=None):
+        """The list with one filter changed and the other kept (None keeps,
+        "" clears)."""
+        st = self.filter_status() if status is None else status
+        ty = self.filter_type() if type_ is None else type_
+        q = "&".join("%s=%s" % (k, v) for k, v in (("filter_status", st), ("filter_type", ty)) if v)
+        return "%s/@@pfas-deviations%s" % (self.portal_url(), ("?" + q) if q else "")
+
     def msg(self):
         return self.request.form.get("msg", "")
 
@@ -712,11 +720,8 @@ class PFASDeviationView(BrowserView):
 
         score   = dev.get("risk_score", 0)
         colour  = _risk_colour(score)
-        colour_css = {"green": "#28a745", "yellow": "#856404",
-                      "orange": "#d26b00", "red": "#721c24"}.get(colour, "#333")
-        bg_css  = {"green": "#d4edda", "yellow": "#fff3cd",
-                   "orange": "#ffe5cc", "red": "#f8d7da"}.get(colour, "#f0f0f0")
-
+        flag_cls = {"green": "pd-flag-ok", "yellow": "pd-flag-warn",
+                    "orange": "pd-flag-warn", "red": "pd-flag-fail"}.get(colour, "")
         if subtype == "retest":
             subject_line = "Sample Retest Notification"
             action_para = (
@@ -745,116 +750,85 @@ class PFASDeviationView(BrowserView):
         # 2026" is month-name- and locale-dependent on a controlled record.
         today_str = date.today().strftime("%Y-%m-%d")
 
+        from senaite.pfas import print_doc
+        dev_type = u"Corrective Action Report (CAR)" if dev.get("type") == "car" else u"Deviation"
+        printed_by = print_doc.current_user_label(self.context)
+        head = print_doc.head_html(
+            print_doc.print_settings(self.context), subject_line,
+            [(u"Reference", dev_id), (u"Type", dev_type), (u"Date", today_str),
+             (u"Event date", dev.get("event_date", u"")), (u"Printed by", printed_by)],
+            subtitle=u"Laboratory notification", logo=True)
+        css = print_doc.document_css(dev_id, None, printed_by, fonts=False)
+        purl = self._portal_url()
+        esc = print_doc.esc
+
         html = u"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>{subject} — {dev_id}</title>
+<title>{subject} \u2014 {dev_id}</title>
+<link rel="stylesheet" href="{purl}/++resource++senaite.pfas/pfas-tokens.css"/>
 <style>
-  body {{ font-family: Arial, sans-serif; font-size: 13px; color: #333;
-          max-width: 760px; margin: 40px auto; padding: 0 24px; }}
-  h1 {{ font-size: 18px; margin-bottom: 4px; }}
-  .header-bar {{ border-bottom: 2px solid #333; padding-bottom: 12px;
-                 margin-bottom: 20px; }}
-  .label {{ font-size: 11px; font-weight: 700; color: #666;
-            text-transform: uppercase; margin-bottom: 2px; }}
-  .meta-grid {{ display: grid; grid-template-columns: 1fr 1fr 1fr;
-                gap: 16px; margin: 16px 0; }}
-  .risk-badge {{ display: inline-block; padding: 4px 14px; border-radius: 8px;
-                 font-weight: 700; font-size: 12px;
-                 color: {colour_css}; background: {bg_css}; }}
-  .section {{ margin: 18px 0; }}
-  .section h2 {{ font-size: 14px; font-weight: 700; margin-bottom: 6px;
-                 border-bottom: 1px solid #ddd; padding-bottom: 4px; }}
-  ul {{ margin: 6px 0 6px 20px; }}
-  .sig-block {{ margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }}
-  .sig-line {{ border-top: 1px solid #333; padding-top: 6px; font-size: 11px; color: #666; }}
-  @media print {{
-    body {{ margin: 0; padding: 16px; }}
-    .no-print {{ display: none !important; }}
-  }}
+{css}
+  body {{ background: var(--s-bg); margin: 0; }}
+  .pd {{ max-width: 760px; margin: 32px auto; padding: 0 24px; }}
+  .preview-note {{ background: var(--s-warn-lt); color: var(--s-warn-text);
+                   border: 1px solid var(--s-warn-bd); padding: 10px 16px;
+                   border-radius: var(--radius); margin-bottom: 16px;
+                   font-size: var(--fs-sm); }}
+  .preview-note button {{ margin-left: 8px; padding: 3px 12px; cursor: pointer;
+                          border: 1px solid var(--s-warn-bd); border-radius: var(--radius);
+                          background: var(--s-bg); color: var(--s-warn-text);
+                          font-weight: 700; }}
+  @media print {{ .no-print {{ display: none !important; }} .pd {{ margin: 0; padding: 0; max-width: none; }} }}
 </style>
 </head>
-<body>
+<body class="pd">
 
-<div class="no-print" style="background:#fff3cd;padding:10px 16px;
-     border-radius:4px;margin-bottom:16px;font-size:12px;color:#856404">
-  &#9888; This is a preview. Use your browser&rsquo;s Print function (Ctrl+P / Cmd+P)
+<div class="no-print preview-note">
+  This is a preview. Use your browser&rsquo;s Print function (Ctrl+P / Cmd+P)
   to save as PDF or print.
-  <button type="button" onclick="window.print()" style="margin-left:8px;padding:3px 12px;
-  border:1px solid #ffdf7e;border-radius:4px;background:#fff;color:#856404;
-  font-weight:700;cursor:pointer">Print now</button>
+  <button type="button" onclick="window.print()">Print now</button>
 </div>
 
-<div class="header-bar">
-  <div class="label">Laboratory Notification</div>
-  <h1>{subject}</h1>
-  <div style="font-size:12px;color:#666;margin-top:4px">
-    Reference: <strong>{dev_id}</strong> &nbsp;&bull;&nbsp; Date: {today}
-  </div>
+{head}
+
+<div>
+  <span class="pd-flag {flag_cls}">Risk score {score} &mdash; {risk_label}</span>
 </div>
 
-<div class="meta-grid">
-  <div>
-    <div class="label">Non-conformance Type</div>
-    <div>{dev_type}</div>
-  </div>
-  <div>
-    <div class="label">Event Date</div>
-    <div>{event_date}</div>
-  </div>
-  <div>
-    <div class="label">Risk Assessment</div>
-    <div><span class="risk-badge">Score {score} — {risk_label}</span></div>
-  </div>
-</div>
+<h2>Event Description</h2>
+<p>{description}</p>
 
-<div class="section">
-  <h2>Event Description</h2>
-  <p>{description}</p>
-</div>
-
-<div class="section">
-  <h2>Affected Samples / Worksheets</h2>
-  {ws_list}
-</div>
+<h2>Affected Samples / Worksheets</h2>
+{ws_list}
 
 {action_para}
 
-<div class="section">
-  <p style="white-space:pre-wrap">{notif_text}</p>
-</div>
+<p style="white-space:pre-wrap">{notif_text}</p>
 
-<div class="section">
-  <h2>Corrective Action</h2>
-  <p>Our quality management team has investigated this non-conformance and
-  implemented corrective actions to prevent recurrence. A full corrective
-  action report is maintained in our quality management system (Ref: {dev_id}).</p>
-</div>
+<h2>Corrective Action</h2>
+<p>Our quality management team has investigated this non-conformance and
+implemented corrective actions to prevent recurrence. A full corrective
+action report is maintained in our quality management system (Ref: {dev_id}).</p>
 
-<div class="sig-block">
-  <div>
-    <div style="height:40px"></div>
-    <div class="sig-line">Quality Assurance Officer / Laboratory Director</div>
-  </div>
-  <div>
-    <div style="height:40px"></div>
-    <div class="sig-line">Date</div>
-  </div>
-</div>
+<table class="pd-sign"><tr>
+  <td class="line">Quality Assurance Officer / Laboratory Director</td>
+  <td style="width:6%"></td>
+  <td class="line">Date</td>
+</tr></table>
 
 </body>
 </html>""".format(
-            subject=subject_line,
-            dev_id=dev_id,
-            today=today_str,
-            dev_type="Corrective Action Report (CAR)" if dev.get("type") == "car" else "Deviation",
-            event_date=dev.get("event_date", ""),
+            subject=esc(subject_line),
+            dev_id=esc(dev_id),
+            purl=purl,
+            css=css,
+            head=head,
+            flag_cls=flag_cls,
             score=score,
             risk_label=_risk_label(score),
-            colour_css=colour_css,
-            bg_css=bg_css,
             description=dev.get("description", "").replace("<", "&lt;").replace(">", "&gt;"),
             ws_list=ws_list_html,
             action_para=action_para,

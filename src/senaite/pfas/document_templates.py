@@ -30,6 +30,14 @@ import hashlib
 import json
 import re
 
+try:
+    from senaite.pfas.print_style import PALETTE as _P
+except ImportError:                                          # loaded by path (tests)
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from print_style import PALETTE as _P
+
 KEY = "senaite.pfas.document_templates"
 
 # What a label can show, and the @@pfas-label URL parameter each comes from.
@@ -432,18 +440,18 @@ def inputs_for(kind, template, data):
 # placed without them (a starting layout, a scripted design) still renders.
 TABLE_DEFAULTS = {
     "showHead": True,
-    "tableStyles": {"borderColor": "#000000", "borderWidth": 0.3},
+    "tableStyles": {"borderColor": _P["s-body"], "borderWidth": 0.3},
     "headStyles": {"alignment": "left", "verticalAlignment": "middle", "fontSize": 13,
-                   "lineHeight": 1, "characterSpacing": 0, "fontColor": "#ffffff",
-                   "backgroundColor": "#2980ba", "borderColor": "",
+                   "lineHeight": 1, "characterSpacing": 0, "fontColor": _P["on-accent"],
+                   "backgroundColor": _P["s-primary-dk"], "borderColor": "",
                    "borderWidth": {"top": 0, "right": 0, "bottom": 0, "left": 0},
                    "padding": {"top": 5, "right": 5, "bottom": 5, "left": 5}},
     "bodyStyles": {"alignment": "left", "verticalAlignment": "middle", "fontSize": 13,
-                   "lineHeight": 1, "characterSpacing": 0, "fontColor": "#000000",
-                   "backgroundColor": "", "borderColor": "#888888",
+                   "lineHeight": 1, "characterSpacing": 0, "fontColor": _P["s-body"],
+                   "backgroundColor": "", "borderColor": _P["s-input-border"],
                    "borderWidth": {"top": 0.1, "right": 0.1, "bottom": 0.1, "left": 0.1},
                    "padding": {"top": 5, "right": 5, "bottom": 5, "left": 5},
-                   "alternateBackgroundColor": "#f5f5f5"},
+                   "alternateBackgroundColor": _P["s-light"]},
     "columnStyles": {},
 }
 

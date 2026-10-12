@@ -9,12 +9,12 @@
   <style>
     .lb-form { max-width: 1000px; }
     .lb-section { margin-bottom: 28px; }
-    .lb-section h3 { font-size: var(--fs-base); font-weight:var(--fw-heading); color: var(--s-dark);
+    .lb-section h3 { font-size: var(--fs-base); font-weight:var(--fw-heading); color: var(--text);
                      margin-bottom: 12px; padding-bottom: 6px;
                      border-bottom: 2px solid var(--s-border); }
     .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
     .lb-field { display: flex; flex-direction: column; }
-    .lb-field label { font-size: var(--fs-sm); font-weight:var(--fw-strong); color: var(--s-dark); margin-bottom: 3px; }
+    .lb-field label { font-size: var(--fs-sm); font-weight:var(--fw-strong); color: var(--text); margin-bottom: 3px; }
     .lb-input, .lb-select { padding: 7px 10px; font-size: var(--fs-base);
                               border: 1px solid var(--s-input-border); border-radius: 6px; }
     .lb-input-md { width: 180px; } .lb-input-lg { width: 260px; }
@@ -49,21 +49,13 @@
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
   </tal:r>
 
+  <tal:ctx metal:fill-slot="header-context">
+    <span class="pfas-chip"><b tal:content="view/batch_title">Batch</b><tal:m tal:condition="view/batch_method|nothing"><span class="pfas-chip-sep">&#183;</span><tal:x tal:replace="view/batch_method">Method</tal:x></tal:m></span>
+  </tal:ctx>
+
   <div metal:fill-slot="content">
   <div class="page-body">
 
-    <!-- Breadcrumb -->
-    <nav class="pfas-crumb is-inline" aria-label="Logbook">
-      <span>Lab</span>
-      <span class="pfas-crumb-sep">&#8250;</span>
-      <tal:m tal:condition="view/batch_method">
-        <span tal:content="view/batch_method">Method</span>
-        <span class="pfas-crumb-sep">&#8250;</span>
-      </tal:m>
-      <span tal:content="view/batch_title">Batch</span>
-      <span class="pfas-crumb-sep">&#8250;</span>
-      <strong class="pfas-crumb-here" tal:content="python:view.form_code('252')">FM-ENV-00x</strong>
-    </nav>
 
     <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>

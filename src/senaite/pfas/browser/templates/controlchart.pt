@@ -29,7 +29,7 @@
                 border-radius: 4px; padding: 8px 14px; min-width: 90px; text-align: center; }
     .stat-label { font-size: var(--fs-xs); color: var(--s-secondary); text-transform: uppercase;
                   letter-spacing: .04em; }
-    .stat-value { font-size: var(--fs-xl); font-weight: 700; color: var(--s-dark); }
+    .stat-value { font-size: var(--fs-xl); font-weight: 700; color: var(--text); }
     .stat-box.ok   { border-color: var(--s-info-bd); background: var(--s-info-lt); }
     .stat-box.warn { border-color: var(--s-warn-bd); background: var(--s-warn-lt); }
     .stat-box.rej  { border-color: var(--s-danger-bd); background: var(--s-danger-lt); }

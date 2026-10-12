@@ -16,6 +16,14 @@ Pure: Python 2.7 and 3.
 from __future__ import absolute_import, unicode_literals
 
 try:
+    from senaite.pfas.print_style import PALETTE as _P
+except ImportError:                                          # loaded by path (tests)
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from print_style import PALETTE as _P
+
+try:
     from senaite.pfas import coa_qc_standards as _qcs
     from senaite.pfas import doc_fields as _df
 except ImportError:                                         # loaded by path (tests)
@@ -486,7 +494,7 @@ def starter(width=210.0, height=297.0):
         _fixed("label_template_rev", "Template revision", right - 80, 28, 30, 5, **every),
         _t("template_rev", right - 50, 28, 50, 5, 9, "right", **every),
         dict({"name": "header_rule", "type": "line", "position": {"x": 10, "y": 34},
-              "width": wide, "height": 0.4, "readOnly": True, "color": "#222222"}, **every),
+              "width": wide, "height": 0.4, "readOnly": True, "color": _P["s-body"]}, **every),
     ]
     block = []
     pairs = [("Client", "client", "Lab sample ID", "sample_id"),
@@ -510,12 +518,12 @@ def starter(width=210.0, height=297.0):
              "pfasColumns": list(cols),
              "content": "[]",
              # the standard certificate's table: small, black on white, ruled
-             "tableStyles": {"borderColor": "#222222", "borderWidth": 0.2},
-             "headStyles": {"fontSize": 6.5, "fontColor": "#222222", "backgroundColor": "",
-                            "borderColor": "#222222",
+             "tableStyles": {"borderColor": _P["s-body"], "borderWidth": 0.2},
+             "headStyles": {"fontSize": 6.5, "fontColor": _P["s-body"], "backgroundColor": "",
+                            "borderColor": _P["s-body"],
                             "borderWidth": {"top": 0.3, "right": 0, "bottom": 0.3, "left": 0},
                             "padding": {"top": 1.5, "right": 1.5, "bottom": 1.5, "left": 1.5}},
-             "bodyStyles": {"fontSize": 7, "borderColor": "#dddddd", "alternateBackgroundColor": "",
+             "bodyStyles": {"fontSize": 7, "borderColor": _P["s-border"], "alternateBackgroundColor": "",
                             "borderWidth": {"top": 0, "right": 0, "bottom": 0.1, "left": 0},
                             "padding": {"top": 1, "right": 1.5, "bottom": 1, "left": 1.5}}}
     flow = []
@@ -560,7 +568,7 @@ def starter(width=210.0, height=297.0):
              _t("authorized_by", 40, y, wide - 30, 5)]
     footer = [
         dict({"name": "footer_rule", "type": "line", "position": {"x": 10, "y": height - 17},
-              "width": wide, "height": 0.3, "readOnly": True, "color": "#999999"}, **every),
+              "width": wide, "height": 0.3, "readOnly": True, "color": _P["s-input-border"]}, **every),
         _t("stamp", 10, height - 15, wide - 50, 5, 7, **every),
         _fixed("pager", "Page {currentPage} of {totalPages}", right - 50, height - 15, 50, 5, 7,
                "right", **every),

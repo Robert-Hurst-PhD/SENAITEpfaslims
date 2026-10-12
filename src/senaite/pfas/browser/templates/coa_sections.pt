@@ -6,45 +6,10 @@
      so its paginator places and repeats them as it does core's. -->
 
 <tal:header condition="python:sec == 'header'">
-  <style type="text/css">
-    .pfas-coa { font-size: 10px; color: #222; }
-    .pfas-coa-head { display: flex; justify-content: space-between; align-items: flex-end;
-      border-bottom: 2px solid #222; padding-bottom: 6px; margin-bottom: 8px; }
-    .pfas-coa-head .lab { font-size: 15px; font-weight: 700; }
-    .pfas-coa-head .sub { font-size: 9px; color: #444; margin-top: 2px; }
-    .pfas-coa-head .doc { text-align: right; }
-    .pfas-coa-head .doc .t { font-size: 13px; font-weight: 700; letter-spacing: .02em; }
-    .pfas-coa-head img { max-height: 42px; max-width: 160px; margin-right: 10px; }
-    .pfas-coa-info { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
-    .pfas-coa-info th { text-align: left; font-weight: 600; color: #555; width: 16%;
-      padding: 2px 6px 2px 0; white-space: nowrap; }
-    .pfas-coa-info td { padding: 2px 10px 2px 0; width: 34%; }
-    .pfas-coa-res { width: 100%; border-collapse: collapse; }
-    .pfas-coa-res caption { caption-side: top; text-align: left; font-weight: 700;
-      font-size: 10.5px; padding: 4px 0; }
-    .pfas-coa-res th { font-size: 9px; text-transform: uppercase; letter-spacing: .03em;
-      color: #444; border-top: 1px solid #222; border-bottom: 1px solid #222;
-      padding: 3px 5px; text-align: left; }
-    .pfas-coa-res td { padding: 2px 5px; border-bottom: 1px solid #e3e3e3; }
-    .pfas-coa-res .num { text-align: right; white-space: nowrap; }
-    .pfas-coa-res tr.det td.res { font-weight: 700; }
-    .pfas-coa-qcstd { margin-top: 8px; }
-    .pfas-coa-res tr.out td.st { font-weight: 700; }
-    .pfas-coa-legend { font-size: 8.5px; color: #555; margin-top: 4px; }
-    .pfas-coa-sample { margin-bottom: 12px; page-break-inside: auto; }
-    .pfas-coa-foot { font-size: 8.5px; color: #555; }
-    .pfas-coa-reg { margin-top: 8px; padding: 6px 8px; border: 1px solid #999; page-break-inside: avoid; }
-    .pfas-coa-reg .h { font-weight: 700; font-size: 10.5px; margin-bottom: 3px; }
-    .pfas-coa-reg .finding { margin: 2px 0; }
-    .pfas-coa-reg .finding.exceeds { border-left: 3px solid #a00; padding-left: 5px; }
-    .pfas-coa-reg .finding.undetermined { border-left: 3px solid #b8860b; padding-left: 5px; }
-    .pfas-coa-reg .cite { color: #555; }
-    .pfas-coa-reg .links { margin-top: 4px; color: #333; }
-    .pfas-coa-reg a { color: #1a4f7a; }
-  </style>
+  <style type="text/css" tal:content="structure view/print_css">/* the lab print stylesheet */</style>
   <div class="row section-header no-gutters pfas-coa">
-    <div class="pfas-coa-head" style="width:100%">
-      <div style="display:flex;align-items:flex-end">
+    <div class="pfas-coa-head">
+      <div class="pfas-coa-lab">
         <img tal:condition="lab/logo" tal:attributes="src lab/logo" alt="" />
         <div>
           <div class="lab" tal:content="lab/name">Laboratory</div>
@@ -68,8 +33,8 @@
 
 <tal:samples condition="python:sec == 'samples'">
   <div class="row section-results no-gutters pfas-coa" tal:repeat="smp view/samples">
-    <div class="pfas-coa-sample" style="width:100%">
-      <div tal:condition="smp/error|nothing" style="color:#a00;font-weight:700">
+    <div class="pfas-coa-sample">
+      <div tal:condition="smp/error|nothing" class="pfas-coa-error">
         <tal:i replace="smp/id"/>: this sample could not be rendered (<tal:e replace="smp/error"/>).
       </div>
       <tal:ok condition="not:smp/error|nothing">
@@ -124,7 +89,7 @@
         <span i18n:translate="">U = not detected at or above the reporting limit (RL).</span>
         <span i18n:translate="">MDL = method detection limit.</span>
         <span tal:condition="smp/codes" i18n:translate="">Other codes: see Quality control qualifications.</span>
-        <span tal:condition="not:smp/any_rl" style="color:#a00" i18n:translate="">
+        <span tal:condition="not:smp/any_rl" class="pfas-coa-error" i18n:translate="">
           No reporting limits are configured for this method and matrix.</span>
       </div>
 

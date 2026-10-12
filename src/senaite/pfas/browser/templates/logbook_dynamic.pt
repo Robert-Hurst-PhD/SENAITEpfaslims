@@ -9,7 +9,7 @@
   <!-- Field widget styles are shared with the guided view; see the comment in
        logbook_fields.css for why they are not inlined here or in the macro. -->
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=3" />
+        tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=${context/@@pfas-macros/asset_version}" />
   <style>
     /* concise-form chrome only — everything field-level lives in the shared sheet */
     .lb-form { max-width: 900px; }
@@ -33,20 +33,17 @@
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
   </tal:r>
 
+  <tal:ctx metal:fill-slot="header-context">
+    <span class="pfas-chip"><b tal:content="view/batch_title">Batch</b><tal:m tal:condition="view/batch_method|nothing"><span class="pfas-chip-sep">&#183;</span><tal:x tal:replace="view/batch_method">Method</tal:x></tal:m></span>
+  </tal:ctx>
+
   <div metal:fill-slot="content">
   <div class="page-body">
 
-    <!-- Breadcrumb -->
-    <nav class="pfas-crumb is-inline" aria-label="Logbook">
-      <span>Lab</span>
-      <span class="pfas-crumb-sep">&#8250;</span>
-      <span tal:content="view/batch_title">Batch</span>
-      <span class="pfas-crumb-sep">&#8250;</span>
-      <strong class="pfas-crumb-here" tal:content="view/logbook_code">Logbook</strong>
-    </nav>
 
     <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+    <div class="alert alert-info" tal:define="rn view/revision_note" tal:condition="rn" tal:content="rn"></div>
 
     <!-- Empty schema notice -->
     <tal:noschema condition="not:view/field_schema">
@@ -98,7 +95,8 @@
   /* {lot_type: most recent usable lot} — applied only to EMPTY boxes */
   var LOT_DEFAULTS = <tal:ld tal:replace="structure view/lot_defaults_json" />;
   </script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=3"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_runtime.js?v=${context/@@pfas-macros/asset_version}"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_show_if.js?v=${context/@@pfas-macros/asset_version}"></script>
 
   </div><!-- /content slot -->
 </body>

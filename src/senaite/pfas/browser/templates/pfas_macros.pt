@@ -10,19 +10,26 @@
   <title metal:define-slot="title">LIMS Tool</title>
   <link rel="icon" type="image/x-icon" tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/favicon.ico" />
   <link rel="apple-touch-icon" tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/favicon-180.png" />
+  <!-- the icon set core pages already have (Font Awesome 5 Free, served by SENAITE) -->
+  <link rel="stylesheet"
+        tal:attributes="href string:${context/portal_url}/++plone++senaite.impress.static/modules/fontawesome-free/css/all.min.css" />
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-tokens.css" />
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-tokens.css?v=${context/@@pfas-macros/asset_version}" />
   <!-- the shared components (segmented control, switch, filter bar, tree, action menu,
        drawer ...): one file for PFAS and core pages alike (decided 2026-10-11) -->
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-components.css" />
-  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-components.js"></script>
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-components.css?v=${context/@@pfas-macros/asset_version}" />
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-components.js?v=${context/@@pfas-macros/asset_version}"></script>
+  <!-- controlled documents on paper: the lab theme, the control block and the footer -->
+  <link rel="stylesheet" type="text/css" media="print"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-print.css?v=${context/@@pfas-macros/asset_version}" />
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-print.js?v=${context/@@pfas-macros/asset_version}"></script>
   <!-- the one top toolbar, shared with core pages -->
   <link rel="stylesheet" type="text/css"
         tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/vendor/adminlte-topbar-3.2.0.css" />
   <link rel="stylesheet" type="text/css"
-        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-topbar.css" />
-  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-topbar.js"></script>
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-topbar.css?v=${context/@@pfas-macros/asset_version}" />
+  <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/pfas-topbar.js?v=${context/@@pfas-macros/asset_version}"></script>
   <!-- Font Awesome 5 Solid — font face + icon glyphs used by the PFAS sidebar.
        senaite.core.css is not loaded on PFAS workspace pages (they bypass
        Plone's main_template), so we inline the @font-face, the .fas base
@@ -897,6 +904,14 @@
       .pfas-content-area table:not(.no-mobile-scroll):has(tr > :nth-child(7)) { min-width: 56em; }
       /* desktop column percentages would undo it */
       .pfas-content-area table:not(.no-mobile-scroll) col { width: auto; }
+      /* a fixed-column table keeps its full width and scrolls in its box: the
+         rules above squeezed it to the screen and its text ran together */
+      .pfas-content-area table.pfas-table.pfas-table-fixed:not(.no-mobile-scroll):not(.x-fixed) { min-width: 1100px; }
+      .pfas-content-area table.pfas-table.pfas-table-fixed:not(.no-mobile-scroll) td { min-width: 0; }
+      /* its columns have set widths: text wraps inside them instead of running on */
+      .pfas-content-area .table-wrap table.pfas-table-fixed td,
+      .pfas-content-area .pfas-scroll-x table.pfas-table-fixed td { white-space: normal; }
+      .pfas-content-area table.pfas-table-fixed td.row-actions-cell { white-space: nowrap; }
       /* a form table keeps fixed columns: its headings wrap instead of
          running into each other */
       .pfas-content-area table.pfas-table-form th { white-space: normal; }
@@ -928,7 +943,7 @@
     }
 
     /* ── Shared print header/footer (see Configuration → Print Settings) ── */
-    .pfas-printhead, .pfas-printfoot { display: none; }
+    .pfas-printhead { display: none; }
 
     /* ── Shared QA sign-off attestation (screen + print) ─────────────────── */
     /* ── shared stepper (guided logbooks; reusable by any multi-step page) ── */
@@ -958,39 +973,30 @@
     .pfas-step-item.status-pending .pfas-step-label { color:var(--s-secondary); }
 
     .pfas-signoff { margin: 22px 0 6px; border: 1px solid var(--s-border, #ccc);
-      border-radius: 6px; padding: 12px 14px; background: #fcfcfd;
+      border-radius: 6px; padding: 12px 14px; background: var(--surface-2);
       page-break-inside: avoid; }
     .pfas-signoff-title { font-size: var(--fs-sm); font-weight: 700; letter-spacing: .04em;
-      text-transform: uppercase; color: #444; margin-bottom: 8px; }
+      text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
     .pfas-signoff-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .pfas-signoff-tbl td { padding: 10px 8px; vertical-align: bottom;
-      border-top: 1px solid #eee; }
-    .pfas-signoff-tbl .so-role { width: 96px; font-weight: 600; color: #555;
+      border-top: 1px solid var(--line); }
+    .pfas-signoff-tbl .so-role { width: 96px; font-weight: 600; color: var(--text-muted);
       white-space: nowrap; }
-    .pfas-signoff-tbl .so-title { color: #666; }
+    .pfas-signoff-tbl .so-title { color: var(--text-muted); }
     .pfas-signoff-tbl .so-sig { width: 150px; text-align: center; }
-    .pfas-signoff-tbl .so-date { width: 130px; white-space: nowrap; color: #555; }
+    .pfas-signoff-tbl .so-date { width: 130px; white-space: nowrap; color: var(--text-muted); }
     .pfas-signoff .so-stamp { max-height: 40px; max-width: 140px; }
     .pfas-signoff .so-line { display: inline-block; min-width: 90px;
-      border-bottom: 1px solid #888; }
-    .pfas-signoff-foot { margin-top: 8px; font-size: var(--fs-xs); color: #92400e;
-      background: var(--s-warn-lt); border-left: 3px solid #f59e0b; padding: 5px 8px;
+      border-bottom: 1px solid var(--text-muted); }
+    .pfas-signoff-foot { margin-top: 8px; font-size: var(--fs-xs); color: var(--s-warn-text);
+      background: var(--s-warn-lt); border-left: 3px solid var(--s-warning); padding: 5px 8px;
       border-radius: 3px; }
 
     /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
-      .pfas-signoff { border-color: #000; background: transparent; }
+      .pfas-signoff { border-color: var(--s-body); background: transparent; }
       .pfas-signoff-foot { display: none !important; }
-      .pfas-printhead { display: block !important;
-        border-bottom: 2px solid #000; margin: 0 0 12px; padding-bottom: 8px; }
-      .pfas-ph-row  { display: flex; gap: 14px; align-items: center; }
-      .pfas-ph-logo { max-height: 46px; }
-      .pfas-ph-name { font-size: var(--fs-lg); font-weight: 700; color: #000; }
-      .pfas-ph-sub  { font-size: var(--fs-xs); color: #333; }
-      .pfas-ph-date { margin-left: auto; font-size: var(--fs-xs); color: #333; }
-      .pfas-printfoot { display: block !important; position: fixed;
-        bottom: 0; left: 0; right: 0; font-size: var(--fs-xs); color: #444;
-        border-top: 1px solid #999; padding-top: 3px; text-align: center; }
+      .pfas-printhead { display: block !important; }
       .pfas-topbar, .pfas-subbar { display: none !important; }
       #sidebar.pfas-sidebar { display: none !important; }
       .pfas-tabs-wrap { display: none !important; }
@@ -1005,21 +1011,26 @@
       }
       table { page-break-inside: auto; }
       tr { page-break-inside: avoid; }
-      .lb-section h3 { border-bottom: 1px solid #999 !important; }
-      body { font-size: var(--fs-xs); overflow: visible !important; height: auto !important; }
+      .lb-section h3 { border-bottom: 1px solid var(--line-strong) !important; }
+      body, body.pfas-app { font-size: var(--fs-sm); color: var(--s-body);
+             background: var(--s-bg) !important;
+             overflow: visible !important; height: auto !important; }
     }
 
     /* ── GLP field correction model (logbooks) ── */
-    .btn-correct { background: none; border: none; color: #bbb; font-size: var(--fs-xs);
-                   cursor: pointer; padding: 0 3px; text-decoration: underline;
-                   font-weight: normal; margin-left: 5px; vertical-align: middle; }
-    .btn-correct:hover { color: var(--s-dark); }
+    /* a small secondary button beside the label, never an underlined word */
+    .btn-correct { display: inline-flex; align-items: center; height: var(--ctl-h-sm); padding: 0 10px;
+                   margin-left: 8px; vertical-align: middle; cursor: pointer; text-decoration: none;
+                   border: 1px solid var(--line-strong); border-radius: var(--radius);
+                   background: var(--surface-raised); color: var(--text);
+                   font-family: inherit; font-size: var(--fs-sm); font-weight: var(--fw-strong); }
+    .btn-correct:hover { border-color: var(--accent); color: var(--accent-text); }
     .corr-existing { display: flex; align-items: baseline; gap: 6px;
                      flex-wrap: wrap; font-size: var(--fs-sm); margin-bottom: 3px; }
-    .corr-struck { text-decoration: line-through; color: #999; }
-    .corr-arrow { color: #999; font-size: var(--fs-xs); }
+    .corr-struck { text-decoration: line-through; color: var(--text-muted); }
+    .corr-arrow { color: var(--text-muted); font-size: var(--fs-xs); }
     .corr-meta { font-size: var(--fs-xs); color: var(--s-warn-text); background: var(--s-warn-lt);
-                 border: 1px solid #ffe082; border-radius: 3px;
+                 border: 1px solid var(--s-warn-bd); border-radius: 3px;
                  padding: 1px 5px; white-space: nowrap; }
     .corr-panel { display: none; margin-top: 5px; padding: 7px 10px;
                   background: var(--s-warn-lt); border: 1px solid var(--s-warning);
@@ -1103,30 +1114,17 @@
     </section>
   </tal:defs>
 
-  <div class="pfas-printhead" metal:define-macro="printhead"
-       tal:define="ps python:context.restrictedTraverse('@@pfas-macros').print_settings()">
-    <div class="pfas-ph-row">
-      <img class="pfas-ph-logo" tal:condition="ps/logo_url"
-           tal:attributes="src ps/logo_url; alt ps/lab_name"/>
-      <div class="pfas-ph-id">
-        <div class="pfas-ph-name" tal:content="ps/lab_name">Lab name</div>
-        <div class="pfas-ph-sub">
-          <tal:a tal:condition="ps/lab_address" tal:replace="ps/lab_address"/><tal:p
-            tal:condition="ps/lab_phone"> · <tal:x tal:replace="ps/lab_phone"/></tal:p><tal:e
-            tal:condition="ps/lab_email"> · <tal:x tal:replace="ps/lab_email"/></tal:e>
-        </div>
-        <div class="pfas-ph-sub" tal:condition="ps/accreditation"
-             tal:content="ps/accreditation">accreditation</div>
-      </div>
-      <div class="pfas-ph-date" tal:condition="ps/show_print_date">
-        Printed: <tal:d tal:replace="ps/print_date">date</tal:d>
-      </div>
-    </div>
+  <!-- The printed header: lab, title and the control block (document, revision,
+       date, printed), with the footer rule as page margin boxes. A view says what
+       document it is through `print_control` (a dict or a method; see
+       pfas_macros.print_block); a page that does not prints under its own title. -->
+  <div class="pfas-printhead pd" id="pfas-printhead" metal:define-macro="printhead"
+       tal:define="v nocall:view|nothing;
+                   pc python:context.restrictedTraverse('@@pfas-macros').print_block(getattr(v, 'print_control', None))"
+       tal:attributes="data-auto python:'1' if pc['auto'] else '0'; data-foot pc/foot">
+    <style id="pfas-pagefoot" tal:content="structure pc/css">@page {}</style>
+    <tal:h tal:replace="structure pc/head" />
   </div>
-  <div class="pfas-printfoot"
-       tal:define="ps python:context.restrictedTraverse('@@pfas-macros').print_settings()"
-       tal:condition="ps/show_page_footer"
-       tal:content="ps/footer_text">footer</div>
 
   <!-- ── Shared QA sign-off attestation ────────────────────────────────────
        Rendered 3-tier attestation (Analyst prepared → QAO verified → Lab
@@ -1304,13 +1302,15 @@
     <!-- Top tabs. A page in a page group (page_groups.py) first
          gets the group's strip, one tab per page; its own tabs follow. -->
     <div class="pfas-tabs-wrap">
-      <nav class="pfas-tabs pfas-group-tabs"
+      <div class="pfas-group-bar"
            tal:define="pgrp python:context.restrictedTraverse('@@pfas-macros').page_group()"
-           tal:condition="pgrp" tal:attributes="aria-label pgrp/label">
-        <a tal:repeat="t pgrp/tabs" tal:content="t/label"
-           tal:attributes="href t/href; class python:'pfas-tab active' if t['active'] else 'pfas-tab';
-                           aria-current python:'page' if t['active'] else None">Tab</a>
-      </nav>
+           tal:condition="pgrp">
+        <nav class="pfas-seg pfas-seg-strip" tal:attributes="aria-label pgrp/label">
+          <a class="pfas-seg-item" tal:repeat="t pgrp/tabs" tal:content="t/label"
+             tal:attributes="href t/href; aria-selected python:'true' if t['active'] else 'false';
+                             aria-current python:'page' if t['active'] else None">Tab</a>
+        </nav>
+      </div>
       <tal:tabs metal:define-slot="tabs">
         <!-- Default: no tabs; the wrap is present but takes no visual space -->
       </tal:tabs>

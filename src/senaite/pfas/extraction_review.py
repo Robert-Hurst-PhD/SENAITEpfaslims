@@ -84,8 +84,14 @@ def _rows(data, group):
             if isinstance(r, dict) and (r.get("group") or u"reagent") == group]
 
 
-def stage_summary(order, name, data):
+def stage_summary(order, name, data, stage_def=None):
+    """`stage_def`: the stage as the extraction's plan has it (its own
+    questions name the answers)."""
     data = data or {}
+    try:
+        from senaite.pfas.stage_form import answer_rows
+    except ImportError:                                     # loaded by path (tests)
+        from stage_form import answer_rows
     lot = lambda r: {"role": r.get("role") or u"", "name": r.get("name") or u"",  # noqa: E731
                      "lot": r.get("lot") or u"", "qty": r.get("qty_used") or u"",
                      "from_inventory": bool(r.get("from_inventory"))}
@@ -100,6 +106,7 @@ def stage_summary(order, name, data):
                      "unit": s.get("unit") or u""} for s in data.get("samples") or []],
         "deviations": data.get("deviations") or u"",
         "confirmed": list(data.get("confirmed") or []),
+        "answers": [list(r) for r in answer_rows(stage_def, data.get("answers"))],
         "homogenisation": list(data.get("homogenisation") or []),
         "warnings": list(data.get("warnings") or []),
         "corrections": [{"at": c.get("at") or u"", "by": c.get("by") or u"",
@@ -115,7 +122,7 @@ def review(session, stages_def):
     out = []
     for st in sorted(stages_def or [], key=lambda s: s.get("order", 0)):
         data = done.get(u"%s" % st.get("order"))
-        row = stage_summary(st.get("order"), st.get("name"), data)
+        row = stage_summary(st.get("order"), st.get("name"), data, st)
         row["recorded"] = data is not None
         out.append(row)
     return {

@@ -6,6 +6,8 @@
 <head>
   <title metal:fill-slot="title">Extraction Guide</title>
   <tal:styles metal:fill-slot="head-extra">
+  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/logbook_fields.css?v=${context/@@pfas-macros/asset_version}" />
+  <script defer="defer" tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/logbook_show_if.js?v=${context/@@pfas-macros/asset_version}"></script>
   <style>
     /* Buttons use the shared set (.btn, .btn-sm, .btn-lg + variants); only
        layout that is specific to this page stays here. */
@@ -46,7 +48,7 @@
     .eg-main { flex:1; padding:24px; overflow-y:auto; min-width:0; }   /* fills the page */
     .eg-stage-header { margin-bottom:20px; padding-bottom:12px;
                        border-bottom:2px solid var(--s-border); }
-    .eg-stage-header .stage-title { font-size:var(--fs-xl); font-weight:var(--fw-heading); color:var(--s-dark); }
+    .eg-stage-header .stage-title { font-size:var(--fs-xl); font-weight:var(--fw-heading); color: var(--text); }
     .eg-stage-header .stage-desc  { font-size:var(--fs-base); color:var(--s-secondary); margin-top:4px; }
     .eg-stage-header .stage-badge { display:inline-block; font-size:var(--fs-xs);
                                     padding:3px 10px; border-radius:10px;
@@ -59,7 +61,7 @@
                     display:block; margin:0 auto; border-radius:6px; }
     .eg-card { background:var(--surface-raised); border:1px solid var(--s-border); border-radius:10px;
                padding:18px; margin-bottom:16px; }
-    .eg-card h3 { font-size:var(--fs-base); font-weight:var(--fw-heading); color:var(--s-dark);
+    .eg-card h3 { font-size:var(--fs-base); font-weight:var(--fw-heading); color: var(--text);
                   margin:0 0 14px; padding-bottom:6px;
                   border-bottom:1px solid var(--s-border); }
 
@@ -108,7 +110,7 @@
     /* ── Equipment S/N grid ──────────────────────────────────── */
     .eq-grid { display:flex; flex-wrap:wrap; gap:12px; }
     .eq-field { display:flex; flex-direction:column; flex:1 1 160px; }
-    .eq-field label { font-size:var(--fs-sm); font-weight:var(--fw-strong); margin-bottom:3px; color:var(--s-dark); }
+    .eq-field label { font-size:var(--fs-sm); font-weight:var(--fw-strong); margin-bottom:3px; color: var(--text); }
     .eq-field input, .eq-field select { padding:7px 10px; font-size:var(--fs-base);
                       border:1px solid var(--s-input-border); border-radius:6px; margin-bottom:4px; }
     .eq-hint { font-size:var(--fs-xs); color:var(--s-muted, var(--s-secondary)); }
@@ -126,7 +128,7 @@
     /* ── Pedigree section ────────────────────────────────────── */
     .ped-standard { background:var(--s-light); border:1px solid var(--s-border);
                     border-radius:8px; padding:14px; margin-bottom:12px; }
-    .ped-standard h4 { font-size:var(--fs-base); font-weight:var(--fw-heading); margin:0 0 10px; color:var(--s-dark); }
+    .ped-standard h4 { font-size:var(--fs-base); font-weight:var(--fw-heading); margin:0 0 10px; color: var(--text); }
     .ped-level { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;
                  padding:8px; background:var(--surface-raised); border-radius:6px;
                  border:1px solid var(--line); }
@@ -185,6 +187,10 @@
 
     <div tal:condition="view/ok_msg"    class="alert alert-success eg-alert"    tal:content="view/ok_msg"></div>
     <div tal:condition="view/error_msg" class="alert alert-error eg-alert" tal:content="view/error_msg"></div>
+    <div tal:define="notes view/plan_notes" tal:condition="notes" class="alert alert-info eg-alert">
+      Stages as started (method <tal:r tal:replace="view/plan_revision"/>). Since then:
+      <ul><li tal:repeat="n notes" tal:content="n">note</li></ul>
+    </div>
 
     <!-- ─── JS data ──────────────────────────────────────────── -->
     <script>
@@ -362,6 +368,8 @@
             <span tal:replace="python: u'; '.join(u'%s %s' % (h['sample_id'], h['method'] or u'\u2014') for h in st['homogenisation'])">x</span></p>
           <p class="summary-line" tal:condition="st/confirmed"><strong>Checked:</strong>
             <span tal:replace="python: u'; '.join(st['confirmed'])">x</span></p>
+          <p class="summary-line" tal:condition="st/answers|nothing"><strong>Recorded:</strong>
+            <span tal:replace="python: u'; '.join(u'%s: %s' % (a[0], a[1]) for a in st['answers'])">x</span></p>
           <p class="summary-line" tal:condition="st/deviations"><strong>Note:</strong>
             <span tal:replace="st/deviations">text</span></p>
           <p class="summary-line" tal:repeat="c st/corrections"><strong>Corrected</strong>
@@ -446,120 +454,139 @@
                    tal:attributes="value who" placeholder="Analyst name" />
           </div>
 
-          <!-- ── Per-sample table: written to FM-ENV-003's samples rows ── -->
-          <tal:smp tal:define="card python:__import__('json').loads(view.sample_card_json())"
-                   tal:condition="card/column">
-          <div class="eg-card" id="sample-card">
-            <h3 tal:content="python:{'amount': 'Sample amounts', 'spe_port': 'SPE ports'}.get(card['column'], 'Final extract volumes')">Sample amounts</h3>
-            <p class="reagent-hint" tal:condition="python:card['column'] == 'amount'">Grams for a solid, mL for a water.</p>
-            <p class="reagent-hint" tal:condition="python:card['column'] == 'final_volume_ml'">Each extract's final volume.</p>
-            <table class="pfas-table sample-table">
-              <thead><tr><th>Sample</th>
-                <th tal:content="python:'Role' if card['column'] == 'spe_port' else 'Matrix'">Matrix</th>
-                <th tal:content="python:{'amount': 'Amount', 'spe_port': 'SPE port'}.get(card['column'], 'Final volume (mL)')">Amount</th>
-                <th tal:condition="python:card['column'] == 'amount'">Unit</th></tr></thead>
-              <tbody id="sample-rows"></tbody>
-            </table>
-            <button type="button" class="btn-sm btn-secondary reagent-add" onclick="addSampleRow()"
-                    tal:condition="python:card['column'] != 'spe_port'">+ Add a sample</button>
-            <input type="hidden" name="samples_json" id="samples_json_field" value="[]" />
-          </div>
-          </tal:smp>
-
-          <!-- ── Reagent confirmation ── -->
-          <tal:rgs tal:condition="python:stage.get('reagent_roles')">
-          <div class="eg-card" id="reagent-card">
-            <h3>Reagents and standards used</h3>
-            <p class="reagent-hint">Pick the lot you used, or scan its label. Only lots that
-              are in date and not quarantined are listed.</p>
-            <div id="reagent-rows"></div>
-            <button type="button" class="btn-sm btn-secondary reagent-add"
-                    onclick="addReagentRow('reagent')">+ Add another item</button>
-          </div>
-          </tal:rgs>
-
-          <!-- ── Consumables, by lot ── -->
-          <tal:cons tal:condition="python:stage.get('consumables')">
-          <div class="eg-card" id="consumable-card">
-            <h3>Consumables used</h3>
-            <p class="reagent-hint">Tubes, vials, syringes and filters are recorded by lot, like reagents.</p>
-            <div id="consumable-rows"></div>
-            <button type="button" class="btn-sm btn-secondary reagent-add"
-                    onclick="addReagentRow('consumable')">+ Add another consumable</button>
-          </div>
-          </tal:cons>
-
-          <!-- ── Equipment S/Ns ── -->
-          <tal:eqs tal:condition="python:stage.get('equipment')">
-          <div class="eg-card">
-            <h3>Equipment used</h3>
-            <div class="eq-grid" id="eq-grid"></div>
-          </div>
-          </tal:eqs>
-
-          <!-- ── Each sample's homogenisation (processing stage, H-P4) ── -->
-          <tal:hg tal:define="hrows view/homogenisation_rows" tal:condition="hrows">
-          <div class="eg-card" id="homogenisation-card">
-            <h3>Homogenisation</h3>
-            <table class="pfas-table">
-              <thead><tr><th>Sample</th><th>Requested</th><th>Done</th><th>Homogeniser</th>
-                         <th>Composite</th><th>By</th><th>When</th></tr></thead>
-              <tbody>
-                <tr tal:repeat="h hrows">
-                  <td tal:content="h/sample_id">EGG-0001</td>
-                  <td tal:content="h/requested">IKA mill</td>
-                  <td><span tal:replace="h/method">IKA mill</span>
-                      <div class="cf-hint" tal:condition="h/warning" tal:content="h/warning">x</div></td>
-                  <td tal:content="h/unit">Mill 1</td>
-                  <td><span tal:replace="h/composite">Composite of 12 units</span>
-                      <tal:u condition="h/units_combined">(<span tal:replace="h/units_combined">12</span> combined)</tal:u></td>
-                  <td tal:content="h/by">AN1</td>
-                  <td tal:content="h/at">2026-10-06 10:00</td>
-                </tr>
-              </tbody>
-            </table>
-            <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-homogenisation">Homogenisation</a>
-          </div>
-          </tal:hg>
-
-          <!-- ── Checks the method asks to be ticked (stage editor) ── -->
-          <tal:chk tal:define="checks python:[c for c in stage.get('confirmations') or [] if c.strip()]"
-                   tal:condition="checks">
-          <div class="eg-card" id="checks-card" tal:define="ticked view/stage_confirmed">
-            <h3>Checks</h3>
-            <div tal:repeat="c checks"><label>
-              <input type="checkbox"
-                     tal:attributes="name string:confirmed_${repeat/c/index}; value c;
-                                     checked python:c in ticked or None" />
-              <span tal:replace="c">Homogeniser cleaned</span></label></div>
-          </div>
-          </tal:chk>
-
-          <!-- ── Solutions prepared (if applicable) ── -->
-          <tal:sol tal:condition="python:stage.get('creates_solution', False)">
-          <div class="eg-card" id="solutions-card">
-            <h3>Solutions Prepared at This Stage</h3>
-            <div id="sol-rows"></div>
-            <button type="button" class="btn-sm btn-secondary pfas-add-row" onclick="addSolutionRow()">
-              + Prepare a New Solution / Label
-            </button>
-          </div>
-          </tal:sol>
-
-          <!-- ── Pedigree (spike stages) ── -->
-          <tal:ped tal:condition="python:stage.get('capture_pedigree', False)">
-          <div class="eg-card" id="pedigree-card">
-            <h3>Standard / IS Pedigree</h3>
-            <p class="reagent-hint">
-              Record the full chain: CRM &rarr; Stock &rarr; Working standard.
-              This becomes the parentage record in the final PDF.
-            </p>
-            <div id="ped-rows"></div>
-            <button type="button" class="btn-sm btn-secondary pfas-add-row"
-                    onclick="addPedigreeStandard()">+ Add Standard</button>
-            <input type="hidden" name="pedigree_json_stage" id="pedigree_hidden" value="{}" />
-          </div>
-          </tal:ped>
+          <!-- The stage as designed (stage_form.layout): the extraction's blocks at
+               their questions' places, the lab's own questions between them -->
+          <tal:lay tal:repeat="it python:view.stage_layout(stage)">
+          <tal:b tal:condition="python:it.get('block') == 'samples'">
+  <!-- ── Per-sample table: written to FM-ENV-003's samples rows ── -->
+            <tal:smp tal:define="card python:__import__('json').loads(view.sample_card_json())"
+                     tal:condition="card/column">
+            <div class="eg-card" id="sample-card">
+              <h3 tal:content="python:{'amount': 'Sample amounts', 'spe_port': 'SPE ports'}.get(card['column'], 'Final extract volumes')">Sample amounts</h3>
+              <p class="reagent-hint" tal:condition="python:card['column'] == 'amount'">Grams for a solid, mL for a water.</p>
+              <p class="reagent-hint" tal:condition="python:card['column'] == 'final_volume_ml'">Each extract's final volume.</p>
+              <table class="pfas-table sample-table">
+                <thead><tr><th>Sample</th>
+                  <th tal:content="python:'Role' if card['column'] == 'spe_port' else 'Matrix'">Matrix</th>
+                  <th tal:content="python:{'amount': 'Amount', 'spe_port': 'SPE port'}.get(card['column'], 'Final volume (mL)')">Amount</th>
+                  <th tal:condition="python:card['column'] == 'amount'">Unit</th></tr></thead>
+                <tbody id="sample-rows"></tbody>
+              </table>
+              <button type="button" class="btn-sm btn-secondary reagent-add" onclick="addSampleRow()"
+                      tal:condition="python:card['column'] != 'spe_port'">+ Add a sample</button>
+              <input type="hidden" name="samples_json" id="samples_json_field" value="[]" />
+            </div>
+            </tal:smp>
+          </tal:b>
+          <tal:b tal:condition="python:it.get('block') == 'reagents'">
+  <!-- ── Reagent confirmation ── -->
+            <tal:rgs tal:condition="python:stage.get('reagent_roles')">
+            <div class="eg-card" id="reagent-card">
+              <h3>Reagents and standards used</h3>
+              <p class="reagent-hint">Pick the lot you used, or scan its label. Only lots that
+                are in date and not quarantined are listed.</p>
+              <div id="reagent-rows"></div>
+              <button type="button" class="btn-sm btn-secondary reagent-add"
+                      onclick="addReagentRow('reagent')">+ Add another item</button>
+            </div>
+            </tal:rgs>
+          </tal:b>
+          <tal:b tal:condition="python:it.get('block') == 'consumables'">
+  <!-- ── Consumables, by lot ── -->
+            <tal:cons tal:condition="python:stage.get('consumables')">
+            <div class="eg-card" id="consumable-card">
+              <h3>Consumables used</h3>
+              <p class="reagent-hint">Tubes, vials, syringes and filters are recorded by lot, like reagents.</p>
+              <div id="consumable-rows"></div>
+              <button type="button" class="btn-sm btn-secondary reagent-add"
+                      onclick="addReagentRow('consumable')">+ Add another consumable</button>
+            </div>
+            </tal:cons>
+          </tal:b>
+          <tal:b tal:condition="python:it.get('block') == 'equipment'">
+  <!-- ── Equipment S/Ns ── -->
+            <tal:eqs tal:condition="python:stage.get('equipment')">
+            <div class="eg-card">
+              <h3>Equipment used</h3>
+              <div class="eq-grid" id="eq-grid"></div>
+            </div>
+            </tal:eqs>
+          </tal:b>
+          <tal:b tal:condition="python:it.get('block') == 'homogenisation'">
+  <!-- ── Each sample's homogenisation (processing stage, H-P4) ── -->
+            <tal:hg tal:define="hrows view/homogenisation_rows" tal:condition="hrows">
+            <div class="eg-card" id="homogenisation-card">
+              <h3>Homogenisation</h3>
+              <table class="pfas-table">
+                <thead><tr><th>Sample</th><th>Requested</th><th>Done</th><th>Homogeniser</th>
+                           <th>Composite</th><th>By</th><th>When</th></tr></thead>
+                <tbody>
+                  <tr tal:repeat="h hrows">
+                    <td tal:content="h/sample_id">EGG-0001</td>
+                    <td tal:content="h/requested">IKA mill</td>
+                    <td><span tal:replace="h/method">IKA mill</span>
+                        <div class="cf-hint" tal:condition="h/warning" tal:content="h/warning">x</div></td>
+                    <td tal:content="h/unit">Mill 1</td>
+                    <td><span tal:replace="h/composite">Composite of 12 units</span>
+                        <tal:u condition="h/units_combined">(<span tal:replace="h/units_combined">12</span> combined)</tal:u></td>
+                    <td tal:content="h/by">AN1</td>
+                    <td tal:content="h/at">2026-10-06 10:00</td>
+                  </tr>
+                </tbody>
+              </table>
+              <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-homogenisation">Homogenisation</a>
+            </div>
+            </tal:hg>
+          </tal:b>
+          <tal:b tal:condition="python:it.get('block') == 'checks'">
+  <!-- ── Checks the method asks to be ticked (stage editor) ── -->
+            <tal:chk tal:define="checks python:[c for c in stage.get('confirmations') or [] if c.strip()]"
+                     tal:condition="checks">
+            <div class="eg-card" id="checks-card" tal:define="ticked view/stage_confirmed">
+              <h3>Checks</h3>
+              <div tal:repeat="c checks"><label>
+                <input type="checkbox"
+                       tal:attributes="name string:confirmed_${repeat/c/index}; value c;
+                                       checked python:c in ticked or None" />
+                <span tal:replace="c">Homogeniser cleaned</span></label></div>
+            </div>
+            </tal:chk>
+          </tal:b>
+          <tal:b tal:condition="python:it.get('block') == 'solutions'">
+  <!-- ── Solutions prepared (if applicable) ── -->
+            <tal:sol tal:condition="python:stage.get('creates_solution', False)">
+            <div class="eg-card" id="solutions-card">
+              <h3>Solutions Prepared at This Stage</h3>
+              <div id="sol-rows"></div>
+              <button type="button" class="btn-sm btn-secondary pfas-add-row" onclick="addSolutionRow()">
+                + Prepare a New Solution / Label
+              </button>
+            </div>
+            </tal:sol>
+          </tal:b>
+          <tal:b tal:condition="python:it.get('block') == 'pedigree'">
+  <!-- ── Pedigree (spike stages) ── -->
+            <tal:ped tal:condition="python:stage.get('capture_pedigree', False)">
+            <div class="eg-card" id="pedigree-card">
+              <h3>Standard / IS Pedigree</h3>
+              <p class="reagent-hint">
+                Record the full chain: CRM &rarr; Stock &rarr; Working standard.
+                This becomes the parentage record in the final PDF.
+              </p>
+              <div id="ped-rows"></div>
+              <button type="button" class="btn-sm btn-secondary pfas-add-row"
+                      onclick="addPedigreeStandard()">+ Add Standard</button>
+              <input type="hidden" name="pedigree_json_stage" id="pedigree_hidden" value="{}" />
+            </div>
+            </tal:ped>
+          </tal:b>
+          <tal:q tal:condition="python:it.get('field')">
+            <div tal:define="field python:it['field']"
+                 tal:attributes="class python:'eg-question' if field.get('type') == 'section' else 'eg-card eg-question'">
+              <tal:m metal:use-macro="context/@@pfas-logbook-macros/macros/logbook_field" />
+            </div>
+          </tal:q>
+          </tal:lay>
 
           <!-- ── Deviations / observations ── -->
           <div class="eg-card" id="deviation-card">

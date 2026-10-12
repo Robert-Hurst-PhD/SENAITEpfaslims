@@ -6,13 +6,13 @@
 <head>
   <title metal:fill-slot="title">Calibration Archive</title>
   <tal:styles metal:fill-slot="head-extra">
-  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/calibration_review.css?v=3" />
+  <link rel="stylesheet" tal:attributes="href string:${view/portal_url}/++resource++senaite.pfas/calibration_review.css?v=${context/@@pfas-macros/asset_version}" />
   </tal:styles>
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Calibration Archive</tal:t>
   <tal:r metal:fill-slot="header-context">
-    <span class="header-meta" tal:define="r2 view/r2_minimum; pct view/cal_pct_max">
+    <span class="pfas-chip" tal:define="r2 view/r2_minimum; pct view/cal_pct_max">
       <tal:m condition="view/selected_method">
         R&sup2; min <strong tal:content="python:r2 if r2 is not None else 'not set'">0.99</strong>
         &bull; Max dev <strong tal:content="python:('%g%%' % pct) if pct is not None else 'not set'">20%</strong>
@@ -149,8 +149,8 @@
   <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/vendor/chart.js-4.4.3.umd.min.js"></script>
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/chartjs-plugin-annotation-3.1.0.min.js"></script>
   <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/vendor/ml-matrix-6.12.1.umd.js"></script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=1"></script>
-  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=4"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_fit.js?v=${context/@@pfas-macros/asset_version}"></script>
+  <script tal:attributes="src string:${view/portal_url}/++resource++senaite.pfas/calibration_review.js?v=${context/@@pfas-macros/asset_version}"></script>
   <script>
   //<![CDATA[
   var CAL_APPROVE = null;      /* the archive: approval is in Data Review */

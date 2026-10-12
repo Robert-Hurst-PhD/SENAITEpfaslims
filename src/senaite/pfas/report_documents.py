@@ -21,6 +21,14 @@ Pure: Python 2.7 and 3.
 from __future__ import absolute_import, unicode_literals
 
 try:
+    from senaite.pfas.print_style import PALETTE as _P
+except ImportError:                                          # loaded by path (tests)
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from print_style import PALETTE as _P
+
+try:
     from senaite.pfas import doc_fields as _df
 except ImportError:                                         # loaded by path (tests)
     import os, sys
@@ -478,7 +486,7 @@ def starter(title, fields, tables, order, long_fields=(), width=210.0, height=29
         out.append(dict(_text(key, x + 33, y + row * 5, wide / 2.0 - 35, 4.5, 7), **every))
     top = y + ((len(short) + 1) // 2) * 5 + 4
     out.append(dict({"name": "header_rule", "type": "line", "position": {"x": 10, "y": top - 2},
-                     "width": wide, "height": 0.3, "readOnly": True, "color": "#444444"}, **every))
+                     "width": wide, "height": 0.3, "readOnly": True, "color": _P["s-body"]}, **every))
     pages = [out]
     page = out
     y = top + 2
@@ -508,12 +516,12 @@ def starter(title, fields, tables, order, long_fields=(), width=210.0, height=29
                     "head": [t for _k, t, _e in cols],
                     "headWidthPercentages": [100.0 / len(cols)] * len(cols),
                     "pfasColumns": [k for k, _t, _e in cols], "content": "[]",
-                    "tableStyles": {"borderColor": "#444444", "borderWidth": 0.2},
-                    "headStyles": {"fontSize": 6.5, "fontColor": "#222222", "backgroundColor": "",
-                                   "borderColor": "#444444",
+                    "tableStyles": {"borderColor": _P["s-body"], "borderWidth": 0.2},
+                    "headStyles": {"fontSize": 6.5, "fontColor": _P["s-body"], "backgroundColor": "",
+                                   "borderColor": _P["s-body"],
                                    "borderWidth": {"top": 0.3, "right": 0, "bottom": 0.3, "left": 0},
                                    "padding": {"top": 1, "right": 1, "bottom": 1, "left": 1}},
-                    "bodyStyles": {"fontSize": 6.5, "borderColor": "#dddddd", "alternateBackgroundColor": "",
+                    "bodyStyles": {"fontSize": 6.5, "borderColor": _P["s-border"], "alternateBackgroundColor": "",
                                    "borderWidth": {"top": 0, "right": 0, "bottom": 0.1, "left": 0},
                                    "padding": {"top": 0.8, "right": 1, "bottom": 0.8, "left": 1}}})
         y += 22

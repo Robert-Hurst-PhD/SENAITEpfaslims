@@ -73,7 +73,7 @@
   letter-spacing: .07em;
   user-select: none;
 }
-.pfas-sg-head:hover { color: var(--s-dark); }
+.pfas-sg-head:hover { color: var(--text); }
 .pfas-sg-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .pfas-sg-arrow {
   font-size: var(--fs-xs);
@@ -577,7 +577,7 @@
         </a>
         <a class="pfas-si" title="Batches"
            tal:attributes="href string:${purl}/batches;
-                           class python:'pfas-si si-active' if '/batches' in path and '@@' not in path else 'pfas-si'">
+                           class python:'pfas-si si-active' if ('/batches' in path and '@@' not in path) or '@@pfas-sample-status' in path else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-batches"/></svg></span>
           <span class="pfas-si-label">Batches</span>
         </a>
@@ -626,7 +626,7 @@
         <a class="pfas-si" title="Method Profiles &amp; QC Rules — per-method configuration console"
            tal:condition="is_mgr"
            tal:attributes="href string:${purl}/@@pfas-method-profiles;
-                           class python:'pfas-si si-active' if ('@@pfas-method-profile' in path or '@@pfas-qc-rules' in path) else 'pfas-si'">
+                           class python:'pfas-si si-active' if ('@@pfas-method-profile' in path or '@@pfas-qc-rules' in path or '@@pfas-qc-type-grid' in path or '@@pfas-method-wizard' in path) else 'pfas-si'">
           <span class="pfas-si-icon"><svg><use href="#ico-method-profiles"/></svg></span>
           <span class="pfas-si-label">Method Profiles &amp; QC</span>
         </a>

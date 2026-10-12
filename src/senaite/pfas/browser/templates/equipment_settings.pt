@@ -6,7 +6,7 @@
 
   <title metal:fill-slot="title">Equipment settings</title>
   <metal:fill fill-slot="header-title">Equipment settings</metal:fill>
-  <tal:c metal:fill-slot="header-context"><span class="header-badge" tal:content="view/unit/name">Balance 1</span></tal:c>
+  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="view/unit/name">Balance 1</span></tal:c>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-equipment">&larr; Equipment</a>
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/unit/url}/base_edit">Edit in SENAITE</a>

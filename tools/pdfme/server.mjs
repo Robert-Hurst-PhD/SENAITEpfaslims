@@ -18,14 +18,41 @@
 
 // Limits: a 25 MB request, 500 inputs, 60 s per render. Errors answer JSON
 // {"error": "..."} with 400 (the request) or 500 (the render).
+import fs from "fs";
 import http from "http";
-import { generate, checkTemplate, plugins, version, PDFDocument, StandardFonts, rgb } from "./dist/pdfme-node.min.js";
+import path from "path";
+import { fileURLToPath } from "url";
+import { generate, checkTemplate, getDefaultFont, plugins, version, PDFDocument, StandardFonts, rgb } from "./dist/pdfme-node.min.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_REPORT_BYTES = 150 * 1024 * 1024;   // /pages and /stamp: whole instrument reports
 const MAX_INPUTS = 500;
 const TIMEOUT_MS = 60000;
+
+// The lab's typefaces (static TrueType: pdfme reads TTF only; SIL OFL 1.1, licences
+// beside the files). Nunito Sans is the body and the fallback, so a field that names
+// no font draws in it. pdfme's own default fonts stay available by name, because a
+// saved template may name one; only the fallback moves.
+const FONT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fonts");
+const LAB_FONTS = [
+  ["Nunito Sans", "NunitoSans-Regular.ttf", true],
+  ["Nunito Sans SemiBold", "NunitoSans-SemiBold.ttf"],
+  ["Nunito Sans Bold", "NunitoSans-Bold.ttf"],
+  ["Nunito", "Nunito-Regular.ttf"],
+  ["Nunito SemiBold", "Nunito-SemiBold.ttf"],
+  ["Nunito Bold", "Nunito-Bold.ttf"],
+  ["Nunito ExtraBold", "Nunito-ExtraBold.ttf"],
+];
+function loadFonts() {
+  const font = {};
+  for (const [name, spec] of Object.entries(getDefaultFont())) font[name] = Object.assign({}, spec, { fallback: false });
+  for (const [name, file, fallback] of LAB_FONTS) {
+    font[name] = { data: new Uint8Array(fs.readFileSync(path.join(FONT_DIR, file))), fallback: Boolean(fallback) };
+  }
+  return font;
+}
+const FONT = loadFonts();
 
 function answer(res, status, body, type) {
   const data = type ? body : Buffer.from(JSON.stringify(body));
@@ -204,10 +231,10 @@ const server = http.createServer(async (req, res) => {
       }
     }
     const pdf = await withTimeout((async () => {
-      if (docs.length === 1) return generate({ template: docs[0].template, inputs: docs[0].inputs, plugins });
+      if (docs.length === 1) return generate({ template: docs[0].template, inputs: docs[0].inputs, plugins, options: { font: FONT } });
       const merged = await PDFDocument.create();
       for (const d of docs) {
-        const part = await PDFDocument.load(await generate({ template: d.template, inputs: d.inputs, plugins }));
+        const part = await PDFDocument.load(await generate({ template: d.template, inputs: d.inputs, plugins, options: { font: FONT } }));
         for (const page of await merged.copyPages(part, part.getPageIndices())) merged.addPage(page);
       }
       return merged.save();

@@ -58,6 +58,8 @@
 .pfas-topbar-context .nav-link { font-size: var(--fs-sm); }
 /* a context chip: what the page is about (method, batch, state) */
 .pfas-topbar-context > * { white-space: nowrap; color: inherit; }
+/* ...but the context chip keeps its own dark text on its light ground */
+.pfas-topbar-context > .pfas-chip, .pfas-topbar-context .pfas-chip { color: var(--frame); }
 /* core object pages: their tabs and workflow menu take a row of their own at
    every width -- beside the search box they were cut off at 1440 px; the bar grows
    by that row */

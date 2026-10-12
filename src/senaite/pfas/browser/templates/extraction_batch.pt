@@ -8,7 +8,7 @@
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Extraction batch</tal:t>
-  <tal:c metal:fill-slot="header-context"><span class="chip" tal:content="string:${context/getId} · ${view/method_id}">WS-1 · EPA_537_1</span></tal:c>
+  <tal:c metal:fill-slot="header-context"><span class="pfas-chip" tal:content="string:${context/getId} · ${view/method_id}">WS-1 · EPA_537_1</span></tal:c>
   <tal:r metal:fill-slot="header-right">
     <a class="btn-sm btn-secondary" tal:attributes="href view/guide_url">Guided extraction</a>
   </tal:r>

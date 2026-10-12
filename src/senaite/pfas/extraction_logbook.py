@@ -42,6 +42,14 @@ def roster(members, sample_rows=None, ports=None):
     return out
 
 
+def _answer_rows(stage, answers):
+    try:
+        from senaite.pfas.stage_form import answer_rows
+    except ImportError:                                     # loaded by path (tests)
+        from stage_form import answer_rows
+    return answer_rows(stage, answers)
+
+
 def logbook_data(batch_id, batch_title, session, profile, generated, spike_rows=None,
                  extracted=None):
     """Everything the logbook prints, as plain data. `spike_rows`: FM-ENV-003's
@@ -50,8 +58,11 @@ def logbook_data(batch_id, batch_title, session, profile, generated, spike_rows=
     roster() -- what the batch extracted."""
     session, profile = session or {}, profile or {}
     method_name = profile.get("display_name") or session.get("method_id") or u""
-    stages_config = sorted(profile.get("extraction_stages") or [],
-                           key=lambda s: s.get("order", 0))
+    try:
+        from senaite.pfas.stage_plan import stages_for
+    except ImportError:                                     # loaded by path (tests)
+        from stage_plan import stages_for
+    stages_config = stages_for(session, profile)       # the plan the extraction followed
     completed = session.get("stages") or {}
     summary, details = [], []
     for sc in stages_config:
@@ -79,6 +90,8 @@ def logbook_data(batch_id, batch_title, session, profile, generated, spike_rows=
             "warnings": [_text(w) for w in sd.get("warnings") or []],
             # the stage's checks the chemist ticked (stage editor)
             "confirmed": [_text(c) for c in sd.get("confirmed") or []],
+            # the answers to the stage's own questions (stage_form)
+            "answers": [[_text(k), _text(v)] for k, v in _answer_rows(sc, sd.get("answers"))],
             # each sample's homogenisation as the processing stage confirmed it
             "homogenisation": [[_text(h.get("sample_id")), _text(h.get("requested")),
                                 _text(h.get("method")), _text(h.get("unit")),

@@ -187,6 +187,23 @@ def uses_for_batch(path, batch_id):
         conn.close()
 
 
+def uses_for_batches(path, batch_ids):
+    """Every lot a set of worksheets used, in one query (the System map)."""
+    ids = [b for b in batch_ids or [] if b]
+    if not ids:
+        return []
+    conn = _connect(path)
+    try:
+        out = []
+        for i in range(0, len(ids), 400):          # SQLite's variable limit
+            chunk = ids[i:i + 400]
+            out += _rows(conn, "SELECT * FROM inventory_usage WHERE batch_id IN (%s) "
+                               "ORDER BY batch_id, stage_order, id" % u",".join(u"?" * len(chunk)), chunk)
+        return out
+    finally:
+        conn.close()
+
+
 def uses_by_lot(path, text):
     """Recall: every use of a lot whose number contains `text` (case-blind)."""
     conn = _connect(path)

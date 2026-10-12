@@ -52,6 +52,29 @@ def _portal(context):
 
 # ── List view ─────────────────────────────────────────────────────────────────
 
+
+def _stages_from_form(stages):
+    """The Lab workflow stages as saved: a stage designed as questions gets
+    the keys the rest of the system reads derived from them
+    (stage_form.apply_fields); a stage id appears once (an extraction keeps
+    its records by stage). A ValueError refuses the save with its reason."""
+    from senaite.pfas import stage_form
+    out, ids = [], set()
+    for st in stages or []:
+        if not isinstance(st, dict):
+            continue
+        sid = (st.get("id") or u"").strip()
+        if sid and sid in ids:
+            raise ValueError(u"two stages share the id '%s'." % sid)
+        ids.add(sid)
+        if isinstance(st.get("fields"), list):
+            errors = stage_form.validate(st["fields"])
+            if errors:
+                raise ValueError(u"stage '%s': %s" % (st.get("name") or sid, u" ".join(errors)))
+            st = stage_form.apply_fields(st, st["fields"])
+        out.append(st)
+    return out
+
 class PFASMethodProfilesView(BrowserView):
     """List all PFAS method profiles."""
 
@@ -709,9 +732,9 @@ class PFASMethodProfileEditView(BrowserView):
 
         # Isomers are NOT parsed here: the Isomers tab is its own form (R2).
 
-        profile["extraction_stages"] = _json_field(
+        profile["extraction_stages"] = _stages_from_form(_json_field(
             "extraction_stages_json",
-            profile.get("extraction_stages", []))
+            profile.get("extraction_stages", [])))
 
         # Analyte × matrix inclusion grid (serialised by JS before submit)
         raw_ami = f.get("analyte_matrix_inclusion_json", "").strip()

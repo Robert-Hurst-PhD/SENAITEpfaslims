@@ -3018,7 +3018,8 @@ class PFASDataReviewView(BrowserView):
             sess = _load_session(batch)
             if not sess:
                 return {"started": False, "batch_uid": batch.UID(), "batch_id": batch.getId()}
-            stages = get_profile(self._portal(), sess.get("method_id", "")).get("extraction_stages") or []
+            from senaite.pfas.stage_plan import stages_for
+            stages = stages_for(sess, get_profile(self._portal(), sess.get("method_id", "")))
             rv = review(sess, stages)
             rows = (_get_logbook(batch, "252") or {}).get("samples") or []
             samples = sample_table.rows_for_card(rows, [])

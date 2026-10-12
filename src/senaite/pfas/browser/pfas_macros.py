@@ -36,6 +36,11 @@ class PFASMacrosView(BrowserView):
     def macros(self):
         return self._template.macros
 
+    def asset_version(self):
+        """?v= for the add-on's CSS and JS URLs (asset_version.py)."""
+        from senaite.pfas.browser.asset_version import asset_version
+        return asset_version()
+
     def print_settings(self):
         """Print header/footer settings for the shared printhead macro —
         single source: Configuration → Print Settings."""
@@ -45,6 +50,45 @@ class PFASMacrosView(BrowserView):
         ps = get_print_settings(portal)
         ps["print_date"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         return ps
+
+    def print_block(self, control=None, title=None):
+        """The printed header, control block and footer rule of a page.
+
+        `control` is what a view says about itself (its `print_control`, a
+        dict or a callable returning one): doc_id, revision, date, date_label,
+        title, subtitle and cells, a list of extra (label, value) pairs.
+        Missing parts default to the page's own title and the print date; the
+        title is then read from the browser tab when the page is printed
+        (pfas-print.js), because the page macro cannot see its own title slot.
+        Returns {css, head, auto}.
+        """
+        from senaite.pfas import print_doc
+        if callable(control):
+            try:
+                control = control()
+            except Exception:                               # noqa: BLE001
+                control = None
+        control = dict(control or {})
+        ps = self.print_settings()
+        printed_at = print_doc.now_label()
+        printed_by = print_doc.current_user_label(self.context)
+        doc_id = control.get("doc_id") or title or u""
+        cells = [(u"Document", doc_id or u"\u2026")]
+        if control.get("revision") not in (None, u""):
+            cells.append((u"Revision", u"%s" % control["revision"]))
+        if control.get("date"):
+            cells.append((control.get("date_label") or u"Effective", control["date"]))
+        cells.extend(control.get("cells") or [])
+        cells.append((u"Printed", printed_at))
+        head = print_doc.head_html(
+            ps, control.get("title") or u"", cells, subtitle=control.get("subtitle"),
+            logo=True)
+        css = print_doc.document_css(doc_id, control.get("revision"), printed_by,
+                                     printed_at, base=False)
+        foot = u" \u00b7 " + print_doc.footer_text(u"", control.get("revision"),
+                                                   printed_at, printed_by)
+        return {"css": css, "head": head, "auto": not doc_id,
+                "foot": print_doc.css_string(foot)}
 
     def signoff_signers(self):
         """QAO + Laboratory Director attestation signers for the shared

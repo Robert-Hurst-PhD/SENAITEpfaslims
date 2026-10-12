@@ -8,30 +8,32 @@
 <head>
   <meta charset="utf-8" />
   <title tal:content="string:Label: ${view/name}">Label</title>
+  <link rel="stylesheet" type="text/css"
+        tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/pfas-tokens.css?v=${context/@@pfas-macros/asset_version}" />
   <style>
     /* ── Screen UI (hidden when printing) ─────────────────── */
     @media screen {
-      body { font-family: Arial, sans-serif; background: #f0f0f0;
+      body { font-family: var(--font-sans); background: var(--surface-2); color: var(--s-body);
              margin: 0; padding: 16px; }
-      .screen-ui { background: #fff; border-radius: 10px; padding: 16px;
-                   max-width: 500px; margin: 0 auto 20px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
-      .screen-ui h2 { font-size: 15px; margin: 0 0 12px; color: #1a1a2e; }
+      .screen-ui { background: var(--surface-raised); border-radius: var(--radius-card); padding: 16px;
+                   max-width: 500px; margin: 0 auto 20px; box-shadow: var(--shadow-card); }
+      .screen-ui h2 { font-size: var(--fs-lg); margin: 0 0 12px; color: var(--s-body); }
       .size-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
-      .size-row label { font-size: 13px; font-weight: 600; }
-      .size-row select { padding: 6px 8px; font-size: 13px; border: 1px solid #ccc;
-                         border-radius: 5px; }
-      .custom-size { display: none; gap: 8px; align-items: center; font-size: 13px; }
-      .custom-size input { width: 70px; padding: 5px 8px; border: 1px solid #ccc;
-                           border-radius: 5px; font-size: 13px; }
-      .btn-print { padding: 10px 24px; background: #1a73e8; color: #fff;
-                   border: none; border-radius: 7px; font-size: 14px;
+      .size-row label { font-size: var(--fs-sm); font-weight: var(--fw-strong); }
+      .size-row select { padding: 6px 8px; font-size: var(--fs-sm); border: 1px solid var(--s-input-border);
+                         border-radius: var(--radius); }
+      .custom-size { display: none; gap: 8px; align-items: center; font-size: var(--fs-sm); }
+      .custom-size input { width: 70px; padding: 5px 8px; border: 1px solid var(--s-input-border);
+                           border-radius: var(--radius); font-size: var(--fs-sm); }
+      .btn-print { padding: 10px 24px; background: var(--s-primary-dk); color: var(--on-accent);
+                   border: none; border-radius: var(--radius-lg); font-size: var(--fs-base);
                    font-weight: 700; cursor: pointer; }
-      .btn-print:hover { background: #1557b0; }
-      .btn-back  { padding: 10px 18px; background: #f0f0f0; color: #333;
-                   border: 1px solid #ccc; border-radius: 7px; font-size: 13px;
+      .btn-print:hover { background: var(--s-primary-xdk); }
+      .btn-back  { padding: 10px 18px; background: var(--surface-2); color: var(--s-body);
+                   border: 1px solid var(--s-input-border); border-radius: var(--radius-lg); font-size: var(--fs-sm);
                    cursor: pointer; text-decoration: none; display: inline-block; }
-      .preview-label { margin: 16px auto; border: 2px dashed #ccc; border-radius: 4px;
-                       background: #fff; box-sizing: border-box; }
+      .preview-label { margin: 16px auto; border: 2px dashed var(--s-input-border); border-radius: var(--radius);
+                       background: var(--s-bg); box-sizing: border-box; }
     }
 
     /* ── Label body (both screen and print) ────────────────── */
@@ -39,39 +41,44 @@
 
     @media print {
       .screen-ui { display: none !important; }
-      body { margin: 0; padding: 0; background: #fff; }
+      body { margin: 0; padding: 0; background: var(--s-bg); }
       .label-body { display: block !important; }
     }
 
     /* ── Label content styles ──────────────────────────────── */
     .label-wrap { width: 100%; height: 100%; padding: 4mm; box-sizing: border-box;
-                  font-family: Arial, Helvetica, sans-serif; overflow: hidden;
+                  font-family: var(--font-sans); line-height: 1.15; overflow: hidden;
                   display: flex; flex-direction: column; justify-content: space-between; }
-    .label-name  { font-size: 12pt; font-weight: 800; color: #000;
-                   border-bottom: 1pt solid #000; margin-bottom: 2mm; padding-bottom: 1mm;
+    .label-name  { font-size: 12pt; font-weight: 800; color: var(--s-body);
+                   border-bottom: 1pt solid var(--s-body); margin-bottom: 2mm; padding-bottom: 1mm;
                    line-height: 1.2; }
     .label-name.small { font-size: 9pt; }
     .label-row   { display: flex; justify-content: space-between; align-items: center;
                    margin-bottom: 1mm; }
-    .label-kv    { font-size: 7.5pt; color: #000; }
+    .label-kv    { font-size: 7.5pt; color: var(--s-body); }
     .label-kv b  { font-size: 8pt; }
-    .label-lot   { font-size: 9pt; font-weight: 700; color: #000; }
+    .label-lot   { font-size: 9pt; font-weight: 700; color: var(--s-body); }
     .label-exp   { font-size: 8pt; font-weight: 700; }
-    .label-exp.warn   { color: #7a5c00; }
-    .label-exp.danger { color: #9b1c1c; }
+    /* a flag is a word and a shape as well as a colour: a label prints on a
+       monochrome thermal printer */
+    .label-exp:before { font-size: .7em; line-height: 1; }
+    .label-exp.warn   { color: var(--s-warn-text); }
+    .label-exp.warn:before   { content: "\25B2\00a0"; }
+    .label-exp.danger { color: var(--s-danger-dk); }
+    .label-exp.danger:before { content: "\25C6\00a0"; }
     .label-barcode-wrap { margin: 1mm 0; text-align: center; }
     .label-barcode-wrap svg { max-width: 100%; height: auto; }
-    .label-footer { font-size: 6pt; color: #555; border-top: 0.5pt solid #ccc;
+    .label-footer { font-size: 6pt; color: var(--s-secondary); border-top: 0.5pt solid var(--s-border);
                     padding-top: 1mm; }
-    .label-storage { font-size: 7pt; font-weight: 700; background: #000; color: #fff;
+    .label-storage { font-size: 7pt; font-weight: 700; background: var(--s-body); color: var(--s-bg);
                      padding: 0 2mm; border-radius: 1mm; display: inline-block; }
     /* Large-format extras */
     .label-big .label-name { font-size: 16pt; }
     .label-big .label-kv   { font-size: 9pt; }
     .label-big .label-lot  { font-size: 12pt; }
     /* A designed label (Document Templates) is a PDF made here */
-    .label-pdf { display: block; width: 100%; height: 260px; border: 1px solid #ccc;
-                 border-radius: 4px; margin-top: 12px; background: #fff; }
+    .label-pdf { display: block; width: 100%; height: 260px; border: 1px solid var(--s-border);
+                 border-radius: var(--radius); margin-top: 12px; background: var(--s-bg); }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -108,9 +115,7 @@
       <span>mm &nbsp; H:</span>
       <input type="number" id="custom-h" value="25" min="10" max="300" step="1" />
       <span>mm</span>
-      <button onclick="applySize()" style="padding:4px 10px;font-size:12px;
-              border:1px solid #1a73e8;color:#1a73e8;background:#fff;
-              border-radius:5px;cursor:pointer;">Apply</button>
+      <button class="btn-back" onclick="applySize()">Apply</button>
     </div>
     </div>
 

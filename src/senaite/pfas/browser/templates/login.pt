@@ -13,8 +13,8 @@
   <title tal:content="python:view.lab_name or 'Sign in'">Sign in</title>
   <link rel="icon" type="image/x-icon" tal:attributes="href string:${purl}/++resource++senaite.pfas/favicon.ico" />
   <link rel="apple-touch-icon" tal:attributes="href string:${purl}/++resource++senaite.pfas/favicon-180.png" />
-  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/pfas-tokens.css" />
-  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/login.css" />
+  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/pfas-tokens.css?v=${context/@@pfas-macros/asset_version}" />
+  <link rel="stylesheet" tal:attributes="href string:${purl}/++resource++senaite.pfas/login.css?v=${context/@@pfas-macros/asset_version}" />
 </head>
 <body class="pfas-login" tal:define="purl view/portal_url; tiles view/tiles; term view/terminal">
   <main class="login-shell">
@@ -69,6 +69,6 @@
       </div>
     </section>
   </main>
-  <script tal:attributes="src string:${purl}/++resource++senaite.pfas/login.js"></script>
+  <script tal:attributes="src string:${purl}/++resource++senaite.pfas/login.js?v=${context/@@pfas-macros/asset_version}"></script>
 </body>
 </html>

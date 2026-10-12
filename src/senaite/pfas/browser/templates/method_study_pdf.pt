@@ -6,23 +6,13 @@
 <head>
   <meta charset="utf-8" />
   <title tal:content="string:Method study ${rec/id}">Method study</title>
-  <!-- Print document for WeasyPrint (method_studies.py): self-contained, as
-       the extraction log; exempt from the screen ratchet. -->
-  <style>
-    @page { size: letter; margin: 19mm;
-            @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #666; } }
-    body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9pt; color: #12121f; }
-    h1 { font-size: 16pt; margin: 0 0 4pt; }
-    h2 { font-size: 12pt; color: #1a61a3; margin: 12pt 0 4pt; }
-    table { width: 100%; border-collapse: collapse; margin: 2pt 0 8pt; }
-    th, td { border: 0.3pt solid #808080; padding: 3pt 5pt; text-align: left; vertical-align: top; }
-    thead th { background: #1a61a3; color: #fff; }
-    .btn-sm { display: none; }
-  </style>
+  <!-- Print document for WeasyPrint (method_studies.py): the generated lab-theme
+       stylesheet with the control block and footer (print_doc.py). -->
+  <style tal:content="structure view/print_css">@page {}</style>
 </head>
-<body>
-  <h1 tal:content="string:Method study ${rec/id}">Method study</h1>
-  <table>
+<body class="pd">
+  <tal:h tal:replace="structure view/print_head" />
+  <table class="pd-kv">
     <tr><th>Kind</th><td tal:content="python:view.kind_label(rec['kind'])">MDL</td></tr>
     <tr><th>Source</th><td tal:content="python:{'mdl': u'40 CFR 136 Appendix B, Revision 2 (EPA 821-R-16-006)'}.get(rec['kind'], u'EPA Method 537.1 v2.0 (EPA/600/R-20/006) section 9.2')">source</td></tr>
     <tr><th>Method / matrix</th><td tal:content="string:${rec/method} / ${rec/matrix}">m</td></tr>

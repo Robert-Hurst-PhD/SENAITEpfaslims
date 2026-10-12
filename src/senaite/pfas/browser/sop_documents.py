@@ -241,6 +241,15 @@ class PFASSOPView(BrowserView):
     def portal_url(self):
         return self._portal_url()
 
+    def print_control(self):
+        """The register prints as a record of what was in force: each SOP's
+        number and active revision are in its row, so the block names the
+        register itself."""
+        active = [s for s in self.list_sops() if s.get("active_rev")]
+        return {"doc_id": u"Controlled documents register",
+                "title": u"Controlled documents register",
+                "cells": [(u"Documents in force", u"%d" % len(active))]}
+
     def list_sops(self):
         """Return all SOPs with their current revision info and sign-off counts."""
         portal = self._portal()
