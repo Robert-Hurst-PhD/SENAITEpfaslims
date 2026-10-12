@@ -1,0 +1,27 @@
+/* provenance.css — the value drawer (provenance.js). Tokens only. */
+[data-prov] { cursor: pointer; }
+[data-prov]:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+[data-prov]:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--focus); }
+.pv-head { display: flex; align-items: center; gap: var(--sp-3); margin: 0 0 var(--sp-3); }
+.pv-value { font-family: var(--font-heading); font-size: var(--fs-2xl); font-weight: var(--fw-heading); font-variant-numeric: tabular-nums; }
+.pv-value small { font-size: var(--fs-sm); color: var(--text-muted); font-weight: var(--fw-body); }
+.pv-formula { font-family: var(--font-mono); font-size: var(--fs-xl); line-height: 1.6; padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface-2); margin: 0 0 var(--sp-3);
+  white-space: normal; word-break: break-word; }
+.pv-term { font-weight: var(--fw-heading); padding: 0 2px; border-radius: var(--radius); transition: background var(--t-fast); }
+.pv-rule { margin: 0 0 var(--sp-3); color: var(--text-muted); font-size: var(--fs-sm); }
+.pv-h { font-family: var(--font-heading); font-size: var(--fs-lg); font-weight: var(--fw-heading); margin: var(--sp-5) 0 var(--sp-2); }
+.pv-terms td, .pv-file td, .pv-rows td { padding: 6px 10px; font-size: var(--fs-sm); }
+.pv-terms .pv-sym { font-family: var(--font-mono); font-weight: var(--fw-heading); }
+.pv-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.pv-steps { margin: 0; padding-left: var(--sp-5); }
+.pv-steps li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--sp-3); align-items: baseline;
+  padding: 6px 0; border-bottom: 1px solid var(--line); }
+.pv-steps code { font-family: var(--font-mono); color: var(--text-muted); }
+.pv-steps b { font-variant-numeric: tabular-nums; }
+.pv-scroll { overflow-x: auto; }
+.pv-file th, .pv-file td { white-space: nowrap; }
+.pv-cell { font-weight: var(--fw-strong); }
+.pv-hot, .pv-term.pv-hot { background: var(--accent-soft); }
+tr.pv-hot td { background: var(--accent-soft); }
+.pv-open { margin-left: var(--sp-2); }

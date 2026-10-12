@@ -101,13 +101,26 @@ def head(text, lines=HEAD_LINES):
     return "".join(out)
 
 
+# the file line a read row came from, carried on each row dict (value
+# provenance, 2026-10-11); never a column of the layout
+LINE = "__line"
+
+
 def records(text, delimiter):
     """[[cell, ...]] per record: fields split on the delimiter, a quoted field
     may hold the delimiter, a doubled quote or a line break; CRLF, LF and CR
     all end a record."""
-    out, row, cell = [], [], []
+    return records_lines(text, delimiter)[0]
+
+
+def records_lines(text, delimiter):
+    """(records, lines): the records as `records` gives them, and for each
+    the 1-based line of the file it starts on (a quoted field may span
+    lines, so a record's line is where it begins)."""
+    out, lines, row, cell = [], [], [], []
     quoted, i, n = False, 0, len(text)
     at_start = True
+    line, rec_line = 1, 1
     while i < n:
         c = text[i]
         if quoted:
@@ -118,6 +131,8 @@ def records(text, delimiter):
                     continue
                 quoted = False
             else:
+                if c == "\n" or (c == "\r" and not (i + 1 < n and text[i + 1] == "\n")):
+                    line += 1
                 cell.append(c)
             i += 1
             continue
@@ -131,10 +146,13 @@ def records(text, delimiter):
         elif c in "\r\n":
             row.append("".join(cell))
             out.append(row)
+            lines.append(rec_line)
             row, cell = [], []
             at_start = True
             if c == "\r" and i + 1 < n and text[i + 1] == "\n":
                 i += 1
+            line += 1
+            rec_line = line
         else:
             cell.append(c)
             at_start = False
@@ -142,7 +160,8 @@ def records(text, delimiter):
     if cell or row:
         row.append("".join(cell))
         out.append(row)
-    return out
+        lines.append(rec_line)
+    return out, lines
 
 
 def sniff(text):
@@ -212,22 +231,23 @@ def read(text, opts=None):
     pattern or a layout the text does not have."""
     o = options(opts)
     delim = delimiter_of(text, o)
-    recs = records(text, delim)
+    recs, lines = records_lines(text, delim)
     missing = _markers(o["missing"])
     layout = o["layout"]
     if layout == "wide":
-        headers, rows = _read_wide(recs, o)
+        headers, rows = _read_wide(recs, o, lines)
     elif layout == "blocks":
-        headers, rows = _read_blocks(recs, o, delim)
+        headers, rows = _read_blocks(recs, o, delim, lines)
     else:
-        headers, rows = _read_long(recs, o)
+        headers, rows = _read_long(recs, o, lines)
     skip_col, skip = o["skip_column"].strip(), _markers(o["skip_values"])
     out = []
     for r in rows:
         if skip_col and (r.get(skip_col) or "").strip() in skip:
             continue
         if missing:
-            r = dict((k, "" if (v or "").strip() in missing else v) for k, v in r.items())
+            r = dict((k, v if k == LINE else ("" if (v or "").strip() in missing else v))
+                     for k, v in r.items())
         out.append(r)
     return {"headers": headers, "rows": out, "delimiter": delim,
             "signature": sorted(set(headers))}
@@ -237,20 +257,23 @@ def _blank(rec):
     return not any((c or "").strip() for c in rec)
 
 
-def _read_long(recs, o):
+def _read_long(recs, o, lines=None):
     start = o["header_row"] - 1
     if start >= len(recs):
         return [], []
     headers = _unique(recs[start])
     rows = []
-    for rec in recs[start + 1:]:
+    for n, rec in enumerate(recs[start + 1:], start + 1):
         if _blank(rec):
             continue
-        rows.append(dict((h, rec[i] if i < len(rec) else "") for i, h in enumerate(headers)))
+        r = dict((h, rec[i] if i < len(rec) else "") for i, h in enumerate(headers))
+        if lines:
+            r[LINE] = lines[n]
+        rows.append(r)
     return headers, rows
 
 
-def _read_wide(recs, o):
+def _read_wide(recs, o, lines=None):
     """Two header rows: groups (a compound's columns, or the injection's own)
     over field names."""
     start = o["header_row"] - 1
@@ -291,10 +314,12 @@ def _read_wide(recs, o):
             comp_fields.append(f)
     headers = own_names + [COMPOUND] + [f for f in comp_fields if f not in own_names]
     rows = []
-    for rec in recs[start + 2:]:
+    for n, rec in enumerate(recs[start + 2:], start + 2):
         if _blank(rec):
             continue
         base = dict((name, rec[i] if i < len(rec) else "") for (i, _f), name in zip(own, own_names))
+        if lines:
+            base[LINE] = lines[n]
         for comp in compounds:
             r = dict(base)
             r[COMPOUND] = comp
@@ -305,14 +330,14 @@ def _read_wide(recs, o):
     return headers, rows
 
 
-def _read_blocks(recs, o, delim):
+def _read_blocks(recs, o, delim, lines=None):
     """One block per compound: its start line, its header, its rows."""
     start_re = _compile(o["block_pattern"], "The block pattern")
     if start_re is None or "compound" not in start_re.groupindex:
         raise ValueError('A block layout needs a block pattern with a (?P<compound>...) group')
     headers, rows = [], []
     comp, header = None, None
-    for rec in recs:
+    for n, rec in enumerate(recs):
         line = delim.join(rec)
         m = start_re.match(line)
         if m:
@@ -335,6 +360,8 @@ def _read_blocks(recs, o, delim):
         r = dict((h, rec[i] if i < len(rec) else "") for i, h in enumerate(header)
                  if not h.startswith("Unnamed: "))
         r[COMPOUND] = comp
+        if lines:
+            r[LINE] = lines[n]
         rows.append(r)
     return [COMPOUND] + headers, rows
 

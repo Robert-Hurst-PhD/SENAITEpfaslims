@@ -124,6 +124,7 @@ def _qc_rows(batch) -> list:
         # run's QC write was lost
         rows.append(dict(common, analyte=res.analyte, qc_type="LFSM",
                          applies_to=res.parent_injection or "",
+                         prov_key=_pk("LFSM", res.lfsm_injection, res.analyte),
                          qc_level=res.lfsm_injection or "", value=res.recovery_pct, units="%",
                          **_window(getattr(res, "window", None)),
                          flag=(res.flag.issue if res.flag else ""),
@@ -131,7 +132,7 @@ def _qc_rows(batch) -> list:
     for res in (getattr(batch, "lfsmd_results", None) or []):
         parent = lfsm_parent.get(res.lfsm_injection, "")
         rows.append(dict(common, analyte=res.analyte, qc_type="LFSMD",
-                         applies_to=parent,
+                         applies_to=parent, prov_key=_pk("LFSMD", res.lfsmd_injection, res.analyte),
                          qc_level="RPD " + (res.lfsmd_injection or ""), value=res.rpd_pct, units="%",
                          **_window(getattr(res, "window", None)),
                          flag=(res.flag.issue if res.flag else ""),
@@ -140,6 +141,7 @@ def _qc_rows(batch) -> list:
             rec_flag = getattr(res, "recovery_flag", None)
             rows.append(dict(common, analyte=res.analyte, qc_type="LFSMD",
                              applies_to=parent, qc_level="Recovery " + (res.lfsmd_injection or ""),
+                             prov_key=_pk("LFSMD_REC", res.lfsmd_injection, res.analyte),
                              value=res.recovery_lfsmd, units="%",
                              **_window(getattr(res, "recovery_window", None)),
                              flag=(rec_flag.issue if rec_flag else ""),
@@ -182,8 +184,9 @@ def _qc_rows(batch) -> list:
         unit = (r.conc_units or "").strip()
         if lim:
             written.add(key)
-        rows.append(_blank_row(common, blank_role, r.injection_name, r.compound_name, conc,
-                               "" if unit.lower() == "nan" else unit, lim, over))
+        rows.append(dict(_blank_row(common, blank_role, r.injection_name, r.compound_name, conc,
+                                    "" if unit.lower() == "nan" else unit, lim, over),
+                         prov_key=_pk("BLANK", key[0], key[1]) if lim else ""))
     # a judged analyte none of whose export rows was written (the export's
     # own total row, which carries no compound type): its verdict is still
     # stored, or a failing blank would hold nothing
@@ -191,8 +194,9 @@ def _qc_rows(batch) -> list:
         role = classify_injection(key[0], dilutions)
         if key in written or role not in BLANK_ROLES:
             continue
-        rows.append(_blank_row(common, role, key[0], key[1], lim.get("value"),
-                               lim.get("unit") or "", lim, key in blank_failed))
+        rows.append(dict(_blank_row(common, role, key[0], key[1], lim.get("value"),
+                                    lim.get("unit") or "", lim, key in blank_failed),
+                         prov_key=_pk("BLANK", key[0], key[1])))
 
     # field reagent blanks: judged in run_queue against their own limit
     # (Blank limits); a detection qualifies the samples of the same CoC
@@ -231,10 +235,12 @@ def _qc_rows(batch) -> list:
             # on PFOS or ADONA was stored as a pass
             key = judged_as.get((inj, r.compound_name), (inj, r.compound_name))
             frb_written.add(key)
-            rows.append(_frb_row(inj, r.compound_name, reported_conc(r), key in blank_flags, qc_type))
+            rows.append(dict(_frb_row(inj, r.compound_name, reported_conc(r), key in blank_flags, qc_type),
+                             prov_key=_pk("BLANK", key[0], key[1]) if key in blank_limits else ""))
         for key, lim in sorted(blank_limits.items()):
             if key[0] == inj and key not in frb_written:
-                rows.append(_frb_row(inj, key[1], lim.get("value"), key in blank_flags, qc_type))
+                rows.append(dict(_frb_row(inj, key[1], lim.get("value"), key in blank_flags, qc_type),
+                                 prov_key=_pk("BLANK", key[0], key[1])))
 
     # CCV and calibration verdicts. They lived only in the run's review queue,
     # which SENAITE never reads, so a failing CCV or calibrator never reached
@@ -243,6 +249,8 @@ def _qc_rows(batch) -> list:
     for v in (getattr(batch, "ccv_results", None) or []):
         rows.append(dict(common, analyte=v.get("analyte") or "", qc_type=v.get("qc_type") or "CCV",
                          qc_level=v.get("concat_id") or v.get("injection_name") or "",
+                         prov_key=_pk(v.get("qc_type") or "CCV", v.get("concat_id") or v.get("injection_name"),
+                                      v.get("analyte")),
                          value=v.get("calculated"), expected_value=v.get("expected"),
                          units="", flag=v.get("issue") or "",
                          limit_low=v.get("lo"), limit_high=v.get("hi"),
@@ -261,6 +269,7 @@ def _qc_rows(batch) -> list:
     for v in (getattr(batch, "dup_results", None) or []):
         rows.append(dict(common, analyte=v.get("analyte") or "", qc_type="Dup",
                          applies_to=v.get("parent") or "",
+                         prov_key=_pk("DUP", v.get("injection_name"), v.get("analyte")),
                          qc_level=v.get("injection_name") or "", value=v.get("rpd"),
                          units="% RPD", flag=v.get("issue") or "",
                          **_window(v),
@@ -268,12 +277,14 @@ def _qc_rows(batch) -> list:
     for v in (getattr(batch, "lcs_results", None) or []):
         rows.append(dict(common, analyte=v.get("analyte") or "", qc_type=v.get("qc_type") or "LFB",
                          qc_level=v.get("injection_name") or "", value=v.get("recovery"),
+                         prov_key=_pk(v.get("qc_type") or "LFB", v.get("injection_name"), v.get("analyte")),
                          units="%", flag=v.get("issue") or "",
                          **_window(v),
                          passed=1 if v.get("passed") else 0))
     for res in (getattr(batch, "cal_results", None) or []):
         rows.append(dict(common, analyte=res.analyte, qc_type="Calibration",
                          qc_level=(res.concat_id or res.injection_name),
+                         prov_key=_pk("CAL", res.concat_id or res.injection_name, res.analyte),
                          value=(res.pct_deviation * 100.0 if res.pct_deviation is not None else None),
                          units="% deviation",
                          **_window(_cal_window(res)),
@@ -290,6 +301,7 @@ def _qc_rows(batch) -> list:
         # key)" and existed for exactly this.
         rows.append(dict(common, analyte=res.is_compound, qc_type="IS",
                          _status=("active" if getattr(res, "configured", True) else "unevaluated"),
+                         prov_key=_pk("IS", res.concat_id or res.injection_name, res.is_compound),
                          applies_to=res.injection_name or "",
                          qc_level=(res.concat_id or res.injection_name),
                          value=(res.pct_from_cal * 100.0
@@ -299,6 +311,33 @@ def _qc_rows(batch) -> list:
                          flag=(res.flag.issue if res.flag else ""),
                          passed=0 if res.flag else 1))
     return _unique_keys(rows)
+
+
+def _pk(kind, injection, analyte):
+    """The provenance key a QC row carries (provenance.key)."""
+    from .provenance import key
+    return key(kind, injection, analyte)
+
+
+def persist_provenance(batch, db_path: str = None) -> int:
+    """Write the run's value-provenance records; replaces the batch's
+    previous ones, like every other per-batch table."""
+    from .provenance import rows_for_persist, PERSIST_COLUMNS
+    path = db_path or DB_PATH
+    rows = rows_for_persist(batch)
+    conn = _connect(path)
+    try:
+        have = {r[1] for r in conn.execute("PRAGMA table_info(value_provenance)")}
+        if not have:
+            return 0
+        conn.execute("DELETE FROM value_provenance WHERE batch_id=?", (batch.batch_id,))
+        if rows:
+            conn.executemany("INSERT INTO value_provenance (%s) VALUES (%s)" % (
+                PERSIST_COLUMNS, ",".join("?" * len(PERSIST_COLUMNS.split(",")))), rows)
+        conn.commit()
+    finally:
+        conn.close()
+    return len(rows)
 
 
 def _blank_row(common, role, injection, analyte, conc, unit, lim, over):

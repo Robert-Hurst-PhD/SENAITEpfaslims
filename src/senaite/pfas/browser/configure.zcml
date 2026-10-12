@@ -924,6 +924,15 @@
       />
 
   <!-- AJAX: Reagent inventory autocomplete (reagent_ref fields) -->
+  <!-- value provenance: the record behind one Data Review value, as JSON
+       for the drawer (staff only, read-only) -->
+  <browser:page
+      name="pfas-provenance"
+      for="*"
+      class=".provenance.PFASProvenanceView"
+      permission="zope2.View"
+      />
+
   <browser:page
       name="pfas-reagent-autocomplete"
       for="*"

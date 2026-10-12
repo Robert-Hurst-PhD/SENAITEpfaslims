@@ -33,6 +33,13 @@ def _f(v):
         return None
 
 
+def _t(v):
+    """Text or "" (a pandas NaN or a number is not a text cell)."""
+    if v is None or isinstance(v, float):
+        return ""
+    return str(v)
+
+
 def persist_injection_results(batch, db_path: str = None) -> int:
     """Write one row per injection × compound for a processed Batch. Replaces
     any existing rows for the same batch_id (idempotent re-import)."""
@@ -118,6 +125,22 @@ def persist_injection_results(batch, db_path: str = None) -> int:
             getattr(r, "manual_changes", None) or "",
             (None if getattr(r, "manual_integration", None) is None
              else (1 if r.manual_integration else 0)),
+            # value provenance: where the row came from, what it was
+            _t(getattr(r, "source_file", "")),
+            getattr(r, "source_row", None),
+            _f(getattr(r, "raw_calculated_conc", None)),
+            _f(getattr(r, "measured_conc", None)),
+            _f(getattr(r, "raw_measured_conc", None)),
+            _f((dilutions.get(inj) or {}).get("factor")),
+            _f(getattr(r, "expected_conc", None)),
+            _f(getattr(r, "reporting_limit", None)),
+            _t(getattr(r, "ion_ratios", None)),
+            (r.acquisition_datetime.strftime("%Y-%m-%dT%H:%M:%S")
+             if getattr(r, "acquisition_datetime", None) else ""),
+            _f(getattr(r, "salt_factor", None)),
+            _f(getattr(r, "matrix_factor", None)),
+            _t(getattr(r, "derived_from", "")),
+            "row|%s|%s" % (inj, analyte),
         ))
 
     cols = ("batch_id,run_date,sample_id,injection_name,qc_type,analyte,role,"
@@ -125,8 +148,11 @@ def persist_injection_results(batch, db_path: str = None) -> int:
             "response,calc_conc,conc_qualifier,recovery,flag,passed,created_at,"
             "std_role,rec_min,rec_max,rec_status,rec_guidance,"
             "resp_pct,resp_min,resp_max,resp_status,rec_judged,resp_judged,judged_rule,"
-            "manual_raw,manual_integration")
-    ph = ",".join(["?"] * 36)
+            "manual_raw,manual_integration,"
+            "source_file,source_row,raw_conc,measured_conc,raw_measured_conc,dilution,"
+            "expected_conc,reporting_limit,ion_ratio_text,acquired_at,salt_factor,"
+            "matrix_factor,derived_from,prov_key")
+    ph = ",".join(["?"] * 50)
     conn = sqlite3.connect(path)
     try:
         from .addon import load

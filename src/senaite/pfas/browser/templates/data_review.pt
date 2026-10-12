@@ -7,6 +7,12 @@
   <title metal:fill-slot="title">Data Review</title>
 
   <tal:styles metal:fill-slot="head-extra">
+    <!-- value provenance: the drawer behind every number (decided 2026-10-11) -->
+    <meta name="pfas-batch-id" tal:attributes="content view/batch_id" />
+    <meta name="pfas-provenance-url" tal:attributes="content string:${context/portal_url}/@@pfas-provenance" />
+    <link rel="stylesheet" type="text/css"
+          tal:attributes="href string:${context/portal_url}/++resource++senaite.pfas/provenance.css" />
+    <script tal:attributes="src string:${context/portal_url}/++resource++senaite.pfas/provenance.js"></script>
   <style>
     /* ── Data Review ────────────────────────────────────────────────────── */
     .dr-header { display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
@@ -1277,9 +1283,16 @@
                   <tr tal:repeat="a s/analytes"
                       tal:attributes="style python:'background:#fdecea' if not a['passed'] else ''">
                     <td tal:content="a/analyte">PFOA</td>
-                    <td tal:content="python:('%.4g' % a['result']) if a['result'] is not None else '—'">0.42</td>
-                    <td tal:content="python:('%.2f' % a['rt']) if a['rt'] is not None else '—'">7.82</td>
-                    <td tal:content="python:('%.2f' % a['ion_ratio']) if a['ion_ratio'] is not None else '—'">0.98</td>
+                    <td tal:attributes="data-prov a/prov/result; role string:button; tabindex string:0"
+                        tal:content="python:('%.4g' % a['result']) if a['result'] is not None else '—'">0.42</td>
+                    <td tal:attributes="data-prov python:a['prov']['rt'] if a['rt'] is not None else None;
+                                        role python:'button' if a['rt'] is not None else None;
+                                        tabindex python:0 if a['rt'] is not None else None"
+                        tal:content="python:('%.2f' % a['rt']) if a['rt'] is not None else '—'">7.82</td>
+                    <td tal:attributes="data-prov python:a['prov']['ion'] if a['ion_ratio'] is not None else None;
+                                        role python:'button' if a['ion_ratio'] is not None else None;
+                                        tabindex python:0 if a['ion_ratio'] is not None else None"
+                        tal:content="python:('%.2f' % a['ion_ratio']) if a['ion_ratio'] is not None else '—'">0.98</td>
                     <td><span tal:condition="a/flag" class="qc-cell-fail"
                               tal:content="a/flag">(RT)</span>
                         <span tal:condition="not:a/flag" style="color:var(--s-success-text);">&#10003;</span></td>

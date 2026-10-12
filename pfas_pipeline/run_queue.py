@@ -1411,6 +1411,18 @@ class RunQueue:
                 if judged:
                     dup_evaluated.add(inj)
 
+        # Value provenance: what every judged value above was computed from,
+        # taken from the result objects in this same pass. A failure here is
+        # a gap the reviewer sees, never a silent one.
+        try:
+            from . import provenance as _prov
+            _prov.record_run(self.batch, rows, profile, _matrix)
+        except Exception as exc:                                # noqa: BLE001
+            logger.exception("value provenance could not be recorded for %s", self.batch.batch_id)
+            _record_gap("Provenance", "", UnconfiguredCriterion(
+                "the run's value provenance could not be recorded (%s): the drawer will show "
+                "no terms for this run until it is reprocessed" % exc))
+
         # Consolidate the QC Log (Sheet 6 equivalent)
         self.batch.qc_flags = [
             f for fl in flags_by_injection.values() for f in fl

@@ -277,6 +277,35 @@ MIGRATIONS = [
     (43, "INSERT OR IGNORE INTO run_imports SELECT file, batch_id, status, attempts, error, updated_at "
          "FROM run_imports_v1"),
     (44, "DROP TABLE run_imports_v1"),
+    # Value provenance (decided 2026-10-11): where each imported row came
+    # from and what it was before the extract corrections; the term records
+    # of every judged value (value_provenance); a key from a QC row or an
+    # injection row to its record.
+    (45, "ALTER TABLE injection_results ADD COLUMN source_file TEXT NOT NULL DEFAULT ''"),
+    (46, "ALTER TABLE injection_results ADD COLUMN source_row INTEGER"),
+    (47, "ALTER TABLE injection_results ADD COLUMN raw_conc REAL"),
+    (48, "ALTER TABLE injection_results ADD COLUMN measured_conc REAL"),
+    (49, "ALTER TABLE injection_results ADD COLUMN raw_measured_conc REAL"),
+    (50, "ALTER TABLE injection_results ADD COLUMN dilution REAL"),
+    (51, "ALTER TABLE injection_results ADD COLUMN expected_conc REAL"),
+    (52, "ALTER TABLE injection_results ADD COLUMN reporting_limit REAL"),
+    (53, "ALTER TABLE injection_results ADD COLUMN ion_ratio_text TEXT NOT NULL DEFAULT ''"),
+    (54, "ALTER TABLE injection_results ADD COLUMN acquired_at TEXT NOT NULL DEFAULT ''"),
+    (55, "ALTER TABLE injection_results ADD COLUMN salt_factor REAL"),
+    (56, "ALTER TABLE injection_results ADD COLUMN matrix_factor REAL"),
+    (57, "ALTER TABLE injection_results ADD COLUMN derived_from TEXT NOT NULL DEFAULT ''"),
+    (58, "ALTER TABLE injection_results ADD COLUMN prov_key TEXT NOT NULL DEFAULT ''"),
+    (59, "ALTER TABLE qc_results ADD COLUMN prov_key TEXT NOT NULL DEFAULT ''"),
+    (60, "CREATE TABLE IF NOT EXISTS value_provenance ("
+         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+         "batch_id TEXT NOT NULL DEFAULT '', key TEXT NOT NULL, kind TEXT NOT NULL DEFAULT '', "
+         "analyte TEXT NOT NULL DEFAULT '', injection TEXT NOT NULL DEFAULT '', "
+         "value REAL, value_text TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL DEFAULT '', "
+         "verdict TEXT NOT NULL DEFAULT '', formula TEXT NOT NULL DEFAULT '', "
+         "terms_json TEXT NOT NULL DEFAULT '[]', steps_json TEXT NOT NULL DEFAULT '[]', "
+         "rule_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL)"),
+    (61, "CREATE UNIQUE INDEX IF NOT EXISTS idx_prov_batch_key ON value_provenance (batch_id, key)"),
+    (62, "CREATE INDEX IF NOT EXISTS idx_prov_inj ON value_provenance (batch_id, injection, analyte)"),
 ]
 
 # check verdict statuses (rec_status / resp_status)

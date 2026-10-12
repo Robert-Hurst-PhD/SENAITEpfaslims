@@ -159,11 +159,7 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
             factor = salt_factors.get(row.compound_name)
             if not factor:
                 continue
-            for field in ("calculated_conc", "measured_conc",
-                          "reporting_limit"):
-                value = getattr(row, field, None)
-                if value is not None:
-                    setattr(row, field, value * factor)
+            _scale_row(row, factor, "salt_factor")
             salted += 1
         logger.info("Applied per-analyte salt correction to %d rows (%s)",
                     salted, ", ".join(
@@ -205,10 +201,7 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
                 per_sample_rows += 1
             if not factor:
                 continue
-            for field in ("calculated_conc", "measured_conc", "reporting_limit"):
-                value = getattr(row, field, None)
-                if value is not None:
-                    setattr(row, field, value * factor)
+            _scale_row(row, factor, "matrix_factor")
             if reported_unit:
                 row.conc_units = reported_unit
         if fallbacks is not None:
@@ -228,11 +221,7 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
                 continue
             if not _has_sample_basis(row):
                 continue
-            for field in ("calculated_conc", "measured_conc",
-                          "reporting_limit"):
-                value = getattr(row, field, None)
-                if value is not None:
-                    setattr(row, field, value * matrix_factor)
+            _scale_row(row, matrix_factor, "matrix_factor")
             # The row now carries a SAMPLE-basis concentration, so it must say
             # so: everything downstream that compares against it — the spike
             # level above all — reads this to know what it is looking at.
@@ -250,6 +239,21 @@ def apply_extract_corrections(rows, method_id, matrix, sample_amounts=None,
                        "will not match a spike level recorded per sample.",
                        method_id, matrix)
     return rows
+
+
+def _scale_row(row, factor, kind):
+    """Multiply the row's three concentration fields by `factor`, keeping
+    what they were before the FIRST correction and which factors were
+    applied (value provenance). The scaled fields are what every rule
+    reads, exactly as before."""
+    for field in ("calculated_conc", "measured_conc", "reporting_limit"):
+        value = getattr(row, field, None)
+        raw_field = "raw_" + field
+        if getattr(row, raw_field, None) is None and value is not None:
+            setattr(row, raw_field, value)
+        if value is not None:
+            setattr(row, field, value * factor)
+    setattr(row, kind, factor)
 
 
 def choose_subtraction_blank(mb_names, marked):
@@ -1139,6 +1143,20 @@ def run_pipeline(
 
     # 5. Summary
     build_summary(batch)
+    # the final values' chains, from the summary just built (value provenance)
+    try:
+        from . import provenance as _prov
+        from .method_profiles import get_profile as _gp
+        try:
+            _prov_profile = _gp(method_id) if method_id else None
+        except Exception:                                   # noqa: BLE001
+            _prov_profile = None
+        _prov.record_summary(batch, _prov_profile)
+        _prov.record_file(batch, csv_path.name, import_profile)
+    except Exception as exc:                                # noqa: BLE001
+        logger.exception("value provenance of the summary could not be recorded for %s", batch.batch_id)
+        batch.unconfigured.append({"qc_type": "Provenance", "analyte": "", "method_id": method_id,
+                                   "reason": "the final values' provenance could not be recorded (%s)" % exc})
 
     # 5a. FDA §10.2(4). build_summary has just decided what was detected, so the
     # confirmation checks can now be settled — PENDING where a single-transition
@@ -1164,11 +1182,12 @@ def run_pipeline(
     # Summary gate and the control charts read these; nothing wrote them, so a
     # successful import still left the gate reporting "no_batch_record".
     try:
-        from .qc_store import persist_qc_results, persist_calibrations
+        from .qc_store import persist_qc_results, persist_calibrations, persist_provenance
         n_qc = persist_qc_results(batch)
         n_cal = persist_calibrations(batch)
-        logger.info("Persisted %d QC results and %d calibration curves",
-                    n_qc, n_cal)
+        n_prov = persist_provenance(batch)
+        logger.info("Persisted %d QC results, %d calibration curves and %d provenance records",
+                    n_qc, n_cal, n_prov)
     except Exception as e:                            # noqa: BLE001
         logger.error("qc_results persist failed: %s", e)
 
@@ -1411,7 +1430,8 @@ def labelled_rows(rows, method_id):
             quan_ref_expected_ion_ratios=None, method_expected_ion_ratios=None,
             qual_ions_responses=None, signal_to_noise=None, qual_sn=None, reporting_limit=None,
             r2=None, linked_is=None, conc_qualifier="", manual_changes=None,
-            manual_integration=None, included_in_cal=False))
+            manual_integration=None, included_in_cal=False,
+            derived_from="columns of " + (r.compound_name or "")))
     return out
 
 

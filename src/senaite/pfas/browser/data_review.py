@@ -535,8 +535,16 @@ class PFASDataReviewView(BrowserView):
         by_sample = {}
         for r in rows:
             sid = r.get("sample_id") or r.get("injection_name") or "?"
+            inj = r.get("injection_name") or u""
+            an = r.get("analyte", "") or u""
             by_sample.setdefault(sid, []).append({
-                "analyte": r.get("analyte", ""),
+                "analyte": an,
+                "injection_name": inj,
+                # the provenance records behind each cell (the drawer); RT
+                # and ion-ratio keys carry the acquisition time the row
+                # does not, so the store matches them on the injection
+                "prov": {"result": u"RESULT|%s|%s" % (inj, an), "rt": u"RT|%s|%s" % (inj, an),
+                         "ion": u"ION|%s|%s" % (inj, an)},
                 "result": r.get("calc_conc"),
                 # The instrument's own verdict when there is no number. Without
                 # it "below quantitation" and "not detected" look identical.
@@ -2457,6 +2465,8 @@ class PFASDataReviewView(BrowserView):
                         "limit_basis": rec.get("limit_basis") or u"",
                         "units": rec.get("units") or u"",
                         "kind": u"RPD" if (rec.get("qc_level") or u"").split(u" ")[0] == u"RPD" else u"",
+                        # the value's provenance record (the drawer)
+                        "prov_key": rec.get("prov_key") or u"",
                     })
 
                 cells[qc_type] = {

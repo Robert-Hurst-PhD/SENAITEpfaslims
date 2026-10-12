@@ -291,10 +291,17 @@ def load_instrument_csv(
     _values = bool((profile or {}).get("value_maps") or (profile or {}).get("scales"))
     _date_format = (profile or {}).get("date_format") or ""
 
+    _file_name = Path(path).name
     for _, raw in df.iterrows():
         r: dict = raw.to_dict()
         if _values:
             r = _load_addon("import_layouts").apply_values(r, profile)
+        # the file line the layout reader read this row from (value provenance)
+        _line = r.pop("__line", None)
+        try:
+            _line = int(_line) if _line is not None and _line == _line else None
+        except (TypeError, ValueError):
+            _line = None
 
         # Parse datetime
         dt = _parse_datetime(
@@ -374,6 +381,8 @@ def load_instrument_csv(
             injection_volume    = parsed_floats.get("injection_volume"),
             sample_position     = r.get("sample_position") or None,
             is_observed_rt      = parsed_floats.get("is_observed_rt"),
+            source_file         = _file_name,
+            source_row          = _line,
         ))
 
     suffix = (profile or {}).get("qualifier_suffix") or ""
@@ -396,7 +405,9 @@ def read_layout(path, profile):
     except ValueError as exc:
         raise ImportError("The import layout %r cannot read %s: %s"
                           % (profile.get("name") or "", Path(path).name, exc))
-    df = pd.DataFrame(got["rows"], columns=got["headers"], dtype=object)
+    # the reader's line number rides along as a column the mapping never
+    # names (dropped from the row before the fields are read)
+    df = pd.DataFrame(got["rows"], columns=list(got["headers"]) + ["__line"], dtype=object)
     return df.replace({"": np.nan})
 
 

@@ -70,6 +70,19 @@ class InstrumentRow:
     # analyte's row (its area, its retention time): the import profile's
     # "labelled standards from columns" makes the standard's own rows from them
     is_observed_rt:               Optional[float] = None
+    # Value provenance (2026-10-11): the export file and the 1-based line the
+    # row was read from (None for a row no file line gives: a legacy reader,
+    # a row made from another's columns); what the instrument reported BEFORE
+    # the extract corrections scaled it, and the factors applied. The scaled
+    # fields stay the values every rule reads; these only remember.
+    source_file:                  str = ""
+    source_row:                   Optional[int] = None
+    derived_from:                 str = ""
+    raw_calculated_conc:          Optional[float] = None
+    raw_measured_conc:            Optional[float] = None
+    raw_reporting_limit:          Optional[float] = None
+    salt_factor:                  Optional[float] = None
+    matrix_factor:                Optional[float] = None
 
 
 def reported_conc(row) -> "float | None":
@@ -387,6 +400,9 @@ class Batch:
     # the method blank the extraction batch marks for subtraction and the
     # "< LOD" comparison; "" = none marked
     subtraction_blank:  str                  = ""
+    # value provenance (provenance.py): one record per judged value, keyed
+    # "<kind>|<injection>|<analyte>"; written to value_provenance
+    provenance:         list                 = field(default_factory=list)
     # each blank analyte the run judged: (injection, analyte) -> {limit,
     # unit, x_rl, at_limit}; qc_store writes the verdict against it
     blank_limits:       dict                 = field(default_factory=dict)

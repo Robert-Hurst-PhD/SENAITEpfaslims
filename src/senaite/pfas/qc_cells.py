@@ -161,8 +161,14 @@ def cell_display(qc_type, values, status):
         b = v.get("limit_basis") or u""
         if b not in bases:
             bases.append(b)
+    # the provenance records behind the cell, the shown value's first
+    prov = []
+    for v in ([w] if w else []) + values:
+        k = v.get("prov_key") or u""
+        if k and k not in prov:
+            prov.append(k)
     return {"text": text, "cls": STATUS_CLASS.get(status, "qv-review"),
-            "tip": u" · ".join(tips), "bases": bases, "n": len(values)}
+            "tip": u" · ".join(tips), "bases": bases, "n": len(values), "prov": prov}
 
 
 def column_unit(qc_type, values):
