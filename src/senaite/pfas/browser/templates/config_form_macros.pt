@@ -17,8 +17,8 @@
     <summary tal:content="g/title">Calibration</summary>
     <div class="section-body">
       <div class="field-grid">
-        <div tal:repeat="fld g/fields"
-             tal:attributes="class python:'field-row field-row-wide' if fld['kind'] in ('text', 'textarea', 'multi') else 'field-row'">
+        <div tal:repeat="fld g/shown"
+             tal:attributes="class python:'field-row field-row-wide' if (fld['kind'] in ('text', 'textarea', 'multi') or fld['pair']) else 'field-row'">
           <tal:multi condition="python:fld['kind'] == 'multi'">
             <div class="cf-label" tal:content="fld/label">Tier 1 matrices</div>
             <div class="cf-chips">
@@ -38,7 +38,28 @@
               <span tal:content="fld/label">Label</span>
             </label>
           </tal:bool>
-          <tal:other condition="python:fld['kind'] not in ('bool', 'multi')">
+          <tal:pair condition="fld/pair">
+            <label tal:attributes="for fld/name">
+              <span tal:replace="fld/pair_label">Recovery</span><span tal:condition="fld/unit"
+                    tal:replace="string: (${fld/unit})" /><span tal:condition="fld/required"
+                    class="req" title="required"> *</span>
+            </label>
+            <div data-range="data-range"
+                 tal:attributes="data-scale python:fld['scale'] or None; data-unit python:fld['unit'] or None">
+              <input type="number"
+                     tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
+                                     placeholder fld/placeholder; step fld/step;
+                                     min fld/min; max fld/max; aria-label fld/label;
+                                     required python:'required' if fld['required'] else None" />
+              <input type="number"
+                     tal:attributes="id fld/pair/name; name fld/pair/name; form cf_form; value fld/pair/value;
+                                     placeholder fld/pair/placeholder; step fld/pair/step;
+                                     min fld/pair/min; max fld/pair/max; aria-label fld/pair/label;
+                                     required python:'required' if fld['pair']['required'] else None" />
+            </div>
+            <span class="hint" tal:condition="python:fld['pair']['help']" tal:content="python:fld['pair']['help']">hint</span>
+          </tal:pair>
+          <tal:other condition="python:fld['kind'] not in ('bool', 'multi') and not fld['pair']">
             <label tal:attributes="for fld/name">
               <span tal:replace="fld/label">Label</span><span tal:condition="fld/unit"
                     tal:replace="string: (${fld/unit})" /><span tal:condition="fld/required"
@@ -47,12 +68,13 @@
             <input tal:condition="python:fld['kind'] in ('number', 'int')" type="number"
                    tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
                                    placeholder fld/placeholder;
-                                   step python:'1' if fld['kind'] == 'int' else 'any';
+                                   step fld/step;
                                    min fld/min; max fld/max;
                                    required python:'required' if fld['required'] else None" />
             <input tal:condition="python:fld['kind'] == 'text'" type="text"
                    tal:attributes="id fld/name; name fld/name; form cf_form; value fld/value;
-                                   placeholder fld/placeholder;
+                                   placeholder fld/placeholder; data-chips fld/widget;
+                                   data-options python:fld['options_json'] or None;
                                    required python:'required' if fld['required'] else None" />
             <textarea tal:condition="python:fld['kind'] == 'textarea'" rows="3"
                       tal:attributes="id fld/name; name fld/name; form cf_form;
@@ -117,14 +139,20 @@
                         tal:attributes="data-cf-use row/suggest/target;
                                         data-cf-value row/suggest/value">Use</button>
               </tal:s></td>
-          <td tal:repeat="cell row/cells">
+          <td tal:repeat="cell row/cells"
+              tal:attributes="data-pair python:cell['pair'] and cell['pair']['id'];
+                              data-pair-end python:cell['pair'] and cell['pair']['end'];
+                              data-scale python:cell['pair'] and cell['pair']['scale'] or None;
+                              data-unit python:cell['pair'] and cell['pair']['unit'] or None;
+                              data-label python:cell['pair'] and cell['pair']['label'] or None">
             <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
                    tal:attributes="name cell/name; form cf_form; value cell/value;
-                                   step python:'1' if cell['kind'] == 'int' else 'any';
+                                   step cell/step;
                                    min cell/min; max cell/max; placeholder cell/placeholder;
                                    aria-label python:'%s %s' % (row['label'], cell['label'])" />
             <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
                    tal:attributes="name cell/name; form cf_form; value cell/value;
+                                   data-chips cell/widget; data-options python:cell['options_json'] or None;
                                    aria-label python:'%s %s' % (row['label'], cell['label'])" />
             <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
                    tal:attributes="name cell/name; form cf_form;
@@ -166,14 +194,20 @@
     <tbody>
       <tal:r repeat="row python:cf_rows[:-1]">
       <tr>
-        <td tal:repeat="cell row/cells">
+        <td tal:repeat="cell row/cells"
+            tal:attributes="data-pair python:cell['pair'] and cell['pair']['id'];
+                            data-pair-end python:cell['pair'] and cell['pair']['end'];
+                            data-scale python:cell['pair'] and cell['pair']['scale'] or None;
+                            data-unit python:cell['pair'] and cell['pair']['unit'] or None;
+                            data-label python:cell['pair'] and cell['pair']['label'] or None">
           <metal:cell define-macro="coll-cell">
           <input tal:condition="python:cell['kind'] == 'text'" type="text" class="rl-in"
                  tal:attributes="name cell/name; form cf_form; value cell/value;
+                                 data-chips cell/widget; data-options python:cell['options_json'] or None;
                                  placeholder cell/placeholder; aria-label cell/label" />
           <input tal:condition="python:cell['kind'] in ('number', 'int')" type="number" class="rl-in"
                  tal:attributes="name cell/name; form cf_form; value cell/value;
-                                 step python:'1' if cell['kind'] == 'int' else 'any';
+                                 step cell/step;
                                  min cell/min; max cell/max;
                                  placeholder cell/placeholder; aria-label cell/label" />
           <input tal:condition="python:cell['kind'] == 'bool'" type="checkbox" value="on"
@@ -194,7 +228,12 @@
   </table>
   <template class="cf-row-template">
     <tr class="cf-new-row">
-      <td tal:repeat="cell tpl/cells"><metal:c use-macro="context/@@pfas-config-form-macros/macros/coll-cell" /></td>
+      <td tal:repeat="cell tpl/cells"
+          tal:attributes="data-pair python:cell['pair'] and cell['pair']['id'];
+                          data-pair-end python:cell['pair'] and cell['pair']['end'];
+                          data-scale python:cell['pair'] and cell['pair']['scale'] or None;
+                          data-unit python:cell['pair'] and cell['pair']['unit'] or None;
+                          data-label python:cell['pair'] and cell['pair']['label'] or None"><metal:c use-macro="context/@@pfas-config-form-macros/macros/coll-cell" /></td>
     </tr>
   </template>
   <button type="button" class="btn btn-sm btn-secondary cf-add-row"

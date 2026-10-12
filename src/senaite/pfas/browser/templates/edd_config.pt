@@ -140,7 +140,7 @@
       <div class="filter-row section-gap">
         <button class="btn-sm btn-primary" type="submit">Save columns</button>
         <tal:h define="hid string:edd-column-mapped"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
-        <input type="text" name="n_columns" value="1" size="3" aria-label="Number of columns to add" />
+        <input type="number" name="n_columns" value="1" step="1" min="1" max="200" aria-label="Number of columns to add" />
         <button class="btn-sm btn-secondary" type="submit" name="edd_action" value="add_columns">Add columns</button>
       </div>
     </form>

@@ -93,6 +93,7 @@
   --s-success-lt:   #ddf3ea;
   --s-success-bd:   #a9dec7;
   --s-success-text: #1d6b52;
+  --on-success:     #0f1a18;   /* text on a --s-success fill, both themes */
   /* information */
   --s-info:         #2c7a72;
   --s-info-lt:      #e6f2f1;

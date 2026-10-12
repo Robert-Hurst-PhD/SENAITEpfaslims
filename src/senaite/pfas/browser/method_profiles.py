@@ -331,14 +331,16 @@ class PFASMethodProfileEditView(BrowserView):
         return qc_type_rows(self.profile(), get_qc_label_map(api.get_portal()))
 
     def rule_qc_type_rows(self):
-        """Extraction / matrix QC on the Rule Toggles tab: the SAME switch as
-        the QC Types tab (same form field, qc_enabled_<key>), for the types
-        this method can run."""
+        """Extraction / matrix QC on the Rule Toggles tab: the ONE switch
+        (qc_enabled_<key>) for every QC type the QC Types tab offers. Every
+        offered key needs its switch here: an offered key that is not posted
+        is saved as off (apply_qc_toggles)."""
         from senaite.pfas.qc.rules import QC_TYPE_SWITCHES
         labels = dict(QC_TYPE_SWITCHES)
-        by_code = dict((q["code"], q) for q in self.qc_type_toggles() if q.get("toggle"))
-        return [dict(by_code[code], rule_label=labels[code])
-                for code, _l in QC_TYPE_SWITCHES if code in by_code]
+        order = [code for code, _l in QC_TYPE_SWITCHES]
+        rows = [q for q in self.qc_type_toggles() if q.get("toggle")]
+        rows.sort(key=lambda q: (order.index(q["code"]) if q["code"] in order else len(order)))
+        return [dict(q, rule_label=labels.get(q["code"]) or q["label"]) for q in rows]
 
     # ── Rule switches: on the profile itself (QC consolidation P2) ─────────
 
@@ -549,8 +551,17 @@ class PFASMethodProfileEditView(BrowserView):
             from senaite.pfas import regulatory_limits
             self._section_env = {"standard_lots": self.standard_lot_options(),
                                  "services": self._pfas_service_index(),
+                                 "qc_codes": self._qc_codes(),
                                  "regulatory": regulatory_limits.get_store(_portal(self.context))}
         return self._section_env
+
+    def _qc_codes(self):
+        """The QC type codes the lab defines (the tagged Reference Definitions)."""
+        from senaite.pfas import qc_labels
+        try:
+            return sorted(qc_labels.get_qc_label_map(_portal(self.context)).keys())
+        except Exception:
+            return []
 
     def section_groups(self, section_id):
         from senaite.pfas import config_forms

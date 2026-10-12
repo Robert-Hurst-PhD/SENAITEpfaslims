@@ -51,16 +51,16 @@
         <input type="hidden" name="action" value="save_expiry_defaults"/>
         <div class="field-grid page-body-narrow">
           <label>Reagent (from receipt, days)
-            <input type="number" name="reagent_default_days" min="1"
+            <input type="number" name="reagent_default_days" min="1" step="1"
                    tal:attributes="value ed/reagent_default_days"/></label>
           <label>Mobile phase (from opening, days)
-            <input type="number" name="mobile_phase_open_days" min="1"
+            <input type="number" name="mobile_phase_open_days" min="1" step="1"
                    tal:attributes="value ed/mobile_phase_open_days"/></label>
           <label>Other opened (days)
-            <input type="number" name="opened_default_days" min="1"
+            <input type="number" name="opened_default_days" min="1" step="1"
                    tal:attributes="value ed/opened_default_days"/></label>
           <label>Prepared standard (from prep, days)
-            <input type="number" name="prepared_std_default_days" min="1"
+            <input type="number" name="prepared_std_default_days" min="1" step="1"
                    tal:attributes="value ed/prepared_std_default_days"/></label>
         </div>
         <div class="form-actions"><button class="btn btn-primary" type="submit">Save defaults</button>

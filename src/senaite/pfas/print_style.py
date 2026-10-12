@@ -192,6 +192,7 @@ CSS = """\
 PALETTE = {
     "on-accent": "#ffffff",
     "on-frame": "#ffffff",
+    "on-success": "#0f1a18",
     "s-bg": "#ffffff",
     "s-body": "#263532",
     "s-border": "#d9e4df",

@@ -303,7 +303,7 @@
             <div class="pfas-form-field is-narrow">
               <label>List position</label>
               <input type="number" name="sort_order" id="lbSortOrder"
-                     value="100" min="0" max="999" />
+                     value="100" step="1" min="0" max="999" />
               <span class="fld-help">Lower shows first.</span>
             </div>
           </div>
@@ -312,7 +312,7 @@
             <div class="pfas-form-field">
               <label>Default expiry (days)</label>
               <input type="number" name="default_expiry_days" id="lbExpiry"
-                     value="365" min="1" max="3650" />
+                     value="365" step="1" min="1" max="3650" />
             </div>
             <div class="pfas-form-field">
               <label>Status</label>

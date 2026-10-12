@@ -246,7 +246,7 @@
             </select>
           </label>
           <label>Header row
-            <input type="number" min="1" id="r-header-row" name="header_row" tal:attributes="value rf/header_row" />
+            <input type="number" min="1" step="1" id="r-header-row" name="header_row" tal:attributes="value rf/header_row" />
             <span class="field-hint">Wide layouts: the first of two.</span>
           </label>
           <label>Missing-value markers

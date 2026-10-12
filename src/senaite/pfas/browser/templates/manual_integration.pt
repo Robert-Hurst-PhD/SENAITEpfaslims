@@ -74,7 +74,7 @@
 
     <form method="post" tal:attributes="action string:${wsurl}/@@pfas-manual-integration">
       <input type="hidden" name="_authenticator" tal:attributes="value context/@@authenticator/token" />
-      <table class="pfas-table pfas-table-form mi-table" tal:condition="recs">
+      <table class="pfas-table pfas-table-form mi-table" data-cells="plain" tal:condition="recs">
         <thead><tr><th></th><th>Injection</th><th>Analyte</th><th>Reason</th>
                    <th class="num">Before page</th><th class="num">After page</th>
                    <th>Analyst</th><th>Reviewer</th></tr></thead>

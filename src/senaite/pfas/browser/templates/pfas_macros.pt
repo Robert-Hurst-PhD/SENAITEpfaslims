@@ -450,7 +450,7 @@
       border: 1px solid var(--s-input-border);
       border-radius: 4px;
       font-size: var(--fs-base);
-      background: #fafafa;
+      background: var(--surface);
       color: var(--s-input-text);
       width: 100%;
     }
@@ -603,6 +603,7 @@
                 gap: var(--sp-3) var(--sp-4); margin: 0 0 var(--sp-3); }
   .field-grid label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm);
                       font-weight: 600; color: var(--s-body); }
+  .field-grid label:not(:has(input, select, textarea)) { display: block; }   /* a caption: its "*" and unit stay on the line */
   .field-grid .field-hint { font-weight: 400; font-size: var(--fs-xs); color: var(--s-secondary); }
   .field-grid input, .field-grid select, .field-grid textarea { width: 100%; }
   .mono-area { font-family: var(--font-mono); font-size: var(--fs-xs); width: 100%; }

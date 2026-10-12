@@ -13,6 +13,10 @@
  *   .pfas-fab        the action menu: a page's actions on phone / tablet
  *   .pfas-drawer     a right-side detail panel (value provenance)
  *   .pfas-stepper    a wizard's steps
+ *   .pfas-num        a number input with - and + buttons
+ *   .pfas-range      a min / max pair as a two-handle slider with typed ends
+ *   .pfas-cell-btn   a table cell's value (or "70 - 130 %" with a mini bar); opens the drawer
+ *   .pfas-chips      a comma list drawn as chips, each with a remove button
  *   .pfas-chip       the top bar's context chip
  *   .pfas-tiles      the one tile grid
  * Buttons, badges, tables and the crumb stay in pfas_macros.pt until each
@@ -143,7 +147,7 @@
 .pfas-stepper li::after { content: ""; flex: 1; height: 2px; background: var(--line); margin-left: 10px; }
 .pfas-stepper li:last-child::after { display: none; }
 .pfas-stepper li.is-done { color: var(--text); }
-.pfas-stepper li.is-done::before { background: var(--s-success); border-color: var(--s-success); color: #0f1a18; content: "\2713"; }
+.pfas-stepper li.is-done::before { background: var(--s-success); border-color: var(--s-success); color: var(--on-success); content: "\2713"; }
 .pfas-stepper li.is-done::after { background: var(--s-success); }
 .pfas-stepper li.is-current { color: var(--accent-text); }
 .pfas-stepper li.is-current::before { border-color: var(--accent-text); background: var(--accent-text); color: var(--on-accent); }
@@ -699,3 +703,133 @@ textarea.pfas-fill.is-sm { font-size: var(--fs-sm); }
 .pfas-content-area td > select, .pfas-content-area td > textarea { max-width: 100%; box-sizing: border-box; }
 /* a status badge in a set-width column wraps rather than spilling into the next */
 .pfas-table-fixed td .badge { white-space: normal; text-align: center; line-height: 1.25; }
+
+/* ── Number stepper: [−] value [+] (decided 2026-10-12) ─────────────────────
+   Wraps the real number input, which keeps its name and its posted value. */
+.pfas-num { align-self: flex-start; display: inline-flex; align-items: stretch; vertical-align: middle; max-width: 100%; box-sizing: border-box;
+  height: var(--ctl-h); border: 1px solid var(--line-strong); border-radius: var(--radius-pill);
+  background: var(--surface-raised); overflow: hidden; transition: border-color var(--t-fast), box-shadow var(--t-fast); }
+.pfas-num:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.pfas-num-btn { flex: none; width: var(--ctl-h); min-width: 36px; margin: 0; padding: 0; border: 0; background: transparent;
+  color: var(--accent-text); font-family: inherit; font-size: var(--fs-xl); line-height: 1; cursor: pointer;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  transition: background var(--t-fast), transform var(--t-fast) var(--ease); }
+.pfas-num-btn:hover:not(:disabled) { background: var(--accent-soft); }
+.pfas-num-btn:active:not(:disabled) { background: var(--accent-soft); transform: scale(.9); }
+.pfas-num-btn:disabled { color: var(--text-muted); opacity: .4; cursor: default; }
+.pfas-num-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.pfas-num > input.pfas-num-in[type=number] { flex: 1 1 auto; width: 8ch; min-width: 5ch; max-width: 100%; height: auto; margin: 0;
+  padding: 0 var(--sp-1); border: 0; border-radius: 0; outline: 0; box-shadow: none; background: transparent;
+  color: var(--text); text-align: center; font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield; appearance: textfield; }
+.pfas-num > input.pfas-num-in:focus, .pfas-num > input.pfas-num-in:focus-visible { border: 0; box-shadow: none; background: transparent; outline: none !important; }
+.pfas-num > input.pfas-num-in::-webkit-inner-spin-button, .pfas-num > input.pfas-num-in::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.pfas-num > input.pfas-num-in::placeholder { color: var(--text-muted); }
+/* the value settles with a short spring in the direction of travel */
+@keyframes pfas-num-up { from { transform: translateY(55%); opacity: .3; } 60% { transform: translateY(-8%); opacity: 1; } to { transform: none; opacity: 1; } }
+@keyframes pfas-num-down { from { transform: translateY(-55%); opacity: .3; } 60% { transform: translateY(8%); opacity: 1; } to { transform: none; opacity: 1; } }
+.pfas-num-in.is-up { animation: pfas-num-up 120ms cubic-bezier(.3, 1.4, .5, 1) both; }
+.pfas-num-in.is-down { animation: pfas-num-down 120ms cubic-bezier(.3, 1.4, .5, 1) both; }
+@media (prefers-reduced-motion: reduce) { .pfas-num-in.is-up, .pfas-num-in.is-down { animation: none; } .pfas-num-btn { transition: none; } }
+@media (pointer: coarse) { .pfas-num { height: 44px; } .pfas-num-btn { width: 44px; min-width: 44px; } }
+
+/* ── Range: two handles over a pair of number inputs ────────────────────────
+   Accent fill with a soft glow and a value bubble while dragging. The sliders
+   are native, so the keyboard and screen readers work unchanged. */
+.pfas-range { --thumb: 20px; --cy: 16px; display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center;
+  column-gap: var(--sp-3); row-gap: var(--sp-1); width: 100%; max-width: 560px; }
+.pfas-range > .pfas-num.is-lo { grid-column: 1; }
+.pfas-range > .pfas-range-track { grid-column: 2; }
+.pfas-range > .pfas-num.is-hi { grid-column: 3; }
+.pfas-range > .pfas-range-warn { grid-column: 1 / -1; }
+.pfas-range-track { position: relative; height: 44px; min-width: 0; --lo: 0; --hi: 1; }
+.pfas-range-rail, .pfas-range-fill { position: absolute; top: var(--cy); height: 6px; margin-top: -3px; border-radius: var(--radius-pill); }
+.pfas-range-rail { left: 0; right: 0; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.pfas-range-fill { left: calc(var(--thumb) / 2 + var(--lo) * (100% - var(--thumb)));
+  right: calc(var(--thumb) / 2 + (1 - var(--hi)) * (100% - var(--thumb)));
+  background: var(--accent); box-shadow: 0 0 10px 1px color-mix(in srgb, var(--accent) 55%, transparent); }
+.pfas-range-track input[type=range] { position: absolute; left: 0; top: calc(var(--cy) - var(--thumb) / 2); width: 100%; height: var(--thumb);
+  margin: 0; padding: 0; background: transparent; pointer-events: none; touch-action: pan-y;
+  -webkit-appearance: none; appearance: none; }
+.pfas-range-track.lo-top input.pfas-range-lo { z-index: 2; }
+.pfas-range-track input[type=range]:focus { outline: none; }
+.pfas-range-track input[type=range]::-webkit-slider-runnable-track { height: var(--thumb); background: transparent; border: 0; }
+.pfas-range-track input[type=range]::-moz-range-track { height: var(--thumb); background: transparent; border: 0; }
+.pfas-range-track input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; box-sizing: border-box; pointer-events: auto; cursor: grab;
+  width: var(--thumb); height: var(--thumb); border-radius: 50%; background: var(--surface-raised); border: 3px solid var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent), var(--shadow-pill); }
+.pfas-range-track input[type=range]::-moz-range-thumb { box-sizing: border-box; pointer-events: auto; cursor: grab;
+  width: var(--thumb); height: var(--thumb); border-radius: 50%; background: var(--surface-raised); border: 3px solid var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent), var(--shadow-pill); }
+.pfas-range-track input[type=range]:active::-webkit-slider-thumb { cursor: grabbing; }
+.pfas-range-track input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--focus), var(--shadow-pill); }
+.pfas-range-track input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px var(--focus), var(--shadow-pill); }
+/* an empty end (no limit): a hollow thumb at its scale end */
+.pfas-range-track input[type=range].is-empty::-webkit-slider-thumb { background: var(--surface); border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
+.pfas-range-track input[type=range].is-empty::-moz-range-thumb { background: var(--surface); border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
+.pfas-range-track.is-blank .pfas-range-fill { display: none; }
+.pfas-range-bubble { position: absolute; z-index: 3; bottom: calc(100% - var(--cy) + var(--thumb) / 2 + 2px);
+  left: calc(var(--thumb) / 2 + var(--p, 0) * (100% - var(--thumb))); transform: translateX(-50%); padding: 2px 8px;
+  border-radius: var(--radius-pill); background: var(--accent-text); color: var(--on-accent); font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--t-fast); }
+.pfas-range-track.show-lo .pfas-range-bubble[data-end=lo], .pfas-range-track.show-hi .pfas-range-bubble[data-end=hi] { opacity: 1; }
+.pfas-range-ends { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between;
+  font-size: var(--fs-xs); color: var(--text-muted); pointer-events: none; font-variant-numeric: tabular-nums; }
+.pfas-range-warn { padding: var(--sp-1) var(--sp-3); border: 1px solid var(--s-warn-bd); border-radius: var(--radius);
+  background: var(--s-warn-lt); color: var(--s-warn-text); font-size: var(--fs-sm); }
+.pfas-range-warn[hidden] { display: none; }
+@media (max-width: 520px) {
+  .pfas-range { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pfas-range > .pfas-num.is-lo { grid-column: 1; grid-row: 1; justify-self: start; }
+  .pfas-range > .pfas-num.is-hi { grid-column: 2; grid-row: 1; justify-self: end; }
+  .pfas-range > .pfas-range-track { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (pointer: coarse) { .pfas-range { --thumb: 32px; --cy: 22px; } .pfas-range-track { height: 56px; } }
+@media (prefers-reduced-motion: reduce) { .pfas-range-bubble { transition: none; } }
+
+/* ── Grid cells: a value button, edited in the drawer ───────────────────────
+   The real input stays in the DOM (named, posted), visually hidden. */
+.pfas-sr-hide { position: absolute !important; width: 1px !important; height: 1px !important; min-width: 0 !important; margin: -1px !important; padding: 0 !important;
+  border: 0 !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; opacity: 0 !important; pointer-events: none !important; }
+td.pfas-cell { position: relative; }
+.pfas-cell-btn { display: inline-flex; flex-direction: column; justify-content: center; gap: 3px; width: 100%; min-width: 4.5em; min-height: var(--ctl-h);
+  box-sizing: border-box; padding: 2px var(--sp-2); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-raised);
+  color: var(--text); font-family: inherit; font-size: var(--fs-base); text-align: center; font-variant-numeric: tabular-nums; cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast); }
+.pfas-cell-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.pfas-cell-btn:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.pfas-cell-txt { white-space: nowrap; }
+.pfas-cell-txt.is-none { color: var(--text-muted); }
+.pfas-cell-bar { display: block; position: relative; height: 4px; border-radius: var(--radius-pill); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.pfas-cell-bar.is-none > span { display: none; }
+.pfas-cell-bar > span { position: absolute; top: 0; bottom: 0; left: calc(var(--lo, 0) * 100%); right: calc((1 - var(--hi, 1)) * 100%);
+  border-radius: var(--radius-pill); background: var(--accent); }
+@media (pointer: coarse) { .pfas-cell-btn { min-height: 44px; } }
+.pfas-drawer.is-cell { width: min(440px, 100vw); }
+.pfas-cell-form { display: flex; flex-direction: column; gap: var(--sp-4); align-items: flex-start; }
+.pfas-drawer-foot { display: flex; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); background: var(--surface); }
+.pfas-drawer-foot[hidden] { display: none; }
+.pfas-drawer-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+
+/* ── Chips: a list drawn as chips, each with a remove button ────────────────── */
+.pfas-chips { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; max-width: 100%; }
+.pfas-chips-list { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.pfas-chips-list:empty { display: none; }
+.pfas-chips-item { display: inline-flex; align-items: center; gap: var(--sp-1); max-width: 100%; padding: 2px 4px 2px var(--sp-3);
+  border: 1px solid var(--s-info-bd); border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent-text);
+  font-size: var(--fs-sm); }
+.pfas-chips-item.is-unknown { border-color: var(--s-warn-bd); background: var(--s-warn-lt); color: var(--s-warn-text); }
+.pfas-chips-text-label { overflow-wrap: anywhere; }
+.pfas-chips-x { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; font-size: var(--fs-lg);
+  line-height: 1; cursor: pointer; transition: background var(--t-fast); }
+.pfas-chips-x:hover { background: var(--surface-2); }
+.pfas-chips-x:focus-visible { outline: 2px solid var(--accent); }
+.pfas-chips-add { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.pfas-chips-text, .pfas-chips-select { height: var(--ctl-h); box-sizing: border-box; min-width: 0; max-width: 100%; padding: 0 10px; font-family: inherit;
+  color: var(--text); background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.pfas-chips .pfas-chips-add .pfas-chips-text { width: 16ch; flex: 0 1 auto; }
+.pfas-chips .pfas-chips-add .pfas-chips-select { width: auto; min-width: 12ch; flex: 0 1 auto; }
+.pfas-chips .pfas-chips-add .pfas-chips-add-btn { flex: none; }
+.pfas-chips-text:focus, .pfas-chips-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.pfas-chips-arrow { color: var(--text-muted); }
+@media (pointer: coarse) { .pfas-chips-x { width: 32px; height: 32px; } .pfas-chips-text, .pfas-chips-select { height: 44px; } }

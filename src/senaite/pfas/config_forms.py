@@ -28,6 +28,8 @@ Python 2.7 compatible.
 from __future__ import absolute_import, print_function
 
 import copy
+import json
+import re
 
 try:
     _STR = basestring              # noqa: F821  (Py2.7)
@@ -65,7 +67,8 @@ class Field(object):
 
     def __init__(self, path, label, kind=NUMBER, unit=u"", help=u"",
                  placeholder=u"", required=False, minimum=None, maximum=None,
-                 choices=None, blank=u"unset", greater_than=None):
+                 choices=None, blank=u"unset", greater_than=None,
+                 range_hi=None, scale=None, step=None, widget=None, options=None):
         self.path = (tuple(int(x) if x.isdigit() else x for x in path.split("."))
                      if isinstance(path, _STR) else tuple(path))
         self.name = u"f__" + u"__".join(u"%s" % p for p in self.path)
@@ -83,6 +86,26 @@ class Field(object):
         self.greater_than = greater_than  # a strict lower bound (0 < days)
         self.blank = blank          # "unset" -> None, "remove" -> key deleted,
                                     # "none" -> None stored, the key created
+        # How the page DRAWS the field; what is saved never changes.
+        #   range_hi  the key of the sibling field that is this one's upper end
+        #             (declared on the lower end): the pair is drawn as one
+        #             two-handle slider, or as one value in a table row
+        #   scale     (lo, hi) the slider's display range: never a limit
+        #   step      the number input's step; default 1 for INT, else "any"
+        #   widget    "chips" (a comma list) or "pairs" ("A=B, C=D") on a TEXT field
+        #   options   [value | (value, label)], or callable(profile, env) of
+        #             that; with a widget, the only values a chip may take
+        self.range_hi = range_hi
+        self.range_hi_name = None
+        if range_hi:
+            hi = tuple(int(x) if x.isdigit() else x for x in range_hi.split(".")) \
+                if isinstance(range_hi, _STR) and u"." in range_hi else (range_hi,)
+            self.range_hi_name = u"f__" + u"__".join(
+                u"%s" % q for q in (self.path[:-1] + hi if len(hi) == 1 else hi))
+        self.scale = tuple(scale) if scale else None
+        self.step = step
+        self.widget = widget
+        self.options = options if callable(options) else (list(options) if options is not None else None)
 
 
 class Section(object):
@@ -152,6 +175,50 @@ def stamp(section, stored, env=None):
     return _history.fingerprint(dict((k, v) for k, v in vals.items() if v not in (None, u"", "")))
 
 
+def step_text(f):
+    """The step attribute: the declared one, else 1 for a whole number, else any."""
+    if f.step is not None:
+        return u"%s" % f.step
+    return u"1" if f.kind == INT else u"any"
+
+
+def scale_text(f):
+    return u"%s,%s" % (f.scale[0], f.scale[1]) if f.scale else u""
+
+
+_MIN_WORD = re.compile(r"(?:^|\s+)min(?:imum)?(?=\s|$|\()", re.I)
+
+
+def pair_label(label, fallback=u""):
+    """A pair's one label from its lower end's ("Recovery Min" -> "Recovery");
+    `fallback` when nothing but a unit or a symbol is left."""
+    out = _MIN_WORD.sub(u"", u"%s" % label, count=1).strip()
+    return out if re.search(r"[A-Za-z]{3}", out) else (fallback or out)
+
+
+def _options(f, stored, env=None, override=None):
+    """(widget, JSON of [[value, label], ...] or u"") for a TEXT field drawn as chips.
+    `override` is a row's own {"widget", "options"} (one table, rows that differ)."""
+    ov = override or {}
+    widget = ov.get("widget") or f.widget
+    opts = ov["options"] if "options" in ov else f.options
+    if callable(opts):
+        opts = opts(stored or {}, env)
+    if widget not in (u"chips", u"pairs", "chips", "pairs"):
+        return None, u""
+    if opts is None:
+        return widget, u""
+    out = [[o, o] if isinstance(o, _STR) else [o[0], o[1] if len(o) > 1 else o[0]] for o in opts]
+    return widget, json.dumps(out)
+
+
+def _pair_ends(fields):
+    """{hi name: lo field} for the declared pairs among `fields`."""
+    names = dict((f.name, f) for f in fields)
+    return dict((f.range_hi_name, f) for f in fields
+                if f.range_hi_name and f.range_hi_name in names and names[f.range_hi_name].kind in (NUMBER, INT))
+
+
 def render(section, stored, env=None):
     """What the template draws: one dict per field, grouped."""
     if isinstance(section, Table):
@@ -160,29 +227,47 @@ def render(section, stored, env=None):
         return render_collection(section, stored, env)
     vals = current(section, stored)
     groups = []
+    by_name = dict((f.name, f) for f in section.fields())
+    hi_ends = _pair_ends(section.fields())
+
+    def one(f):
+        v = vals[f.name]
+        choices = _choices(f, stored, env)
+        if f.kind == CHOICE and v not in (None, u"", "") and v not in [c[0] for c in choices]:
+            choices.append((v, u"%s (stored value)" % v))
+        options = []
+        if f.kind == MULTI:
+            chosen = set(v or [])
+            options = [{"value": c[0], "label": c[1], "name": option_name(f, c[0]),
+                        "checked": c[0] in chosen} for c in choices]
+            options += [{"value": x, "label": u"%s (stored value)" % x, "name": option_name(f, x),
+                         "checked": True} for x in (v or []) if x not in [c[0] for c in choices]]
+        widget, opts_json = _options(f, stored, env) if f.kind == TEXT else (None, u"")
+        return {
+            "name": f.name, "label": f.label, "kind": f.kind, "unit": f.unit,
+            "options": options,
+            "help": f.help, "placeholder": f.placeholder, "required": f.required,
+            "min": f.minimum, "max": f.maximum, "choices": choices,
+            "step": step_text(f), "scale": scale_text(f),
+            "widget": widget, "options_json": opts_json, "pair": None, "pair_label": u"",
+            "value": (u"" if v is None else (v if f.kind in (BOOL,) else _shown(v))),
+            "checked": bool(v) if f.kind == BOOL else False,
+        }
+
     for title, fields in section.groups:
-        rows = []
+        rows, shown = [], []
         for f in fields:
-            v = vals[f.name]
-            choices = _choices(f, stored, env)
-            if f.kind == CHOICE and v not in (None, u"", "") and v not in [c[0] for c in choices]:
-                choices.append((v, u"%s (stored value)" % v))
-            options = []
-            if f.kind == MULTI:
-                chosen = set(v or [])
-                options = [{"value": c[0], "label": c[1], "name": option_name(f, c[0]),
-                            "checked": c[0] in chosen} for c in choices]
-                options += [{"value": x, "label": u"%s (stored value)" % x, "name": option_name(f, x),
-                             "checked": True} for x in (v or []) if x not in [c[0] for c in choices]]
-            rows.append({
-                "name": f.name, "label": f.label, "kind": f.kind, "unit": f.unit,
-                "options": options,
-                "help": f.help, "placeholder": f.placeholder, "required": f.required,
-                "min": f.minimum, "max": f.maximum, "choices": choices,
-                "value": (u"" if v is None else (v if f.kind in (BOOL,) else _shown(v))),
-                "checked": bool(v) if f.kind == BOOL else False,
-            })
-        groups.append({"title": title, "fields": rows})
+            row = one(f)
+            rows.append(row)
+            if f.name in hi_ends:
+                continue                  # drawn with its lower end (still listed in "fields")
+            shown.append(row)
+            hi = by_name.get(f.range_hi_name) if f.range_hi_name in by_name and f.kind in (NUMBER, INT) else None
+            if hi is not None and hi.kind in (NUMBER, INT):
+                row["pair"] = one(hi)
+                row["pair_label"] = pair_label(f.label, title)
+                row["scale"] = scale_text(f) or scale_text(hi)
+        groups.append({"title": title, "fields": rows, "shown": shown})
     return groups
 
 
@@ -441,6 +526,25 @@ def stamp_table(table, stored, env=None):
     return _history.fingerprint(blob)
 
 
+def g_unit(by_group, row):
+    return (by_group.get(row.get("group")) or {}).get("unit")
+
+
+def _cell_pair(columns, c, unit, fallback):
+    """The pair a table cell belongs to ({id, end, scale, unit, label}), or None:
+    both cells of a row are marked, and the page draws one value for the pair."""
+    names = dict((x.name, x) for x in columns)
+    if c.range_hi_name and c.range_hi_name in names and names[c.range_hi_name].kind in (NUMBER, INT):
+        lo, hi, end = c, names[c.range_hi_name], u"lo"
+    else:
+        los = [x for x in columns if x.range_hi_name == c.name and c.kind in (NUMBER, INT)]
+        if not los:
+            return None
+        lo, hi, end = los[0], c, u"hi"
+    return {"id": lo.name, "end": end, "scale": scale_text(lo) or scale_text(hi),
+            "unit": unit or lo.unit or hi.unit or u"", "label": pair_label(lo.label, fallback)}
+
+
 def render_table(table, stored, env=None):
     table = _bound(table, stored)
     groups, rows = _rows(table, stored, env)
@@ -456,8 +560,12 @@ def render_table(table, stored, env=None):
             choices = _choices(c, stored, env)
             if c.kind == CHOICE and v not in (None, u"", "") and v not in [x[0] for x in choices]:
                 choices.append((v, u"%s (stored value)" % v))
+            widget, opts_json = (_options(c, stored, env, (r.get("widgets") or {}).get(c.path[0]))
+                                 if c.kind == TEXT else (None, u""))
             cells.append({"name": cell_name(table, r["key"], c), "kind": c.kind,
                           "label": c.label, "min": c.minimum, "max": c.maximum,
+                          "step": step_text(c), "widget": widget, "options_json": opts_json,
+                          "pair": _cell_pair(table.columns, c, g_unit(by_group, r), table.title),
                           # a row may say what blank means for it (e.g. a derived RL)
                           "placeholder": (r.get("placeholders") or {}).get(c.path[0], c.placeholder),
                           "choices": choices,
@@ -639,8 +747,11 @@ def render_collection(coll, stored, env=None):
             choices = _choices(c, stored, env)
             if c.kind == CHOICE and v not in (None, u"", "") and v not in [x[0] for x in choices]:
                 choices.append((v, u"%s (stored value)" % v))
+            widget, opts_json = _options(c, stored, env) if c.kind == TEXT else (None, u"")
             cells.append({"name": collection_name(coll, i, c), "kind": c.kind,
                           "label": c.label, "min": c.minimum, "max": c.maximum,
+                          "step": step_text(c), "widget": widget, "options_json": opts_json,
+                          "pair": _cell_pair(coll.columns, c, None, coll.title),
                           "placeholder": c.placeholder if i != NEW_INDEX or c is coll.key
                                          else u"",
                           "choices": choices,

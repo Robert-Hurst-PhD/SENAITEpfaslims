@@ -20,6 +20,8 @@ except Exception:          # tests: loaded without the package
     import config_forms as cf
 
 PCT = u"%"
+PCT_SCALE = (0, 200)       # a display range for a % recovery window, never a limit
+RPD_SCALE = (0, 100)
 
 CALIBRATION_CCV = cf.Section(
     id=u"cal", title=u"Calibration & CCV", base=("instrument_verification",),
@@ -67,7 +69,8 @@ CALIBRATION_CCV = cf.Section(
                      help=u"Comma-separated; a positive needs a second technique."),
             cf.Field("confirmation.confirm_pct_diff_max", u"Largest difference between the two techniques",
                      unit=PCT, minimum=0),
-            cf.Field("surrogate_window.recovery_min", u"Surrogate recovery min", unit=PCT, minimum=0),
+            cf.Field("surrogate_window.recovery_min", u"Surrogate recovery min", unit=PCT, minimum=0,
+                     range_hi="recovery_max", scale=PCT_SCALE),
             cf.Field("surrogate_window.recovery_max", u"Surrogate recovery max", unit=PCT, minimum=0,
                      help=u"Blank: the method text's window."),
             cf.Field("confirmation.confirm_technique",
@@ -80,9 +83,11 @@ CALIBRATION_CCV = cf.Section(
             cf.Field("ccv.frequency", u"CCV Frequency (every N samples)", kind=cf.INT,
                      required=True, minimum=1,
                      help=u"6 for FDA 32-PFAS; 10 for EPA 537.1 / 1633A"),
-            cf.Field("ccv.recovery_min", u"Recovery Min", unit=PCT, required=True, minimum=0),
+            cf.Field("ccv.recovery_min", u"Recovery Min", unit=PCT, required=True, minimum=0,
+                     range_hi="recovery_max", scale=PCT_SCALE),
             cf.Field("ccv.recovery_max", u"Recovery Max", unit=PCT, required=True, minimum=0),
             cf.Field("ccv.low_level_min", u"Low-Level Min (optional)", unit=PCT, minimum=0,
+                     range_hi="low_level_max", scale=PCT_SCALE,
                      help=u"Wider window for the lowest CCC/CCV level."),
             cf.Field("ccv.low_level_max", u"Low-Level Max (optional)", unit=PCT, minimum=0),
             cf.Field("ccv.opens_run", u"A CCV opens the run", kind=cf.CHOICE,
@@ -99,7 +104,8 @@ CALIBRATION_CCV = cf.Section(
             # a window of their own for the labelled standards in a CCV; blank
             # = the sample window (a method may set a narrower window in its
             # continuing calibration check than in samples)
-            cf.Field("ccv.surrogate_window_min", u"Surrogate recovery min in CCVs", unit=PCT, minimum=0),
+            cf.Field("ccv.surrogate_window_min", u"Surrogate recovery min in CCVs", unit=PCT, minimum=0,
+                     range_hi="surrogate_window_max", scale=PCT_SCALE),
             cf.Field("ccv.surrogate_window_max", u"Surrogate recovery max in CCVs", unit=PCT, minimum=0,
                      help=u"Blank: the sample window."),
             cf.Field("ccv.pct_dev_warn", u"CCV warning line (± %)", unit=PCT, minimum=0,
@@ -130,10 +136,11 @@ CALIBRATION_CCV = cf.Section(
                      blank=u"remove", choices=[(u"", u"A CCV"), (u"ICV", u"An ICV")]),
         ]),
         (u"IS / Surrogate Response", [
-            cf.Field("is_response.vs_ical_avg_min", u"vs. ICAL Average Min", unit=PCT, minimum=0),
+            cf.Field("is_response.vs_ical_avg_min", u"vs. ICAL Average Min", unit=PCT, minimum=0,
+                     range_hi="vs_ical_avg_max", scale=PCT_SCALE),
             cf.Field("is_response.vs_ical_avg_max", u"vs. ICAL Average Max", unit=PCT, minimum=0),
             cf.Field("is_response.vs_last_ccv_min", u"vs. Last CCV Min (optional)",
-                     unit=PCT, minimum=0,
+                     unit=PCT, minimum=0, range_hi="vs_last_ccv_max", scale=PCT_SCALE,
                      help=u"EPA 537.1 §9.3.4 requires this second condition."),
             cf.Field("is_response.vs_last_ccv_max", u"vs. Last CCV Max (optional)",
                      unit=PCT, minimum=0),
@@ -546,7 +553,7 @@ MATRICES = cf.Collection(
     columns=[
         # a core Sample Type: core owns matrix names
         cf.Field("name", u"Matrix (Sample Type)", kind=cf.CHOICE, choices=matrix_choices),
-        cf.Field("aliases", u"Aliases (comma-separated)", kind=cf.TEXT,
+        cf.Field("aliases", u"Aliases (comma-separated)", kind=cf.TEXT, widget=u"chips",
                  placeholder=u"deer muscle, venison, beef"),
         cf.Field("unit", u"Reporting Unit", kind=cf.CHOICE, choices=unit_choices),
         cf.Field("holding_days", u"Holding Time (days)", greater_than=0,
@@ -758,7 +765,8 @@ def name_code(profile, code):
 SAMPLE_RECEIPT = cf.Section(
     id=u"rtemp", title=u"Sample receipt", base=("receipt_temperature",),
     groups=[(u"Allowed temperature on receipt (corrected)", [
-        cf.Field("min_c", u"Minimum", unit=u"\u00b0C", placeholder=u"not judged"),
+        cf.Field("min_c", u"Minimum", unit=u"\u00b0C", placeholder=u"not judged",
+                 range_hi="max_c", scale=(-20, 40)),
         cf.Field("max_c", u"Maximum", unit=u"\u00b0C", placeholder=u"not judged"),
         cf.Field("same_day_on_ice", u"Same-day samples received on ice are not flagged above the maximum",
                  kind=cf.BOOL),
@@ -894,7 +902,8 @@ def _check_fallback(row, values):
 
 ENGINE_FALLBACK = cf.Table(
     id=u"engine_fallback", title=u"Surrogate window the method text states", base=(),
-    columns=[cf.Field("min", u"Min", unit=PCT, minimum=0, placeholder=u"none"),
+    columns=[cf.Field("min", u"Min", unit=PCT, minimum=0, placeholder=u"none",
+                      range_hi="max", scale=PCT_SCALE),
              cf.Field("max", u"Max", unit=PCT, minimum=0, placeholder=u"none"),
              cf.Field("citation", u"Citation", kind=cf.TEXT, placeholder=u"section of the method")],
     rows=_fallback_rows, read=read_fallback, write=write_fallback, check=_check_fallback,
@@ -910,10 +919,30 @@ ENGINE_TEXT_ROWS = [
 ]
 
 
-def _text_rows(profile):
+def _required_key_options(prefix):
+    """The criteria a method may require: the keys of the Calibration & CCV
+    section's own numeric fields under `prefix`, so a misspelt one cannot be added."""
+    sec = SECTIONS.get(u"cal")
+    keys = []
+    for f in (sec.fields() if sec is not None else []):
+        if len(f.path) == 2 and f.path[0] == prefix and f.kind in (cf.NUMBER, cf.INT) and f.path[1] not in keys:
+            keys.append(f.path[1])
+    return [(k, k) for k in keys]
+
+
+def _text_rows(profile, env=None):
+    codes = (env or {}).get("qc_codes") or []
+    widgets = {
+        (u"aliases",): {"widget": u"chips"},
+        (u"qc_type_aliases",): {"widget": u"pairs", "options": [(c, c) for c in codes] or None},
+        (u"required_keys", u"calibration"): {"widget": u"chips", "options": _required_key_options(u"calibration")},
+        (u"required_keys", u"is_response"): {"widget": u"chips", "options": _required_key_options(u"is_response")},
+        (u"required_keys", u"confirmation"): {"widget": u"chips", "options": _required_key_options(u"confirmation")},
+    }
     return (_one_group(u"txt", u"Names and required criteria"),
             [{"key": key, "group": u"txt", "label": label,
-              "placeholders": {"value": hint}} for key, label, hint in ENGINE_TEXT_ROWS])
+              "placeholders": {"value": hint}, "widgets": {"value": widgets[key]}}
+             for key, label, hint in ENGINE_TEXT_ROWS])
 
 
 def _as_text(value):
@@ -975,7 +1004,7 @@ def _check_engine_text(row, values):
 ENGINE_TEXT = cf.Table(
     id=u"engine_text", title=u"Names and required criteria", base=(),
     columns=[cf.Field("value", u"Value", kind=cf.TEXT)],
-    rows=_text_rows, read=read_engine_text, write=write_engine_text,
+    rows=_text_rows, rows_take_env=True, read=read_engine_text, write=write_engine_text,
     check=_check_engine_text, row_heading=u"Setting")
 
 # The notes each rule carries onto its flags; the tier notes replace a
@@ -1225,7 +1254,9 @@ EIS_GRID = cf.Collection(
     id=u"eis_grid", title=u"SUR recovery limits", noun=u"SUR row",
     allow_empty=True,
     columns=[cf.Field("analyte", u"Surrogate (SUR)", kind=cf.TEXT, placeholder=u"new designation")] +
-            [cf.Field(key + "_" + end, u"%s %s %%" % (label, end), minimum=0)
+            [cf.Field(key + "_" + end, u"%s %s %%" % (label, end), minimum=0, unit=PCT,
+                      range_hi=(key + "_max") if end == "min" else None,
+                      scale=PCT_SCALE if end == "min" else None)
              for key, label in _EIS_COLS for end in ("min", "max")],
     read=read_eis_grid, write=write_eis_grid, check=_eis_grid_check)
 
@@ -1436,7 +1467,7 @@ ISOMERS = cf.Table(
     id=u"iso", title=u"Isomers", base=(_iso.KEY,),
     columns=[cf.Field("linear", u"Linear peak", kind=cf.TEXT, placeholder=u"e.g. lr-PFOS"),
              cf.Field("branched", u"Branched peak(s), comma-separated", kind=cf.TEXT,
-                      placeholder=u"e.g. br-PFOS"),
+                      widget=u"chips", placeholder=u"e.g. br-PFOS"),
              cf.Field("reported", u"Reported as", kind=cf.TEXT,
                       placeholder=u"plain name (e.g. PFOS)")],
     rows=isomer_rows, read=read_isomers, write=write_isomers, row_heading=u"Analyte")
@@ -1621,8 +1652,9 @@ def _recovery_collection(qc, id_):
     return cf.Collection(
         id=id_, title=u"%s recovery tiers" % qc if qc != RECOVERY_QC else u"Recovery tiers",
         noun=u"tier", allow_empty=(qc != RECOVERY_QC),
-        columns=_TIER_HEAD + [cf.Field("recovery_min", u"Min %", minimum=0),
-                              cf.Field("recovery_max", u"Max %", minimum=0),
+        columns=_TIER_HEAD + [cf.Field("recovery_min", u"Min %", minimum=0, unit=PCT,
+                                       range_hi="recovery_max", scale=PCT_SCALE),
+                              cf.Field("recovery_max", u"Max %", minimum=0, unit=PCT),
                               cf.Field("rsd_max", u"RSD \u2264 %", minimum=0)],
         read=_tier_reader(qc, _RECOVERY_FIELDS), write=_tier_writer(qc, _RECOVERY_FIELDS),
         check=_tier_checker(qc, True))

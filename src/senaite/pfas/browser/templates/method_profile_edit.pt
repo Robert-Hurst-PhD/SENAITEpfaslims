@@ -19,7 +19,7 @@
 
     .json-area { width: 100%; min-height: 160px; font-family: var(--font-mono);
                  font-size: var(--fs-sm); padding: 8px; border: 1px solid var(--s-input-border);
-                 border-radius: 4px; background: #fafafa; resize: vertical; }
+                 border-radius: 4px; background: var(--surface); resize: vertical; }
     .json-area:focus { outline: none; border-color: var(--s-primary);
                        box-shadow: 0 0 0 3px var(--s-focus-ring); }
     /* Descriptive hint text uses the SYSTEM font (was monospace — the source
@@ -47,7 +47,7 @@
     .factor-table tr:last-child td { border-bottom: none; }
     .factor-table input[type=text],
     .factor-table input[type=number] { padding: 5px 8px; border: 1px solid var(--s-input-border);
-                                        border-radius: 4px; font-size: var(--fs-base); background: #fafafa;
+                                        border-radius: 4px; font-size: var(--fs-base); background: var(--surface);
                                         color: var(--s-input-text); width: 100%; }
     .factor-table input:focus { outline: none; border-color: var(--s-primary);
                                  box-shadow: 0 0 0 2px var(--s-focus-ring); }
@@ -136,7 +136,7 @@
                          margin: 22px 0 8px 0; }
 
     .factor-table select, .sur-map-sel { padding: 4px 6px; border: 1px solid var(--s-input-border);
-                                          border-radius: 4px; font-size: var(--fs-sm); background: #fafafa;
+                                          border-radius: 4px; font-size: var(--fs-sm); background: var(--surface);
                                           color: var(--s-input-text); width: 100%; }
 
     .spike-matrix-section { border: 1px solid var(--s-border); border-radius: 6px;
@@ -160,7 +160,7 @@
     .tier-limits label { display: flex; align-items: center; gap: 5px; font-weight: 600;
                          font-size: var(--fs-xs); color: var(--s-secondary); }
     .tier-limits input[type=number] { width: 70px; padding: 4px 6px; border: 1px solid var(--s-input-border);
-                                       border-radius: 4px; font-size: var(--fs-base); background: #fafafa;
+                                       border-radius: 4px; font-size: var(--fs-base); background: var(--surface);
                                        color: var(--s-text); }
     .tier-limits input:focus { outline: none; border-color: var(--s-primary); }
     .tier-chipfield { border-top: 1px dashed var(--s-border); padding-top: 7px; }
@@ -177,7 +177,7 @@
                     color: inherit; font-size: var(--fs-base); line-height: 1; opacity: .7; }
     .tier-chip-rm:hover { opacity: 1; }
     .tier-add-sel { font-size: var(--fs-xs); padding: 3px 5px; border: 1px dashed var(--s-border);
-                    border-radius: 10px; color: var(--s-secondary); background: #fafafa;
+                    border-radius: 10px; color: var(--s-secondary); background: var(--surface);
                     cursor: pointer; max-width: 200px; }
     .tier-add-sel:focus { outline: none; border-color: var(--s-primary); }
   </style>
@@ -322,12 +322,12 @@
                 </td>
               </tr>
               <tr tal:condition="view/rule_qc_type_rows">
-                <th colspan="3">Extraction &amp; matrix QC &#8212; the same switch as the QC Types tab</th>
+                <th colspan="3">Extraction &amp; matrix QC types</th>
               </tr>
               <tr tal:repeat="q view/rule_qc_type_rows">
                 <td class="cf-center">
                   <label class="pfas-switch">
-                    <input type="checkbox" class="qc-type-mirror"
+                    <input type="checkbox" class="qc-type-switch"
                            tal:attributes="name string:qc_enabled_${q/key};
                                            checked python:'checked' if q['enabled'] else None" />
                     <span class="pfas-switch-track"></span>
@@ -786,27 +786,29 @@
           <details open="open">
             <summary>Associated QC Types</summary>
             <div class="section-body">
-              <p style="font-size:var(--fs-sm);color:var(--s-secondary);max-width:640px;">Turn on the QC types this method runs. A newly enabled type has no limits and is not judged until they are set. <tal:h define="hid string:qc-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+              <p class="pane-intro">The QC types this method runs are switched on Rule Toggles &amp; QC Run. <tal:h define="hid string:qc-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
               <input type="hidden" name="qc_toggles_present" value="1"/>
               <input type="hidden" name="qc_offered"
                      tal:attributes="value python:','.join(q['key'] for q in view.qc_type_toggles() if q['toggle'])"/>
               <table class="pfas-table">
-                <thead><tr><th>Enabled</th><th>QC Type</th><th>Name</th><th>Criteria</th></tr></thead>
+                <thead><tr><th>QC Type</th><th>Name</th><th>Runs</th><th>Criteria</th></tr></thead>
                 <tbody>
                   <tr tal:repeat="q view/qc_type_toggles">
-                    <td>
-                      <input tal:condition="q/toggle" type="checkbox"
-                             tal:attributes="name string:qc_enabled_${q/key};
-                                             checked python:'checked' if q['enabled'] else None"/>
-                    </td>
                     <td><code tal:content="q/code">LFB</code></td>
                     <td tal:content="q/label">Laboratory Fortified Blank</td>
+                    <td class="row-actions-cell">
+                      <tal:t condition="q/toggle">
+                        <span tal:condition="q/enabled" class="badge badge-ok">On</span>
+                        <span tal:condition="not:q/enabled" class="badge badge-pending">Not run</span>
+                        <button type="button" class="btn-sm btn-secondary"
+                                data-goto="pane-toggles">Switch</button>
+                      </tal:t>
+                    </td>
                     <td>
                       <tal:t condition="q/toggle">
                         <span tal:condition="python:q['enabled'] and not q['has_criteria']"
                               class="sur-tag sur-nocore"
                               title="Enabled with no limits: the QC engine refuses to judge it until criteria are set (QC Type Grid / Recovery Tiers).">limits not set</span>
-                        <span tal:condition="not:q/enabled" class="form-note">not run</span>
                       </tal:t>
                       <a class="btn-sm btn-secondary" tal:condition="q/configured_on" href="#"
                          tal:attributes="href python:'#' + q['configured_on'][0];
@@ -1087,15 +1089,6 @@
                 cell.value = v;
                 cell.dispatchEvent(new Event('input', {bubbles: true}));
               }
-            });
-          });
-        });
-        /* A QC type's switch appears on QC Types AND Rule Toggles as the same
-           form field: keep every copy in step so the form posts one answer. */
-        document.querySelectorAll('input[type=checkbox][name^="qc_enabled_"]').forEach(function (cb) {
-          cb.addEventListener('change', function () {
-            document.querySelectorAll('input[type=checkbox][name="' + cb.name + '"]').forEach(function (o) {
-              o.checked = cb.checked;
             });
           });
         });
