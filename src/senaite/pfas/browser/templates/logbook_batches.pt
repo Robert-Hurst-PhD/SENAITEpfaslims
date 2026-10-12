@@ -15,12 +15,12 @@
     .bq-row:hover { border-color:var(--s-primary); background:var(--s-primary-lt);
                     text-decoration:none; color:var(--s-body); }
     .bq-main { flex:1 1 auto; min-width:0; }
-    .bq-title { font-size:var(--fs-md); font-weight:700; }
+    .bq-title { font-size:var(--fs-md); font-weight:var(--fw-heading); }
     .bq-meta { font-size:var(--fs-sm); color:var(--s-secondary); margin-top:3px; }
-    .bq-state { font-size:var(--fs-xs); font-weight:700; padding:4px 12px;
+    .bq-state { font-size:var(--fs-xs); font-weight:var(--fw-heading); padding:4px 12px;
                 border-radius:12px; white-space:nowrap; }
     .bq-state.none     { background:var(--s-warn-lt); color:var(--s-warn-text); border:1px solid var(--s-warn-bd); }
-    .bq-state.partial  { background:var(--s-primary-lt); color:var(--s-primary-dk); border:1px solid #cfe5ee; }
+    .bq-state.partial  { background:var(--s-primary-lt); color:var(--s-primary-dk); border:1px solid var(--s-info-bd); }
     .bq-state.complete { background:var(--s-success-lt); color:var(--s-success-text); border:1px solid var(--s-success-bd); }
     .bq-state.nomethod { background:var(--s-light); color:var(--s-secondary);
                          border:1px solid var(--s-border); }

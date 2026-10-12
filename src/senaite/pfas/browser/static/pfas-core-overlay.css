@@ -11,10 +11,14 @@
  * viewlet registration and the link disappears).  It restyles existing core
  * markup only; it never restructures the DOM.
  *
- * SCOPE (Round: core UI unification): Sample / Batch / Worksheet listings.
- * Because these all render through senaite.app.listing as table.contentstable,
- * the rules below apply to every core listing of that class — which is the
- * intended, consistent result.
+ * SCOPE: every core page (the selectors are site-wide, not listing-only).
+ * 1. the page ground and Bootstrap's own surfaces on the semantic tokens, so
+ *    the dark switch themes core pages too;
+ * 2. senaite.app.listing tables (Samples, Worksheets, Clients, Batches, Setup
+ *    folders): header, hover, state edge, filter buttons, search, pagination;
+ * 3. Bootstrap buttons on the shared button look (pfas_macros.pt .btn-*);
+ * 4. edit forms (Archetypes, z3c.form, Bootstrap form groups) -- see the
+ *    "Edit forms" section.
  *
  * Tokens are NOT defined here: pfas-tokens.css is the single definition, linked
  * immediately before this file (see templates/core_overlay_link.pt).
@@ -23,43 +27,292 @@
 /* Tokens come from pfas-tokens.css, linked just before this file by the same
    viewlet -- one definition for core and PFAS pages alike. */
 
-/* ── Listing tables: header + hover match PFAS .pfas-table pattern ────────── */
+/* ── The ground: Bootstrap paints core pages white with its own greys, so
+   the dark switch (html[data-theme=dark]) left them light. Each Bootstrap
+   surface takes the semantic tokens; in light these are the same whites. ── */
+body:not(.pfas-app) { background: var(--surface); color: var(--text); }
+body:not(.pfas-app) .bg-white,
+body:not(.pfas-app) .card,
+body:not(.pfas-app) .modal-content,
+body:not(.pfas-app) .dropdown-menu,
+body:not(.pfas-app) .popover,
+body:not(.pfas-app) .list-group-item { background-color: var(--surface-raised) !important; color: var(--text); }
+body:not(.pfas-app) .bg-light,
+body:not(.pfas-app) .card-header,
+body:not(.pfas-app) .card-footer,
+body:not(.pfas-app) .input-group-text { background-color: var(--surface-2) !important; color: var(--text); }
+body:not(.pfas-app) .border,
+body:not(.pfas-app) .card,
+body:not(.pfas-app) .modal-content,
+body:not(.pfas-app) .dropdown-menu,
+body:not(.pfas-app) .list-group-item,
+body:not(.pfas-app) .card-header,
+body:not(.pfas-app) .card-footer,
+body:not(.pfas-app) .modal-header,
+body:not(.pfas-app) .modal-footer,
+body:not(.pfas-app) .dropdown-divider,
+body:not(.pfas-app) hr { border-color: var(--line) !important; }
+body:not(.pfas-app) .dropdown-item { color: var(--text); }
+body:not(.pfas-app) .dropdown-item:hover,
+body:not(.pfas-app) .dropdown-item:focus,
+body:not(.pfas-app) .dropdown-item.active { background: var(--accent-soft); color: var(--text); }
+body:not(.pfas-app) .text-muted,
+body:not(.pfas-app) .text-secondary,
+body:not(.pfas-app) .small.text-muted { color: var(--text-muted) !important; }
+body:not(.pfas-app) .table,
+body:not(.pfas-app) table.contentstable { color: var(--text); }
+body:not(.pfas-app) .table td,
+body:not(.pfas-app) .table th,
+body:not(.pfas-app) .table thead th,
+body:not(.pfas-app) .table-bordered,
+body:not(.pfas-app) .table-bordered td,
+body:not(.pfas-app) .table-bordered th { border-color: var(--line); }
+body:not(.pfas-app) .nav-tabs { border-bottom-color: var(--line); }
+body:not(.pfas-app) .nav-tabs .nav-link:hover { border-color: var(--line) var(--line) transparent; }
+body:not(.pfas-app) .nav-tabs .nav-link.active { background: var(--surface); border-color: var(--line) var(--line) transparent; }
+body:not(.pfas-app) .close { color: var(--text); text-shadow: none; }
+body:not(.pfas-app) .table-hover > tbody > tr:hover { color: var(--text); }
+body:not(.pfas-app) .progress { background-color: var(--surface-2); }
+/* the sidebar's own rule (pfas_sidebar.pt) loses to a core nav background on core pages */
+body:not(.pfas-app) #sidebar.pfas-sidebar { background: var(--s-light) !important; }
+/* ... and core's "#sidebar a" colour beats .pfas-si: the labels take the sidebar's own colours, as on PFAS pages */
+body:not(.pfas-app) #sidebar.pfas-sidebar a.pfas-si,
+body:not(.pfas-app) #sidebar.pfas-sidebar a.pfas-sb-dash { color: var(--s-input-text); }
+body:not(.pfas-app) #sidebar.pfas-sidebar a.pfas-si.si-active,
+body:not(.pfas-app) #sidebar.pfas-sidebar a.pfas-sb-dash.si-active { color: var(--s-primary-dk); }
+/* icons core draws as black SVG images (the Samples filter's assigned / late) */
+html[data-theme="dark"] body:not(.pfas-app) .ajax-contents-table .filterbar img { filter: invert(.85); }
+
+/* ── Listing tables: header, rows, hover ─────────────────────────────────
+   Same header as a .pfas-table: tinted strip, small letter-spaced captions,
+   a 2px rule. */
 table.contentstable > thead > tr > th,
 table.contentstable thead th {
-  background: var(--s-light);
+  background: var(--surface-2);
   color: var(--s-secondary);
   text-transform: uppercase;
   letter-spacing: .03em;
-  font-size: 11px;
-  border-bottom: 2px solid var(--s-border);
+  font-size: var(--fs-xs);
+  border-bottom: 2px solid var(--line);
 }
 table.contentstable tbody tr:hover > td {
-  background: var(--s-primary-lt);
+  background: var(--accent-soft);
 }
+body:not(.pfas-app) table.contentstable tbody td { border-top-color: var(--line); }
 
-/* ── Primary buttons → PFAS teal (was Bootstrap blue) ────────────────────── */
-.btn-primary,
-button.btn-primary,
-input.btn-primary {
-  background-color: var(--s-primary-dk);
-  border-color: var(--s-primary-dk);
+/* ── Buttons: Bootstrap's .btn-* on the shared button look (pfas_macros.pt):
+   height var(--ctl-h) (btn-sm var(--ctl-h-sm)), weight var(--fw-strong), radius
+   var(--radius), colours by intent. A button inside a chip (.p-0) or a text
+   button (.btn-link) keeps its own size. ─────────────────────────────── */
+body:not(.pfas-app) .btn,
+body:not(.pfas-app) input.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;
+  height: var(--ctl-h); padding: 0 14px;
+  font-size: var(--fs-base); font-weight: var(--fw-strong); line-height: 1; white-space: nowrap;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); box-shadow: none; text-decoration: none;
 }
-.btn-primary:hover,
-.btn-primary:focus,
-.btn-primary:active {
-  background-color: var(--s-primary-xdk);
-  border-color: var(--s-primary-xdk);
-}
-.btn-outline-primary {
-  color: var(--s-primary-dk);
-  border-color: var(--s-primary);
-}
-.btn-outline-primary:hover {
-  background-color: var(--s-primary-dk);
-  border-color: var(--s-primary-dk);
-}
+body:not(.pfas-app) .btn-sm { height: var(--ctl-h-sm); padding: 0 10px; font-size: var(--fs-sm); }
+body:not(.pfas-app) .btn-lg { height: var(--ctl-h-lg); padding: 0 28px; font-size: var(--fs-md); }
+body:not(.pfas-app) .btn.p-0 { height: auto; padding: 0; border: 0; background: none; }
+body:not(.pfas-app) .btn.btn-link { height: auto; padding: 0 2px; border-color: transparent; background: none; color: var(--accent-text); }
+body:not(.pfas-app) .btn:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+body:not(.pfas-app) .btn:disabled,
+body:not(.pfas-app) .btn.disabled { opacity: .55; cursor: not-allowed; }
+body:not(.pfas-app) .btn:focus,
+body:not(.pfas-app) .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); }
+/* primary: the filled brand button */
+body:not(.pfas-app) .btn.btn-primary,
+body:not(.pfas-app) .btn.btn-primary:is(:hover, :focus, :active, .active):not(:disabled),
+body:not(.pfas-app) input.btn.btn-primary { background: var(--accent-text); border-color: var(--accent-text); color: var(--on-accent); }
+body:not(.pfas-app) .btn.btn-primary:is(:hover, :active, .active):not(:disabled) { background: var(--s-primary-xdk); border-color: var(--s-primary-xdk); }
+/* secondary: the plain button (Bootstrap's secondary / outline / light / default) */
+body:not(.pfas-app) .btn.btn-secondary,
+body:not(.pfas-app) .btn.btn-outline-secondary,
+body:not(.pfas-app) .btn.btn-light,
+body:not(.pfas-app) .btn.btn-default,
+body:not(.pfas-app) .btn.btn-secondary:is(:focus, :active):not(:disabled),
+body:not(.pfas-app) .btn.btn-outline-secondary:is(:focus, :active):not(:disabled),
+body:not(.pfas-app) .btn.btn-light:is(:focus, :active):not(:disabled) { background: var(--surface); border-color: var(--line); color: var(--text); }
+body:not(.pfas-app) .btn.btn-secondary:is(:hover, .active):not(:disabled),
+body:not(.pfas-app) .btn.btn-outline-secondary:is(:hover, .active):not(:disabled),
+body:not(.pfas-app) .btn.btn-light:is(:hover, .active):not(:disabled) { background: var(--surface-2); border-color: var(--line-strong); color: var(--text); }
+/* outline-primary: brand outline, fills on hover */
+body:not(.pfas-app) .btn.btn-outline-primary,
+body:not(.pfas-app) .btn.btn-outline-primary:is(:focus, :active):not(:disabled) { background: var(--surface); border-color: var(--accent); color: var(--accent-text); }
+body:not(.pfas-app) .btn.btn-outline-primary:is(:hover, .active):not(:disabled) { background: var(--accent-text); border-color: var(--accent-text); color: var(--on-accent); }
+/* danger: outlined in coral, tinted on hover */
+body:not(.pfas-app) .btn.btn-danger,
+body:not(.pfas-app) .btn.btn-outline-danger,
+body:not(.pfas-app) .btn.btn-danger:is(:focus, :active):not(:disabled),
+body:not(.pfas-app) .btn.btn-outline-danger:is(:focus, :active):not(:disabled) { background: var(--surface); border-color: var(--s-danger-bd); color: var(--s-danger-dk); }
+body:not(.pfas-app) .btn.btn-danger:is(:hover, .active):not(:disabled),
+body:not(.pfas-app) .btn.btn-outline-danger:is(:hover, .active):not(:disabled) { background: var(--s-danger-lt); border-color: var(--s-danger); color: var(--s-danger-dk); }
+body:not(.pfas-app) .btn.btn-success,
+body:not(.pfas-app) .btn.btn-success:is(:focus, :active):not(:disabled) { background: var(--s-success); border-color: var(--s-success); color: var(--on-accent); }
+body:not(.pfas-app) .btn.btn-success:is(:hover, .active):not(:disabled) { background: var(--s-success-text); border-color: var(--s-success-text); color: var(--on-accent); }
+body:not(.pfas-app) .btn.btn-warning,
+body:not(.pfas-app) .btn.btn-warning:is(:focus, :active):not(:disabled) { background: var(--surface); border-color: var(--s-warn-bd); color: var(--s-warn-text); }
+body:not(.pfas-app) .btn.btn-warning:is(:hover, .active):not(:disabled) { background: var(--s-warn-lt); border-color: var(--s-warn-bd); color: var(--s-warn-text); }
+/* a bootstrap-select is a button with a caret: its value reads left, the caret stays right */
+body:not(.pfas-app) .bootstrap-select > .btn.dropdown-toggle { justify-content: space-between; font-weight: var(--fw-body); }
+body:not(.pfas-app) .bootstrap-select > .dropdown-menu { background: var(--surface-raised); }
+body:not(.pfas-app) .bootstrap-select .dropdown-menu li a,
+body:not(.pfas-app) .bootstrap-select .dropdown-menu .text { color: var(--text); }
+body:not(.pfas-app) .bootstrap-select .dropdown-menu li.selected a,
+body:not(.pfas-app) .bootstrap-select .dropdown-menu li a:hover { background: var(--accent-soft); }
+/* a button row of selects and buttons (the worksheet add toolbar) is one height; the
+   chosen value sits on the middle of the button, not its top edge */
+body:not(.pfas-app) .input-group .btn.btn-sm:not(.p-0),
+body:not(.pfas-app) .input-group .bootstrap-select > .btn.dropdown-toggle { height: var(--ctl-h); }
+body:not(.pfas-app) .bootstrap-select > .btn.dropdown-toggle { line-height: calc(var(--ctl-h) - 2px); }
 /* Link-coloured text/anchors used as primary affordances */
 a.text-primary, .text-primary { color: var(--s-primary-dk) !important; }
+
+/* ── Controls: one height, border and focus halo (.pfas-input) on the
+   listing's search box, the page-size box and the selects in a row. ───── */
+body:not(.pfas-app) .form-control,
+body:not(.pfas-app) .custom-select,
+body:not(.pfas-app) select.form-control {
+  height: var(--ctl-h); box-sizing: border-box; padding: 0 10px;
+  font-size: var(--fs-base); color: var(--text); background-color: var(--surface);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg);
+}
+body:not(.pfas-app) .form-control-sm,
+body:not(.pfas-app) .input-group-sm > .form-control { height: var(--ctl-h); font-size: var(--fs-base); }
+body:not(.pfas-app) .form-control::placeholder { color: var(--text-muted); opacity: 1; }
+body:not(.pfas-app) .form-control:focus,
+body:not(.pfas-app) .custom-select:focus { color: var(--text); background-color: var(--surface); }
+body:not(.pfas-app) .input-group > .form-control:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+body:not(.pfas-app) .input-group-sm > .input-group-append > .btn,
+body:not(.pfas-app) .input-group-sm > .input-group-prepend > .btn { height: var(--ctl-h); padding: 0 12px; font-size: var(--fs-base); }
+body:not(.pfas-app) .input-group-text { height: var(--ctl-h); box-sizing: border-box; font-size: var(--fs-sm); color: var(--text-muted); border: 1px solid var(--line-strong); }
+
+/* a control inside a listing row is a dense row action (--ctl-h-sm) */
+body:not(.pfas-app) table.contentstable .form-control,
+body:not(.pfas-app) table.contentstable select,
+body:not(.pfas-app) table.contentstable .custom-select { height: var(--ctl-h-sm); padding: 0 6px; font-size: var(--fs-sm); }
+body:not(.pfas-app) table.contentstable td .btn-sm { height: var(--ctl-h-sm); }
+/* core gives a rowspan cell (the worksheet's position column) its own white, with !important */
+body:not(.pfas-app) table.contentstable td[rowspan],
+body:not(.pfas-app) table.contentstable td.contentcell.Pos { background-color: var(--surface) !important; }
+
+/* ── Listing: the review-state filter buttons read as the segmented control
+   (.pfas-seg): a pill track, the chosen state filled with the accent. ───── */
+body:not(.pfas-app) .ajax-contents-table .filterbar.nav-pills {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 3px; max-width: 100%; box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: calc(var(--ctl-h) / 2);
+}
+body:not(.pfas-app) .ajax-contents-table .filterbar.nav-pills > .btn.btn-outline-secondary {
+  margin: 0 !important; height: var(--ctl-h-sm); padding: 0 12px; border: 0; border-radius: var(--radius-pill);
+  background: none; color: var(--text-muted); font-size: var(--fs-sm); font-weight: var(--fw-strong);
+}
+body:not(.pfas-app) .ajax-contents-table .filterbar.nav-pills > .btn.btn-outline-secondary:is(:hover, :focus):not(:disabled) { background: none; color: var(--text); }
+body:not(.pfas-app) .ajax-contents-table .filterbar.nav-pills > .btn.btn-outline-secondary.active:not(:disabled),
+body:not(.pfas-app) .ajax-contents-table .filterbar.nav-pills > .btn.btn-outline-secondary.active:is(:hover, :focus):not(:disabled) {
+  background: var(--accent-text); color: var(--on-accent); box-shadow: var(--shadow-pill);
+}
+body:not(.pfas-app) .ajax-contents-table .filterbar.nav-pills > .btn:focus-visible { box-shadow: 0 0 0 3px var(--focus); }
+
+/* ── Listing: pagination, "Show more", Export: small buttons (.btn-sm) ───── */
+body:not(.pfas-app) .ajax-contents-table .pagination-controls .input-group { align-items: center; }
+body:not(.pfas-app) .ajax-contents-table .pagination-controls .btn,
+body:not(.pfas-app) .ajax-contents-table .pagination-controls .form-control,
+body:not(.pfas-app) .ajax-contents-table .pagination-controls .input-group-text { height: var(--ctl-h-sm); font-size: var(--fs-sm); }
+body:not(.pfas-app) .ajax-contents-table .pagination-controls .form-control { padding: 0 6px; text-align: center; }
+body:not(.pfas-app) .ajax-contents-table .pagination-controls .btn { padding: 0 10px; }
+
+/* ── Listing: the column toggle (the "..." above the table) is a small
+   icon button ──────────────────────────────────────────────────────── */
+body:not(.pfas-app) .ajax-contents-table .table-responsive > a.pull-right {
+  display: inline-flex; align-items: center; justify-content: center; width: var(--ctl-h-sm); height: var(--ctl-h-sm);
+  margin: 0 0 var(--sp-1); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface);
+  color: var(--text-muted); text-decoration: none;
+}
+body:not(.pfas-app) .ajax-contents-table .table-responsive > a.pull-right:hover { background: var(--surface-2); color: var(--text); }
+
+/* ══ Edit forms (Archetypes, z3c.form, Bootstrap form groups, modals) ══════
+   Labels, inputs, help text, section headings and the Save / Cancel bar read as
+   a PFAS form (.pfas-input, .pfas-label, .pfas-hint, .section-group-hdr). ══ */
+/* labels: Archetypes label.formQuestion, z3c.form's div.horizontal, Bootstrap's form-group label */
+body:not(.pfas-app) #content label.formQuestion,
+body:not(.pfas-app) #content .field > .horizontal,
+body:not(.pfas-app) #content .form-group > label,
+body:not(.pfas-app) .modal-body .field > label {
+  font-size: var(--fs-sm); font-weight: var(--fw-strong); color: var(--text);
+}
+body:not(.pfas-app) #content .field > .horizontal { display: block; margin-bottom: var(--sp-1); }
+/* core's own form rules (article#content > #content-core > form input[type=text], two ids) outrank any class chain, so these properties need !important */
+/* inputs and selects: one height, a visible border, the shared focus halo */
+body:not(.pfas-app) #content .field input:is([type=text], [type=number], [type=date], [type=time], [type=datetime-local], [type=email], [type=password], [type=url], [type=tel], [type=search], :not([type])),
+body:not(.pfas-app) #content .field select:not([multiple]),
+body:not(.pfas-app) .modal-body .field input:is([type=text], [type=number], [type=date], [type=time], [type=datetime-local], [type=email], [type=password], [type=url], [type=tel], [type=search], :not([type])),
+body:not(.pfas-app) .modal-body .field select:not([multiple]) {
+  height: var(--ctl-h); box-sizing: border-box; padding: 0 10px; font-family: inherit; font-size: var(--fs-base); line-height: normal;
+  color: var(--text) !important; background-color: var(--surface) !important; border: 1px solid var(--line-strong) !important; border-radius: var(--radius-lg);
+}
+body:not(.pfas-app) #content .field textarea,
+body:not(.pfas-app) .modal-body .field textarea {
+  box-sizing: border-box; padding: 8px 10px; font-family: inherit; font-size: var(--fs-base);
+  color: var(--text) !important; background-color: var(--surface) !important; border: 1px solid var(--line-strong) !important; border-radius: var(--radius-lg);
+}
+body:not(.pfas-app) #content .field input:is([type=text], [type=number], [type=date], [type=time], [type=datetime-local], [type=email], [type=password], [type=url], [type=tel], [type=search], :not([type])):focus,
+body:not(.pfas-app) #content .field select:focus,
+body:not(.pfas-app) #content .field textarea:focus,
+body:not(.pfas-app) .modal-body .field :is(input, select, textarea):focus {
+  outline: none; border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--focus);
+}
+/* a reference widget's search box sits flush with its buttons */
+body:not(.pfas-app) .field .input-group > input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+/* help text, required mark, validation message */
+body:not(.pfas-app) #content .formHelp,
+body:not(.pfas-app) .modal-body .formHelp { font-size: var(--fs-sm); font-weight: var(--fw-body); color: var(--text-muted) !important; }
+body:not(.pfas-app) #content .required,
+body:not(.pfas-app) #content .required::after,
+body:not(.pfas-app) #content label.required,
+body:not(.pfas-app) #content .fieldRequired { color: var(--s-danger-dk); }
+body:not(.pfas-app) #content .fieldErrorBox,
+body:not(.pfas-app) #content .fieldErrorBox .error { color: var(--s-danger-dk); font-size: var(--fs-sm); }
+body:not(.pfas-app) #content .field.error :is(input, select, textarea) { border-color: var(--s-danger) !important; }
+/* the Add Sample form: its label column (core: #f5f5f5) and the row under the cursor (Bootstrap's table-warning) */
+body:not(.pfas-app) .ar-table td.field-label { background-color: var(--surface-2) !important; }
+body:not(.pfas-app) .ar-table tr.ar-table-row:hover > td { background-color: var(--accent-soft) !important; }
+body:not(.pfas-app) .table-warning,
+body:not(.pfas-app) .table-warning > td,
+body:not(.pfas-app) .table-warning > th { background-color: var(--s-warn-lt) !important; color: var(--text); }
+/* fieldset / legend are section headings */
+body:not(.pfas-app) #content fieldset {
+  min-width: 0; margin: 0 0 var(--sp-4); padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line); border-radius: var(--radius-card);
+}
+body:not(.pfas-app) #content legend {
+  width: auto; margin: 0; padding: 0 var(--sp-2); border: 0;
+  font-family: var(--font-heading); font-size: var(--fs-md); font-weight: var(--fw-heading); color: var(--text);
+}
+/* the Save / Cancel bar stays at the bottom of the window, like the PFAS action bar */
+body:not(.pfas-app) #content form .formControls {
+  position: sticky; bottom: 0; z-index: 5; margin: var(--sp-5) 0 0; padding: var(--sp-3) 0;
+  background: var(--surface); border-top: 1px solid var(--line);
+}
+body:not(.pfas-app) #content form .formControls > .mt-2 { margin-top: 0 !important; }
+/* z3c.form buttons are inputs with Plone's classes: the same button look as .btn */
+body:not(.pfas-app) .formControls input[type=submit]:not(.btn),
+body:not(.pfas-app) .formControls input[type=button]:not(.btn),
+body:not(.pfas-app) .formControls button:not(.btn) {
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  height: var(--ctl-h); padding: 0 14px; margin: 0 var(--sp-2) 0 0; font-family: inherit; font-size: var(--fs-base); font-weight: var(--fw-strong);
+  line-height: 1; cursor: pointer; background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: none;
+}
+body:not(.pfas-app) .formControls input[type=submit]:not(.btn):hover { background: var(--surface-2); border-color: var(--line-strong); }
+body:not(.pfas-app) .formControls input.context:not(.btn),
+body:not(.pfas-app) .formControls input.context:not(.btn):hover { background: var(--accent-text); border-color: var(--accent-text); color: var(--on-accent); }
+body:not(.pfas-app) .formControls input.context:not(.btn):hover { background: var(--s-primary-xdk); border-color: var(--s-primary-xdk); }
+body:not(.pfas-app) .formControls input.destructive:not(.btn) { border-color: var(--s-danger-bd); color: var(--s-danger-dk); }
+body:not(.pfas-app) .formControls input.destructive:not(.btn):hover { background: var(--s-danger-lt); border-color: var(--s-danger); }
+body:not(.pfas-app) .formControls input[type=submit]:not(.btn):focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); }
+/* modals: the header takes the heading face */
+body:not(.pfas-app) .modal-title { font-family: var(--font-heading); font-size: var(--fs-lg); font-weight: var(--fw-heading); }
 
 /* ── Alerts / portal messages → PFAS rounded palette ─────────────────────── */
 .alert { border-radius: 4px; }
@@ -169,10 +422,8 @@ body:not(.pfas-app) .contentstable a { color: var(--s-primary-dk); }
 .page-link { color: var(--s-primary-dk); }
 .page-item.active .page-link { background: var(--s-primary); border-color: var(--s-primary); }
 .form-control:focus, .custom-select:focus {
-  border-color: var(--s-primary); box-shadow: 0 0 0 .2rem var(--s-focus-ring);
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus);
 }
-.btn-outline-primary { color: var(--s-primary-dk); border-color: var(--s-primary); }
-.btn-outline-primary:hover { background: var(--s-primary-dk); border-color: var(--s-primary-dk); color: var(--on-accent); }
 .badge-primary, .bg-primary { background: var(--s-primary) !important; }
 .badge-warning { background: var(--s-warn-lt) !important; color: var(--s-warn-text) !important; }
 .text-success { color: var(--s-success-text) !important; }
@@ -181,24 +432,27 @@ body:not(.pfas-app) .contentstable a { color: var(--s-primary-dk); }
 .alert-success { background: var(--s-success-lt); border-color: var(--s-success-bd); color: var(--s-success-text); }
 .alert-warning { background: var(--s-warn-lt); border-color: var(--s-warn-bd); color: var(--s-warn-text); }
 .alert-danger  { background: var(--s-danger-lt); border-color: var(--s-danger-bd); color: var(--s-danger-dk); }
-input[type=checkbox], input[type=radio] { accent-color: var(--s-primary); }
+input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
 
 /* SENAITE strips each listing row by workflow state with unrelated colours;
    map them onto the meanings: waiting on someone = amber,
-   in progress = teal, OK = mint, failed = coral, closed = grey. */
-.ajax-contents-table tr.state-sample_due,
-.ajax-contents-table tr.state-to_be_verified,
-.ajax-contents-table tr.state-to_be_sampled,
-.ajax-contents-table tr.state-scheduled_sampling { border-left: 2px solid var(--s-warning) !important; }
-.ajax-contents-table tr.state-sample_received,
-.ajax-contents-table tr.state-open { border-left: 2px solid var(--s-info) !important; }
-.ajax-contents-table tr.state-verified { border-left: 2px solid var(--s-success) !important; }
-.ajax-contents-table tr.state-published,
-.ajax-contents-table tr.state-dispatched,
-.ajax-contents-table tr.state-stored { border-left: 2px solid var(--s-primary-dk) !important; }
-.ajax-contents-table tr.state-invalid,
-.ajax-contents-table tr.state-rejected { border-left: 2px solid var(--s-danger) !important; }
-.ajax-contents-table tr.state-cancelled { border-left: 2px solid var(--s-secondary) !important; }
+   in progress = teal, OK = mint, failed = coral, closed = grey. The edge is an
+   inset shadow on the row's first cell, never a border, so a row is the same
+   width in every state and nothing shifts. */
+.ajax-contents-table tr.contentrow { border-left: 0 !important; }
+.ajax-contents-table tr.state-sample_due > td:first-child,
+.ajax-contents-table tr.state-to_be_verified > td:first-child,
+.ajax-contents-table tr.state-to_be_sampled > td:first-child,
+.ajax-contents-table tr.state-scheduled_sampling > td:first-child { box-shadow: inset 3px 0 0 var(--s-warning); }
+.ajax-contents-table tr.state-sample_received > td:first-child,
+.ajax-contents-table tr.state-open > td:first-child { box-shadow: inset 3px 0 0 var(--s-info); }
+.ajax-contents-table tr.state-verified > td:first-child { box-shadow: inset 3px 0 0 var(--s-success); }
+.ajax-contents-table tr.state-published > td:first-child,
+.ajax-contents-table tr.state-dispatched > td:first-child,
+.ajax-contents-table tr.state-stored > td:first-child { box-shadow: inset 3px 0 0 var(--s-primary-dk); }
+.ajax-contents-table tr.state-invalid > td:first-child,
+.ajax-contents-table tr.state-rejected > td:first-child { box-shadow: inset 3px 0 0 var(--s-danger); }
+.ajax-contents-table tr.state-cancelled > td:first-child { box-shadow: inset 3px 0 0 var(--s-secondary); }
 .ajax-contents-table tr td div.progress div.progress-bar,
 .progress-bar { background-color: var(--s-primary-dk) !important; }
 

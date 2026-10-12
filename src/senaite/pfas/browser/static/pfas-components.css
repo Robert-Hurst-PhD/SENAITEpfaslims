@@ -641,3 +641,24 @@ textarea.pfas-fill.is-sm { font-size: var(--fs-sm); }
 .pfas-complete h2 { margin: 0 0 8px; font-size: var(--fs-xl); color: var(--text); }
 .pfas-complete p { margin: 0 0 24px; color: var(--text-muted); font-size: var(--fs-base); }
 @media (max-width: 1100px) { .pfas-wizard-layout { flex-direction: column; } .pfas-wizard-steps { width: auto; max-width: 100%; } }
+
+/* ── Operations: batch status cards (the stepper in a card, labels only) ─── */
+.pfas-card-end { margin-left: auto; }
+.pfas-stepper.pfas-stepper-compact { flex-direction: row; gap: 0; margin: 0 0 var(--sp-3); }
+.pfas-stepper.pfas-stepper-compact li { font-size: var(--fs-xs); }
+.pfas-card .pfas-meta-row { flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); color: var(--text-muted); }
+.pfas-card .pfas-meta-row strong { color: var(--text); }
+.pfas-card details { margin-top: var(--sp-2); }
+@media (max-width: 600px) {
+  .pfas-stepper.pfas-stepper-compact { overflow-x: auto; gap: var(--sp-3); }
+  .pfas-stepper.pfas-stepper-compact li { flex: 0 0 auto; }
+}
+.pfas-col-notes { max-width: 220px; white-space: normal; }
+.pfas-card.pfas-card-narrow { max-width: 600px; }
+.pfas-id.pfas-tracking-number { display: inline-block; margin: var(--sp-2) 0 var(--sp-3); padding: 6px 14px;
+  font-size: var(--fs-2xl); font-weight: var(--fw-heading); letter-spacing: .08em; }
+
+/* ── Aliases: pages written with the Bootstrap names (.alert-danger, .alert-ok)
+   read exactly as .alert-error / .alert-success (pfas_macros.pt) ─────────── */
+.alert-danger { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk); }
+.alert-ok { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text); }

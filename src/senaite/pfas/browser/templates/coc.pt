@@ -25,15 +25,15 @@
 
     <!-- ── the list ── -->
     <tal:list condition="not:rec">
-      <p class="form-note">One CoC per shipment; its samples are entered here. <tal:h define="hid string:coc"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
-      <form method="post" tal:attributes="action string:${purl}/@@pfas-coc">
+      <p class="pfas-lead">One CoC per shipment; its samples are entered here. <tal:h define="hid string:coc"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+      <form method="post" class="pfas-filterbar" tal:attributes="action string:${purl}/@@pfas-coc">
         <input type="hidden" name="action" value="new" />
         <tal:s condition="view/is_staff">
-          <select name="client_uid">
+          <select name="client_uid" class="pfas-select">
             <option value="">Client</option>
             <option tal:repeat="c view/clients" tal:attributes="value python:c[0]" tal:content="python:c[1]">Client</option>
           </select>
-          <select name="origin">
+          <select name="origin" class="pfas-select">
             <option value="digital">Entered here</option>
             <option value="paper">Paper CoC (kit)</option>
           </select>
@@ -59,7 +59,7 @@
 
     <!-- ── one CoC ── -->
     <tal:one condition="rec" tal:define="ch view/choices; h view/header; edit view/can_edit">
-      <p class="form-note">
+      <p class="pfas-lead">
         <strong tal:content="rec/number">COC-2026-0001</strong> &#183;
         <span tal:replace="rec/client">Client</span> &#183;
         <span tal:replace="python:rec['status'].capitalize()">Open</span>
@@ -68,12 +68,12 @@
       <form method="post" tal:attributes="action string:${purl}/@@pfas-coc?coc=${rec/number}">
         <fieldset class="pfas-ro" tal:attributes="disabled python:None if edit else 'disabled'">
         <div class="section-group-hdr">Shipment</div>
-        <div class="field-row">
+        <div class="field-grid">
           <label>Project <input type="text" name="project" tal:attributes="value h/project" /></label>
           <label>Project number <input type="text" name="project_number" tal:attributes="value h/project_number" /></label>
           <label>Sampled by <input type="text" name="sampler" tal:attributes="value h/sampler" /></label>
         </div>
-        <div class="field-row">
+        <div class="field-grid">
           <label>Carrier <input type="text" name="carrier" tal:attributes="value h/carrier" /></label>
           <label>Tracking number <input type="text" name="tracking" tal:attributes="value h/tracking" /></label>
           <label>Custody seals <input type="text" name="seals" tal:attributes="value h/seals" /></label>
@@ -165,7 +165,7 @@
         <label tal:condition="python:rec['status'] == 'received'">Reason for the correction
           <input type="text" name="reason" /></label>
         </fieldset>
-        <div class="field-row" tal:condition="edit">
+        <div class="form-actions" tal:condition="edit">
           <button class="btn btn-secondary" type="submit" name="action" value="save">Save</button>
           <button class="btn btn-primary" type="submit" name="action" value="submit"
                   tal:condition="python:rec['status'] == 'open'">Submit CoC</button>
