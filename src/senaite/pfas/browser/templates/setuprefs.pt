@@ -5,46 +5,6 @@
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
   <title metal:fill-slot="title">Reference Definition Setup</title>
-  <tal:styles metal:fill-slot="head-extra">
-  <style>
-    /* ── Setup refs page-specific ─────────────────────────────────────── */
-    .info-card { background: var(--s-bg); border-radius: 6px;
-                 border: 1px solid var(--s-border);
-                 box-shadow: 0 1px 3px rgba(0,0,0,.06);
-                 padding: 16px 20px; margin-bottom: 18px; }
-    .info-card h2 { font-size: var(--fs-base); font-weight: 700; margin-bottom: 10px;
-                    color: var(--s-primary-dk); }
-    .info-card p  { font-size: var(--fs-sm); color: var(--s-secondary); line-height: 1.6; margin-bottom: 6px; }
-
-
-    /* .badge base is global (pfas_macros) — page-specific colours: */
-    .badge-blank    { background: var(--s-primary-lt); color: var(--s-primary-dk); }
-    .badge-control  { background: #f3e5f5; color: #6a1b9a; }
-    .badge-recovery { background: var(--s-success-lt); color: var(--s-success-text); }
-    .badge-cal      { background: var(--s-warn-lt); color: var(--s-warn-text); }
-    .badge-rpd      { background: var(--s-danger-lt); color: var(--s-danger-dk); }
-
-    .existing-list { background: var(--s-bg); border-radius: 6px;
-                     border: 1px solid var(--s-border);
-                     box-shadow: 0 1px 3px rgba(0,0,0,.06);
-                     padding: 14px 18px; margin-bottom: 18px; }
-    .existing-list h2 { font-size: var(--fs-base); font-weight: 700; margin-bottom: 8px; color: var(--s-body); }
-    .existing-list ul { list-style: none; margin: 0; }
-    .existing-list li { font-size: var(--fs-sm); color: var(--s-success-text); padding: 2px 0; }
-    .existing-list li::before { content: "\2713  "; }
-
-    .action-bar { background: var(--s-bg); border-radius: 6px;
-                  border: 1px solid var(--s-border);
-                  box-shadow: 0 1px 3px rgba(0,0,0,.06);
-                  padding: 16px 18px; margin-top: 20px;
-                  display: flex; gap: 12px; align-items: center; }
-    .btn-run { background: var(--s-primary-dk); color: #fff; border: none; border-radius: 4px;
-               padding: 12px 32px; cursor: pointer; font-size: var(--fs-base); font-weight: 700; }
-    .btn-run:hover { background: var(--s-primary-xdk); }
-    .btn-run:disabled { background: var(--s-secondary); cursor: not-allowed; }
-    .action-note { font-size: var(--fs-xs); color: var(--s-secondary); line-height: 1.5; }
-  </style>
-  </tal:styles>
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Reference Definition Setup</tal:t>
@@ -54,20 +14,20 @@
 
   <div metal:fill-slot="content">
     <!-- Which method's acceptance limits the global Reference Definitions use -->
-    <div style="border:1px solid var(--s-border,#ddd);padding:12px;margin:14px 0;">
-      <h3 style="font-size:var(--fs-base);margin:0 0 6px;">Reference range source</h3>
-      <p class="form-note" style="max-width:64em;">Which method&#8217;s limits each Reference Definition&#8217;s ranges and control charts are built from. <tal:h define="hid string:method-profile"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <div class="pfas-card">
+      <h3>Reference range source</h3>
+      <p class="form-note">Which method&#8217;s limits each Reference Definition&#8217;s ranges and control charts are built from. <tal:h define="hid string:method-profile"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
       <form method="POST" action=""
             tal:attributes="action string:${view/portal_url}/@@pfas-setup-references">
         <input type="hidden" name="action" value="save_ref_method" />
-        <select name="ref_method" style="min-width:220px;">
+        <select name="ref_method" class="pfas-select">
           <option value="">&#8212; QC rules store (default) &#8212;</option>
           <option tal:repeat="m view/method_options"
                   tal:attributes="value m;
                                   selected python:m == view.reference_method()"
                   tal:content="m">FDA_32PFAS</option>
         </select>
-        <button class="btn btn-primary" type="submit" style="margin-left:8px">
+        <button class="btn btn-primary" type="submit">
           Save
         </button>
       </form>
@@ -84,8 +44,8 @@
       You do not have the Manager or LabManager role. The setup button is disabled.
     </div>
 
-    <div class="info-card">
-      <h2>What this does</h2>
+    <div class="pfas-card is-prose">
+      <h3>What this does</h3>
       <p>Creates one SENAITE Reference Definition per QC type, with per-analyte expected values and ranges.</p>
       <p>
         This operation is <strong>idempotent</strong> &#8212; running it again after changing
@@ -101,15 +61,15 @@
       </p>
     </div>
 
-    <div class="existing-list">
-      <h2>Existing Reference Definitions</h2>
+    <div class="pfas-card">
+      <h3>Existing Reference Definitions</h3>
       <tal:ex tal:define="existing view/existing_ref_defs">
-        <ul tal:condition="existing">
+        <ul class="pfas-check-list" tal:condition="existing">
           <tal:it tal:repeat="t existing">
             <li tal:content="t">PFAS CCV</li>
           </tal:it>
         </ul>
-        <p tal:condition="not:existing" style="font-size:var(--fs-sm);color:var(--s-secondary)">
+        <p tal:condition="not:existing" class="pfas-muted">
           None found yet &#8212; run the setup below to create them.
         </p>
       </tal:ex>
@@ -145,16 +105,16 @@
     </table>
     </div>
 
-    <div class="action-bar">
+    <div class="pfas-card pfas-run-bar">
       <form method="POST" action=""
             tal:attributes="action string:${context/absolute_url}/@@pfas-setup-references"
             onsubmit="return confirm('Create/update all Reference Definitions now?')">
-        <button type="submit" class="btn-run"
+        <button type="submit" class="btn btn-primary"
                 tal:attributes="disabled python:not view.is_manager()">
           Create / Update Reference Definitions
         </button>
       </form>
-      <span class="action-note">
+      <span class="pfas-muted">
         Safe to run repeatedly. Analyte values come from the reference
         method&#8217;s profile each time. To change acceptance criteria, edit that
         method&#8217;s profile

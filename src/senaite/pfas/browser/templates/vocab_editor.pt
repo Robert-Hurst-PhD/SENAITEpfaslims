@@ -14,12 +14,12 @@
   <div class="page-body page-body-narrow" tal:define="purl view/portal_url; name view/list_name">
 
     <div class="alert alert-success" tal:condition="view/saved">Saved.</div>
-    <div class="alert alert-danger" tal:repeat="e view/errors|nothing" tal:content="e">error</div>
+    <div class="alert alert-error" tal:repeat="e view/errors|nothing" tal:content="e">error</div>
 
-    <nav class="cf-chips">
-      <tal:l tal:repeat="l view/lists"><a tal:define="lk python:l[0]"
+    <nav class="pfas-seg pfas-seg-strip is-spaced" aria-label="Lists">
+      <tal:l tal:repeat="l view/lists"><a class="pfas-seg-item" tal:define="lk python:l[0]"
          tal:attributes="href string:${purl}/@@pfas-vocabularies?list=${lk};
-                         class python:'btn-sm btn-primary' if lk == name else 'btn-sm btn-secondary'"
+                         aria-selected python:'true' if lk == name else 'false'"
          tal:content="python:l[1]">Deviation event types</a></tal:l>
     </nav>
 

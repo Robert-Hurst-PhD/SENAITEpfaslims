@@ -17,28 +17,28 @@
   <ul class="bench-alerts" tal:condition="view/saved"><li class="bench-ok">Saved.</li></ul>
   <!-- the fields of any profile can be given (a profile chosen at export
        reads them), whichever profile the client exports with -->
-  <form method="get" class="filter-row">
-    <label>Fields of the profile
-      <select name="fields_of" onchange="this.form.submit()">
+  <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit">
+    <div class="pfas-field"><label for="fields-of">Fields of the profile</label>
+      <select name="fields_of" id="fields-of" class="pfas-select">
         <option tal:repeat="p view/profile_options" tal:content="p/name"
                 tal:attributes="value p/id; selected python:'selected' if p['id'] == view.shown_profile_id() else None">profile</option>
-      </select></label>
+      </select></div>
   </form>
   <form method="post" class="bench-block">
     <input type="hidden" name="fields_of" tal:attributes="value view/shown_profile_id" />
     <div class="field-grid">
-      <label>
-        <span><input type="checkbox" name="edd_enabled" value="1"
-                     tal:attributes="checked python:'checked' if cfg.get('edd_enabled') else None" />
-          Deliver an EDD with this client's reports</span>
+      <label class="pfas-check">
+        <input type="checkbox" name="edd_enabled" value="1"
+               tal:attributes="checked python:'checked' if cfg.get('edd_enabled') else None" />
+        <span>Deliver an EDD with this client's reports</span>
       </label>
-      <label>
-        <span><input type="checkbox" name="per_report_override_default" value="1"
-                     tal:attributes="checked python:'checked' if cfg.get('per_report_override_default', True) else None" />
-          Generate it by default when publishing</span>
+      <label class="pfas-check">
+        <input type="checkbox" name="per_report_override_default" value="1"
+               tal:attributes="checked python:'checked' if cfg.get('per_report_override_default', True) else None" />
+        <span>Generate it by default when publishing</span>
       </label>
       <label>Profile
-        <select name="edd_profile">
+        <select name="edd_profile" class="pfas-select">
           <option tal:repeat="p view/profile_options" tal:content="p/name"
                   tal:attributes="value p/id; selected python:'selected' if p['id'] == cfg.get('edd_profile') else None">profile</option>
         </select>

@@ -27,7 +27,7 @@
 
     <div class="dt-toolbar" tal:condition="view/can_configure">
       <span class="dt-toolbar-label">Add data</span>
-      <select id="dt-add-as" aria-label="Add data as">
+      <select id="dt-add-as" class="pfas-select" aria-label="Add data as">
         <option value="text">as text</option>
         <option value="code128">as Code 128 barcode</option>
         <option value="qrcode">as QR code</option>

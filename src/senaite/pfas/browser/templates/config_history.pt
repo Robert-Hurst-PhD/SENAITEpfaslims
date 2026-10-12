@@ -11,20 +11,22 @@
   <div class="page-body">
 
     <div tal:condition="view/message"
-         tal:attributes="class python:'alert alert-success' if view.message['ok'] else 'alert alert-danger'"
+         tal:attributes="class python:'alert alert-success' if view.message['ok'] else 'alert alert-error'"
          tal:content="view/message/text">message</div>
 
     <p class="form-note">Every configuration save: who, when and each value before and after. A revert puts one change back. <tal:h define="hid string:config-history"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
 
-    <form method="get" class="pfas-filter-bar">
-      <select name="store">
+    <form method="get" class="pfas-filterbar">
+      <div class="pfas-field"><label for="ch-store">Setting</label>
+      <select name="store" id="ch-store" class="pfas-select">
         <option value="">All settings</option>
         <option tal:repeat="s view/stores"
                 tal:attributes="value python:s[0]; selected python:s[0] == view.store_filter()"
                 tal:content="python:s[1]">Method profile</option>
-      </select>
-      <input type="text" name="key" placeholder="e.g. EPA_537_1" tal:attributes="value view/key_filter" />
-      <button type="submit" class="btn">Filter</button>
+      </select></div>
+      <div class="pfas-field"><label for="ch-key">Key</label>
+      <input type="text" name="key" id="ch-key" class="pfas-input" placeholder="e.g. EPA_537_1" tal:attributes="value view/key_filter" /></div>
+      <button type="submit" class="btn btn-primary">Filter</button>
     </form>
 
     <p tal:condition="not:view/rows" class="form-note">No changes recorded yet.</p>

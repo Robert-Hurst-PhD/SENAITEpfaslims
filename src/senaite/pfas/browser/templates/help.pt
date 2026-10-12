@@ -7,10 +7,12 @@
   <title metal:fill-slot="title">Help</title>
   <metal:fill fill-slot="header-title">Help</metal:fill>
   <tal:t metal:fill-slot="tabs">
-    <nav class="pfas-tabs" tal:define="at view/active_tab">
-      <a tal:repeat="t view/tabs" tal:attributes="href t/url;
-           class python:'pfas-tab active' if t['slug'] == at else 'pfas-tab'"><span tal:replace="t/title"></span><span class="pfas-tab-count" tal:condition="t/count|nothing" tal:content="t/count"></span></a>
+    <div class="pfas-seg-bar">
+    <nav class="pfas-seg pfas-seg-strip" aria-label="Help sections" tal:define="at view/active_tab">
+      <a class="pfas-seg-item" tal:repeat="t view/tabs" tal:attributes="href t/url;
+           aria-selected python:'true' if t['slug'] == at else 'false'"><span tal:replace="t/title"></span><span class="pfas-seg-count" tal:condition="t/count|nothing" tal:content="t/count"></span></a>
     </nav>
+    </div>
   </tal:t>
 
   <div metal:fill-slot="content">

@@ -10,8 +10,8 @@
   <tal:t metal:fill-slot="header-title">Reporting template</tal:t>
 
   <metal:fill fill-slot="content" tal:define="st view/state; msg view/message">
-    <div class="alert-ok" tal:condition="python: msg[0]" tal:content="python: msg[0]">ok</div>
-    <div class="alert-error" tal:condition="python: msg[1]" tal:content="python: msg[1]">error</div>
+    <div class="alert alert-success" tal:condition="python: msg[0]" tal:content="python: msg[0]">ok</div>
+    <div class="alert alert-error" tal:condition="python: msg[1]" tal:content="python: msg[1]">error</div>
 
     <section class="bench-block">
       <h2 class="bench-h">Issued revision</h2>
@@ -30,7 +30,7 @@
       <h2 class="bench-h">Issue a revision</h2>
       <form method="post" class="rt-form" tal:attributes="action string:${view/portal_url}/@@pfas-report-template">
         <input type="hidden" name="action" value="issue" />
-        <input type="text" name="note" class="rt-note" required="required"
+        <input type="text" name="note" class="pfas-input rt-note" required="required"
                placeholder="What this revision changes (recorded with it)" />
         <button class="btn-sm btn-primary" type="submit"
                 tal:attributes="disabled python: None if st['unissued'] else 'disabled'">Issue revision</button>
@@ -40,7 +40,7 @@
 
     <section class="bench-block" tal:condition="view/draft_designed">
       <h2 class="bench-h">Designed certificate</h2>
-      <p class="alert alert-warning rt-line">
+      <p class="alert alert-warn rt-line">
         <strong>Issuing will include the designed certificate layout:</strong> preview it below first;
         archive the design to keep the standard layout. <tal:h define="hid string:document-designs"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
     </section>
@@ -56,10 +56,10 @@
       <h2 class="bench-h">Preview with a real sample</h2>
       <form method="get" class="rt-form" tal:attributes="action string:${view/portal_url}/@@pfas-report-template-preview"
             target="rt-preview">
-        <select name="uid">
+        <select name="uid" class="pfas-select" aria-label="Sample">
           <option tal:repeat="s samples" tal:attributes="value s/uid" tal:content="s/label">S-1</option>
         </select>
-        <select name="which">
+        <select name="which" class="pfas-select" aria-label="Which revision">
           <option value="draft">Draft (live settings)</option>
           <option value="issued" tal:condition="not:st/none_issued">Issued revision</option>
         </select>

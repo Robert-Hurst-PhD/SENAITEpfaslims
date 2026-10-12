@@ -2,7 +2,7 @@
  * Loaded by the page macro and the core overlay viewlet. Plain ES5, no library.
  *   - theme: html[data-theme] from localStorage ("pfas_theme"); light unless the
  *     person chose dark (light is the lab's default)
- *   - .pfas-seg: the pill follows the active item; click switches items and
+ *   - .pfas-seg: (data-quiet: no pfas:seg event) the pill follows the active item; click switches items and
  *     panes ([data-tabs] root, data-pane ids); arrow keys move between tabs
  *   - .pfas-fab: open / close, scrim and Escape
  *   - .pfas-drawer: open(html) / close, scrim and Escape, #hash deep link hook
@@ -48,10 +48,14 @@
     if (pane) {
       var root = seg.closest("[data-tabs]");
       if (!root || root === seg) { root = doc; }   /* data-tabs on the strip itself: its panes are elsewhere on the page */
+      /* only this strip's own panes: a strip nested in a pane (a table's group tabs) must not close its parent's */
+      var mine = {};
+      for (var m = 0; m < items.length; m++) { mine[items[m].getAttribute("data-pane")] = true; }
       var panes = root.querySelectorAll(".pfas-pane");
-      for (var p = 0; p < panes.length; p++) { panes[p].classList.toggle("is-active", panes[p].id === pane); }
+      for (var p = 0; p < panes.length; p++) { if (mine[panes[p].id]) { panes[p].classList.toggle("is-active", panes[p].id === pane); } }
       if (seg.hasAttribute("data-hash")) { try { history.replaceState(null, "", "#" + pane); } catch (e) {} }
     }
+    if (seg.hasAttribute("data-quiet")) { return; }   /* a nested strip: it does not tell the page's own listeners */
     seg.dispatchEvent(new CustomEvent("pfas:seg", { bubbles: true, detail: { item: item, value: item.getAttribute("data-value") } }));
   }
   function initSeg(seg) {

@@ -13,12 +13,16 @@
                  base string:${view/portal_url}/@@pfas-edd-config?profile=${pid}">
   <!-- the export is one tool; each delivery format is a profile, and every
        setting below is the selected profile's -->
-  <form method="get" class="filter-row" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+  <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+        tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
     <input type="hidden" name="tab" tal:attributes="value tab" />
-    <select name="profile" onchange="this.form.submit()">
+    <div class="pfas-field">
+    <span>Profile</span>
+    <select name="profile" class="pfas-select" aria-label="Profile">
       <option tal:repeat="p view/profile_options" tal:content="p/name"
               tal:attributes="value p/id; selected python:'selected' if p['id'] == pid else None">profile</option>
     </select>
+    </div>
     <tal:h define="hid string:edd-profiles"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
     <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-edd-batches">Batch EDDs</a>
   </form>
@@ -28,10 +32,10 @@
     <li tal:condition="msg/error" class="bench-bad" tal:content="msg/error">error</li>
   </ul>
 
-  <nav class="pfas-tabs" aria-label="Profile settings">
-    <a tal:repeat="t view/tabs"
+  <nav class="pfas-seg pfas-seg-strip is-spaced" aria-label="Profile settings">
+    <a class="pfas-seg-item" tal:repeat="t view/tabs"
        tal:attributes="href python:'%s&tab=%s' % (base, t['id']);
-                       class python:'pfas-tab active' if tab == t['id'] else 'pfas-tab'"
+                       aria-selected python:'true' if tab == t['id'] else 'false'"
        tal:content="python:t['label'] + ((' (%d to code)' % view.blocking_count()) if t['id'] == 'analytes' and view.blocking_count() else '')">Defaults</a>
   </nav>
 
@@ -86,13 +90,15 @@
        condition, code map, format and checks -->
   <section class="bench-block" tal:condition="python:tab == 'columns' and view.mapped()"
            tal:define="fi view/file_index">
-    <form method="get" class="filter-row" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
+    <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+          tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
       <input type="hidden" name="profile" tal:attributes="value pid" />
       <input type="hidden" name="tab" value="columns" />
-      <select name="file" onchange="this.form.submit()" aria-label="File">
+      <div class="pfas-field"><span>File</span>
+      <select name="file" class="pfas-select" aria-label="File">
         <option tal:repeat="f view/file_rows" tal:content="f/name"
                 tal:attributes="value f/i; selected python:'selected' if f['i'] == fi else None">file</option>
-      </select>
+      </select></div>
     </form>
     <form method="post" tal:attributes="action string:${view/portal_url}/@@pfas-edd-config">
       <input type="hidden" name="profile" tal:attributes="value pid" />
@@ -160,7 +166,7 @@
               <option value="">(any)</option>
               <option tal:repeat="l lists" tal:content="l"
                       tal:attributes="value l; selected python:'selected' if l == m['list'] else None">l</option></select></label>
-          <label><input type="checkbox" value="1" tal:attributes="name string:m${m/k}__remove; aria-label string:Remove the map ${m/name}" /> Remove the map</label>
+          <label class="pfas-check"><input type="checkbox" value="1" tal:attributes="name string:m${m/k}__remove; aria-label string:Remove the map ${m/name}" /> Remove the map</label>
         </div>
         <table class="pfas-table pfas-table-form">
           <thead><tr><th>Ours</th><th>Code</th><th>Description</th><th>Remove</th></tr></thead>

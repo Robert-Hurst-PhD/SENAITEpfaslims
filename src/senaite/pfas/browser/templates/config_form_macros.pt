@@ -31,12 +31,12 @@
             </div>
           </tal:multi>
           <tal:bool condition="python:fld['kind'] == 'bool'">
-            <div class="check-row">
+            <label class="pfas-check" tal:attributes="for fld/name">
               <input type="checkbox" value="on"
                      tal:attributes="id fld/name; name fld/name; form cf_form;
                                      checked python:'checked' if fld['checked'] else None" />
-              <label tal:attributes="for fld/name" tal:content="fld/label">Label</label>
-            </div>
+              <span tal:content="fld/label">Label</span>
+            </label>
           </tal:bool>
           <tal:other condition="python:fld['kind'] not in ('bool', 'multi')">
             <label tal:attributes="for fld/name">
@@ -80,15 +80,16 @@
   headings, one row per key. Same caller contract: cf_groups, cf_form.
 -->
 <metal:table define-macro="table">
-  <div class="pfas-tabs" data-tabs="" tal:condition="python:len(cf_groups) > 1">
-    <a tal:repeat="grp cf_groups"
-       tal:attributes="class python:'pfas-tab active' if repeat['grp'].index == 0 else 'pfas-tab';
-                       data-pane string:${cf_form}-g${grp/index};
-                       href string:#${cf_form}-g${grp/index}"><tal:m tal:replace="grp/label">Matrix</tal:m><span
-       class="pfas-tab-count" tal:content="string:(${grp/set}/${grp/total})">(0/0)</span></a>
-  </div>
-  <div tal:repeat="grp cf_groups" class="pfas-pane"
-       tal:attributes="id string:${cf_form}-g${grp/index}">
+  <nav class="pfas-seg pfas-seg-strip is-spaced" data-tabs="data-tabs" data-hash="data-hash" data-quiet="data-quiet"
+       role="tablist" aria-label="Groups" tal:condition="python:len(cf_groups) > 1">
+    <button type="button" class="pfas-seg-item" role="tab" tal:repeat="grp cf_groups"
+       tal:attributes="aria-selected python:'true' if repeat['grp'].index == 0 else 'false';
+                       data-pane string:${cf_form}-g${grp/index}"><tal:m tal:replace="grp/label">Matrix</tal:m><span
+       class="pfas-seg-count" tal:content="string:(${grp/set}/${grp/total})">(0/0)</span></button>
+  </nav>
+  <div tal:repeat="grp cf_groups"
+       tal:attributes="id string:${cf_form}-g${grp/index};
+                       class python:'pfas-pane is-active' if repeat['grp'].index == 0 else 'pfas-pane'">
     <table class="factor-table cf-table">
       <thead>
         <tr>

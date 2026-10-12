@@ -61,7 +61,7 @@
                 <input type="hidden" name="_authenticator" tal:attributes="value token" />
                 <input type="hidden" name="id" tal:attributes="value r/id" />
                 <input type="hidden" name="action" value="issue" />
-                <input type="text" name="note" required="required" class="dt-note"
+                <input type="text" name="note" required="required" class="pfas-input dt-note"
                        placeholder="What this revision changes" />
                 <button class="btn-sm btn-primary" type="submit"
                         tal:attributes="disabled python: None if (r['status']['unissued'] and not r['problems']) else 'disabled'">Issue</button>
@@ -102,10 +102,10 @@
         <input type="hidden" name="_authenticator" tal:attributes="value token" />
         <input type="hidden" name="action" value="new" />
         <input type="hidden" name="kind" tal:attributes="value k/id" />
-        <input type="text" name="title" required="required" class="dt-note"
+        <input type="text" name="title" required="required" class="pfas-input dt-note"
                placeholder="New template name" tal:condition="not:k/single" />
         <input type="hidden" name="title" tal:condition="k/single" tal:attributes="value k/title" />
-        <select name="size" aria-label="Size">
+        <select name="size" class="pfas-select" aria-label="Size">
           <option tal:repeat="s k/sizes" tal:attributes="value s/id" tal:content="s/title">2x1</option>
         </select>
         <button class="btn-sm btn-primary" type="submit"

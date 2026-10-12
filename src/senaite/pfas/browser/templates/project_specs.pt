@@ -31,19 +31,19 @@
       only the differences are stored. <tal:h define="hid string:project-specs"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>
     </p>
 
-    <form method="get" class="cf-scope-bar" tal:attributes="action string:${view/portal_url}/@@pfas-project-specs">
+    <form method="get" class="pfas-filterbar" data-autosubmit="data-autosubmit"
+          tal:attributes="action string:${view/portal_url}/@@pfas-project-specs">
       <input type="hidden" name="uid" tal:attributes="value view/uid" />
-      <label>Method
-        <select name="method_id" onchange="this.form.submit()">
+      <div class="pfas-field"><label for="ps-method">Method</label>
+        <select name="method_id" id="ps-method" class="pfas-select">
           <option tal:repeat="mid view/method_ids" tal:content="mid"
                   tal:attributes="value mid; selected python:'selected' if mid == view.method_id() else None">FDA</option>
-        </select></label>
-      <label>Applies to
-        <select name="scope" onchange="this.form.submit()">
+        </select></div>
+      <div class="pfas-field"><label for="ps-scope">Applies to</label>
+        <select name="scope" id="ps-scope" class="pfas-select">
           <option tal:repeat="s view/scopes" tal:content="python:s[1]"
                   tal:attributes="value python:s[0]; selected python:'selected' if s[0] == view.scope() else None">All</option>
-        </select></label>
-      <noscript><button type="submit" class="btn-sm btn-secondary">Show</button></noscript>
+        </select></div>
     </form>
 
     <div class="section-group-hdr">Differences from the method</div>
@@ -67,13 +67,14 @@
     </table>
     <p class="form-note" tal:condition="not:view/departures">Nothing in this scope is looser than the method.</p>
 
-    <div class="pfas-tabs" data-tabs="">
-      <a tal:repeat="t view/tabs"
-         tal:attributes="class python:'pfas-tab active' if repeat['t'].index == 0 else 'pfas-tab';
-                         data-pane string:ps-${t/id}; href string:#ps-${t/id}"
-         tal:content="t/label">Recovery</a>
-    </div>
-    <div tal:repeat="t view/tabs" class="pfas-pane" tal:attributes="id string:ps-${t/id}">
+    <nav class="pfas-seg pfas-seg-strip is-spaced" data-tabs="data-tabs" data-hash="data-hash" role="tablist" aria-label="Specification sections">
+      <button type="button" class="pfas-seg-item" role="tab" tal:repeat="t view/tabs"
+         tal:attributes="aria-selected python:'true' if repeat['t'].index == 0 else 'false';
+                         data-pane string:ps-${t/id}"
+         tal:content="t/label">Recovery</button>
+    </nav>
+    <div tal:repeat="t view/tabs" tal:attributes="id string:ps-${t/id};
+                                class python:'pfas-pane is-active' if repeat['t'].index == 0 else 'pfas-pane'">
       <tal:rec condition="python:t['id'] == 'rec'">
         <p class="pane-intro">The window the QC engine would apply for this project, from the values below (saved values).</p>
         <div tal:replace="structure view/recovery_grid_html"></div>
