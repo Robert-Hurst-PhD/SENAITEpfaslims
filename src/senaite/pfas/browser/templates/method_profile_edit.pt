@@ -13,8 +13,7 @@
     .rl-in { width: 100%; }
     .rl-kw { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--s-secondary); margin-left: 6px; }
     /* ── Method profile editor ────────────────────────────────────────── */
-    .tab-pane         { display: none; }
-    .tab-pane.active  { display: block; }
+    .mp-tabs { margin-bottom: var(--sp-5); }
 
     /* width: the shared .page-body-narrow (--form-width), not a local cap */
 
@@ -34,18 +33,6 @@
                   max-width: 760px; margin: 0 0 14px; }
     .pane-intro code { font-family: var(--font-mono); font-size: var(--fs-xs); }
 
-    /* Pill toggle switch (ported from the original QC Rules page) */
-    .toggle-switch { position: relative; display: inline-block;
-                     width: 38px; height: 22px; cursor: pointer; margin: 0; vertical-align: middle; }
-    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
-    .toggle-track { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-                    background: var(--s-input-border); border-radius: 22px; transition: background .15s; }
-    .toggle-track::before { content: ""; position: absolute; width: 16px; height: 16px;
-                             left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
-                             transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
-    .toggle-switch input:checked + .toggle-track { background: var(--s-primary); }
-    .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
-    .toggle-switch input:focus + .toggle-track { box-shadow: 0 0 0 3px var(--s-focus-ring); }
     /* Param inputs grey out when their rule is toggled off */
     .rule-params.rule-off input { background: var(--s-light); color: var(--s-secondary);
                                   opacity: .55; }
@@ -117,7 +104,7 @@
     /* Mobile: wide data tables scroll inside their section instead of
        bleeding past the card border (consistent with .table-wrap). */
     .section-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .tab-pane .factor-table { max-width: 100%; }
+    .pfas-pane .factor-table { max-width: 100%; }
     .inclusion-grid { border-collapse: collapse; font-size: var(--fs-sm); }
     .inclusion-grid th { background: var(--s-light); padding: 5px 10px;
                          border-bottom: 2px solid var(--s-border); text-align: center;
@@ -212,40 +199,6 @@
     <a href="@@pfas-method-profiles" class="btn-sm btn-secondary btn-back">All Methods</a>
   </tal:r>
 
-  <tal:tabs metal:fill-slot="tabs">
-    <div class="pfas-tabs" id="method-profile-tabs">
-      <a class="pfas-tab" data-pane="pane-toggles" href="#pane-toggles"
-         onclick="pfasTabSwitch('pane-toggles'); return false;">Rule Toggles &amp; QC Run</a>
-      <a class="pfas-tab" data-pane="pane-qct" href="#pane-qct"
-         onclick="pfasTabSwitch('pane-qct'); return false;">QC Types</a>
-      <a class="pfas-tab" data-pane="pane-rt" href="#pane-rt"
-         onclick="pfasTabSwitch('pane-rt'); return false;">Recovery Tiers</a>
-      <a class="pfas-tab" data-pane="pane-mtx" href="#pane-mtx"
-         onclick="pfasTabSwitch('pane-mtx'); return false;">Matrices &amp; Units</a>
-      <a class="pfas-tab" data-pane="pane-corr" href="#pane-corr"
-         onclick="pfasTabSwitch('pane-corr'); return false;">Sample Corrections</a>
-      <a class="pfas-tab" data-pane="pane-ami" href="#pane-ami"
-         onclick="pfasTabSwitch('pane-ami'); return false;">Analyte &#215; Matrix</a>
-      <a class="pfas-tab" data-pane="pane-iso" href="#pane-iso"
-         onclick="pfasTabSwitch('pane-iso'); return false;">Isomers</a>
-      <a class="pfas-tab" data-pane="pane-sur" href="#pane-sur"
-         onclick="pfasTabSwitch('pane-sur'); return false;">Internal Standards</a>
-      <a class="pfas-tab" data-pane="pane-eis" href="#pane-eis"
-         onclick="pfasTabSwitch('pane-eis'); return false;"
-         tal:attributes="style python:'' if view.show_eis_overrides() else 'display:none'">SUR Limits</a>
-      <a class="pfas-tab" data-pane="pane-rl" href="#pane-rl"
-         onclick="pfasTabSwitch('pane-rl'); return false;">Reporting Limits</a>
-      <a class="pfas-tab" data-pane="pane-rf" href="#pane-rf"
-         onclick="pfasTabSwitch('pane-rf'); return false;">Reporting</a>
-      <a class="pfas-tab" data-pane="pane-cal" href="#pane-cal"
-         onclick="pfasTabSwitch('pane-cal'); return false;">Calibration &amp; CCV</a>
-      <a class="pfas-tab" data-pane="pane-lwf" href="#pane-lwf"
-         onclick="pfasTabSwitch('pane-lwf'); return false;">Lab Workflow</a>
-      <a class="pfas-tab" data-pane="pane-engine" href="#pane-engine"
-         onclick="pfasTabSwitch('pane-engine'); return false;">Engine</a>
-    </div>
-  </tal:tabs>
-
   <tal:ab metal:fill-slot="action-bar">
     <div class="pfas-action-bar">
       <button type="submit" form="profile-form" id="profile-save" class="btn btn-primary">Save &amp; Export</button>
@@ -255,6 +208,23 @@
   </tal:ab>
 
   <div metal:fill-slot="content">
+
+    <nav class="pfas-seg pfas-seg-strip mp-tabs" id="method-profile-tabs" data-tabs data-hash role="tablist" aria-label="Method sections">
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-toggles" aria-selected="true">Rule Toggles &amp; QC Run</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-qct" aria-selected="false">QC Types</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-rt" aria-selected="false">Recovery Tiers</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-mtx" aria-selected="false">Matrices &amp; Units</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-corr" aria-selected="false">Sample Corrections</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-ami" aria-selected="false">Analyte &#215; Matrix</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-iso" aria-selected="false">Isomers</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-sur" aria-selected="false">Internal Standards</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-eis" aria-selected="false" tal:condition="view/show_eis_overrides">SUR Limits</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-rl" aria-selected="false">Reporting Limits</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-rf" aria-selected="false">Reporting</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-cal" aria-selected="false">Calibration &amp; CCV</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-lwf" aria-selected="false">Lab Workflow</button>
+      <button type="button" class="pfas-seg-item" role="tab" data-pane="pane-engine" aria-selected="false">Engine</button>
+    </nav>
 
     <div class="alert alert-success" tal:condition="view/saved">
       Profile saved and exported to <code>/data/qc/method_profiles.json</code>.
@@ -323,7 +293,7 @@
       <input type="hidden" name="qc_rules_present" value="1" />
 
       <!-- ── Tab: Rule Toggles & QC Run (saved on the method profile) ─────── -->
-      <div class="tab-pane" id="pane-toggles">
+      <div class="pfas-pane is-active" id="pane-toggles">
         <div class="page-body-narrow">
           <p class="pane-intro">Which checks the pipeline runs for this method; their limits are on Calibration &amp; CCV. <tal:h define="hid string:rule-switches"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
           <div class="table-wrap">
@@ -334,12 +304,12 @@
             <tbody>
               <tr tal:repeat="row view/rule_toggle_rows">
                 <td style="text-align:center;">
-                  <label class="toggle-switch">
+                  <label class="pfas-switch">
                     <input type="checkbox" class="rule-toggle-cb"
                            tal:attributes="name string:ruletoggle.${row/key};
                                            data-rule row/key;
                                            checked python:row['enabled']" />
-                    <span class="toggle-track"></span>
+                    <span class="pfas-switch-track"></span>
                   </label>
                 </td>
                 <td><strong tal:content="row/label">CCV Recovery</strong></td>
@@ -356,17 +326,17 @@
               </tr>
               <tr tal:repeat="q view/rule_qc_type_rows">
                 <td class="cf-center">
-                  <label class="toggle-switch">
+                  <label class="pfas-switch">
                     <input type="checkbox" class="qc-type-mirror"
                            tal:attributes="name string:qc_enabled_${q/key};
                                            checked python:'checked' if q['enabled'] else None" />
-                    <span class="toggle-track"></span>
+                    <span class="pfas-switch-track"></span>
                   </label>
                 </td>
                 <td><strong tal:content="q/rule_label">LFSM Recovery</strong></td>
                 <td class="form-note">Limits on Recovery Tiers / the QC Type Grid.
                   <button type="button" class="btn-sm btn-secondary"
-                          onclick="return (pfasTabSwitch('pane-qct'), false)">QC Types</button></td>
+                          data-goto="pane-qct">QC Types</button></td>
               </tr>
             </tbody>
           </table>
@@ -375,7 +345,7 @@
       </div><!-- /pane-toggles -->
 
       <!-- ── Tab: Analyte × Matrix ─────────────────────────────────────── -->
-      <div class="tab-pane" id="pane-ami">
+      <div class="pfas-pane" id="pane-ami">
         <div class="page-body-narrow">
 
           <details open="open">
@@ -451,7 +421,7 @@
       </div><!-- /pane-ami -->
 
       <!-- ── Tab: Surrogate Map ─────────────────────────────────────────── -->
-      <div class="tab-pane" id="pane-rf">
+      <div class="pfas-pane" id="pane-rf">
         <div class="page-body">
           <p class="pane-intro">The certificate format per matrix; a blank cell inherits the &#8220;All matrices&#8221; row. <tal:h define="hid string:reporting-format"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
           <!-- Saved ON ITS OWN (R2): form#section-rf. -->
@@ -461,7 +431,7 @@
         </div>
       </div><!-- /pane-rf -->
 
-      <div class="tab-pane" id="pane-iso">
+      <div class="pfas-pane" id="pane-iso">
         <div class="page-body">
           <p class="pane-intro">Analytes measured as linear and branched peaks, and the name their summed result is reported under. <tal:h define="hid string:isomers"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
           <!-- Saved ON ITS OWN (R2): form#section-iso. -->
@@ -471,7 +441,7 @@
         </div>
       </div><!-- /pane-iso -->
 
-      <div class="tab-pane" id="pane-sur">
+      <div class="pfas-pane" id="pane-sur">
         <div class="page-body-narrow">
           <!-- Saved ON ITS OWN (R2): the internal-standards grid and the
                surrogate map belong to form#section-sur and are checked
@@ -509,7 +479,7 @@
       </div><!-- /pane-sur -->
 
       <!-- ── Tab: Recovery Tiers ────────────────────────────────────────── -->
-      <div class="tab-pane" id="pane-rt">
+      <div class="pfas-pane" id="pane-rt">
         <div class="page-body">
           <!-- Saved ON ITS OWN (R2): spike levels, recovery tiers and the Dup
                RPD belong to form#section-rt. -->
@@ -588,7 +558,7 @@
       </div><!-- /pane-rt -->
 
       <!-- ── Tab: Sample Corrections (per-method, applied to ALL samples) ── -->
-      <div class="tab-pane" id="pane-mtx">
+      <div class="pfas-pane" id="pane-mtx">
         <div class="page-body-narrow">
           <p class="pane-intro">The matrices this method supports and what the pipeline decides from each. <tal:h define="hid string:analyte-matrix"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
 
@@ -615,7 +585,7 @@
         </div>
       </div>
 
-      <div class="tab-pane" id="pane-corr">
+      <div class="pfas-pane" id="pane-corr">
         <div class="page-body-narrow">
           <p class="pane-intro">Corrections applied to every sample of this method, QC included. <tal:h define="hid string:matrix-factor"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
 
@@ -659,7 +629,7 @@
       </div><!-- /pane-corr -->
 
       <!-- ── Tab: EIS Limits ────────────────────────────────────────────── -->
-      <div class="tab-pane" id="pane-eis">
+      <div class="pfas-pane" id="pane-eis">
         <div><!-- a wide grid: the full content width (6C) -->
           <tal:eis tal:condition="view/show_eis_overrides">
             <div class="alert alert-warn" tal:condition="view/eis_needs_verification">
@@ -678,7 +648,7 @@
       <!-- ── Tab: Calibration ───────────────────────────────────────────── -->
       <!-- Reporting limits: RL / MDL per analyte x matrix, printed on the
            certificate with the matrix unit (report_limits.py). -->
-      <div class="tab-pane" id="pane-rl">
+      <div class="pfas-pane" id="pane-rl">
         <div class="page-body">
           <p class="json-hint">RL and MDL per analyte and matrix, in the matrix&#8217;s reporting unit; MCLs and action levels come from Regulatory Limits. <tal:h define="hid string:rl"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
           <!-- Saved ON ITS OWN (R2, config_forms table): cells belong to
@@ -699,7 +669,7 @@
         </div>
       </div>
 
-      <div class="tab-pane" id="pane-cal">
+      <div class="pfas-pane" id="pane-cal">
         <div class="page-body-narrow">
           <div style="background:var(--s-primary-lt);border:1px solid var(--s-info-bd);border-radius:8px;
                       padding:9px 14px;font-size:var(--fs-sm);color:var(--s-info-text);margin-bottom:14px;">
@@ -751,7 +721,7 @@
 
       <!-- Tab: Engine, how the QC engine judges this method; saved on its
            own (form#section-engine) -->
-      <div class="tab-pane" id="pane-engine">
+      <div class="pfas-pane" id="pane-engine">
         <div class="page-body-narrow">
           <div tal:define="cf_groups python:view.section_groups('engine'); cf_form string:section-engine">
             <metal:s use-macro="context/@@pfas-config-form-macros/macros/section" />
@@ -776,7 +746,7 @@
 
 
       <!-- ── Tab: Lab Workflow (guided extraction stages) ───────────────── -->
-      <div class="tab-pane" id="pane-lwf">
+      <div class="pfas-pane" id="pane-lwf">
         <div class="page-body-narrow">
           <p class="json-hint" style="max-width:760px;">These stages become each batch&#8217;s Guided Extraction; every batch&#8217;s extraction log follows them. <tal:h define="hid string:guided-extraction"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
           <div style="background:var(--s-light);border:1px solid var(--s-border);
@@ -811,7 +781,7 @@
         </div>
       </div><!-- /pane-lwf -->
       <!-- ── Tab: QC Types (per-method enable toggles) ─────────────────── -->
-      <div class="tab-pane" id="pane-qct">
+      <div class="pfas-pane" id="pane-qct">
         <div class="page-body-narrow">
           <details open="open">
             <summary>Associated QC Types</summary>
@@ -840,7 +810,7 @@
                       </tal:t>
                       <a class="btn-sm btn-secondary" tal:condition="q/configured_on" href="#"
                          tal:attributes="href python:'#' + q['configured_on'][0];
-                                         onclick python:&quot;return (pfasTabSwitch('%s'), false)&quot; % q['configured_on'][0]"
+                                         data-goto python:q['configured_on'][0]"
                          tal:content="python:'Open ' + q['configured_on'][1]">Open Calibration &amp; CCV</a>
                     </td>
                   </tr>
@@ -988,28 +958,28 @@
 
     <script>
     (function () {
-      function pfasTabSwitch(paneId) {
-        document.querySelectorAll('.tab-pane').forEach(function (p) {
-          p.classList.remove('active');
-        });
-        document.querySelectorAll('#method-profile-tabs .pfas-tab').forEach(function (t) {
-          t.classList.remove('active');
-        });
-        var pane = document.getElementById(paneId);
-        if (pane) pane.classList.add('active');
-        var tab = document.querySelector('#method-profile-tabs [data-pane="' + paneId + '"]');
-        if (tab) tab.classList.add('active');
-        /* R2: a tab with its own section form saves only that form; every
-           other tab saves the main profile form. */
+      /* R2: a tab with its own section form saves only that form; every
+         other tab saves the main profile form. The tab strip is the shared
+         .pfas-seg (pfas-components.js switches the panes); this follows it. */
+      function retarget(item) {
+        var paneId = item ? item.getAttribute('data-pane') : 'pane-toggles';
         var own = document.getElementById('section-' + paneId.replace('pane-', ''));
         var save = document.getElementById('profile-save');
         if (save) save.setAttribute('form', own ? own.id : 'profile-form');
         if (window.pfasUnsavedNote) window.pfasUnsavedNote();
-        try {
-          history.replaceState(null, '', location.pathname + location.search + '#' + paneId);
-        } catch (e) {}
       }
-      window.pfasTabSwitch = pfasTabSwitch;
+      document.addEventListener('pfas:seg', function (e) { retarget(e.detail.item); });
+      /* The pinned action bar is drawn AFTER this script, so the Save button
+         does not exist yet on a deep link: retarget once the page is parsed. */
+      document.addEventListener('DOMContentLoaded', function () {
+        retarget(document.querySelector('#method-profile-tabs [aria-selected="true"]'));
+      });
+      /* a button that opens another tab: data-goto names the pane */
+      document.addEventListener('click', function (e) {
+        var g = e.target.closest ? e.target.closest('[data-goto]') : null;
+        var t = g ? document.querySelector('#method-profile-tabs [data-pane="' + g.getAttribute('data-goto') + '"]') : null;
+        if (t) { e.preventDefault(); t.click(); }
+      });
 
       /* Recovery Tiers: redraw the applied-window grid as the tiers / groups
          below are edited (server-side preview: the same parse and resolver a
@@ -1129,20 +1099,6 @@
             });
           });
         });
-      })();
-
-      (function () {
-        var hash = location.hash.replace('#', '');
-        /* Any tab pane on the page is valid. A hand-kept list here omitted
-           pane-rl and pane-mtx, so a reload -- or the redirect after saving --
-           on those tabs opened Rule Toggles instead. */
-        var target = hash ? document.getElementById(hash) : null;
-        var first = (target ? target.classList.contains('tab-pane') : false) ? hash : 'pane-toggles';
-        pfasTabSwitch(first);
-        /* The pinned action bar is drawn AFTER this script, so the Save
-           button does not exist yet on the first switch: retarget it again
-           once the page is parsed. */
-        document.addEventListener('DOMContentLoaded', function () { pfasTabSwitch(first); });
       })();
     })();
     </script>

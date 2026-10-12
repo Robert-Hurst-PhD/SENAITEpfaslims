@@ -54,20 +54,22 @@
       </div>
     </tal:stats>
 
-    <!-- Filter bar -->
-    <form method="GET" class="filter-bar"
+    <!-- Filters: one bar, applies on change. Changing a filter drops the run
+         chosen (the list of runs follows the filters); choosing a run keeps them. -->
+    <form method="GET" class="pfas-filterbar" id="cal-filters"
+          tal:define="runs view/runs; sel view/selected_run"
           tal:attributes="action string:${context/absolute_url}/@@pfas-calibrations">
-      <div>
-        <label>Method</label>
-        <select name="method" onchange="this.form.analyte.value='';this.form.submit()">
+      <div class="pfas-field">
+        <label for="cal-method">Method</label>
+        <select id="cal-method" name="method" class="pfas-select">
           <option value="">&#8212; All &#8212;</option>
           <option tal:repeat="m view/methods" tal:content="m"
                   tal:attributes="value m; selected python:m == view.selected_method()">EPA_537_1</option>
         </select>
       </div>
-      <div>
-        <label>Analyte</label>
-        <select name="analyte">
+      <div class="pfas-field">
+        <label for="cal-analyte">Analyte</label>
+        <select id="cal-analyte" name="analyte" class="pfas-select">
           <option value="">&#8212; All &#8212;</option>
           <tal:opts tal:repeat="a view/analytes">
             <option tal:content="a"
@@ -75,9 +77,9 @@
           </tal:opts>
         </select>
       </div>
-      <div>
-        <label>Status</label>
-        <select name="status">
+      <div class="pfas-field">
+        <label for="cal-status">Status</label>
+        <select id="cal-status" name="status" class="pfas-select">
           <option value="">&#8212; All &#8212;</option>
           <option value="pending"
                   tal:attributes="selected python:view.selected_status()=='pending'">Pending</option>
@@ -87,27 +89,38 @@
                   tal:attributes="selected python:view.selected_status()=='rejected'">Rejected</option>
         </select>
       </div>
-      <div>
-        <label>Runs listed</label>
-        <input type="number" name="limit" min="1" max="300"
-               tal:attributes="value view/selected_limit"
-               style="width:72px" />
+      <div class="pfas-field">
+        <label for="cal-limit">Runs listed</label>
+        <input id="cal-limit" type="number" name="limit" min="1" max="300" class="pfas-input"
+               tal:attributes="value view/selected_limit" />
       </div>
-      <button type="submit" class="btn btn-primary">Apply</button>
-    </form>
-
-    <!-- One tab per run, newest first -->
-    <tal:rdates tal:define="runs view/runs; sel view/selected_run">
-    <div class="filter-bar" tal:condition="runs">
-      <div>
-        <label>Run</label>
-        <select onchange="var o=this.options[this.selectedIndex];filterRun(o.value, o.getAttribute('data-date'))">
+      <div class="pfas-field" tal:condition="runs">
+        <label for="cal-run">Run</label>
+        <input type="hidden" name="run_date" value="" />
+        <select id="cal-run" name="run" class="pfas-select">
           <option tal:repeat="r runs" tal:content="python:u'%s  %s  (%s, %d curves)' % (r['run_date'], r['batch_id'], r['method'], r['n'])"
                   tal:attributes="value r/batch_id; data-date r/run_date; selected python:'selected' if r == sel else None">run</option>
         </select>
       </div>
-    </div>
-    </tal:rdates>
+      <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
+    </form>
+    <script>
+    (function () {
+      var form = document.getElementById('cal-filters');
+      if (!form) { return; }
+      form.addEventListener('change', function (e) {
+        var run = form.elements['run'], date = form.elements['run_date'];
+        if (e.target === run) {
+          date.value = run.options[run.selectedIndex].getAttribute('data-date') || '';
+        } else {
+          if (e.target.name === 'method') { form.elements['analyte'].value = ''; }
+          if (run) { run.disabled = true; }
+          if (date) { date.disabled = true; }
+        }
+        form.submit();
+      });
+    })();
+    </script>
 
     <!-- Card area: populated from embedded JSON by JS -->
     <div id="cal-runs-area"></div>

@@ -45,7 +45,8 @@
     placePill(seg);
     var pane = item.getAttribute("data-pane");
     if (pane) {
-      var root = seg.closest("[data-tabs]") || doc;
+      var root = seg.closest("[data-tabs]");
+      if (!root || root === seg) { root = doc; }   /* data-tabs on the strip itself: its panes are elsewhere on the page */
       var panes = root.querySelectorAll(".pfas-pane");
       for (var p = 0; p < panes.length; p++) { panes[p].classList.toggle("is-active", panes[p].id === pane); }
       if (seg.hasAttribute("data-hash")) { try { history.replaceState(null, "", "#" + pane); } catch (e) {} }

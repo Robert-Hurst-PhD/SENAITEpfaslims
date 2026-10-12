@@ -4,26 +4,26 @@
 <metal:fill fill-slot="content">
 
 <div class="page-body">
-  <p style="color:var(--s-secondary);font-size:var(--fs-base);margin:0 0 16px;">Tick the QC types each method runs; unticked types are removed from that method. <tal:h define="hid string:qc-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+  <p class="pfas-lead">Tick the QC types each method runs; unticked types are removed from that method. <tal:h define="hid string:qc-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
 
   <form method="post"
         tal:attributes="action string:${context/absolute_url}/@@pfas-qc-type-grid">
     <input type="hidden" name="action" value="save_grid" />
 
-    <div class="table-wrap" style="margin-top:16px;">
-      <table class="pfas-table" style="min-width:700px;">
+    <div class="table-wrap">
+      <table class="pfas-table pfas-grid-table">
         <thead>
           <tr>
-            <th style="min-width:160px;">Method</th>
+            <th class="pfas-grid-method">Method</th>
             <tal:cols tal:repeat="col view/qc_columns">
-              <th style="text-align:center; min-width:90px; font-size:var(--fs-sm);"
+              <th class="pfas-grid-col"
                   tal:content="col/code">MB</th>
             </tal:cols>
           </tr>
-          <tr style="font-size:var(--fs-xs); color:var(--s-secondary);">
+          <tr class="pfas-grid-sub">
             <td></td>
             <tal:cols tal:repeat="col view/qc_columns">
-              <td style="text-align:center; padding:2px 4px;"
+              <td class="pfas-grid-sublabel"
                   tal:content="col/label">Method Blank</td>
             </tal:cols>
           </tr>
@@ -32,15 +32,14 @@
           <tal:rows tal:define="state view/grid_state">
             <tal:method tal:repeat="m view/grid_methods">
               <tr>
-                <td style="font-weight:600; padding:8px 12px;"
+                <td class="pfas-grid-name"
                     tal:content="m/label">FDA 32-PFAS</td>
                 <tal:cols tal:repeat="col view/qc_columns">
-                  <td style="text-align:center; padding:8px 4px;">
+                  <td class="pfas-grid-check">
                     <tal:block tal:define="mid python:m['id'];
                                            code python:col['code'];
                                            checked python:state.get(mid,{}).get(code, False)">
                       <input type="checkbox"
-                             style="width:16px;height:16px;cursor:pointer;"
                              tal:attributes="name python:'qc_enabled_%s_%s' % (mid, code);
                                              checked python:'checked' if checked else None;
                                              value string:1" />
@@ -49,24 +48,22 @@
                 </tal:cols>
               </tr>
               <!-- Per-spike-level RPD row — LFSMD only (Dup is unfortified, flat RPD) -->
-              <tr style="background:var(--s-bg-light, var(--s-light)); font-size:var(--fs-sm);">
-                <td style="padding:4px 12px 8px 28px; color:var(--s-secondary);">
+              <tr class="pfas-grid-rpd">
+                <td class="pfas-grid-rpd-label">
                   LFSMD spike level RPD
                 </td>
                 <tal:rpd_cols tal:repeat="col view/qc_columns">
-                  <td style="padding:4px 2px 8px;">
+                  <td class="pfas-grid-rpd-cell">
                     <tal:block tal:condition="python:col['criterion'] == 'rpd' and col['code'] == 'LFSMD'"
                                tal:define="mid python:m['id'];
                                            code python:col['code'];
                                            tiers python:view.rpd_tiers(mid, code)">
-                      <div style="display:flex; flex-direction:column; gap:2px; align-items:center;">
+                      <div class="pfas-grid-stack">
                         <tal:level tal:repeat="level view/spike_levels">
                           <tal:block tal:define="existing python:[t.get('rpd_max','') for t in tiers if t.get('spike_level') == level];
                                                   val python:existing[0] if existing else ''">
-                            <label style="font-size:var(--fs-xs); color:var(--s-secondary);"
-                                   tal:content="level">Low</label>
+                            <label tal:content="level">Low</label>
                             <input type="number" step="0.1" min="0" max="100"
-                                   style="width:56px; font-size:var(--fs-xs); text-align:center;"
                                    tal:attributes="name python:'rpd__%s__%s_%s' % (mid, code, level);
                                                    value python:val;
                                                    placeholder string:%" />
@@ -86,9 +83,9 @@
       </table>
     </div>
 
-    <div style="margin-top:20px; display:flex; gap:12px; align-items:center;">
-      <button class="btn-primary" type="submit">Save Grid</button>
-      <a class="btn-secondary"
+    <div class="pfas-grid-actions">
+      <button class="btn btn-primary" type="submit">Save Grid</button>
+      <a class="btn-sm btn-secondary"
          tal:attributes="href string:${context/absolute_url}/@@pfas-method-profiles">
         &#8592; Back to Method Profiles
       </a>
@@ -96,15 +93,15 @@
   </form>
 
   <!-- Column legend -->
-  <div style="margin-top:24px; border-top:1px solid var(--s-border); padding-top:16px;">
-    <h4 style="font-size:var(--fs-base); margin-bottom:8px;">Column Legend</h4>
-    <dl style="display:grid; grid-template-columns:auto 1fr; gap:4px 16px; font-size:var(--fs-sm);">
+  <div class="pfas-legend">
+    <h4>Column Legend</h4>
+    <dl>
       <tal:cols tal:repeat="col view/qc_columns">
-        <dt style="font-weight:600;" tal:content="col/code">MB</dt>
-        <dd style="margin:0;" tal:content="col/label">Method Blank</dd>
+        <dt tal:content="col/code">MB</dt>
+        <dd tal:content="col/label">Method Blank</dd>
       </tal:cols>
     </dl>
-    <p style="font-size:var(--fs-xs); color:var(--s-secondary); margin-top:8px;">Maximum LFSMD RPD per spike level. Spike levels are set per matrix on the method profile. <tal:h define="hid string:qc-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
+    <p>Maximum LFSMD RPD per spike level. Spike levels are set per matrix on the method profile. <tal:h define="hid string:qc-types"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h></p>
   </div>
   <div class="pane-footer">
   </div>

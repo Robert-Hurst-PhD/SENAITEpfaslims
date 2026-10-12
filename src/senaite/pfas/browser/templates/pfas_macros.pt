@@ -93,7 +93,7 @@
        here for every PFAS page; core pages get the same in the overlay. */
     body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, body.pfas-app h4,
     .pfas-topbar-title, .pfas-ws-card-title, body.pfas-app details > summary,
-    .pfas-tabs .pfas-tab, #method-profile-tabs .pfas-tab {
+    .pfas-tabs .pfas-tab {
       font-family: var(--font-heading);
     }
     body.pfas-app h1, body.pfas-app h2, body.pfas-app h3, .pfas-topbar-title,
