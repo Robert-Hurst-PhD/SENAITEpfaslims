@@ -478,3 +478,7 @@ table.contentstable thead th.sortable:hover { color: var(--s-body); }
 @media (max-width: 768px) {
   #content, #portal-column-content { max-width: 100vw; overflow-x: auto; }
 }
+
+/* the Add Sample form's services filter is a text input core paints white by its own id-chained rule */
+body:not(.pfas-app) form input.form-control.services-filter {
+  background-color: var(--surface) !important; color: var(--text) !important; }

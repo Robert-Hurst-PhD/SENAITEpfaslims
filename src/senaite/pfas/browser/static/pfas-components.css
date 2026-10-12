@@ -200,7 +200,8 @@
 @media (max-width: 1100px) { .pfas-aside-layout { grid-template-columns: 1fr; } .pfas-aside { position: static; } }
 
 /* ── Text helpers: a lead line, an id, a muted sub-line ────────────────── */
-.pfas-lead { margin: 0 0 var(--sp-5); color: var(--text-muted); font-size: var(--fs-base); }
+/* .form-note: the older name 19 templates use for the same lead text */
+.pfas-lead, .form-note { margin: 0 0 var(--sp-5); color: var(--text-muted); font-size: var(--fs-base); }
 .pfas-id { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--accent-text); background: var(--accent-soft);
   padding: 2px 6px; border-radius: 4px; }
 .pfas-sub { margin-top: 2px; color: var(--text-muted); font-size: var(--fs-sm); }

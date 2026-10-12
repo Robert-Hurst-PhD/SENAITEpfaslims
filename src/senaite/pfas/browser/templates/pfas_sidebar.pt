@@ -79,7 +79,7 @@
   font-size: var(--fs-xs);
   transition: transform .15s;
   display: inline-block;
-  color: #adb5bd;
+  color: var(--s-secondary);
 }
 .pfas-sg.sg-closed .pfas-sg-arrow { transform: rotate(-90deg); }
 
@@ -113,7 +113,7 @@
                     stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .pfas-si:hover .pfas-pin-btn, .pfas-pin-btn:focus { opacity: 1; background: var(--s-light); }
 .pfas-si { position: relative; }
-.pfas-pin-btn:hover { background: #e9ecef; color: var(--s-body); }
+.pfas-pin-btn:hover { background: var(--s-border); color: var(--s-body); }
 .pfas-sb-scroll .pfas-pin-btn.is-pinned { opacity: .7; color: var(--s-primary-dk); }
 .pfas-si-pinned .pfas-pin-btn { font-size: var(--fs-md); line-height: 1; }
 #pfas-shell.panel-collapsed .pfas-pin-btn,
@@ -132,8 +132,8 @@
   transition: color .1s, background .1s;
 }
 .pfas-si:hover {
-  color: #212529;
-  background: #e9ecef;
+  color: var(--s-body);
+  background: var(--s-border);
   text-decoration: none;
 }
 .pfas-si.si-active {
@@ -147,7 +147,7 @@
   width: 18px;
   text-align: center;
   line-height: 1;
-  color: #adb5bd;
+  color: var(--s-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -186,8 +186,8 @@
   border-left: 3px solid transparent;
 }
 .pfas-sb-dash:hover {
-  color: #212529;
-  background: #e9ecef;
+  color: var(--s-body);
+  background: var(--s-border);
   text-decoration: none;
 }
 .pfas-sb-dash.si-active {
@@ -215,7 +215,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: #adb5bd;
+  color: var(--s-secondary);
   font-size: var(--fs-md);
   transition: color .1s;
 }

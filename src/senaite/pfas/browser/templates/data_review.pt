@@ -283,7 +283,7 @@
         </tal:out_of_scope>
 
         <tal:not_recorded tal:condition="python:accred.get('mode') == 'not_recorded'">
-          <div style="background:#e2e3e5;color:#383d41;border:1px solid #adb5bd;
+          <div style="background:var(--s-border);color:var(--s-input-text);border:1px solid var(--s-secondary);
                       border-radius:6px;padding:10px 14px;margin-bottom:14px;
                       font-size:var(--fs-base)">
             <strong>Governing criteria not recorded</strong> — this worksheet was

@@ -508,21 +508,6 @@
     }
     .check-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
 
-    /* ── Toggle switch ───────────────────────────────────────────────────── */
-    .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer; }
-    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
-    .toggle-track {
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      background: var(--s-input-border); border-radius: 20px; transition: background .15s;
-    }
-    .toggle-track::before {
-      content: ""; position: absolute; width: 14px; height: 14px;
-      left: 3px; bottom: 3px; background: var(--surface); border-radius: 50%;
-      transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25);
-    }
-    .toggle-switch input:checked + .toggle-track { background: var(--s-primary); }
-    .toggle-switch input:checked + .toggle-track::before { transform: translateX(16px); }
-
     /* ── Tables ──────────────────────────────────────────────────────────── */
     .pfas-table { width: 100%; border-collapse: collapse; font-size: var(--fs-base); }
     /* the core listing look (senaite.app.listing, measured 2026-10-03:
@@ -809,9 +794,9 @@
       text-transform: uppercase; letter-spacing: .03em;
     }
     .badge-active     { background: var(--s-success-lt); color: var(--s-success-text); }
-    .badge-draft      { background: #e2e3e5; color: var(--s-input-text); }
-    .badge-archived   { background: #e2e3e5; color: var(--s-input-text); }
-    .badge-exhausted  { background: #e2e3e5; color: var(--s-input-text); }
+    .badge-draft      { background: var(--s-border); color: var(--s-input-text); }
+    .badge-archived   { background: var(--s-border); color: var(--s-input-text); }
+    .badge-exhausted  { background: var(--s-border); color: var(--s-input-text); }
     .badge-expired    { background: var(--s-danger-lt); color: var(--s-danger-dk); }
     .badge-opened     { background: var(--s-info-lt); color: var(--s-info-text); }
     .badge-quarantine { background: var(--s-warn-lt); color: var(--s-warn-text); }
@@ -834,17 +819,6 @@
     .status-ok   { background: var(--s-success-lt); color: var(--s-success-text); }
     .status-warn { background: var(--s-warn-lt); color: var(--s-warn-text); }
     .status-fail { background: var(--s-danger-lt); color: var(--s-danger-dk); }
-
-    /* ── Logbook breadcrumb ──────────────────────────────────────────────── */
-    .lb-breadcrumb {
-      display: flex; align-items: center; gap: 6px;
-      font-size: var(--fs-xs); color: var(--s-secondary);
-      padding: 8px 0 16px 0;
-    }
-    .lb-breadcrumb a { color: var(--s-secondary); text-decoration: none; }
-    .lb-breadcrumb a:hover { color: var(--s-primary-dk); text-decoration: underline; }
-    .lb-breadcrumb .lb-bc-sep { opacity: .5; }
-    .lb-breadcrumb strong { color: var(--s-body); }
 
     /* ── Print preview button ────────────────────────────────────────────── */
     .btn-print-preview {
@@ -1021,7 +995,6 @@
       #sidebar.pfas-sidebar { display: none !important; }
       .pfas-tabs-wrap { display: none !important; }
       .pfas-action-bar-wrap { display: none !important; }
-      .lb-breadcrumb { display: none !important; }
       .btn-save, .btn-dl, .btn-print-preview, .btn-add-row,
       .btn-del-row, .form-actions, #add-sample-btn { display: none !important; }
       .pfas-content-area { overflow: visible !important; }
@@ -1376,41 +1349,6 @@ document.addEventListener('click', function (ev) {
   field.dispatchEvent(new Event('change', {bubbles: true}));
 });
 
-/* Shared tabs: a strip marked data-tabs switches the panes its
-   tabs name in data-pane. The open tab is kept in the URL hash, so a reload or
-   a shared link opens the same tab. Define once; pages only write markup:
-     <div class="pfas-tabs" data-tabs>
-       <a class="pfas-tab active" data-pane="p1" href="#p1">One</a> ...
-     </div>
-     <div class="pfas-pane" id="p1">...</div>                                */
-(function () {
-  var strips = document.querySelectorAll('.pfas-tabs[data-tabs]');
-  Array.prototype.forEach.call(strips, function (strip) {
-    var tabs = Array.prototype.slice.call(strip.querySelectorAll('.pfas-tab[data-pane]'));
-    if (!tabs.length) return;
-    function show(id, remember) {
-      tabs.forEach(function (t) {
-        var on = t.getAttribute('data-pane') === id;
-        t.classList.toggle('active', on);
-        t.setAttribute('aria-selected', on ? 'true' : 'false');
-        var pane = document.getElementById(t.getAttribute('data-pane'));
-        if (pane) pane.hidden = !on;
-      });
-      if (remember && window.history && history.replaceState) history.replaceState(null, '', '#' + id);
-    }
-    tabs.forEach(function (t) {
-      t.setAttribute('role', 'tab');
-      t.addEventListener('click', function (ev) { ev.preventDefault(); show(t.getAttribute('data-pane'), true); });
-    });
-    var wanted = location.hash.slice(1), initial = null;
-    tabs.forEach(function (t) { if (t.getAttribute('data-pane') === wanted) initial = wanted; });
-    if (!initial) {
-      var act = strip.querySelector('.pfas-tab.active') || tabs[0];
-      initial = act.getAttribute('data-pane');
-    }
-    show(initial, false);
-  });
-})();
 </script>
 
 <script>
