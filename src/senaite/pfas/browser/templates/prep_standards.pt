@@ -5,78 +5,6 @@
       xmlns:metal="http://xml.zope.org/namespaces/metal">
 <head>
   <title metal:fill-slot="title">Prepared Standards</title>
-  <tal:styles metal:fill-slot="head-extra">
-  <style>
-    .ps-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
-    .ps-toolbar input[type=text] { flex:1; min-width:180px; max-width:320px;
-      padding:7px 12px; font-size:var(--fs-base); border:1px solid var(--s-input-border); border-radius:6px; }
-    .ps-toolbar select { padding:7px 10px; font-size:var(--fs-base);
-      border:1px solid var(--s-input-border); border-radius:6px; }
-
-    /* the table itself is the shared .pfas-table */
-
-    .exp-expired { color: var(--s-danger-dk); font-weight:700; }
-    .exp-warning { color:var(--s-warn-text); font-weight:700; }
-
-    /* .badge base and common badge-* colors are now global (pfas_macros) */
-
-    .logbook-ref { font-family: var(--font-mono); font-size:var(--fs-xs); color: var(--s-primary-dk);
-                   background:var(--s-primary-lt); padding:2px 6px; border-radius:3px; }
-
-    /* Modal */
-    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
-                     z-index:1000; align-items:center; justify-content:center; }
-    .modal-overlay.open { display:flex; }
-    .modal-box { background:#fff; border-radius:10px; padding:24px; width:90%;
-                 max-width:780px; max-height:94vh; overflow-y:auto;
-                 box-shadow:0 8px 32px rgba(0,0,0,.25); }
-    .modal-box h2 { font-size:var(--fs-lg); font-weight:700; margin:0 0 18px;
-                    padding-bottom:8px; border-bottom:2px solid var(--s-border); }
-    .modal-tabs { display:flex; gap:0; border-bottom:2px solid var(--s-border); margin-bottom:18px; }
-    .modal-tab { padding:8px 18px; font-size:var(--fs-base); font-weight:600; cursor:pointer;
-                 border:none; background:none; color:var(--s-secondary); border-bottom:3px solid transparent;
-                 margin-bottom:-2px; }
-    .modal-tab.active { color: var(--s-primary-dk); border-bottom-color:var(--s-primary); }
-    .modal-pane { display:none; }
-    .modal-pane.active { display:block; }
-    .form-row  { display:flex; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
-    .form-field { display:flex; flex-direction:column; flex:1 1 180px; }
-    .form-field.full { flex:1 1 100%; }
-    .form-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-body); margin-bottom:3px; }
-    .form-field input, .form-field select, .form-field textarea {
-      padding:7px 10px; border:1px solid var(--s-input-border); border-radius:5px;
-      font-size:var(--fs-base); color:var(--s-body); }
-    .form-field textarea { min-height:64px; resize:vertical; }
-    .form-hint { font-size:var(--fs-xs); color:var(--s-secondary); margin-top:2px; }
-
-    /* Analyte / parent reagent editor tables */
-    .mini-table { width:100%; border-collapse:collapse; font-size:var(--fs-sm); margin-top:4px; }
-    .mini-table th { background:var(--s-light); padding:5px 8px; text-align:left;
-                     font-size:var(--fs-xs); text-transform:uppercase; font-weight:700; }
-    .mini-table td { padding:3px 4px; border-bottom:1px solid var(--s-border); }
-    .mini-table input { width:100%; padding:4px 6px; border:1px solid var(--s-input-border);
-                        border-radius:3px; font-size:var(--fs-sm); }
-
-    /* Reagent lookup */
-    .reagent-lookup { position:relative; }
-    .lookup-results { position:absolute; top:100%; left:0; right:0; background:#fff;
-                      border:1px solid var(--s-border); border-radius:0 0 6px 6px;
-                      max-height:200px; overflow-y:auto; z-index:100;
-                      box-shadow:0 4px 12px rgba(0,0,0,.1); display:none; }
-    .lookup-item { padding:8px 12px; cursor:pointer; font-size:var(--fs-sm);
-                   border-bottom:1px solid var(--s-border); }
-    .lookup-item:hover { background:var(--s-primary-lt); }
-    .lookup-item .lot { color:var(--s-secondary); font-family: var(--font-mono); font-size:var(--fs-xs); }
-
-    .empty-state { text-align:center; padding:48px; color:var(--s-secondary); }
-    /* Flash messages use global .alert .alert-success / .alert-error */
-      /* Row action pills — consistent with the status badge look */
-    .row-pill { font-size:var(--fs-xs); font-weight:700; padding:2px 10px; border-radius:10px;
-                background:var(--s-primary-lt); color:var(--s-primary-dk); border:1px solid #cfe5ee;
-                cursor:pointer; text-decoration:none; display:inline-block; line-height:1.6; }
-    .row-pill:hover { background:var(--s-primary-lt); color:var(--s-primary-dk); text-decoration:none; }
-  </style>
-  </tal:styles>
 </head>
 <body>
   <tal:t metal:fill-slot="header-title">Prepared Standards</tal:t>
@@ -90,64 +18,74 @@
     <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
 
-    <!-- Filter / search toolbar -->
-    <form method="GET" class="ps-toolbar"
+    <!-- Filters: one bar, applies on change -->
+    <form method="GET" class="pfas-filterbar" id="ps-filters" data-autosubmit="data-autosubmit"
           tal:attributes="action string:${context/absolute_url}/@@pfas-prep-standards">
-      <input type="text" name="q" placeholder="Search name, lot, logbook..."
-             tal:attributes="value python:request.form.get('q','')" />
-      <select name="status">
-        <option value="">— All Status —</option>
-        <option value="active"    tal:attributes="selected python:request.form.get('status')=='active'">Active</option>
-        <option value="exhausted" tal:attributes="selected python:request.form.get('status')=='exhausted'">Exhausted</option>
-        <option value="expired"   tal:attributes="selected python:request.form.get('status')=='expired'">Expired</option>
-      </select>
-      <select name="type">
-        <option value="">— All Types —</option>
-        <tal:opts tal:repeat="t view/standard_types">
-          <option tal:content="python:t[1]" tal:attributes="value python:t[0]; selected python:request.form.get('type')==t[0]">type</option>
-        </tal:opts>
-      </select>
-      <button type="submit" class="btn btn-primary">Filter</button>
-      <button type="button" class="btn btn-primary" onclick="openModal()" style="margin-left:auto">
+      <div class="pfas-field">
+        <label for="ps-q">Search</label>
+        <input type="text" id="ps-q" name="q" class="pfas-input pfas-input-wide"
+               placeholder="Name, lot, logbook..."
+               tal:attributes="value python:request.form.get('q','')" />
+      </div>
+      <div class="pfas-field">
+        <label for="ps-status">Status</label>
+        <select id="ps-status" name="status" class="pfas-select">
+          <option value="">&#8212; All Status &#8212;</option>
+          <option value="active"    tal:attributes="selected python:request.form.get('status')=='active'">Active</option>
+          <option value="exhausted" tal:attributes="selected python:request.form.get('status')=='exhausted'">Exhausted</option>
+          <option value="expired"   tal:attributes="selected python:request.form.get('status')=='expired'">Expired</option>
+        </select>
+      </div>
+      <div class="pfas-field">
+        <label for="ps-type">Type</label>
+        <select id="ps-type" name="type" class="pfas-select">
+          <option value="">&#8212; All Types &#8212;</option>
+          <tal:opts tal:repeat="t view/standard_types">
+            <option tal:content="python:t[1]" tal:attributes="value python:t[0]; selected python:request.form.get('type')==t[0]">type</option>
+          </tal:opts>
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
+      <span class="pfas-filterbar-spacer"></span>
+      <button type="button" class="btn btn-primary" onclick="openModal()">
         + New Prepared Standard
       </button>
     </form>
 
     <tal:stds tal:define="stds view/prepared_standards">
 
-      <div class="empty-state" tal:condition="not:stds">
-        <p style="font-size:var(--fs-2xl)">&#129514;</p>
+      <div class="pfas-empty" tal:condition="not:stds">
+        <p class="pfas-empty-glyph">&#129514;</p>
         <p>No prepared standards recorded yet.</p>
-        <button class="btn btn-primary" onclick="openModal()" style="margin-top:12px">
+        <button type="button" class="btn btn-primary" onclick="openModal()">
           Record First Standard
         </button>
       </div>
 
       <div class="table-wrap" tal:condition="stds">
-        <table class="pfas-table ps-table">
+        <table class="pfas-table pfas-table-fixed">
           <thead>
             <tr>
-              <th>Name / Lot</th>
-              <th>Type</th>
-              <th>Prep Logbook</th>
-              <th>Prepared By</th>
-              <th>Prepared Date</th>
-              <th>Expiry</th>
-              <th>Status</th>
-              <th>Actions</th>
+              <th class="pfas-col-name">Name / Lot</th>
+              <th class="pfas-col-text">Type</th>
+              <th class="pfas-col-text">Prep Logbook</th>
+              <th class="pfas-col-text">Prepared By</th>
+              <th class="pfas-col-date">Prepared Date</th>
+              <th class="pfas-col-expiry">Expiry</th>
+              <th class="pfas-col-status">Status</th>
+              <th class="pfas-col-actions-sm">Actions</th>
             </tr>
           </thead>
           <tbody>
             <tal:rows tal:repeat="std stds">
               <tr tal:define="std_json python:__import__('json').dumps(std).replace('&amp;', '\\u0026').replace('&lt;', '\\u003c').replace('&gt;', '\\u003e')">
                 <td>
-                  <div style="font-weight:700" tal:content="std/title">Name</div>
-                  <div style="font-family: var(--font-mono);font-size:var(--fs-xs);color:var(--s-secondary)"
-                       tal:content="std/lot_number">LOT</div>
+                  <div class="pfas-cell-name" tal:content="std/title">Name</div>
+                  <div class="pfas-sub" tal:content="std/lot_number">LOT</div>
                 </td>
-                <td style="font-size:var(--fs-sm);color:var(--s-secondary)" tal:content="std/standard_type">—</td>
+                <td class="pfas-muted" tal:content="std/standard_type">—</td>
                 <td>
-                  <span class="logbook-ref" tal:condition="std/logbook_slug">
+                  <span class="pfas-muted" tal:condition="std/logbook_slug">
                     <tal:x tal:replace="std/logbook_title">Logbook</tal:x>
                     rev <tal:x tal:replace="std/logbook_revision">1</tal:x>
                   </span>
@@ -156,9 +94,8 @@
                 <td class="cell-nowrap" tal:content="std/prepared_date">—</td>
                 <td tal:attributes="class python:'cell-nowrap ' + view.expiry_class(std)">
                   <span tal:content="std/effective_expiry|std/expiry_date">—</span>
-                  <div tal:condition="std/expiry_inherited_from|nothing"
-                       tal:attributes="title string:Tighter parent-lot expiry inherited from ${std/expiry_inherited_from}"
-                       style="font-size:var(--fs-xs);color:var(--s-warn-text);background:var(--s-warn-lt);border-radius:6px;padding:1px 6px;display:inline-block;margin-top:2px;">
+                  <div class="pfas-sub exp-warning" tal:condition="std/expiry_inherited_from|nothing"
+                       tal:attributes="title string:Tighter parent-lot expiry inherited from ${std/expiry_inherited_from}">
                     &#8675; inherited: <span tal:content="std/expiry_inherited_from">parent</span>
                   </div>
                 </td>
@@ -168,18 +105,18 @@
                 </td>
                 <!-- Same layout as Reagent Inventory: Edit, and More for
                      everything else. -->
-                <td class="row-actions-cell">
+                <td class="row-actions-cell pfas-col-actions-sm">
                   <div class="row-actions">
-                    <button type="button" class="btn-sm" title="Edit this standard's preparation record"
+                    <button type="button" class="btn-sm btn-secondary" title="Edit this standard's preparation record"
                             tal:attributes="onclick string:editStandard(${std_json})">Edit</button>
                     <details class="row-more">
-                      <summary class="btn-sm" title="Where used, the certificate, a label, mark emptied">More &#9662;</summary>
+                      <summary class="btn-sm btn-secondary" title="Where used, the certificate, a label, mark emptied">More &#9662;</summary>
                       <div class="row-more-menu">
-                        <a class="btn-sm" title="Every batch and stage that used this lot"
+                        <a class="btn-sm btn-secondary" title="Every batch and stage that used this lot"
                            tal:attributes="href string:${context/absolute_url}/@@pfas-lot-usage?kind=prepared_standard&amp;uid=${std/uid}">Where used</a>
-                        <a class="btn-sm" target="_blank" title="Open the preparation certificate (PDF)"
+                        <a class="btn-sm btn-secondary" target="_blank" title="Open the preparation certificate (PDF)"
                            tal:attributes="href string:${context/absolute_url}/@@pfas-prep-standards?action=cert&amp;uid=${std/uid}">Certificate</a>
-                        <a class="btn-sm" target="_blank" title="Print a label for this lot (the issued label template, or the built-in layout)"
+                        <a class="btn-sm btn-secondary" target="_blank" title="Print a label for this lot (the issued label template, or the built-in layout)"
                            tal:attributes="href python:view.label_url(std)">Print label</a>
                         <!-- Emptied lots must leave the logbook lot picker; this
                              is how an analyst says a standard is used up. -->
@@ -188,12 +125,12 @@
                           <input type="hidden" name="uid" tal:attributes="value std/uid" />
                           <input type="hidden" name="new_status"
                                  tal:attributes="value python:'active' if std.get('status') == 'exhausted' else 'exhausted'" />
-                          <button type="submit" class="btn-sm"
+                          <button type="submit" class="btn-sm btn-secondary"
                                   tal:condition="python:std.get('status') != 'exhausted'"
                                   tal:attributes="disabled python:None if std.get('status') == 'active' else 'disabled';
                                                   title python:'No longer offered when filling a logbook' if std.get('status') == 'active' else 'Only an active lot can be marked emptied (this one is %s)' % std.get('status')"
                                   onclick="return confirm('Mark this lot as emptied? It will no longer be offered when filling a logbook.')">Mark emptied</button>
-                          <button type="submit" class="btn-sm" tal:condition="python:std.get('status') == 'exhausted'"
+                          <button type="submit" class="btn-sm btn-secondary" tal:condition="python:std.get('status') == 'exhausted'"
                                   title="Offer this lot in logbooks again">Reactivate</button>
                         </form>
                       </div>
@@ -209,15 +146,16 @@
     </tal:stds>
 
     <!-- ── Create/Edit modal ─────────────────────────────────────────── -->
-    <div class="modal-overlay" id="psModal">
-      <div class="modal-box">
+    <div class="pfas-modal" id="psModal">
+      <div class="pfas-modal-box is-wide">
         <h2 id="psModalTitle">New Prepared Standard</h2>
 
+        <div data-tabs="data-tabs">
         <!-- Tab bar -->
-        <div class="modal-tabs">
-          <button type="button" class="modal-tab active" onclick="switchTab('tabBasic',this)">Details</button>
-          <button type="button" class="modal-tab" onclick="switchTab('tabParents',this)">Parent Reagents</button>
-          <button type="button" class="modal-tab" onclick="switchTab('tabAnalytes',this)">Analyte Concentrations</button>
+        <div class="pfas-seg" id="ps-tabs">
+          <button type="button" class="pfas-seg-item" data-pane="tabBasic" aria-selected="true">Details</button>
+          <button type="button" class="pfas-seg-item" data-pane="tabParents" aria-selected="false">Parent Reagents</button>
+          <button type="button" class="pfas-seg-item" data-pane="tabAnalytes" aria-selected="false">Analyte Concentrations</button>
         </div>
 
         <form method="POST"
@@ -228,21 +166,21 @@
           <input type="hidden" name="analyte_concentrations_json" id="analyteJson" value="[]" />
 
           <!-- Tab 1: Basic details -->
-          <div class="modal-pane active" id="tabBasic">
-            <div class="form-row">
-              <div class="form-field" style="flex:2 1 280px">
+          <div class="pfas-pane is-active" id="tabBasic">
+            <div class="pfas-form-row">
+              <div class="pfas-form-field is-wide">
                 <label>Standard name *</label>
                 <input type="text" name="title" id="psTitle" required
                        placeholder="e.g. Native Mix 100 ng/mL" />
               </div>
-              <div class="form-field">
+              <div class="pfas-form-field">
                 <label>In-house lot # *</label>
                 <input type="text" name="lot_number" id="psLot" required
                        placeholder="2026-06-22-001" />
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-field">
+            <div class="pfas-form-row">
+              <div class="pfas-form-field">
                 <label>Standard type</label>
                 <select name="standard_type" id="psType">
                   <option value="">— Select —</option>
@@ -251,7 +189,7 @@
                   </tal:opts>
                 </select>
               </div>
-              <div class="form-field">
+              <div class="pfas-form-field">
                 <label>Prep logbook</label>
                 <select name="logbook_slug" id="psLogbookSlug" onchange="onLogbookChange(this)">
                   <option value="">— None —</option>
@@ -267,28 +205,28 @@
               <input type="hidden" name="logbook_revision" id="psLogbookRevision" value="" />
               <input type="hidden" name="logbook_title" id="psLogbookTitle" value="" />
             </div>
-            <div class="form-row">
-              <div class="form-field">
+            <div class="pfas-form-row">
+              <div class="pfas-form-field">
                 <label>Prepared by</label>
                 <input type="text" name="prepared_by" id="psPrepBy" />
               </div>
-              <div class="form-field">
+              <div class="pfas-form-field">
                 <label>Date prepared</label>
                 <input type="date" name="prepared_date" id="psPrepDate"
                        onchange="autoExpiry()" />
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-field">
+            <div class="pfas-form-row">
+              <div class="pfas-form-field">
                 <label>Expiry date</label>
                 <input type="date" name="expiry_date" id="psExpiry" />
-                <span class="form-hint">Auto-filled from logbook default. Adjust if needed.</span>
+                <span class="pfas-hint">Auto-filled from logbook default. Adjust if needed.</span>
               </div>
-              <div class="form-field">
+              <div class="pfas-form-field">
                 <label>Volume / amount prepared</label>
                 <input type="text" name="volume_prepared" id="psVol" placeholder="e.g. 10 mL" />
               </div>
-              <div class="form-field">
+              <div class="pfas-form-field">
                 <label>Storage location</label>
                 <!-- core Storage Locations (core_lists.py) -->
                 <select name="storage_location" id="psStorage">
@@ -306,8 +244,8 @@
                  this form owns the field, so a form that does not post it cannot
                  wipe the record. -->
             <input type="hidden" name="equipment_posted" value="1" />
-            <div class="form-row">
-              <div class="form-field">
+            <div class="pfas-form-row">
+              <div class="pfas-form-field">
                 <label>Balance used</label>
                 <select name="equip_balance_unit_id" id="psBalance">
                   <option value="">&#8212; not recorded &#8212;</option>
@@ -315,11 +253,11 @@
                           tal:attributes="value b/id"
                           tal:content="string:${b/name} (${b/serial_number})">Bal</option>
                 </select>
-                <span class="form-hint" tal:condition="not:view/facility_balances">
+                <span class="pfas-hint" tal:condition="not:view/facility_balances">
                   No balance registered under Facility QC &#8594; Units.
                 </span>
               </div>
-              <div class="form-field">
+              <div class="pfas-form-field">
                 <label>Pipette used</label>
                 <select name="equip_pipette_unit_id" id="psPipette">
                   <option value="">&#8212; not recorded &#8212;</option>
@@ -329,15 +267,15 @@
                 </select>
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-field full">
+            <div class="pfas-form-row">
+              <div class="pfas-form-field is-full">
                 <label>Expiry justification (required if not default)</label>
                 <input type="text" name="expiry_notes" id="psExpiryNotes"
                        placeholder="e.g. Extended per supervisor review — see audit trail" />
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-field full">
+            <div class="pfas-form-row">
+              <div class="pfas-form-field is-full">
                 <label>Notes</label>
                 <textarea name="notes" id="psNotes" rows="2"></textarea>
               </div>
@@ -345,18 +283,17 @@
           </div>
 
           <!-- Tab 2: Parent reagents (parentage) -->
-          <div class="modal-pane" id="tabParents">
-            <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:12px">
+          <div class="pfas-pane" id="tabParents">
+            <p class="pfas-lead">
               Record the procured reagents consumed to prepare this standard.
               Search your inventory and add each reagent used.
             </p>
-            <div class="reagent-lookup">
-              <input type="text" id="reagentSearch" placeholder="Search reagent inventory..."
-                     style="width:100%;padding:8px 12px;font-size:var(--fs-base);border:1px solid var(--s-input-border);border-radius:6px;margin-bottom:4px"
+            <div class="pfas-suggest reagent-lookup">
+              <input type="text" id="reagentSearch" class="pfas-input" placeholder="Search reagent inventory..."
                      oninput="lookupReagent(this.value)" autocomplete="off" />
-              <div class="lookup-results" id="lookupResults"></div>
+              <div class="pfas-suggest-list" id="lookupResults"></div>
             </div>
-            <table class="mini-table" id="parentsTable" style="margin-top:10px">
+            <table class="pfas-mini-table" id="parentsTable">
               <thead>
                 <tr>
                   <th>Reagent Name</th><th>Supplier</th><th>Lot #</th>
@@ -368,26 +305,26 @@
           </div>
 
           <!-- Tab 3: Analyte concentrations -->
-          <div class="modal-pane" id="tabAnalytes">
-            <p style="font-size:var(--fs-sm);color:var(--s-secondary);margin-bottom:12px">
+          <div class="pfas-pane" id="tabAnalytes">
+            <p class="pfas-lead">
               Record the final analyte concentrations in this standard.
               These are printed on the internal certificate.
             </p>
-            <table class="mini-table" id="analytesTable">
+            <table class="pfas-mini-table" id="analytesTable">
               <thead>
                 <tr><th>Analyte</th><th>Concentration</th><th>Unit</th><th></th></tr>
               </thead>
               <tbody id="analytesBody"></tbody>
             </table>
-            <button type="button" class="btn-sm btn-add-row" onclick="addAnalyteRow()">+ Add Analyte</button>
+            <button type="button" class="btn-sm btn-secondary" onclick="addAnalyteRow()">+ Add Analyte</button>
           </div>
 
-          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;
-                      padding-top:12px;border-top:1px solid var(--s-border)">
-            <button type="button" class="btn-sm" onclick="closePsModal()">Cancel</button>
+          <div class="form-actions is-end">
+            <button type="button" class="btn btn-secondary" onclick="closePsModal()">Cancel</button>
             <button type="submit" class="btn btn-primary" onclick="serializeAll()">Save &amp; Generate Certificate</button>
           </div>
         </form>
+        </div>
       </div>
     </div>
 
@@ -405,11 +342,13 @@
   var currentLogbookExpiry = 365;
 
   /* ── Tab switching ────────────────────────────────────────────────── */
-  function switchTab(id, btn) {
-    document.querySelectorAll('.modal-pane').forEach(function(p) { p.classList.remove('active'); });
-    document.querySelectorAll('.modal-tab').forEach(function(b) { b.classList.remove('active'); });
-    document.getElementById(id).classList.add('active');
-    btn.classList.add('active');
+  /* the shared segmented control switches the pane; its pill is placed again
+     once the modal is open (it measured zero while closed) */
+  function switchTab(id) {
+    var seg = document.getElementById('ps-tabs');
+    var item = seg.querySelector('[data-pane="' + id + '"]');
+    if (item) { item.click(); }
+    if (window.PFAS && PFAS.components) { PFAS.components.placePill(seg); }
   }
 
   /* ── Modal open/close ─────────────────────────────────────────────── */
@@ -433,8 +372,8 @@
     document.getElementById('psNotes').value = '';
     document.getElementById('parentsBody').innerHTML = '';
     document.getElementById('analytesBody').innerHTML = '';
-    switchTab('tabBasic', document.querySelector('.modal-tab'));
     document.getElementById('psModal').classList.add('open');
+    switchTab('tabBasic');
   }
   function closePsModal() { document.getElementById('psModal').classList.remove('open'); }
   document.getElementById('psModal').addEventListener('click', function(e) {
@@ -468,8 +407,8 @@
     (data.analyte_concentrations || []).forEach(function(a) {
       addAnalyteRow(a.analyte, a.concentration, a.unit);
     });
-    switchTab('tabBasic', document.querySelector('.modal-tab'));
     document.getElementById('psModal').classList.add('open');
+    switchTab('tabBasic');
   }
 
   /* ── Logbook selection ─────────────────────────────────────────────── */
@@ -502,34 +441,42 @@
   var _lookupTimer = null;
   function lookupReagent(q) {
     clearTimeout(_lookupTimer);
-    if (!q.trim()) { document.getElementById('lookupResults').style.display='none'; return; }
+    if (!q.trim()) { document.getElementById('lookupResults').classList.remove('open'); return; }
     _lookupTimer = setTimeout(function() {
       fetch(LOOKUP_URL + encodeURIComponent(q))
         .then(function(r) { return r.json(); })
         .then(function(data) {
           var box = document.getElementById('lookupResults');
           var items = data.items || [];
-          if (!items.length) { box.style.display='none'; return; }
-          var O='\x3e', C='\x3c\x2f', L='\x3c';
-          box.innerHTML = items.map(function(it) {
-            return L+'div class="lookup-item" onclick="selectReagent('+JSON.stringify(it)+')">'+O
-              + L+'strong'+O + escHtml(it.name) + C+'strong'+O
-              + ' '+L+'span class="lot"'+O+'Lot: '+escHtml(it.lot_number)+C+'span'+O
-              + ' — ' + escHtml(it.supplier)
-              + C+'div'+O;
-          }).join('');
-          box.style.display = 'block';
+          if (!items.length) { box.classList.remove('open'); return; }
+          /* built as DOM nodes: a lot's JSON in an onclick attribute broke the
+             attribute on its first quote, so no reagent could be picked */
+          box.innerHTML = '';
+          items.forEach(function(it) {
+            var row = document.createElement('div');
+            row.className = 'pfas-suggest-item';
+            var nm = document.createElement('strong'); nm.textContent = it.name || '';
+            var lot = document.createElement('span'); lot.className = 'pfas-id';
+            lot.textContent = 'Lot: ' + (it.lot_number || '');
+            row.appendChild(nm);
+            row.appendChild(document.createTextNode(' '));
+            row.appendChild(lot);
+            row.appendChild(document.createTextNode(' \u2014 ' + (it.supplier || '')));
+            row.addEventListener('click', function() { selectReagent(it); });
+            box.appendChild(row);
+          });
+          box.classList.add('open');
         });
     }, 280);
   }
   function selectReagent(it) {
     addParentRow(it.name, it.supplier, it.lot_number, '', '', it.uid);
     document.getElementById('reagentSearch').value = '';
-    document.getElementById('lookupResults').style.display = 'none';
+    document.getElementById('lookupResults').classList.remove('open');
   }
   document.addEventListener('click', function(e) {
     if (!e.target.closest('.reagent-lookup')) {
-      document.getElementById('lookupResults').style.display = 'none';
+      document.getElementById('lookupResults').classList.remove('open');
     }
   });
 
@@ -542,9 +489,9 @@
     tr.innerHTML = T+INP+'class="p-name" value="'+escHtml(name||'')+'" /\x3e'+ET
       + T+INP+'class="p-sup" value="'+escHtml(supplier||'')+'" /\x3e'+ET
       + T+INP+'class="p-lot" value="'+escHtml(lot||'')+'" /\x3e'+ET
-      + T+INP+'class="p-qty" style="width:72px" value="'+escHtml(qty||'')+'" placeholder="5" /\x3e'+ET
-      + T+INP+'class="p-unit" style="width:60px" value="'+escHtml(unit||'')+'" placeholder="mL" /\x3e'+ET
-      + T+'\x3cbutton type="button" onclick="this.closest(\'tr\').remove()" style="color: var(--s-danger-dk);background:none;border:none;cursor:pointer"\x3e×\x3c/button\x3e'+ET;
+      + T+INP+'class="p-qty" value="'+escHtml(qty||'')+'" placeholder="5" /\x3e'+ET
+      + T+INP+'class="p-unit" value="'+escHtml(unit||'')+'" placeholder="mL" /\x3e'+ET
+      + T+'\x3cbutton type="button" class="pfas-row-remove" onclick="this.closest(\'tr\').remove()"\x3e\u00d7\x3c/button\x3e'+ET;
     tbody.appendChild(tr);
   }
 
@@ -556,7 +503,7 @@
     tr.innerHTML = T2+I2+'class="a-name" value="'+escHtml(analyte||'')+'" placeholder="PFOA" /\x3e'+ET2
       + T2+I2+'class="a-conc" value="'+escHtml(conc||'')+'" placeholder="100" /\x3e'+ET2
       + T2+I2+'class="a-unit" value="'+escHtml(unit||'')+'" placeholder="ng/mL" /\x3e'+ET2
-      + '\x3ctd\x3e\x3cbutton type="button" onclick="this.closest(\'tr\').remove()" style="color: var(--s-danger-dk);background:none;border:none;cursor:pointer"\x3e×\x3c/button\x3e\x3c/td\x3e';
+      + '\x3ctd\x3e\x3cbutton type="button" class="pfas-row-remove" onclick="this.closest(\'tr\').remove()"\x3e\u00d7\x3c/button\x3e\x3c/td\x3e';
     tbody.appendChild(tr);
   }
 

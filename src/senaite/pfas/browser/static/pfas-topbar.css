@@ -38,7 +38,7 @@
   font-size: var(--fs-xl);
 }
 .pfas-topbar-title {
-  color: #fff;
+  color: var(--on-frame);
   font-family: var(--font-heading);
   font-size: var(--fs-lg);
   font-weight: 600;
@@ -91,7 +91,7 @@
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, .25);
   background: rgba(255, 255, 255, .08);
-  color: #fff;
+  color: var(--on-frame);
   font: inherit;
   font-size: var(--fs-sm);
 }
@@ -145,7 +145,7 @@ a.pfas-search-all {
 .pfas-avatar {
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; border-radius: 50%;
-  background: var(--s-primary-dk); color: #fff;
+  background: var(--s-primary-dk); color: var(--on-accent);
   font-size: var(--fs-xs); font-weight: 700; letter-spacing: .02em;
 }
 .pfas-topbar .dropdown-header { font-size: var(--fs-xs); color: var(--s-secondary); }
@@ -216,7 +216,7 @@ a.pfas-search-all {
 .pfas-topbar-h1 { font: inherit; color: inherit; margin: 0; padding: 0; display: inline; }
 /* "Skip to content": off screen until a keyboard user reaches it */
 .pfas-skip { position: absolute; left: -9999px; top: 0; z-index: 10000;
-  background: var(--s-dark); color: #fff; padding: var(--sp-2) var(--sp-3); }
+  background: var(--frame); color: var(--on-frame); padding: var(--sp-2) var(--sp-3); }
 .pfas-skip:focus { left: var(--sp-2); top: var(--sp-2); }
 /* one visible focus ring everywhere: pages replaced the outline with a 1 px
    border change below 3:1 (WCAG 1.4.11) */
@@ -225,3 +225,10 @@ a.pfas-search-all {
 #pfas-topbar a:focus-visible, #pfas-topbar button:focus-visible, #pfas-topbar input:focus-visible {
   outline: 2px solid var(--s-dark) !important; outline-offset: 1px; }
 
+
+/* the theme switch in the user menu (pfas-components.js [data-theme-switch]) */
+.pfas-topbar .dropdown-item.pfas-theme-switch { cursor: pointer; font-weight: var(--fw-body); }
+.pfas-topbar .dropdown-menu { background: var(--surface-raised); color: var(--text); border-color: var(--line); }
+.pfas-topbar .dropdown-item { color: var(--text); }
+.pfas-topbar .dropdown-item:hover { background: var(--surface-2); color: var(--text); }
+.pfas-topbar .dropdown-header { color: var(--text-muted); }

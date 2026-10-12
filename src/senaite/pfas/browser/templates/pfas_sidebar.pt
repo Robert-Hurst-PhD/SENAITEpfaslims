@@ -241,7 +241,7 @@
     overflow: hidden !important;
     overflow-y: auto !important;
     white-space: normal !important;
-    background-color: #fff !important;
+    background-color: var(--surface) !important;
   }
   body:not(.pfas-app) #sidebar.pfas-sidebar.mobile-open {
     transform: translateX(0) !important;

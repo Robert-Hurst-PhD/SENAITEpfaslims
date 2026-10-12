@@ -9,88 +9,69 @@
   <style>
     /* Buttons use the shared set (.btn, .btn-sm, .btn-lg + variants); only
        layout that is specific to this page stays here. */
-    .btn-start   { width:100%; }
-    .btn-add-sol { margin-top:8px; }
     /* ── Touch-friendly tablet layout ─────────────────────── */
     body { touch-action: manipulation; }
     .eg-layout { display:flex; min-height:80vh; gap:0; }
 
     /* ── Stage sidebar ──────────────────────────────────────── */
-    .eg-sidebar { width:220px; flex-shrink:0; background:#1a1a2e;
+    .eg-sidebar { width:220px; flex-shrink:0; background:var(--surface-2); border-right:1px solid var(--line);
                   padding:16px 0; overflow-y:auto; }
-    .eg-sidebar .method-badge { font-size:var(--fs-xs); color:#888; text-transform:uppercase;
+    .eg-sidebar .method-badge { font-size:var(--fs-xs); color:var(--text-muted); text-transform:uppercase;
                                 letter-spacing:.5px; padding:0 16px 12px;
-                                border-bottom:1px solid #2a2a4a; margin-bottom:8px; }
-    .eg-sidebar .method-name { font-size:var(--fs-base); font-weight:700; color:#eee; }
-    .stage-item { display:flex; align-items:center; gap:10px; padding:12px 16px;
-                  cursor:pointer; transition:background .15s; }
-    .stage-item:hover { background:#2a2a4a; }
-    .stage-item.active { background:#0d3d6b; border-left:3px solid #4a9eff; }
-    .stage-item.done   { opacity:.7; }
-    .stage-num { width:26px; height:26px; border-radius:50%; display:flex;
-                 align-items:center; justify-content:center;
-                 font-size:var(--fs-xs); font-weight:700; flex-shrink:0; }
-    .stage-num.done    { background:var(--s-success); color:#fff; }
-    .stage-num.active  { background:#4a9eff; color:#fff; }
-    .stage-num.pending { background:#2a2a4a; color:#888; }
-    .stage-name { font-size:var(--fs-sm); color:#ccc; line-height:1.3; }
-    a.stage-item { text-decoration:none; }
+                                border-bottom:1px solid var(--line); margin-bottom:8px; }
+    .eg-sidebar .method-name { font-size:var(--fs-base); font-weight:var(--fw-heading); color:var(--text); }
+    /* the stage list is the shared .pfas-stepper (is-vertical); the link sits inside its step */
+    .stage-name { font-size:var(--fs-sm); line-height:1.3; }
     a.stage-item:not([href]) { cursor:default; }
-    .stage-item.viewing { background:#2a2a4a; border-left:3px solid var(--s-success); }
+    .pfas-stepper li.is-current .stage-name, .pfas-stepper li.is-viewing .stage-name { font-weight:var(--fw-strong); }
 
     /* ── Narrow screens: the stage list becomes a stepper on top ── */
     @media (max-width: 1100px) {
       .eg-layout { flex-direction:column; }
-      .eg-sidebar { width:auto; padding:10px 0 0; }
+      .eg-sidebar { width:auto; padding:10px 0 0; border-right:0; border-bottom:1px solid var(--line); }
       .eg-sidebar .method-badge { border-bottom:0; margin-bottom:0; padding-bottom:6px; }
-      .stage-list { display:flex; overflow-x:auto; gap:4px; padding:4px 10px 10px; }
-      .stage-list .stage-item { flex:0 0 auto; padding:8px 10px; border-radius:8px; max-width:150px; }
-      .stage-list .stage-item.active, .stage-list .stage-item.viewing { border-left:0; }
-      .stage-list .stage-name { font-size:var(--fs-xs); }
+      .stage-name { font-size:var(--fs-xs); }
       .eg-main { max-width:none; padding:16px; }
       .sample-table { display:block; overflow-x:auto; }
     }
-    .stage-item.active .stage-name { color:#fff; font-weight:600; }
 
     /* ── Progress bar ────────────────────────────────────────── */
-    .progress-bar-wrap { padding:0 16px 12px; border-bottom:1px solid #2a2a4a; }
-    .progress-bar { height:4px; background:#2a2a4a; border-radius:2px; margin-top:6px; }
+    .progress-bar-wrap { padding:0 16px 12px; border-bottom:1px solid var(--line); }
+    .progress-bar { height:4px; background:var(--line); border-radius:2px; margin-top:6px; }
     .progress-fill { height:4px; background:var(--s-success); border-radius:2px;
                      transition:width .4s; }
-    .progress-label { font-size:var(--fs-xs); color:#888; }
+    .progress-label { font-size:var(--fs-xs); color:var(--text-muted); }
 
     /* ── Main content area ───────────────────────────────────── */
     .eg-main { flex:1; padding:24px; overflow-y:auto; min-width:0; }   /* fills the page */
     .eg-stage-header { margin-bottom:20px; padding-bottom:12px;
                        border-bottom:2px solid var(--s-border); }
-    .eg-stage-header .stage-title { font-size:var(--fs-xl); font-weight:800; color:var(--s-dark); }
+    .eg-stage-header .stage-title { font-size:var(--fs-xl); font-weight:var(--fw-heading); color:var(--s-dark); }
     .eg-stage-header .stage-desc  { font-size:var(--fs-base); color:var(--s-secondary); margin-top:4px; }
     .eg-stage-header .stage-badge { display:inline-block; font-size:var(--fs-xs);
                                     padding:3px 10px; border-radius:10px;
-                                    background:#e8f4fd; color:#0277bd;
-                                    font-weight:700; margin-bottom:8px; }
+                                    background:var(--s-info-lt); color:var(--s-info-text);
+                                    font-weight:var(--fw-heading); margin-bottom:8px; }
 
     /* ── Cards / sections ────────────────────────────────────── */
     .eg-media-card { text-align:center; }
     .eg-stage-img { image-rendering:pixelated; image-rendering:crisp-edges; max-width:100%; max-height:52vh; object-fit:contain;
                     display:block; margin:0 auto; border-radius:6px; }
-    .eg-card { background:#fff; border:1px solid var(--s-border); border-radius:10px;
+    .eg-card { background:var(--surface-raised); border:1px solid var(--s-border); border-radius:10px;
                padding:18px; margin-bottom:16px; }
-    .eg-card h3 { font-size:var(--fs-base); font-weight:700; color:var(--s-dark);
+    .eg-card h3 { font-size:var(--fs-base); font-weight:var(--fw-heading); color:var(--s-dark);
                   margin:0 0 14px; padding-bottom:6px;
                   border-bottom:1px solid var(--s-border); }
 
     /* ── Reagent confirmation rows ───────────────────────────── */
     .reagent-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap;
-                   padding:10px 0; border-bottom:1px solid #f0f0f0; }
+                   padding:10px 0; border-bottom:1px solid var(--line); }
     .reagent-row:last-child { border-bottom:0; }
-    .reagent-role { font-weight:600; font-size:var(--fs-base); min-width:200px; flex:1; }
+    .reagent-role { font-weight:var(--fw-strong); font-size:var(--fs-base); min-width:200px; flex:1; }
     .reagent-lot-sel, .reagent-role-field { font-size:var(--fs-base); padding:7px 10px;
                          border:1px solid var(--s-input-border); border-radius:6px; }
     .reagent-lot-sel { flex:2 1 320px; max-width:100%; }
     .reagent-role-field { min-width:200px; flex:1; }
-    .reagent-remove { background:none; border:none; color:var(--s-danger, var(--s-danger)); cursor:pointer;
-                      font-size:var(--fs-base); }
     .reagent-miss { flex-basis:100%; font-size:var(--fs-sm); color:var(--s-danger, var(--s-danger)); }
     .reagent-hint { font-size:var(--fs-sm); color:var(--s-muted, var(--s-secondary)); margin:-6px 0 8px; }
     .reagent-add { margin-top:6px; }
@@ -98,16 +79,6 @@
     .eg-lead { color:var(--s-secondary); margin-bottom:24px; }
     .batch-line { margin-top:3px; }
     .sol-actions { margin-top:10px; display:flex; gap:8px; }
-    .scan-box { background:#111; border-radius:12px; padding:20px; width:90%; max-width:420px; color:#fff; }
-    .scan-title { margin:0 0 12px; font-size:var(--fs-md); }
-    .scan-video { width:100%; border-radius:8px; background:#000; max-height:240px; object-fit:cover; }
-    .scan-result { margin-top:10px; font-size:var(--fs-base); min-height:30px; background:#1a1a2e;
-                   padding:8px; border-radius:6px; }
-    .scan-buttons { display:flex; gap:8px; margin-top:12px; }
-    .scan-use, .scan-cancel { flex:1; padding:9px; border:none; border-radius:6px; cursor:pointer; }
-    .scan-use { background:#00ff88; color:#000; font-weight:700; }
-    .scan-cancel { background:#444; color:#fff; }
-    .scan-hit { color:#00ff88; }
     .stage-analyst-field { font-size:var(--fs-base); padding:9px 12px; border:1px solid var(--s-input-border);
                            border-radius:6px; width:300px; max-width:100%; }
     .receive-box { flex-basis:100%; border:1px dashed var(--s-input-border); border-radius:6px;
@@ -129,48 +100,44 @@
                          border-radius:6px; width:90px; }
     .reagent-status-sel { font-size:var(--fs-sm); padding:6px 8px; border:1px solid var(--s-input-border);
                           border-radius:6px; }
-    .reagent-status-sel.flagged { border-color:var(--s-danger); background:#fff5f5; }
-    .exp-warn { color:var(--s-warn-text); font-size:var(--fs-xs); font-weight:700; }
-    .exp-expired { color: var(--s-danger-dk); font-size:var(--fs-xs); font-weight:700; }
+    .reagent-status-sel.flagged { border-color:var(--s-danger); background:var(--s-danger-lt); }
+    .exp-warn { color:var(--s-warn-text); font-size:var(--fs-xs); font-weight:var(--fw-heading); }
+    .exp-expired { color: var(--s-danger-dk); font-size:var(--fs-xs); font-weight:var(--fw-heading); }
     .inv-match { font-size:var(--fs-xs); color: var(--s-primary-dk); cursor:pointer; }
 
     /* ── Equipment S/N grid ──────────────────────────────────── */
     .eq-grid { display:flex; flex-wrap:wrap; gap:12px; }
     .eq-field { display:flex; flex-direction:column; flex:1 1 160px; }
-    .eq-field label { font-size:var(--fs-sm); font-weight:600; margin-bottom:3px; color:var(--s-dark); }
+    .eq-field label { font-size:var(--fs-sm); font-weight:var(--fw-strong); margin-bottom:3px; color:var(--s-dark); }
     .eq-field input, .eq-field select { padding:7px 10px; font-size:var(--fs-base);
                       border:1px solid var(--s-input-border); border-radius:6px; margin-bottom:4px; }
     .eq-hint { font-size:var(--fs-xs); color:var(--s-muted, var(--s-secondary)); }
 
     /* ── Solutions prepared ──────────────────────────────────── */
-    .sol-card { background:#f0fff4; border:1px solid var(--s-success-bd); border-radius:8px;
+    .sol-card { background:var(--s-success-lt); border:1px solid var(--s-success-bd); border-radius:8px;
                 padding:14px; margin-bottom:10px; }
-    .sol-card h4 { font-size:var(--fs-sm); font-weight:700; color:var(--s-success-text); margin:0 0 10px; }
+    .sol-card h4 { font-size:var(--fs-sm); font-weight:var(--fw-heading); color:var(--s-success-text); margin:0 0 10px; }
     .sol-fields { display:flex; gap:10px; flex-wrap:wrap; }
     .sol-field { display:flex; flex-direction:column; flex:1 1 120px; }
-    .sol-field label { font-size:var(--fs-xs); font-weight:600; margin-bottom:3px; }
+    .sol-field label { font-size:var(--fs-xs); font-weight:var(--fw-strong); margin-bottom:3px; }
     .sol-field input { padding:6px 8px; font-size:var(--fs-sm);
                        border:1px solid var(--s-input-border); border-radius:5px; }
-    .btn-del-sol  { background:none; border:none; color: var(--s-danger-dk);
-                    cursor:pointer; font-size:var(--fs-base); float:right; }
 
     /* ── Pedigree section ────────────────────────────────────── */
     .ped-standard { background:var(--s-light); border:1px solid var(--s-border);
                     border-radius:8px; padding:14px; margin-bottom:12px; }
-    .ped-standard h4 { font-size:var(--fs-base); font-weight:700; margin:0 0 10px; color:var(--s-dark); }
+    .ped-standard h4 { font-size:var(--fs-base); font-weight:var(--fw-heading); margin:0 0 10px; color:var(--s-dark); }
     .ped-level { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;
-                 padding:8px; background:#fff; border-radius:6px;
-                 border:1px solid #eee; }
-    .ped-level-badge { font-size:var(--fs-xs); font-weight:700; padding:2px 8px;
+                 padding:8px; background:var(--surface-raised); border-radius:6px;
+                 border:1px solid var(--line); }
+    .ped-level-badge { font-size:var(--fs-xs); font-weight:var(--fw-heading); padding:2px 8px;
                        border-radius:8px; background:var(--s-info-lt); color: var(--s-primary-dk);
                        white-space:nowrap; align-self:center; min-width:80px;
                        text-align:center; }
-    .ped-field { display:flex; flex-direction:column; flex:1 1 120px; }
-    .ped-field label { font-size:var(--fs-xs); font-weight:600; margin-bottom:3px; }
+    .ped-field { display:flex; flex-direction:column; flex:1 1 110px; max-width:150px; }
+    .ped-field label { font-size:var(--fs-xs); font-weight:var(--fw-strong); margin-bottom:3px; }
     .ped-field input { padding:5px 8px; font-size:var(--fs-sm);
                        border:1px solid var(--s-input-border); border-radius:5px; }
-    .btn-del-ped-lvl { background:none; border:none; color: var(--s-danger-dk);
-                       font-size:var(--fs-base); cursor:pointer; }
 
     /* ── Deviations ──────────────────────────────────────────── */
     .deviation-field { width:100%; min-height:80px; padding:10px; font-size:var(--fs-base);
@@ -182,11 +149,11 @@
                      padding-top:16px; border-top:2px solid var(--s-border); }
     /* the stage's primary action stays in reach (6B pinned action bar) */
     #stage-form > .stage-actions { position:sticky; bottom:0; z-index:5; padding:12px 0;
-                     background:var(--s-bg, #fff); }
+                     background:var(--surface); }
     .recorded-by { margin:-8px 0 14px; font-size:var(--fs-sm); color:var(--s-secondary);
                    display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .summary-card h3 { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .summary-meta { font-weight:400; font-size:var(--fs-sm); color:var(--s-secondary); }
+    .summary-meta { font-weight:var(--fw-body); font-size:var(--fs-sm); color:var(--s-secondary); }
     .summary-line { font-size:var(--fs-sm); margin:6px 0; }
     .summary-warn { margin:2px 0 6px 18px; font-size:var(--fs-sm); }
 
@@ -197,20 +164,14 @@
     .eg-start h2 { font-size:var(--fs-xl); font-weight:var(--fw-heading); margin-bottom:8px; }
     .eg-start p { color:var(--s-secondary); margin-bottom:24px; }
     .start-form { text-align:left; }
-    .start-form label { font-size:var(--fs-base); font-weight:600; display:block; margin-bottom:4px; }
+    .start-form label { font-size:var(--fs-base); font-weight:var(--fw-strong); display:block; margin-bottom:4px; }
     .start-form select, .start-form input { width:100%; padding:10px 12px; font-size:var(--fs-base);
       border:1px solid var(--s-input-border); border-radius:8px; margin-bottom:14px; box-sizing:border-box; }
 
     /* ── Done screen ─────────────────────────────────────────── */
     .eg-done { text-align:center; padding:40px 20px; }
     .eg-done .check { font-size:64px; margin-bottom:16px; }
-    .eg-done h2 { font-size:var(--fs-2xl); font-weight:800; margin-bottom:8px; color: var(--s-success-text); }
-
-    /* ── Alerts ─────────────────────────────────────────────── */
-    .alert-ok    { background:var(--s-success-lt); border:1px solid var(--s-success-bd); color:var(--s-success-text);
-                   padding:10px 16px; border-radius:8px; margin-bottom:14px; font-size:var(--fs-base); }
-    .alert-error { background:var(--s-danger-lt); border:1px solid var(--s-danger-bd); color:var(--s-danger-dk);
-                   padding:10px 16px; border-radius:8px; margin-bottom:14px; font-size:var(--fs-base); }
+    .eg-done h2 { font-size:var(--fs-2xl); font-weight:var(--fw-heading); margin-bottom:8px; color: var(--s-success-text); }
   </style>
   </tal:styles>
 </head>
@@ -222,8 +183,8 @@
 
   <div metal:fill-slot="content">
 
-    <div tal:condition="view/ok_msg"    class="alert-ok eg-alert"    tal:content="view/ok_msg"></div>
-    <div tal:condition="view/error_msg" class="alert-error eg-alert" tal:content="view/error_msg"></div>
+    <div tal:condition="view/ok_msg"    class="alert alert-success eg-alert"    tal:content="view/ok_msg"></div>
+    <div tal:condition="view/error_msg" class="alert alert-error eg-alert" tal:content="view/error_msg"></div>
 
     <!-- ─── JS data ──────────────────────────────────────────── -->
     <script>
@@ -285,7 +246,7 @@
         <input type="text" name="analyst" placeholder="Your name" required="required"
                tal:attributes="value view/current_user_name" />
 
-        <button class="btn-lg btn-primary btn-start" type="submit">Begin Extraction &#8594;</button>
+        <button class="btn-lg btn-primary btn-block" type="submit">Begin Extraction &#8594;</button>
       </form>
     </div>
     </tal:start>
@@ -300,7 +261,7 @@
       <p class="eg-lead">
         All stages recorded. Generate the traceability PDF below.
       </p>
-      <a class="btn-lg btn-pdf" tal:attributes="href view/pdf_url" target="_blank">&#128196; Download Extraction Logbook PDF</a>
+      <a class="btn-lg btn-primary" tal:attributes="href view/pdf_url" target="_blank">&#128196; Download Extraction Logbook PDF</a>
       <br/><br/>
       <a class="btn-sm btn-secondary" tal:attributes="href string:${view/portal_url}/@@pfas-reagents"
         >View Reagent Inventory</a>
@@ -327,24 +288,21 @@
                  tal:attributes="style python:'width:{0}%'.format(view.progress_pct())"></div>
           </div>
         </div>
-        <div class="stage-list">
+        <ol class="pfas-stepper is-vertical stage-list">
         <tal:stages tal:repeat="stage view/extraction_stages">
           <tal:define tal:define="status python:view.stage_status(stage);
                                   viewing python:view.view_order() == stage.get('order');
                                   href python:view.stage_url(stage.get('order')) if status == 'done' else (view.stage_url() if status == 'active' else None)">
-          <a tal:attributes="class python:'stage-item ' + status + (' viewing' if viewing else '');
-                             href href;
-                             title python:'Open this stage' if href else 'Not reached yet'">
-            <span tal:attributes="class python:'stage-num ' + status">
-              <tal:done tal:condition="python:status=='done'">&#10003;</tal:done>
-              <tal:other tal:condition="python:status!='done'"
-                         tal:content="python:stage.get('order','')"></tal:other>
-            </span>
-            <span class="stage-name" tal:content="python:stage.get('name','')"></span>
-          </a>
+          <li tal:attributes="class python:' '.join(c for c in ('is-done' if status == 'done' else None, 'is-current' if status == 'active' else None, 'is-viewing' if viewing else None) if c) or None">
+            <a tal:attributes="class python:'stage-item ' + status + (' viewing' if viewing else '');
+                               href href;
+                               title python:'Open this stage' if href else 'Not reached yet'">
+              <span class="stage-name" tal:content="python:stage.get('name','')"></span>
+            </a>
+          </li>
           </tal:define>
         </tal:stages>
-        </div>
+        </ol>
       </div>
 
       <!-- ── Main content ────────────────────────────────────────── -->
@@ -464,7 +422,7 @@
                  tal:attributes="src murl;
                                  alt python:stage.get('media_alt','') or stage.get('name','')" />
             <div>
-              <button type="button" class="btn-sm btn-add-sol" id="eg-replay-btn">&#8635; Replay</button>
+              <button type="button" class="btn-sm btn-secondary pfas-add-row" id="eg-replay-btn">&#8635; Replay</button>
             </div>
           </div>
         </tal:media>
@@ -502,7 +460,7 @@
                 <th tal:condition="python:card['column'] == 'amount'">Unit</th></tr></thead>
               <tbody id="sample-rows"></tbody>
             </table>
-            <button type="button" class="btn-sm btn-add-sol reagent-add" onclick="addSampleRow()"
+            <button type="button" class="btn-sm btn-secondary reagent-add" onclick="addSampleRow()"
                     tal:condition="python:card['column'] != 'spe_port'">+ Add a sample</button>
             <input type="hidden" name="samples_json" id="samples_json_field" value="[]" />
           </div>
@@ -515,7 +473,7 @@
             <p class="reagent-hint">Pick the lot you used, or scan its label. Only lots that
               are in date and not quarantined are listed.</p>
             <div id="reagent-rows"></div>
-            <button type="button" class="btn-sm btn-add-sol reagent-add"
+            <button type="button" class="btn-sm btn-secondary reagent-add"
                     onclick="addReagentRow('reagent')">+ Add another item</button>
           </div>
           </tal:rgs>
@@ -526,7 +484,7 @@
             <h3>Consumables used</h3>
             <p class="reagent-hint">Tubes, vials, syringes and filters are recorded by lot, like reagents.</p>
             <div id="consumable-rows"></div>
-            <button type="button" class="btn-sm btn-add-sol reagent-add"
+            <button type="button" class="btn-sm btn-secondary reagent-add"
                     onclick="addReagentRow('consumable')">+ Add another consumable</button>
           </div>
           </tal:cons>
@@ -582,7 +540,7 @@
           <div class="eg-card" id="solutions-card">
             <h3>Solutions Prepared at This Stage</h3>
             <div id="sol-rows"></div>
-            <button type="button" class="btn-sm btn-add-sol" onclick="addSolutionRow()">
+            <button type="button" class="btn-sm btn-secondary pfas-add-row" onclick="addSolutionRow()">
               + Prepare a New Solution / Label
             </button>
           </div>
@@ -597,7 +555,7 @@
               This becomes the parentage record in the final PDF.
             </p>
             <div id="ped-rows"></div>
-            <button type="button" class="btn-sm btn-add-sol"
+            <button type="button" class="btn-sm btn-secondary pfas-add-row"
                     onclick="addPedigreeStandard()">+ Add Standard</button>
             <input type="hidden" name="pedigree_json_stage" id="pedigree_hidden" value="{}" />
           </div>
@@ -808,7 +766,7 @@
                 : '\u003cinput class="reagent-role-field" type="text" placeholder="What is it for?"' +
                   ' value="' + esc(r.role) + '" oninput="reagentData[' + i + '].role=this.value;syncReagents()"/>') +
         '\u003cselect class="reagent-lot-sel" onchange="pickLot(' + i + ',this.value)">' + lotOptions(r) + '\u003c/select>' +
-        '\u003cbutton type="button" class="btn btn-scan-sm" title="Scan the label" onclick="scanReagentLot(' + i + ')">&#128247;\u003c/button>' +
+        '\u003cbutton type="button" class="btn-sm btn-secondary" title="Scan the label" onclick="scanReagentLot(' + i + ')">&#128247;\u003c/button>' +
         '\u003cbutton type="button" class="btn-sm btn-secondary" title="A lot that is not in the inventory yet" onclick="openReceive(' + i + ')">New lot\u003c/button>' +
         (ec ? '\u003cspan class="' + ec + '">' + (ec === 'exp-expired' ? 'EXPIRED' : 'Expires ' + esc(r.expiry)) + '\u003c/span>' : '') +
         '\u003cinput class="reagent-qty-field" type="text" title="Amount used, e.g. 5 mL"' +
@@ -822,7 +780,7 @@
             '\u003coption value="exhausted"' + (r.new_status === 'exhausted' ? ' selected' : '') + '>Lot used up\u003c/option>' +
             '\u003coption value="quarantine"' + (r.new_status === 'quarantine' ? ' selected' : '') + '>Quarantine this lot\u003c/option>' +
           '\u003c/select>' : '') +
-        '\u003cbutton type="button" class="reagent-remove" title="Remove this row" onclick="reagentData.splice(' + i + ',1);renderReagents()">&#215;\u003c/button>' +
+        '\u003cbutton type="button" class="pfas-row-remove" title="Remove this row" onclick="reagentData.splice(' + i + ',1);renderReagents()">&#215;\u003c/button>' +
         (r.receiving ? receiveForm(i, r.receiving) : '');
       el.appendChild(div);
     });
@@ -1008,7 +966,7 @@
       var div = document.createElement('div');
       div.className = 'sol-card';
       div.innerHTML =
-        '\u003cbutton type="button" class="btn-del-sol" onclick="solutionsData.splice('+i+',1);renderSolutions()">&#215;\u003c/button>'+
+        '\u003cbutton type="button" class="pfas-row-remove" onclick="solutionsData.splice('+i+',1);renderSolutions()">&#215;\u003c/button>'+
         '\u003ch4>Solution ' + (i+1) + '\u003c/h4>'+
         '\u003cdiv class="sol-fields">'+
           '\u003cdiv class="sol-field">\u003clabel>Name\u003c/label>'+
@@ -1031,8 +989,8 @@
                    ' oninput="solutionsData['+i+'].storage=this.value;syncSolutions()"/>\u003c/div>'+
         '\u003c/div>'+
         '\u003cdiv class="sol-actions">'+
-          '\u003cbutton type="button" class="btn btn-label" onclick="printLabel('+i+')">&#127991; Print Label\u003c/button>'+
-          '\u003cbutton type="button" class="btn btn-scan-sm" onclick="saveSolutionToInventory('+i+')">+ Add to Inventory\u003c/button>'+
+          '\u003cbutton type="button" class="btn-sm btn-secondary" onclick="printLabel('+i+')">&#127991; Print Label\u003c/button>'+
+          '\u003cbutton type="button" class="btn-sm btn-secondary" onclick="saveSolutionToInventory('+i+')">+ Add to Inventory\u003c/button>'+
         '\u003c/div>';
       el.appendChild(div);
     });
@@ -1153,7 +1111,7 @@
       div.className = 'ped-standard';
       var html = '\u003ch4>' + esc(stdName) +
                  ' \u003cbutton type="button" onclick="deletePedStd(\''+stdName.replace(/'/g,"\\'")+'\')" '+
-                 'class="reagent-remove">&#215; Remove\u003c/button>\u003c/h4>';
+                 'class="pfas-row-remove">&#215; Remove\u003c/button>\u003c/h4>';
       levels.forEach(function(lvl, li) {
         var isCRM = lvl.level.indexOf('CRM') !== -1 || lvl.level.indexOf('Reference') !== -1;
         html += '\u003cdiv class="ped-level">'+
@@ -1171,11 +1129,11 @@
                   pedField('Prep By', stdName, li, 'prepared_by', lvl.prepared_by, 120) +
                   pedField('Prep Date', stdName, li, 'prepared_date', lvl.prepared_date, 120, 'date');
         }
-        html += '\u003cbutton type="button" class="btn-del-ped-lvl" '+
+        html += '\u003cbutton type="button" class="pfas-row-remove" '+
                 'onclick="deletePedLevel(\''+stdName.replace(/'/g,"\\'")+'\',' + li + ')">&#215;\u003c/button>';
         html += '\u003c/div>';
       });
-      html += '\u003cbutton type="button" class="btn-sm btn-add-ped-lvl" onclick="addPedLevel(\''+stdName.replace(/'/g,"\\'")+'\')">' +
+      html += '\u003cbutton type="button" class="btn-sm btn-secondary" onclick="addPedLevel(\''+stdName.replace(/'/g,"\\'")+'\')">' +
               '+ Add Dilution Level\u003c/button>';
       div.innerHTML = html;
       el.appendChild(div);
@@ -1185,7 +1143,7 @@
 
   function pedField(label, stdName, li, key, val, w, type) {
     type = type || 'text';
-    return '\u003cdiv class="ped-field" style="max-width:'+w+'px;">' +
+    return '\u003cdiv class="ped-field">' +
            '\u003clabel>'+esc(label)+'\u003c/label>' +
            '\u003cinput type="'+type+'" value="'+esc(val||'')+'" ' +
            'oninput="updatePed(\''+stdName.replace(/'/g,"\\'")+'\',' + li + ',\''+key+'\',this.value)"/>' +
@@ -1231,20 +1189,20 @@
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'scan-mini-overlay';
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;display:flex;align-items:center;justify-content:center;';
+      overlay.className = 'pfas-modal open';
       overlay.innerHTML =
-        '\u003cdiv class="scan-box">'+
-        '\u003ch3 class="scan-title">Scan Barcode\u003c/h3>'+
-        '\u003cvideo id="scan-mini-video" autoplay playsinline muted class="scan-video">\u003c/video>'+
-        '\u003cdiv id="scan-mini-result" class="scan-result">\u003c/div>'+
-        '\u003cdiv class="scan-buttons">'+
-          '\u003cbutton id="scan-mini-use" class="scan-use" disabled onclick="useScanMini()">Use\u003c/button>'+
-          '\u003cbutton class="scan-cancel" onclick="closeScanMini()">Cancel\u003c/button>'+
+        '\u003cdiv class="pfas-modal-box is-scan">'+
+        '\u003ch2>Scan Barcode\u003c/h2>'+
+        '\u003cvideo id="scan-mini-video" autoplay playsinline muted class="pfas-scan-video">\u003c/video>'+
+        '\u003cdiv id="scan-mini-result" class="pfas-scan-result">\u003c/div>'+
+        '\u003cdiv class="pfas-scan-actions">'+
+          '\u003cbutton type="button" id="scan-mini-use" class="btn btn-primary" disabled onclick="useScanMini()">Use\u003c/button>'+
+          '\u003cbutton type="button" class="btn btn-secondary" onclick="closeScanMini()">Cancel\u003c/button>'+
         '\u003c/div>'+
         '\u003c/div>';
       document.body.appendChild(overlay);
     } else {
-      overlay.style.display = 'flex';
+      overlay.classList.add('open');
     }
     _scanMiniResult = null;
     document.getElementById('scan-mini-result').textContent = 'Point camera at barcode...';
@@ -1255,7 +1213,7 @@
       _scanReader.decodeFromVideoDevice(undefined, 'scan-mini-video', function(res, err) {
         if (res) {
           _scanMiniResult = res.getText();
-          document.getElementById('scan-mini-result').innerHTML = '\u003cstrong class="scan-hit">' + esc(_scanMiniResult) + '\u003c/strong>';
+          document.getElementById('scan-mini-result').innerHTML = '\u003cstrong>' + esc(_scanMiniResult) + '\u003c/strong>';
           document.getElementById('scan-mini-use').disabled = false;
         }
       }).then(function(c) { _scanMiniControls = c; });
@@ -1273,7 +1231,7 @@
     if (_scanMiniControls) { try { _scanMiniControls.stop(); } catch(e){} _scanMiniControls = null; }
     _scanReader = null;
     var overlay = document.getElementById('scan-mini-overlay');
-    if (overlay) overlay.style.display = 'none';
+    if (overlay) overlay.classList.remove('open');
   }
 
   /* ═══════════════════════════════════════════════════════════════════

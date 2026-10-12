@@ -9,12 +9,12 @@
   <style>
     .lb-form { max-width: 860px; }
     .lb-section { margin-bottom: 28px; }
-    .lb-section h3 { font-size: var(--fs-base); font-weight: 700; color: var(--s-dark);
+    .lb-section h3 { font-size: var(--fs-base); font-weight:var(--fw-heading); color: var(--s-dark);
                      margin-bottom: 12px; padding-bottom: 6px;
                      border-bottom: 2px solid var(--s-border); }
     .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
     .lb-field { display: flex; flex-direction: column; }
-    .lb-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-field label { font-size: var(--fs-sm); font-weight:var(--fw-strong); color: var(--s-dark); margin-bottom: 3px; }
     .lb-input, .lb-select { padding: 7px 10px; font-size: var(--fs-base);
                               border: 1px solid var(--s-input-border); border-radius: 6px; }
     .lb-input:focus, .lb-select:focus { outline: none; border-color: var(--s-primary); }
@@ -25,9 +25,9 @@
     /* Cal table */
     .cal-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .cal-table th { background: var(--s-light); padding: 7px 10px; text-align: left;
-                    border-bottom: 2px solid var(--s-border); font-weight: 700; }
+                    border-bottom: 2px solid var(--s-border); font-weight:var(--fw-heading); }
     .cal-table td { padding: 5px 8px; border-bottom: 1px solid var(--s-border); }
-    .cal-table td:first-child { font-weight: 600; color: var(--s-dark); }
+    .cal-table td:first-child { font-weight:var(--fw-strong); color: var(--s-dark); }
     .cal-table td input[type="number"] { width: 110px; padding: 4px 8px; font-size: var(--fs-sm);
                                           border: 1px solid var(--s-input-border); border-radius: 4px; }
     .cal-table td input[type="text"]   { width: 160px; padding: 4px 8px; font-size: var(--fs-sm);
@@ -39,11 +39,7 @@
                     display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
     .sig-block { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 8px; }
     .sig-field { display: flex; flex-direction: column; }
-    .sig-field label { font-size: var(--fs-sm); font-weight: 600; margin-bottom: 3px; }
-    .alert-ok    { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text);
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
-    .alert-error { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk);
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
+    .sig-field label { font-size: var(--fs-sm); font-weight:var(--fw-strong); margin-bottom: 3px; }
     .inj-builder-note {
       background: var(--s-info-lt); border: 1px solid var(--s-info-bd); color: var(--s-info-text);
       padding: 10px 16px; border-radius: 8px; font-size: var(--fs-sm); margin-top: 8px;
@@ -62,20 +58,20 @@
   <div class="page-body">
 
     <!-- Breadcrumb -->
-    <div class="lb-breadcrumb">
+    <nav class="pfas-crumb is-inline" aria-label="Logbook">
       <span>Lab</span>
-      <span class="lb-bc-sep">›</span>
+      <span class="pfas-crumb-sep">&#8250;</span>
       <tal:m tal:condition="view/batch_method">
         <span tal:content="view/batch_method">Method</span>
-        <span class="lb-bc-sep">›</span>
+        <span class="pfas-crumb-sep">&#8250;</span>
       </tal:m>
       <span tal:content="view/batch_title">Batch</span>
-      <span class="lb-bc-sep">›</span>
-      <strong tal:content="python:view.form_code('251')">FM-ENV-00x</strong>
-    </div>
+      <span class="pfas-crumb-sep">&#8250;</span>
+      <strong class="pfas-crumb-here" tal:content="python:view.form_code('251')">FM-ENV-00x</strong>
+    </nav>
 
-    <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
-    <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+    <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
 
     <form class="lb-form" method="post"
           tal:attributes="action string:${view/batch_url}/@@pfas-logbook-251">
@@ -101,8 +97,8 @@
             <input class="lb-input lb-input-lg" type="text" name="prepared_by"
                    tal:attributes="value python:view.data().get('prepared_by','')" />
             <div class="corr-panel" id="cp-prepared_by">
-              <label>Original: <span id="co-prepared_by" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-prepared_by" name="_newval_prepared_by" style="width:160px;" /></label>
+              <label>Original: <span id="co-prepared_by" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-prepared_by" name="_newval_prepared_by" class="pfas-w-160" /></label>
               <label>Initials: <input type="text" id="cb-prepared_by" name="_corr_by_prepared_by" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('prepared_by')">&#215;</button>
             </div>
@@ -112,7 +108,7 @@
             <input class="lb-input lb-input-md" type="date" name="prepared_date"
                    tal:attributes="value python:view.data().get('prepared_date','')" />
             <div class="corr-panel" id="cp-prepared_date">
-              <label>Original: <span id="co-prepared_date" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Original: <span id="co-prepared_date" class="lb-original"></span></label>
               <label>Correction: <input type="date" id="cn-prepared_date" name="_newval_prepared_date" /></label>
               <label>Initials: <input type="text" id="cb-prepared_date" name="_corr_by_prepared_date" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('prepared_date')">&#215;</button>
@@ -130,8 +126,8 @@
             <input class="lb-input lb-lot" type="text" name="pds_a_lot"
                    tal:attributes="value python:view.data().get('pds_a_lot','')" />
             <div class="corr-panel" id="cp-pds_a_lot">
-              <label>Original: <span id="co-pds_a_lot" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-pds_a_lot" name="_newval_pds_a_lot" style="width:120px;" /></label>
+              <label>Original: <span id="co-pds_a_lot" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-pds_a_lot" name="_newval_pds_a_lot" class="pfas-w-120" /></label>
               <label>Initials: <input type="text" id="cb-pds_a_lot" name="_corr_by_pds_a_lot" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('pds_a_lot')">&#215;</button>
             </div>
@@ -141,8 +137,8 @@
             <input class="lb-input lb-lot" type="text" name="pds_b_lot"
                    tal:attributes="value python:view.data().get('pds_b_lot','')" />
             <div class="corr-panel" id="cp-pds_b_lot">
-              <label>Original: <span id="co-pds_b_lot" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-pds_b_lot" name="_newval_pds_b_lot" style="width:120px;" /></label>
+              <label>Original: <span id="co-pds_b_lot" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-pds_b_lot" name="_newval_pds_b_lot" class="pfas-w-120" /></label>
               <label>Initials: <input type="text" id="cb-pds_b_lot" name="_corr_by_pds_b_lot" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('pds_b_lot')">&#215;</button>
             </div>
@@ -152,8 +148,8 @@
             <input class="lb-input lb-lot" type="text" name="analyte_pds_lot"
                    tal:attributes="value python:view.data().get('analyte_pds_lot','')" />
             <div class="corr-panel" id="cp-analyte_pds_lot">
-              <label>Original: <span id="co-analyte_pds_lot" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-analyte_pds_lot" name="_newval_analyte_pds_lot" style="width:120px;" /></label>
+              <label>Original: <span id="co-analyte_pds_lot" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-analyte_pds_lot" name="_newval_analyte_pds_lot" class="pfas-w-120" /></label>
               <label>Initials: <input type="text" id="cb-analyte_pds_lot" name="_corr_by_analyte_pds_lot" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('analyte_pds_lot')">&#215;</button>
             </div>
@@ -163,8 +159,8 @@
             <input class="lb-input lb-lot" type="text" name="analyte_spike_lot"
                    tal:attributes="value python:view.data().get('analyte_spike_lot','')" />
             <div class="corr-panel" id="cp-analyte_spike_lot">
-              <label>Original: <span id="co-analyte_spike_lot" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-analyte_spike_lot" name="_newval_analyte_spike_lot" style="width:120px;" /></label>
+              <label>Original: <span id="co-analyte_spike_lot" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-analyte_spike_lot" name="_newval_analyte_spike_lot" class="pfas-w-120" /></label>
               <label>Initials: <input type="text" id="cb-analyte_spike_lot" name="_corr_by_analyte_spike_lot" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('analyte_spike_lot')">&#215;</button>
             </div>
@@ -174,8 +170,8 @@
             <input class="lb-input lb-lot" type="text" name="cal_a_lot"
                    tal:attributes="value python:view.data().get('cal_a_lot','')" />
             <div class="corr-panel" id="cp-cal_a_lot">
-              <label>Original: <span id="co-cal_a_lot" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-cal_a_lot" name="_newval_cal_a_lot" style="width:120px;" /></label>
+              <label>Original: <span id="co-cal_a_lot" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-cal_a_lot" name="_newval_cal_a_lot" class="pfas-w-120" /></label>
               <label>Initials: <input type="text" id="cb-cal_a_lot" name="_corr_by_cal_a_lot" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('cal_a_lot')">&#215;</button>
             </div>
@@ -186,7 +182,7 @@
       <!-- Calibration Points -->
       <div class="lb-section">
         <h3>Calibration Ladder</h3>
-        <p style="font-size:var(--fs-sm); color:var(--s-secondary); margin-bottom:8px;">
+        <p class="pfas-note-sm">
           Default concentrations follow the FDA 32-PFAS serial dilution
           (20 &#8594; 0.039 ng/mL).
         </p>
@@ -212,8 +208,8 @@
                    name="icv_conc_ng_ml"
                    tal:attributes="value python:view.data().get('icv_conc_ng_ml','1.25')" />
             <div class="corr-panel" id="cp-icv_conc_ng_ml">
-              <label>Original: <span id="co-icv_conc_ng_ml" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-icv_conc_ng_ml" name="_newval_icv_conc_ng_ml" style="width:80px;" /></label>
+              <label>Original: <span id="co-icv_conc_ng_ml" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-icv_conc_ng_ml" name="_newval_icv_conc_ng_ml" class="pfas-w-80" /></label>
               <label>Initials: <input type="text" id="cb-icv_conc_ng_ml" name="_corr_by_icv_conc_ng_ml" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('icv_conc_ng_ml')">&#215;</button>
             </div>
@@ -224,8 +220,8 @@
                    name="ccv_conc_ng_ml"
                    tal:attributes="value python:view.data().get('ccv_conc_ng_ml','1.25')" />
             <div class="corr-panel" id="cp-ccv_conc_ng_ml">
-              <label>Original: <span id="co-ccv_conc_ng_ml" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-ccv_conc_ng_ml" name="_newval_ccv_conc_ng_ml" style="width:80px;" /></label>
+              <label>Original: <span id="co-ccv_conc_ng_ml" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-ccv_conc_ng_ml" name="_newval_ccv_conc_ng_ml" class="pfas-w-80" /></label>
               <label>Initials: <input type="text" id="cb-ccv_conc_ng_ml" name="_corr_by_ccv_conc_ng_ml" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('ccv_conc_ng_ml')">&#215;</button>
             </div>
@@ -236,8 +232,8 @@
                    name="diluent_is_conc"
                    tal:attributes="value python:view.data().get('diluent_is_conc','1.0')" />
             <div class="corr-panel" id="cp-diluent_is_conc">
-              <label>Original: <span id="co-diluent_is_conc" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-diluent_is_conc" name="_newval_diluent_is_conc" style="width:80px;" /></label>
+              <label>Original: <span id="co-diluent_is_conc" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-diluent_is_conc" name="_newval_diluent_is_conc" class="pfas-w-80" /></label>
               <label>Initials: <input type="text" id="cb-diluent_is_conc" name="_corr_by_diluent_is_conc" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('diluent_is_conc')">&#215;</button>
             </div>
@@ -249,14 +245,14 @@
       <div class="lb-section">
         <h3>Notes</h3>
         <div class="corr-field" data-field="notes">
-          <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:var(--fs-base); border:1px solid var(--s-input-border); border-radius:6px;"
+          <textarea name="notes" class="pfas-textarea"
                     tal:content="python:view.data().get('notes','')"></textarea>
-          <div style="margin-top:4px;">
+          <div class="pfas-mt-sm">
             <button class="btn-correct" type="button" onclick="toggleCorrect('notes')">correct notes</button>
           </div>
           <div class="corr-panel" id="cp-notes">
-            <label>Original: <span id="co-notes" style="text-decoration:line-through;color:#999;font-weight:normal;max-width:300px;display:inline-block;"></span></label>
-            <label>Correction: <input type="text" id="cn-notes" name="_newval_notes" style="width:220px;" /></label>
+            <label>Original: <span id="co-notes" class="lb-original is-block"></span></label>
+            <label>Correction: <input type="text" id="cn-notes" name="_newval_notes" class="pfas-w-220" /></label>
             <label>Initials: <input type="text" id="cb-notes" name="_corr_by_notes" class="corr-initials" placeholder="JS" /></label>
             <button type="button" class="corr-cancel" onclick="toggleCorrect('notes')">&#215;</button>
           </div>
@@ -272,8 +268,8 @@
             <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
                    tal:attributes="value python:view.data().get('reviewed_by','')" />
             <div class="corr-panel" id="cp-reviewed_by">
-              <label>Original: <span id="co-reviewed_by" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-reviewed_by" name="_newval_reviewed_by" style="width:160px;" /></label>
+              <label>Original: <span id="co-reviewed_by" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-reviewed_by" name="_newval_reviewed_by" class="pfas-w-160" /></label>
               <label>Initials: <input type="text" id="cb-reviewed_by" name="_corr_by_reviewed_by" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('reviewed_by')">&#215;</button>
             </div>
@@ -283,7 +279,7 @@
             <input class="lb-input lb-input-md" type="date" name="reviewed_date"
                    tal:attributes="value python:view.data().get('reviewed_date','')" />
             <div class="corr-panel" id="cp-reviewed_date">
-              <label>Original: <span id="co-reviewed_date" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Original: <span id="co-reviewed_date" class="lb-original"></span></label>
               <label>Correction: <input type="date" id="cn-reviewed_date" name="_newval_reviewed_date" /></label>
               <label>Initials: <input type="text" id="cb-reviewed_date" name="_corr_by_reviewed_date" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('reviewed_date')">&#215;</button>

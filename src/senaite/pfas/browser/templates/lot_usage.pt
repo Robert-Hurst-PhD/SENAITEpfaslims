@@ -11,10 +11,13 @@
 
   <metal:fill fill-slot="content" tal:define="it view/item; rows view/rows; q view/query">
     <section class="bench-block">
-      <form method="get" tal:attributes="action string:${view/portal_url}/@@pfas-lot-usage">
-        <input type="text" name="q" placeholder="Lot number (or part of it)"
-               tal:attributes="value q" />
-        <button class="btn-sm btn-primary" type="submit">Find every use</button>
+      <form method="get" class="pfas-filterbar" tal:attributes="action string:${view/portal_url}/@@pfas-lot-usage">
+        <div class="pfas-field">
+          <label for="lu-q">Lot number</label>
+          <input id="lu-q" type="text" name="q" class="pfas-input pfas-input-wide"
+                 placeholder="Lot number (or part of it)" tal:attributes="value q" />
+        </div>
+        <button class="btn btn-primary" type="submit">Find every use</button>
       </form>
     </section>
 

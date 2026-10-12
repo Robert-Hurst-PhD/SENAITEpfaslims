@@ -148,6 +148,21 @@
 .pfas-stepper li.is-current { color: var(--accent-text); }
 .pfas-stepper li.is-current::before { border-color: var(--accent-text); background: var(--accent-text); color: var(--on-accent); }
 
+/* a stepper in a side column: one step a row, the link inside the step; a row of steps under 1100px */
+.pfas-stepper.is-vertical { flex-direction: column; margin: 0; padding: var(--sp-2) var(--sp-4); }
+.pfas-stepper.is-vertical li { flex: none; padding: 6px 0; }
+.pfas-stepper.is-vertical li::after { display: none; }
+.pfas-stepper li > a { flex: 1; min-width: 0; color: inherit; text-decoration: none; line-height: 1.3; }
+.pfas-stepper li > a[href]:hover { color: var(--accent-text); text-decoration: none; }
+.pfas-stepper li.is-viewing { color: var(--text); }
+.pfas-stepper li.is-viewing::before { border-color: var(--s-success); }
+@media (max-width: 1100px) {
+  .pfas-stepper.is-vertical { flex-direction: row; overflow-x: auto; gap: var(--sp-3); }
+  .pfas-stepper.is-vertical li { flex: 0 0 auto; max-width: 180px; }
+}
+.btn-block { width: 100%; justify-content: center; }
+.pfas-add-row { margin-top: var(--sp-2); }
+
 /* ── Context chip (top bar) ────────────────────────────────────────────── */
 .pfas-chip { display: inline-flex; align-items: center; gap: var(--sp-2); height: 28px; padding: 0 12px;
   border-radius: var(--radius-pill); background: var(--on-frame-muted); color: var(--frame);
@@ -212,6 +227,193 @@
 .pfas-legend dt { font-weight: var(--fw-strong); }
 .pfas-legend dd { margin: 0; }
 .pfas-legend p { font-size: var(--fs-xs); color: var(--text-muted); margin: var(--sp-2) 0 0; }
+
+/* ── Filter bar: selects and inputs are as tall as the buttons ─────────── */
+.pfas-filterbar .pfas-select, .pfas-filterbar .pfas-input { min-width: 140px; height: var(--ctl-h); box-sizing: border-box; }
+.pfas-filterbar .pfas-input-wide { min-width: 260px; }
+.pfas-filterbar .btn, .pfas-filterbar .btn-sm { align-self: end; }
+
+/* ── Banner: a mode or status line above a list ────────────────────────── */
+.pfas-banner { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface-2);
+  margin-bottom: var(--sp-4); font-size: var(--fs-base); color: var(--text); }
+.pfas-banner-end { margin-left: auto; display: flex; align-items: center; gap: var(--sp-3); }
+
+/* ── Tiles that only report a number (no link) ─────────────────────────── */
+.pfas-tiles { margin-bottom: var(--sp-5); }
+.pfas-tile.is-static:hover { box-shadow: var(--shadow-card); border-color: var(--line); }
+.pfas-tile.is-static { text-align: center; }
+
+/* ── Fixed table: columns keep their width, so a row never shifts ──────── */
+.pfas-table-fixed { table-layout: fixed; min-width: 1100px; }
+.pfas-table-fixed th, .pfas-table-fixed td { overflow-wrap: anywhere; }
+.pfas-table-fixed td.row-actions-cell { white-space: nowrap; overflow-wrap: normal; }
+.pfas-col-name { width: 17%; }
+.pfas-col-id { width: 8%; }
+.pfas-col-lot { width: 13%; }
+.pfas-col-text { width: 11%; }
+.pfas-col-date { width: 96px; }
+.pfas-col-qty { width: 84px; }
+.pfas-col-status { width: 128px; }
+.pfas-col-actions { width: 224px; }
+.pfas-col-actions-sm { width: 176px; }
+.pfas-col-expiry { width: 150px; }
+.pfas-cell-name { font-weight: var(--fw-strong); }
+.pfas-cell-empty { text-align: center; color: var(--text-muted); padding: var(--sp-6); }
+.pfas-table tr.is-archived td { opacity: .55; }
+.exp-expired { color: var(--s-danger-dk); font-weight: var(--fw-heading); }
+.exp-warning { color: var(--s-warn-text); font-weight: var(--fw-heading); }
+
+/* ── Modal ─────────────────────────────────────────────────────────────── */
+.pfas-modal { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center;
+  background: rgba(15,26,24,.5); }
+.pfas-modal.open { display: flex; }
+.pfas-modal [hidden] { display: none; }
+.pfas-modal-box { width: 90%; max-width: 620px; max-height: 90vh; overflow-y: auto; padding: var(--sp-5);
+  background: var(--surface-raised); color: var(--text); border: 1px solid var(--line);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-card-hover); }
+.pfas-modal-box.is-narrow { max-width: 500px; }
+.pfas-modal-box.is-scan { max-width: 520px; }
+.pfas-modal-box h2 { font-family: var(--font-heading); font-size: var(--fs-lg); font-weight: var(--fw-heading);
+  margin: 0 0 var(--sp-4); padding-bottom: var(--sp-2); border-bottom: 2px solid var(--line); }
+.pfas-modal-box .form-actions { margin: var(--sp-4) 0 0; padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.pfas-modal-box [data-tabs] > .pfas-seg { margin-bottom: var(--sp-4); }
+.pfas-form-row { display: flex; gap: var(--sp-4); margin-bottom: var(--sp-3); flex-wrap: wrap; }
+.pfas-form-field { display: flex; flex-direction: column; gap: 3px; flex: 1 1 180px; min-width: 0; }
+.pfas-form-field.is-full { flex: 1 1 100%; }
+.pfas-form-field.is-wide { flex: 2 1 280px; }
+.pfas-form-field label { font-size: var(--fs-sm); font-weight: var(--fw-strong); color: var(--text); }
+.pfas-form-field input, .pfas-form-field select, .pfas-form-field textarea { padding: 7px 10px; font-size: var(--fs-base);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); }
+.pfas-form-field textarea { min-height: 60px; resize: vertical; }
+.pfas-hint, .pfas-aux { margin: 3px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-req { color: var(--s-danger-dk); }
+summary .pfas-aux { margin-left: var(--sp-2); font-weight: var(--fw-body); }
+.pfas-inline { display: flex; gap: var(--sp-2); align-items: center; }
+.pfas-inline > input { flex: 1; min-width: 0; }
+.pfas-inline > .pfas-unit { width: 80px; flex: none; }
+.pfas-suggest { position: relative; }
+.pfas-suggest-list { display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 2000; max-height: 220px; overflow-y: auto;
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow-card-hover); }
+.pfas-suggest-list.open { display: block; }
+.pfas-suggest-item { padding: 8px 12px; font-size: var(--fs-sm); cursor: pointer; border-bottom: 1px solid var(--line); }
+.pfas-suggest-item:last-child { border-bottom: 0; }
+.pfas-suggest-item:hover { background: var(--accent-soft); }
+.pfas-suggest-name { font-weight: var(--fw-strong); color: var(--text); }
+.pfas-copy-row { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: 10px; }
+.pfas-copy-label { width: 64px; flex: none; font-size: var(--fs-sm); font-weight: var(--fw-strong); color: var(--text); }
+.pfas-copy-value { flex: 1; min-width: 0; padding: 5px 9px; font-size: var(--fs-base); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pfas-link-grid { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4); }
+.pfas-link-grid > a { flex: 1 1 200px; justify-content: center; }
+.pfas-note { margin-top: var(--sp-4); padding: 10px; font-size: var(--fs-xs); line-height: 1.6; color: var(--text-muted);
+  background: var(--surface-2); border-radius: var(--radius-lg); }
+
+/* ── Label scanner (barcode and OCR), in the light theme ───────────────── */
+.pfas-scan-device { width: 100%; margin-bottom: var(--sp-2); }
+.pfas-scan-video { display: block; width: 100%; max-height: 240px; object-fit: cover; margin-bottom: var(--sp-3);
+  border-radius: var(--radius-card); background: var(--surface-2); }
+.pfas-scan-result { min-height: 40px; padding: var(--sp-3); font-size: var(--fs-base); word-break: break-all;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.pfas-scan-result strong { color: var(--accent-text); }
+.pfas-scan-result.is-text { white-space: pre-wrap; font-size: var(--fs-xs); min-height: 36px; max-height: 70px; overflow-y: auto; margin-top: 6px; }
+.pfas-scan-result .is-error { color: var(--s-danger-dk); }
+.pfas-scan-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.pfas-scan-actions > .btn { flex: 1; justify-content: center; }
+.pfas-scan-hint, .pfas-scan-status { min-height: 16px; margin-top: 6px; font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-scan-label { margin: var(--sp-3) 0 4px; font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-scan-match { padding: var(--sp-3); margin-bottom: var(--sp-3); background: var(--s-success-lt);
+  border: 1px solid var(--s-success-bd); border-radius: var(--radius-card); }
+.pfas-scan-match-label { margin-bottom: 4px; font-size: var(--fs-xs); color: var(--s-success-text); }
+.pfas-scan-match-name { margin-bottom: 10px; font-size: var(--fs-md); font-weight: var(--fw-heading); color: var(--s-success-text); }
+.pfas-scan-match-row { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.pfas-scan-match-item { flex: 1 1 100px; }
+.pfas-scan-match-key { font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-scan-match-val { font-size: var(--fs-sm); font-family: var(--font-mono); color: var(--text); }
+.pfas-scan-notes { width: 100%; box-sizing: border-box; min-height: 50px; padding: 7px 10px; font-size: var(--fs-sm);
+  background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); resize: vertical; }
+.pfas-scan-fields { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pfas-scan-field { flex: 1 1 120px; padding: 6px 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.pfas-scan-field-key { display: block; margin-bottom: 2px; font-size: var(--fs-xs); color: var(--text-muted); }
+.pfas-scan-field-val { display: block; font-size: var(--fs-sm); font-family: var(--font-mono); color: var(--text-muted); word-break: break-all; }
+.pfas-scan-field-val.is-found { color: var(--accent-text); font-weight: var(--fw-heading); }
+.pfas-scan-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.pfas-scan-chip { padding: 3px 8px; font-size: var(--fs-xs); font-family: var(--font-mono); cursor: pointer;
+  background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent); border-radius: var(--radius); }
+.pfas-scan-chip:hover { background: var(--accent-text); color: var(--on-accent); }
+.pfas-scan-badge { display: inline-block; padding: 1px 6px; font-size: var(--fs-xs); background: var(--accent-soft);
+  color: var(--accent-text); border-radius: var(--radius-pill); }
+.pfas-scan-badge[hidden] { display: none; }
+
+/* ── Page-level helpers shared by the list pages ───────────────────────── */
+.pfas-muted { color: var(--text-muted); font-size: var(--fs-sm); }
+.pfas-empty { text-align: center; padding: var(--sp-6) var(--sp-5); color: var(--text-muted); }
+.pfas-empty p.pfas-empty-glyph { font-size: var(--fs-2xl); margin: 0 0 var(--sp-2); }
+.pfas-empty .btn { margin-top: var(--sp-3); }
+.form-actions.is-end { justify-content: flex-end; }
+.pfas-modal-box.is-wide { max-width: 780px; max-height: 94vh; }
+.pfas-suggest > input { width: 100%; box-sizing: border-box; margin-bottom: 4px; }
+.pfas-mini-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); margin-top: var(--sp-2); }
+.pfas-mini-table th { background: var(--surface-2); padding: 5px 8px; text-align: left; font-size: var(--fs-xs);
+  text-transform: uppercase; font-weight: var(--fw-heading); }
+.pfas-mini-table td { padding: 3px 4px; border-bottom: 1px solid var(--line); }
+.pfas-mini-table input { width: 100%; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius);
+  font-size: var(--fs-sm); background: var(--surface); color: var(--text); box-sizing: border-box; }
+.pfas-mini-table input.p-qty { width: 72px; }
+.pfas-mini-table input.p-unit { width: 60px; }
+.pfas-row-remove { color: var(--s-danger-dk); background: none; border: 0; cursor: pointer; }
+
+/* ── Small layout helpers used by the Bench pages ──────────────────────── */
+.pfas-seg.is-spaced { margin-bottom: var(--sp-4); }
+.pfas-seg-bar { padding: var(--sp-3) 20px; background: var(--surface); border-bottom: 1px solid var(--line); }   /* a tab strip in the header's tabs slot */
+.pfas-crumb.is-inline { margin-bottom: var(--sp-4); }
+.pfas-mt { margin-top: var(--sp-3); }
+.pfas-intro { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4); margin-bottom: var(--sp-4); }
+.pfas-intro > p { margin: 0; color: var(--text-muted); font-size: var(--fs-base); }
+.pfas-label { display: block; margin-bottom: 4px; font-size: var(--fs-sm); font-weight: var(--fw-strong); }
+.pfas-inline-form { display: inline; margin: 0 5px 0 0; }
+.pfas-center { text-align: center; }
+summary .badge { margin-left: var(--sp-2); }
+.pfas-modal-box.is-md { max-width: 680px; max-height: 92vh; }
+.pfas-form-field.is-narrow { flex: 0 0 120px; }
+.pfas-form-field.is-check { flex: 0 0 auto; justify-content: flex-end; padding-top: 20px; }
+.pfas-form-field.is-spaced { margin-bottom: var(--sp-3); }
+.pfas-check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+/* ── Legacy logbook forms (250-253): what their inline styles said ─────── */
+.lb-original { text-decoration: line-through; color: var(--text-muted); font-weight: var(--fw-body); }
+.lb-original.is-block { max-width: 300px; display: inline-block; }
+.pfas-w-36 { width: 36px; } .pfas-w-80 { width: 80px; } .pfas-w-90 { width: 90px; } .pfas-w-120 { width: 120px; } .pfas-w-140 { width: 140px; }
+.pfas-w-160 { width: 160px; } .pfas-w-220 { width: 220px; }
+.pfas-minw-50 { min-width: 50px; } .pfas-minw-70 { min-width: 70px; } .pfas-minw-80 { min-width: 80px; }
+.pfas-minw-100 { min-width: 100px; } .pfas-minw-110 { min-width: 110px; } .pfas-minw-120 { min-width: 120px; }
+.pfas-maxw-500 { max-width: 500px; }
+.pfas-mt-sm { margin-top: var(--sp-1); }
+.pfas-textarea { width: 100%; min-height: 60px; padding: 8px; font-size: var(--fs-base); box-sizing: border-box;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); }
+.pfas-note-sm { margin-bottom: var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); }
+.pfas-btn-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+.pfas-list-scroll { margin-top: var(--sp-3); max-height: 280px; overflow-y: auto; }
+.pfas-pick { padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: var(--fs-sm); }
+.pfas-pick:hover { background: var(--accent-soft); }
+.pfas-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-3); }
+.pfas-modal-head strong { font-size: var(--fs-md); }
+@media print { .pfas-add-row, .pfas-row-remove { display: none !important; } }
+
+/* ── Controlled documents list: banner, detail row, viewer ─────────────── */
+.alert-warn { background: var(--s-warn-lt); border: 1px solid var(--s-warn-bd); color: var(--s-warn-text); }
+.badge-ok { background: var(--s-success-lt); color: var(--s-success-text); }
+.badge-warn { background: var(--s-warn-lt); color: var(--s-warn-text); }
+.badge-superseded { background: var(--s-warn-lt); color: var(--s-warn-text); }
+.pfas-row-toggle { cursor: pointer; }
+.pfas-table td.pfas-flush { padding: 0; }
+.row-actions.is-wrap { flex-wrap: wrap; }
+.pfas-detail { display: none; padding: var(--sp-4); background: var(--surface-2); border-top: 2px solid var(--accent); }
+.pfas-detail.open { display: block; }
+.pfas-detail [data-tabs] > .pfas-seg { margin-bottom: var(--sp-3); }
+.pfas-viewer { width: 100%; height: calc(100vh - 320px); min-height: 400px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--surface-raised); }
 
 /* ── Theme switch (top bar user menu) ──────────────────────────────────── */
 .pfas-theme-switch { display: inline-flex; align-items: center; gap: var(--sp-2); }

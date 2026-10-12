@@ -36,7 +36,7 @@
                   <tal:cols repeat="col python:field.get('columns', [])">
                     <th tal:content="col/label">Col</th>
                   </tal:cols>
-                  <th style="width:36px"></th>
+                  <th class="pfas-w-36"></th>
                 </tr>
               </thead>
               <tbody tal:attributes="id string:tbody-${fname}"></tbody>
@@ -88,13 +88,13 @@
                 <div class="corr-panel" tal:attributes="id string:cp-${fname}">
                   <label>Original:
                     <span tal:attributes="id string:co-${fname}"
-                          style="text-decoration:line-through;color:#999;font-weight:normal;max-width:300px;display:inline-block;"></span>
+                          class="lb-original is-block"></span>
                   </label>
                   <label>Correction:
                     <input type="text"
                            tal:attributes="id string:cn-${fname};
                                            name string:_newval_${fname}"
-                           style="width:220px;" />
+                           class="pfas-w-220" />
                   </label>
                   <label>Initials:
                     <input type="text"
@@ -214,13 +214,13 @@
                 <div class="corr-panel" tal:attributes="id string:cp-${fname}">
                   <label>Original:
                     <span tal:attributes="id string:co-${fname}"
-                          style="text-decoration:line-through;color:#999;font-weight:normal;"></span>
+                          class="lb-original"></span>
                   </label>
                   <label>Correction:
                     <input tal:attributes="type python:'date' if ftype == 'date' else 'text';
                                            id string:cn-${fname};
                                            name string:_newval_${fname}"
-                           style="width:160px;" />
+                           class="pfas-w-160" />
                   </label>
                   <label>Initials:
                     <input type="text"
@@ -249,14 +249,21 @@
      tal:define="purl python:context.portal_url();
                  here python:request.get('ACTUAL_URL', '');
                  mgr python:context.restrictedTraverse('@@pfas-macros').is_manager_role()">
-  <div class="pfas-tabs">
-    <a tal:condition="mgr" tal:attributes="href string:${purl}/@@pfas-prep-logbooks;
-         class python:'pfas-tab active' if '@@pfas-prep-logbooks' in here else 'pfas-tab'">1 &#183; Templates</a>
-    <a tal:condition="mgr" tal:attributes="href string:${purl}/@@pfas-logbook-admin;
-         class python:'pfas-tab active' if '@@pfas-logbook-admin' in here else 'pfas-tab'">2 &#183; Method sequence</a>
-    <a tal:attributes="href string:${purl}/@@pfas-logbook-batches;
-         class python:'pfas-tab' if ('@@pfas-prep-logbooks' in here or '@@pfas-logbook-admin' in here) else 'pfas-tab active'"
+  <div class="pfas-seg-bar">
+  <nav class="pfas-seg" aria-label="Logbooks"
+       tal:define="prep python:'@@pfas-prep-logbooks' in here;
+                   adm python:'@@pfas-logbook-admin' in here">
+    <a class="pfas-seg-item" tal:condition="mgr"
+       tal:attributes="href string:${purl}/@@pfas-prep-logbooks;
+                       aria-selected python:'true' if prep else 'false'">1 &#183; Templates</a>
+    <a class="pfas-seg-item" tal:condition="mgr"
+       tal:attributes="href string:${purl}/@@pfas-logbook-admin;
+                       aria-selected python:'true' if adm else 'false'">2 &#183; Method sequence</a>
+    <a class="pfas-seg-item"
+       tal:attributes="href string:${purl}/@@pfas-logbook-batches;
+                       aria-selected python:'false' if (prep or adm) else 'true'"
        tal:content="python:mgr and u'3 \u00b7 By batch' or u'By batch'">3 &#183; By batch</a>
+  </nav>
   </div>
   <p class="lb-flow" tal:condition="mgr">
     <strong>Templates</strong> &#8594; a method&#8217;s <strong>sequence</strong> &#8594; filled in <strong>by batch</strong>. <tal:h define="hid string:logbooks"><a metal:use-macro="context/@@pfas-macros/macros/help"></a></tal:h>

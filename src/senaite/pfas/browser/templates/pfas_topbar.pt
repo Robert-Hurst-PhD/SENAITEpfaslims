@@ -65,6 +65,12 @@
               tal:content="mv/user_initials">AN</span></button>
       <div class="dropdown-menu dropdown-menu-right">
         <div class="dropdown-header" tal:content="string:Signed in as ${uname}">Signed in as admin</div>
+        <!-- the dark theme is the person's choice, never the lab's default
+             (decided 2026-10-11): remembered in this browser -->
+        <label class="dropdown-item pfas-switch pfas-theme-switch">
+          <input type="checkbox" data-theme-switch="1" /><span class="pfas-switch-track"></span><span>Dark theme</span>
+        </label>
+        <div class="dropdown-divider"></div>
         <tal:a repeat="a mv/user_actions">
           <div class="dropdown-divider" tal:condition="python:a['id'] == 'logout' and not repeat['a'].start"></div>
           <a tal:attributes="href a/url;

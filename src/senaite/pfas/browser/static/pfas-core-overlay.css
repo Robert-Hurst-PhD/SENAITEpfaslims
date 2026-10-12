@@ -172,7 +172,7 @@ body:not(.pfas-app) .contentstable a { color: var(--s-primary-dk); }
   border-color: var(--s-primary); box-shadow: 0 0 0 .2rem var(--s-focus-ring);
 }
 .btn-outline-primary { color: var(--s-primary-dk); border-color: var(--s-primary); }
-.btn-outline-primary:hover { background: var(--s-primary-dk); border-color: var(--s-primary-dk); color: #fff; }
+.btn-outline-primary:hover { background: var(--s-primary-dk); border-color: var(--s-primary-dk); color: var(--on-accent); }
 .badge-primary, .bg-primary { background: var(--s-primary) !important; }
 .badge-warning { background: var(--s-warn-lt) !important; color: var(--s-warn-text) !important; }
 .text-success { color: var(--s-success-text) !important; }

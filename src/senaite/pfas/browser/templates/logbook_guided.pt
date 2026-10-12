@@ -16,10 +16,10 @@
     .lbg-rail { flex:0 0 240px; position:sticky; top:8px; }
     .lbg-main { flex:1 1 auto; min-width:0; }
     .lbg-stagehead { margin-bottom:14px; }
-    .lbg-badge { display:inline-block; font-size:var(--fs-xs); font-weight:700;
+    .lbg-badge { display:inline-block; font-size:var(--fs-xs); font-weight:var(--fw-heading);
                  text-transform:uppercase; letter-spacing:.05em;
                  color:var(--s-secondary); }
-    .lbg-title { font-size:var(--fs-xl); font-weight:700; margin:3px 0 0; }
+    .lbg-title { font-size:var(--fs-xl); font-weight:var(--fw-heading); margin:3px 0 0; }
     .lbg-split { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
     .lbg-media { flex:3 1 380px; min-width:0; }
     .lbg-side  { flex:2 1 280px; min-width:0; }
@@ -40,10 +40,10 @@
        reach the browser as a numeric entity and print as markup over the
        instruction text. Keep this file ASCII-only inside style blocks. */
     .lbg-instr li:before { content:"\203A"; position:absolute; left:8px; top:6px;
-                           color:var(--s-secondary); font-weight:700; }
+                           color:var(--s-secondary); font-weight:var(--fw-heading); }
     .lbg-card { border:1px solid var(--s-border); border-radius:10px;
                 background:var(--s-bg); padding:14px 16px; margin-bottom:14px; }
-    .lbg-card h3 { font-size:var(--fs-base); font-weight:700; margin:0 0 10px;
+    .lbg-card h3 { font-size:var(--fs-base); font-weight:var(--fw-heading); margin:0 0 10px;
                    text-transform:uppercase; letter-spacing:.03em;
                    color:var(--s-secondary); }
     /* A table field's own <h3> is emitted by the shared macro inside.
@@ -55,11 +55,6 @@
                                padding-bottom:6px; }
     .lbg-nomedia { font-size:var(--fs-sm); color:var(--s-secondary); font-style:italic;
                    padding:26px 0; }
-    .lbg-modeswitch { display:inline-flex; border:1px solid var(--s-border);
-                      border-radius:16px; overflow:hidden; font-size:var(--fs-sm); }
-    .lbg-modeswitch a { padding:4px 13px; text-decoration:none;
-                        color:var(--s-secondary); background:var(--s-bg); }
-    .lbg-modeswitch a.is-on { background:var(--s-primary-dk); color:#fff; font-weight:600; }
     .lbg-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .lbg-actions .spacer { flex:1 1 auto; }
     @media (max-width:900px) {
@@ -74,11 +69,11 @@
          tal:content="view/logbook_title">Logbook</tal:t>
 
   <tal:hr metal:fill-slot="header-right">
-    <span class="lbg-modeswitch">
-      <a class="lbg-seg is-on" tal:attributes="href view/guided_url">Guided</a>
-      <a class="lbg-seg" tal:attributes="href view/concise_url">Concise</a>
-    </span>
-    <a class="btn-sm" style="margin-left:10px"
+    <nav class="pfas-seg pfas-seg-sm" aria-label="Logbook view">
+      <a class="pfas-seg-item lbg-seg" aria-selected="true" tal:attributes="href view/guided_url">Guided</a>
+      <a class="pfas-seg-item lbg-seg" aria-selected="false" tal:attributes="href view/concise_url">Concise</a>
+    </nav>
+    <a class="btn-sm btn-secondary"
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">&#8592; All Logbooks</a>
   </tal:hr>
 
@@ -135,7 +130,7 @@
               <div class="lbg-media-box">
                 <img id="lbg-img" tal:attributes="src murl; alt step/media_alt" />
                 <div class="lbg-replay">
-                  <button type="button" class="btn-sm" id="lbg-replay-btn">&#8635; Replay</button>
+                  <button type="button" class="btn-sm btn-secondary" id="lbg-replay-btn">&#8635; Replay</button>
                 </div>
               </div>
             </div>
@@ -171,14 +166,14 @@
             </tal:signoff>
           </tal:last>
 
-          <div class="lbg-actions" style="margin-top:16px">
-            <a class="btn-sm" tal:condition="view/prev_step_url"
+          <div class="lbg-actions pfas-mt">
+            <a class="btn-sm btn-secondary" tal:condition="view/prev_step_url"
                tal:attributes="href view/prev_step_url">&#8592; Previous</a>
             <span class="spacer"></span>
             <button class="btn-save" type="submit"
                     tal:condition="view/is_last_step">Save &amp; Finish</button>
             <tal:more tal:condition="not:view/is_last_step">
-              <button class="btn-sm" type="submit" name="_stay" value="1">Save</button>
+              <button class="btn-sm btn-secondary" type="submit" name="_stay" value="1">Save</button>
               <button class="btn-save" type="submit" name="_next"
                       tal:attributes="value view/next_step_id">Save &amp; Continue &#8594;</button>
             </tal:more>

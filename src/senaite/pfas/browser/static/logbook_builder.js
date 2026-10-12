@@ -597,8 +597,8 @@
     var box = document.getElementById("fbErrors");
     if (!box) { return; }
     box.textContent = "";
-    if (!errs.length) { box.style.display = "none"; return; }
-    box.style.display = "block";
+    if (!errs.length) { box.hidden = true; return; }
+    box.hidden = false;
     errs.slice(0, 8).forEach(function (e) { box.appendChild(el("div", null, e)); });
   }
 
@@ -654,18 +654,14 @@
     switchTab("fields");
   };
 
+  /* the builder's tabs are the shared segmented control (#fbTabs): select the
+     item (the component switches its pane) and place the pill again, which
+     measured zero while the modal was closed */
   function switchTab(name) {
-    var tabs = document.querySelectorAll(".fb-tab");
-    var panes = document.querySelectorAll(".fb-pane");
-    var i;
-    for (i = 0; i < tabs.length; i++) {
-      tabs[i].className = "fb-tab" +
-        (tabs[i].getAttribute("data-fbtab") === name ? " is-active" : "");
-    }
-    for (i = 0; i < panes.length; i++) {
-      panes[i].className = "fb-pane" +
-        (panes[i].getAttribute("data-fbpane") === name ? " is-active" : "");
-    }
+    var seg = document.getElementById("fbTabs");
+    var item = seg ? seg.querySelector('[data-pane="fb-pane-' + name + '"]') : null;
+    if (item) { item.click(); }
+    if (seg && window.PFAS && window.PFAS.components) { window.PFAS.components.placePill(seg); }
   }
 
   function init() {
@@ -734,12 +730,6 @@
         }
       });
     }
-    document.addEventListener("click", function (ev) {
-      var t = ev.target;
-      if (t && t.className && String(t.className).indexOf("fb-tab") === 0) {
-        switchTab(t.getAttribute("data-fbtab"));
-      }
-    });
   }
 
   if (document.readyState === "loading") {

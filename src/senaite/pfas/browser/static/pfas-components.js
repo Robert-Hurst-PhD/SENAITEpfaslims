@@ -7,6 +7,7 @@
  *   - .pfas-fab: open / close, scrim and Escape
  *   - .pfas-drawer: open(html) / close, scrim and Escape, #hash deep link hook
  *   - .pfas-tree[data-view]: "path" hides rows marked is-off-path
+ *   - form[data-autosubmit]: a filter bar that submits when any field changes
  * Nothing cycles on its own; motion is CSS and honours reduced motion.
  */
 (function () {
@@ -147,6 +148,14 @@
     var segs = root.querySelectorAll(".pfas-seg"); for (var i = 0; i < segs.length; i++) { initSeg(segs[i]); }
     var fabs = root.querySelectorAll(".pfas-fab"); for (var f = 0; f < fabs.length; f++) { initFab(fabs[f]); }
     var trees = root.querySelectorAll(".pfas-tree"); for (var t = 0; t < trees.length; t++) { initTree(trees[t]); }
+    var forms = root.querySelectorAll("form[data-autosubmit]");   /* a filter bar: applies on change */
+    for (var a = 0; a < forms.length; a++) {
+      (function (form) {
+        if (form.__pfas) { return; }
+        form.__pfas = true;
+        form.addEventListener("change", function () { form.submit(); });
+      })(forms[a]);
+    }
     var switches = root.querySelectorAll("[data-theme-switch]");
     for (var s = 0; s < switches.length; s++) {
       (function (el) {

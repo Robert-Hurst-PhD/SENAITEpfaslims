@@ -9,17 +9,6 @@
   <style>
     /* ── Layout ─────────────────────────────────────────────── */
     .dev-page { padding: 0 0 40px; }   /* gutter comes from .pfas-content-area */
-    .dev-filter-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px;
-                      align-items:center; }
-    .dev-filter-btn { padding:5px 14px; border-radius:20px; font-size:var(--fs-sm);
-                      border:1px solid var(--s-border); background:#fff;
-                      cursor:pointer; color:var(--s-body); text-decoration:none; }
-    .dev-filter-btn:hover { background:var(--s-primary-lt); }
-    .dev-filter-btn.active { background:var(--s-primary-dk); color:#fff;
-                              border-color:var(--s-primary); }
-    .dev-filter-sep { width:1px; height:20px; background:var(--s-border);
-                      margin:0 4px; }
-    /* ── List table ─────────────────────────────────────────── */
     .dev-empty { text-align:center; padding:40px; color:var(--s-secondary);
                  font-size:var(--fs-base); }
     /* ── Badges (page-specific — base .badge is global) ─────── */
@@ -28,102 +17,105 @@
     .badge-open       { background:var(--s-warn-lt); color:var(--s-warn-text); }
     .badge-in_progress{ background:var(--s-info-lt); color:var(--s-info-text); }
     .badge-closed     { background:var(--s-success-lt); color:var(--s-success-text); }
+    /* the risk scale, from the site's tokens: mint low, amber, a mix of the two flags, coral high */
     .risk-green  { background:var(--s-success-lt); color:var(--s-success-text); }
     .risk-yellow { background:var(--s-warn-lt); color:var(--s-warn-text); }
-    .risk-orange { background:#ffe8d6; color:#743e12; }
+    .risk-orange { background:color-mix(in srgb, var(--s-warn-lt), var(--s-danger-lt)); color:var(--s-danger-dk); }
     .risk-red    { background:var(--s-danger-lt); color:var(--s-danger-dk); }
     /* ── Detail view ────────────────────────────────────────── */
-    .dev-breadcrumb { font-size:var(--fs-sm); color:var(--s-secondary);
-                      margin-bottom:14px; }
-    .dev-breadcrumb a { color: var(--s-primary-dk); text-decoration:none; }
     .dev-detail-header { display:flex; align-items:center; gap:10px;
                          margin-bottom:18px; flex-wrap:wrap; }
-    .dev-detail-id { font-size:var(--fs-xl); font-weight:700; color:var(--s-body); }
+    .dev-detail-id { font-size:var(--fs-xl); font-weight:var(--fw-heading); color:var(--s-body); }
     .dev-filed-meta { font-size:var(--fs-sm); color:var(--s-secondary); margin-left:auto; }
-    /* ── Tabs ────────────────────────────────────────────────── */
-    .dev-tabs { display:flex; gap:0; border-bottom:2px solid var(--s-border);
-                margin-bottom:20px; }
-    .dev-tab { padding:9px 18px; font-size:var(--fs-base); font-weight:600; cursor:pointer;
-               text-decoration:none; color:var(--s-secondary);
-               border-bottom:2px solid transparent; margin-bottom:-2px; }
-    .dev-tab:hover { color: var(--s-primary-dk); }
-    .dev-tab.active { color: var(--s-primary-dk);
-                      border-bottom-color:var(--s-primary); }
+    .dev-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; }
+    .dev-grid-2.is-tight { gap:16px; align-items:stretch; }
     /* ── Tab content ─────────────────────────────────────────── */
-    .dev-section-label { font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
+    .dev-section-label { font-size:var(--fs-xs); font-weight:var(--fw-heading); text-transform:uppercase;
                          letter-spacing:.08em; color:var(--s-secondary);
                          margin-bottom:4px; margin-top:16px; }
     .dev-section-value { font-size:var(--fs-base); color:var(--s-body);
                          margin-bottom:12px; white-space:pre-wrap; }
     .dev-form-group { margin-bottom:14px; }
-    .dev-form-group label { display:block; font-size:var(--fs-sm); font-weight:600;
+    .dev-form-group label { display:block; font-size:var(--fs-sm); font-weight:var(--fw-strong);
                             color:var(--s-secondary); margin-bottom:4px; }
     .dev-form-group input, .dev-form-group textarea, .dev-form-group select {
       width:100%; padding:7px 10px; border:1px solid var(--s-input-border);
       border-radius:4px; font-size:var(--fs-base); color:var(--s-input-text);
-      background:#fafafa; box-sizing:border-box; }
+      background:var(--surface); box-sizing:border-box; }
     .dev-form-group input:focus, .dev-form-group textarea:focus,
     .dev-form-group select:focus { outline:none; border-color:var(--s-primary);
                                    box-shadow:0 0 0 3px var(--s-focus-ring); }
     .dev-form-group textarea { min-height:80px; resize:vertical; }
+    .dev-form-group label .pfas-aux { font-weight:var(--fw-body); }
+    .dev-ws-row { display:flex; gap:8px; margin-bottom:8px; align-items:flex-end; }
+    .dev-ws-cell { flex:1; }
+    .dev-mini-label { font-size:var(--fs-xs); color:var(--s-secondary); margin-bottom:3px; }
+    .dev-ws-results { margin-bottom:8px; font-size:var(--fs-sm); }
+    .dev-ws-results .is-error { color:var(--s-danger-dk); }
+    .dev-ws-results .is-muted { color:var(--s-secondary); }
+    .dev-ws-count { color:var(--s-secondary); margin-bottom:4px; }
+    .dev-ws-list { max-height:160px; overflow-y:auto; border:1px solid var(--s-border);
+                   border-radius:4px; padding:6px 8px; }
+    .dev-ws-list label { display:block; padding:2px 0; cursor:pointer; font-weight:var(--fw-body); }
+    .dev-ws-list code { font-size:var(--fs-sm); }
     /* ── Risk matrix ─────────────────────────────────────────── */
     .risk-matrix-wrap { overflow-x:auto; margin:16px 0; }
     .risk-matrix { border-collapse:collapse; }
     .risk-matrix td, .risk-matrix th {
       width:56px; height:44px; text-align:center; font-size:var(--fs-sm);
-      border:1px solid #fff; cursor:default; }
-    .risk-matrix .rm-axis { background:var(--s-light); font-size:var(--fs-xs); font-weight:700;
+      border:1px solid var(--surface); cursor:default; }
+    .risk-matrix .rm-axis { background:var(--s-light); font-size:var(--fs-xs); font-weight:var(--fw-heading);
                              color:var(--s-secondary); cursor:default; }
-    .rm-cell { font-weight:700; transition:outline .1s; }
+    .rm-sub { font-weight:var(--fw-body); font-size:var(--fs-xs); }
+    .rm-cell { font-weight:var(--fw-heading); transition:outline .1s; }
     .rm-cell.clickable { cursor:pointer; }
-    .rm-cell.clickable:hover { outline:3px solid #333; outline-offset:-2px; }
-    .rm-cell.rm-selected { outline:3px solid #333; outline-offset:-2px; }
-    .rm-cell.risk-green  { background:var(--s-success); color:#fff; }
-    .rm-cell.risk-yellow { background:var(--s-warning); color:#333; }
-    .rm-cell.risk-orange { background:var(--s-warning); color:#fff; }
-    .rm-cell.risk-red    { background:var(--s-danger); color:#fff; }
+    .rm-cell.clickable:hover { outline:3px solid var(--text); outline-offset:-2px; }
+    .rm-cell.rm-selected { outline:3px solid var(--text); outline-offset:-2px; }
+    .rm-cell.risk-green  { background:var(--s-success); color:var(--on-accent); }
+    .rm-cell.risk-yellow { background:var(--s-warning); color:var(--s-dark); }
+    .rm-cell.risk-orange { background:color-mix(in srgb, var(--s-warning), var(--s-danger)); color:var(--on-accent); }
+    .rm-cell.risk-red    { background:var(--s-danger); color:var(--on-accent); }
     .risk-score-display { display:inline-block; padding:5px 14px; border-radius:6px;
-                          font-weight:700; font-size:var(--fs-base); margin-top:8px; }
+                          font-weight:var(--fw-heading); font-size:var(--fs-base); margin-top:8px; }
+    .risk-score-display[hidden] { display:none; }
     /* ── Corrective actions ──────────────────────────────────── */
     .ca-card { border:1px solid var(--s-border); border-radius:6px;
                padding:14px 16px; margin-bottom:12px; }
     .ca-card-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-    .ca-type-label { font-size:var(--fs-xs); font-weight:700; text-transform:uppercase;
+    .ca-type-label { font-size:var(--fs-xs); font-weight:var(--fw-heading); text-transform:uppercase;
                      letter-spacing:.06em; padding:2px 8px; border-radius:10px; }
     .ca-sop_revision  { background:var(--s-info-lt); color:var(--s-info-text); }
     .ca-training      { background:var(--s-light); color:var(--s-dark); }
     .ca-notification  { background:var(--s-warn-lt); color:var(--s-warn-text); }
+    .ca-desc { font-size:var(--fs-base); color:var(--s-body); margin-bottom:10px; }
+    .ca-meta { font-size:var(--fs-sm); color:var(--s-secondary); margin-bottom:8px; }
+    .ca-note-box { font-size:var(--fs-sm); color:var(--s-secondary); background:var(--s-light);
+                   padding:8px; border-radius:4px; white-space:pre-wrap; margin-bottom:8px; }
+    .ca-actions { display:flex; gap:8px; align-items:center; }
     .ca-ack-list { margin:8px 0; font-size:var(--fs-sm); }
+    .ca-ack-title { font-size:var(--fs-xs); font-weight:var(--fw-heading); color:var(--s-secondary);
+                    text-transform:uppercase; margin-bottom:4px; }
     .ca-ack-item { display:flex; align-items:center; gap:6px; padding:2px 0; }
-    .ca-ack-check { color: var(--s-success-text); font-weight:700; }
+    .ca-ack-check { color: var(--s-success-text); font-weight:var(--fw-heading); }
     .ca-ack-pend  { color:var(--s-secondary); }
+    .ca-icon { display:inline-block; vertical-align:-2px; margin-right:4px; }
     /* ── Add CA form ─────────────────────────────────────────── */
     .ca-add-section { border:1px dashed var(--s-border); border-radius:6px;
                       padding:16px; margin-top:16px; }
+    .ca-add-title { font-size:var(--fs-base); font-weight:var(--fw-heading); color:var(--s-body); margin-bottom:12px; }
     .ca-type-options { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
     .ca-type-opt { padding:6px 14px; border:1px solid var(--s-border);
                    border-radius:20px; font-size:var(--fs-sm); cursor:pointer;
-                   background:#fff; color:var(--s-body); }
-    .ca-type-opt.selected { background:var(--s-primary-dk); color:#fff;
+                   background:var(--surface); color:var(--s-body); }
+    .ca-type-opt.selected { background:var(--s-primary-dk); color:var(--on-accent);
                             border-color:var(--s-primary); }
-    /* ── Modal ───────────────────────────────────────────────── */
-    .dev-modal-overlay { display:none; position:fixed; inset:0;
-                         background:rgba(0,0,0,.5); z-index:1000;
-                         align-items:center; justify-content:center; }
-    .dev-modal-overlay.open { display:flex; }
-    .dev-modal { background:#fff; border-radius:8px; padding:24px;
-                 max-width:640px; width:100%; max-height:90vh;
-                 overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,.18); }
-    .dev-modal-title { font-size:var(--fs-lg); font-weight:700; margin-bottom:16px;
-                       color:var(--s-body); }
-    .dev-modal-footer { display:flex; justify-content:flex-end; gap:8px;
-                        margin-top:16px; padding-top:16px;
-                        border-top:1px solid var(--s-border); }
     /* ── Closure ─────────────────────────────────────────────── */
+    .closure-title { font-size:var(--fs-base); font-weight:var(--fw-heading); color:var(--s-body); margin-bottom:10px; }
     .closure-check { display:flex; align-items:center; gap:8px; font-size:var(--fs-base);
                      padding:6px 0; }
     .closure-check .icon-ok  { color: var(--s-success-text); font-size:var(--fs-lg); }
     .closure-check .icon-nok { color: var(--s-danger-dk); font-size:var(--fs-lg); }
+    .closure-note { margin-left:10px; font-size:var(--fs-sm); color:var(--s-danger-dk); }
   </style>
   </metal:extra>
 </head>
@@ -133,9 +125,9 @@
 
 <tal:hr metal:fill-slot="header-right">
   <tal:mgr tal:condition="view/can_edit">
-    <button class="btn-sm btn-primary" style="margin-right:6px"
+    <button type="button" class="btn-sm btn-primary"
             onclick="openDevModal('deviation')">+ New Deviation</button>
-    <button class="btn-sm btn-secondary"
+    <button type="button" class="btn-sm btn-secondary"
             onclick="openDevModal('car')">+ New CAR</button>
   </tal:mgr>
 </tal:hr>
@@ -157,9 +149,11 @@
 
     <tal:found tal:condition="dev">
       <!-- Breadcrumb -->
-      <div class="dev-breadcrumb">
+      <nav class="pfas-crumb is-inline" aria-label="Record">
         <a class="btn-sm btn-secondary btn-back" tal:attributes="href string:${view/portal_url}/@@pfas-deviations">Deviations &amp; CARs</a>
-      </div>
+        <span class="pfas-crumb-sep">&#8250;</span>
+        <span class="pfas-crumb-here" tal:content="dev/dev_id">DEV-001</span>
+      </nav>
 
       <!-- Record header -->
       <div class="dev-detail-header">
@@ -181,40 +175,40 @@
         </span>
       </div>
 
-      <!-- Tabs -->
-      <div class="dev-tabs">
-        <a class="dev-tab"
-           tal:attributes="class python:'dev-tab active' if view.active_tab() == 'overview' else 'dev-tab';
+      <!-- Tabs: the shared segmented control in links mode -->
+      <nav class="pfas-seg pfas-seg-strip is-spaced" aria-label="Record sections">
+        <a class="pfas-seg-item"
+           tal:attributes="aria-selected python:'true' if view.active_tab() == 'overview' else 'false';
                            href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}&amp;tab=overview">
           Overview
         </a>
-        <a class="dev-tab"
-           tal:attributes="class python:'dev-tab active' if view.active_tab() == 'rootcause' else 'dev-tab';
+        <a class="pfas-seg-item"
+           tal:attributes="aria-selected python:'true' if view.active_tab() == 'rootcause' else 'false';
                            href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}&amp;tab=rootcause">
           Scale &amp; Root Cause
         </a>
-        <a class="dev-tab"
-           tal:attributes="class python:'dev-tab active' if view.active_tab() == 'actions' else 'dev-tab';
+        <a class="pfas-seg-item"
+           tal:attributes="aria-selected python:'true' if view.active_tab() == 'actions' else 'false';
                            href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}&amp;tab=actions">
           Corrective Actions
           <tal:pending tal:condition="python:dev.get('corrective_actions')">
             <tal:count tal:define="nc python:sum(1 for ca in dev.get('corrective_actions',[]) if ca.get('status') != 'complete')">
               <tal:show tal:condition="nc">
-                (<tal:v tal:replace="nc"/> pending)
+                <span class="pfas-seg-count">(<tal:v tal:replace="nc"/> pending)</span>
               </tal:show>
             </tal:count>
           </tal:pending>
         </a>
-        <a class="dev-tab"
-           tal:attributes="class python:'dev-tab active' if view.active_tab() == 'closure' else 'dev-tab';
+        <a class="pfas-seg-item"
+           tal:attributes="aria-selected python:'true' if view.active_tab() == 'closure' else 'false';
                            href string:${view/portal_url}/@@pfas-deviations?dev_id=${dev/dev_id}&amp;tab=closure">
           Closure
         </a>
-      </div>
+      </nav>
 
       <!-- ── Tab: Overview ──────────────────────────────────── -->
       <tal:tab_overview tal:condition="python:view.active_tab() == 'overview'">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">
+        <div class="dev-grid-2">
           <div>
             <div class="dev-section-label">Event Type</div>
             <div class="dev-section-value" tal:content="dev/event_label"/>
@@ -235,7 +229,7 @@
             <div class="risk-matrix-wrap">
               <table class="risk-matrix">
                 <tr>
-                  <td class="rm-axis" style="font-size:var(--fs-xs)">L\S</td>
+                  <td class="rm-axis">L\S</td>
                   <td class="rm-axis">S=1</td>
                   <td class="rm-axis">S=2</td>
                   <td class="rm-axis">S=3</td>
@@ -286,7 +280,7 @@
               <div class="risk-matrix-wrap">
                 <table class="risk-matrix" id="detail-risk-matrix">
                   <tr>
-                    <td class="rm-axis" style="font-size:var(--fs-xs)">L\S</td>
+                    <td class="rm-axis">L\S</td>
                     <td class="rm-axis">S=1</td><td class="rm-axis">S=2</td>
                     <td class="rm-axis">S=3</td><td class="rm-axis">S=4</td>
                     <td class="rm-axis">S=5</td>
@@ -316,7 +310,7 @@
               </div>
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="dev-grid-2 is-tight">
               <div class="dev-form-group">
                 <label>Affected date from</label>
                 <input type="date" name="affected_date_from" id="ws_date_from"
@@ -331,12 +325,10 @@
             <div class="dev-form-group">
               <label>Affected worksheets</label>
               <!-- Method selector drives the worksheet lookup (not a saved field) -->
-              <div style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-end">
-                <div style="flex:1">
-                  <div style="font-size:var(--fs-xs);color:#888;margin-bottom:3px">Method</div>
-                  <select id="ws_lookup_method"
-                          style="width:100%;padding:5px 8px;border:1px solid #ccc;
-                                 border-radius:4px;font-size:var(--fs-base)">
+              <div class="dev-ws-row">
+                <div class="dev-ws-cell">
+                  <div class="dev-mini-label">Method</div>
+                  <select id="ws_lookup_method">
                     <option value="">&#8212; select method &#8212;</option>
                     <tal:m tal:repeat="m view/available_methods">
                       <option tal:attributes="value m/id"
@@ -345,12 +337,12 @@
                   </select>
                 </div>
                 <button type="button" id="ws_find_btn" onclick="findWorksheets()"
-                        class="btn-sm btn-secondary" style="white-space:nowrap">
+                        class="btn-sm btn-secondary">
                   Find Worksheets
                 </button>
               </div>
               <!-- Results rendered by JS -->
-              <div id="ws_results" style="margin-bottom:8px;font-size:var(--fs-sm)"></div>
+              <div id="ws_results" class="dev-ws-results"></div>
               <!-- Actual saved field — auto-populated from checklist or manual -->
               <textarea name="affected_worksheets" id="ws_textarea" rows="2"
                         placeholder="IDs appear here automatically, or enter manually..."
@@ -358,7 +350,7 @@
             </div>
             <div class="dev-form-group">
               <label>Scale description
-                <span style="font-weight:400;color:#888">(extent of affected data)</span>
+                <span class="pfas-aux">(extent of affected data)</span>
               </label>
               <textarea name="scale_description" rows="3"
                         tal:content="dev/scale_description"/>
@@ -377,7 +369,7 @@
           <div class="dev-section-label">Affected Worksheets</div>
           <div class="dev-section-value">
             <tal:none tal:condition="python:not dev.get('affected_worksheets')">
-              <em style="color:#aaa">None recorded</em>
+              <em class="pfas-muted">None recorded</em>
             </tal:none>
             <tal:ws tal:condition="python:bool(dev.get('affected_worksheets'))">
               <tal:row tal:repeat="ws dev/affected_worksheets">
@@ -418,13 +410,12 @@
                 <tal:v tal:replace="python:'Complete' if castatus == 'complete' else 'Pending'"/>
               </span>
             </div>
-            <div style="font-size:var(--fs-base);color:var(--s-body);margin-bottom:10px"
-                 tal:content="ca/description"/>
+            <div class="ca-desc" tal:content="ca/description"/>
 
             <!-- SOP Revision CA -->
             <tal:ca_sop tal:condition="python:ca.get('type') == 'sop_revision'">
               <tal:sop_id tal:condition="ca/sop_id">
-                <div style="font-size:var(--fs-sm);color:#666;margin-bottom:8px">
+                <div class="ca-meta">
                   SOP: <strong tal:content="ca/sop_id"/>
                   <tal:rev tal:condition="ca/new_rev_num">
                     — Rev <tal:v tal:replace="ca/new_rev_num"/>
@@ -432,7 +423,7 @@
                 </div>
               </tal:sop_id>
               <tal:complete_btn tal:condition="python:ca.get('status') != 'complete' and view.can_manage() and dev.get('status') != 'closed'">
-                <form method="post" style="display:inline"
+                <form method="post" class="pfas-inline-form"
                       tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
                   <input type="hidden" name="action" value="complete_ca"/>
                   <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
@@ -445,8 +436,7 @@
             <!-- Training CA -->
             <tal:ca_training tal:condition="python:ca.get('type') == 'training'">
               <div class="ca-ack-list">
-                <div style="font-size:var(--fs-xs);font-weight:700;color:#888;
-                            text-transform:uppercase;margin-bottom:4px">
+                <div class="ca-ack-title">
                   Required Acknowledgments
                 </div>
                 <tal:req_users tal:repeat="uid ca/required_users">
@@ -459,7 +449,7 @@
                     </span>
                     <span tal:content="uid"/>
                     <tal:acked tal:condition="is_acked">
-                      <span style="color:#aaa;font-size:var(--fs-xs)">
+                      <span class="pfas-aux">
                         (<tal:v tal:replace="python:acks[uid].get('acked_at','')[:10]"/>)
                       </span>
                     </tal:acked>
@@ -485,7 +475,7 @@
               </tal:ack_btn>
               <!-- Manager complete override -->
               <tal:mgr_complete tal:condition="python:ca.get('status') != 'complete' and view.can_manage() and dev.get('status') != 'closed'">
-                <form method="post" style="display:inline;margin-left:8px"
+                <form method="post" class="pfas-inline-form"
                       tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
                   <input type="hidden" name="action" value="complete_ca"/>
                   <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
@@ -497,7 +487,7 @@
 
             <!-- Notification CA -->
             <tal:ca_notif tal:condition="python:ca.get('type') == 'notification'">
-              <div style="font-size:var(--fs-sm);margin-bottom:8px">
+              <div class="ca-meta">
                 <strong>Subtype:</strong>
                 <span tal:replace="python:'Retest Offer' if ca.get('subtype') == 'retest' else 'Impact Notification'"/>
                 &nbsp;&bull;&nbsp;
@@ -507,12 +497,10 @@
                 </tal:ws>
               </div>
               <tal:notif_text tal:condition="ca/notification_text">
-                <div style="font-size:var(--fs-sm);color:#555;background:#f8f8f8;
-                            padding:8px;border-radius:4px;white-space:pre-wrap;
-                            margin-bottom:8px"
+                <div class="ca-note-box"
                      tal:content="ca/notification_text"/>
               </tal:notif_text>
-              <div style="display:flex;gap:8px;align-items:center">
+              <div class="ca-actions">
                 <!-- View/print notification letter -->
                 <a target="_blank"
                    tal:attributes="href string:${view/portal_url}/@@pfas-deviations?action=generate_notification&dev_id=${dev/dev_id}&ca_id=${ca/ca_id}"
@@ -520,7 +508,7 @@
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                        stroke="currentColor" stroke-width="2"
                        stroke-linecap="round" stroke-linejoin="round"
-                       style="display:inline-block;vertical-align:-2px;margin-right:4px"
+                       class="ca-icon"
                        aria-hidden="true">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
@@ -532,7 +520,7 @@
                 </a>
                 <!-- Mark sent button -->
                 <tal:mark_sent tal:condition="python:ca.get('status') != 'complete' and view.can_manage() and dev.get('status') != 'closed'">
-                  <form method="post" style="display:inline"
+                  <form method="post" class="pfas-inline-form"
                         tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
                     <input type="hidden" name="action" value="mark_notification_sent"/>
                     <input type="hidden" name="dev_id" tal:attributes="value dev/dev_id"/>
@@ -543,7 +531,7 @@
                   </form>
                 </tal:mark_sent>
                 <tal:sent_at tal:condition="ca/sent_at">
-                  <span style="font-size:var(--fs-xs);color:#888">
+                  <span class="pfas-aux">
                     Sent <tal:v tal:replace="python:ca.get('sent_at','')[:10]"/>
                   </span>
                 </tal:sent_at>
@@ -551,7 +539,7 @@
             </tal:ca_notif>
 
             <tal:completed_info tal:condition="python:ca.get('completed_at')">
-              <div style="font-size:var(--fs-xs);color:#aaa;margin-top:8px">
+              <div class="pfas-aux">
                 Completed <tal:v tal:replace="python:ca.get('completed_at','')[:10]"/>
                 by <tal:v tal:replace="python:ca.get('completed_by','')"/>
               </div>
@@ -562,8 +550,7 @@
         <!-- Add CA form (manager, non-closed) -->
         <tal:add_ca_section tal:condition="python:view.can_manage() and dev.get('status') != 'closed'">
           <div class="ca-add-section">
-            <div style="font-size:var(--fs-base);font-weight:700;color:var(--s-body);
-                        margin-bottom:12px">+ Add Corrective Action</div>
+            <div class="ca-add-title">+ Add Corrective Action</div>
             <form method="post" id="add-ca-form"
                   tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
               <input type="hidden" name="action" value="add_corrective_action"/>
@@ -599,10 +586,10 @@
               </div>
 
               <!-- Training fields -->
-              <div id="ca-fields-training" style="display:none">
+              <div id="ca-fields-training" hidden="hidden">
                 <div class="dev-form-group">
                   <label>Required users
-                    <span style="font-weight:400;color:#888">(comma-separated user IDs)</span>
+                    <span class="pfas-aux">(comma-separated user IDs)</span>
                   </label>
                   <input type="text" name="ca_required_users"
                          placeholder="e.g. jsmith, bjones"/>
@@ -610,7 +597,7 @@
               </div>
 
               <!-- Notification fields -->
-              <div id="ca-fields-notification" style="display:none">
+              <div id="ca-fields-notification" hidden="hidden">
                 <div class="dev-form-group">
                   <label>Notification type</label>
                   <select name="ca_subtype">
@@ -620,7 +607,7 @@
                 </div>
                 <div class="dev-form-group">
                   <label>Affected worksheets
-                    <span style="font-weight:400;color:#888">(comma-separated)</span>
+                    <span class="pfas-aux">(comma-separated)</span>
                   </label>
                   <input type="text" name="ca_affected_ws"
                          tal:attributes="value python:', '.join(dev.get('affected_worksheets',[]))"/>
@@ -654,9 +641,8 @@
 
         <tal:not_closed tal:condition="python:dev.get('status') != 'closed'">
           <!-- CA completion checklist -->
-          <div style="margin-bottom:20px">
-            <div style="font-size:var(--fs-base);font-weight:700;color:var(--s-body);
-                        margin-bottom:10px">Corrective Action Status</div>
+          <div class="pfas-mt">
+            <div class="closure-title">Corrective Action Status</div>
             <tal:no_cas tal:condition="python:not dev.get('corrective_actions')">
               <div class="closure-check">
                 <span class="icon-nok">&#10007;</span>
@@ -670,7 +656,7 @@
                   <tal:n tal:condition="python:ca.get('status') != 'complete'">&#10007;</tal:n>
                 </span>
                 <span tal:content="python:ca.get('type','').replace('_',' ').title()"/>:
-                <span style="color:#666" tal:content="ca/description"/>
+                <span class="pfas-muted" tal:content="ca/description"/>
               </div>
             </tal:cas>
           </div>
@@ -691,7 +677,7 @@
                 Close <tal:v tal:replace="python:dev.get('type','').upper()"/> (QAO Sign-off)
               </button>
               <tal:pending_msg tal:condition="python:not dev.get('all_cas_complete')">
-                <span style="font-size:var(--fs-sm);color: var(--s-danger-dk);margin-left:10px">
+                <span class="closure-note">
                   All corrective actions must be complete before closure.
                 </span>
               </tal:pending_msg>
@@ -711,40 +697,36 @@
   <!-- ══ LIST VIEW ════════════════════════════════════════════════════════ -->
   <tal:listview tal:condition="python:not view.is_detail_view()">
 
-    <!-- Filter bar -->
-    <div class="dev-filter-bar">
-      <a class="dev-filter-btn"
-         tal:attributes="class python:'dev-filter-btn active' if (not view.filter_type() and not view.filter_status()) else 'dev-filter-btn';
-                         href string:${view/portal_url}/@@pfas-deviations">
-        All
-      </a>
-      <span class="dev-filter-sep"></span>
-      <a class="dev-filter-btn"
-         tal:attributes="class python:'dev-filter-btn active' if view.filter_status() == 'open' else 'dev-filter-btn';
-                         href string:${view/portal_url}/@@pfas-deviations?filter_status=open">
-        Open
-      </a>
-      <a class="dev-filter-btn"
-         tal:attributes="class python:'dev-filter-btn active' if view.filter_status() == 'in_progress' else 'dev-filter-btn';
-                         href string:${view/portal_url}/@@pfas-deviations?filter_status=in_progress">
-        In Progress
-      </a>
-      <a class="dev-filter-btn"
-         tal:attributes="class python:'dev-filter-btn active' if view.filter_status() == 'closed' else 'dev-filter-btn';
-                         href string:${view/portal_url}/@@pfas-deviations?filter_status=closed">
-        Closed
-      </a>
-      <span class="dev-filter-sep"></span>
-      <a class="dev-filter-btn"
-         tal:attributes="class python:'dev-filter-btn active' if view.filter_type() == 'deviation' else 'dev-filter-btn';
-                         href string:${view/portal_url}/@@pfas-deviations?filter_type=deviation">
-        Deviations Only
-      </a>
-      <a class="dev-filter-btn"
-         tal:attributes="class python:'dev-filter-btn active' if view.filter_type() == 'car' else 'dev-filter-btn';
-                         href string:${view/portal_url}/@@pfas-deviations?filter_type=car">
-        CARs Only
-      </a>
+    <!-- Filters: status and type as segmented links -->
+    <div class="pfas-filterbar">
+      <div class="pfas-field">
+        <span>Status</span>
+        <nav class="pfas-seg" aria-label="Status">
+          <a class="pfas-seg-item"
+             tal:attributes="aria-selected python:'true' if (not view.filter_type() and not view.filter_status()) else 'false';
+                             href string:${view/portal_url}/@@pfas-deviations">All</a>
+          <a class="pfas-seg-item"
+             tal:attributes="aria-selected python:'true' if view.filter_status() == 'open' else 'false';
+                             href string:${view/portal_url}/@@pfas-deviations?filter_status=open">Open</a>
+          <a class="pfas-seg-item"
+             tal:attributes="aria-selected python:'true' if view.filter_status() == 'in_progress' else 'false';
+                             href string:${view/portal_url}/@@pfas-deviations?filter_status=in_progress">In Progress</a>
+          <a class="pfas-seg-item"
+             tal:attributes="aria-selected python:'true' if view.filter_status() == 'closed' else 'false';
+                             href string:${view/portal_url}/@@pfas-deviations?filter_status=closed">Closed</a>
+        </nav>
+      </div>
+      <div class="pfas-field">
+        <span>Type</span>
+        <nav class="pfas-seg" aria-label="Type">
+          <a class="pfas-seg-item"
+             tal:attributes="aria-selected python:'true' if view.filter_type() == 'deviation' else 'false';
+                             href string:${view/portal_url}/@@pfas-deviations?filter_type=deviation">Deviations Only</a>
+          <a class="pfas-seg-item"
+             tal:attributes="aria-selected python:'true' if view.filter_type() == 'car' else 'false';
+                             href string:${view/portal_url}/@@pfas-deviations?filter_type=car">CARs Only</a>
+        </nav>
+      </div>
     </div>
 
     <!-- List table -->
@@ -771,7 +753,7 @@
           <tbody>
             <tal:row tal:repeat="dev devs">
               <tr>
-                <td style="font-weight:700;font-family: var(--font-mono)"
+                <td class="pfas-cell-name"
                     tal:content="dev/dev_id"/>
                 <td>
                   <span tal:define="dtype dev/type"
@@ -779,7 +761,7 @@
                     <tal:v tal:replace="python:dtype.upper()"/>
                   </span>
                 </td>
-                <td style="color:#888;font-size:var(--fs-sm)"
+                <td class="pfas-muted"
                     tal:content="dev/filed_at"/>
                 <td tal:content="dev/event_label"/>
                 <td>
@@ -790,12 +772,12 @@
                 </td>
                 <td>
                   <tal:pending tal:condition="python:dev.get('ca_pending', 0) > 0">
-                    <span style="color:var(--s-warn-text)">
+                    <span class="exp-warning">
                       <tal:v tal:replace="dev/ca_pending"/> / <tal:v tal:replace="dev/ca_count"/>
                     </span>
                   </tal:pending>
                   <tal:done tal:condition="python:dev.get('ca_pending', 0) == 0">
-                    <span style="color:#888">
+                    <span class="pfas-muted">
                       <tal:v tal:replace="dev/ca_count"/> total
                     </span>
                   </tal:done>
@@ -826,9 +808,9 @@
 
 <!-- ══ New Deviation/CAR modal ══════════════════════════════════════════ -->
 <metal:extra metal:fill-slot="body-extra">
-<div class="dev-modal-overlay" id="new-dev-modal">
-  <div class="dev-modal">
-    <div class="dev-modal-title" id="new-dev-modal-title">File New Deviation</div>
+<div class="pfas-modal" id="new-dev-modal">
+  <div class="pfas-modal-box">
+    <h2 id="new-dev-modal-title">File New Deviation</h2>
     <form method="post"
           tal:attributes="action string:${view/portal_url}/@@pfas-deviations">
       <input type="hidden" name="action" value="file_deviation"/>
@@ -862,18 +844,18 @@
         <div class="risk-matrix-wrap">
           <table class="risk-matrix" id="new-dev-risk-matrix">
             <tr>
-              <td class="rm-axis" style="font-size:var(--fs-xs)">L\S</td>
-              <td class="rm-axis">S=1<br/><span style="font-weight:400;font-size:var(--fs-xs)">Insig.</span></td>
-              <td class="rm-axis">S=2<br/><span style="font-weight:400;font-size:var(--fs-xs)">Minor</span></td>
-              <td class="rm-axis">S=3<br/><span style="font-weight:400;font-size:var(--fs-xs)">Moderate</span></td>
-              <td class="rm-axis">S=4<br/><span style="font-weight:400;font-size:var(--fs-xs)">Major</span></td>
-              <td class="rm-axis">S=5<br/><span style="font-weight:400;font-size:var(--fs-xs)">Catastrop.</span></td>
+              <td class="rm-axis">L\S</td>
+              <td class="rm-axis">S=1<br/><span class="rm-sub">Insig.</span></td>
+              <td class="rm-axis">S=2<br/><span class="rm-sub">Minor</span></td>
+              <td class="rm-axis">S=3<br/><span class="rm-sub">Moderate</span></td>
+              <td class="rm-axis">S=4<br/><span class="rm-sub">Major</span></td>
+              <td class="rm-axis">S=5<br/><span class="rm-sub">Catastrop.</span></td>
             </tr>
             <tal:lrow tal:repeat="li python:[5,4,3,2,1]">
               <tr>
                 <td class="rm-axis">
                   L=<tal:v tal:replace="li"/><br/>
-                  <span style="font-weight:400;font-size:var(--fs-xs)"
+                  <span class="rm-sub"
                         tal:replace="python:view.likelihood_label(li).split(' — ')[1] if ' — ' in view.likelihood_label(li) else ''"/>
                 </td>
                 <tal:scol tal:repeat="si python:[1,2,3,4,5]">
@@ -890,14 +872,14 @@
           </table>
         </div>
         <div class="risk-score-display risk-green" id="new-dev-score-display"
-             style="display:none">
+             hidden="hidden">
           Score — —
         </div>
         <input type="hidden" name="likelihood" id="new-dev-likelihood" value="3"/>
         <input type="hidden" name="severity"   id="new-dev-severity"   value="3"/>
       </div>
 
-      <div class="dev-modal-footer">
+      <div class="form-actions is-end">
         <button type="button" class="btn btn-secondary"
                 onclick="closeDevModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">File Record</button>
@@ -979,7 +961,7 @@
       // Update score display
       var disp = document.getElementById('new-dev-score-display');
       if (disp) {
-        disp.style.display = 'inline-block';
+        disp.hidden = false;
         disp.className = 'risk-score-display risk-' + colour;
         disp.textContent = 'L=' + l + ' ' + _x + ' S=' + s + ' = Score ' + score + ' (' + _nd + ' ' + scoreToLabel(score) + ')';
       }
@@ -999,7 +981,7 @@
     var types = ['sop_revision', 'training', 'notification'];
     for (var j = 0; j < types.length; j++) {
       var el = document.getElementById('ca-fields-' + types[j]);
-      if (el) { el.style.display = types[j] === type ? 'block' : 'none'; }
+      if (el) { el.hidden = types[j] !== type; }
     }
   }
   window.selectCAType = selectCAType;
@@ -1042,7 +1024,7 @@
       }
       cell.classList.add('rm-selected');
       if (dDisp) {
-        dDisp.style.display = 'inline-block';
+        dDisp.hidden = false;
         dDisp.className = 'risk-score-display risk-' + colour;
         dDisp.textContent = 'L=' + l + ' ' + _x + ' S=' + s + ' = Score ' + score + ' ' + _nd + ' ' + scoreToLabel(score);
       }
@@ -1063,7 +1045,7 @@
     var btn   = document.getElementById('ws_find_btn');
     var res   = document.getElementById('ws_results');
     if (!sel || !sel.value) {
-      res.innerHTML = '<em style="color:#c00">Please select a method first.</em>';
+      res.innerHTML = '<em class="is-error">Please select a method first.</em>';
       return;
     }
     var url = _pfasBase + '/@@pfas-deviations?action=lookup_worksheets'
@@ -1076,7 +1058,7 @@
     fetch(url)
       .then(function(r) { return r.json(); })
       .then(function(data) { renderWsResults(data.results || []); })
-      .catch(function() { res.innerHTML = '<em style="color:#c00">Search failed.</em>'; })
+      .catch(function() { res.innerHTML = '<em class="is-error">Search failed.</em>'; })
       .finally(function() { btn.disabled = false; btn.textContent = 'Find Worksheets'; });
   }
 
@@ -1087,20 +1069,19 @@
       ? (textarea.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean)
       : [];
     if (!worksheets.length) {
-      res.innerHTML = '<em style="color:#888">No worksheets found for this method and date range.</em>';
+      res.innerHTML = '<em class="is-muted">No worksheets found for this method and date range.</em>';
       return;
     }
-    var html = '<div style="color:#555;margin-bottom:4px">'
-             + worksheets.length + ' worksheet(s) found — check to include:</div>'
-             + '<div style="max-height:160px;overflow-y:auto;border:1px solid #e0e0e0;'
-             + 'border-radius:4px;padding:6px 8px">';
+    var html = '<div class="dev-ws-count">'
+             + worksheets.length + ' worksheet(s) found \u2014 check to include:</div>'
+             + '<div class="dev-ws-list">';
     worksheets.forEach(function(ws) {
       var checked = current.indexOf(ws.id) >= 0 ? 'checked' : '';
-      html += '<label style="display:block;padding:2px 0;cursor:pointer">'
+      html += '<label>'
             + '<input type="checkbox" class="ws-check" value="' + ws.id + '" '
             + checked + ' onchange="syncWorksheets()">&nbsp;'
-            + '<code style="font-size:var(--fs-sm)">' + ws.id + '</code>'
-            + (ws.created ? ' <span style="color:#aaa">(' + ws.created + ')</span>' : '')
+            + '<code>' + ws.id + '</code>'
+            + (ws.created ? ' <span class="pfas-aux">(' + ws.created + ')</span>' : '')
             + '</label>';
     });
     html += '</div>';

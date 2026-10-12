@@ -14,23 +14,9 @@
       text-decoration: none; color: inherit;
     }
     .lb-card:hover { background: var(--s-light); border-color: var(--s-primary); }
-    .lb-num {
-      font-size: var(--fs-xs); font-weight: 700; color: var(--s-secondary);
-      background: #e9ecef; padding: 3px 10px; border-radius: 8px;
-      white-space: nowrap;
-    }
     .lb-title-group { flex: 1; }
-    .lb-title { font-size: var(--fs-base); font-weight: 600; }
+    .lb-title { font-size: var(--fs-base); font-weight: var(--fw-strong); }
     .lb-subtitle { font-size: var(--fs-xs); color: var(--s-secondary); margin-top: 2px; }
-    .lb-badge-ok      { font-size: var(--fs-xs); background: var(--s-success-lt); color: var(--s-success-text);
-                        padding: 2px 10px; border-radius: 8px; white-space: nowrap; }
-    .lb-badge-pending { font-size: var(--fs-xs); background: var(--s-light); color: var(--s-secondary);
-                        border: 1px solid var(--s-border); padding: 2px 10px;
-                        border-radius: 8px; white-space: nowrap; }
-    .lb-badge-guided  { font-size: var(--fs-xs); background: var(--s-info-lt); color: #1a56db;
-                        padding: 2px 10px; border-radius: 8px; white-space: nowrap; }
-    .lb-badge-guided-done { font-size: var(--fs-xs); background: var(--s-success-lt); color: var(--s-success-text);
-                        padding: 2px 10px; border-radius: 8px; white-space: nowrap; }
   </style>
   </tal:styles>
 </head>
@@ -45,19 +31,19 @@
   <div class="page-body">
 
     <!-- Breadcrumb -->
-    <div class="lb-breadcrumb">
+    <nav class="pfas-crumb is-inline" aria-label="Logbook">
       <span>Lab</span>
-      <span class="lb-bc-sep">›</span>
+      <span class="pfas-crumb-sep">&#8250;</span>
       <tal:m tal:condition="view/batch_method">
         <span tal:content="view/batch_method">Method</span>
-        <span class="lb-bc-sep">›</span>
+        <span class="pfas-crumb-sep">&#8250;</span>
       </tal:m>
-      <strong tal:content="view/batch_title">Batch</strong>
-      <span class="lb-bc-sep">›</span>
-      <strong>Logbooks</strong>
-    </div>
+      <strong class="pfas-crumb-here" tal:content="view/batch_title">Batch</strong>
+      <span class="pfas-crumb-sep">&#8250;</span>
+      <strong class="pfas-crumb-here">Logbooks</strong>
+    </nav>
 
-    <p style="font-size:var(--fs-base); color:var(--s-body); margin-bottom:24px;">
+    <p class="pfas-lead">
       Logbooks for this batch.  Fill them in on the bench or tablet before
       extraction and instrument run.
       <!-- Manager-only: the target 403s for bench staff, so showing this to
@@ -69,7 +55,7 @@
 
     <tal:lbs tal:repeat="lb view/logbooks">
       <a class="lb-card" tal:attributes="href lb/url">
-        <span class="lb-num" tal:content="lb/num">250</span>
+        <span class="badge badge-draft" tal:content="lb/num">250</span>
         <span class="lb-title-group">
           <span class="lb-title" tal:content="lb/title">Logbook</span>
           <div class="lb-subtitle" tal:condition="lb/subtitle" tal:content="lb/subtitle"></div>
@@ -77,21 +63,21 @@
 
         <!-- Extraction Log (252) — guided extraction status -->
         <tal:eg tal:condition="lb/is_extraction_log">
-          <span class="lb-badge-guided-done"
+          <span class="badge badge-active"
                 tal:condition="lb/eg_finalized">&#10003; Extraction Complete</span>
-          <span class="lb-badge-guided"
+          <span class="badge badge-opened"
                 tal:condition="python:lb['eg_started'] and not lb['eg_finalized']">In Progress</span>
-          <span class="lb-badge-pending"
+          <span class="badge badge-draft"
                 tal:condition="python:not lb['eg_started'] and not lb['eg_finalized']">Guided Extraction</span>
         </tal:eg>
 
         <!-- All other logbooks — filled / pending -->
         <tal:std tal:condition="not:lb/is_extraction_log">
-          <span class="lb-badge-ok"      tal:condition="lb/filled">Data entered</span>
-          <span class="lb-badge-pending" tal:condition="not:lb/filled">Pending</span>
+          <span class="badge badge-active" tal:condition="lb/filled">Data entered</span>
+          <span class="badge badge-draft" tal:condition="not:lb/filled">Pending</span>
         </tal:std>
 
-        <span style="color:var(--s-secondary);">&#8594;</span>
+        <span class="pfas-muted">&#8594;</span>
       </a>
     </tal:lbs>
 

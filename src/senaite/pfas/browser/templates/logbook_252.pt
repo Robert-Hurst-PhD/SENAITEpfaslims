@@ -7,44 +7,38 @@
   <title metal:fill-slot="title">FM-ENV-003: Extraction Log</title>
   <tal:styles metal:fill-slot="head-extra">
   <style>
-    .btn-add-row { margin-top: 8px; }   /* look: shared .btn-sm */
     .lb-form { max-width: 1000px; }
     .lb-section { margin-bottom: 28px; }
-    .lb-section h3 { font-size: var(--fs-base); font-weight: 700; color: var(--s-dark);
+    .lb-section h3 { font-size: var(--fs-base); font-weight:var(--fw-heading); color: var(--s-dark);
                      margin-bottom: 12px; padding-bottom: 6px;
                      border-bottom: 2px solid var(--s-border); }
     .lb-row { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
     .lb-field { display: flex; flex-direction: column; }
-    .lb-field label { font-size: var(--fs-sm); font-weight: 600; color: var(--s-dark); margin-bottom: 3px; }
+    .lb-field label { font-size: var(--fs-sm); font-weight:var(--fw-strong); color: var(--s-dark); margin-bottom: 3px; }
     .lb-input, .lb-select { padding: 7px 10px; font-size: var(--fs-base);
                               border: 1px solid var(--s-input-border); border-radius: 6px; }
     .lb-input-md { width: 180px; } .lb-input-lg { width: 260px; }
     /* Big sample table */
     .ext-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
     .ext-table th { background: var(--s-light); padding: 6px 8px; text-align: left;
-                    border-bottom: 2px solid var(--s-border); font-weight: 700; font-size: var(--fs-xs); }
+                    border-bottom: 2px solid var(--s-border); font-weight:var(--fw-heading); font-size: var(--fs-xs); }
     .ext-table td { padding: 3px 4px; border-bottom: 1px solid var(--s-border); }
     .ext-table td input, .ext-table td select {
       width: 100%; padding: 4px 6px; font-size: var(--fs-xs);
       border: 1px solid var(--s-input-border); border-radius: 4px; }
-    .ext-table td.num-cell { width: 36px; text-align: center; font-weight: 700;
+    .ext-table td.num-cell { width: 36px; text-align: center; font-weight:var(--fw-heading);
                               color: var(--s-secondary); }
     /* Supplies tables */
     .sup-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-    .sup-table th { background: var(--s-light); padding: 6px 10px; border-bottom: 2px solid var(--s-border); font-weight: 700; }
+    .sup-table th { background: var(--s-light); padding: 6px 10px; border-bottom: 2px solid var(--s-border); font-weight:var(--fw-heading); }
     .sup-table td { padding: 4px 8px; border-bottom: 1px solid var(--s-border); }
     .sup-table td input { width: 100%; padding: 4px 8px; font-size: var(--fs-sm);
                           border: 1px solid var(--s-input-border); border-radius: 4px; }
-    .btn-del-row { background: none; border: none; cursor: pointer; color: var(--s-danger-dk); font-size: var(--fs-base); padding: 2px 4px; }
     .checkbox-field { display: flex; align-items: center; gap: 8px; font-size: var(--fs-base); margin-top: 8px; }
     .sig-block { display: flex; gap: 40px; flex-wrap: wrap; }
     .sig-field { display: flex; flex-direction: column; }
-    .sig-field label { font-size: var(--fs-sm); font-weight: 600; margin-bottom: 3px; }
+    .sig-field label { font-size: var(--fs-sm); font-weight:var(--fw-strong); margin-bottom: 3px; }
     .form-actions { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--s-border); }
-    .alert-ok    { background: var(--s-success-lt); border: 1px solid var(--s-success-bd); color: var(--s-success-text);
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
-    .alert-error { background: var(--s-danger-lt); border: 1px solid var(--s-danger-bd); color: var(--s-danger-dk);
-                   padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: var(--fs-base); }
   </style>
   </tal:styles>
 </head>
@@ -59,20 +53,20 @@
   <div class="page-body">
 
     <!-- Breadcrumb -->
-    <div class="lb-breadcrumb">
+    <nav class="pfas-crumb is-inline" aria-label="Logbook">
       <span>Lab</span>
-      <span class="lb-bc-sep">›</span>
+      <span class="pfas-crumb-sep">&#8250;</span>
       <tal:m tal:condition="view/batch_method">
         <span tal:content="view/batch_method">Method</span>
-        <span class="lb-bc-sep">›</span>
+        <span class="pfas-crumb-sep">&#8250;</span>
       </tal:m>
       <span tal:content="view/batch_title">Batch</span>
-      <span class="lb-bc-sep">›</span>
-      <strong tal:content="python:view.form_code('252')">FM-ENV-00x</strong>
-    </div>
+      <span class="pfas-crumb-sep">&#8250;</span>
+      <strong class="pfas-crumb-here" tal:content="python:view.form_code('252')">FM-ENV-00x</strong>
+    </nav>
 
-    <div class="alert-ok"    tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
-    <div class="alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
+    <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
+    <div class="alert alert-error" tal:condition="view/error_msg" tal:content="view/error_msg"></div>
 
     <form class="lb-form" method="post"
           tal:attributes="action string:${view/batch_url}/@@pfas-logbook-252">
@@ -101,8 +95,8 @@
             <input class="lb-input lb-input-lg" type="text" name="analyst"
                    tal:attributes="value python:view.data().get('analyst','')" />
             <div class="corr-panel" id="cp-analyst">
-              <label>Original: <span id="co-analyst" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-analyst" name="_newval_analyst" style="width:160px;" /></label>
+              <label>Original: <span id="co-analyst" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-analyst" name="_newval_analyst" class="pfas-w-160" /></label>
               <label>Initials: <input type="text" id="cb-analyst" name="_corr_by_analyst" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('analyst')">&#215;</button>
             </div>
@@ -112,7 +106,7 @@
             <input class="lb-input lb-input-md" type="date" name="extraction_date"
                    tal:attributes="value python:view.data().get('extraction_date','')" />
             <div class="corr-panel" id="cp-extraction_date">
-              <label>Original: <span id="co-extraction_date" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Original: <span id="co-extraction_date" class="lb-original"></span></label>
               <label>Correction: <input type="date" id="cn-extraction_date" name="_newval_extraction_date" /></label>
               <label>Initials: <input type="text" id="cb-extraction_date" name="_corr_by_extraction_date" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('extraction_date')">&#215;</button>
@@ -128,17 +122,17 @@
           <thead>
             <tr>
               <th>#</th>
-              <th style="min-width:110px;">Sample ID</th>
-              <th style="min-width:120px;">Matrix Type</th>
-              <th style="min-width:100px;">Sample Type</th>
-              <th style="min-width:80px;">Spike (ng)</th>
-              <th style="min-width:70px;">Dilution 1:X</th>
+              <th class="pfas-minw-110">Sample ID</th>
+              <th class="pfas-minw-120">Matrix Type</th>
+              <th class="pfas-minw-100">Sample Type</th>
+              <th class="pfas-minw-80">Spike (ng)</th>
+              <th class="pfas-minw-70">Dilution 1:X</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="samples-body"></tbody>
         </table>
-        <button type="button" class="btn-sm btn-add-row"
+        <button type="button" class="btn-sm btn-secondary pfas-add-row"
                 onclick="addSampleRow()" id="add-sample-btn">
           + Add Sample Row
         </button>
@@ -151,7 +145,7 @@
           <thead><tr><th>Reagent</th><th>Vendor</th><th>Lot #</th><th>Expiry</th><th></th></tr></thead>
           <tbody id="reagents-body"></tbody>
         </table>
-        <button type="button" class="btn-sm btn-add-row" onclick="addSupRow('reagents','reagents-body',reagentsData)">+ Add Reagent</button>
+        <button type="button" class="btn-sm btn-secondary pfas-add-row" onclick="addSupRow('reagents','reagents-body',reagentsData)">+ Add Reagent</button>
       </div>
 
       <!-- Standards -->
@@ -161,17 +155,17 @@
           <thead><tr><th>Standard</th><th>Vendor</th><th>Lot #</th><th>Expiry</th><th></th></tr></thead>
           <tbody id="standards-body"></tbody>
         </table>
-        <button type="button" class="btn-sm btn-add-row" onclick="addSupRow('standards','standards-body',standardsData)">+ Add Standard</button>
+        <button type="button" class="btn-sm btn-secondary pfas-add-row" onclick="addSupRow('standards','standards-body',standardsData)">+ Add Standard</button>
       </div>
 
       <!-- Extraction Materials -->
       <div class="lb-section">
         <h3>Extraction Materials</h3>
-        <table class="sup-table" style="max-width:500px;">
+        <table class="sup-table pfas-maxw-500">
           <thead><tr><th>Material</th><th>Lot #</th><th></th></tr></thead>
           <tbody id="materials-body"></tbody>
         </table>
-        <button type="button" class="btn-sm btn-add-row" onclick="addMatRow()">+ Add Material</button>
+        <button type="button" class="btn-sm btn-secondary pfas-add-row" onclick="addMatRow()">+ Add Material</button>
       </div>
 
       <!-- Needle cleaned -->
@@ -188,14 +182,14 @@
       <div class="lb-section">
         <h3>Notes</h3>
         <div class="corr-field" data-field="notes">
-          <textarea name="notes" style="width:100%; min-height:60px; padding:8px; font-size:var(--fs-base); border:1px solid var(--s-input-border); border-radius:6px;"
+          <textarea name="notes" class="pfas-textarea"
                     tal:content="python:view.data().get('notes','')"></textarea>
-          <div style="margin-top:4px;">
+          <div class="pfas-mt-sm">
             <button class="btn-correct" type="button" onclick="toggleCorrect('notes')">correct notes</button>
           </div>
           <div class="corr-panel" id="cp-notes">
-            <label>Original: <span id="co-notes" style="text-decoration:line-through;color:#999;font-weight:normal;max-width:300px;display:inline-block;"></span></label>
-            <label>Correction: <input type="text" id="cn-notes" name="_newval_notes" style="width:220px;" /></label>
+            <label>Original: <span id="co-notes" class="lb-original is-block"></span></label>
+            <label>Correction: <input type="text" id="cn-notes" name="_newval_notes" class="pfas-w-220" /></label>
             <label>Initials: <input type="text" id="cb-notes" name="_corr_by_notes" class="corr-initials" placeholder="JS" /></label>
             <button type="button" class="corr-cancel" onclick="toggleCorrect('notes')">&#215;</button>
           </div>
@@ -211,8 +205,8 @@
             <input class="lb-input lb-input-lg" type="text" name="reviewed_by"
                    tal:attributes="value python:view.data().get('reviewed_by','')" />
             <div class="corr-panel" id="cp-reviewed_by">
-              <label>Original: <span id="co-reviewed_by" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
-              <label>Correction: <input type="text" id="cn-reviewed_by" name="_newval_reviewed_by" style="width:160px;" /></label>
+              <label>Original: <span id="co-reviewed_by" class="lb-original"></span></label>
+              <label>Correction: <input type="text" id="cn-reviewed_by" name="_newval_reviewed_by" class="pfas-w-160" /></label>
               <label>Initials: <input type="text" id="cb-reviewed_by" name="_corr_by_reviewed_by" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('reviewed_by')">&#215;</button>
             </div>
@@ -222,7 +216,7 @@
             <input class="lb-input lb-input-md" type="date" name="reviewed_date"
                    tal:attributes="value python:view.data().get('reviewed_date','')" />
             <div class="corr-panel" id="cp-reviewed_date">
-              <label>Original: <span id="co-reviewed_date" style="text-decoration:line-through;color:#999;font-weight:normal;"></span></label>
+              <label>Original: <span id="co-reviewed_date" class="lb-original"></span></label>
               <label>Correction: <input type="date" id="cn-reviewed_date" name="_newval_reviewed_date" /></label>
               <label>Initials: <input type="text" id="cb-reviewed_date" name="_corr_by_reviewed_date" class="corr-initials" placeholder="JS" /></label>
               <button type="button" class="corr-cancel" onclick="toggleCorrect('reviewed_date')">&#215;</button>
@@ -285,7 +279,7 @@
         '\u003ctd>\u003cselect onchange="samplesData['+i+'].sample_type=this.value;syncSamples()">'+typeOpts+'\u003c/select>\u003c/td>' +
         '\u003ctd>\u003cinput type="number" step="0.01" value="'+esc(row.spike_amount_ng||'')+'" oninput="samplesData['+i+'].spike_amount_ng=this.value;syncSamples()"/>\u003c/td>' +
         '\u003ctd>\u003cinput type="number" step="1" min="1" value="'+esc(row.dilution_factor||'')+'" oninput="samplesData['+i+'].dilution_factor=this.value;syncSamples()"/>\u003c/td>' +
-        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="delSample('+i+')">&#215;\u003c/button>\u003c/td>';
+        '\u003ctd>\u003cbutton type="button" class="pfas-row-remove" onclick="delSample('+i+')">&#215;\u003c/button>\u003c/td>';
       tbody.appendChild(tr);
     });
     document.getElementById('add-sample-btn').style.display =
@@ -315,7 +309,7 @@
       }).join('');
       var tr = document.createElement('tr');
       tr.innerHTML = cells +
-        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="delRow(\''+dataArr.varName+'\','+i+',\''+tbodyId+'\',\''+jsonFieldId+'\')">&#215;\u003c/button>\u003c/td>';
+        '\u003ctd>\u003cbutton type="button" class="pfas-row-remove" onclick="delRow(\''+dataArr.varName+'\','+i+',\''+tbodyId+'\',\''+jsonFieldId+'\')">&#215;\u003c/button>\u003c/td>';
       tbody.appendChild(tr);
     });
     sync(jsonFieldId, dataArr);
@@ -336,7 +330,7 @@
         '\u003ctd>\u003cinput type="text" value="'+esc(row.vendor||'')+'" oninput="reagentsData['+i+'].vendor=this.value;syncReagents()"/>\u003c/td>' +
         '\u003ctd>\u003cinput type="text" value="'+esc(row.lot_num||'')+'" oninput="reagentsData['+i+'].lot_num=this.value;syncReagents()"/>\u003c/td>' +
         '\u003ctd>\u003cinput type="date" value="'+esc(row.expiry||'')+'" oninput="reagentsData['+i+'].expiry=this.value;syncReagents()"/>\u003c/td>' +
-        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="reagentsData.splice('+i+',1);renderReagents()">&#215;\u003c/button>\u003c/td>';
+        '\u003ctd>\u003cbutton type="button" class="pfas-row-remove" onclick="reagentsData.splice('+i+',1);renderReagents()">&#215;\u003c/button>\u003c/td>';
       tbody.appendChild(tr);
     });
     syncReagents();
@@ -360,7 +354,7 @@
         '\u003ctd>\u003cinput type="text" value="'+esc(row.vendor||'')+'" oninput="standardsData['+i+'].vendor=this.value;syncStandards()"/>\u003c/td>' +
         '\u003ctd>\u003cinput type="text" value="'+esc(row.lot_num||'')+'" oninput="standardsData['+i+'].lot_num=this.value;syncStandards()"/>\u003c/td>' +
         '\u003ctd>\u003cinput type="date" value="'+esc(row.expiry||'')+'" oninput="standardsData['+i+'].expiry=this.value;syncStandards()"/>\u003c/td>' +
-        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="standardsData.splice('+i+',1);renderStandards()">&#215;\u003c/button>\u003c/td>';
+        '\u003ctd>\u003cbutton type="button" class="pfas-row-remove" onclick="standardsData.splice('+i+',1);renderStandards()">&#215;\u003c/button>\u003c/td>';
       tbody.appendChild(tr);
     });
     syncStandards();
@@ -377,7 +371,7 @@
       tr.innerHTML =
         '\u003ctd>\u003cinput type="text" value="'+esc(row.material||'')+'" oninput="materialsData['+i+'].material=this.value;syncMaterials()"/>\u003c/td>' +
         '\u003ctd>\u003cinput type="text" value="'+esc(row.lot_num||'')+'" oninput="materialsData['+i+'].lot_num=this.value;syncMaterials()"/>\u003c/td>' +
-        '\u003ctd>\u003cbutton type="button" class="btn-del-row" onclick="materialsData.splice('+i+',1);renderMaterials()">&#215;\u003c/button>\u003c/td>';
+        '\u003ctd>\u003cbutton type="button" class="pfas-row-remove" onclick="materialsData.splice('+i+',1);renderMaterials()">&#215;\u003c/button>\u003c/td>';
       tbody.appendChild(tr);
     });
     syncMaterials();

@@ -25,6 +25,10 @@
 <body>
   <tal:t metal:fill-slot="header-title" tal:content="view/logbook_title">Logbook</tal:t>
   <tal:r metal:fill-slot="header-right">
+    <nav class="pfas-seg pfas-seg-sm" aria-label="Logbook view" tal:condition="view/has_steps">
+      <a class="pfas-seg-item lbg-seg" aria-selected="false" tal:attributes="href view/guided_url">Guided</a>
+      <a class="pfas-seg-item lbg-seg" aria-selected="true" tal:attributes="href view/concise_url">Concise</a>
+    </nav>
     <a class="btn-sm btn-secondary btn-back"
        tal:attributes="href string:${view/batch_url}/@@pfas-logbook-index">All Logbooks</a>
   </tal:r>
@@ -33,13 +37,13 @@
   <div class="page-body">
 
     <!-- Breadcrumb -->
-    <div class="lb-breadcrumb">
+    <nav class="pfas-crumb is-inline" aria-label="Logbook">
       <span>Lab</span>
-      <span class="lb-bc-sep">&#8250;</span>
+      <span class="pfas-crumb-sep">&#8250;</span>
       <span tal:content="view/batch_title">Batch</span>
-      <span class="lb-bc-sep">&#8250;</span>
-      <strong tal:content="view/logbook_code">Logbook</strong>
-    </div>
+      <span class="pfas-crumb-sep">&#8250;</span>
+      <strong class="pfas-crumb-here" tal:content="view/logbook_code">Logbook</strong>
+    </nav>
 
     <div class="alert alert-success" tal:condition="view/ok_msg"    tal:content="view/ok_msg"></div>
     <div class="alert alert-error"   tal:condition="view/error_msg" tal:content="view/error_msg"></div>
